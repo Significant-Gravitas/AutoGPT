@@ -5,6 +5,8 @@ Implements the MCP Streamable HTTP transport for listing tools and calling tools
 on remote MCP servers. Uses JSON-RPC 2.0 over HTTP POST.
 
 Handles both JSON and SSE (text/event-stream) response formats per the MCP spec.
+Each discovered tool includes an integrity_hash that callers can pin and verify
+before execution to detect tool-poisoning attacks.
 
 Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transports
 """
@@ -12,9 +14,12 @@ Reference: https://modelcontextprotocol.io/specification/2025-03-26/basic/transp
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from backend.util.request import Requests
+
+if TYPE_CHECKING:
+    from backend.blocks.mcp.security import MCPSecurityContext
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +31,10 @@ class MCPTool:
     name: str
     description: str
     input_schema: dict[str, Any]
+    # SHA-256 fingerprint of (name + description + inputSchema), set by list_tools().
+    # Pin this at block-configuration time and pass to verify_tool_before_call()
+    # at execution time to detect post-deployment mutations.
+    integrity_hash: str = ""
 
 
 @dataclass
@@ -48,19 +57,26 @@ class MCPClient:
 
     Communicates with MCP servers using JSON-RPC 2.0 over HTTP POST.
     Supports optional Bearer token authentication.
+
+    Pass a MCPSecurityContext to enable MCPS message signing — outgoing payloads
+    are wrapped in ECDSA-signed envelopes and MCPS-signed responses are verified.
+    Tool integrity checking via verify_tool_before_call() is always available.
     """
 
     def __init__(
         self,
         server_url: str,
         auth_token: str | None = None,
+        security_ctx: "MCPSecurityContext | None" = None,
     ):
         from backend.blocks.mcp.helpers import normalize_mcp_url
 
         self.server_url = normalize_mcp_url(server_url)
         self.auth_token = auth_token
+        self.security_ctx = security_ctx
         self._request_id = 0
         self._session_id: str | None = None
+        self._server_public_key: str | None = None
 
     def _next_id(self) -> int:
         self._request_id += 1
@@ -123,17 +139,25 @@ class MCPClient:
     ) -> Any:
         """Send a JSON-RPC request to the MCP server and return the result.
 
-        Handles both ``application/json`` and ``text/event-stream`` responses
-        as required by the MCP Streamable HTTP transport specification.
+        Handles both application/json and text/event-stream responses per the
+        MCP Streamable HTTP transport specification. When a security context is
+        present, the request is MCPS-signed and the response is verified.
         """
-        payload = self._build_jsonrpc_request(method, params)
+        jsonrpc_payload = self._build_jsonrpc_request(method, params)
+
+        if self.security_ctx is not None:
+            wire_payload = self.security_ctx.sign_outgoing(jsonrpc_payload)
+            logger.debug("MCPS: signed outgoing %s request", method)
+        else:
+            wire_payload = jsonrpc_payload
+
         headers = self._build_headers()
 
         requests = Requests(
             raise_for_status=True,
             extra_headers=headers,
         )
-        response = await requests.post(self.server_url, json=payload)
+        response = await requests.post(self.server_url, json=wire_payload)
 
         # Capture session ID from response (MCP Streamable HTTP transport)
         session_id = response.headers.get("Mcp-Session-Id")
@@ -154,6 +178,13 @@ class MCPClient:
         if not isinstance(body, dict):
             raise MCPClientError(
                 f"MCP server returned unexpected JSON type: {type(body).__name__}"
+            )
+
+        # Plain JSON-RPC responses (no MCPS metadata) pass through unchanged,
+        # so non-MCPS servers work without any modification.
+        if self.security_ctx is not None:
+            body = self.security_ctx.verify_incoming(
+                body, server_public_key=self._server_public_key
             )
 
         # Handle JSON-RPC error
@@ -263,7 +294,9 @@ class MCPClient:
         Send the MCP initialize request.
 
         This is required by the MCP protocol before any other requests.
-        Returns the server's capabilities.
+        Returns the server's capabilities. If the server advertises an MCPS
+        public key in capabilities._mcps.public_key it is stored for use in
+        response signature verification.
         """
         result = await self._send_request(
             "initialize",
@@ -276,28 +309,72 @@ class MCPClient:
         # Send initialized notification (no response expected)
         await self._send_notification("notifications/initialized")
 
+        capabilities = (result or {}).get("capabilities", {})
+        mcps_meta = capabilities.get("_mcps", {})
+        if isinstance(mcps_meta, dict) and "public_key" in mcps_meta:
+            self._server_public_key = mcps_meta["public_key"]
+            logger.debug("MCPS: captured server public key for '%s'", self.server_url)
+
         return result or {}
 
     async def list_tools(self) -> list[MCPTool]:
         """
         Discover available tools from the MCP server.
 
-        Returns a list of MCPTool objects with name, description, and input schema.
+        Returns a list of MCPTool objects. Each tool's integrity_hash field
+        is computed from its definition and can be pinned for later verification.
         """
+        from backend.blocks.mcp.security import compute_tool_hash
+
         result = await self._send_request("tools/list")
         if not result or "tools" not in result:
             return []
 
         tools = []
         for tool_data in result["tools"]:
+            tool_dict = {
+                "name": tool_data.get("name", ""),
+                "description": tool_data.get("description", ""),
+                "inputSchema": tool_data.get("inputSchema", {}),
+            }
             tools.append(
                 MCPTool(
-                    name=tool_data.get("name", ""),
-                    description=tool_data.get("description", ""),
-                    input_schema=tool_data.get("inputSchema", {}),
+                    name=tool_dict["name"],
+                    description=tool_dict["description"],
+                    input_schema=tool_dict["inputSchema"],
+                    integrity_hash=compute_tool_hash(tool_dict),
                 )
             )
         return tools
+
+    async def verify_tool_before_call(
+        self, tool_name: str, expected_hash: str
+    ) -> None:
+        """Re-fetch the tool list and verify that tool_name's definition hasn't changed.
+
+        Raises MCPToolIntegrityError if the hash doesn't match (tool was mutated).
+        Raises MCPClientError if the tool is no longer advertised by the server.
+        This makes one extra tools/list request and should only be called when
+        integrity checking is enabled in the block configuration.
+        """
+        from backend.blocks.mcp.security import verify_tool_hash
+
+        result = await self._send_request("tools/list")
+        if not result or "tools" not in result:
+            raise MCPClientError(
+                f"Could not retrieve tool list for integrity check of '{tool_name}'"
+            )
+
+        for tool_data in result["tools"]:
+            if tool_data.get("name") == tool_name:
+                verify_tool_hash(tool_data, expected_hash)
+                logger.debug("Tool integrity verified for '%s'", tool_name)
+                return
+
+        raise MCPClientError(
+            f"Tool '{tool_name}' is no longer advertised by the server — "
+            "it may have been removed or renamed after the block was configured."
+        )
 
     async def call_tool(
         self, tool_name: str, arguments: dict[str, Any]
