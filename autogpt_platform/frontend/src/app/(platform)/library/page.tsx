@@ -7,8 +7,9 @@ import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryAct
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
 import { useLibraryListPage } from "./components/useLibraryListPage";
 import { FavoriteAnimationProvider } from "./context/FavoriteAnimationContext";
+import { LibraryTab } from "./types";
 
-const LIBRARY_TABS = [
+const LIBRARY_TABS: LibraryTab[] = [
   { id: "all", title: "All", icon: ListIcon },
   { id: "favorites", title: "Favorites", icon: HeartIcon },
 ];

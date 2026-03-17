@@ -4,15 +4,9 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { Icon } from "@phosphor-icons/react";
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
+import { LibraryTab } from "../../types";
 import LibraryFolderCreationDialog from "../LibraryFolderCreationDialog/LibraryFolderCreationDialog";
-
-interface LibraryTab {
-  id: string;
-  title: string;
-  icon: Icon;
-}
 
 interface Props {
   tabs: LibraryTab[];

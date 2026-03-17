@@ -11,15 +11,16 @@ import {
   TabsLineList,
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
-import { HeartIcon, Icon } from "@phosphor-icons/react";
+import { HeartIcon } from "@phosphor-icons/react";
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
+import { LibraryTab } from "../../types";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
 
 interface Props {
   searchTerm: string;
-  tabs: { id: string; title: string; icon: Icon }[];
+  tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
   setLibrarySort: (value: LibraryAgentSort) => void;

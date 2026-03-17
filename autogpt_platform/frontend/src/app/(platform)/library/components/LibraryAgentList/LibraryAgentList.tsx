@@ -7,7 +7,7 @@ import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionS
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
-import { ArrowLeftIcon, HeartIcon, Icon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   AnimatePresence,
@@ -17,6 +17,7 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
+import { LibraryTab } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
 // cancels the current spring and starts a new one from current state.
@@ -67,7 +68,7 @@ interface Props {
   setLibrarySort: (value: LibraryAgentSort) => void;
   selectedFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
-  tabs: { id: string; title: string; icon: Icon }[];
+  tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
 }
