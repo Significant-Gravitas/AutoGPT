@@ -20,6 +20,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
+from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG, is_transient_api_error
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -214,10 +215,12 @@ class SDKResponseAdapter:
             if sdk_message.subtype == "success":
                 responses.append(StreamFinish())
             elif sdk_message.subtype in ("error", "error_during_execution"):
-                error_msg = sdk_message.result or "Unknown error"
-                responses.append(
-                    StreamError(errorText=str(error_msg), code="sdk_error")
-                )
+                raw_error = str(sdk_message.result or "Unknown error")
+                if is_transient_api_error(raw_error):
+                    error_text, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
+                else:
+                    error_text, code = raw_error, "sdk_error"
+                responses.append(StreamError(errorText=error_text, code=code))
                 responses.append(StreamFinish())
             else:
                 logger.warning(
