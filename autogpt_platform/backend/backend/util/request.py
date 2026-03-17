@@ -228,7 +228,7 @@ async def validate_url_host(
         return parsed, True, []
 
     # If not allowlisted, go ahead with host resolution and IP target check
-    return parsed, False, await _resolve_and_check_blocked(ascii_hostname)
+    return parsed, False, await resolve_and_check_blocked(ascii_hostname)
 
 
 def matches_allowed_host(url: URL, allowed: URL) -> bool:
@@ -242,7 +242,7 @@ def matches_allowed_host(url: URL, allowed: URL) -> bool:
     return url.port == allowed.port
 
 
-async def _resolve_and_check_blocked(hostname: str) -> list[str]:
+async def resolve_and_check_blocked(hostname: str) -> list[str]:
     """
     Resolves hostname to IPs and raises ValueError if any resolve to
     a blocked network. Returns the list of resolved IP addresses.
