@@ -72,7 +72,8 @@ def _validate_agent_id(agent_id: str) -> str:
     if not AGENT_ID_PATTERN.match(agent_id):
         raise ValueError(
             f"Invalid agent ID format: {agent_id!r}. "
-            "Expected format: ag_ followed by 24 hex characters (e.g., 'ag_229e507d7d87f35cc2bc17ea')"
+            "Expected format: ag_ followed by 24 hex characters "
+            "(e.g., 'ag_229e507d7d87f35cc2bc17ea')"
         )
 
     return agent_id
@@ -189,7 +190,9 @@ class JoyTrustVerifyBlock(Block):
     class Input(BlockSchemaInput):
         """Input schema for JoyTrustVerifyBlock."""
 
-        agent_id: str = SchemaField(description="Joy agent ID to verify (e.g., 'ag_xxx')")
+        agent_id: str = SchemaField(
+            description="Joy agent ID to verify (e.g., 'ag_xxx')"
+        )
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
             default=0.5,
@@ -202,12 +205,24 @@ class JoyTrustVerifyBlock(Block):
     class Output(BlockSchemaOutput):
         """Output schema for JoyTrustVerifyBlock."""
 
-        is_trusted: bool = SchemaField(description="Whether the agent meets trust criteria")
-        trust_score: float = SchemaField(description="Agent's trust score (0.0-2.0)")
-        vouch_count: int = SchemaField(description="Number of vouches the agent has received")
-        verified: bool = SchemaField(description="Whether the agent has a verified badge")
-        capabilities: list = SchemaField(description="List of agent capabilities")
-        error: str = SchemaField(description="Error message if verification failed")
+        is_trusted: bool = SchemaField(
+            description="Whether the agent meets trust criteria"
+        )
+        trust_score: float = SchemaField(
+            description="Agent's trust score (0.0-2.0)"
+        )
+        vouch_count: int = SchemaField(
+            description="Number of vouches the agent has received"
+        )
+        verified: bool = SchemaField(
+            description="Whether the agent has a verified badge"
+        )
+        capabilities: list = SchemaField(
+            description="List of agent capabilities"
+        )
+        error: str = SchemaField(
+            description="Error message if verification failed"
+        )
 
     def __init__(self):
         """Initialize the JoyTrustVerifyBlock with default configuration."""
@@ -235,7 +250,7 @@ class JoyTrustVerifyBlock(Block):
                 ("error", ""),
             ],
             test_mock={
-                "_fetch_agent": lambda *args, **kwargs: {
+                "_fetch_agent": lambda agent_id: {
                     "id": "ag_229e507d7d87f35cc2bc17ea",
                     "name": "Test Agent",
                     "trust_score": 1.5,
@@ -344,22 +359,34 @@ class JoyDiscoverAgentsBlock(Block):
         """Input schema for JoyDiscoverAgentsBlock."""
 
         capability: str = SchemaField(
-            description="Capability to search for (e.g., 'github', 'email', 'code')",
+            description="Capability to search for (e.g., 'github', 'email')",
             default="",
         )
-        query: str = SchemaField(description="Free text search query", default="")
+        query: str = SchemaField(
+            description="Free text search query",
+            default="",
+        )
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
             default=0.5,
         )
-        limit: int = SchemaField(description="Maximum number of agents to return", default=10)
+        limit: int = SchemaField(
+            description="Maximum number of agents to return",
+            default=10,
+        )
 
     class Output(BlockSchemaOutput):
         """Output schema for JoyDiscoverAgentsBlock."""
 
-        agents: list = SchemaField(description="List of trusted agents matching criteria")
-        count: int = SchemaField(description="Number of agents found")
-        error: str = SchemaField(description="Error message if discovery failed")
+        agents: list = SchemaField(
+            description="List of trusted agents matching criteria"
+        )
+        count: int = SchemaField(
+            description="Number of agents found"
+        )
+        error: str = SchemaField(
+            description="Error message if discovery failed"
+        )
 
     def __init__(self):
         """Initialize the JoyDiscoverAgentsBlock with default configuration."""
@@ -384,10 +411,10 @@ class JoyDiscoverAgentsBlock(Block):
                 ("error", ""),
             ],
             test_mock={
-                "_discover_agents": lambda *args, **kwargs: {
+                "_discover_agents": lambda capability, query, limit: {
                     "agents": [
                         {
-                            "id": "ag_test1",
+                            "id": "ag_test1234567890abcdef",
                             "name": "Test Agent 1",
                             "description": "A test agent",
                             "trust_score": 1.5,
@@ -396,7 +423,7 @@ class JoyDiscoverAgentsBlock(Block):
                             "capabilities": ["github", "code"],
                         },
                         {
-                            "id": "ag_test2",
+                            "id": "ag_test234567890abcdef1",
                             "name": "Test Agent 2",
                             "description": "Another test agent",
                             "trust_score": 1.2,
@@ -495,7 +522,7 @@ class JoyShouldTrustBlock(Block):
                 "agent_id": "ag_229e507d7d87f35cc2bc17ea",
                 "min_trust_score": 0.5
             }
-            # Output: {"trusted": True, "reason": "Trust score 1.50 meets threshold 0.5"}
+            # Output: {"trusted": True, "reason": "Trust score 1.50 meets..."}
 
         Safety checkpoint - block untrusted agents::
 
@@ -510,7 +537,9 @@ class JoyShouldTrustBlock(Block):
     class Input(BlockSchemaInput):
         """Input schema for JoyShouldTrustBlock."""
 
-        agent_id: str = SchemaField(description="Joy agent ID to check (e.g., 'ag_xxx')")
+        agent_id: str = SchemaField(
+            description="Joy agent ID to check (e.g., 'ag_xxx')"
+        )
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0.0-2.0)",
             default=0.5,
@@ -519,8 +548,12 @@ class JoyShouldTrustBlock(Block):
     class Output(BlockSchemaOutput):
         """Output schema for JoyShouldTrustBlock."""
 
-        trusted: bool = SchemaField(description="Whether the agent should be trusted")
-        reason: str = SchemaField(description="Reason for the trust decision")
+        trusted: bool = SchemaField(
+            description="Whether the agent should be trusted"
+        )
+        reason: str = SchemaField(
+            description="Reason for the trust decision"
+        )
 
     def __init__(self):
         """Initialize the JoyShouldTrustBlock with default configuration."""
@@ -543,7 +576,7 @@ class JoyShouldTrustBlock(Block):
                 ("reason", lambda x: "meets threshold" in x),
             ],
             test_mock={
-                "_fetch_agent": lambda *args, **kwargs: {
+                "_fetch_agent": lambda agent_id: {
                     "id": "ag_229e507d7d87f35cc2bc17ea",
                     "name": "Test Agent",
                     "trust_score": 1.5,
