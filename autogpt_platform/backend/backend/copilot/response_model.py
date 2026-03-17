@@ -272,18 +272,11 @@ class StreamStatus(StreamBaseResponse):
     Used to provide feedback when the backend performs behind-the-scenes work
     (e.g., compacting conversation context on a retry) that would otherwise
     leave the user staring at an unexplained pause.
+
+    Sent as a proper ``data:`` event so the frontend can display it to the
+    user.  The AI SDK stream parser gracefully skips unknown chunk types
+    (logs a console warning), so this does not break the stream.
     """
 
     type: ResponseType = ResponseType.STATUS
     message: str = Field(..., description="Human-readable status message")
-
-    def to_sse(self) -> str:
-        """Encode as an SSE comment so the AI SDK stream parser ignores it.
-
-        The frontend AI SDK validates every ``data:`` line against a strict
-        Zod union of known chunk types.  ``"status"`` is not in that union,
-        so sending it as ``data:`` would cause a schema-validation error that
-        breaks the entire stream.  Using an SSE comment (``:``) keeps the
-        connection alive and is silently discarded by ``EventSource`` parsers.
-        """
-        return f": status {self.message}\n\n"

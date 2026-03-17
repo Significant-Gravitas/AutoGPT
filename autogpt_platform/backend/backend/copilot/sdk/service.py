@@ -119,6 +119,34 @@ _PROMPT_TOO_LONG_PATTERNS: tuple[str, ...] = (
 )
 
 
+# Map raw SDK error patterns to user-friendly messages.
+# Matched case-insensitively; first match wins.
+_FRIENDLY_ERROR_MAP: tuple[tuple[str, str], ...] = (
+    ("authentication", "Authentication failed. Please check your API key."),
+    ("invalid api key", "Authentication failed. Please check your API key."),
+    ("unauthorized", "Authentication failed. Please check your API key."),
+    ("rate limit", "Rate limit exceeded. Please wait a moment and try again."),
+    ("overloaded", "The AI service is currently overloaded. Please try again shortly."),
+    ("server error", "The AI service encountered an internal error. Please retry."),
+    ("timeout", "The request timed out. Please try again."),
+    ("connection", "Connection error. Please check your network and retry."),
+)
+
+
+def _friendly_error_text(raw: str) -> str:
+    """Map a raw SDK error string to a user-friendly message.
+
+    Returns the mapped message if a known pattern is found, otherwise
+    returns a generic sanitized version of the raw error.
+    """
+    lower = raw.lower()
+    for pattern, friendly in _FRIENDLY_ERROR_MAP:
+        if pattern in lower:
+            return friendly
+    # Fallback: sanitize but keep the original text for debugging
+    return f"SDK stream error: {raw}"
+
+
 def _is_prompt_too_long(err: BaseException) -> bool:
     """Return True if *err* indicates the prompt exceeds the model's limit.
 
@@ -1821,7 +1849,7 @@ async def stream_chat_completion_sdk(
                     "Please start a new chat or clear some history."
                 )
             else:
-                error_text = f"SDK stream error: {safe_err}"
+                error_text = _friendly_error_text(safe_err)
             yield StreamError(
                 errorText=error_text,
                 code=(
