@@ -184,7 +184,11 @@ def _resolve_sdk_model() -> str | None:
 
     Uses ``config.claude_agent_model`` if set, otherwise derives from
     ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
-    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
+    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4-6"``).
+
+    OpenRouter uses dot-separated versions (``claude-opus-4.6``) while the
+    direct Anthropic API uses hyphen-separated versions (``claude-opus-4-6``).
+    This function normalises the model ID so it works with both backends.
 
     When ``use_claude_code_subscription`` is enabled and no explicit
     ``claude_agent_model`` is set, returns ``None`` so the CLI uses the
@@ -196,8 +200,11 @@ def _resolve_sdk_model() -> str | None:
         return None
     model = config.model
     if "/" in model:
-        return model.split("/", 1)[1]
-    return model
+        model = model.split("/", 1)[1]
+    # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
+    # Anthropic API requires hyphens (claude-opus-4-6).  Normalise so the
+    # model ID works regardless of routing mode.
+    return model.replace(".", "-")
 
 
 @functools.cache
