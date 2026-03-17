@@ -61,7 +61,7 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if execution failed. | str |
+| error | Error message if the operation failed | str |
 | response | The final text response from the autopilot. | str |
 | tool_calls | List of tools called during execution. Each entry has tool_call_id, tool_name, input, output, and success fields. | List[ToolCallEntry] |
 | conversation_history | Full conversation history as JSON. It can be used for logging or analysis. | str |
@@ -70,7 +70,11 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Schedule an autopilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report. Or chain autopilot blocks where one gathers data and another analyzes it, enabling multi-step AI workflows within the graph editor.
+**Scheduled Reports**: Schedule an autopilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report.
+
+**Multi-Step AI Workflows**: Chain autopilot blocks where one gathers data and another analyzes it, enabling complex AI pipelines within the graph editor.
+
+**Sub-Agent Delegation**: Delegate a research or formatting task to a sub-autopilot while the parent agent handles orchestration.
 <!-- END MANUAL -->
 
 ---

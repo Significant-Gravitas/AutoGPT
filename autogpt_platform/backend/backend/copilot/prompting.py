@@ -6,10 +6,11 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
+from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
 from backend.copilot.tools import TOOL_REGISTRY
 
 # Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = """\
+_SHARED_TOOL_NOTES = f"""\
 
 ### Sharing files with the user
 After saving a file to the persistent workspace with `write_workspace_file`,
@@ -81,13 +82,13 @@ that would be corrupted by text encoding.
 
 Example — committing an image file to GitHub:
 ```json
-{
-  "files": [{
+{{
+  "files": [{{
     "path": "docs/hero.png",
     "content": "workspace://abc123#image/png",
     "operation": "upsert"
-  }]
-}
+  }}]
+}}
 ```
 
 ### Sub-agent tasks
@@ -96,7 +97,7 @@ Example — committing an image file to GitHub:
 
 ### Delegating to another autopilot (sub-autopilot pattern)
 Use the **AutoPilotBlock** (`run_block` with block_id
-`c069dc6b-c3ed-4c12-b6e5-d47361e64ce6`) to delegate a task to a fresh
+`{AUTOPILOT_BLOCK_ID}`) to delegate a task to a fresh
 autopilot instance.  The sub-autopilot has its own full tool set and can
 perform multi-step work autonomously.
 
