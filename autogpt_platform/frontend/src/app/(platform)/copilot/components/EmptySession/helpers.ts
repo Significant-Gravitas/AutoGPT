@@ -41,7 +41,7 @@ export const DEFAULT_THEMES: SuggestionTheme[] = [
   {
     name: "Automate",
     prompts: [
-      "Monitor my competitors' websites for changes",
+      "Monitor relevant websites for changes",
       "Send me a daily news digest on my industry",
       "Auto-reply to common customer questions",
       "Track price changes on products I sell",
@@ -63,10 +63,27 @@ export const DEFAULT_THEMES: SuggestionTheme[] = [
 export function getSuggestionThemes(
   apiThemes?: SuggestionTheme[],
 ): SuggestionTheme[] {
-  if (apiThemes && apiThemes.length > 0) {
-    return apiThemes;
+  if (!apiThemes?.length) {
+    return DEFAULT_THEMES;
   }
-  return DEFAULT_THEMES;
+
+  const promptsByTheme = new Map(
+    apiThemes.map((theme) => [theme.name, theme.prompts] as const),
+  );
+
+  return DEFAULT_THEMES.map((theme) => {
+    const personalized = (promptsByTheme.get(theme.name) ?? []).filter(
+      (p) => p.trim().length > 0,
+    );
+
+    return {
+      name: theme.name,
+      prompts: Array.from(new Set([...personalized, ...theme.prompts])).slice(
+        0,
+        theme.prompts.length,
+      ),
+    };
+  });
 }
 
 export function getGreetingName(user?: User | null) {

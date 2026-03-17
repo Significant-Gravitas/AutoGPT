@@ -395,9 +395,9 @@ async def extract_business_understanding_from_tally(
             if not isinstance(theme_prompts, list):
                 continue
             valid = [
-                p.strip()
+                s
                 for p in theme_prompts
-                if isinstance(p, str) and len(p.strip().split()) <= 20
+                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
             ]
             if valid:
                 themed[theme] = valid[:PROMPTS_PER_THEME]

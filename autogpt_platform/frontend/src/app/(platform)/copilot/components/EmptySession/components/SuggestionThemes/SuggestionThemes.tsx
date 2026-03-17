@@ -59,18 +59,14 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                 type="button"
                 variant="outline"
                 size="small"
-                disabled={disabled}
+                disabled={disabled || loadingPrompt !== null}
                 className="shrink-0 gap-2 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
               >
                 {Icon && <Icon size={16} weight="regular" />}
                 {theme.name}
               </Button>
             </PopoverTrigger>
-            <PopoverContent
-              align="center"
-              className="w-80 p-2"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-            >
+            <PopoverContent align="center" className="w-80 p-2">
               <ul className="grid gap-0.5">
                 {theme.prompts.map((prompt) => (
                   <li key={prompt}>
