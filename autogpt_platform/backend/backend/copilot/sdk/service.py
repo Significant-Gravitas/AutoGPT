@@ -891,6 +891,7 @@ async def _run_stream_attempt(
     has_appended_assistant = False
     has_tool_results = False
     stream_completed = False
+    ended_with_stream_error = False
 
     async with ClaudeSDKClient(options=state.options) as client:
         logger.info(
@@ -990,6 +991,7 @@ async def _run_stream_attempt(
                         errorText=FRIENDLY_TRANSIENT_MSG,
                         code="transient_api_error",
                     )
+                    ended_with_stream_error = True
                     break
 
             # Race-condition fix: SDK hooks (PostToolUse) are
@@ -1236,7 +1238,7 @@ async def _run_stream_attempt(
                 )
             yield response
 
-    if not stream_completed:
+    if not stream_completed and not ended_with_stream_error:
         logger.info(
             "%s Stream ended without ResultMessage (stopped by user)",
             ctx.log_prefix,
