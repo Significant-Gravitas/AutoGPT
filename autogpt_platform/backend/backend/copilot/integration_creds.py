@@ -105,7 +105,12 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
     try:
         creds_list = await manager.store.get_creds_by_provider(user_id, provider)
     except Exception:
-        logger.debug("Failed to fetch %s credentials for user %s", provider, user_id)
+        logger.warning(
+            "Failed to fetch %s credentials for user %s",
+            provider,
+            user_id,
+            exc_info=True,
+        )
         return None
 
     # Pass 1: prefer OAuth2 (carry scope info, refreshable via token endpoint).

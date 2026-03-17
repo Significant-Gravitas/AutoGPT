@@ -142,7 +142,16 @@ class ConnectIntegrationTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        del user_id  # setup card is user-agnostic; auth is enforced via requires_auth
+        """Build and return a :class:`SetupRequirementsResponse` for the requested provider.
+
+        Validates the *provider* slug against the known registry, merges any
+        agent-requested OAuth *scopes* with the provider defaults, and constructs
+        the credential setup card payload that the frontend renders as an inline
+        authentication prompt.
+
+        Returns an :class:`ErrorResponse` if *provider* is unknown.
+        """
+        _ = user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
         provider: str = (kwargs.get("provider") or "").strip().lower()
         reason: str = (kwargs.get("reason") or "").strip()[

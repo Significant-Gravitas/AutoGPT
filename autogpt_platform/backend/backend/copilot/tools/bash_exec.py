@@ -75,7 +75,10 @@ class BashExecTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
-        return False
+        # True because _execute_on_e2b injects user tokens (GH_TOKEN etc.)
+        # when user_id is present.  Defense-in-depth: ensures only authenticated
+        # users reach the token injection path.
+        return True
 
     async def _execute(
         self,
@@ -147,8 +150,11 @@ class BashExecTool(BaseTool):
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
         }
+        # Collect injected secret values so we can scrub them from output.
+        secret_values: list[str] = []
         if user_id is not None:
             integration_env = await get_integration_env_vars(user_id)
+            secret_values = [v for v in integration_env.values() if v]
             envs.update(integration_env)
 
         try:
@@ -158,10 +164,17 @@ class BashExecTool(BaseTool):
                 timeout=timeout,
                 envs=envs,
             )
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            # Scrub injected tokens from command output to prevent exfiltration
+            # via `echo $GH_TOKEN`, `env`, `printenv`, etc.
+            for secret in secret_values:
+                stdout = stdout.replace(secret, "[REDACTED]")
+                stderr = stderr.replace(secret, "[REDACTED]")
             return BashExecResponse(
                 message=f"Command executed on E2B (exit {result.exit_code})",
-                stdout=result.stdout or "",
-                stderr=result.stderr or "",
+                stdout=stdout,
+                stderr=stderr,
                 exit_code=result.exit_code,
                 timed_out=False,
                 session_id=session_id,
