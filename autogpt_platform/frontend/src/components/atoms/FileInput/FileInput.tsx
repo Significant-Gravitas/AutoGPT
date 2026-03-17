@@ -14,12 +14,46 @@ import { Text } from "../Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 
+function PreviewButton({ value, title }: { value: string; title: string }) {
+  const renderer = globalRegistry.getRenderer(value);
+  if (!renderer) return null;
+
+  return (
+    <Dialog title={title}>
+      <Dialog.Trigger>
+        <Button
+          variant="outline"
+          size="small"
+          className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500"
+          type="button"
+          aria-label="Preview file"
+        >
+          <Eye size={14} />
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Content>
+        <div className="overflow-hidden [&>*]:rounded-xlarge">
+          {renderer.render(value)}
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}
+
+function getMimeFromDataURI(value: string): string | null {
+  const match = value.match(/^data:([^;,]+)/);
+  return match?.[1] || null;
+}
+
 function isPreviewableFile(
   value: string | undefined,
   contentType: string | undefined,
 ): boolean {
   if (!value) return false;
-  const mimeType = contentType || parseWorkspaceURI(value)?.mimeType || null;
+  const mimeType =
+    contentType ||
+    parseWorkspaceURI(value)?.mimeType ||
+    (value.startsWith("data:") ? getMimeFromDataURI(value) : null);
   if (!mimeType) return false;
   return (
     mimeType.startsWith("audio/") ||
@@ -315,29 +349,14 @@ export function FileInput(props: Props) {
                 )}
               </div>
               {isPreviewableFile(value, fileInfo?.content_type) && (
-                <Dialog
+                <PreviewButton
+                  value={value}
                   title={
                     fileInfo
                       ? getFileLabel(fileInfo.name, fileInfo.content_type)
                       : "Preview"
                   }
-                >
-                  <Dialog.Trigger>
-                    <Button
-                      variant="outline"
-                      size="small"
-                      className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500"
-                      type="button"
-                    >
-                      <Eye size={14} />
-                    </Button>
-                  </Dialog.Trigger>
-                  <Dialog.Content>
-                    <div className="overflow-hidden [&>*]:rounded-xlarge">
-                      {globalRegistry.getRenderer(value)?.render(value)}
-                    </div>
-                  </Dialog.Content>
-                </Dialog>
+                />
               )}
               <Button
                 variant="outline"
@@ -345,6 +364,7 @@ export function FileInput(props: Props) {
                 className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
                 type="button"
+                aria-label="Clear file"
               >
                 <X size={14} />
               </Button>
@@ -412,22 +432,14 @@ export function FileInput(props: Props) {
               </div>
               <div className="flex items-center gap-2">
                 {isPreviewableFile(value, fileInfo?.content_type) && (
-                  <Dialog
+                  <PreviewButton
+                    value={value}
                     title={
                       fileInfo
                         ? getFileLabel(fileInfo.name, fileInfo.content_type)
                         : "Preview"
                     }
-                  >
-                    <Dialog.Trigger>
-                      <Eye className="h-5 w-5 cursor-pointer text-black hover:text-blue-600" />
-                    </Dialog.Trigger>
-                    <Dialog.Content>
-                      <div className="overflow-hidden [&>*]:rounded-xlarge">
-                        {globalRegistry.getRenderer(value)?.render(value)}
-                      </div>
-                    </Dialog.Content>
-                  </Dialog>
+                  />
                 )}
                 <TrashIcon
                   className="h-5 w-5 cursor-pointer text-black"

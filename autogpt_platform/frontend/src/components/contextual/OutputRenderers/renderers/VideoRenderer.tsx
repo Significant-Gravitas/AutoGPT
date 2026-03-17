@@ -26,7 +26,11 @@ const videoMimeTypes = [
 ];
 
 function guessMimeType(url: string): string | null {
-  const extension = url.split(".").pop()?.toLowerCase();
+  if (url.startsWith("data:")) {
+    const mimeMatch = url.match(/^data:([^;,]+)/);
+    return mimeMatch?.[1] || null;
+  }
+  const extension = url.split("?")[0].split(".").pop()?.toLowerCase();
   const mimeMap: Record<string, string> = {
     mp4: "video/mp4",
     webm: "video/webm",
@@ -40,7 +44,7 @@ function guessMimeType(url: string): string | null {
 }
 
 const YOUTUBE_REGEX =
-  /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+  /^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 
 const VIMEO_REGEX = /^https?:\/\/(?:www\.)?vimeo\.com\/(\d+)/;
 
@@ -76,7 +80,10 @@ function canRenderVideo(value: unknown, metadata?: OutputMetadata): boolean {
     }
 
     if (value.startsWith("http://") || value.startsWith("https://")) {
-      return videoExtensions.some((ext) => value.toLowerCase().includes(ext));
+      const cleanURL = value.split("?")[0].toLowerCase();
+      if (videoExtensions.some((ext) => cleanURL.endsWith(ext))) {
+        return true;
+      }
     }
 
     if (metadata?.filename) {
@@ -104,6 +111,7 @@ function renderVideo(
           src={`https://www.youtube.com/embed/${youtubeID}`}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-presentation"
           title="YouTube video"
         />
       </div>
@@ -119,6 +127,7 @@ function renderVideo(
           src={`https://player.vimeo.com/video/${vimeoID}`}
           allow="autoplay; fullscreen; picture-in-picture"
           allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-presentation"
           title="Vimeo video"
         />
       </div>

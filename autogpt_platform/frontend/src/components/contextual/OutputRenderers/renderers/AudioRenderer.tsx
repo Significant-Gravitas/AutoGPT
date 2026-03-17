@@ -18,6 +18,10 @@ const audioMimeTypes = [
 ];
 
 function guessMimeType(url: string): string | null {
+  if (url.startsWith("data:")) {
+    const mimeMatch = url.match(/^data:([^;,]+)/);
+    return mimeMatch?.[1] || null;
+  }
   const extension = url.split("?")[0].split(".").pop()?.toLowerCase();
   const mimeMap: Record<string, string> = {
     mp3: "audio/mpeg",
@@ -45,7 +49,9 @@ function canRenderAudio(value: unknown, metadata?: OutputMetadata): boolean {
 
     if (value.startsWith("http://") || value.startsWith("https://")) {
       const cleanURL = value.split("?")[0].toLowerCase();
-      return audioExtensions.some((ext) => cleanURL.endsWith(ext));
+      if (audioExtensions.some((ext) => cleanURL.endsWith(ext))) {
+        return true;
+      }
     }
 
     if (metadata?.filename) {
