@@ -31,12 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric."""
+    """Tokenize text for BM25."""
     if not text:
         return []
-    # Lowercase and split on non-alphanumeric characters
-    tokens = re.findall(r"\b\w+\b", text.lower())
-    return tokens
+    return re.findall(r"\b\w+\b", text.lower())
 
 
 def bm25_rerank(
