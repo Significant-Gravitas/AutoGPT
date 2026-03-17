@@ -69,11 +69,26 @@ For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 
 ```text
 address comments → format → commit → push
-→ re-check comments → fix new ones → push
-→ wait for CI → re-check comments after CI settles
+→ wait for CI (while addressing new comments) → fix failures → push
+→ re-check comments after CI settles
 → repeat until: all comments addressed AND CI green AND no new comments arriving
 ```
 
-While CI runs, stay productive: run local tests, address remaining comments.
+### Waiting for CI
+
+Use `gh pr checks --watch --fail-fast` to efficiently wait for CI. This blocks until all checks finish (or one fails early):
+
+```bash
+gh pr checks --watch --fail-fast
+```
+
+If a check fails:
+1. Get the failed run ID: `gh pr checks --json name,state,link --jq '.[] | select(.state == "FAILURE")'`
+2. Read logs: `gh run view <run-id> --log-failed`
+3. Fix → commit → push → wait again with `gh pr checks --watch --fail-fast`
+
+### Between CI waits
+
+After each push and while waiting for CI, re-fetch comments — bots like `coderabbitai` and `sentry` often post new comments on fresh commits. Address those while CI is still running, then wait again.
 
 **The loop ends when:** CI fully green + all comments addressed + no new comments since CI settled.
