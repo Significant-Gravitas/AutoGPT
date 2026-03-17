@@ -222,12 +222,17 @@ export function useCopilotStream({
         return;
       }
 
-      // Only reconnect on network errors (not HTTP errors), and never
-      // reconnect when the user explicitly stopped the stream.
+      // Reconnect on network errors or transient API errors so the
+      // persisted retryable-error marker is loaded and the "Try Again"
+      // button appears.  Without this, transient errors only show in the
+      // onError callback (where StreamError strips the retryable prefix).
       if (isUserStoppingRef.current) return;
       const isNetworkError =
         error.name === "TypeError" || error.name === "AbortError";
-      if (isNetworkError) {
+      const isTransientApiError = errorDetail.includes(
+        "connection interrupted",
+      );
+      if (isNetworkError || isTransientApiError) {
         handleReconnect(sessionId);
       }
     },
