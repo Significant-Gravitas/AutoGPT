@@ -212,8 +212,11 @@ class IntegrationCredentialsManager:
                 if _lock and (await _lock.locked()) and (await _lock.owned()):
                     try:
                         await _lock.release()
-                    except Exception as e:
-                        logger.warning(f"Failed to release OAuth refresh lock: {e}")
+                    except Exception:
+                        logger.warning(
+                            "Failed to release OAuth refresh lock",
+                            exc_info=True,
+                        )
 
                 credentials = fresh_credentials
         return credentials
@@ -255,8 +258,11 @@ class IntegrationCredentialsManager:
             if (await lock.locked()) and (await lock.owned()):
                 try:
                     await lock.release()
-                except Exception as e:
-                    logger.warning(f"Failed to release credentials lock: {e}")
+                except Exception:
+                    logger.warning(
+                        "Failed to release credentials lock",
+                        exc_info=True,
+                    )
 
     async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""

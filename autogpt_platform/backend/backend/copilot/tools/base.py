@@ -164,8 +164,9 @@ class BaseTool:
 
         """
         if self.requires_auth and not user_id:
-            logger.error(
-                f"Attempted tool call for {self.name} but user not authenticated"
+            logger.warning(
+                "Attempted tool call for %s but user not authenticated",
+                self.name,
             )
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
@@ -196,7 +197,7 @@ class BaseTool:
                 output=raw_output,
             )
         except Exception as e:
-            logger.error(f"Error in {self.name}: {e}", exc_info=True)
+            logger.warning("Error in %s", self.name, exc_info=True)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
