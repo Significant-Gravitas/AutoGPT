@@ -67,10 +67,11 @@ export class BuildPage extends BasePage {
   }
 
   private getBlockCardByName(name: string): Locator {
-    // Match block card button that contains the exact block name in its title span
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const exactName = new RegExp(`^\\s*${escapedName}\\s*$`);
     return this.page
       .locator('[data-id^="block-card-"]')
-      .filter({ has: this.page.locator("span", { hasText: name }) })
+      .filter({ has: this.page.locator("span", { hasText: exactName }) })
       .first();
   }
 
@@ -304,5 +305,6 @@ export class BuildPage extends BasePage {
     await this.addBlockByClick("Add to Dictionary");
     await this.waitForNodeOnCanvas(1);
     await this.saveAgent("Test Agent", "Test Description");
+    await this.waitForSaveComplete();
   }
 }
