@@ -12,6 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
+import { isMacPlatform } from "@/lib/platform";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useReactFlow } from "@xyflow/react";
 import { useMemo } from "react";
@@ -25,12 +26,7 @@ export function GraphSearchMenu() {
   const { graphSearchOpen, setGraphSearchOpen } = useControlPanelStore();
   const reactFlow = useReactFlow();
 
-  const isMac = useMemo(
-    () =>
-      typeof navigator !== "undefined" &&
-      /Mac|iPhone|iPad|iPod/.test(navigator.platform),
-    [],
-  );
+  const isMac = useMemo(() => isMacPlatform(), []);
 
   const { searchQuery, setSearchQuery, filteredNodes, handleNodeSelect } =
     useGraphMenu({
