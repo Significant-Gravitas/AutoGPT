@@ -413,6 +413,51 @@ class TestValidateSmartDecisionMakerBlocks:
         assert result is False
         assert any("agent_mode_max_iterations=0" in e for e in validator.errors)
 
+    def test_sdm_with_infinite_iterations_passes(self):
+        """agent_mode_max_iterations=-1 (infinite mode) is valid."""
+        validator = AgentValidator()
+        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": -1})
+        tool = _make_agent_executor_node()
+        agent = {
+            "nodes": [sdm, tool],
+            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
+        }
+
+        result = validator.validate_smart_decision_maker_blocks(agent)
+
+        assert result is True
+        assert len(validator.errors) == 0
+
+    def test_sdm_with_high_iterations_fails(self):
+        """agent_mode_max_iterations > 100 is rejected as unusually high."""
+        validator = AgentValidator()
+        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": 999999})
+        tool = _make_agent_executor_node()
+        agent = {
+            "nodes": [sdm, tool],
+            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
+        }
+
+        result = validator.validate_smart_decision_maker_blocks(agent)
+
+        assert result is False
+        assert any("unusually high" in e for e in validator.errors)
+
+    def test_sdm_with_string_iterations_fails(self):
+        """Non-integer agent_mode_max_iterations (e.g. string) is rejected."""
+        validator = AgentValidator()
+        sdm = _make_sdm_node(input_default={"agent_mode_max_iterations": "10"})
+        tool = _make_agent_executor_node()
+        agent = {
+            "nodes": [sdm, tool],
+            "links": [_link(sdm["id"], "tools", tool["id"], "query")],
+        }
+
+        result = validator.validate_smart_decision_maker_blocks(agent)
+
+        assert result is False
+        assert any("non-integer" in e for e in validator.errors)
+
     def test_sdm_with_negative_iterations_below_minus_one_fails(self):
         """agent_mode_max_iterations < -1 is rejected."""
         validator = AgentValidator()
