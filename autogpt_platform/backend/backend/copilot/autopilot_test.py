@@ -90,7 +90,7 @@ async def test_send_completion_email_links_back_to_source_session(mocker) -> Non
     session = _build_autopilot_session()
     session.completion_report = _build_completion_report()
 
-    sender = SimpleNamespace(send_template=mocker.Mock())
+    sender = SimpleNamespace(send_template=AsyncMock())
     mocker.patch("backend.copilot.autopilot_email.EmailSender", return_value=sender)
     mocker.patch(
         "backend.copilot.autopilot_email.user_db",

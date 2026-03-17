@@ -47,7 +47,7 @@ class EmailSender:
 
     MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
 
-    def send_template(
+    async def send_template(
         self,
         *,
         user_email: str,
@@ -81,7 +81,7 @@ class EmailSender:
         with open(pathlib.Path(__file__).parent / template_path, "r") as f:
             content_template = f.read()
 
-        _, full_message = self.formatter.format_email(
+        _, full_message = await self.formatter.format_email(
             base_template=base_template,
             subject_template="{{ subject }}",
             content_template=content_template,

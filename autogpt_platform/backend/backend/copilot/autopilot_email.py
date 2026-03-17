@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import UTC, datetime
 from urllib.parse import urlencode
@@ -222,11 +221,8 @@ async def _send_completion_email(session: ChatSession) -> None:
             else "Open Copilot"
         )
 
-    # EmailSender.send_template is synchronous (blocking HTTP call to Postmark).
-    # Run it in a thread to avoid blocking the async event loop.
     sender = EmailSender()
-    await asyncio.to_thread(
-        sender.send_template,
+    await sender.send_template(
         user_email=user.email,
         subject=report.email_title or "Autopilot update",
         template_name=template_name,

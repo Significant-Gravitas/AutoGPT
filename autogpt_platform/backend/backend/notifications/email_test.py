@@ -1,5 +1,7 @@
 from typing import Any, cast
 
+import pytest
+
 from backend.api.test_helpers import override_config
 from backend.copilot.autopilot_email import _markdown_to_email_html
 from backend.notifications.email import EmailSender, settings
@@ -34,12 +36,13 @@ def test_markdown_to_email_html_handles_empty_input() -> None:
     assert _markdown_to_email_html("   ") == ""
 
 
-def test_send_template_renders_nightly_copilot_email(mocker) -> None:
+@pytest.mark.asyncio
+async def test_send_template_renders_nightly_copilot_email(mocker) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
-    sender.send_template(
+    await sender.send_template(
         user_email="user@example.com",
         subject="Autopilot update",
         template_name="nightly_copilot.html.jinja2",
@@ -63,12 +66,13 @@ def test_send_template_renders_nightly_copilot_email(mocker) -> None:
     )
 
 
-def test_send_template_renders_nightly_copilot_approval_block(mocker) -> None:
+@pytest.mark.asyncio
+async def test_send_template_renders_nightly_copilot_approval_block(mocker) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
-    sender.send_template(
+    await sender.send_template(
         user_email="user@example.com",
         subject="Autopilot update",
         template_name="nightly_copilot.html.jinja2",
@@ -91,12 +95,13 @@ def test_send_template_renders_nightly_copilot_approval_block(mocker) -> None:
     assert "Review in Copilot" in body
 
 
-def test_send_template_renders_nightly_copilot_callback_email(mocker) -> None:
+@pytest.mark.asyncio
+async def test_send_template_renders_nightly_copilot_callback_email(mocker) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
-    sender.send_template(
+    await sender.send_template(
         user_email="user@example.com",
         subject="Autopilot update",
         template_name="nightly_copilot_callback.html.jinja2",
@@ -115,12 +120,15 @@ def test_send_template_renders_nightly_copilot_callback_email(mocker) -> None:
     assert "I prepared a follow-up based on your recent work." in body
 
 
-def test_send_template_renders_nightly_copilot_callback_approval_block(mocker) -> None:
+@pytest.mark.asyncio
+async def test_send_template_renders_nightly_copilot_callback_approval_block(
+    mocker,
+) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
-    sender.send_template(
+    await sender.send_template(
         user_email="user@example.com",
         subject="Autopilot update",
         template_name="nightly_copilot_callback.html.jinja2",
@@ -142,12 +150,13 @@ def test_send_template_renders_nightly_copilot_callback_approval_block(mocker) -
     assert "I want your approval before I apply the next step." in body
 
 
-def test_send_template_renders_nightly_copilot_invite_cta_email(mocker) -> None:
+@pytest.mark.asyncio
+async def test_send_template_renders_nightly_copilot_invite_cta_email(mocker) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
-    sender.send_template(
+    await sender.send_template(
         user_email="user@example.com",
         subject="Autopilot update",
         template_name="nightly_copilot_invite_cta.html.jinja2",
@@ -167,14 +176,15 @@ def test_send_template_renders_nightly_copilot_invite_cta_email(mocker) -> None:
     assert "Try Copilot" in body
 
 
-def test_send_template_renders_nightly_copilot_invite_cta_approval_block(
+@pytest.mark.asyncio
+async def test_send_template_renders_nightly_copilot_invite_cta_approval_block(
     mocker,
 ) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
-    sender.send_template(
+    await sender.send_template(
         user_email="user@example.com",
         subject="Autopilot update",
         template_name="nightly_copilot_invite_cta.html.jinja2",
@@ -196,13 +206,14 @@ def test_send_template_renders_nightly_copilot_invite_cta_approval_block(
     assert "If this looks useful, approve the next step to try it." in body
 
 
-def test_send_template_still_sends_in_production(mocker) -> None:
+@pytest.mark.asyncio
+async def test_send_template_still_sends_in_production(mocker) -> None:
     sender = EmailSender()
     sender.postmark = cast(Any, object())
     send_email = mocker.patch.object(sender, "_send_email")
 
     with override_config(settings, "app_env", AppEnvironment.PRODUCTION):
-        sender.send_template(
+        await sender.send_template(
             user_email="user@example.com",
             subject="Autopilot update",
             template_name="nightly_copilot.html.jinja2",
