@@ -214,18 +214,16 @@ def _build_sdk_env(
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI process.
 
-    Routes API calls through OpenRouter (or a custom base_url) using
-    the same ``config.api_key`` / ``config.base_url`` as the non-SDK path.
-    This gives per-call token and cost tracking on the OpenRouter dashboard.
+    When ``config.use_openrouter`` is True (default), routes API calls
+    through OpenRouter using ``config.api_key`` / ``config.base_url``.
 
-    When *session_id* is provided, an ``x-session-id`` custom header is
-    injected via ``ANTHROPIC_CUSTOM_HEADERS`` so that OpenRouter Broadcast
-    forwards traces (including cost/usage) to Langfuse for the
-    ``/api/v1/messages`` endpoint.
+    When ``config.use_openrouter`` is False, returns an empty dict so the
+    subprocess inherits ``ANTHROPIC_API_KEY`` from the parent environment
+    and connects to Anthropic directly (no proxy hop).
 
-    Only overrides ``ANTHROPIC_API_KEY`` when a valid proxy URL and auth
-    token are both present — otherwise returns an empty dict so the SDK
-    falls back to its default credentials.
+    When *session_id* is provided and OpenRouter is active, an
+    ``x-session-id`` custom header is injected so that OpenRouter Broadcast
+    forwards traces to Langfuse.
     """
     env: dict[str, str] = {}
 
@@ -237,6 +235,12 @@ def _build_sdk_env(
         env["ANTHROPIC_API_KEY"] = ""
         env["ANTHROPIC_AUTH_TOKEN"] = ""
         env["ANTHROPIC_BASE_URL"] = ""
+    elif not config.use_openrouter:
+        # Direct Anthropic: skip OpenRouter proxy. The subprocess inherits
+        # ANTHROPIC_API_KEY from the parent environment (set via shared
+        # secrets). No base_url override needed — the SDK defaults to
+        # https://api.anthropic.com.
+        pass
     elif config.api_key and config.base_url:
         # Strip /v1 suffix — SDK expects the base URL without a version path
         base = config.base_url.rstrip("/")

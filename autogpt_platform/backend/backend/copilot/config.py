@@ -94,6 +94,11 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
+    use_openrouter: bool = Field(
+        default=True,
+        description="Route API calls through OpenRouter proxy. When False, the SDK "
+        "uses ANTHROPIC_API_KEY from the environment directly (no proxy hop).",
+    )
     use_claude_code_subscription: bool = Field(
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",
@@ -207,6 +212,15 @@ class ChatConfig(BaseSettings):
         if env_val:
             return env_val in ("true", "1", "yes", "on")
         # Default to True (SDK enabled by default)
+        return True if v is None else v
+
+    @field_validator("use_openrouter", mode="before")
+    @classmethod
+    def get_use_openrouter(cls, v):
+        """Get use_openrouter from environment if not provided."""
+        env_val = os.getenv("CHAT_USE_OPENROUTER", "").lower()
+        if env_val:
+            return env_val in ("true", "1", "yes", "on")
         return True if v is None else v
 
     @field_validator("use_claude_code_subscription", mode="before")
