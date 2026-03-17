@@ -450,6 +450,7 @@ export function FileInput(props: Props) {
                         ? getFileLabel(fileInfo.name, fileInfo.content_type)
                         : "Preview"
                     }
+                    contentType={fileInfo?.content_type}
                   />
                 )}
                 <Button
