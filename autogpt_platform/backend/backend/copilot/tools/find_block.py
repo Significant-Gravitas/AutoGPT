@@ -202,7 +202,7 @@ class FindBlockTool(BaseTool):
             )
 
         except Exception as e:
-            logger.error(f"Error searching blocks: {e}", exc_info=True)
+            logger.error("Error searching blocks: %s", e, exc_info=True)
             return ErrorResponse(
                 message="Failed to search blocks",
                 error=str(e),

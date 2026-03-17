@@ -400,7 +400,7 @@ async def invalidate_session_cache(session_id: str) -> None:
         await async_redis.delete(redis_key)
     except Exception as e:
         # Best-effort: log but don't fail - cache will expire naturally
-        logger.warning(f"Failed to invalidate session cache for {session_id}: {e}")
+        logger.warning("Failed to invalidate session cache for %s: %s", session_id, e)
 
 
 async def get_chat_session(
@@ -424,21 +424,24 @@ async def get_chat_session(
             # Verify user ownership if user_id was provided for validation
             if user_id is not None and session.user_id != user_id:
                 logger.warning(
-                    f"Session {session_id} user id mismatch: {session.user_id} != {user_id}"
+                    "Session %s user id mismatch: %s != %s",
+                    session_id,
+                    session.user_id,
+                    user_id,
                 )
                 return None
             return session
     except RedisError:
-        logger.warning(f"Cache error for session {session_id}, trying database")
+        logger.warning("Cache error for session %s, trying database", session_id)
     except Exception as e:
-        logger.warning(f"Unexpected cache error for session {session_id}: {e}")
+        logger.warning("Unexpected cache error for session %s: %s", session_id, e)
 
     # Fall back to database
-    logger.debug(f"Session {session_id} not in cache, checking database")
+    logger.debug("Session %s not in cache, checking database", session_id)
     session = await _get_session_from_db(session_id)
 
     if session is None:
-        logger.warning(f"Session {session_id} not found in cache or database")
+        logger.warning("Session %s not found in cache or database", session_id)
         return None
 
     # Verify user ownership if user_id was provided for validation
@@ -451,9 +454,9 @@ async def get_chat_session(
     # Cache the session from DB
     try:
         await cache_chat_session(session)
-        logger.info(f"Cached session {session_id} from database")
+        logger.info("Cached session %s from database", session_id)
     except Exception as e:
-        logger.warning(f"Failed to cache session {session_id}: {e}")
+        logger.warning("Failed to cache session %s: %s", session_id, e)
 
     return session
 
@@ -470,13 +473,14 @@ async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     try:
         session = ChatSession.model_validate_json(raw_session)
         logger.info(
-            f"Loading session {session_id} from cache: "
-            f"message_count={len(session.messages)}, "
-            f"roles={[m.role for m in session.messages]}"
+            "Loading session %s from cache: message_count=%s, roles=%s",
+            session_id,
+            len(session.messages),
+            [m.role for m in session.messages],
         )
         return session
     except Exception as e:
-        logger.error(f"Failed to deserialize session {session_id}: {e}", exc_info=True)
+        logger.error("Failed to deserialize session %s: %s", session_id, e, exc_info=True)
         raise RedisError(f"Corrupted session data for {session_id}") from e
 
 
@@ -487,10 +491,11 @@ async def _get_session_from_db(session_id: str) -> ChatSession | None:
         return None
 
     logger.info(
-        f"Loaded session {session_id} from DB: "
-        f"has_messages={bool(session.messages)}, "
-        f"message_count={len(session.messages)}, "
-        f"roles={[m.role for m in session.messages]}"
+        "Loaded session %s from DB: has_messages=%s, message_count=%s, roles=%s",
+        session_id,
+        bool(session.messages),
+        len(session.messages),
+        [m.role for m in session.messages],
     )
 
     return session
@@ -676,7 +681,7 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
         try:
             await cache_chat_session(session)
         except Exception as e:
-            logger.warning(f"Cache write failed for session {session_id}: {e}")
+            logger.warning("Cache write failed for session %s: %s", session_id, e)
 
         return session
 
@@ -720,7 +725,7 @@ async def create_chat_session(
                 skip_existence_check=True,
             )
     except Exception as e:
-        logger.error(f"Failed to create session {session.session_id} in database: {e}")
+        logger.error("Failed to create session %s in database: %s", session.session_id, e)
         raise DatabaseError(
             f"Failed to create chat session {session.session_id} in database"
         ) from e
@@ -729,7 +734,7 @@ async def create_chat_session(
     try:
         await cache_chat_session(session)
     except Exception as e:
-        logger.warning(f"Failed to cache new session {session.session_id}: {e}")
+        logger.warning("Failed to cache new session %s: %s", session.session_id, e)
 
     return session
 
@@ -785,7 +790,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         async_redis = await get_redis_async()
         await async_redis.delete(redis_key)
     except Exception as e:
-        logger.warning(f"Failed to delete session {session_id} from cache: {e}")
+        logger.warning("Failed to delete session %s from cache: %s", session_id, e)
 
     # Clean up session lock (belt-and-suspenders with WeakValueDictionary)
     async with _session_locks_mutex:
@@ -799,7 +804,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
 
         await close_browser_session(session_id, user_id=user_id)
     except Exception as e:
-        logger.debug(f"Browser cleanup for session {session_id}: {e}")
+        logger.debug("Browser cleanup for session %s: %s", session_id, e)
 
     return True
 
@@ -849,7 +854,7 @@ async def update_session_title(
 
         return True
     except Exception as e:
-        logger.error(f"Failed to update title for session {session_id}: {e}")
+        logger.error("Failed to update title for session %s: %s", session_id, e)
         return False
 
 

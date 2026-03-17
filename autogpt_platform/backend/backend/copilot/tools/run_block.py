@@ -163,7 +163,7 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-        logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
+        logger.info("Executing block %s (%s) for user %s", block.name, block_id, user_id)
 
         (
             matched_credentials,

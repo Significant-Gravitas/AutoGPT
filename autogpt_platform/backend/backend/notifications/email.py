@@ -1,3 +1,4 @@
+import functools
 import logging
 import pathlib
 from typing import Any
@@ -78,36 +79,39 @@ class EmailSender:
         email_size: int,
         base_url: str,
     ) -> str:
-        if isinstance(data, list):
-            if not data:
+        match data:
+            case list() if not data:
                 return (
                     "⚠️ A notification generated a very large output "
                     f"({email_size / 1_000_000:.2f} MB)."
                 )
-            event = data[0]
-        else:
-            event = data
+            case list():
+                event = data[0]
+            case _:
+                event = data
+
         execution_url = (
             f"{base_url}/executions/{event.id}" if event.id is not None else None
         )
 
-        if isinstance(event.data, AgentRunData):
-            lines = [
-                f"⚠️ Your agent '{event.data.agent_name}' generated a very large output ({email_size / 1_000_000:.2f} MB).",
-                "",
-                f"Execution time: {event.data.execution_time}",
-                f"Credits used: {event.data.credits_used}",
-            ]
-            if execution_url is not None:
-                lines.append(f"View full results: {execution_url}")
-            return "\n".join(lines)
-
-        lines = [
-            f"⚠️ A notification generated a very large output ({email_size / 1_000_000:.2f} MB).",
-        ]
-        if execution_url is not None:
-            lines.extend(["", f"View full results: {execution_url}"])
-        return "\n".join(lines)
+        match event.data:
+            case AgentRunData() as run_data:
+                lines = [
+                    f"⚠️ Your agent '{run_data.agent_name}' generated a very large output ({email_size / 1_000_000:.2f} MB).",
+                    "",
+                    f"Execution time: {run_data.execution_time}",
+                    f"Credits used: {run_data.credits_used}",
+                ]
+                if execution_url is not None:
+                    lines.append(f"View full results: {execution_url}")
+                return "\n".join(lines)
+            case _:
+                lines = [
+                    f"⚠️ A notification generated a very large output ({email_size / 1_000_000:.2f} MB).",
+                ]
+                if execution_url is not None:
+                    lines.extend(["", f"View full results: {execution_url}"])
+                return "\n".join(lines)
 
     def send_template(
         self,
@@ -125,6 +129,9 @@ class EmailSender:
         directly.  Both delegate to the shared ``_format_template_email``
         + ``_send_email`` pipeline.
         """
+        if ".." in template_name or "/" in template_name:
+            raise ValueError("Invalid template name")
+
         if not self.postmark:
             logger.warning("Postmark client not initialized, email not sent")
             return
@@ -175,15 +182,16 @@ class EmailSender:
                 unsubscribe_link=unsubscribe_link,
             )
         except Exception as e:
-            logger.error(f"Error formatting full message: {e}")
+            logger.error("Error formatting full message: %s", e)
             raise e
 
         # Check email size & send summary if too large
         email_size = len(full_message)
         if email_size > self.MAX_EMAIL_CHARS:
             logger.warning(
-                f"Email size ({email_size} chars) exceeds safe limit. "
-                "Sending summary email instead."
+                "Email size (%s chars) exceeds safe limit. "
+                "Sending summary email instead.",
+                email_size,
             )
 
             summary_message = self._build_large_output_summary(
@@ -200,7 +208,7 @@ class EmailSender:
             )
             return  # Skip sending full email
 
-        logger.debug(f"Sending email with size: {email_size} characters")
+        logger.debug("Sending email with size: %s characters", email_size)
         self._send_email(
             user_email=user_email,
             subject=subject,
@@ -214,7 +222,7 @@ class EmailSender:
         # find the template in templates/name.html (the .template returns with the .html)
         template_path = f"templates/{notification_type_override.template}.jinja2"
         logger.debug(
-            f"Template full path: {pathlib.Path(__file__).parent / template_path}"
+            "Template full path: %s", pathlib.Path(__file__).parent / template_path
         )
         base_template = self._read_template("templates/base.html.jinja2")
         template = self._read_template(template_path)
@@ -224,7 +232,9 @@ class EmailSender:
             base_template=base_template,
         )
 
-    def _read_template(self, template_path: str) -> str:
+    @staticmethod
+    @functools.lru_cache(maxsize=32)
+    def _read_template(template_path: str) -> str:
         with open(pathlib.Path(__file__).parent / template_path, "r") as file:
             return file.read()
 
@@ -243,7 +253,7 @@ class EmailSender:
             logger.warning("postmark_sender_email not configured, email not sent")
             return
         unsubscribe_link = self._get_unsubscribe_link(user_unsubscribe_link)
-        logger.debug(f"Sending email to {user_email} with subject {subject}")
+        logger.debug("Sending email to %s with subject %s", user_email, subject)
         self.postmark.emails.send(
             From=sender_email,
             To=user_email,

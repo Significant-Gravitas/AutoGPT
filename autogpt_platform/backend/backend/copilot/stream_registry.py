@@ -429,7 +429,7 @@ async def _handle_xread_timeout(
                 timeout=QUEUE_PUT_TIMEOUT,
             )
         except asyncio.TimeoutError:
-            logger.warning(f"Timeout delivering finish event for session {session_id}")
+            logger.warning("Timeout delivering finish event for session %s", session_id)
         return False
 
     try:
@@ -438,7 +438,7 @@ async def _handle_xread_timeout(
             timeout=QUEUE_PUT_TIMEOUT,
         )
     except asyncio.TimeoutError:
-        logger.warning(f"Timeout delivering heartbeat for session {session_id}")
+        logger.warning("Timeout delivering heartbeat for session %s", session_id)
     return True
 
 
@@ -835,7 +835,7 @@ async def mark_session_completed(
     result = await _redis_complete_session(redis, meta_key, status)
 
     if result == 0:
-        logger.debug(f"Session {session_id} already completed/failed, skipping")
+        logger.debug("Session %s already completed/failed, skipping", session_id)
         return False
 
     if error_message:
@@ -843,7 +843,7 @@ async def mark_session_completed(
             await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
             logger.warning(
-                f"Failed to publish error event for session {session_id}: {e}"
+                "Failed to publish error event for session %s: %s", session_id, e
             )
 
     # Publish StreamFinish AFTER status is set to "completed"/"failed".
@@ -856,8 +856,10 @@ async def mark_session_completed(
         )
     except Exception as e:
         logger.error(
-            f"Failed to publish StreamFinish for session {session_id}: {e}. "
-            "The _stream_listener will detect completion via status polling."
+            "Failed to publish StreamFinish for session %s: %s. "
+            "The _stream_listener will detect completion via status polling.",
+            session_id,
+            e,
         )
 
     # Clean up local session reference if exists
@@ -881,8 +883,10 @@ async def mark_session_completed(
                 )
             except Exception as e:
                 logger.warning(
-                    f"Failed to publish copilot completion notification "
-                    f"for session {session_id}: {e}"
+                    "Failed to publish copilot completion notification "
+                    "for session %s: %s",
+                    session_id,
+                    e,
                 )
 
     try:
@@ -999,8 +1003,11 @@ async def get_active_session(
             )
             if age_seconds > stale_threshold:
                 logger.warning(
-                    f"[STALE_SESSION] Auto-completing stale session {session_id[:8]}... "
-                    f"(running for {age_seconds:.0f}s, threshold: {stale_threshold}s)"
+                    "[STALE_SESSION] Auto-completing stale session %s... "
+                    "(running for %.0fs, threshold: %ss)",
+                    session_id[:8],
+                    age_seconds,
+                    stale_threshold,
                 )
                 await mark_session_completed(
                     session_id,
@@ -1008,11 +1015,13 @@ async def get_active_session(
                 )
                 return None, "0-0"
         except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to parse created_at: {e}")
+            logger.warning("Failed to parse created_at: %s", e)
 
     session = _parse_session_meta(meta, session_id)
     logger.info(
-        f"[SESSION_LOOKUP] Found running session {session_id[:8]}..., turn_id={session.turn_id[:8]}"
+        "[SESSION_LOOKUP] Found running session %s..., turn_id=%s",
+        session_id[:8],
+        session.turn_id[:8],
     )
 
     # Get the last message ID from Redis Stream (keyed by turn_id)
@@ -1024,7 +1033,7 @@ async def get_active_session(
             msg_id = messages[0][0]
             last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
     except Exception as e:
-        logger.warning(f"Failed to get last message ID: {e}")
+        logger.warning("Failed to get last message ID: %s", e)
 
     return session, last_id
 
@@ -1072,19 +1081,19 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
 
     chunk_type = chunk_data.get("type")
     if not isinstance(chunk_type, str):
-        logger.warning(f"Unknown chunk type: {chunk_type}")
+        logger.warning("Unknown chunk type: %s", chunk_type)
         return None
 
     chunk_class = type_to_class.get(chunk_type)
 
     if chunk_class is None:
-        logger.warning(f"Unknown chunk type: {chunk_type}")
+        logger.warning("Unknown chunk type: %s", chunk_type)
         return None
 
     try:
         return chunk_class(**chunk_data)
     except Exception as e:
-        logger.warning(f"Failed to reconstruct chunk of type {chunk_type}: {e}")
+        logger.warning("Failed to reconstruct chunk of type %s: %s", chunk_type, e)
         return None
 
 
@@ -1127,12 +1136,13 @@ async def unsubscribe_from_session(
 
     if stored_session_id != session_id:
         logger.warning(
-            f"Session ID mismatch in unsubscribe: expected {session_id}, "
-            f"found {stored_session_id}"
+            "Session ID mismatch in unsubscribe: expected %s, found %s",
+            session_id,
+            stored_session_id,
         )
 
     if listener_task.done():
-        logger.debug(f"Listener task for session {session_id} already completed")
+        logger.debug("Listener task for session %s already completed", session_id)
         return
 
     # Cancel the listener task
@@ -1146,11 +1156,14 @@ async def unsubscribe_from_session(
         pass
     except asyncio.TimeoutError:
         logger.warning(
-            f"Timeout waiting for listener task cancellation for session {session_id}"
+            "Timeout waiting for listener task cancellation for session %s",
+            session_id,
         )
     except Exception as e:
         logger.error(
-            f"Error during listener task cancellation for session {session_id}: {e}"
+            "Error during listener task cancellation for session %s: %s",
+            session_id,
+            e,
         )
 
-    logger.debug(f"Successfully unsubscribed from session {session_id}")
+    logger.debug("Successfully unsubscribed from session %s", session_id)

@@ -85,7 +85,11 @@ def _crosses_local_midnight(
     times are resolved consistently and a single 30-min UTC bucket can never
     produce midnight on *two* consecutive calls.
     """
-    tz = ZoneInfo(timezone_name)
+    try:
+        tz = ZoneInfo(timezone_name)
+    except (KeyError, Exception):
+        logger.warning("Unknown timezone %s, falling back to UTC", timezone_name)
+        tz = ZoneInfo("UTC")
     start_local = bucket_start_utc.astimezone(tz)
     end_local = bucket_end_utc.astimezone(tz)
     # Resolve ambiguous wall-clock times consistently (spring-forward / fall-back)
@@ -370,7 +374,11 @@ async def trigger_autopilot_session_for_user(
     timezone_name = _resolve_timezone_name(user.timezone)
     target_local_date = None
     if start_type == ChatSessionStartType.AUTOPILOT_NIGHTLY:
-        target_local_date = datetime.now(UTC).astimezone(ZoneInfo(timezone_name)).date()
+        try:
+            tz = ZoneInfo(timezone_name)
+        except (KeyError, Exception):
+            tz = ZoneInfo("UTC")
+        target_local_date = datetime.now(UTC).astimezone(tz).date()
 
     session = await _create_autopilot_session(
         user,

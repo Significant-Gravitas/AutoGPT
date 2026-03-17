@@ -72,7 +72,7 @@ async def search_agents(
     agents: list[AgentInfo] = []
     try:
         if source == "marketplace":
-            logger.info(f"Searching marketplace for: {query}")
+            logger.info("Searching marketplace for: %s", query)
             results = await store_db().get_store_agents(search_query=query, page_size=5)
             for agent in results.agents:
                 agents.append(
@@ -91,17 +91,18 @@ async def search_agents(
                 )
         else:
             if _is_uuid(query):
-                logger.info(f"Query looks like UUID, trying direct lookup: {query}")
+                logger.info("Query looks like UUID, trying direct lookup: %s", query)
                 agent = await _get_library_agent_by_id(user_id, query)  # type: ignore[arg-type]
                 if agent:
                     agents.append(agent)
-                    logger.info(f"Found agent by direct ID lookup: {agent.name}")
+                    logger.info("Found agent by direct ID lookup: %s", agent.name)
 
             if not agents:
                 search_term = query or None
                 logger.info(
-                    f"{'Listing all agents in' if not query else 'Searching'} "
-                    f"user library{'' if not query else f' for: {query}'}"
+                    "%s user library%s",
+                    "Listing all agents in" if not query else "Searching",
+                    "" if not query else " for: %s" % query,
                 )
                 results = await library_db().list_library_agents(
                     user_id=user_id,  # type: ignore[arg-type]
@@ -110,11 +111,11 @@ async def search_agents(
                 )
                 for agent in results.agents:
                     agents.append(_library_agent_to_info(agent))
-        logger.info(f"Found {len(agents)} agents in {source}")
+        logger.info("Found %s agents in %s", len(agents), source)
     except NotFoundError:
         pass
     except DatabaseError as e:
-        logger.error(f"Error searching {source}: {e}", exc_info=True)
+        logger.error("Error searching %s: %s", source, e, exc_info=True)
         return ErrorResponse(
             message=f"Failed to search {source}. Please try again.",
             error=str(e),
@@ -226,30 +227,34 @@ async def _get_library_agent_by_id(user_id: str, agent_id: str) -> AgentInfo | N
     try:
         agent = await lib_db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
-            logger.debug(f"Found library agent by graph_id: {agent.name}")
+            logger.debug("Found library agent by graph_id: %s", agent.name)
             return _library_agent_to_info(agent)
     except NotFoundError:
-        logger.debug(f"Library agent not found by graph_id: {agent_id}")
+        logger.debug("Library agent not found by graph_id: %s", agent_id)
     except DatabaseError:
         raise
     except Exception as e:
         logger.warning(
-            f"Could not fetch library agent by graph_id {agent_id}: {e}",
+            "Could not fetch library agent by graph_id %s: %s",
+            agent_id,
+            e,
             exc_info=True,
         )
 
     try:
         agent = await lib_db.get_library_agent(agent_id, user_id)
         if agent:
-            logger.debug(f"Found library agent by library_id: {agent.name}")
+            logger.debug("Found library agent by library_id: %s", agent.name)
             return _library_agent_to_info(agent)
     except NotFoundError:
-        logger.debug(f"Library agent not found by library_id: {agent_id}")
+        logger.debug("Library agent not found by library_id: %s", agent_id)
     except DatabaseError:
         raise
     except Exception as e:
         logger.warning(
-            f"Could not fetch library agent by library_id {agent_id}: {e}",
+            "Could not fetch library agent by library_id %s: %s",
+            agent_id,
+            e,
             exc_info=True,
         )
 

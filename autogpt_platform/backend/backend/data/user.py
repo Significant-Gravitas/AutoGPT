@@ -81,7 +81,7 @@ async def list_users(
 
 
 async def search_users(query: str, limit: int = 20) -> list[User]:
-    normalized_query = query.strip()
+    normalized_query = query.strip()[:200]
     if not normalized_query:
         return []
 
@@ -114,7 +114,7 @@ async def search_users(query: str, limit: int = 20) -> list[User]:
         )
         return [User.from_db(user) for user in users]
     except Exception as e:
-        raise DatabaseError(f"Failed to search users for query {query!r}: {e}") from e
+        raise DatabaseError(f"Failed to search users: {e}") from e
 
 
 async def get_user_email_by_id(user_id: str) -> Optional[str]:

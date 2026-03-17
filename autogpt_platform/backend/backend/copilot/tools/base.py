@@ -196,7 +196,7 @@ class BaseTool:
                 output=raw_output,
             )
         except Exception as e:
-            logger.error(f"Error in {self.name}: {e}", exc_info=True)
+            logger.error("Error in %s: %s", self.name, e, exc_info=True)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,

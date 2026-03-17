@@ -234,7 +234,7 @@ def create_tool_handler(base_tool: BaseTool):
         try:
             return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:
-            logger.error(f"Error executing tool {base_tool.name}: {e}", exc_info=True)
+            logger.error("Error executing tool %s: %s", base_tool.name, e, exc_info=True)
             return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
 
     return tool_handler

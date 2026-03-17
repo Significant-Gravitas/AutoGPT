@@ -96,9 +96,9 @@ async def wait_for_execution(
         )
         return result
     except asyncio.TimeoutError:
-        logger.info(f"Timeout waiting for execution {execution_id}")
+        logger.info("Timeout waiting for execution %s", execution_id)
     except Exception as e:
-        logger.error(f"Error waiting for execution: {e}", exc_info=True)
+        logger.error("Error waiting for execution: %s", e, exc_info=True)
     finally:
         for task in task_holder:
             if not task.done():
@@ -147,7 +147,7 @@ async def _subscribe_and_wait(
         try:
             async for event in listen_iter:
                 if isinstance(event, GraphExecutionEvent):
-                    logger.debug(f"Received execution update: {event.status}")
+                    logger.debug("Received execution update: %s", event.status)
                     if event.status in STOP_WAITING_STATUSES:
                         result_execution = await exec_db.get_graph_execution(
                             user_id=user_id,
@@ -157,7 +157,7 @@ async def _subscribe_and_wait(
                         done.set()
                         return
         except Exception as e:
-            logger.error(f"Error in execution consumer: {e}", exc_info=True)
+            logger.error("Error in execution consumer: %s", e, exc_info=True)
             done.set()
 
     consume_task = asyncio.create_task(_consume())

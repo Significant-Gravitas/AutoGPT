@@ -16,6 +16,8 @@ import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
 import { useTitlePolling } from "./useTitlePolling";
 
+const noop = () => {};
+
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const queryClient = useQueryClient();
@@ -86,7 +88,7 @@ export function useCopilotPage() {
   const { isConsumingCallbackToken } = useCallbackToken({
     isLoggedIn,
     onConsumed: setSessionId,
-    onClearAutopilot() {},
+    onClearAutopilot: noop,
   });
 
   const { isUploadingFiles, onSend } = useFileUpload({

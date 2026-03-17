@@ -1,5 +1,7 @@
 """Database operations for chat sessions."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 from datetime import UTC, datetime
@@ -24,7 +26,23 @@ from .model import ChatMessage, ChatSession, ChatSessionInfo
 from .session_types import ChatSessionStartType
 
 logger = logging.getLogger(__name__)
-_UNSET = object()
+
+
+class _Sentinel:
+    """Typed sentinel to distinguish 'not provided' from None."""
+
+    _instance: _Sentinel | None = None
+
+    def __new__(cls) -> _Sentinel:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "<UNSET>"
+
+
+_UNSET = _Sentinel()
 
 
 class ChatSessionCallbackTokenInfo(BaseModel):
@@ -183,14 +201,14 @@ async def update_chat_session(
     total_completion_tokens: int | None = None,
     title: str | None = None,
     start_type: ChatSessionStartType | None = None,
-    execution_tag: str | None | object = _UNSET,
+    execution_tag: str | None | _Sentinel = _UNSET,
     session_config: dict[str, Any] | None = None,
-    completion_report: dict[str, Any] | None | object = _UNSET,
+    completion_report: dict[str, Any] | None | _Sentinel = _UNSET,
     completion_report_repair_count: int | None = None,
-    completion_report_repair_queued_at: datetime | None | object = _UNSET,
-    completed_at: datetime | None | object = _UNSET,
-    notification_email_sent_at: datetime | None | object = _UNSET,
-    notification_email_skipped_at: datetime | None | object = _UNSET,
+    completion_report_repair_queued_at: datetime | None | _Sentinel = _UNSET,
+    completed_at: datetime | None | _Sentinel = _UNSET,
+    notification_email_sent_at: datetime | None | _Sentinel = _UNSET,
+    notification_email_skipped_at: datetime | None | _Sentinel = _UNSET,
 ) -> ChatSession | None:
     """Update a chat session's metadata."""
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
@@ -420,6 +438,7 @@ async def get_pending_notification_chat_sessions(
     sessions = await PrismaChatSession.prisma().find_many(
         where={
             "startType": {"not": ChatSessionStartType.MANUAL.value},
+            "completedAt": {"not": None},
             "notificationEmailSentAt": None,
             "notificationEmailSkippedAt": None,
         },
@@ -437,6 +456,7 @@ async def get_pending_notification_chat_sessions_for_user(
         where={
             "userId": user_id,
             "startType": {"not": ChatSessionStartType.MANUAL.value},
+            "completedAt": {"not": None},
             "notificationEmailSentAt": None,
             "notificationEmailSkippedAt": None,
         },
@@ -457,7 +477,7 @@ async def get_recent_sent_email_chat_sessions(
             "notificationEmailSentAt": {"not": None},
         },
         order={"notificationEmailSentAt": "desc"},
-        take=max(limit * 3, limit),
+        take=limit * 3,
     )
     return [
         session_info
@@ -525,7 +545,7 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
             return False
         return True
     except Exception as e:
-        logger.error(f"Failed to delete chat session {session_id}: {e}")
+        logger.error("Failed to delete chat session %s: %s", session_id, e)
         return False
 
 
@@ -616,11 +636,19 @@ async def get_chat_session_callback_token(
 async def mark_chat_session_callback_token_consumed(
     token_id: str,
     consumed_session_id: str,
-) -> None:
-    await PrismaChatSessionCallbackToken.prisma().update(
-        where={"id": token_id},
-        data={
-            "consumedAt": datetime.now(UTC),
-            "consumedSessionId": consumed_session_id,
-        },
+) -> bool:
+    """Atomically mark a callback token as consumed.
+
+    Uses a conditional UPDATE (WHERE consumedSessionId IS NULL) so that only
+    the first caller wins the race. Returns True if this call consumed the
+    token, False if another request already consumed it.
+    """
+    rows_affected = await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSessionCallbackToken" '
+        'SET "consumedAt" = $1, "consumedSessionId" = $2 '
+        'WHERE "id" = $3 AND "consumedSessionId" IS NULL',
+        datetime.now(UTC),
+        consumed_session_id,
+        token_id,
     )
+    return rows_affected > 0

@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import UTC, datetime
 
+import bleach
 from markdown_it import MarkdownIt
 from pydantic import BaseModel
 
@@ -20,6 +21,7 @@ from backend.copilot.autopilot_prompts import (
 )
 from backend.copilot.model import (
     ChatSession,
+    ChatSessionInfo,
     get_chat_session,
     update_session_title,
     upsert_chat_session,
@@ -33,7 +35,7 @@ from backend.util.url import get_frontend_base_url
 logger = logging.getLogger(__name__)
 PENDING_NOTIFICATION_SWEEP_LIMIT = 200
 
-_md = MarkdownIt()
+_md = MarkdownIt("commonmark", {"html": False})
 
 _EMAIL_INLINE_STYLES: list[tuple[str, str]] = [
     (
@@ -75,11 +77,47 @@ _EMAIL_INLINE_STYLES: list[tuple[str, str]] = [
 ]
 
 
+_BLEACH_ALLOWED_TAGS = [
+    "p",
+    "br",
+    "strong",
+    "b",
+    "em",
+    "i",
+    "ul",
+    "ol",
+    "li",
+    "a",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "code",
+    "pre",
+    "blockquote",
+]
+_BLEACH_ALLOWED_ATTRS = {"a": ["href", "title"]}
+_BLEACH_ALLOWED_PROTOCOLS = ["http", "https", "mailto"]
+
+
 def _markdown_to_email_html(text: str | None) -> str:
-    """Convert markdown text to email-safe HTML with inline styles."""
+    """Convert markdown text to email-safe HTML with inline styles.
+
+    The output is sanitized via bleach to strip any raw HTML that the LLM may
+    have injected (e.g. ``<img onerror=...>``, phishing links, CSS exfil).
+    """
     if not text or not text.strip():
         return ""
     html = _md.render(text.strip())
+    html = bleach.clean(
+        html,
+        tags=_BLEACH_ALLOWED_TAGS,
+        attributes=_BLEACH_ALLOWED_ATTRS,
+        protocols=_BLEACH_ALLOWED_PROTOCOLS,
+        strip=True,
+    )
     for tag, styled_tag in _EMAIL_INLINE_STYLES:
         html = html.replace(tag, styled_tag)
     return html.strip()
@@ -195,7 +233,7 @@ async def _send_completion_email(session: ChatSession) -> None:
 
 
 async def _process_pending_copilot_email_candidates(
-    candidates: list,
+    candidates: list[ChatSessionInfo],
 ) -> PendingCopilotEmailSweepResult:
     result = PendingCopilotEmailSweepResult(candidate_count=len(candidates))
 

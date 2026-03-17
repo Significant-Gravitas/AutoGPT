@@ -2,6 +2,7 @@
 
 import type { AdminCopilotUserSummary } from "@/app/api/__generated__/models/adminCopilotUserSummary";
 import { Button } from "@/components/atoms/Button/Button";
+// TODO: migrate to design system DataTable when available
 import {
   Table,
   TableBody,

@@ -116,10 +116,17 @@ async def _get_system_prompt_template(
             )
             return prompt.compile(**resolved_template_vars)
         except Exception as e:
-            logger.warning(f"Failed to fetch prompt from Langfuse, using default: {e}")
+            logger.warning("Failed to fetch prompt from Langfuse, using default: %s", e)
 
     # Fallback to default prompt
-    return (fallback_prompt or DEFAULT_SYSTEM_PROMPT).format(**resolved_template_vars)
+    fallback = fallback_prompt or DEFAULT_SYSTEM_PROMPT
+    try:
+        return fallback.format(**resolved_template_vars)
+    except KeyError as e:
+        logger.warning(
+            "Fallback prompt has unresolved placeholder %s, returning raw", e
+        )
+        return fallback
 
 
 async def _build_system_prompt(
@@ -142,7 +149,7 @@ async def _build_system_prompt(
         try:
             understanding = await understanding_db().get_business_understanding(user_id)
         except Exception as e:
-            logger.warning(f"Failed to fetch business understanding: {e}")
+            logger.warning("Failed to fetch business understanding: %s", e)
             understanding = None
 
     if understanding:
@@ -224,7 +231,7 @@ async def _generate_session_title(
             return title
         return None
     except Exception as e:
-        logger.warning(f"Failed to generate session title: {e}")
+        logger.warning("Failed to generate session title: %s", e)
         return None
 
 

@@ -186,7 +186,7 @@ class AgentOutputTool(BaseTool):
                 agent = await lib_db.get_library_agent(library_agent_id, user_id)
                 return agent, None
             except Exception as e:
-                logger.warning(f"Failed to get library agent by ID: {e}")
+                logger.warning("Failed to get library agent by ID: %s", e)
                 return None, f"Library agent '{library_agent_id}' not found"
 
         # Priority 2: Store slug (username/agent-name)
@@ -223,7 +223,7 @@ class AgentOutputTool(BaseTool):
                 # Return best match (first result from search)
                 return response.agents[0], None
             except Exception as e:
-                logger.error(f"Error searching library agents: {e}")
+                logger.error("Error searching library agents: %s", e)
                 return None, f"Error searching for agent: {e}"
 
         return (
@@ -399,7 +399,7 @@ class AgentOutputTool(BaseTool):
         try:
             input_data = AgentOutputInput(**kwargs)
         except Exception as e:
-            logger.error(f"Invalid input: {e}")
+            logger.error("Invalid input: %s", e)
             return ErrorResponse(
                 message="Invalid input parameters",
                 error=str(e),

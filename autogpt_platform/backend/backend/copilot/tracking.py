@@ -40,7 +40,7 @@ def _get_posthog_client() -> Posthog | None:
         host=settings.secrets.posthog_host,
     )
     logger.info(
-        f"PostHog client initialized with host: {settings.secrets.posthog_host}"
+        "PostHog client initialized with host: %s", settings.secrets.posthog_host
     )
     return _posthog_client
 
@@ -81,7 +81,7 @@ def track_user_message(
             properties=properties,
         )
     except Exception as e:
-        logger.warning(f"Failed to track user message: {e}")
+        logger.warning("Failed to track user message: %s", e)
 
 
 def track_tool_called(
@@ -112,8 +112,10 @@ def track_tool_called(
         }
         distinct_id = user_id or f"anonymous_{session_id}"
         logger.info(
-            f"Sending copilot_tool_called event to PostHog: distinct_id={distinct_id}, "
-            f"tool_name={tool_name}"
+            "Sending copilot_tool_called event to PostHog: distinct_id=%s, "
+            "tool_name=%s",
+            distinct_id,
+            tool_name,
         )
         client.capture(
             distinct_id=distinct_id,
@@ -121,7 +123,7 @@ def track_tool_called(
             properties=properties,
         )
     except Exception as e:
-        logger.warning(f"Failed to track tool call: {e}")
+        logger.warning("Failed to track tool call: %s", e)
 
 
 def track_agent_run_success(
@@ -161,7 +163,7 @@ def track_agent_run_success(
             properties=properties,
         )
     except Exception as e:
-        logger.warning(f"Failed to track agent run: {e}")
+        logger.warning("Failed to track agent run: %s", e)
 
 
 def track_agent_scheduled(
@@ -207,7 +209,7 @@ def track_agent_scheduled(
             properties=properties,
         )
     except Exception as e:
-        logger.warning(f"Failed to track agent schedule: {e}")
+        logger.warning("Failed to track agent schedule: %s", e)
 
 
 def track_trigger_setup(
@@ -247,4 +249,4 @@ def track_trigger_setup(
             properties=properties,
         )
     except Exception as e:
-        logger.warning(f"Failed to track trigger setup: {e}")
+        logger.warning("Failed to track trigger setup: %s", e)

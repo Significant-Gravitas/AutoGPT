@@ -8708,6 +8708,16 @@
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
       },
+      "CoPilotUsageStatus": {
+        "properties": {
+          "daily": { "$ref": "#/components/schemas/UsageWindow" },
+          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
+        },
+        "type": "object",
+        "required": ["daily", "weekly"],
+        "title": "CoPilotUsageStatus",
+        "description": "Current usage status for a user across all windows."
+      },
       "ConsumeCallbackTokenRequest": {
         "properties": { "token": { "type": "string", "title": "Token" } },
         "type": "object",
@@ -8721,16 +8731,6 @@
         "type": "object",
         "required": ["session_id"],
         "title": "ConsumeCallbackTokenResponse"
-      },
-      "CoPilotUsageStatus": {
-        "properties": {
-          "daily": { "$ref": "#/components/schemas/UsageWindow" },
-          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
-        },
-        "type": "object",
-        "required": ["daily", "weekly"],
-        "title": "CoPilotUsageStatus",
-        "description": "Current usage status for a user across all windows."
       },
       "ContentType": {
         "type": "string",

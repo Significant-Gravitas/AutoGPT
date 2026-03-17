@@ -90,8 +90,8 @@ class CoPilotExecutor(AppProcess):
 
     def run(self):
         """Main service loop - consume from RabbitMQ."""
-        logger.info(f"Pod assigned executor_id: {self.executor_id}")
-        logger.info(f"Spawn max-{self.pool_size} workers...")
+        logger.info("Pod assigned executor_id: %s", self.executor_id)
+        logger.info("Spawn max-%s workers...", self.pool_size)
 
         pool_size_gauge.set(self.pool_size)
         self._update_metrics()
@@ -106,7 +106,7 @@ class CoPilotExecutor(AppProcess):
     def cleanup(self):
         """Graceful shutdown with active execution waiting."""
         pid = os.getpid()
-        logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
+        logger.info("[cleanup %s] Starting graceful shutdown...", pid)
 
         # Signal the consumer thread to stop
         try:
@@ -115,14 +115,17 @@ class CoPilotExecutor(AppProcess):
             run_channel.connection.add_callback_threadsafe(
                 lambda: run_channel.stop_consuming()
             )
-            logger.info(f"[cleanup {pid}] Consumer has been signaled to stop")
+            logger.info("[cleanup %s] Consumer has been signaled to stop", pid)
         except Exception as e:
-            logger.error(f"[cleanup {pid}] Error stopping consumer: {e}")
+            logger.error("[cleanup %s] Error stopping consumer: %s", pid, e)
 
         # Wait for active executions to complete
         if self.active_tasks:
             logger.info(
-                f"[cleanup {pid}] Waiting for {len(self.active_tasks)} active tasks to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
+                "[cleanup %s] Waiting for %s active tasks to complete (timeout: %ss)...",
+                pid,
+                len(self.active_tasks),
+                GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
             )
 
             start_time = time.monotonic()
@@ -145,12 +148,14 @@ class CoPilotExecutor(AppProcess):
                             lock.refresh()
                         except Exception as e:
                             logger.warning(
-                                f"[cleanup {pid}] Failed to refresh lock: {e}"
+                                "[cleanup %s] Failed to refresh lock: %s", pid, e
                             )
                     last_refresh = current_time
 
                 logger.info(
-                    f"[cleanup {pid}] {len(self.active_tasks)} tasks still active, waiting..."
+                    "[cleanup %s] %s tasks still active, waiting...",
+                    pid,
+                    len(self.active_tasks),
                 )
                 time.sleep(10.0)
 
@@ -168,7 +173,7 @@ class CoPilotExecutor(AppProcess):
         if self._executor:
             from .processor import cleanup_worker
 
-            logger.info(f"[cleanup {pid}] Cleaning up workers...")
+            logger.info("[cleanup %s] Cleaning up workers...", pid)
             futures = []
             for _ in range(self._executor._max_workers):
                 futures.append(self._executor.submit(cleanup_worker))
@@ -176,22 +181,25 @@ class CoPilotExecutor(AppProcess):
                 try:
                     f.result(timeout=10)
                 except Exception as e:
-                    logger.warning(f"[cleanup {pid}] Worker cleanup error: {e}")
+                    logger.warning("[cleanup %s] Worker cleanup error: %s", pid, e)
 
-            logger.info(f"[cleanup {pid}] Shutting down executor...")
+            logger.info("[cleanup %s] Shutting down executor...", pid)
             self._executor.shutdown(wait=False)
 
         # Release any remaining locks
         for session_id, lock in list(self._task_locks.items()):
             try:
                 lock.release()
-                logger.info(f"[cleanup {pid}] Released lock for {session_id}")
+                logger.info("[cleanup %s] Released lock for %s", pid, session_id)
             except Exception as e:
                 logger.error(
-                    f"[cleanup {pid}] Failed to release lock for {session_id}: {e}"
+                    "[cleanup %s] Failed to release lock for %s: %s",
+                    pid,
+                    session_id,
+                    e,
                 )
 
-        logger.info(f"[cleanup {pid}] Graceful shutdown completed")
+        logger.info("[cleanup %s] Graceful shutdown completed", pid)
 
     # ============ RabbitMQ Consumer Methods ============ #
 
@@ -273,15 +281,15 @@ class CoPilotExecutor(AppProcess):
             logger.warning("Cancel message missing 'session_id'")
             return
         if session_id not in self.active_tasks:
-            logger.debug(f"Cancel received for {session_id} but not active")
+            logger.debug("Cancel received for %s but not active", session_id)
             return
 
         _, cancel_event = self.active_tasks[session_id]
-        logger.info(f"Received cancel for {session_id}")
+        logger.info("Received cancel for %s", session_id)
         if not cancel_event.is_set():
             cancel_event.set()
         else:
-            logger.debug(f"Cancel already set for {session_id}")
+            logger.debug("Cancel already set for %s", session_id)
 
     def _handle_run_message(
         self,
@@ -307,8 +315,9 @@ class CoPilotExecutor(AppProcess):
             try:
                 if not delivery_channel.is_open:
                     logger.warning(
-                        f"Channel closed, cannot ack delivery_tag={delivery_tag}. "
-                        "Message will be redelivered by RabbitMQ."
+                        "Channel closed, cannot ack delivery_tag=%s. "
+                        "Message will be redelivered by RabbitMQ.",
+                        delivery_tag,
                     )
                     return
 
@@ -325,13 +334,15 @@ class CoPilotExecutor(AppProcess):
             except (AMQPChannelError, AMQPConnectionError) as e:
                 # Channel/connection errors indicate stale delivery tag - don't retry
                 logger.warning(
-                    f"Cannot ack delivery_tag={delivery_tag} due to channel/connection "
-                    f"error: {e}. Message will be redelivered by RabbitMQ."
+                    "Cannot ack delivery_tag=%s due to channel/connection "
+                    "error: %s. Message will be redelivered by RabbitMQ.",
+                    delivery_tag,
+                    e,
                 )
             except Exception as e:
                 # Other errors might be transient, but log and skip to avoid blocking
                 logger.error(
-                    f"Unexpected error acking delivery_tag={delivery_tag}: {e}"
+                    "Unexpected error acking delivery_tag=%s: %s", delivery_tag, e
                 )
 
         # Check if we're shutting down
@@ -349,7 +360,7 @@ class CoPilotExecutor(AppProcess):
         try:
             entry = CoPilotExecutionEntry.model_validate_json(body)
         except Exception as e:
-            logger.error(f"Could not parse run message: {e}, body={body}")
+            logger.error("Could not parse run message: %s, body=%s", e, body)
             ack_message(reject=True, requeue=False)
             return
 
@@ -358,7 +369,8 @@ class CoPilotExecutor(AppProcess):
         # Check for local duplicate - session is already running on this executor
         if session_id in self.active_tasks:
             logger.warning(
-                f"Session {session_id} already running locally, rejecting duplicate"
+                "Session %s already running locally, rejecting duplicate",
+                session_id,
             )
             ack_message(reject=True, requeue=False)
             return
@@ -374,12 +386,14 @@ class CoPilotExecutor(AppProcess):
         if current_owner != self.executor_id:
             if current_owner is not None:
                 logger.warning(
-                    f"Session {session_id} already running on pod {current_owner}"
+                    "Session %s already running on pod %s",
+                    session_id,
+                    current_owner,
                 )
                 ack_message(reject=True, requeue=False)
             else:
                 logger.warning(
-                    f"Could not acquire lock for {session_id} - Redis unavailable"
+                    "Could not acquire lock for %s - Redis unavailable", session_id
                 )
                 ack_message(reject=True, requeue=True)
             return
@@ -389,8 +403,9 @@ class CoPilotExecutor(AppProcess):
             self._task_locks[session_id] = cluster_lock
 
             logger.info(
-                f"Acquired cluster lock for {session_id}, "
-                f"executor_id={self.executor_id}"
+                "Acquired cluster lock for %s, executor_id=%s",
+                session_id,
+                self.executor_id,
             )
 
             cancel_event = threading.Event()
@@ -399,7 +414,7 @@ class CoPilotExecutor(AppProcess):
             )
             self.active_tasks[session_id] = (future, cancel_event)
         except Exception as e:
-            logger.warning(f"Failed to setup execution for {session_id}: {e}")
+            logger.warning("Failed to setup execution for %s: %s", session_id, e)
             cluster_lock.release()
             if session_id in self._task_locks:
                 del self._task_locks[session_id]
@@ -409,24 +424,24 @@ class CoPilotExecutor(AppProcess):
         self._update_metrics()
 
         def on_run_done(f: Future):
-            logger.info(f"Run completed for {session_id}")
+            logger.info("Run completed for %s", session_id)
             error_msg = None
             try:
                 if exec_error := f.exception():
                     error_msg = str(exec_error) or type(exec_error).__name__
-                    logger.error(f"Execution for {session_id} failed: {error_msg}")
+                    logger.error("Execution for %s failed: %s", session_id, error_msg)
                     ack_message(reject=True, requeue=False)
                 else:
                     ack_message(reject=False, requeue=False)
             except asyncio.CancelledError:
-                logger.info(f"Run completion callback cancelled for {session_id}")
+                logger.info("Run completion callback cancelled for %s", session_id)
             except BaseException as e:
                 error_msg = str(e) or type(e).__name__
-                logger.exception(f"Error in run completion callback: {error_msg}")
+                logger.exception("Error in run completion callback: %s", error_msg)
             finally:
                 # Release the cluster lock
                 if session_id in self._task_locks:
-                    logger.info(f"Releasing cluster lock for {session_id}")
+                    logger.info("Releasing cluster lock for %s", session_id)
                     self._task_locks[session_id].release()
                     del self._task_locks[session_id]
                 self._cleanup_completed_tasks()
@@ -443,7 +458,7 @@ class CoPilotExecutor(AppProcess):
                 if future.done():
                     completed_tasks.append(session_id)
                     self.active_tasks.pop(session_id, None)
-                    logger.info(f"Cleaned up completed session {session_id}")
+                    logger.info("Cleaned up completed session %s", session_id)
 
         self._update_metrics()
         return completed_tasks
@@ -470,13 +485,13 @@ class CoPilotExecutor(AppProcess):
             thread.join(timeout=300)
             if thread.is_alive():
                 logger.error(
-                    f"{prefix} Thread did not finish in time, forcing disconnect"
+                    "%s Thread did not finish in time, forcing disconnect", prefix
                 )
 
             client.disconnect()
-            logger.info(f"{prefix} Client disconnected")
+            logger.info("%s Client disconnected", prefix)
         except Exception as e:
-            logger.error(f"{prefix} Error disconnecting client: {e}")
+            logger.error("%s Error disconnecting client: %s", prefix, e)
 
     # ============ Lazy-initialized Properties ============ #
 

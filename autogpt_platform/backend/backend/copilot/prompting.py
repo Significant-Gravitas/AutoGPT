@@ -6,7 +6,14 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from backend.copilot.tools import iter_available_tools
+
+if TYPE_CHECKING:
+    from backend.copilot.model import ChatSession
 
 # Shared technical notes that apply to both SDK and baseline modes
 _SHARED_TOOL_NOTES = """\
@@ -193,7 +200,7 @@ def _get_cloud_sandbox_supplement() -> str:
     )
 
 
-def _generate_tool_documentation(session=None) -> str:
+def _generate_tool_documentation(session: ChatSession | None = None) -> str:
     """Auto-generate tool documentation from TOOL_REGISTRY.
 
     NOTE: This is ONLY used in baseline mode (direct OpenAI API).

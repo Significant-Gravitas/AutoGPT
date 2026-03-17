@@ -38,25 +38,25 @@ class TruncatedLogger:
         self.max_length = max_length
         self.prefix = prefix
 
-    def info(self, msg: str, **extra):
+    def info(self, msg: str, *args, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.info(msg, extra=self._get_metadata(**extra))
+        self.logger.info(msg, *args, extra=self._get_metadata(**extra))
 
-    def warning(self, msg: str, **extra):
+    def warning(self, msg: str, *args, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.warning(msg, extra=self._get_metadata(**extra))
+        self.logger.warning(msg, *args, extra=self._get_metadata(**extra))
 
-    def error(self, msg: str, **extra):
+    def error(self, msg: str, *args, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.error(msg, extra=self._get_metadata(**extra))
+        self.logger.error(msg, *args, extra=self._get_metadata(**extra))
 
-    def debug(self, msg: str, **extra):
+    def debug(self, msg: str, *args, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.debug(msg, extra=self._get_metadata(**extra))
+        self.logger.debug(msg, *args, extra=self._get_metadata(**extra))
 
-    def exception(self, msg: str, **extra):
+    def exception(self, msg: str, *args, **extra):
         msg = self._wrap(msg, **extra)
-        self.logger.exception(msg, extra=self._get_metadata(**extra))
+        self.logger.exception(msg, *args, extra=self._get_metadata(**extra))
 
     def _get_metadata(self, **extra):
         metadata = {**self.metadata, **extra}

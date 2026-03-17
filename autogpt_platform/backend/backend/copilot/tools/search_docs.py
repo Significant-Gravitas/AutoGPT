@@ -201,7 +201,7 @@ class SearchDocsTool(BaseTool):
             )
 
         except Exception as e:
-            logger.error(f"Documentation search failed: {e}")
+            logger.error("Documentation search failed: %s", e)
             return ErrorResponse(
                 message=f"Failed to search documentation: {str(e)}",
                 error="search_failed",

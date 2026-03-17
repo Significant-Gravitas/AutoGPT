@@ -112,7 +112,7 @@ async def get_library_agent_by_id(
     try:
         agent = await db.get_library_agent_by_graph_id(user_id, agent_id)
         if agent:
-            logger.debug(f"Found library agent by graph_id: {agent.name}")
+            logger.debug("Found library agent by graph_id: %s", agent.name)
             return LibraryAgentSummary(
                 graph_id=agent.graph_id,
                 graph_version=agent.graph_version,
@@ -124,12 +124,12 @@ async def get_library_agent_by_id(
     except DatabaseError:
         raise
     except Exception as e:
-        logger.debug(f"Could not fetch library agent by graph_id {agent_id}: {e}")
+        logger.debug("Could not fetch library agent by graph_id %s: %s", agent_id, e)
 
     try:
         agent = await db.get_library_agent(agent_id, user_id)
         if agent:
-            logger.debug(f"Found library agent by library_id: {agent.name}")
+            logger.debug("Found library agent by library_id: %s", agent.name)
             return LibraryAgentSummary(
                 graph_id=agent.graph_id,
                 graph_version=agent.graph_version,
@@ -139,12 +139,14 @@ async def get_library_agent_by_id(
                 output_schema=agent.output_schema,
             )
     except NotFoundError:
-        logger.debug(f"Library agent not found by library_id: {agent_id}")
+        logger.debug("Library agent not found by library_id: %s", agent_id)
     except DatabaseError:
         raise
     except Exception as e:
         logger.warning(
-            f"Could not fetch library agent by library_id {agent_id}: {e}",
+            "Could not fetch library agent by library_id %s: %s",
+            agent_id,
+            e,
             exc_info=True,
         )
 
@@ -173,14 +175,14 @@ async def get_library_agents_by_ids(
             agent = await get_library_agent_by_id(user_id, agent_id)
             if agent:
                 agents.append(agent)
-                logger.debug(f"Fetched library agent by ID: {agent['name']}")
+                logger.debug("Fetched library agent by ID: %s", agent["name"])
             else:
-                logger.warning(f"Library agent not found for ID: {agent_id}")
+                logger.warning("Library agent not found for ID: %s", agent_id)
         except Exception as e:
-            logger.warning(f"Failed to fetch library agent {agent_id}: {e}")
+            logger.warning("Failed to fetch library agent %s: %s", agent_id, e)
             continue
 
-    logger.info(f"Fetched {len(agents)}/{len(agent_ids)} library agents by ID")
+    logger.info("Fetched %s/%s library agents by ID", len(agents), len(agent_ids))
     return agents
 
 
@@ -252,7 +254,7 @@ async def get_library_agents_for_generation(
     except DatabaseError:
         raise
     except Exception as e:
-        logger.warning(f"Failed to fetch library agents: {e}")
+        logger.warning("Failed to fetch library agents: %s", e)
         return []
 
 
@@ -313,7 +315,7 @@ async def search_marketplace_agents_for_generation(
                 )
         return results
     except Exception as e:
-        logger.warning(f"Failed to search marketplace agents: {e}")
+        logger.warning("Failed to search marketplace agents: %s", e)
         return []
 
 
@@ -501,7 +503,7 @@ async def enrich_library_agents_from_steps(
                     existing_ids.add(graph_id)
 
         except DatabaseError:
-            logger.error(f"Database error searching for agents with term '{term}'")
+            logger.error("Database error searching for agents with term '%s'", term)
             raise
         except Exception as e:
             logger.warning(

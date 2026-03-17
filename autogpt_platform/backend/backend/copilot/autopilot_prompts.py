@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 from backend.copilot.service import _get_system_prompt_template
 from backend.copilot.service import config as chat_config
@@ -14,6 +15,7 @@ from backend.data.understanding import format_understanding_for_prompt
 
 if TYPE_CHECKING:
     from backend.data.invited_user import InvitedUserRecord
+    from backend.data.model import User
 
 logger = logging.getLogger(__name__)
 
@@ -196,10 +198,11 @@ def _get_previous_local_midnight_utc(
     target_local_date: date,
     timezone_name: str,
 ) -> datetime:
-    from datetime import UTC
-    from zoneinfo import ZoneInfo
-
-    tz = ZoneInfo(timezone_name)
+    try:
+        tz = ZoneInfo(timezone_name)
+    except (KeyError, Exception):
+        logger.warning("Unknown timezone %s, falling back to UTC", timezone_name)
+        tz = ZoneInfo("UTC")
     previous_midnight_local = datetime.combine(
         target_local_date - timedelta(days=1),
         time.min,
@@ -349,7 +352,7 @@ async def _get_recent_session_summary_context(user_id: str) -> str:
 
 
 async def _build_autopilot_system_prompt(
-    user: Any,
+    user: User,
     *,
     start_type: ChatSessionStartType,
     timezone_name: str,
