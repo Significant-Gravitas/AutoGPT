@@ -310,6 +310,93 @@ class TestPromptSupplement:
 
 
 # ---------------------------------------------------------------------------
+# _cleanup_sdk_tool_results — orchestration + rate-limiting
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupSdkToolResults:
+    """Tests for _cleanup_sdk_tool_results orchestration and sweep rate-limiting."""
+
+    # All valid cwds must start with /tmp/copilot- (the _SDK_CWD_PREFIX).
+    _CWD_PREFIX = "/tmp/copilot-"
+
+    @pytest.mark.asyncio
+    async def test_removes_cwd_directory(self):
+        """Cleanup removes the session working directory."""
+
+        from .service import _cleanup_sdk_tool_results
+
+        cwd = "/tmp/copilot-test-cleanup-remove"
+        os.makedirs(cwd, exist_ok=True)
+
+        with patch("backend.copilot.sdk.service.cleanup_stale_project_dirs"):
+            import backend.copilot.sdk.service as svc_mod
+
+            svc_mod._last_sweep_time = 0.0
+            await _cleanup_sdk_tool_results(cwd)
+
+        assert not os.path.exists(cwd)
+
+    @pytest.mark.asyncio
+    async def test_sweep_runs_when_interval_elapsed(self):
+        """cleanup_stale_project_dirs is called when 5-minute interval has elapsed."""
+
+        import backend.copilot.sdk.service as svc_mod
+
+        from .service import _cleanup_sdk_tool_results
+
+        cwd = "/tmp/copilot-test-sweep-elapsed"
+        os.makedirs(cwd, exist_ok=True)
+
+        with patch(
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
+        ) as mock_sweep:
+            # Set last sweep to a time far in the past
+            svc_mod._last_sweep_time = 0.0
+            await _cleanup_sdk_tool_results(cwd)
+
+        mock_sweep.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sweep_skipped_within_interval(self):
+        """cleanup_stale_project_dirs is NOT called when within 5-minute interval."""
+        import time
+
+        import backend.copilot.sdk.service as svc_mod
+
+        from .service import _cleanup_sdk_tool_results
+
+        cwd = "/tmp/copilot-test-sweep-ratelimit"
+        os.makedirs(cwd, exist_ok=True)
+
+        with patch(
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
+        ) as mock_sweep:
+            # Set last sweep to now — interval not elapsed
+            svc_mod._last_sweep_time = time.time()
+            await _cleanup_sdk_tool_results(cwd)
+
+        mock_sweep.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_rejects_path_outside_prefix(self, tmp_path):
+        """Cleanup rejects a cwd that does not start with the expected prefix."""
+        from .service import _cleanup_sdk_tool_results
+
+        evil_cwd = str(tmp_path / "evil-path")
+        os.makedirs(evil_cwd, exist_ok=True)
+
+        with patch(
+            "backend.copilot.sdk.service.cleanup_stale_project_dirs"
+        ) as mock_sweep:
+            await _cleanup_sdk_tool_results(evil_cwd)
+
+        # Directory should NOT have been removed (rejected early)
+        assert os.path.exists(evil_cwd)
+        mock_sweep.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Env vars that ChatConfig validators read — must be cleared so explicit
 # constructor values are used.
 # ---------------------------------------------------------------------------

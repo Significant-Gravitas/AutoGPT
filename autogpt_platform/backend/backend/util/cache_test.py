@@ -1178,7 +1178,7 @@ class TestCacheHMAC:
             raw = cast(bytes | None, redis.get(key))
             assert raw is not None
             # Flip a byte in the signature portion to simulate tampering
-            tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]
+            tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]  # type: ignore[index]
             redis.set(key, tampered)
 
         # Next call should detect tampering and recompute

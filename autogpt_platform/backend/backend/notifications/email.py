@@ -96,7 +96,7 @@ class EmailSender:
             user_unsubscribe_link=unsubscribe_link,
         )
 
-    def send_templated(
+    async def send_templated(
         self,
         notification: NotificationType,
         user_email: str,
@@ -121,7 +121,7 @@ class EmailSender:
         template_data = {"notifications": data} if isinstance(data, list) else data
 
         try:
-            subject, full_message = self.formatter.format_email(
+            subject, full_message = await self.formatter.format_email(
                 base_template=template.base_template,
                 subject_template=template.subject_template,
                 content_template=template.body_template,
