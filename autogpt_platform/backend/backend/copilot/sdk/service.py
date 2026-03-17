@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
@@ -44,6 +45,7 @@ from ..constants import (
     FRIENDLY_TRANSIENT_MSG,
     is_transient_api_error,
 )
+from ..context import encode_cwd_for_cli
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -83,7 +85,7 @@ from .tool_adapter import (
     wait_for_stash,
 )
 from .transcript import (
-    cleanup_cli_project_dir,
+    cleanup_stale_project_dirs,
     download_transcript,
     read_compacted_entries,
     upload_transcript,
@@ -172,6 +174,9 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
+
+_last_sweep_time: float = 0.0
+_SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
 
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
@@ -312,31 +317,34 @@ def _make_sdk_cwd(session_id: str) -> str:
     return cwd
 
 
-def _cleanup_sdk_tool_results(cwd: str) -> None:
+async def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
-    Cleans up:
-    - ``~/.claude/projects/<encoded-cwd>/`` — CLI session transcripts and
-      tool-result files.  Each SDK turn uses a unique cwd, so this directory
-      is safe to remove entirely.
-    - ``/tmp/copilot-<session>/`` — the ephemeral working directory.
+    Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
+
+    Also sweeps stale CLI project directories (older than 12 h) to prevent
+    unbounded disk growth.  The sweep is best-effort, rate-limited to once
+    every 5 minutes, and capped at 50 directories per sweep.
 
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
+        logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
         return
 
-    # Clean the CLI's project directory (transcripts + tool-results).
-    cleanup_cli_project_dir(cwd)
+    await asyncio.to_thread(shutil.rmtree, normalized, True)
 
-    # Clean up the temp cwd directory itself.
-    try:
-        shutil.rmtree(normalized, ignore_errors=True)
-    except OSError:
-        pass
+    # Best-effort sweep of old project dirs to prevent disk leak.
+    # Pass the encoded cwd so only this session's project directory is swept,
+    # which is safe in multi-tenant environments.
+    global _last_sweep_time
+    now = time.time()
+    if now - _last_sweep_time >= _SWEEP_INTERVAL_SECONDS:
+        _last_sweep_time = now
+        encoded = encode_cwd_for_cli(normalized)
+        await asyncio.to_thread(cleanup_stale_project_dirs, encoded)
 
 
 def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
@@ -1184,7 +1192,14 @@ async def stream_chat_completion_sdk(
                         and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
                         and not is_parallel_continuation
                     ):
-                        if await wait_for_stash(timeout=0.5):
+                        # 2.0 s timeout: the original 0.5 s caused frequent
+                        # timeouts under load (parallel tool calls, large
+                        # outputs).  2.0 s gives margin while still failing
+                        # fast when the hook genuinely will not fire.
+                        if await wait_for_stash(timeout=2.0):
+                            # Yield once so any callbacks scheduled by the
+                            # stash signal can propagate before we process
+                            # the next SDK message.
                             await asyncio.sleep(0)
                         else:
                             logger.warning(
@@ -1638,11 +1653,14 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
 
-        if sdk_cwd:
-            _cleanup_sdk_tool_results(sdk_cwd)
-
-        # Release stream lock to allow new streams for this session
-        await lock.release()
+        try:
+            if sdk_cwd:
+                await _cleanup_sdk_tool_results(sdk_cwd)
+        except Exception:
+            logger.warning("%s SDK cleanup failed", log_prefix, exc_info=True)
+        finally:
+            # Release stream lock to allow new streams for this session
+            await lock.release()
 
 
 async def _update_title_async(
