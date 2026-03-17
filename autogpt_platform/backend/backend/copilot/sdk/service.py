@@ -1218,7 +1218,7 @@ async def stream_chat_completion_sdk(
                                 extra,
                             )
 
-                        # Log errors being sent to frontend
+                        # Persist error markers so they survive page refresh
                         if isinstance(response, StreamError):
                             logger.error(
                                 "%s Sending error to frontend: %s (code=%s)",
@@ -1226,6 +1226,13 @@ async def stream_chat_completion_sdk(
                                 response.errorText,
                                 response.code,
                             )
+                            session.messages.append(
+                                ChatMessage(
+                                    role="assistant",
+                                    content=f"{COPILOT_ERROR_PREFIX} {response.errorText}",
+                                )
+                            )
+                            ended_with_stream_error = True
 
                         yield response
 

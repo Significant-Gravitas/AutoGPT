@@ -216,15 +216,11 @@ class SDKResponseAdapter:
                 responses.append(StreamFinish())
             elif sdk_message.subtype in ("error", "error_during_execution"):
                 raw_error = str(sdk_message.result or "Unknown error")
-                is_transient = is_transient_api_error(raw_error)
-                responses.append(
-                    StreamError(
-                        errorText=(
-                            FRIENDLY_TRANSIENT_MSG if is_transient else raw_error
-                        ),
-                        code=("transient_api_error" if is_transient else "sdk_error"),
-                    )
-                )
+                if is_transient_api_error(raw_error):
+                    error_text, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
+                else:
+                    error_text, code = raw_error, "sdk_error"
+                responses.append(StreamError(errorText=error_text, code=code))
                 responses.append(StreamFinish())
             else:
                 logger.warning(
