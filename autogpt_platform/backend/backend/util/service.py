@@ -90,6 +90,69 @@ def expose(func: C) -> C:
     return func
 
 
+def _is_pydantic_compatible(tp: type) -> bool:
+    """Return False for types that Pydantic cannot generate a schema for."""
+    try:
+        from pydantic import TypeAdapter
+
+        TypeAdapter(tp)
+        return True
+    except Exception:
+        return False
+
+
+def _is_union(annotation: Any) -> bool:
+    """Return True for both ``typing.Union[...]`` and ``X | Y`` unions."""
+    origin = typing.get_origin(annotation)
+    if origin is typing.Union:
+        return True
+    try:
+        import types as _types
+
+        return isinstance(annotation, _types.UnionType)
+    except AttributeError:
+        return False
+
+
+def _sanitise_field_for_model(annotation: Any, default: Any) -> tuple[Any, Any]:
+    """Strip non-serialisable types from a union annotation.
+
+    Some internal functions use sentinel objects (e.g. ``_Sentinel``) in
+    unions like ``str | None | _Sentinel`` to distinguish "not provided" from
+    ``None``.  Pydantic cannot build a schema for these, so we strip them and
+    replace the default with ``None`` when the original default is an instance
+    of a stripped type.
+    """
+    if not _is_union(annotation):
+        return annotation, default if default != inspect.Parameter.empty else ...
+
+    args = typing.get_args(annotation)
+    keep: list[Any] = []
+    stripped: list[Any] = []
+    for arg in args:
+        if arg is type(None) or _is_pydantic_compatible(arg):
+            keep.append(arg)
+        else:
+            stripped.append(arg)
+
+    if not stripped:
+        return annotation, default if default != inspect.Parameter.empty else ...
+
+    # Rebuild the union without the incompatible types
+    if len(keep) == 1:
+        cleaned = keep[0]
+    else:
+        cleaned = typing.Union[tuple(keep)]
+
+    # If the default value is an instance of a stripped type, replace with None
+    if any(isinstance(default, t) for t in stripped if isinstance(t, type)):
+        default = None
+    elif default == inspect.Parameter.empty:
+        default = ...
+
+    return cleaned, default
+
+
 # --------------------------------------------------
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
@@ -276,20 +339,19 @@ class AppService(BaseAppService, ABC):
                 ),
             )
 
-            # If a default value is provided, use it; otherwise, mark the field as required with '...'
-            default = param.default if param.default != inspect.Parameter.empty else ...
+            # Strip non-serialisable sentinel types from unions so Pydantic
+            # can build a schema.  Sentinel defaults are replaced with None.
+            annotation, default = _sanitise_field_for_model(annotation, param.default)
 
             fields[name] = (annotation, default)
 
-        # Dynamically create a Pydantic model for the request body
+        # Dynamically create a Pydantic model for the request body.
+        # Always rebuild with the function's module namespace so that
+        # every type referenced in the annotations is resolvable.
+        func_module = inspect.getmodule(func)
+        ns = vars(func_module) if func_module else {}
         RequestBodyModel = create_model("RequestBodyModel", **fields)
-
-        # Rebuild the model to resolve any remaining forward references
-        # using the function's module namespace.
-        if not RequestBodyModel.__pydantic_complete__:
-            func_module = inspect.getmodule(func)
-            ns = vars(func_module) if func_module else {}
-            RequestBodyModel.model_rebuild(_types_namespace=ns)
+        RequestBodyModel.model_rebuild(_types_namespace=ns)
         f = func.__get__(self) if is_bound_method else func
 
         if asyncio.iscoroutinefunction(f):
