@@ -287,28 +287,30 @@ class AutoPilotBlock(Block):
                 elif isinstance(event, StreamError):
                     raise RuntimeError(f"AutoPilot error: {event.errorText}")
 
-            # Build conversation history from the SDK-persisted session.
-            # Cap at _MAX_HISTORY_MESSAGES to bound memory for long-lived sessions.
-            history_json = "[]"
-            try:
-                from backend.copilot.model import get_chat_session
-
-                updated_session = await get_chat_session(session_id, user_id)
-                if updated_session and updated_session.messages:
-                    capped = updated_session.messages[-_MAX_HISTORY_MESSAGES:]
-                    history_json = json.dumps(
-                        [m.model_dump(exclude_none=True) for m in capped],
-                        default=str,
-                    )
-            except Exception:
-                logger.warning(
-                    "Failed to fetch conversation history for session %s",
-                    session_id,
-                    exc_info=True,
+            # Build a lightweight conversation summary from streamed data.
+            # The SDK already persists the full session; avoid a redundant DB
+            # fetch by reconstructing the current turn from what we collected.
+            response_text = "".join(response_parts)
+            turn_messages: list[dict[str, Any]] = [
+                {"role": "user", "content": effective_prompt},
+            ]
+            if tool_calls:
+                turn_messages.append(
+                    {
+                        "role": "assistant",
+                        "content": response_text,
+                        "tool_calls": tool_calls,
+                    }
                 )
+            else:
+                turn_messages.append({"role": "assistant", "content": response_text})
+            # Cap serialized messages to bound memory.
+            history_json = json.dumps(
+                turn_messages[-_MAX_HISTORY_MESSAGES:], default=str
+            )
 
             return (
-                "".join(response_parts),
+                response_text,
                 tool_calls,
                 history_json,
                 session_id,
