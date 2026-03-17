@@ -16,6 +16,7 @@ import type {
 } from "canvas-confetti";
 import confetti from "canvas-confetti";
 
+import * as Sentry from "@sentry/nextjs";
 import { cn } from "@/lib/utils";
 
 /** AutoGPT design system purple palette for confetti */
@@ -57,6 +58,7 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
 
     const canvasElRef = useRef<HTMLCanvasElement | null>(null);
     const instanceRef = useRef<ConfettiInstance | null>(null);
+    const hasAutoStartedRef = useRef(false);
 
     // Create the confetti instance once after mount via useEffect,
     // so React never re-fires a callback ref on re-renders.
@@ -90,7 +92,7 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
               ...opts,
             });
           } catch (error) {
-            console.error("Confetti error:", error);
+            Sentry.captureException(error);
           }
         },
       [options],
@@ -101,9 +103,9 @@ const ConfettiComponent = forwardRef<ConfettiRef, Props>(
     useImperativeHandle(ref, () => api, [api]);
 
     useEffect(() => {
-      if (!manualstart) {
-        fire();
-      }
+      if (manualstart || hasAutoStartedRef.current) return;
+      hasAutoStartedRef.current = true;
+      void fire();
     }, [manualstart, fire]);
 
     return (

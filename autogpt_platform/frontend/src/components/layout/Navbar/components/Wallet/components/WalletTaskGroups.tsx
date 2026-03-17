@@ -87,7 +87,7 @@ export function TaskGroups({ groups }: Props) {
       if (!el) return;
       const rect = el.getBoundingClientRect();
       const shared: ConfettiOptions = {
-        particleCount: Math.min(count, 80),
+        particleCount: count,
         spread: 60,
         shapes: ["square"],
         scalar: 1.2,
@@ -112,7 +112,7 @@ export function TaskGroups({ groups }: Props) {
       // Check if all tasks in the group were already celebrated
       // last task completed triggers group completion
       const alreadyCelebrated = group.tasks.every((task) =>
-        state?.notified.includes(task.id),
+        (state?.notified ?? []).includes(task.id),
       );
 
       if (groupCompleted) {
@@ -132,7 +132,11 @@ export function TaskGroups({ groups }: Props) {
 
       group.tasks.forEach((task) => {
         const el = refs.current[task.id];
-        if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
+        if (
+          el &&
+          isTaskCompleted(task) &&
+          !(state?.notified ?? []).includes(task.id)
+        ) {
           scrollIntoViewCentered(el);
           delayConfetti(el, 400);
           // Update the state to include the task as notified

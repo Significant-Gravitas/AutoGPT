@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Confetti } from "./Confetti";
 import type { ConfettiRef } from "./Confetti";
 
@@ -125,6 +125,11 @@ export const SideCannons: Story = {
 function FireworksDemo() {
   const confettiRef = useRef<ConfettiRef>(null);
   const [active, setActive] = useState(false);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
 
   function startFireworks() {
     setActive(true);
@@ -150,7 +155,7 @@ function FireworksDemo() {
       });
 
       if (Date.now() < end) {
-        requestAnimationFrame(frame);
+        rafRef.current = requestAnimationFrame(frame);
       } else {
         setActive(false);
       }
@@ -181,6 +186,11 @@ export const Fireworks: Story = {
 function CelebrationDemo() {
   const confettiRef = useRef<ConfettiRef>(null);
   const [celebrating, setCelebrating] = useState(false);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
 
   function celebrate() {
     setCelebrating(true);
@@ -218,13 +228,13 @@ function CelebrationDemo() {
       });
 
       if (Date.now() < end) {
-        requestAnimationFrame(frame);
+        rafRef.current = requestAnimationFrame(frame);
       } else {
         setCelebrating(false);
       }
     }
 
-    requestAnimationFrame(frame);
+    rafRef.current = requestAnimationFrame(frame);
   }
 
   return (
@@ -288,6 +298,11 @@ export const Stars: Story = {
 function FullScreenShowerDemo() {
   const confettiRef = useRef<ConfettiRef>(null);
   const [active, setActive] = useState(false);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
 
   function startShower() {
     setActive(true);
@@ -308,7 +323,7 @@ function FullScreenShowerDemo() {
       });
 
       if (Date.now() < end) {
-        requestAnimationFrame(frame);
+        rafRef.current = requestAnimationFrame(frame);
       } else {
         setActive(false);
       }
