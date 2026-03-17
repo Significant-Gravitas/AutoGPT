@@ -135,9 +135,22 @@ class FindBlockTool(BaseTool):
                         block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
                         or block.id in COPILOT_EXCLUDED_BLOCK_IDS
                     ):
+                        if block.block_type == BlockType.MCP_TOOL:
+                            return NoResultsResponse(
+                                message=(
+                                    f"Block '{block.name}' (ID: {block.id}) is not "
+                                    "runnable through find_block/run_block. Use "
+                                    "run_mcp_tool instead."
+                                ),
+                                suggestions=[
+                                    "Use run_mcp_tool to discover and run this MCP tool",
+                                    "Search for an alternative block by name",
+                                ],
+                                session_id=session_id,
+                            )
                         return NoResultsResponse(
                             message=(
-                                f"Block '{block.name}' (ID: {query}) is not available "
+                                f"Block '{block.name}' (ID: {block.id}) is not available "
                                 "in CoPilot. It can only be used within agent graphs."
                             ),
                             suggestions=[
