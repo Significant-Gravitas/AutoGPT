@@ -36,6 +36,7 @@ class FindAgentTool(BaseTool):
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:
+        """Search marketplace for agents matching the query."""
         return await search_agents(
             query=kwargs.get("query", "").strip(),
             source="marketplace",
