@@ -241,7 +241,6 @@ class JoyTrustVerifyBlock(Block):
                 ("vouch_count", 10),
                 ("verified", True),
                 ("capabilities", ["github", "code"]),
-                ("error", ""),
             ],
             test_mock={
                 "_fetch_agent": lambda agent_id: {
@@ -303,7 +302,6 @@ class JoyTrustVerifyBlock(Block):
             yield "vouch_count", vouch_count
             yield "verified", verified
             yield "capabilities", capabilities
-            yield "error", ""
 
         except Exception as e:
             logger.error(f"Joy trust verification failed: {e}")
@@ -398,7 +396,6 @@ class JoyDiscoverAgentsBlock(Block):
             test_output=[
                 ("agents", lambda x: len(x) == 2),
                 ("count", 2),
-                ("error", ""),
             ],
             test_mock={
                 "_discover_agents": lambda capability, query, limit: {
@@ -481,7 +478,6 @@ class JoyDiscoverAgentsBlock(Block):
 
             yield "agents", trusted_agents
             yield "count", len(trusted_agents)
-            yield "error", ""
 
         except Exception as e:
             logger.error(f"Joy agent discovery failed: {e}")
