@@ -112,11 +112,8 @@ export const Flow = () => {
           nodesDraggable={!isLocked}
           nodesConnectable={!isLocked}
           elementsSelectable={!isLocked}
-          selectionOnDrag={false}
           selectionMode={SelectionMode.Partial}
           selectionKeyCode="Shift"
-          panOnDrag
-          panOnScroll
           deleteKeyCode={["Backspace", "Delete"]}
         >
           <Background />
