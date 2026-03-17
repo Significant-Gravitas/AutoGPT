@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryAgent
@@ -90,20 +90,7 @@ async def search_agents(
                     search_query=query, page_size=5
                 )
                 for agent in results.agents:
-                    agents.append(
-                        AgentInfo(
-                            id=f"{agent.creator}/{agent.slug}",
-                            name=agent.agent_name,
-                            description=agent.description or "",
-                            source="marketplace",
-                            in_library=False,
-                            creator=agent.creator,
-                            category="general",
-                            rating=agent.rating,
-                            runs=agent.runs,
-                            is_featured=False,
-                        )
-                    )
+                    agents.append(_marketplace_agent_to_info(agent))
         else:
             if _is_uuid(query):
                 logger.info(f"Query looks like UUID, trying direct lookup: {query}")
@@ -209,6 +196,22 @@ def _is_uuid(text: str) -> bool:
     return bool(UUID_V4_PATTERN.match(text.strip()))
 
 
+def _marketplace_agent_to_info(agent: Any) -> AgentInfo:
+    """Convert a marketplace agent (StoreAgent or StoreAgentDetails) to an AgentInfo."""
+    return AgentInfo(
+        id=f"{agent.creator}/{agent.slug}",
+        name=agent.agent_name,
+        description=agent.description or "",
+        source="marketplace",
+        in_library=False,
+        creator=agent.creator,
+        category="general",
+        rating=agent.rating,
+        runs=agent.runs,
+        is_featured=False,
+    )
+
+
 def _library_agent_to_info(agent: LibraryAgent) -> AgentInfo:
     """Convert a library agent model to an AgentInfo."""
     return AgentInfo(
@@ -233,18 +236,7 @@ async def _get_marketplace_agent_by_slug(creator: str, slug: str) -> AgentInfo |
     """Fetch a marketplace agent by creator/slug identifier."""
     try:
         details = await store_db().get_store_agent_details(creator, slug)
-        return AgentInfo(
-            id=f"{details.creator}/{details.slug}",
-            name=details.agent_name,
-            description=details.description or "",
-            source="marketplace",
-            in_library=False,
-            creator=details.creator,
-            category="general",
-            rating=details.rating,
-            runs=details.runs,
-            is_featured=False,
-        )
+        return _marketplace_agent_to_info(details)
     except NotFoundError:
         pass
     except DatabaseError:
