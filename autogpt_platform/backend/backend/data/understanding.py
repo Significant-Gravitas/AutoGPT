@@ -31,18 +31,6 @@ def _json_to_list(value: Any) -> list[str]:
     return []
 
 
-def parse_business_understanding_input(
-    payload: Any,
-) -> "BusinessUnderstandingInput | None":
-    if payload is None:
-        return None
-
-    try:
-        return BusinessUnderstandingInput.model_validate(payload)
-    except pydantic.ValidationError:
-        return None
-
-
 class BusinessUnderstandingInput(pydantic.BaseModel):
     """Input model for updating business understanding - all fields optional for incremental updates."""
 

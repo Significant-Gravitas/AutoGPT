@@ -200,7 +200,7 @@ export function MobileDrawer({
                   </div>
                 </button>
                 );
-              }))
+              })
             )}
           </div>
         </Drawer.Content>
