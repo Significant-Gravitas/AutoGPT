@@ -31,6 +31,26 @@ function extractPromptFromUrl(): {
 } | null {
   if (typeof window === "undefined") return null;
 
+  const searchParams = new URLSearchParams(window.location.search);
+  const autosubmit = searchParams.get("autosubmit") === "true";
+
+  // Check sessionStorage first (used by workflow import for large prompts)
+  const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
+  if (storedPrompt) {
+    sessionStorage.removeItem("importWorkflowPrompt");
+    // Clean up query params
+    const cleanURL = new URL(window.location.href);
+    cleanURL.searchParams.delete("autosubmit");
+    cleanURL.searchParams.delete("source");
+    window.history.replaceState(
+      null,
+      "",
+      `${cleanURL.pathname}${cleanURL.search}`,
+    );
+    return { prompt: storedPrompt.trim(), autosubmit };
+  }
+
+  // Fall back to URL hash (e.g. /copilot#prompt=...)
   const hash = window.location.hash;
   if (!hash) return null;
 
@@ -38,9 +58,6 @@ function extractPromptFromUrl(): {
   const prompt = hashParams.get("prompt");
 
   if (!prompt || !prompt.trim()) return null;
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const autosubmit = searchParams.get("autosubmit") === "true";
 
   // Clean up hash + autosubmit param only (preserve other query params)
   const cleanURL = new URL(window.location.href);

@@ -55,8 +55,9 @@ export function useLibraryImportWorkflowDialog() {
       description: "AutoPilot will import and convert the workflow for you.",
     });
 
-    const encodedPrompt = encodeURIComponent(prompt);
-    router.push(`/copilot?autosubmit=true#prompt=${encodedPrompt}`);
+    // Use sessionStorage for large prompts to avoid URL length limits
+    sessionStorage.setItem("importWorkflowPrompt", prompt);
+    router.push("/copilot?source=import&autosubmit=true");
   }
 
   return {
