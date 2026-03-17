@@ -863,6 +863,16 @@ async def _prepare_file_attachments(
     return PreparedAttachments(hint=hint, image_blocks=image_blocks)
 
 
+class _TransientErrorHandled(Exception):
+    """Raised by ``_run_stream_attempt`` after it has already yielded a
+    ``StreamError`` for a transient API error.
+
+    This signals the outer retry loop that the attempt failed so it can
+    perform session-message rollback and set the ``ended_with_stream_error``
+    flag, **without** yielding a duplicate ``StreamError`` to the client.
+    """
+
+
 async def _run_stream_attempt(
     ctx: _StreamContext,
     state: _RetryState,
@@ -1258,6 +1268,14 @@ async def _run_stream_attempt(
         assistant_response.content or assistant_response.tool_calls
     ) and not has_appended_assistant:
         ctx.session.messages.append(assistant_response)
+
+    # If the attempt ended with a transient error that was already surfaced
+    # to the client (StreamError yielded above), raise so the outer retry
+    # loop can rollback session messages and set its error flags properly.
+    if ended_with_stream_error:
+        raise _TransientErrorHandled(
+            "Transient API error handled — StreamError already yielded"
+        )
 
 
 async def stream_chat_completion_sdk(
@@ -1706,6 +1724,23 @@ async def stream_chat_completion_sdk(
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
+            except _TransientErrorHandled:
+                # _run_stream_attempt already yielded a StreamError and
+                # appended an error marker.  We only need to rollback
+                # session messages and set the error flag — do NOT set
+                # stream_err so the post-loop code won't emit a
+                # duplicate StreamError.
+                logger.warning(
+                    "%s Transient error handled in stream attempt "
+                    "(attempt %d/%d, events_yielded=%d)",
+                    log_prefix,
+                    attempt + 1,
+                    _MAX_STREAM_ATTEMPTS,
+                    events_yielded,
+                )
+                session.messages = session.messages[:pre_attempt_msg_count]
+                ended_with_stream_error = True
+                break
             except Exception as e:
                 stream_err = e
                 is_context_error = _is_prompt_too_long(e)
