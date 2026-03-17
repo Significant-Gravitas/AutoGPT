@@ -247,6 +247,10 @@ async def test_get_or_activate_user_creates_user_from_invite(
         "backend.data.invited_user._apply_tally_understanding",
         AsyncMock(),
     )
+    mocker.patch(
+        "backend.data.invited_user._settings.config.enable_invite_gate",
+        True,
+    )
     mocker.patch("backend.data.invited_user.transaction", fake_transaction)
     mocker.patch(
         "backend.data.invited_user.prisma.models.User.prisma", side_effect=user_prisma
