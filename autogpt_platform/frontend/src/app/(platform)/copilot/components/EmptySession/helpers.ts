@@ -71,17 +71,26 @@ export function getSuggestionThemes(
     apiThemes.map((theme) => [theme.name, theme.prompts] as const),
   );
 
-  return DEFAULT_THEMES.map((theme) => {
+  // Legacy users have prompts under "General" — distribute them across themes
+  const generalPrompts = (promptsByTheme.get("General") ?? []).filter(
+    (p) => p.trim().length > 0,
+  );
+
+  return DEFAULT_THEMES.map((theme, idx) => {
     const personalized = (promptsByTheme.get(theme.name) ?? []).filter(
       (p) => p.trim().length > 0,
     );
 
+    // Spread legacy "General" prompts round-robin across themes
+    const legacySlice = generalPrompts.filter(
+      (_, i) => i % DEFAULT_THEMES.length === idx,
+    );
+
     return {
       name: theme.name,
-      prompts: Array.from(new Set([...personalized, ...theme.prompts])).slice(
-        0,
-        theme.prompts.length,
-      ),
+      prompts: Array.from(
+        new Set([...personalized, ...legacySlice, ...theme.prompts]),
+      ).slice(0, theme.prompts.length),
     };
   });
 }
