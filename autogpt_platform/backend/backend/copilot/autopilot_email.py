@@ -303,6 +303,10 @@ async def _process_pending_copilot_email_candidates(
                 "Failed to send nightly copilot email for session %s",
                 session.session_id,
             )
+            # Without a persisted retry state, leave the session in a terminal
+            # skipped state so the sweep does not pick it up forever.
+            session.notification_email_skipped_at = datetime.now(UTC)
+            await upsert_chat_session(session)
             result.failed_count += 1
             continue
 
@@ -310,7 +314,9 @@ async def _process_pending_copilot_email_candidates(
         await upsert_chat_session(session)
         result.sent_count += 1
 
-    result.processed_count = result.sent_count + result.skipped_count
+    result.processed_count = (
+        result.sent_count + result.skipped_count + result.failed_count
+    )
     return result
 
 

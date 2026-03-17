@@ -1056,14 +1056,15 @@ async def test_send_pending_copilot_emails_for_user_counts_expected_send_failure
 
     assert result.model_dump() == {
         "candidate_count": 1,
-        "processed_count": 0,
+        "processed_count": 1,
         "sent_count": 0,
         "skipped_count": 0,
         "repair_queued_count": 0,
         "running_count": 0,
         "failed_count": 1,
     }
-    upsert.assert_not_awaited()
+    assert session.notification_email_skipped_at is not None
+    upsert.assert_awaited_once_with(session)
 
 
 @pytest.mark.asyncio
