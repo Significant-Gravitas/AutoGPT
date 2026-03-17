@@ -156,6 +156,29 @@ export function openOAuthPopup(
       );
     }
 
+    // Detect popup closed by user (without completing sign-in)
+    if (popup) {
+      const closedPollInterval = setInterval(() => {
+        if (popup.closed && !handled) {
+          clearInterval(closedPollInterval);
+          handled = true;
+          reject(new Error("Sign-in window was closed"));
+          controller.abort("popup_closed");
+        }
+      }, 500);
+      controller.signal.addEventListener("abort", () =>
+        clearInterval(closedPollInterval),
+      );
+    }
+
+    // Reject on abort (e.g. from cancel button in the waiting modal)
+    controller.signal.addEventListener("abort", () => {
+      if (!handled) {
+        handled = true;
+        reject(new Error("OAuth flow was canceled"));
+      }
+    });
+
     // Timeout
     const timeoutId = setTimeout(() => {
       if (!handled) {
