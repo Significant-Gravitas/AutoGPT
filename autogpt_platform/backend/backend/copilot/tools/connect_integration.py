@@ -6,7 +6,6 @@ setup card in the chat — the same UI that appears when a GitHub block runs
 without configured credentials.
 """
 
-import functools
 from typing import Any, TypedDict
 
 from backend.copilot.model import ChatSession
@@ -30,23 +29,33 @@ class _ProviderInfo(TypedDict):
 
 
 class _CredentialEntry(TypedDict):
-    """Shape of each entry inside SetupRequirementsResponse.user_readiness.missing_credentials."""
+    """Shape of each entry inside SetupRequirementsResponse.user_readiness.missing_credentials.
+
+    Partially overlaps with :class:`~backend.data.model.CredentialsMetaInput`
+    (``id``, ``title``, ``provider``, ``type``) but carries extra UI-facing
+    fields (``provider_name``, ``types``, ``scopes``) that the frontend
+    ``SetupRequirementsCard`` needs to render the inline credential setup card.
+    """
 
     id: str
     title: str
+    # Slug used as the credential key (e.g. "github").
     provider: str
+    # Human-readable display name (e.g. "GitHub") — distinct from ``provider``.
     provider_name: str
+    # Primary credential type for this entry (e.g. "oauth2").
     type: str
+    # All supported credential types the user can choose from (e.g. ["api_key", "oauth2"]).
     types: list[str]
     scopes: list[str]
 
 
-@functools.lru_cache(maxsize=1)
 def _is_github_oauth_configured() -> bool:
     """Return True if GitHub OAuth env vars are set.
 
-    Evaluated lazily (not at import time) to avoid triggering Secrets() during
-    module import, which can fail in environments where secrets are not loaded.
+    Uses a lazy import to avoid triggering ``Secrets()`` during module import,
+    which can fail in environments where secrets are not yet loaded (e.g. tests,
+    CLI tooling).  The imported constant itself never changes at runtime.
     """
     from backend.blocks.github._auth import GITHUB_OAUTH_IS_CONFIGURED
 
