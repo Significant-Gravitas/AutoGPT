@@ -428,7 +428,15 @@ class TestScenarioTranscriptCausedError:
 
 
 class TestRetryStateMachine:
-    """Simulate the full retry state machine with different failure patterns."""
+    """Simulate the full retry state machine with different failure patterns.
+
+    .. deprecated::
+        Prefer ``TestStreamChatCompletionRetryIntegration`` which exercises the
+        real ``stream_chat_completion_sdk`` generator end-to-end.  This class
+        manually reimplements the retry logic, so it can drift from production
+        code without detection.  Kept temporarily for coverage of edge-case
+        state transitions not yet ported to integration tests.
+    """
 
     def _simulate_retry_loop(
         self,
@@ -1183,4 +1191,159 @@ class TestStreamChatCompletionRetryIntegration:
             "too long" in err.errorText.lower() or "new chat" in err.errorText.lower()
         )
         assert "context_length_exceeded" not in err.errorText
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    def _make_client_mock_mid_stream_error(
+        self, error: Exception, pre_error_messages=None
+    ):
+        """Build a client mock that yields messages then raises during streaming.
+
+        Unlike ``_make_client_mock(raises_on_enter=True)`` which errors on
+        ``client.query()``, this mock yields SDK messages from
+        ``receive_response`` before raising — simulating a mid-stream failure
+        where events have already been sent to the frontend.
+        """
+
+        async def _receive():
+            if pre_error_messages:
+                for msg in pre_error_messages:
+                    yield msg
+            raise error
+
+        client = MagicMock()
+        client.receive_response = _receive
+        client.query = AsyncMock()
+        client._transport = MagicMock()
+        client._transport.write = AsyncMock()
+
+        cm = AsyncMock()
+        cm.__aenter__.return_value = client
+        cm.__aexit__.return_value = None
+        return cm
+
+    @pytest.mark.asyncio
+    async def test_events_yielded_prevents_retry(self):
+        """When events were yielded before a prompt-too-long error, no retry.
+
+        Mid-stream failures after events have been sent cannot be retried
+        because the frontend has already rendered partial output.  The
+        generator must break immediately with ``sdk_stream_error``.
+        """
+        import contextlib
+
+        from claude_agent_sdk import AssistantMessage, TextBlock
+
+        from backend.copilot.response_model import StreamError
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+
+        # Yield one AssistantMessage with text (produces StreamTextDelta
+        # events) then raise prompt-too-long.
+        text_msg = AssistantMessage(
+            content=[TextBlock(text="partial")],
+            model="claude-sonnet-4-20250514",
+        )
+        prompt_err = Exception("prompt is too long (context_length_exceeded)")
+        attempt_count = [0]
+
+        def _client_factory(*a, **kw):
+            attempt_count[0] += 1
+            return self._make_client_mock_mid_stream_error(
+                error=prompt_err,
+                pre_error_messages=[text_msg],
+            )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript="compacted",
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        # Should NOT retry — only 1 attempt because events were yielded
+        assert attempt_count[0] == 1, (
+            f"Expected 1 attempt (no retry after events yielded), "
+            f"got {attempt_count[0]}"
+        )
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert errors, "Expected StreamError"
+        assert errors[0].code == "sdk_stream_error"
+
+    @pytest.mark.asyncio
+    async def test_non_context_error_breaks_immediately(self):
+        """Non-context errors (network, auth) break the retry loop immediately.
+
+        The generator must yield ``StreamError(code="sdk_stream_error")``
+        without attempting compaction or DB fallback.
+        """
+        import contextlib
+
+        from backend.copilot.response_model import StreamError, StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+
+        # A non-context error (network failure) — no prompt-too-long patterns
+        network_err = Exception("Connection reset by peer")
+        attempt_count = [0]
+
+        def _client_factory(*a, **kw):
+            attempt_count[0] += 1
+            return self._make_client_mock(raises_on_enter=True)
+
+        # Override the error to be a non-context error
+        def _patched_factory(*a, **kw):
+            attempt_count[0] += 1
+            cm = self._make_client_mock(raises_on_enter=False)
+            cm.__aenter__.return_value.query.side_effect = network_err
+            return cm
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript="compacted",
+            client_side_effect=_patched_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        # Should NOT retry — only 1 attempt for non-context errors
+        assert attempt_count[0] == 1, (
+            f"Expected 1 attempt (no retry for non-context error), "
+            f"got {attempt_count[0]}"
+        )
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert errors, "Expected StreamError"
+        assert errors[0].code == "sdk_stream_error"
         assert any(isinstance(e, StreamStart) for e in events)

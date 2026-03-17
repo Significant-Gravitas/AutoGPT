@@ -15,7 +15,6 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import Any, NamedTuple, cast
 
-import openai
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -34,7 +33,6 @@ from backend.copilot.context import get_workspace_manager
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import compress_context
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
@@ -85,6 +83,7 @@ from .tool_adapter import (
     wait_for_stash,
 )
 from .transcript import (
+    _run_compression,
     cleanup_cli_project_dir,
     compact_transcript,
     download_transcript,
@@ -170,16 +169,19 @@ class _RetryState:
 
 @dataclass
 class _StreamContext:
-    """Read-only outer-scope variables shared across all retry attempts.
+    """Per-request variables shared across all retry attempts.
 
     Extracted so that ``_run_stream_attempt`` can be a module-level function
     rather than a closure, making it independently testable and reducing the
     cognitive load of the 970-line ``stream_chat_completion_sdk`` function.
 
-    All fields are set once before the retry loop and never reassigned.
-    Mutable objects (``session``, ``compaction``, ``lock``) are included
-    because their *references* are constant even though the objects' internal
-    state changes.
+    Scalar fields (IDs, paths, the message string) are set once before the
+    retry loop and never reassigned.  ``session``, ``compaction``, and
+    ``lock`` are **shared mutable references** whose internal state is
+    modified by both the retry loop and ``_run_stream_attempt`` (e.g.
+    ``session.messages`` is rolled back on retry, ``compaction`` tracks
+    mid-stream compaction events).  Their *references* are constant even
+    though the objects they point to are mutated.
     """
 
     session: ChatSession
@@ -580,25 +582,15 @@ async def _compress_messages(
 ) -> tuple[list[ChatMessage], bool]:
     """Compress a list of messages if they exceed the token threshold.
 
-    Uses the shared ``compress_context()`` from ``prompt.py`` which supports:
-    - LLM summarization of old messages (keeps recent ones intact)
-    - Progressive content truncation as fallback
-    - Middle-out deletion as last resort
+    Delegates to ``_run_compression`` (``transcript.py``) which centralizes
+    the "try LLM, fallback to truncation" pattern with timeouts.  Both
+    ``_compress_messages`` and ``compact_transcript`` share this helper so
+    client acquisition and error handling are consistent.
 
-    This is one of three compaction touch-points that share
-    ``compress_context`` but operate on different input formats:
-
-    1. **``_compress_messages``** (here) — compresses ``ChatMessage`` lists
-       used for the pre-query DB history (``_build_query_message``).
-    2. **``compact_transcript``** (``transcript.py``) — compresses the JSONL
-       ``--resume`` transcript; converts entries to messages, compresses,
-       and rebuilds JSONL.
-    3. **``CompactionTracker``** (``compaction.py``) — emits UI events for
-       mid-stream compaction; does *not* call ``compress_context`` itself
-       but tracks whether compaction happened.
-
-    All three converge on ``compress_context`` with ``list[dict]`` messages
-    but acquire the OpenAI client independently (``get_openai_client()``).
+    See also:
+        ``_run_compression`` — shared compression with timeout guards.
+        ``compact_transcript`` — compresses JSONL transcript entries.
+        ``CompactionTracker`` — emits UI events for mid-stream compaction.
     """
     messages = filter_compaction_messages(messages)
 
@@ -617,23 +609,7 @@ async def _compress_messages(
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
-    try:
-        async with openai.AsyncOpenAI(
-            api_key=config.api_key, base_url=config.base_url, timeout=30.0
-        ) as client:
-            result = await compress_context(
-                messages=messages_dict,
-                model=config.model,
-                client=client,
-            )
-    except Exception as e:
-        logger.warning("[SDK] Context compression with LLM failed: %s", e)
-        # Fall back to truncation-only (no LLM summarization)
-        result = await compress_context(
-            messages=messages_dict,
-            model=config.model,
-            client=None,
-        )
+    result = await _run_compression(messages_dict, config.model, "[SDK]")
 
     if result.was_compacted:
         logger.info(
@@ -1371,7 +1347,7 @@ async def stream_chat_completion_sdk(
     # Set to True when load_previous succeeds; stays False when download fails
     # on a session with prior messages, preventing a partial upload that would
     # mislead _build_query_message into skipping gap reconstruction next turn.
-    _transcript_covers_prefix = True
+    transcript_covers_prefix = True
 
     # Acquire stream lock to prevent concurrent streams to the same session
     lock = AsyncClusterLock(
@@ -1517,14 +1493,14 @@ async def stream_chat_completion_sdk(
                     )
             else:
                 logger.warning("%s Transcript downloaded but invalid", log_prefix)
-                _transcript_covers_prefix = False
+                transcript_covers_prefix = False
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
                 "%s No transcript available (%d messages in session)",
                 log_prefix,
                 len(session.messages),
             )
-            _transcript_covers_prefix = False
+            transcript_covers_prefix = False
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
@@ -1706,6 +1682,13 @@ async def stream_chat_completion_sdk(
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
+                # Reset token accumulators so a failed attempt's partial
+                # usage is not double-counted in the successful attempt.
+                state.turn_prompt_tokens = 0
+                state.turn_completion_tokens = 0
+                state.turn_cache_read_tokens = 0
+                state.turn_cache_creation_tokens = 0
+                state.turn_cost_usd = None
 
             pre_attempt_msg_count = len(session.messages)
             events_yielded = 0
@@ -1992,7 +1975,7 @@ async def stream_chat_completion_sdk(
                         log_prefix,
                         entry_count,
                     )
-                elif not _transcript_covers_prefix:
+                elif not transcript_covers_prefix:
                     logger.warning(
                         "%s Skipping transcript upload — builder does not "
                         "cover full session prefix (entries=%d, session=%d)",

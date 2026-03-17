@@ -1,5 +1,6 @@
 """Unit tests for JSONL transcript management utilities."""
 
+import asyncio
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1026,5 +1027,51 @@ class TestRunCompression:
             )
 
         # compress_context called twice: once for LLM (raises), once for truncation
+        assert call_count[0] == 2
+        assert result is truncation_result
+
+    @pytest.mark.asyncio
+    async def test_llm_timeout_falls_back_to_truncation(self):
+        """Path (d): LLM call exceeds timeout → truncation fallback used."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated after timeout"}]
+        )
+        call_count = [0]
+
+        async def _compress_side_effect(*, messages, model, client):
+            call_count[0] += 1
+            if client is not None:
+                # Simulate a hang that exceeds the timeout
+                await asyncio.sleep(9999)
+            return truncation_result
+
+        fake_client = MagicMock()
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                side_effect=_compress_side_effect,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._COMPACTION_TIMEOUT_SECONDS",
+                0.05,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._TRUNCATION_TIMEOUT_SECONDS",
+                5,
+            ),
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called twice: once for LLM (times out), once truncation
         assert call_count[0] == 2
         assert result is truncation_result
