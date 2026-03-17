@@ -231,18 +231,17 @@ def _build_sdk_env(
         }
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    if not config.use_openrouter:
+    # Also the fallback when OpenRouter is enabled but credentials are missing
+    # or the base URL is invalid.
+    if not config.use_openrouter or not (config.api_key and config.base_url):
         return {}
 
     # --- Mode 3: OpenRouter proxy ---
-    if not (config.api_key and config.base_url):
-        return {}
-
     base = config.base_url.rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
     if not base or not base.startswith("http"):
-        return {}
+        return {}  # malformed base_url — fall back to direct
 
     env: dict[str, str] = {
         "ANTHROPIC_BASE_URL": base,
