@@ -4,6 +4,14 @@ Returns mock streaming responses without calling Claude Agent SDK.
 Enable via COPILOT_TEST_MODE=true environment variable.
 
 WARNING: This is for testing only. Do not use in production.
+
+Magic keywords (case-insensitive, anywhere in message):
+    __test_transient_error__   — Simulate a transient Anthropic API error
+                                 (ECONNRESET).  Streams partial text, then
+                                 yields StreamError with retryable prefix.
+    __test_fatal_error__       — Simulate a non-retryable SDK error.
+    __test_slow_response__     — Simulate a slow response (2s per word).
+    (no keyword)               — Normal dummy response.
 """
 
 import asyncio
@@ -12,10 +20,20 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from ..constants import FRIENDLY_TRANSIENT_MSG
 from ..model import ChatSession
-from ..response_model import StreamBaseResponse, StreamStart, StreamTextDelta
+from ..response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamStart,
+    StreamTextDelta,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _has_keyword(message: str | None, keyword: str) -> bool:
+    return keyword in (message or "").lower()
 
 
 async def stream_chat_completion_dummy(
@@ -36,6 +54,8 @@ async def stream_chat_completion_dummy(
     - No timeout occurs
     - Text arrives in chunks
     - StreamFinish is sent by mark_session_completed
+
+    See module docstring for magic keywords that trigger error scenarios.
     """
     logger.warning(
         f"[TEST MODE] Using dummy copilot streaming for session {session_id}"
@@ -47,7 +67,31 @@ async def stream_chat_completion_dummy(
     # Start the stream
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
-    # Simulate streaming text response with delays
+    # --- Magic keyword: transient error (retryable) -------------------------
+    if _has_keyword(message, "__test_transient_error__"):
+        # Stream some partial text first (simulates mid-stream failure)
+        for word in ["Working", "on", "it..."]:
+            yield StreamTextDelta(id=text_block_id, delta=f"{word} ")
+            await asyncio.sleep(0.1)
+        # Then emit a retryable error — frontend should show "Try Again"
+        yield StreamError(
+            errorText=FRIENDLY_TRANSIENT_MSG,
+            code="transient_api_error",
+        )
+        return
+
+    # --- Magic keyword: fatal error (non-retryable) -------------------------
+    if _has_keyword(message, "__test_fatal_error__"):
+        yield StreamError(
+            errorText="Internal SDK error: model refused to respond",
+            code="sdk_error",
+        )
+        return
+
+    # --- Magic keyword: slow response ---------------------------------------
+    delay = 2.0 if _has_keyword(message, "__test_slow_response__") else 0.1
+
+    # --- Normal dummy response ----------------------------------------------
     dummy_response = "I counted: 1... 2... 3. All done!"
     words = dummy_response.split()
 
@@ -55,5 +99,4 @@ async def stream_chat_completion_dummy(
         # Add space except for last word
         text = word if i == len(words) - 1 else f"{word} "
         yield StreamTextDelta(id=text_block_id, delta=text)
-        # Small delay to simulate real streaming
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(delay)
