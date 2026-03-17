@@ -94,10 +94,11 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
-    use_openrouter: bool = Field(
+    openrouter_enabled: bool = Field(
         default=True,
-        description="Route API calls through OpenRouter proxy. When False, the SDK "
-        "uses ANTHROPIC_API_KEY from the environment directly (no proxy hop).",
+        description="Enable routing API calls through the OpenRouter proxy. "
+        "The actual decision also requires ``api_key`` and ``base_url`` — "
+        "use the ``openrouter_active`` property for the final answer.",
     )
     use_claude_code_subscription: bool = Field(
         default=False,
@@ -129,6 +130,21 @@ class ChatConfig(BaseSettings):
         default="pause",
         description="E2B lifecycle action on timeout: 'pause' (default, free) or 'kill'.",
     )
+
+    @property
+    def openrouter_active(self) -> bool:
+        """True when OpenRouter is enabled AND credentials are usable.
+
+        Single source of truth for "will the SDK route through OpenRouter?".
+        Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
+        present — mirrors the fallback logic in ``_build_sdk_env``.
+        """
+        if not self.openrouter_enabled:
+            return False
+        base = (self.base_url or "").rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        return bool(self.api_key and base and base.startswith("http"))
 
     @property
     def e2b_active(self) -> bool:
@@ -214,10 +230,10 @@ class ChatConfig(BaseSettings):
         # Default to True (SDK enabled by default)
         return True if v is None else v
 
-    @field_validator("use_openrouter", mode="before")
+    @field_validator("openrouter_enabled", mode="before")
     @classmethod
-    def get_use_openrouter(cls, v):
-        """Get use_openrouter from environment if not provided."""
+    def get_openrouter_enabled(cls, v):
+        """Get openrouter_enabled from environment if not provided."""
         env_val = os.getenv("CHAT_USE_OPENROUTER", "").lower()
         if env_val:
             return env_val in ("true", "1", "yes", "on")

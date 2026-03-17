@@ -188,7 +188,8 @@ def _resolve_sdk_model() -> str | None:
 
     OpenRouter uses dot-separated versions (``claude-opus-4.6``) while the
     direct Anthropic API uses hyphen-separated versions (``claude-opus-4-6``).
-    This function normalises the model ID so it works with both backends.
+    Normalisation is only applied when the SDK will actually talk to
+    Anthropic directly (not through OpenRouter).
 
     When ``use_claude_code_subscription`` is enabled and no explicit
     ``claude_agent_model`` is set, returns ``None`` so the CLI uses the
@@ -203,8 +204,8 @@ def _resolve_sdk_model() -> str | None:
         model = model.split("/", 1)[1]
     # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
     # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
-    # when NOT using OpenRouter to avoid breaking OpenRouter's model lookup.
-    if not config.use_openrouter:
+    # when NOT routing through OpenRouter.
+    if not config.openrouter_active:
         model = model.replace(".", "-")
     return model
 
@@ -263,24 +264,18 @@ def _build_sdk_env(
         }
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    # Also the fallback when OpenRouter is enabled but credentials are missing.
+    # ``openrouter_active`` checks the flag *and* credential presence.
+    if not config.openrouter_active:
+        return {}
+
+    # --- Mode 3: OpenRouter proxy ---
     # Strip /v1 suffix — SDK expects the base URL without a version path.
     base = (config.base_url or "").rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
-    if not config.use_openrouter:
-        return {}
-    if not config.api_key or not base or not base.startswith("http"):
-        logger.warning(
-            "[SDK] OpenRouter enabled but api_key/base_url missing; "
-            "falling back to direct Anthropic mode"
-        )
-        return {}
-
-    # --- Mode 3: OpenRouter proxy ---
     env: dict[str, str] = {
         "ANTHROPIC_BASE_URL": base,
-        "ANTHROPIC_AUTH_TOKEN": config.api_key,
+        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
         "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
     }
 
