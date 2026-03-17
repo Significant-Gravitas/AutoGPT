@@ -148,7 +148,7 @@ class FindBlockTool(BaseTool):
                         )
 
                     summary = BlockInfoSummary(
-                        id=query,
+                        id=block.id,
                         name=block.name,
                         description=(
                             block.optimized_description or block.description or ""
