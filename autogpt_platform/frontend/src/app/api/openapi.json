@@ -7531,12 +7531,14 @@
           "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Inputs"
+            "title": "Inputs",
+            "default": {}
           },
           "credentials": {
             "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
             "type": "array",
-            "title": "Credentials"
+            "title": "Credentials",
+            "default": []
           },
           "execution_options": {
             "$ref": "#/components/schemas/ExecutionOptions"
@@ -8113,17 +8115,20 @@
           "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Inputs"
+            "title": "Inputs",
+            "default": {}
           },
           "outputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Outputs"
+            "title": "Outputs",
+            "default": {}
           },
           "credentials": {
             "items": { "$ref": "#/components/schemas/CredentialsMetaInput" },
             "type": "array",
-            "title": "Credentials"
+            "title": "Credentials",
+            "default": []
           }
         },
         "type": "object",
@@ -11155,7 +11160,8 @@
           "suggestions": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Suggestions"
+            "title": "Suggestions",
+            "default": []
           },
           "name": { "type": "string", "title": "Name", "default": "no_results" }
         },
@@ -15149,7 +15155,8 @@
           "missing_credentials": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Missing Credentials"
+            "title": "Missing Credentials",
+            "default": {}
           },
           "ready_to_run": {
             "type": "boolean",
