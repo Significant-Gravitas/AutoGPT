@@ -617,7 +617,14 @@ async def _compress_messages(
             msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
-    result = await _run_compression(messages_dict, config.model, "[SDK]")
+    try:
+        result = await _run_compression(messages_dict, config.model, "[SDK]")
+    except Exception as exc:
+        # Guard against timeouts or unexpected errors in compression —
+        # return the original messages so the caller can proceed without
+        # compaction rather than propagating the error to the retry loop.
+        logger.warning("[SDK] _compress_messages failed, returning originals: %s", exc)
+        return messages, False
 
     if result.was_compacted:
         logger.info(
