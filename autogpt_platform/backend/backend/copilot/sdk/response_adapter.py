@@ -226,7 +226,7 @@ class SDKResponseAdapter:
                 responses.append(StreamFinish())
 
         else:
-            logger.debug("Unhandled SDK message type: %s", type(sdk_message).__name__)
+            logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
 
         return responses
 

@@ -86,7 +86,7 @@ class ValidateAgentGraphTool(BaseTool):
             validator = AgentValidator()
             is_valid, error_message = validator.validate(agent_json, blocks)
         except Exception as e:
-            logger.error("Validation error: %s", e, exc_info=True)
+            logger.error(f"Validation error: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Validation encountered an error: {str(e)}",
                 error="validation_exception",

@@ -52,7 +52,7 @@ def _validate_workspace_path(
     if is_allowed_local_path(path, sdk_cwd):
         return {}
 
-    logger.warning("Blocked %s outside workspace: %s", tool_name, path)
+    logger.warning(f"Blocked {tool_name} outside workspace: {path}")
     workspace_hint = f" Allowed workspace: {sdk_cwd}" if sdk_cwd else ""
     return _deny(
         f"[SECURITY] Tool '{tool_name}' can only access files within the workspace "
@@ -71,7 +71,7 @@ def _validate_tool_access(
     """
     # Block forbidden tools
     if tool_name in BLOCKED_TOOLS:
-        logger.warning("Blocked tool access attempt: %s", tool_name)
+        logger.warning(f"Blocked tool access attempt: {tool_name}")
         return _deny(
             f"[SECURITY] Tool '{tool_name}' is blocked for security. "
             "This is enforced by the platform and cannot be bypassed. "
@@ -89,7 +89,7 @@ def _validate_tool_access(
     for pattern in DANGEROUS_PATTERNS:
         if re.search(pattern, input_str, re.IGNORECASE):
             logger.warning(
-                "Blocked dangerous pattern in tool input: %s in %s", pattern, tool_name
+                f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
             )
             return _deny(
                 "[SECURITY] Input contains a blocked pattern. "
@@ -111,9 +111,7 @@ def _validate_user_isolation(
         # the tool itself via _validate_ephemeral_path.
         path = tool_input.get("path", "") or tool_input.get("file_path", "")
         if path and ".." in path:
-            logger.warning(
-                "Blocked path traversal attempt: %s by user %s", path, user_id
-            )
+            logger.warning(f"Blocked path traversal attempt: {path} by user {user_id}")
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
@@ -172,7 +170,7 @@ def create_security_hooks(
                 # Block background task execution first — denied calls
                 # should not consume a subtask slot.
                 if tool_input.get("run_in_background"):
-                    logger.info("[SDK] Blocked background Task, user=%s", user_id)
+                    logger.info(f"[SDK] Blocked background Task, user={user_id}")
                     return cast(
                         SyncHookJSONOutput,
                         _deny(
@@ -183,7 +181,7 @@ def create_security_hooks(
                     )
                 if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
-                        "[SDK] Task limit reached (%s), user=%s", max_subtasks, user_id
+                        f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
                     )
                     return cast(
                         SyncHookJSONOutput,
@@ -214,7 +212,7 @@ def create_security_hooks(
             if tool_name == "Task" and tool_use_id is not None:
                 task_tool_use_ids.add(tool_use_id)
 
-            logger.debug("[SDK] Tool start: %s, user=%s", tool_name, user_id)
+            logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
 
         def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:

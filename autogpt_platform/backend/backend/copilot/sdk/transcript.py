@@ -327,7 +327,7 @@ def write_transcript_to_tempfile(
     # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
     real_cwd = os.path.realpath(cwd)
     if not real_cwd.startswith(_SAFE_CWD_PREFIX):
-        logger.warning("[Transcript] cwd outside sandbox: %s", cwd)
+        logger.warning(f"[Transcript] cwd outside sandbox: {cwd}")
         return None
 
     try:
@@ -337,17 +337,17 @@ def write_transcript_to_tempfile(
             os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
         )
         if not jsonl_path.startswith(real_cwd):
-            logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
+            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
             return None
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
 
-        logger.info("[Transcript] Wrote resume file: %s", jsonl_path)
+        logger.info(f"[Transcript] Wrote resume file: {jsonl_path}")
         return jsonl_path
 
     except OSError as e:
-        logger.warning("[Transcript] Failed to write resume file: %s", e)
+        logger.warning(f"[Transcript] Failed to write resume file: {e}")
         return None
 
 
@@ -494,14 +494,11 @@ async def upload_transcript(
             content=json.dumps(meta).encode("utf-8"),
         )
     except Exception as e:
-        logger.warning("%s Failed to write metadata: %s", log_prefix, e)
+        logger.warning(f"{log_prefix} Failed to write metadata: {e}")
 
     logger.info(
-        "%s Uploaded %sB (stripped from %sB, msg_count=%s)",
-        log_prefix,
-        len(encoded),
-        len(content),
-        message_count,
+        f"{log_prefix} Uploaded {len(encoded)}B "
+        f"(stripped from {len(content)}B, msg_count={message_count})"
     )
 
 
@@ -524,10 +521,10 @@ async def download_transcript(
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
     except FileNotFoundError:
-        logger.debug("%s No transcript in storage", log_prefix)
+        logger.debug(f"{log_prefix} No transcript in storage")
         return None
     except Exception as e:
-        logger.warning("%s Failed to download transcript: %s", log_prefix, e)
+        logger.warning(f"{log_prefix} Failed to download transcript: {e}")
         return None
 
     # Try to load metadata (best-effort — old transcripts won't have it)
@@ -542,9 +539,7 @@ async def download_transcript(
     except (FileNotFoundError, Exception):
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
 
-    logger.info(
-        "%s Downloaded %sB (msg_count=%s)", log_prefix, len(content), message_count
-    )
+    logger.info(f"{log_prefix} Downloaded {len(content)}B (msg_count={message_count})")
     return TranscriptDownload(
         content=content,
         message_count=message_count,

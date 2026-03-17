@@ -88,7 +88,7 @@ class FixAgentGraphTool(BaseTool):
             fixed_agent = fixer.apply_all_fixes(agent_json, blocks)
             fixes_applied = fixer.get_fixes_applied()
         except Exception as e:
-            logger.error("Fixer error: %s", e, exc_info=True)
+            logger.error(f"Fixer error: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Auto-fix encountered an error: {str(e)}",
                 error="fix_exception",
@@ -101,7 +101,7 @@ class FixAgentGraphTool(BaseTool):
             is_valid, _ = validator.validate(fixed_agent, blocks)
             remaining_errors = validator.errors if not is_valid else []
         except Exception as e:
-            logger.warning("Post-fix validation error: %s", e, exc_info=True)
+            logger.warning(f"Post-fix validation error: {e}", exc_info=True)
             remaining_errors = [f"Post-fix validation failed: {str(e)}"]
             is_valid = False
 

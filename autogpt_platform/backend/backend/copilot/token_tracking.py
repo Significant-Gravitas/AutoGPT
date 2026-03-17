@@ -93,6 +93,6 @@ async def persist_and_record_usage(
                 cache_creation_tokens=cache_creation_tokens,
             )
         except Exception as usage_err:
-            logger.warning("%s Failed to record token usage: %s", log_prefix, usage_err)
+            logger.warning(f"{log_prefix} Failed to record token usage: {usage_err}")
 
     return total_tokens

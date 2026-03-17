@@ -118,7 +118,7 @@ class CoPilotProcessor:
         # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
         self._prewarm_cli()
 
-        logger.info("[CoPilotExecutor] Worker %s started", self.tid)
+        logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
 
     def _prewarm_cli(self) -> None:
         """Run the bundled CLI binary once to warm OS page caches."""
@@ -135,7 +135,7 @@ class CoPilotProcessor:
                     timeout=10,
                 )
                 if result.returncode == 0:
-                    logger.info("[CoPilotExecutor] CLI pre-warm done: %s", cli_path)
+                    logger.info(f"[CoPilotExecutor] CLI pre-warm done: {cli_path}")
                 else:
                     logger.warning(
                         "[CoPilotExecutor] CLI pre-warm failed (rc=%d): %s",
@@ -143,7 +143,7 @@ class CoPilotProcessor:
                         cli_path,
                     )
         except Exception as e:
-            logger.debug("[CoPilotExecutor] CLI pre-warm skipped: %s", e)
+            logger.debug(f"[CoPilotExecutor] CLI pre-warm skipped: {e}")
 
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
@@ -162,13 +162,13 @@ class CoPilotProcessor:
             coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
             logger.warning(
-                "[CoPilotExecutor] Worker %s cleanup error: %s", self.tid, error_msg
+                f"[CoPilotExecutor] Worker {self.tid} cleanup error: {error_msg}"
             )
 
         # Stop the event loop
         self.execution_loop.call_soon_threadsafe(self.execution_loop.stop)
         self.execution_thread.join(timeout=5)
-        logger.info("[CoPilotExecutor] Worker %s cleaned up", self.tid)
+        logger.info(f"[CoPilotExecutor] Worker {self.tid} cleaned up")
 
     @error_logged(swallow=False)
     def execute(

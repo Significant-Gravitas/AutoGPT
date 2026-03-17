@@ -120,7 +120,7 @@ class WebFetchTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as e:
-            logger.warning("[web_fetch] Request failed for %s: %s", url, e)
+            logger.warning(f"[web_fetch] Request failed for {url}: {e}")
             return ErrorResponse(
                 message=f"Failed to fetch URL: {e}",
                 error="fetch_failed",

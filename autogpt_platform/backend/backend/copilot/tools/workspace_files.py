@@ -415,7 +415,7 @@ class ListWorkspaceFilesTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as e:
-            logger.error("Error listing workspace files: %s", e, exc_info=True)
+            logger.error(f"Error listing workspace files: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Failed to list workspace files: {e}",
                 error=str(e),
@@ -635,7 +635,7 @@ class ReadWorkspaceFileTool(BaseTool):
         except FileNotFoundError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
         except Exception as e:
-            logger.error("Error reading workspace file: %s", e, exc_info=True)
+            logger.error(f"Error reading workspace file: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Failed to read workspace file: {e}",
                 error=str(e),
@@ -825,7 +825,7 @@ class WriteWorkspaceFileTool(BaseTool):
         except ValueError as e:
             return ErrorResponse(message=str(e), session_id=session_id)
         except Exception as e:
-            logger.error("Error writing workspace file: %s", e, exc_info=True)
+            logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Failed to write workspace file: {e}",
                 error=str(e),
@@ -913,7 +913,7 @@ class DeleteWorkspaceFileTool(BaseTool):
                 session_id=session_id,
             )
         except Exception as e:
-            logger.error("Error deleting workspace file: %s", e, exc_info=True)
+            logger.error(f"Error deleting workspace file: {e}", exc_info=True)
             return ErrorResponse(
                 message=f"Failed to delete workspace file: {e}",
                 error=str(e),
