@@ -1,7 +1,11 @@
+import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import {
+  CheckCircle,
   PlusIcon,
   SpeakerHigh,
   SpeakerSlash,
@@ -9,9 +13,12 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { Drawer } from "vaul";
-import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import {
+  getSessionStartTypeLabel,
+  isNonManualSessionStartType,
+} from "../../helpers";
 import { useCopilotUIStore } from "../../store";
-import { SessionListItem } from "../SessionListItem/SessionListItem";
+import { PulseLoader } from "../PulseLoader/PulseLoader";
 
 interface Props {
   isOpen: boolean;
@@ -22,6 +29,31 @@ interface Props {
   onNewChat: () => void;
   onClose: () => void;
   onOpenChange: (open: boolean) => void;
+}
+
+function formatDate(dateString: string) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} days ago`;
+
+  const day = date.getDate();
+  const ordinal =
+    day % 10 === 1 && day !== 11
+      ? "st"
+      : day % 10 === 2 && day !== 12
+        ? "nd"
+        : day % 10 === 3 && day !== 13
+          ? "rd"
+          : "th";
+  const month = date.toLocaleDateString("en-US", { month: "short" });
+  const year = date.getFullYear();
+
+  return `${day}${ordinal} ${month} ${year}`;
 }
 
 export function MobileDrawer({
@@ -106,21 +138,69 @@ export function MobileDrawer({
                 No conversations yet
               </p>
             ) : (
-              sessions.map((session) => (
-                <SessionListItem
+              sessions.map((session) => {
+                const startTypeLabel = isNonManualSessionStartType(
+                  session.start_type,
+                )
+                  ? getSessionStartTypeLabel(session.start_type)
+                  : null;
+
+                return (
+                <button
                   key={session.id}
-                  session={session}
-                  currentSessionId={currentSessionId}
-                  isCompleted={completedSessionIDs.has(session.id)}
-                  variant="drawer"
-                  onSelect={(selectedSessionId) => {
-                    onSelectSession(selectedSessionId);
-                    if (completedSessionIDs.has(selectedSessionId)) {
-                      clearCompletedSession(selectedSessionId);
+                  onClick={() => {
+                    onSelectSession(session.id);
+                    if (completedSessionIDs.has(session.id)) {
+                      clearCompletedSession(session.id);
                     }
                   }}
-                />
-              ))
+                  className={cn(
+                    "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+                    session.id === currentSessionId
+                      ? "bg-zinc-100"
+                      : "hover:bg-zinc-50",
+                  )}
+                >
+                  <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
+                    <div className="flex min-w-0 max-w-full items-center gap-1.5">
+                      <Text
+                        variant="body"
+                        className={cn(
+                          "truncate font-normal",
+                          session.id === currentSessionId
+                            ? "text-zinc-600"
+                            : "text-zinc-800",
+                        )}
+                      >
+                        {session.title || "Untitled chat"}
+                      </Text>
+                      {session.is_processing &&
+                        !completedSessionIDs.has(session.id) &&
+                        session.id !== currentSessionId && (
+                          <PulseLoader size={8} className="shrink-0" />
+                        )}
+                      {completedSessionIDs.has(session.id) &&
+                        session.id !== currentSessionId && (
+                          <CheckCircle
+                            className="h-4 w-4 shrink-0 text-green-500"
+                            weight="fill"
+                          />
+                        )}
+                    </div>
+                    {startTypeLabel ? (
+                      <div className="mt-1">
+                        <Badge variant="info" size="small">
+                          {startTypeLabel}
+                        </Badge>
+                      </div>
+                    ) : null}
+                    <Text variant="small" className="text-neutral-400">
+                      {formatDate(session.updated_at)}
+                    </Text>
+                  </div>
+                </button>
+                );
+              }))
             )}
           </div>
         </Drawer.Content>
