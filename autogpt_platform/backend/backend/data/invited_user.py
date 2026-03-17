@@ -21,8 +21,8 @@ from backend.data.model import User
 from backend.data.redis_client import get_redis_async
 from backend.data.tally import get_business_understanding_input_from_tally, mask_email
 from backend.data.understanding import (
+    BusinessUnderstandingInput,
     merge_business_understanding_data,
-    parse_business_understanding_input,
 )
 from backend.data.user import get_user_by_email, get_user_by_id
 from backend.executor.cluster_lock import AsyncClusterLock
@@ -63,16 +63,18 @@ class InvitedUserRecord(BaseModel):
 
     @classmethod
     def from_db(cls, invited_user: "prisma.models.InvitedUser") -> "InvitedUserRecord":
-        payload = parse_business_understanding_input(invited_user.tallyUnderstanding)
+        payload = (
+            invited_user.tallyUnderstanding
+            if isinstance(invited_user.tallyUnderstanding, dict)
+            else None
+        )
         return cls(
             id=invited_user.id,
             email=invited_user.email,
             status=invited_user.status,
             auth_user_id=invited_user.authUserId,
             name=invited_user.name,
-            tally_understanding=(
-                payload.model_dump(mode="json") if payload is not None else None
-            ),
+            tally_understanding=payload,
             tally_status=invited_user.tallyStatus,
             tally_computed_at=invited_user.tallyComputedAt,
             tally_error=invited_user.tallyError,
@@ -183,13 +185,19 @@ async def _apply_tally_understanding(
     invited_user: "prisma.models.InvitedUser",
     tx,
 ) -> None:
-    input_data = parse_business_understanding_input(invited_user.tallyUnderstanding)
-    if input_data is None:
-        if invited_user.tallyUnderstanding is not None:
-            logger.warning(
-                "Malformed tallyUnderstanding for invited user %s; skipping",
-                invited_user.id,
-            )
+    if not isinstance(invited_user.tallyUnderstanding, dict):
+        return
+
+    try:
+        input_data = BusinessUnderstandingInput.model_validate(
+            invited_user.tallyUnderstanding
+        )
+    except Exception:
+        logger.warning(
+            "Malformed tallyUnderstanding for invited user %s; skipping",
+            invited_user.id,
+            exc_info=True,
+        )
         return
 
     payload = merge_business_understanding_data({}, input_data)

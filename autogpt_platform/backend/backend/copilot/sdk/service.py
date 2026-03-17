@@ -12,7 +12,7 @@ import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any, Protocol, cast
+from typing import Any, cast
 
 import openai
 from claude_agent_sdk import (
@@ -96,8 +96,6 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
-class _ClaudeSDKTransport(Protocol):
-    async def write(self, data: str) -> None: ...
 def _append_error_marker(
     session: ChatSession | None,
     display_msg: str,
@@ -167,16 +165,6 @@ def _setup_langfuse_otel() -> None:
 
 
 _setup_langfuse_otel()
-
-
-async def _write_multimodal_query(
-    client: ClaudeSDKClient,
-    user_message: dict[str, Any],
-) -> None:
-    transport = cast(_ClaudeSDKTransport | None, getattr(client, "_transport", None))
-    if transport is None:
-        raise RuntimeError("Claude SDK transport is unavailable for multimodal input")
-    await transport.write(json.dumps(user_message) + "\n")
 
 
 # Set to hold background tasks to prevent garbage collection
@@ -338,7 +326,7 @@ def _cleanup_sdk_tool_results(cwd: str) -> None:
     """
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
+        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
         return
 
     # Clean the CLI's project directory (transcripts + tool-results).
@@ -432,7 +420,7 @@ async def _compress_messages(
                 client=client,
             )
     except Exception as e:
-        logger.warning("[SDK] Context compression with LLM failed: %s", e)
+        logger.warning(f"[SDK] Context compression with LLM failed: {e}")
         # Fall back to truncation-only (no LLM summarization)
         result = await compress_context(
             messages=messages_dict,
@@ -895,18 +883,15 @@ async def stream_chat_completion_sdk(
                     use_resume = True
                     transcript_msg_count = dl.message_count
                     logger.debug(
-                        "%s Using --resume (%sB, msg_count=%s)",
-                        log_prefix,
-                        len(dl.content),
-                        transcript_msg_count,
+                        f"{log_prefix} Using --resume ({len(dl.content)}B, "
+                        f"msg_count={transcript_msg_count})"
                     )
             else:
-                logger.warning("%s Transcript downloaded but invalid", log_prefix)
+                logger.warning(f"{log_prefix} Transcript downloaded but invalid")
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
             logger.warning(
-                "%s No transcript available (%s messages in session)",
-                log_prefix,
-                len(session.messages),
+                f"{log_prefix} No transcript available "
+                f"({len(session.messages)} messages in session)"
             )
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
@@ -1038,7 +1023,10 @@ async def stream_chat_completion_sdk(
                     "parent_tool_use_id": None,
                     "session_id": session_id,
                 }
-                await _write_multimodal_query(client, user_msg)
+                assert client._transport is not None  # noqa: SLF001
+                await client._transport.write(  # noqa: SLF001
+                    json.dumps(user_msg) + "\n"
+                )
                 # Capture user message in transcript (multimodal)
                 transcript_builder.append_user(content=content_blocks)
             else:
@@ -1669,6 +1657,6 @@ async def _update_title_async(
         )
         if title and user_id:
             await update_session_title(session_id, user_id, title, only_if_empty=True)
-            logger.debug("[SDK] Generated title for %s: %s", session_id, title)
+            logger.debug(f"[SDK] Generated title for {session_id}: {title}")
     except Exception as e:
-        logger.warning("[SDK] Failed to update session title: %s", e)
+        logger.warning(f"[SDK] Failed to update session title: {e}")

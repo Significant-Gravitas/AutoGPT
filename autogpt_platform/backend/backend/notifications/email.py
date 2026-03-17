@@ -1,4 +1,3 @@
-import functools
 import logging
 import pathlib
 from typing import Any
@@ -9,14 +8,12 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
-    AgentRunData,
     NotificationDataType_co,
     NotificationEventModel,
     NotificationTypeOverride,
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
-from backend.util.url import get_frontend_base_url
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -50,69 +47,6 @@ class EmailSender:
 
     MAX_EMAIL_CHARS = 5_000_000  # ~5MB buffer
 
-    def _get_unsubscribe_link(self, user_unsubscribe_link: str | None) -> str:
-        return user_unsubscribe_link or f"{get_frontend_base_url()}/profile/settings"
-
-    def _format_template_email(
-        self,
-        *,
-        subject_template: str,
-        content_template: str,
-        data: Any,
-        unsubscribe_link: str,
-    ) -> tuple[str, str]:
-        return self.formatter.format_email(
-            base_template=self._read_template("templates/base.html.jinja2"),
-            subject_template=subject_template,
-            content_template=content_template,
-            data=data,
-            unsubscribe_link=unsubscribe_link,
-        )
-
-    def _build_large_output_summary(
-        self,
-        data: (
-            NotificationEventModel[NotificationDataType_co]
-            | list[NotificationEventModel[NotificationDataType_co]]
-        ),
-        *,
-        email_size: int,
-        base_url: str,
-    ) -> str:
-        match data:
-            case list() if not data:
-                return (
-                    "⚠️ A notification generated a very large output "
-                    f"({email_size / 1_000_000:.2f} MB)."
-                )
-            case list():
-                event = data[0]
-            case _:
-                event = data
-
-        execution_url = (
-            f"{base_url}/executions/{event.id}" if event.id is not None else None
-        )
-
-        match event.data:
-            case AgentRunData() as run_data:
-                lines = [
-                    f"⚠️ Your agent '{run_data.agent_name}' generated a very large output ({email_size / 1_000_000:.2f} MB).",
-                    "",
-                    f"Execution time: {run_data.execution_time}",
-                    f"Credits used: {run_data.credits_used}",
-                ]
-                if execution_url is not None:
-                    lines.append(f"View full results: {execution_url}")
-                return "\n".join(lines)
-            case _:
-                lines = [
-                    f"⚠️ A notification generated a very large output ({email_size / 1_000_000:.2f} MB).",
-                ]
-                if execution_url is not None:
-                    lines.extend(["", f"View full results: {execution_url}"])
-                return "\n".join(lines)
-
     def send_template(
         self,
         *,
@@ -126,8 +60,7 @@ class EmailSender:
 
         Unlike ``send_templated`` (which resolves templates via
         ``NotificationType``), this method accepts a template filename
-        directly.  Both delegate to the shared ``_format_template_email``
-        + ``_send_email`` pipeline.
+        directly.
         """
         if ".." in template_name or "/" in template_name:
             raise ValueError("Invalid template name")
@@ -136,11 +69,24 @@ class EmailSender:
             logger.warning("Postmark client not initialized, email not sent")
             return
 
-        unsubscribe_link = self._get_unsubscribe_link(user_unsubscribe_link)
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
+        unsubscribe_link = (
+            user_unsubscribe_link or f"{base_url}/profile/settings"
+        )
 
-        _, full_message = self._format_template_email(
+        base_template_path = "templates/base.html.jinja2"
+        with open(pathlib.Path(__file__).parent / base_template_path, "r") as f:
+            base_template = f.read()
+        template_path = f"templates/{template_name}"
+        with open(pathlib.Path(__file__).parent / template_path, "r") as f:
+            content_template = f.read()
+
+        _, full_message = self.formatter.format_email(
+            base_template=base_template,
             subject_template="{{ subject }}",
-            content_template=self._read_template(f"templates/{template_name}"),
+            content_template=content_template,
             data={"subject": subject, **(data or {})},
             unsubscribe_link=unsubscribe_link,
         )
@@ -150,6 +96,20 @@ class EmailSender:
             subject=subject,
             body=full_message,
             user_unsubscribe_link=unsubscribe_link,
+        )
+
+    def send_html(
+        self,
+        user_email: str,
+        subject: str,
+        body: str,
+        user_unsubscribe_link: str | None = None,
+    ) -> None:
+        self._send_email(
+            user_email=user_email,
+            subject=subject,
+            body=body,
+            user_unsubscribe_link=user_unsubscribe_link,
         )
 
     def send_templated(
@@ -168,52 +128,57 @@ class EmailSender:
             return
 
         template = self._get_template(notification)
-        base_url = get_frontend_base_url()
-        unsubscribe_link = self._get_unsubscribe_link(user_unsub_link)
+
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
 
         # Normalize data
         template_data = {"notifications": data} if isinstance(data, list) else data
 
         try:
-            subject, full_message = self._format_template_email(
+            subject, full_message = self.formatter.format_email(
+                base_template=template.base_template,
                 subject_template=template.subject_template,
                 content_template=template.body_template,
                 data=template_data,
-                unsubscribe_link=unsubscribe_link,
+                unsubscribe_link=f"{base_url}/profile/settings",
             )
         except Exception as e:
-            logger.error("Error formatting full message: %s", e)
+            logger.error(f"Error formatting full message: {e}")
             raise e
 
         # Check email size & send summary if too large
         email_size = len(full_message)
         if email_size > self.MAX_EMAIL_CHARS:
             logger.warning(
-                "Email size (%s chars) exceeds safe limit. "
-                "Sending summary email instead.",
-                email_size,
+                f"Email size ({email_size} chars) exceeds safe limit. "
+                "Sending summary email instead."
             )
 
-            summary_message = self._build_large_output_summary(
-                data,
-                email_size=email_size,
-                base_url=base_url,
+            # Create lightweight summary
+            summary_message = (
+                f"⚠️ Your agent '{getattr(data, 'agent_name', 'Unknown')}' "
+                f"generated a very large output ({email_size / 1_000_000:.2f} MB).\n\n"
+                f"Execution time: {getattr(data, 'execution_time', 'N/A')}\n"
+                f"Credits used: {getattr(data, 'credits_used', 'N/A')}\n"
+                f"View full results: {base_url}/executions/{getattr(data, 'id', 'N/A')}"
             )
 
             self._send_email(
                 user_email=user_email,
                 subject=f"{subject} (Output Too Large)",
                 body=summary_message,
-                user_unsubscribe_link=unsubscribe_link,
+                user_unsubscribe_link=user_unsub_link,
             )
             return  # Skip sending full email
 
-        logger.debug("Sending email with size: %s characters", email_size)
+        logger.debug(f"Sending email with size: {email_size} characters")
         self._send_email(
             user_email=user_email,
             subject=subject,
             body=full_message,
-            user_unsubscribe_link=unsubscribe_link,
+            user_unsubscribe_link=user_unsub_link,
         )
 
     def _get_template(self, notification: NotificationType):
@@ -222,21 +187,18 @@ class EmailSender:
         # find the template in templates/name.html (the .template returns with the .html)
         template_path = f"templates/{notification_type_override.template}.jinja2"
         logger.debug(
-            "Template full path: %s", pathlib.Path(__file__).parent / template_path
+            f"Template full path: {pathlib.Path(__file__).parent / template_path}"
         )
-        base_template = self._read_template("templates/base.html.jinja2")
-        template = self._read_template(template_path)
+        base_template_path = "templates/base.html.jinja2"
+        with open(pathlib.Path(__file__).parent / base_template_path, "r") as file:
+            base_template = file.read()
+        with open(pathlib.Path(__file__).parent / template_path, "r") as file:
+            template = file.read()
         return Template(
             subject_template=notification_type_override.subject,
             body_template=template,
             base_template=base_template,
         )
-
-    @staticmethod
-    @functools.lru_cache(maxsize=32)
-    def _read_template(template_path: str) -> str:
-        with open(pathlib.Path(__file__).parent / template_path, "r") as file:
-            return file.read()
 
     def _send_email(
         self,
@@ -248,33 +210,18 @@ class EmailSender:
         if not self.postmark:
             logger.warning("Email tried to send without postmark configured")
             return
-        sender_email = settings.config.postmark_sender_email
-        if not sender_email:
-            logger.warning("postmark_sender_email not configured, email not sent")
-            return
-        unsubscribe_link = self._get_unsubscribe_link(user_unsubscribe_link)
-        logger.debug("Sending email to %s with subject %s", user_email, subject)
+        logger.debug(f"Sending email to {user_email} with subject {subject}")
         self.postmark.emails.send(
-            From=sender_email,
+            From=settings.config.postmark_sender_email,
             To=user_email,
             Subject=subject,
             HtmlBody=body,
-            Headers={
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                "List-Unsubscribe": f"<{unsubscribe_link}>",
-            },
-        )
-
-    def send_html(
-        self,
-        user_email: str,
-        subject: str,
-        body: str,
-        user_unsubscribe_link: str | None = None,
-    ) -> None:
-        self._send_email(
-            user_email=user_email,
-            subject=subject,
-            body=body,
-            user_unsubscribe_link=user_unsubscribe_link,
+            Headers=(
+                {
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                    "List-Unsubscribe": f"<{user_unsubscribe_link}>",
+                }
+                if user_unsubscribe_link
+                else None
+            ),
         )

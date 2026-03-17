@@ -17,12 +17,11 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 import orjson
-from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.model import CopilotCompletionPayload
 from backend.data.notification_bus import (
@@ -56,12 +55,6 @@ _listener_sessions: dict[int, tuple[str, asyncio.Task]] = {}
 # Timeout for putting chunks into subscriber queues (seconds)
 # If the queue is full and doesn't drain within this time, send an overflow error
 QUEUE_PUT_TIMEOUT = 5.0
-SESSION_LOOKUP_RETRY_SECONDS = 0.05
-STREAM_REPLAY_COUNT = 1000
-STREAM_XREAD_BLOCK_MS = 5000
-STREAM_XREAD_COUNT = 100
-STALE_SESSION_BUFFER_SECONDS = 300
-UNSUBSCRIBE_TIMEOUT_SECONDS = 5.0
 
 # Lua script for atomic compare-and-swap status update (idempotent completion)
 # Returns 1 if status was updated, 0 if already completed/failed
@@ -75,15 +68,9 @@ return 0
 """
 
 
-SessionStatus = Literal["running", "completed", "failed"]
-RedisHash = dict[str, str]
-RedisStreamMessages = list[tuple[str, list[tuple[str, RedisHash]]]]
-
-
-class ActiveSession(BaseModel):
+@dataclass
+class ActiveSession:
     """Represents an active streaming session (metadata only, no in-memory queues)."""
-
-    model_config = ConfigDict(frozen=True)
 
     session_id: str
     user_id: str | None
@@ -91,8 +78,9 @@ class ActiveSession(BaseModel):
     tool_name: str
     turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
-    status: SessionStatus = "running"
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    status: Literal["running", "completed", "failed"] = "running"
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    asyncio_task: asyncio.Task | None = None
 
 
 def _get_session_meta_key(session_id: str) -> str:
@@ -105,54 +93,7 @@ def _get_turn_stream_key(turn_id: str) -> str:
     return f"{config.turn_stream_prefix}{turn_id}"
 
 
-async def _redis_hset_mapping(redis: Any, key: str, mapping: RedisHash) -> int:
-    return await cast(Awaitable[int], redis.hset(key, mapping=mapping))
-
-
-async def _redis_hgetall(redis: Any, key: str) -> RedisHash:
-    return cast(
-        RedisHash,
-        await cast(Awaitable[dict[str, str]], redis.hgetall(key)),
-    )
-
-
-async def _redis_hget(redis: Any, key: str, field: str) -> str | None:
-    return cast(
-        str | None,
-        await cast(Awaitable[str | None], redis.hget(key, field)),
-    )
-
-
-async def _redis_xread(
-    redis: Any,
-    streams: dict[str, str],
-    *,
-    count: int,
-    block: int | None,
-) -> RedisStreamMessages:
-    return cast(
-        RedisStreamMessages,
-        await cast(
-            Awaitable[RedisStreamMessages],
-            redis.xread(streams, count=count, block=block),
-        ),
-    )
-
-
-async def _redis_complete_session(
-    redis: Any,
-    meta_key: str,
-    status: SessionStatus,
-) -> int:
-    return int(
-        await cast(
-            Awaitable[int | str],
-            redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status),
-        )
-    )
-
-
-def _parse_session_meta(meta: RedisHash, session_id: str = "") -> ActiveSession:
+def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSession:
     """Parse a raw Redis hash into a typed ActiveSession.
 
     Centralises the ``meta.get(...)`` boilerplate so callers don't repeat it.
@@ -166,7 +107,7 @@ def _parse_session_meta(meta: RedisHash, session_id: str = "") -> ActiveSession:
         tool_name=meta.get("tool_name", ""),
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
-        status=cast(SessionStatus, meta.get("status", "running")),
+        status=meta.get("status", "running"),  # type: ignore[arg-type]
     )
 
 
@@ -229,8 +170,7 @@ async def create_session(
     # No need to delete old stream — each turn_id is a fresh UUID
 
     hset_start = time.perf_counter()
-    await _redis_hset_mapping(
-        redis,
+    await redis.hset(  # type: ignore[misc]
         meta_key,
         mapping={
             "session_id": session_id,
@@ -340,108 +280,6 @@ async def publish_chunk(
     return message_id
 
 
-def _decode_stream_chunk(msg_data: RedisHash) -> StreamBaseResponse | None:
-    raw_data = msg_data.get("data")
-    if raw_data is None:
-        return None
-
-    chunk_data = orjson.loads(raw_data)
-    return _reconstruct_chunk(chunk_data)
-
-
-async def _replay_messages(
-    messages: RedisStreamMessages,
-    subscriber_queue: asyncio.Queue[StreamBaseResponse],
-    *,
-    last_message_id: str,
-) -> tuple[int, str]:
-    replayed_count = 0
-    replay_last_id = last_message_id
-
-    for _stream_name, stream_messages in messages:
-        for msg_id, msg_data in stream_messages:
-            replay_last_id = msg_id
-            try:
-                chunk = _decode_stream_chunk(msg_data)
-                if chunk is None:
-                    continue
-                await subscriber_queue.put(chunk)
-                replayed_count += 1
-            except Exception as exc:
-                logger.warning("Failed to replay message: %s", exc)
-
-    return replayed_count, replay_last_id
-
-
-async def _deliver_message_to_queue(
-    session_id: str,
-    subscriber_queue: asyncio.Queue[StreamBaseResponse],
-    chunk: StreamBaseResponse,
-    *,
-    last_delivered_id: str,
-    log_meta: dict[str, Any],
-) -> bool:
-    try:
-        await asyncio.wait_for(
-            subscriber_queue.put(chunk),
-            timeout=QUEUE_PUT_TIMEOUT,
-        )
-        return True
-    except asyncio.TimeoutError:
-        logger.warning(
-            f"[TIMING] Subscriber queue full, delivery timed out after {QUEUE_PUT_TIMEOUT}s",
-            extra={
-                "json_fields": {
-                    **log_meta,
-                    "timeout_s": QUEUE_PUT_TIMEOUT,
-                    "reason": "queue_full",
-                }
-            },
-        )
-        try:
-            overflow_error = StreamError(
-                errorText="Message delivery timeout - some messages may have been missed",
-                code="QUEUE_OVERFLOW",
-                details={
-                    "last_delivered_id": last_delivered_id,
-                    "recovery_hint": f"Reconnect with last_message_id={last_delivered_id}",
-                },
-            )
-            subscriber_queue.put_nowait(overflow_error)
-        except asyncio.QueueFull:
-            logger.error(
-                f"Cannot deliver overflow error for session {session_id}, queue completely blocked"
-            )
-        return False
-
-
-async def _handle_xread_timeout(
-    redis: Any,
-    session_id: str,
-    subscriber_queue: asyncio.Queue[StreamBaseResponse],
-) -> bool:
-    meta_key = _get_session_meta_key(session_id)
-    status = await _redis_hget(redis, meta_key, "status")
-    if status != "running":
-        try:
-            await asyncio.wait_for(
-                subscriber_queue.put(StreamFinish()),
-                timeout=QUEUE_PUT_TIMEOUT,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Timeout delivering finish event for session %s", session_id)
-        return False
-
-    try:
-        await asyncio.wait_for(
-            subscriber_queue.put(StreamHeartbeat()),
-            timeout=QUEUE_PUT_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Timeout delivering heartbeat for session %s", session_id)
-    return True
-
-
 async def subscribe_to_session(
     session_id: str,
     user_id: str | None,
@@ -475,7 +313,7 @@ async def subscribe_to_session(
     redis_start = time.perf_counter()
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
-    meta = await _redis_hgetall(redis, meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
     hgetall_time = (time.perf_counter() - redis_start) * 1000
     logger.info(
         f"[TIMING] Redis hgetall took {hgetall_time:.1f}ms",
@@ -490,8 +328,8 @@ async def subscribe_to_session(
             "[TIMING] Session not found on first attempt, retrying after 50ms delay",
             extra={"json_fields": {**log_meta}},
         )
-        await asyncio.sleep(SESSION_LOOKUP_RETRY_SECONDS)
-        meta = await _redis_hgetall(redis, meta_key)
+        await asyncio.sleep(0.05)  # 50ms
+        meta = await redis.hgetall(meta_key)  # type: ignore[misc]
         if not meta:
             elapsed = (time.perf_counter() - start_time) * 1000
             logger.info(
@@ -536,12 +374,7 @@ async def subscribe_to_session(
 
     # Step 1: Replay messages from Redis Stream
     xread_start = time.perf_counter()
-    messages = await _redis_xread(
-        redis,
-        {stream_key: last_message_id},
-        block=None,
-        count=STREAM_REPLAY_COUNT,
-    )
+    messages = await redis.xread({stream_key: last_message_id}, block=None, count=1000)
     xread_time = (time.perf_counter() - xread_start) * 1000
     logger.info(
         f"[TIMING] Redis xread (replay) took {xread_time:.1f}ms, status={session_status}",
@@ -554,11 +387,22 @@ async def subscribe_to_session(
         },
     )
 
-    replayed_count, replay_last_id = await _replay_messages(
-        messages,
-        subscriber_queue,
-        last_message_id=last_message_id,
-    )
+    replayed_count = 0
+    replay_last_id = last_message_id
+    if messages:
+        for _stream_name, stream_messages in messages:
+            for msg_id, msg_data in stream_messages:
+                replay_last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
+                # Note: Redis client uses decode_responses=True, so keys are strings
+                if "data" in msg_data:
+                    try:
+                        chunk_data = orjson.loads(msg_data["data"])
+                        chunk = _reconstruct_chunk(chunk_data)
+                        if chunk:
+                            await subscriber_queue.put(chunk)
+                            replayed_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to replay message: {e}")
 
     logger.info(
         f"[TIMING] Replayed {replayed_count} messages, last_id={replay_last_id}",
@@ -611,7 +455,7 @@ async def _stream_listener(
     session_id: str,
     subscriber_queue: asyncio.Queue[StreamBaseResponse],
     last_replayed_id: str,
-    log_meta: dict[str, Any] | None = None,
+    log_meta: dict | None = None,
     turn_id: str = "",
 ) -> None:
     """Listen to Redis Stream for new messages using blocking XREAD.
@@ -655,11 +499,8 @@ async def _stream_listener(
             # Short timeout prevents frontend timeout (12s) while waiting for heartbeats (15s)
             xread_start = time.perf_counter()
             xread_count += 1
-            messages = await _redis_xread(
-                redis,
-                {stream_key: current_id},
-                block=STREAM_XREAD_BLOCK_MS,
-                count=STREAM_XREAD_COUNT,
+            messages = await redis.xread(
+                {stream_key: current_id}, block=5000, count=100
             )
             xread_time = (time.perf_counter() - xread_start) * 1000
 
@@ -691,66 +532,114 @@ async def _stream_listener(
                 )
 
             if not messages:
-                if not await _handle_xread_timeout(
-                    redis,
-                    session_id,
-                    subscriber_queue,
-                ):
+                # Timeout - check if session is still running
+                meta_key = _get_session_meta_key(session_id)
+                status = await redis.hget(meta_key, "status")  # type: ignore[misc]
+                # Stop if session metadata is gone (TTL expired) or status is not "running"
+                if status != "running":
+                    try:
+                        await asyncio.wait_for(
+                            subscriber_queue.put(StreamFinish()),
+                            timeout=QUEUE_PUT_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            f"Timeout delivering finish event for session {session_id}"
+                        )
                     break
+                # Session still running - send heartbeat to keep connection alive
+                # This prevents frontend timeout (12s) during long-running operations
+                try:
+                    await asyncio.wait_for(
+                        subscriber_queue.put(StreamHeartbeat()),
+                        timeout=QUEUE_PUT_TIMEOUT,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Timeout delivering heartbeat for session {session_id}"
+                    )
                 continue
 
             for _stream_name, stream_messages in messages:
                 for msg_id, msg_data in stream_messages:
-                    current_id = msg_id
+                    current_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
+
+                    if "data" not in msg_data:
+                        continue
+
                     try:
-                        chunk = _decode_stream_chunk(msg_data)
+                        chunk_data = orjson.loads(msg_data["data"])
+                        chunk = _reconstruct_chunk(chunk_data)
+                        if chunk:
+                            try:
+                                await asyncio.wait_for(
+                                    subscriber_queue.put(chunk),
+                                    timeout=QUEUE_PUT_TIMEOUT,
+                                )
+                                # Update last delivered ID on successful delivery
+                                last_delivered_id = current_id
+                                messages_delivered += 1
+                                if first_message_time is None:
+                                    first_message_time = time.perf_counter()
+                                    elapsed = (first_message_time - start_time) * 1000
+                                    logger.info(
+                                        f"[TIMING] FIRST live message at {elapsed:.1f}ms, type={type(chunk).__name__}",
+                                        extra={
+                                            "json_fields": {
+                                                **log_meta,
+                                                "elapsed_ms": elapsed,
+                                                "chunk_type": type(chunk).__name__,
+                                            }
+                                        },
+                                    )
+                            except asyncio.TimeoutError:
+                                logger.warning(
+                                    f"[TIMING] Subscriber queue full, delivery timed out after {QUEUE_PUT_TIMEOUT}s",
+                                    extra={
+                                        "json_fields": {
+                                            **log_meta,
+                                            "timeout_s": QUEUE_PUT_TIMEOUT,
+                                            "reason": "queue_full",
+                                        }
+                                    },
+                                )
+                                # Send overflow error with recovery info
+                                try:
+                                    overflow_error = StreamError(
+                                        errorText="Message delivery timeout - some messages may have been missed",
+                                        code="QUEUE_OVERFLOW",
+                                        details={
+                                            "last_delivered_id": last_delivered_id,
+                                            "recovery_hint": f"Reconnect with last_message_id={last_delivered_id}",
+                                        },
+                                    )
+                                    subscriber_queue.put_nowait(overflow_error)
+                                except asyncio.QueueFull:
+                                    # Queue is completely stuck, nothing more we can do
+                                    logger.error(
+                                        f"Cannot deliver overflow error for session {session_id}, "
+                                        "queue completely blocked"
+                                    )
+
+                            # Stop listening on finish
+                            if isinstance(chunk, StreamFinish):
+                                total_time = (time.perf_counter() - start_time) * 1000
+                                logger.info(
+                                    f"[TIMING] StreamFinish received in {total_time / 1000:.1f}s; delivered={messages_delivered}",
+                                    extra={
+                                        "json_fields": {
+                                            **log_meta,
+                                            "total_time_ms": total_time,
+                                            "messages_delivered": messages_delivered,
+                                        }
+                                    },
+                                )
+                                return
                     except Exception as e:
                         logger.warning(
                             f"Error processing stream message: {e}",
                             extra={"json_fields": {**log_meta, "error": str(e)}},
                         )
-                        continue
-
-                    if chunk is None:
-                        continue
-
-                    delivered = await _deliver_message_to_queue(
-                        session_id,
-                        subscriber_queue,
-                        chunk,
-                        last_delivered_id=last_delivered_id,
-                        log_meta=log_meta,
-                    )
-                    if delivered:
-                        last_delivered_id = current_id
-                        messages_delivered += 1
-                        if first_message_time is None:
-                            first_message_time = time.perf_counter()
-                            elapsed = (first_message_time - start_time) * 1000
-                            logger.info(
-                                f"[TIMING] FIRST live message at {elapsed:.1f}ms, type={type(chunk).__name__}",
-                                extra={
-                                    "json_fields": {
-                                        **log_meta,
-                                        "elapsed_ms": elapsed,
-                                        "chunk_type": type(chunk).__name__,
-                                    }
-                                },
-                            )
-
-                    if isinstance(chunk, StreamFinish):
-                        total_time = (time.perf_counter() - start_time) * 1000
-                        logger.info(
-                            f"[TIMING] StreamFinish received in {total_time / 1000:.1f}s; delivered={messages_delivered}",
-                            extra={
-                                "json_fields": {
-                                    **log_meta,
-                                    "total_time_ms": total_time,
-                                    "messages_delivered": messages_delivered,
-                                }
-                            },
-                        )
-                        return
 
     except asyncio.CancelledError:
         elapsed = (time.perf_counter() - start_time) * 1000
@@ -823,19 +712,19 @@ async def mark_session_completed(
     Returns:
         True if session was newly marked completed, False if already completed/failed
     """
-    status: SessionStatus = "failed" if error_message else "completed"
+    status: Literal["completed", "failed"] = "failed" if error_message else "completed"
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
 
     # Resolve turn_id for publishing to the correct stream
-    meta = await _redis_hgetall(redis, meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
     turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
     # Atomic compare-and-swap: only update if status is "running"
-    result = await _redis_complete_session(redis, meta_key, status)
+    result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
 
     if result == 0:
-        logger.debug("Session %s already completed/failed, skipping", session_id)
+        logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
     if error_message:
@@ -843,7 +732,7 @@ async def mark_session_completed(
             await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
             logger.warning(
-                "Failed to publish error event for session %s: %s", session_id, e
+                f"Failed to publish error event for session {session_id}: {e}"
             )
 
     # Publish StreamFinish AFTER status is set to "completed"/"failed".
@@ -856,10 +745,8 @@ async def mark_session_completed(
         )
     except Exception as e:
         logger.error(
-            "Failed to publish StreamFinish for session %s: %s. "
-            "The _stream_listener will detect completion via status polling.",
-            session_id,
-            e,
+            f"Failed to publish StreamFinish for session {session_id}: {e}. "
+            "The _stream_listener will detect completion via status polling."
         )
 
     # Clean up local session reference if exists
@@ -883,10 +770,8 @@ async def mark_session_completed(
                 )
             except Exception as e:
                 logger.warning(
-                    "Failed to publish copilot completion notification "
-                    "for session %s: %s",
-                    session_id,
-                    e,
+                    f"Failed to publish copilot completion notification "
+                    f"for session {session_id}: {e}"
                 )
 
     try:
@@ -915,7 +800,7 @@ async def get_session(session_id: str) -> ActiveSession | None:
     """
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
-    meta = await _redis_hgetall(redis, meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if not meta:
         return None
@@ -942,7 +827,7 @@ async def get_session_with_expiry_info(
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
 
-    meta = await _redis_hgetall(redis, meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if not meta:
         # Metadata expired — we can't resolve turn_id, so check using
@@ -974,7 +859,7 @@ async def get_active_session(
 
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
-    meta = await _redis_hgetall(redis, meta_key)
+    meta: dict[Any, Any] = await redis.hgetall(meta_key)  # type: ignore[misc]
 
     if not meta:
         return None, "0-0"
@@ -998,16 +883,11 @@ async def get_active_session(
         try:
             created_at = datetime.fromisoformat(created_at_str)
             age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
-            stale_threshold = (
-                COPILOT_CONSUMER_TIMEOUT_SECONDS + STALE_SESSION_BUFFER_SECONDS
-            )
+            stale_threshold = COPILOT_CONSUMER_TIMEOUT_SECONDS + 300  # + 5min buffer
             if age_seconds > stale_threshold:
                 logger.warning(
-                    "[STALE_SESSION] Auto-completing stale session %s... "
-                    "(running for %.0fs, threshold: %ss)",
-                    session_id[:8],
-                    age_seconds,
-                    stale_threshold,
+                    f"[STALE_SESSION] Auto-completing stale session {session_id[:8]}... "
+                    f"(running for {age_seconds:.0f}s, threshold: {stale_threshold}s)"
                 )
                 await mark_session_completed(
                     session_id,
@@ -1015,13 +895,11 @@ async def get_active_session(
                 )
                 return None, "0-0"
         except (ValueError, TypeError) as e:
-            logger.warning("Failed to parse created_at: %s", e)
+            logger.warning(f"Failed to parse created_at: {e}")
 
     session = _parse_session_meta(meta, session_id)
     logger.info(
-        "[SESSION_LOOKUP] Found running session %s..., turn_id=%s",
-        session_id[:8],
-        session.turn_id[:8],
+        f"[SESSION_LOOKUP] Found running session {session_id[:8]}..., turn_id={session.turn_id[:8]}"
     )
 
     # Get the last message ID from Redis Stream (keyed by turn_id)
@@ -1033,7 +911,7 @@ async def get_active_session(
             msg_id = messages[0][0]
             last_id = msg_id if isinstance(msg_id, str) else msg_id.decode()
     except Exception as e:
-        logger.warning("Failed to get last message ID: %s", e)
+        logger.warning(f"Failed to get last message ID: {e}")
 
     return session, last_id
 
@@ -1080,20 +958,16 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     }
 
     chunk_type = chunk_data.get("type")
-    if not isinstance(chunk_type, str):
-        logger.warning("Unknown chunk type: %s", chunk_type)
-        return None
-
-    chunk_class = type_to_class.get(chunk_type)
+    chunk_class = type_to_class.get(chunk_type)  # type: ignore[arg-type]
 
     if chunk_class is None:
-        logger.warning("Unknown chunk type: %s", chunk_type)
+        logger.warning(f"Unknown chunk type: {chunk_type}")
         return None
 
     try:
         return chunk_class(**chunk_data)
     except Exception as e:
-        logger.warning("Failed to reconstruct chunk of type %s: %s", chunk_type, e)
+        logger.warning(f"Failed to reconstruct chunk of type {chunk_type}: {e}")
         return None
 
 
@@ -1136,13 +1010,12 @@ async def unsubscribe_from_session(
 
     if stored_session_id != session_id:
         logger.warning(
-            "Session ID mismatch in unsubscribe: expected %s, found %s",
-            session_id,
-            stored_session_id,
+            f"Session ID mismatch in unsubscribe: expected {session_id}, "
+            f"found {stored_session_id}"
         )
 
     if listener_task.done():
-        logger.debug("Listener task for session %s already completed", session_id)
+        logger.debug(f"Listener task for session {session_id} already completed")
         return
 
     # Cancel the listener task
@@ -1150,20 +1023,17 @@ async def unsubscribe_from_session(
 
     try:
         # Wait for the task to be cancelled with a timeout
-        await asyncio.wait_for(listener_task, timeout=UNSUBSCRIBE_TIMEOUT_SECONDS)
+        await asyncio.wait_for(listener_task, timeout=5.0)
     except asyncio.CancelledError:
         # Expected - the task was successfully cancelled
         pass
     except asyncio.TimeoutError:
         logger.warning(
-            "Timeout waiting for listener task cancellation for session %s",
-            session_id,
+            f"Timeout waiting for listener task cancellation for session {session_id}"
         )
     except Exception as e:
         logger.error(
-            "Error during listener task cancellation for session %s: %s",
-            session_id,
-            e,
+            f"Error during listener task cancellation for session {session_id}: {e}"
         )
 
-    logger.debug("Successfully unsubscribed from session %s", session_id)
+    logger.debug(f"Successfully unsubscribed from session {session_id}")
