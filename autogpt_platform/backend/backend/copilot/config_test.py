@@ -31,7 +31,7 @@ class TestOpenrouterActive:
 
     def test_enabled_with_credentials_returns_true(self):
         cfg = ChatConfig(
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
@@ -39,7 +39,7 @@ class TestOpenrouterActive:
 
     def test_enabled_but_missing_api_key_returns_false(self):
         cfg = ChatConfig(
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key=None,
             base_url="https://openrouter.ai/api/v1",
         )
@@ -47,7 +47,7 @@ class TestOpenrouterActive:
 
     def test_disabled_returns_false_despite_credentials(self):
         cfg = ChatConfig(
-            openrouter_enabled=False,
+            use_openrouter=False,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
@@ -55,7 +55,7 @@ class TestOpenrouterActive:
 
     def test_strips_v1_suffix_and_still_valid(self):
         cfg = ChatConfig(
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
@@ -63,7 +63,7 @@ class TestOpenrouterActive:
 
     def test_invalid_base_url_returns_false(self):
         cfg = ChatConfig(
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key="or-key",
             base_url="not-a-url",
         )

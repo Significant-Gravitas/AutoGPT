@@ -323,7 +323,7 @@ class TestResolveSdkModel:
         cfg = cfg_mod.ChatConfig(
             model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
             use_claude_code_subscription=False,
@@ -340,7 +340,7 @@ class TestResolveSdkModel:
         cfg = cfg_mod.ChatConfig(
             model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
-            openrouter_enabled=False,
+            use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
@@ -358,7 +358,7 @@ class TestResolveSdkModel:
         cfg = cfg_mod.ChatConfig(
             model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key=None,
             base_url="https://openrouter.ai/api/v1",
             use_claude_code_subscription=False,
@@ -375,7 +375,7 @@ class TestResolveSdkModel:
         cfg = cfg_mod.ChatConfig(
             model="anthropic/claude-opus-4.6",
             claude_agent_model="claude-sonnet-4-5-20250514",
-            openrouter_enabled=True,
+            use_openrouter=True,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
             use_claude_code_subscription=False,
@@ -390,7 +390,7 @@ class TestResolveSdkModel:
         cfg = cfg_mod.ChatConfig(
             model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
-            openrouter_enabled=False,
+            use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=True,
@@ -405,7 +405,7 @@ class TestResolveSdkModel:
         cfg = cfg_mod.ChatConfig(
             model="claude-opus-4.6",
             claude_agent_model=None,
-            openrouter_enabled=False,
+            use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,

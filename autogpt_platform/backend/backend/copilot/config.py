@@ -94,7 +94,7 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
-    openrouter_enabled: bool = Field(
+    use_openrouter: bool = Field(
         default=True,
         description="Enable routing API calls through the OpenRouter proxy. "
         "The actual decision also requires ``api_key`` and ``base_url`` — "
@@ -139,7 +139,7 @@ class ChatConfig(BaseSettings):
         Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
         present — mirrors the fallback logic in ``_build_sdk_env``.
         """
-        if not self.openrouter_enabled:
+        if not self.use_openrouter:
             return False
         base = (self.base_url or "").rstrip("/")
         if base.endswith("/v1"):
@@ -228,15 +228,6 @@ class ChatConfig(BaseSettings):
         if env_val:
             return env_val in ("true", "1", "yes", "on")
         # Default to True (SDK enabled by default)
-        return True if v is None else v
-
-    @field_validator("openrouter_enabled", mode="before")
-    @classmethod
-    def get_openrouter_enabled(cls, v):
-        """Get openrouter_enabled from environment if not provided."""
-        env_val = os.getenv("CHAT_USE_OPENROUTER", "").lower()
-        if env_val:
-            return env_val in ("true", "1", "yes", "on")
         return True if v is None else v
 
     @field_validator("use_claude_code_subscription", mode="before")
