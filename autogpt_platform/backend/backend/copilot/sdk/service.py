@@ -1073,7 +1073,6 @@ async def stream_chat_completion_sdk(
                                 if is_transient
                                 else "sdk_stream_error"
                             ),
-                            retryable=is_transient,
                         )
                         break
 
@@ -1127,7 +1126,6 @@ async def stream_chat_completion_sdk(
                             yield StreamError(
                                 errorText=FRIENDLY_TRANSIENT_MSG,
                                 code="transient_api_error",
-                                retryable=True,
                             )
                             break
 
@@ -1457,7 +1455,6 @@ async def stream_chat_completion_sdk(
             yield StreamError(
                 errorText=display_msg,
                 code="transient_api_error" if is_transient else "sdk_error",
-                retryable=is_transient,
             )
 
         raise

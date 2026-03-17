@@ -223,7 +223,6 @@ class SDKResponseAdapter:
                             FRIENDLY_TRANSIENT_MSG if is_transient else raw_error
                         ),
                         code=("transient_api_error" if is_transient else "sdk_error"),
-                        retryable=is_transient,
                     )
                 )
                 responses.append(StreamFinish())
