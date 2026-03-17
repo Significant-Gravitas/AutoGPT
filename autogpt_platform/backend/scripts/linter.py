@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-directory = os.path.dirname(os.path.realpath(__file__))
+backend_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 BACKEND_DIR = "."
 LIBS_DIR = "../autogpt_libs"
@@ -14,7 +14,7 @@ def run(*command: str) -> None:
     try:
         subprocess.run(
             ["poetry", "run"] + list(command),
-            cwd=directory,
+            cwd=backend_dir,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

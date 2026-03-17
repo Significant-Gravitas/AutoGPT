@@ -50,7 +50,7 @@ RUN poetry install --no-ansi --no-root
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
 # =============================== DB MIGRATOR =============================== #
@@ -82,7 +82,7 @@ RUN pip3 install prisma>=0.15.0 --break-system-packages
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
 COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
