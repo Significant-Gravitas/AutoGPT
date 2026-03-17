@@ -86,10 +86,23 @@ def _build_storage_supplement(
 1. **{storage_system_1_name}** (`{working_dir}`):
 {characteristics}
 {persistence}
-2. **Persistent workspace** (cloud) — survives across sessions.
-   - {file_move_name_1_to_2}: use `write_workspace_file`
-   - {file_move_name_2_to_1}: use `read_workspace_file` with save_to_path
-   - Save important files to workspace for persistence.
+
+2. **Persistent workspace** (cloud storage):
+   - Files here **survive across sessions indefinitely**
+
+### Moving files between storages
+- **{file_move_name_1_to_2}**: Copy to persistent workspace
+- **{file_move_name_2_to_1}**: Download for processing
+
+### File persistence
+Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
+
+### SDK tool-result files
+When tool outputs are large, the SDK truncates them and saves the full output to
+a local file under `~/.claude/projects/.../tool-results/`. To read these files,
+always use `read_file` or `Read` (NOT `read_workspace_file`).
+`read_workspace_file` reads from cloud workspace storage, where SDK
+tool-results are NOT stored.
 {_SHARED_TOOL_NOTES}"""
 
 

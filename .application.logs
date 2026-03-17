@@ -1,0 +1,10 @@
+[SUPERVISOR NOTE] The unstaged changes you're making ADD tokens to tool descriptions (+7 lines across 6 files). This works against the PR's stated goal of REDUCING token cost by 34%. If you're adding usage hints/cross-references to tool descriptions, consider whether these additions offset the token savings this PR is supposed to deliver. Make sure net token count is still reduced. Double-check by comparing before/after token counts.
+
+[REVIEWER NOTES]
+1. MEDIUM: run_mcp_tool.py — The "Call get_mcp_guide for known server URLs and auth details" cross-tool reference was NOT restored by the fix commit. The LLM won't know to call get_mcp_guide before using MCP tools. Add back: "Call get_mcp_guide first for server URLs and auth."
+
+2. MEDIUM: agent_browser.py — browser_navigate lost the multi-step authentication recipe (navigate to login → fill creds with browser_act → navigate to target). Add compressed version back.
+
+3. LOW but verify: agent_output.py — view_agent_output run_time description was EXPANDED with new values (today, last 7 days, last month, last 30 days, datetime). This is a feature change hidden in a perf PR. Verify the backend actually supports these values before merging.
+
+4. LOW: prompting.py — @@agptfile example changed from no-range to [1-80]. The original intentionally showed the no-range form. Consider restoring it.

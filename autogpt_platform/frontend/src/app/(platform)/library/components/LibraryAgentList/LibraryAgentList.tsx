@@ -9,7 +9,6 @@ import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
 import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { Tab } from "../LibraryTabs/LibraryTabs";
 import {
   AnimatePresence,
   LayoutGroup,
@@ -18,6 +17,7 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
+import { LibraryTab } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
 // cancels the current spring and starts a new one from current state.
@@ -68,7 +68,7 @@ interface Props {
   setLibrarySort: (value: LibraryAgentSort) => void;
   selectedFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
-  tabs: Tab[];
+  tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
 }

@@ -151,44 +151,110 @@ def _projects_base() -> str:
     return os.path.realpath(os.path.join(config_dir, "projects"))
 
 
-def _cli_project_dir(sdk_cwd: str) -> str | None:
-    """Return the CLI's project directory for a given working directory.
+_STALE_PROJECT_DIR_SECONDS = 12 * 3600  # 12 hours — matches max session lifetime
+_MAX_PROJECT_DIRS_TO_SWEEP = 50  # limit per sweep to avoid long pauses
 
-    Returns ``None`` if the path would escape the projects base.
+
+def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
+    """Remove CLI project directories older than ``_STALE_PROJECT_DIR_SECONDS``.
+
+    Each CoPilot SDK turn creates a unique ``~/.claude/projects/<encoded-cwd>/``
+    directory.  These are intentionally kept across turns so the model can read
+    tool-result files via ``--resume``.  However, after a session ends they
+    become stale.  This function sweeps old ones to prevent unbounded disk
+    growth.
+
+    When *encoded_cwd* is provided the sweep is scoped to that single
+    directory, making the operation safe in multi-tenant environments where
+    multiple copilot sessions share the same host.  Without it the function
+    falls back to sweeping all directories matching the copilot naming pattern
+    (``-tmp-copilot-``), which is only safe for single-tenant deployments.
+
+    Returns the number of directories removed.
     """
-    cwd_encoded = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     projects_base = _projects_base()
-    project_dir = os.path.realpath(os.path.join(projects_base, cwd_encoded))
+    if not os.path.isdir(projects_base):
+        return 0
 
-    if not project_dir.startswith(projects_base + os.sep):
-        logger.warning(
-            "[Transcript] Project dir escaped projects base: %s", project_dir
-        )
-        return None
-    return project_dir
+    now = time.time()
+    removed = 0
 
-
-def _safe_glob_jsonl(project_dir: str) -> list[Path]:
-    """Glob ``*.jsonl`` files, filtering out symlinks that escape the directory."""
-    try:
-        resolved_base = Path(project_dir).resolve()
-    except OSError as e:
-        logger.warning("[Transcript] Failed to resolve project dir: %s", e)
-        return []
-
-    result: list[Path] = []
-    for candidate in Path(project_dir).glob("*.jsonl"):
-        try:
-            resolved = candidate.resolve()
-            if resolved.is_relative_to(resolved_base):
-                result.append(resolved)
-        except (OSError, RuntimeError) as e:
-            logger.debug(
-                "[Transcript] Skipping invalid CLI session candidate %s: %s",
-                candidate,
-                e,
+    # Scoped mode: only clean up the one directory for the current session.
+    if encoded_cwd:
+        target = Path(projects_base) / encoded_cwd
+        if not target.is_dir():
+            return 0
+        # Guard: only sweep copilot-generated dirs.
+        if "-tmp-copilot-" not in target.name:
+            logger.warning(
+                "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
             )
-    return result
+            return 0
+        try:
+            # st_mtime is used as a proxy for session activity. Claude CLI writes
+            # its JSONL transcript into this directory during each turn, so mtime
+            # advances on every turn. A directory whose mtime is older than
+            # _STALE_PROJECT_DIR_SECONDS has not had an active turn in that window
+            # and is safe to remove (the session cannot --resume after cleanup).
+            age = now - target.stat().st_mtime
+        except OSError:
+            return 0
+        if age < _STALE_PROJECT_DIR_SECONDS:
+            return 0
+        try:
+            shutil.rmtree(target, ignore_errors=True)
+            removed = 1
+        except OSError:
+            pass
+        if removed:
+            logger.info(
+                "[Transcript] Swept stale CLI project dir %s (age %ds > %ds)",
+                target.name,
+                int(age),
+                _STALE_PROJECT_DIR_SECONDS,
+            )
+        return removed
+
+    # Unscoped fallback: sweep all copilot dirs across the projects base.
+    # Only safe for single-tenant deployments; callers should prefer the
+    # scoped variant by passing encoded_cwd.
+    try:
+        entries = Path(projects_base).iterdir()
+    except OSError as e:
+        logger.warning("[Transcript] Failed to list projects dir: %s", e)
+        return 0
+
+    for entry in entries:
+        if removed >= _MAX_PROJECT_DIRS_TO_SWEEP:
+            break
+        # Only sweep copilot-generated dirs (pattern: -tmp-copilot- or
+        # -private-tmp-copilot-).
+        if "-tmp-copilot-" not in entry.name:
+            continue
+        if not entry.is_dir():
+            continue
+        try:
+            # See the scoped-mode comment above: st_mtime advances on every turn,
+            # so a stale mtime reliably indicates an inactive session.
+            age = now - entry.stat().st_mtime
+        except OSError:
+            continue
+        if age < _STALE_PROJECT_DIR_SECONDS:
+            continue
+
+        try:
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
+        except OSError:
+            pass
+
+    if removed:
+        logger.info(
+            "[Transcript] Swept %d stale CLI project dirs (older than %ds)",
+            removed,
+            _STALE_PROJECT_DIR_SECONDS,
+        )
+    return removed
 
 
 def read_compacted_entries(transcript_path: str) -> list[dict] | None:
@@ -253,63 +319,6 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
         compact_idx + 1,
     )
     return entries
-
-
-def read_cli_session_file(sdk_cwd: str) -> str | None:
-    """Read the CLI's own session file, which reflects any compaction.
-
-    The CLI writes its session transcript to
-    ``~/.claude/projects/<encoded_cwd>/<session_id>.jsonl``.
-    Since each SDK turn uses a unique ``sdk_cwd``, there should be
-    exactly one ``.jsonl`` file in that directory.
-
-    Returns the file content, or ``None`` if not found.
-    """
-    project_dir = _cli_project_dir(sdk_cwd)
-    if not project_dir or not os.path.isdir(project_dir):
-        return None
-
-    jsonl_files = _safe_glob_jsonl(project_dir)
-    if not jsonl_files:
-        logger.debug("[Transcript] No CLI session file found in %s", project_dir)
-        return None
-
-    # Pick the most recently modified file (should be only one per turn).
-    try:
-        session_file = max(jsonl_files, key=lambda p: p.stat().st_mtime)
-    except OSError as e:
-        logger.warning("[Transcript] Failed to inspect CLI session files: %s", e)
-        return None
-
-    try:
-        content = session_file.read_text()
-        logger.info(
-            "[Transcript] Read CLI session file: %s (%d bytes)",
-            session_file,
-            len(content),
-        )
-        return content
-    except OSError as e:
-        logger.warning("[Transcript] Failed to read CLI session file: %s", e)
-        return None
-
-
-def cleanup_cli_project_dir(sdk_cwd: str) -> None:
-    """Remove the CLI's project directory for a specific working directory.
-
-    The CLI stores session data under ``~/.claude/projects/<encoded_cwd>/``.
-    Each SDK turn uses a unique ``sdk_cwd``, so the project directory is
-    safe to remove entirely after the transcript has been uploaded.
-    """
-    project_dir = _cli_project_dir(sdk_cwd)
-    if not project_dir:
-        return
-
-    if os.path.isdir(project_dir):
-        shutil.rmtree(project_dir, ignore_errors=True)
-        logger.debug("[Transcript] Cleaned up CLI project dir: %s", project_dir)
-    else:
-        logger.debug("[Transcript] Project dir not found: %s", project_dir)
 
 
 def write_transcript_to_tempfile(
