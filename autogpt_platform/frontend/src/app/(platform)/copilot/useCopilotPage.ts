@@ -328,9 +328,8 @@ export function useCopilotPage() {
     let attempts = 0;
     clearInterval(titlePollRef.current);
     titlePollRef.current = setInterval(() => {
-      const data = queryClient.getQueryData<getV2ListSessionsResponse>(
-        queryKey,
-      );
+      const data =
+        queryClient.getQueryData<getV2ListSessionsResponse>(queryKey);
       const hasTitle =
         data?.status === 200 &&
         data.data.sessions.some((s) => s.id === sid && s.title);

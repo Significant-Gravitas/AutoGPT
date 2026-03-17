@@ -313,128 +313,131 @@ export function ChatSidebar() {
                     : null;
 
                   return (
-                  <div
-                    key={session.id}
-                    className={cn(
-                      "group relative w-full rounded-lg transition-colors",
-                      session.id === sessionId
-                        ? "bg-zinc-100"
-                        : "hover:bg-zinc-50",
-                    )}
-                  >
-                    {editingSessionId === session.id ? (
-                      <div className="px-3 py-2.5">
-                        <input
-                          ref={renameInputRef}
-                          type="text"
-                          aria-label="Rename chat"
-                          value={editingTitle}
-                          onChange={(e) => setEditingTitle(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.currentTarget.blur();
-                            } else if (e.key === "Escape") {
-                              renameCancelledRef.current = true;
-                              setEditingSessionId(null);
-                            }
-                          }}
-                          onBlur={() => {
-                            if (renameCancelledRef.current) {
-                              renameCancelledRef.current = false;
-                              return;
-                            }
-                            handleRenameSubmit(session.id);
-                          }}
-                          className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => handleSelectSession(session.id)}
-                        className="w-full px-3 py-2.5 pr-10 text-left"
-                      >
-                        <div className="flex min-w-0 max-w-full items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <Text
-                              variant="body"
-                              className={cn(
-                                "truncate font-normal",
-                                session.id === sessionId
-                                  ? "text-zinc-600"
-                                  : "text-zinc-800",
-                              )}
-                            >
-                              <AnimatePresence mode="wait" initial={false}>
-                                <motion.span
-                                  key={session.title || "untitled"}
-                                  initial={{ opacity: 0, y: 4 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  exit={{ opacity: 0, y: -4 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="block truncate"
-                                >
-                                  {session.title || "Untitled chat"}
-                                </motion.span>
-                              </AnimatePresence>
-                            </Text>
-                            {startTypeLabel ? (
-                              <div className="mt-1">
-                                <Badge variant="info" size="small">
-                                  {startTypeLabel}
-                                </Badge>
-                              </div>
-                            ) : null}
-                            <Text variant="small" className="text-neutral-400">
-                              {formatDate(session.updated_at)}
-                            </Text>
-                          </div>
-                          {session.is_processing &&
-                            session.id !== sessionId &&
-                            !completedSessionIDs.has(session.id) && (
-                              <PulseLoader size={16} className="shrink-0" />
-                            )}
-                          {completedSessionIDs.has(session.id) &&
-                            session.id !== sessionId && (
-                              <CheckCircle
-                                className="h-4 w-4 shrink-0 text-green-500"
-                                weight="fill"
-                              />
-                            )}
+                    <div
+                      key={session.id}
+                      className={cn(
+                        "group relative w-full rounded-lg transition-colors",
+                        session.id === sessionId
+                          ? "bg-zinc-100"
+                          : "hover:bg-zinc-50",
+                      )}
+                    >
+                      {editingSessionId === session.id ? (
+                        <div className="px-3 py-2.5">
+                          <input
+                            ref={renameInputRef}
+                            type="text"
+                            aria-label="Rename chat"
+                            value={editingTitle}
+                            onChange={(e) => setEditingTitle(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.currentTarget.blur();
+                              } else if (e.key === "Escape") {
+                                renameCancelledRef.current = true;
+                                setEditingSessionId(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              if (renameCancelledRef.current) {
+                                renameCancelledRef.current = false;
+                                return;
+                              }
+                              handleRenameSubmit(session.id);
+                            }}
+                            className="w-full rounded border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                          />
                         </div>
-                      </button>
-                    )}
-                    {editingSessionId !== session.id && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
-                            aria-label="More actions"
-                          >
-                            <DotsThree className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleRenameClick(e, session.id, session.title)
-                            }
-                          >
-                            Rename
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={(e) =>
-                              handleDeleteClick(e, session.id, session.title)
-                            }
-                            disabled={isDeleting}
-                            className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                          >
-                            Delete chat
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
+                      ) : (
+                        <button
+                          onClick={() => handleSelectSession(session.id)}
+                          className="w-full px-3 py-2.5 pr-10 text-left"
+                        >
+                          <div className="flex min-w-0 max-w-full items-center gap-2">
+                            <div className="min-w-0 flex-1">
+                              <Text
+                                variant="body"
+                                className={cn(
+                                  "truncate font-normal",
+                                  session.id === sessionId
+                                    ? "text-zinc-600"
+                                    : "text-zinc-800",
+                                )}
+                              >
+                                <AnimatePresence mode="wait" initial={false}>
+                                  <motion.span
+                                    key={session.title || "untitled"}
+                                    initial={{ opacity: 0, y: 4 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -4 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="block truncate"
+                                  >
+                                    {session.title || "Untitled chat"}
+                                  </motion.span>
+                                </AnimatePresence>
+                              </Text>
+                              {startTypeLabel ? (
+                                <div className="mt-1">
+                                  <Badge variant="info" size="small">
+                                    {startTypeLabel}
+                                  </Badge>
+                                </div>
+                              ) : null}
+                              <Text
+                                variant="small"
+                                className="text-neutral-400"
+                              >
+                                {formatDate(session.updated_at)}
+                              </Text>
+                            </div>
+                            {session.is_processing &&
+                              session.id !== sessionId &&
+                              !completedSessionIDs.has(session.id) && (
+                                <PulseLoader size={16} className="shrink-0" />
+                              )}
+                            {completedSessionIDs.has(session.id) &&
+                              session.id !== sessionId && (
+                                <CheckCircle
+                                  className="h-4 w-4 shrink-0 text-green-500"
+                                  weight="fill"
+                                />
+                              )}
+                          </div>
+                        </button>
+                      )}
+                      {editingSessionId !== session.id && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              onClick={(e) => e.stopPropagation()}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-zinc-600 transition-all hover:bg-neutral-100"
+                              aria-label="More actions"
+                            >
+                              <DotsThree className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleRenameClick(e, session.id, session.title)
+                              }
+                            >
+                              Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) =>
+                                handleDeleteClick(e, session.id, session.title)
+                              }
+                              disabled={isDeleting}
+                              className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                            >
+                              Delete chat
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </div>
                   );
                 })
               )}

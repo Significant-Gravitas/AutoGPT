@@ -146,59 +146,59 @@ export function MobileDrawer({
                   : null;
 
                 return (
-                <button
-                  key={session.id}
-                  onClick={() => {
-                    onSelectSession(session.id);
-                    if (completedSessionIDs.has(session.id)) {
-                      clearCompletedSession(session.id);
-                    }
-                  }}
-                  className={cn(
-                    "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
-                    session.id === currentSessionId
-                      ? "bg-zinc-100"
-                      : "hover:bg-zinc-50",
-                  )}
-                >
-                  <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                    <div className="flex min-w-0 max-w-full items-center gap-1.5">
-                      <Text
-                        variant="body"
-                        className={cn(
-                          "truncate font-normal",
-                          session.id === currentSessionId
-                            ? "text-zinc-600"
-                            : "text-zinc-800",
-                        )}
-                      >
-                        {session.title || "Untitled chat"}
-                      </Text>
-                      {session.is_processing &&
-                        !completedSessionIDs.has(session.id) &&
-                        session.id !== currentSessionId && (
-                          <PulseLoader size={8} className="shrink-0" />
-                        )}
-                      {completedSessionIDs.has(session.id) &&
-                        session.id !== currentSessionId && (
-                          <CheckCircle
-                            className="h-4 w-4 shrink-0 text-green-500"
-                            weight="fill"
-                          />
-                        )}
-                    </div>
-                    {startTypeLabel ? (
-                      <div className="mt-1">
-                        <Badge variant="info" size="small">
-                          {startTypeLabel}
-                        </Badge>
+                  <button
+                    key={session.id}
+                    onClick={() => {
+                      onSelectSession(session.id);
+                      if (completedSessionIDs.has(session.id)) {
+                        clearCompletedSession(session.id);
+                      }
+                    }}
+                    className={cn(
+                      "w-full rounded-lg px-3 py-2.5 text-left transition-colors",
+                      session.id === currentSessionId
+                        ? "bg-zinc-100"
+                        : "hover:bg-zinc-50",
+                    )}
+                  >
+                    <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
+                      <div className="flex min-w-0 max-w-full items-center gap-1.5">
+                        <Text
+                          variant="body"
+                          className={cn(
+                            "truncate font-normal",
+                            session.id === currentSessionId
+                              ? "text-zinc-600"
+                              : "text-zinc-800",
+                          )}
+                        >
+                          {session.title || "Untitled chat"}
+                        </Text>
+                        {session.is_processing &&
+                          !completedSessionIDs.has(session.id) &&
+                          session.id !== currentSessionId && (
+                            <PulseLoader size={8} className="shrink-0" />
+                          )}
+                        {completedSessionIDs.has(session.id) &&
+                          session.id !== currentSessionId && (
+                            <CheckCircle
+                              className="h-4 w-4 shrink-0 text-green-500"
+                              weight="fill"
+                            />
+                          )}
                       </div>
-                    ) : null}
-                    <Text variant="small" className="text-neutral-400">
-                      {formatDate(session.updated_at)}
-                    </Text>
-                  </div>
-                </button>
+                      {startTypeLabel ? (
+                        <div className="mt-1">
+                          <Badge variant="info" size="small">
+                            {startTypeLabel}
+                          </Badge>
+                        </div>
+                      ) : null}
+                      <Text variant="small" className="text-neutral-400">
+                        {formatDate(session.updated_at)}
+                      </Text>
+                    </div>
+                  </button>
                 );
               })
             )}

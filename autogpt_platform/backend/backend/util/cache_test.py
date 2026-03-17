@@ -12,6 +12,7 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
@@ -1174,7 +1175,7 @@ class TestCacheHMAC:
         assert len(keys) >= 1, "Expected at least one cache key"
 
         for key in keys:
-            raw = redis.get(key)
+            raw = cast(bytes | None, redis.get(key))
             assert raw is not None
             # Flip a byte in the signature portion to simulate tampering
             tampered = bytes([raw[0] ^ 0xFF]) + raw[1:]

@@ -31,7 +31,6 @@ from backend.copilot.model import (
     get_user_sessions,
     update_session_title,
 )
-from backend.copilot.session_types import ChatSessionStartType
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -39,6 +38,7 @@ from backend.copilot.rate_limit import (
     get_usage_status,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.session_types import ChatSessionStartType
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
