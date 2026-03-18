@@ -91,7 +91,7 @@ COMMENT_COUNT=$(( \
 
 2. Start CI watch in background:
 ```bash
-gh pr checks --watch --fail-fast &
+gh pr checks {N} --repo Significant-Gravitas/AutoGPT --watch --fail-fast &
 CI_PID=$!
 ```
 
@@ -111,7 +111,9 @@ while kill -0 $CI_PID 2>/dev/null; do
 done
 ```
 
-4. When new comments arrive, address them immediately while CI continues in the background. After addressing, update COMMENT_COUNT and resume polling.
+4. When new comments arrive, address them immediately while CI continues in the background.
+   If you push new commits, the old CI_PID becomes stale (new commits trigger new CI runs) — restart the combined wait from step 1 (recompute COMMENT_COUNT and start a fresh CI watch for the new HEAD).
+   Otherwise, update COMMENT_COUNT and resume polling.
 
 5. When CI finishes (CI_PID exits), collect its exit status:
 ```bash
@@ -120,8 +122,8 @@ CI_EXIT=$?
 ```
 
 If CI failed:
-1. Get the failed run ID: `gh pr checks --json name,state,link --jq '.[] | select(.state == "FAILURE")'`
-2. Read logs: `gh run view <run-id> --log-failed`
-3. Fix → commit → push → restart the combined wait
+1. Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json name,state,link --jq '.[] | select(.state == "FAILURE") | .link'`
+2. Extract the run ID from the link (format: `.../actions/runs/<run-id>/job/...`), then view logs: `gh run view <run-id> --log-failed`
+3. Fix → commit → push → restart the combined wait (from step 1)
 
 **The loop ends when:** CI fully green + all comments addressed + no new comments since CI settled.
