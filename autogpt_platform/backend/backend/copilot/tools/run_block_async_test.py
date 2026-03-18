@@ -9,6 +9,7 @@ from backend.copilot.tools.get_block_result import GetBlockResultTool
 from backend.copilot.tools.models import (
     BlockJobResultResponse,
     BlockJobStartedResponse,
+    BlockOutputResponse,
     ErrorResponse,
     ResponseType,
 )
@@ -184,13 +185,16 @@ async def test_get_block_result_missing_job(
 async def test_get_block_result_returns_output(
     get_block_result_tool: GetBlockResultTool,
 ) -> None:
-    mock_output = MagicMock()
-    mock_output.block_id = "block-uuid"
-    mock_output.block_name = "Test Block"
-    mock_output.outputs = {"result": ["value"]}
-    mock_output.success = True
+    mock_output = BlockOutputResponse(
+        message="ok",
+        session_id="test-session",
+        block_id="block-uuid",
+        block_name="Test Block",
+        outputs={"result": ["value"]},
+        success=True,
+    )
 
-    async def _done() -> MagicMock:
+    async def _done() -> BlockOutputResponse:
         return mock_output
 
     task = asyncio.create_task(_done())

@@ -6,7 +6,12 @@ from typing import Any
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .models import BlockJobResultResponse, ErrorResponse, ToolResponseBase
+from .models import (
+    BlockJobResultResponse,
+    BlockOutputResponse,
+    ErrorResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +104,11 @@ class GetBlockResultTool(BaseTool):
 
         # Clean up the finished task
         jobs.pop(job_id, None)
+
+        # execute_block returns ErrorResponse on failure — propagate it directly
+        # rather than accessing .block_id/.outputs which only exist on BlockOutputResponse.
+        if not isinstance(result, BlockOutputResponse):
+            return result
 
         return BlockJobResultResponse(
             message="Block execution completed successfully.",
