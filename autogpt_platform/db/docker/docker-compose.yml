@@ -66,6 +66,9 @@ services:
     container_name: supabase-kong
     image: kong:2.8.1
     restart: unless-stopped
+    networks:
+      - default
+      - shared-network
     ports:
       - 8000:8000/tcp
       - 8443:8443/tcp
@@ -129,7 +132,7 @@ services:
 
       GOTRUE_EXTERNAL_EMAIL_ENABLED: true
       GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: false
-      GOTRUE_MAILER_AUTOCONFIRM: false
+      GOTRUE_MAILER_AUTOCONFIRM: true
 
       # Uncomment to bypass nonce check in ID Token flow. Commonly set to true when using Google Sign In on mobile.
       # GOTRUE_EXTERNAL_SKIP_NONCE_CHECK: true
@@ -407,6 +410,9 @@ services:
     container_name: supabase-db
     image: supabase/postgres:15.8.1.049
     restart: unless-stopped
+    networks:
+      - default
+      - app-network
     volumes:
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
@@ -537,6 +543,14 @@ services:
         "-c",
         "/app/bin/migrate && /app/bin/supavisor eval \"$$(cat /etc/pooler/pooler.exs)\" && /app/bin/server"
       ]
+
+networks:
+  shared-network:
+    name: shared-network
+    external: true
+  app-network:
+    name: app-network
+    external: true
 
 volumes:
   supabase-config:
