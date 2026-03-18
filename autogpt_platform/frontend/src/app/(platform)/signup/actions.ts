@@ -1,9 +1,12 @@
 "use server";
 
-import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
+import {
+  postV1CheckIfAnEmailIsAllowedToSignUp,
+  postV1GetOrCreateUser,
+} from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { environment } from "@/services/environment";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
 import { isWaitlistError, logWaitlistError } from "../../api/auth/utils";
@@ -32,32 +35,25 @@ export async function signup(
     // Pre-check invite eligibility before creating a Supabase auth user.
     // This prevents orphaned auth accounts when the invite gate is enabled.
     try {
-      const checkResponse = await fetch(
-        `${environment.getAGPTServerApiUrl()}/auth/check-invite`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: parsed.data.email }),
-        },
+      const checkResult = await resolveResponse(
+        postV1CheckIfAnEmailIsAllowedToSignUp({ email: parsed.data.email }),
       );
-
-      if (checkResponse.ok) {
-        const { allowed } = await checkResponse.json();
-        if (!allowed) {
-          return { success: false, error: "not_allowed" };
-        }
-      } else {
-        Sentry.captureMessage(
-          `Invite pre-check returned HTTP ${checkResponse.status}`,
-          { level: "warning", tags: { flow: "signup_precheck" } },
-        );
+      if (!checkResult.allowed) {
+        return { success: false, error: "not_allowed" };
       }
       // If the check fails (non-OK or backend unreachable), fall through to
       // signup — the backend-level check in get_or_activate_user() catches it.
     } catch (precheckError) {
-      Sentry.captureException(precheckError, {
-        tags: { flow: "signup_precheck" },
-      });
+      if (precheckError instanceof ApiError) {
+        Sentry.captureMessage(
+          `Invite pre-check returned HTTP ${precheckError.status}`,
+          { level: "warning", tags: { flow: "signup_precheck" } },
+        );
+      } else {
+        Sentry.captureException(precheckError, {
+          tags: { flow: "signup_precheck" },
+        });
+      }
       // Graceful fallback: don't block signup if the pre-check itself fails.
     }
 

@@ -110,6 +110,11 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def is_internal_email(email: str) -> bool:
+    """Return True for @agpt.co addresses, which always bypass the invite gate."""
+    return normalize_email(email).endswith("@agpt.co")
+
+
 def _normalize_name(name: Optional[str]) -> Optional[str]:
     if name is None:
         return None
@@ -683,7 +688,7 @@ async def get_or_activate_user(user_data: dict) -> User:
     if existing_user is not None:
         return existing_user
 
-    if not _settings.config.enable_invite_gate or normalized_email.endswith("@agpt.co"):
+    if not _settings.config.enable_invite_gate or is_internal_email(normalized_email):
         return await _open_signup_create_user(
             auth_user_id, normalized_email, metadata_name
         )
