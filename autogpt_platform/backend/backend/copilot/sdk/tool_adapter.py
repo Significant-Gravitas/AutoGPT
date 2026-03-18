@@ -201,6 +201,12 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
 
     The tool_name may include an MCP prefix (e.g. ``mcp__copilot__run_block``);
     the prefix is stripped automatically before looking up the tool.
+
+    Ordering guarantee: the Claude Agent SDK dispatches MCP ``tools/call`` requests
+    in the same order as the ToolUseBlocks appear in the AssistantMessage.
+    Pre-launched tasks are queued FIFO per tool name, so the N-th handler for a
+    given tool name dequeues the N-th pre-launched task — result and args always
+    correspond when the SDK preserves order (which it does in the current SDK).
     """
     queues = _tool_task_queues.get()
     if queues is None:
