@@ -39,6 +39,7 @@ _NON_FATAL_EMAIL_SWEEP_ERRORS = (
     ConnectionError,
     OSError,
     PostmarkerException,
+    RuntimeError,
     TimeoutError,
     ValueError,
 )
@@ -200,14 +201,30 @@ async def _ensure_session_title_for_completed_session(session: ChatSession) -> N
 async def _send_completion_email(session: ChatSession) -> None:
     report = session.completion_report
     if report is None:
-        raise ValueError("Missing completion report")
+        raise ValueError(f"Missing completion report for session {session.session_id}")
+
+    logger.info(
+        "[email] Preparing completion email for session=%s user=%s "
+        "start_type=%s should_notify=%s",
+        session.session_id,
+        session.user_id,
+        session.start_type,
+        report.should_notify_user,
+    )
+
     try:
         user = await user_db().get_user_by_id(session.user_id)
     except ValueError as exc:
-        raise ValueError(f"User {session.user_id} not found") from exc
+        raise ValueError(
+            f"[email] User {session.user_id} not found for session "
+            f"{session.session_id}"
+        ) from exc
 
     if not user.email:
-        raise ValueError(f"User {session.user_id} not found")
+        raise ValueError(
+            f"[email] User {session.user_id} has no email address "
+            f"(session {session.session_id})"
+        )
 
     approval_cta = report.has_pending_approvals
     template_name = _get_completion_email_template_name(session.start_type)
@@ -221,6 +238,17 @@ async def _send_completion_email(session: ChatSession) -> None:
             else "Open Copilot"
         )
 
+    logger.info(
+        "[email] Sending completion email: session=%s user=%s email=%s "
+        "template=%s title=%r has_approvals=%s",
+        session.session_id,
+        session.user_id,
+        user.email,
+        template_name,
+        report.email_title,
+        approval_cta,
+    )
+
     sender = EmailSender()
     await sender.send_template(
         user_email=user.email,
@@ -233,6 +261,11 @@ async def _send_completion_email(session: ChatSession) -> None:
             "cta_label": cta_label,
         },
     )
+    logger.info(
+        "[email] Completion email sent successfully: session=%s user=%s",
+        session.session_id,
+        session.user_id,
+    )
 
 
 # --------------- email sweep --------------- #
@@ -243,14 +276,23 @@ async def _process_pending_copilot_email_candidates(
 ) -> PendingCopilotEmailSweepResult:
     result = PendingCopilotEmailSweepResult(candidate_count=len(candidates))
 
+    logger.info("[sweep] Processing %s pending email candidates", len(candidates))
+
     for candidate in candidates:
         session = await get_chat_session(candidate.session_id)
-        if session is None or session.is_manual:
+        if session is None:
+            logger.info("[sweep] session=%s not found, skipping", candidate.session_id)
+            continue
+        if session.is_manual:
+            logger.debug("[sweep] session=%s is manual, skipping", session.session_id)
             continue
 
         active = await stream_registry.get_session(session.session_id)
         is_running = active is not None and active.status == "running"
         if is_running:
+            logger.info(
+                "[sweep] session=%s still running, deferring", session.session_id
+            )
             result.running_count += 1
             continue
 
@@ -260,6 +302,13 @@ async def _process_pending_copilot_email_candidates(
 
         if session.completion_report is None:
             if session.completion_report_repair_count < MAX_COMPLETION_REPORT_REPAIRS:
+                logger.info(
+                    "[sweep] session=%s has no completion report, "
+                    "queuing repair (%s/%s)",
+                    session.session_id,
+                    session.completion_report_repair_count + 1,
+                    MAX_COMPLETION_REPORT_REPAIRS,
+                )
                 await _queue_completion_report_repair(
                     session,
                     pending_approval_count=pending_approval_count,
@@ -267,6 +316,12 @@ async def _process_pending_copilot_email_candidates(
                 result.repair_queued_count += 1
                 continue
 
+            logger.warning(
+                "[sweep] session=%s exhausted %s repair attempts with no "
+                "completion report, marking skipped",
+                session.session_id,
+                MAX_COMPLETION_REPORT_REPAIRS,
+            )
             session.completed_at = session.completed_at or datetime.now(UTC)
             session.completion_report_repair_queued_at = None
             session.notification_email_skipped_at = datetime.now(UTC)
@@ -290,6 +345,11 @@ async def _process_pending_copilot_email_candidates(
         await _ensure_session_title_for_completed_session(session)
 
         if not session.completion_report.should_notify_user:
+            logger.info(
+                "[sweep] session=%s completion report says should_notify_user=False, "
+                "marking skipped",
+                session.session_id,
+            )
             session.notification_email_skipped_at = datetime.now(UTC)
             await upsert_chat_session(session)
             result.skipped_count += 1
@@ -299,8 +359,9 @@ async def _process_pending_copilot_email_candidates(
             await _send_completion_email(session)
         except _NON_FATAL_EMAIL_SWEEP_ERRORS:
             logger.exception(
-                "Failed to send nightly copilot email for session %s",
+                "[sweep] Failed to send email for session=%s user=%s",
                 session.session_id,
+                session.user_id,
             )
             # Without a persisted retry state, leave the session in a terminal
             # skipped state so the sweep does not pick it up forever.
@@ -316,13 +377,25 @@ async def _process_pending_copilot_email_candidates(
     result.processed_count = (
         result.sent_count + result.skipped_count + result.failed_count
     )
+    logger.info(
+        "[sweep] Complete: candidates=%s sent=%s failed=%s skipped=%s "
+        "running=%s repair_queued=%s",
+        result.candidate_count,
+        result.sent_count,
+        result.failed_count,
+        result.skipped_count,
+        result.running_count,
+        result.repair_queued_count,
+    )
     return result
 
 
 async def _send_nightly_copilot_emails() -> int:
+    logger.info("[sweep] Starting nightly copilot email sweep")
     candidates = await chat_db().get_pending_notification_chat_sessions(
         limit=PENDING_NOTIFICATION_SWEEP_LIMIT
     )
+    logger.info("[sweep] Found %s candidates", len(candidates))
     result = await _process_pending_copilot_email_candidates(candidates)
     return result.processed_count
 

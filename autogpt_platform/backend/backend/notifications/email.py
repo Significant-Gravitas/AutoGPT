@@ -38,6 +38,7 @@ class EmailSender:
             self.postmark = TypedPostmarkClient(
                 server_token=settings.secrets.postmark_server_api_token
             )
+            logger.info("Postmark client initialized successfully")
         else:
             logger.warning(
                 "Postmark server API token not found, email sending disabled"
@@ -66,8 +67,9 @@ class EmailSender:
             raise ValueError("Invalid template name")
 
         if not self.postmark:
-            logger.warning("Postmark client not initialized, email not sent")
-            return
+            raise RuntimeError(
+                "Postmark client not initialized — POSTMARK_SERVER_API_TOKEN is missing"
+            )
 
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
@@ -80,6 +82,13 @@ class EmailSender:
         template_path = f"templates/{template_name}"
         with open(pathlib.Path(__file__).parent / template_path, "r") as f:
             content_template = f.read()
+
+        logger.info(
+            "Rendering email template=%s for user=%s subject=%r",
+            template_name,
+            user_email,
+            subject,
+        )
 
         _, full_message = await self.formatter.format_email(
             base_template=base_template,
@@ -108,8 +117,9 @@ class EmailSender:
     ):
         """Send an email to a user using a template pulled from the notification type, or fallback"""
         if not self.postmark:
-            logger.warning("Postmark client not initialized, email not sent")
-            return
+            raise RuntimeError(
+                "Postmark client not initialized — POSTMARK_SERVER_API_TOKEN is missing"
+            )
 
         template = self._get_template(notification)
 
@@ -129,15 +139,23 @@ class EmailSender:
                 unsubscribe_link=f"{base_url}/profile/settings",
             )
         except Exception as e:
-            logger.error(f"Error formatting full message: {e}")
-            raise e
+            logger.error(
+                "Error formatting email for notification_type=%s user=%s: %s",
+                notification,
+                user_email,
+                e,
+            )
+            raise
 
         # Check email size & send summary if too large
         email_size = len(full_message)
         if email_size > self.MAX_EMAIL_CHARS:
             logger.warning(
-                f"Email size ({email_size} chars) exceeds safe limit. "
-                "Sending summary email instead."
+                "Email size (%s chars) exceeds safe limit for user=%s "
+                "notification_type=%s. Sending summary email instead.",
+                email_size,
+                user_email,
+                notification,
             )
 
             # Create lightweight summary
@@ -157,7 +175,14 @@ class EmailSender:
             )
             return  # Skip sending full email
 
-        logger.debug(f"Sending email with size: {email_size} characters")
+        logger.info(
+            "Sending templated email: notification_type=%s user=%s "
+            "subject=%r size=%s chars",
+            notification,
+            user_email,
+            subject,
+            email_size,
+        )
         self._send_email(
             user_email=user_email,
             subject=subject,
@@ -171,7 +196,8 @@ class EmailSender:
         # find the template in templates/name.html (the .template returns with the .html)
         template_path = f"templates/{notification_type_override.template}.jinja2"
         logger.debug(
-            f"Template full path: {pathlib.Path(__file__).parent / template_path}"
+            "Template full path: %s",
+            pathlib.Path(__file__).parent / template_path,
         )
         base_template_path = "templates/base.html.jinja2"
         with open(pathlib.Path(__file__).parent / base_template_path, "r") as file:
@@ -192,9 +218,13 @@ class EmailSender:
         user_unsubscribe_link: str | None = None,
     ):
         if not self.postmark:
-            logger.warning("Email tried to send without postmark configured")
-            return
-        logger.debug(f"Sending email to {user_email} with subject {subject}")
+            raise RuntimeError("Email tried to send without postmark configured")
+        logger.info(
+            "Sending email via Postmark: to=%s subject=%r body_size=%s",
+            user_email,
+            subject,
+            len(body),
+        )
         self.postmark.emails.send(
             From=settings.config.postmark_sender_email,
             To=user_email,
@@ -209,3 +239,4 @@ class EmailSender:
                 else None
             ),
         )
+        logger.info("Email sent successfully to %s", user_email)
