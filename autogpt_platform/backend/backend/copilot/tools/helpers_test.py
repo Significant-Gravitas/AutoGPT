@@ -780,3 +780,50 @@ async def test_check_hitl_reuses_existing_waiting_review() -> None:
 
     assert isinstance(result, ReviewRequiredResponse)
     assert result.review_id == "existing-review-42"
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_excluded_by_type() -> None:
+    """prepare_block_for_execution returns ErrorResponse for excluded block types."""
+    from backend.blocks import BlockType
+
+    block = _make_simple_block()
+    block.block_type = BlockType.AGENT
+
+    excl_ids, excl_types = _patch_excluded(block_types={BlockType.AGENT})
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-agent",
+            input_data={},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "cannot be run directly" in result.message
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_excluded_by_id() -> None:
+    """prepare_block_for_execution returns ErrorResponse for excluded block IDs."""
+    block = _make_simple_block(block_id="blk-excluded")
+
+    excl_ids, excl_types = _patch_excluded(block_ids={"blk-excluded"})
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-excluded",
+            input_data={},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "cannot be run directly" in result.message
