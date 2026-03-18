@@ -439,9 +439,10 @@ async def bulk_create_invited_users_from_file(
     results: list[BulkInvitedUserRowResult] = []
     seen_emails: set[str] = set()
 
+    # First pass: validate emails and deduplicate (cheap, serial).
+    valid_rows: list[tuple[_ParsedInviteRow, str, str | None]] = []
     for row in parsed_rows:
         row_name = _normalize_name(row.name)
-
         try:
             validated_email = _email_adapter.validate_python(row.email)
         except ValidationError:
@@ -505,49 +506,57 @@ async def bulk_create_invited_users_from_file(
             )
             continue
 
-        try:
-            invited_user = await create_invited_user(normalized_email, row_name)
-        except PreconditionFailed as exc:
-            skipped_count += 1
-            results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="SKIPPED",
-                    message=str(exc),
+    # Second pass: create invites in batches to bound concurrent DB load.
+    for i in range(0, len(valid_rows), _BULK_INVITE_BATCH_SIZE):
+        batch = valid_rows[i : i + _BULK_INVITE_BATCH_SIZE]
+        batch_outcomes = await asyncio.gather(
+            *(create_invited_user(email, name) for _, email, name in batch),
+            return_exceptions=True,
+        )
+        for (row, normalized_email, row_name), outcome in zip(batch, batch_outcomes):
+            if isinstance(outcome, PreconditionFailed):
+                skipped_count += 1
+                results.append(
+                    BulkInvitedUserRowResult(
+                        row_number=row.row_number,
+                        email=normalized_email,
+                        name=row_name,
+                        status="SKIPPED",
+                        message=str(outcome),
+                    )
                 )
-            )
-        except Exception:
-            masked = mask_email(normalized_email)
-            logger.exception(
-                "Failed to create bulk invite for row %s (%s)",
-                row.row_number,
-                masked,
-            )
-            error_count += 1
-            results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="ERROR",
-                    message="Unexpected error creating invite",
+            elif isinstance(outcome, BaseException):
+                masked = mask_email(normalized_email)
+                logger.exception(
+                    "Failed to create bulk invite for row %s (%s)",
+                    row.row_number,
+                    masked,
+                    exc_info=outcome,
                 )
-            )
-        else:
-            created_count += 1
-            results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="CREATED",
-                    message="Invite created",
-                    invited_user=invited_user,
+                error_count += 1
+                results.append(
+                    BulkInvitedUserRowResult(
+                        row_number=row.row_number,
+                        email=normalized_email,
+                        name=row_name,
+                        status="ERROR",
+                        message="Unexpected error creating invite",
+                    )
                 )
-            )
+            else:
+                created_count += 1
+                results.append(
+                    BulkInvitedUserRowResult(
+                        row_number=row.row_number,
+                        email=normalized_email,
+                        name=row_name,
+                        status="CREATED",
+                        message="Invite created",
+                        invited_user=outcome,
+                    )
+                )
 
+    results.sort(key=lambda r: r.row_number)
     return BulkInvitedUsersResult(
         created_count=created_count,
         skipped_count=skipped_count,
