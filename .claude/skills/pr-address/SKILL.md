@@ -102,7 +102,7 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level re
 ```
    Compare against previously seen comments to detect new ones.
 
-4. **React to whichever changed first:**
+4. **React in this precedence order (first match wins):**
 
 | What happened | Action |
 |---|---|
