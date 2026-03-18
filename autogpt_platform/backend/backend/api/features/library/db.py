@@ -169,7 +169,7 @@ async def list_library_agents(
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
             include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
+                user_id, include_nodes=False, include_executions=include_executions
             ),
             order=order_by,
             skip=(page - 1) * page_size,
