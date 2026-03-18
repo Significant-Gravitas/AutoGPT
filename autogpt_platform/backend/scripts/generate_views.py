@@ -51,8 +51,9 @@ import sys
 from pathlib import Path
 from urllib.parse import quote
 
-QUERIES_DIR = Path(__file__).parent.parent / "analytics" / "queries"
-ENV_FILE = Path(__file__).parent / ".env"
+BACKEND_DIR = Path(__file__).parent.parent
+QUERIES_DIR = BACKEND_DIR.parent / "analytics" / "queries"
+ENV_FILE = BACKEND_DIR / ".env"
 SCHEMA = "analytics"
 
 SETUP_SQL = """\
