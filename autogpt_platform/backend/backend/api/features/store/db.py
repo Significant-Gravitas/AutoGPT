@@ -1139,16 +1139,21 @@ async def review_store_submission(
                     },
                 )
 
-                # Generate embedding for approved listing (blocking - admin operation)
-                # Inside transaction: if embedding fails, entire transaction rolls back
-                await ensure_embedding(
-                    version_id=store_listing_version_id,
-                    name=submission.name,
-                    description=submission.description,
-                    sub_heading=submission.subHeading,
-                    categories=submission.categories,
-                    tx=tx,
-                )
+                # Generate embedding for approved listing (best-effort)
+                try:
+                    await ensure_embedding(
+                        version_id=store_listing_version_id,
+                        name=submission.name,
+                        description=submission.description,
+                        sub_heading=submission.subHeading,
+                        categories=submission.categories,
+                        tx=tx,
+                    )
+                except Exception as emb_err:
+                    logger.warning(
+                        f"Could not generate embedding for listing "
+                        f"{store_listing_version_id}: {emb_err}"
+                    )
 
                 await prisma.models.StoreListing.prisma(tx).update(
                     where={"id": submission.storeListingId},
