@@ -9,9 +9,10 @@ export class MarketplacePage extends BasePage {
 
   async goto(page: Page) {
     await page.goto("/marketplace");
+    // Use :visible to skip hidden mobile-carousel duplicates
     await page
       .locator(
-        '[data-testid="store-card"], [data-testid="featured-store-card"]',
+        '[data-testid="store-card"]:visible, [data-testid="featured-store-card"]:visible',
       )
       .first()
       .waitFor({ state: "visible", timeout: 20000 });
@@ -129,8 +130,7 @@ export class MarketplacePage extends BasePage {
   }
 
   async getFirstCreatorProfile(page: Page) {
-    const { getId } = getSelectors(page);
-    const card = getId("creator-card").first();
+    const card = page.locator('[data-testid="creator-card"]:visible').first();
     await card.waitFor({ state: "visible", timeout: 15000 });
     return card;
   }
