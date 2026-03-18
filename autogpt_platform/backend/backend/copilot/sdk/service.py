@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any, cast
@@ -29,6 +30,7 @@ from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
+from backend.copilot.context import get_workspace_manager
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -36,7 +38,14 @@ from backend.util.prompt import compress_context
 from backend.util.settings import Settings
 
 from ..config import ChatConfig
-from ..constants import COPILOT_ERROR_PREFIX, COPILOT_SYSTEM_PREFIX
+from ..constants import (
+    COPILOT_ERROR_PREFIX,
+    COPILOT_RETRYABLE_ERROR_PREFIX,
+    COPILOT_SYSTEM_PREFIX,
+    FRIENDLY_TRANSIENT_MSG,
+    is_transient_api_error,
+)
+from ..context import encode_cwd_for_cli
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -54,15 +63,16 @@ from ..response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from ..service import (
     _build_system_prompt,
     _generate_session_title,
     _is_langfuse_configured,
 )
+from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
-from ..tools.workspace_files import get_manager
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
@@ -75,7 +85,7 @@ from .tool_adapter import (
     wait_for_stash,
 )
 from .transcript import (
-    cleanup_cli_project_dir,
+    cleanup_stale_project_dirs,
     download_transcript,
     read_compacted_entries,
     upload_transcript,
@@ -86,6 +96,28 @@ from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+def _append_error_marker(
+    session: ChatSession | None,
+    display_msg: str,
+    *,
+    retryable: bool = False,
+) -> None:
+    """Append a copilot error marker to *session* so it persists across refresh.
+
+    Args:
+        session: The chat session to append to (no-op if ``None``).
+        display_msg: User-visible error text.
+        retryable: If ``True``, use the retryable prefix so the frontend
+            shows a "Try Again" button.
+    """
+    if session is None:
+        return
+    prefix = COPILOT_RETRYABLE_ERROR_PREFIX if retryable else COPILOT_ERROR_PREFIX
+    session.messages.append(
+        ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
+    )
 
 
 def _setup_langfuse_otel() -> None:
@@ -143,6 +175,9 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 _SDK_CWD_PREFIX = WORKSPACE_PREFIX
 
+_last_sweep_time: float = 0.0
+_SWEEP_INTERVAL_SECONDS = 300  # 5 minutes
+
 # Heartbeat interval — keep SSE alive through proxies/LBs during tool execution.
 # IMPORTANT: Must be less than frontend timeout (12s in useCopilotPage.ts)
 _HEARTBEAT_INTERVAL = 10.0  # seconds
@@ -156,7 +191,12 @@ def _resolve_sdk_model() -> str | None:
 
     Uses ``config.claude_agent_model`` if set, otherwise derives from
     ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
-    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4.6"``).
+    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4-6"``).
+
+    OpenRouter uses dot-separated versions (``claude-opus-4.6``) while the
+    direct Anthropic API uses hyphen-separated versions (``claude-opus-4-6``).
+    Normalisation is only applied when the SDK will actually talk to
+    Anthropic directly (not through OpenRouter).
 
     When ``use_claude_code_subscription`` is enabled and no explicit
     ``claude_agent_model`` is set, returns ``None`` so the CLI uses the
@@ -168,7 +208,12 @@ def _resolve_sdk_model() -> str | None:
         return None
     model = config.model
     if "/" in model:
-        return model.split("/", 1)[1]
+        model = model.split("/", 1)[1]
+    # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
+    # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
+    # when NOT routing through OpenRouter.
+    if not config.openrouter_active:
+        model = model.replace(".", "-")
     return model
 
 
@@ -207,61 +252,52 @@ def _build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
 ) -> dict[str, str]:
-    """Build env vars for the SDK CLI process.
+    """Build env vars for the SDK CLI subprocess.
 
-    Routes API calls through OpenRouter (or a custom base_url) using
-    the same ``config.api_key`` / ``config.base_url`` as the non-SDK path.
-    This gives per-call token and cost tracking on the OpenRouter dashboard.
-
-    When *session_id* is provided, an ``x-session-id`` custom header is
-    injected via ``ANTHROPIC_CUSTOM_HEADERS`` so that OpenRouter Broadcast
-    forwards traces (including cost/usage) to Langfuse for the
-    ``/api/v1/messages`` endpoint.
-
-    Only overrides ``ANTHROPIC_API_KEY`` when a valid proxy URL and auth
-    token are both present — otherwise returns an empty dict so the SDK
-    falls back to its default credentials.
+    Three modes (checked in order):
+    1. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
+    2. **Direct Anthropic** — returns ``{}``; subprocess inherits
+       ``ANTHROPIC_API_KEY`` from the parent environment.
+    3. **OpenRouter** (default) — overrides base URL and auth token to
+       route through the proxy, with Langfuse trace headers.
     """
-    env: dict[str, str] = {}
-
+    # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
-        # Claude Code subscription: let the CLI use its own logged-in auth.
-        # Explicitly clear API key env vars so the subprocess doesn't pick
-        # them up from the parent process and bypass subscription auth.
         _validate_claude_code_subscription()
-        env["ANTHROPIC_API_KEY"] = ""
-        env["ANTHROPIC_AUTH_TOKEN"] = ""
-        env["ANTHROPIC_BASE_URL"] = ""
-    elif config.api_key and config.base_url:
-        # Strip /v1 suffix — SDK expects the base URL without a version path
-        base = config.base_url.rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
-        if not base or not base.startswith("http"):
-            # Invalid base_url — don't override SDK defaults
-            return env
-        env["ANTHROPIC_BASE_URL"] = base
-        env["ANTHROPIC_AUTH_TOKEN"] = config.api_key
-        # Must be explicitly empty so the CLI uses AUTH_TOKEN instead
-        env["ANTHROPIC_API_KEY"] = ""
+        return {
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
+            "ANTHROPIC_BASE_URL": "",
+        }
+
+    # --- Mode 2: Direct Anthropic (no proxy hop) ---
+    # ``openrouter_active`` checks the flag *and* credential presence.
+    if not config.openrouter_active:
+        return {}
+
+    # --- Mode 3: OpenRouter proxy ---
+    # Strip /v1 suffix — SDK expects the base URL without a version path.
+    base = (config.base_url or "").rstrip("/")
+    if base.endswith("/v1"):
+        base = base[:-3]
+    env: dict[str, str] = {
+        "ANTHROPIC_BASE_URL": base,
+        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
+        "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+    }
 
     # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-    # The ``x-session-id`` header is *required* for the Anthropic-native
-    # ``/messages`` endpoint — without it broadcast silently drops the
-    # trace even when org-level Langfuse integration is configured.
-    def _safe(value: str) -> str:
-        """Strip CR/LF to prevent header injection, then truncate."""
-        return value.replace("\r", "").replace("\n", "").strip()[:128]
+    def _safe(v: str) -> str:
+        """Sanitise a header value: strip newlines/whitespace and cap length."""
+        return v.replace("\r", "").replace("\n", "").strip()[:128]
 
-    headers: list[str] = []
+    parts = []
     if session_id:
-        headers.append(f"x-session-id: {_safe(session_id)}")
+        parts.append(f"x-session-id: {_safe(session_id)}")
     if user_id:
-        headers.append(f"x-user-id: {_safe(user_id)}")
-    # Only inject headers when routing through OpenRouter/proxy — they're
-    # meaningless (and leak internal IDs) when using subscription mode.
-    if headers and env.get("ANTHROPIC_BASE_URL"):
-        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(headers)
+        parts.append(f"x-user-id: {_safe(user_id)}")
+    if parts:
+        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
 
     return env
 
@@ -281,31 +317,34 @@ def _make_sdk_cwd(session_id: str) -> str:
     return cwd
 
 
-def _cleanup_sdk_tool_results(cwd: str) -> None:
+async def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
-    Cleans up:
-    - ``~/.claude/projects/<encoded-cwd>/`` — CLI session transcripts and
-      tool-result files.  Each SDK turn uses a unique cwd, so this directory
-      is safe to remove entirely.
-    - ``/tmp/copilot-<session>/`` — the ephemeral working directory.
+    Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
+
+    Also sweeps stale CLI project directories (older than 12 h) to prevent
+    unbounded disk growth.  The sweep is best-effort, rate-limited to once
+    every 5 minutes, and capped at 50 directories per sweep.
 
     Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
     the session_id.
     """
     normalized = os.path.normpath(cwd)
     if not normalized.startswith(_SDK_CWD_PREFIX):
-        logger.warning(f"[SDK] Rejecting cleanup for path outside workspace: {cwd}")
+        logger.warning("[SDK] Rejecting cleanup for path outside workspace: %s", cwd)
         return
 
-    # Clean the CLI's project directory (transcripts + tool-results).
-    cleanup_cli_project_dir(cwd)
+    await asyncio.to_thread(shutil.rmtree, normalized, True)
 
-    # Clean up the temp cwd directory itself.
-    try:
-        shutil.rmtree(normalized, ignore_errors=True)
-    except OSError:
-        pass
+    # Best-effort sweep of old project dirs to prevent disk leak.
+    # Pass the encoded cwd so only this session's project directory is swept,
+    # which is safe in multi-tenant environments.
+    global _last_sweep_time
+    now = time.time()
+    if now - _last_sweep_time >= _SWEEP_INTERVAL_SECONDS:
+        _last_sweep_time = now
+        encoded = encode_cwd_for_cli(normalized)
+        await asyncio.to_thread(cleanup_stale_project_dirs, encoded)
 
 
 def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
@@ -565,7 +604,7 @@ async def _prepare_file_attachments(
         return empty
 
     try:
-        manager = await get_manager(user_id, session_id)
+        manager = await get_workspace_manager(user_id, session_id)
     except Exception:
         logger.warning(
             "Failed to create workspace manager for file attachments",
@@ -653,13 +692,17 @@ async def stream_chat_completion_sdk(
     # Type narrowing: session is guaranteed ChatSession after the check above
     session = cast(ChatSession, session)
 
-    # Clean up stale error markers from previous turn before starting new turn
-    # If the last message contains an error marker, remove it (user is retrying)
-    if (
+    # Clean up ALL trailing error markers from previous turn before starting
+    # a new turn.  Multiple markers can accumulate when a mid-stream error is
+    # followed by a cleanup error in __aexit__ (both append a marker).
+    while (
         len(session.messages) > 0
         and session.messages[-1].role == "assistant"
         and session.messages[-1].content
-        and COPILOT_ERROR_PREFIX in session.messages[-1].content
+        and (
+            COPILOT_ERROR_PREFIX in session.messages[-1].content
+            or COPILOT_RETRYABLE_ERROR_PREFIX in session.messages[-1].content
+        )
     ):
         logger.info(
             "[SDK] [%s] Removing stale error marker from previous turn",
@@ -736,6 +779,13 @@ async def stream_chat_completion_sdk(
     _otel_ctx: Any = None
 
     # Make sure there is no more code between the lock acquisition and try-block.
+    # Token usage accumulators — populated from ResultMessage at end of turn
+    turn_prompt_tokens = 0  # uncached input tokens only
+    turn_completion_tokens = 0
+    turn_cache_read_tokens = 0
+    turn_cache_creation_tokens = 0
+    turn_cost_usd: float | None = None
+
     try:
         # Build system prompt (reuses non-SDK path with Langfuse support).
         # Pre-compute the cwd here so the exact working directory path can be
@@ -797,7 +847,7 @@ async def stream_chat_completion_sdk(
                 )
             except Exception as transcript_err:
                 logger.warning(
-                    "%s Transcript download failed, continuing without " "--resume: %s",
+                    "%s Transcript download failed, continuing without --resume: %s",
                     log_prefix,
                     transcript_err,
                 )
@@ -820,7 +870,7 @@ async def stream_chat_completion_sdk(
             is_valid = validate_transcript(dl.content)
             dl_lines = dl.content.strip().split("\n") if dl.content else []
             logger.info(
-                "%s Downloaded transcript: %dB, %d lines, " "msg_count=%d, valid=%s",
+                "%s Downloaded transcript: %dB, %d lines, msg_count=%d, valid=%s",
                 log_prefix,
                 len(dl.content),
                 len(dl_lines),
@@ -1039,23 +1089,36 @@ async def stream_chat_completion_sdk(
                         # Exception in receive_response() — capture it
                         # so the session can still be saved and the
                         # frontend gets a clean finish.
-                        logger.error(
+                        if is_transient_api_error(str(stream_err)):
+                            log, display, code = (
+                                logger.warning,
+                                FRIENDLY_TRANSIENT_MSG,
+                                "transient_api_error",
+                            )
+                        else:
+                            log, display, code = (
+                                logger.error,
+                                f"SDK stream error: {stream_err}",
+                                "sdk_stream_error",
+                            )
+
+                        log(
                             "%s Stream error from SDK: %s",
                             log_prefix,
                             stream_err,
                             exc_info=True,
                         )
                         ended_with_stream_error = True
-
-                        yield StreamError(
-                            errorText=f"SDK stream error: {stream_err}",
-                            code="sdk_stream_error",
+                        _append_error_marker(
+                            session,
+                            display,
+                            retryable=(code == "transient_api_error"),
                         )
+                        yield StreamError(errorText=display, code=code)
                         break
 
                     logger.info(
-                        "%s Received: %s %s "
-                        "(unresolved=%d, current=%d, resolved=%d)",
+                        "%s Received: %s %s (unresolved=%d, current=%d, resolved=%d)",
                         log_prefix,
                         type(sdk_msg).__name__,
                         getattr(sdk_msg, "subtype", ""),
@@ -1069,14 +1132,41 @@ async def stream_chat_completion_sdk(
                     # so we can debug Anthropic API 400s surfaced by the CLI.
                     sdk_error = getattr(sdk_msg, "error", None)
                     if isinstance(sdk_msg, AssistantMessage) and sdk_error:
+                        error_text = str(sdk_error)
+                        error_preview = str(sdk_msg.content)[:500]
                         logger.error(
                             "[SDK] [%s] AssistantMessage has error=%s, "
                             "content_blocks=%d, content_preview=%s",
                             session_id[:12],
                             sdk_error,
                             len(sdk_msg.content),
-                            str(sdk_msg.content)[:500],
+                            error_preview,
                         )
+
+                        # Intercept transient API errors (socket closed,
+                        # ECONNRESET) — replace the raw message with a
+                        # user-friendly error text and use the retryable
+                        # error prefix so the frontend shows a retry button.
+                        # Check both the error field and content for patterns.
+                        if is_transient_api_error(error_text) or is_transient_api_error(
+                            error_preview
+                        ):
+                            logger.warning(
+                                "%s Transient Anthropic API error detected, "
+                                "suppressing raw error text",
+                                log_prefix,
+                            )
+                            ended_with_stream_error = True
+                            _append_error_marker(
+                                session,
+                                FRIENDLY_TRANSIENT_MSG,
+                                retryable=True,
+                            )
+                            yield StreamError(
+                                errorText=FRIENDLY_TRANSIENT_MSG,
+                                code="transient_api_error",
+                            )
+                            break
 
                     # Race-condition fix: SDK hooks (PostToolUse) are
                     # executed asynchronously via start_soon() — the next
@@ -1100,7 +1190,14 @@ async def stream_chat_completion_sdk(
                         and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
                         and not is_parallel_continuation
                     ):
-                        if await wait_for_stash(timeout=0.5):
+                        # 2.0 s timeout: the original 0.5 s caused frequent
+                        # timeouts under load (parallel tool calls, large
+                        # outputs).  2.0 s gives margin while still failing
+                        # fast when the hook genuinely will not fire.
+                        if await wait_for_stash(timeout=2.0):
+                            # Yield once so any callbacks scheduled by the
+                            # stash signal can propagate before we process
+                            # the next SDK message.
                             await asyncio.sleep(0)
                         else:
                             logger.warning(
@@ -1112,7 +1209,7 @@ async def stream_chat_completion_sdk(
                                 - len(adapter.resolved_tool_calls),
                             )
 
-                    # Log ResultMessage details for debugging
+                    # Log ResultMessage details and capture token usage
                     if isinstance(sdk_msg, ResultMessage):
                         logger.info(
                             "%s Received: ResultMessage %s "
@@ -1130,6 +1227,33 @@ async def stream_chat_completion_sdk(
                                 log_prefix,
                                 sdk_msg.result or "(no error message provided)",
                             )
+
+                        # Capture token usage from ResultMessage.
+                        # Anthropic reports cached tokens separately:
+                        #   input_tokens = uncached only
+                        #   cache_read_input_tokens = served from cache
+                        #   cache_creation_input_tokens = written to cache
+                        if sdk_msg.usage:
+                            turn_prompt_tokens += sdk_msg.usage.get("input_tokens", 0)
+                            turn_cache_read_tokens += sdk_msg.usage.get(
+                                "cache_read_input_tokens", 0
+                            )
+                            turn_cache_creation_tokens += sdk_msg.usage.get(
+                                "cache_creation_input_tokens", 0
+                            )
+                            turn_completion_tokens += sdk_msg.usage.get(
+                                "output_tokens", 0
+                            )
+                            logger.info(
+                                "%s Token usage: uncached=%d, cache_read=%d, cache_create=%d, output=%d",
+                                log_prefix,
+                                turn_prompt_tokens,
+                                turn_cache_read_tokens,
+                                turn_cache_creation_tokens,
+                                turn_completion_tokens,
+                            )
+                        if sdk_msg.total_cost_usd is not None:
+                            turn_cost_usd = sdk_msg.total_cost_usd
 
                     # Emit compaction end if SDK finished compacting.
                     # When compaction ends, sync TranscriptBuilder with the
@@ -1176,7 +1300,7 @@ async def stream_chat_completion_sdk(
                                 extra,
                             )
 
-                        # Log errors being sent to frontend
+                        # Persist error markers so they survive page refresh
                         if isinstance(response, StreamError):
                             logger.error(
                                 "%s Sending error to frontend: %s (code=%s)",
@@ -1184,6 +1308,12 @@ async def stream_chat_completion_sdk(
                                 response.errorText,
                                 response.code,
                             )
+                            _append_error_marker(
+                                session,
+                                response.errorText,
+                                retryable=(response.code == "transient_api_error"),
+                            )
+                            ended_with_stream_error = True
 
                         yield response
 
@@ -1347,6 +1477,26 @@ async def stream_chat_completion_sdk(
             ) and not has_appended_assistant:
                 session.messages.append(assistant_response)
 
+        # Emit token usage to the client (must be in try to reach SSE stream).
+        # Session persistence of usage is in finally to stay consistent with
+        # rate-limit recording even if an exception interrupts between here
+        # and the finally block.
+        if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+            # total_tokens = prompt (uncached input) + completion (output).
+            # Cache tokens are tracked separately and excluded from total
+            # so that the semantics match the baseline path (OpenRouter)
+            # which folds cache into prompt_tokens. Keeping total_tokens
+            # = prompt + completion everywhere makes cross-path comparisons
+            # and session-level aggregation consistent.
+            total_tokens = turn_prompt_tokens + turn_completion_tokens
+            yield StreamUsage(
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                total_tokens=total_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+            )
+
         # Transcript upload is handled exclusively in the finally block
         # to avoid double-uploads (the success path used to upload the
         # old resume file, then the finally block overwrote it with the
@@ -1378,14 +1528,18 @@ async def stream_chat_completion_sdk(
             else:
                 logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
-        # Append error marker to session (non-invasive text parsing approach)
-        # The finally block will persist the session with this error marker
-        if session:
-            session.messages.append(
-                ChatMessage(
-                    role="assistant", content=f"{COPILOT_ERROR_PREFIX} {error_msg}"
-                )
-            )
+        is_transient = is_transient_api_error(error_msg)
+        if is_transient:
+            display_msg, code = FRIENDLY_TRANSIENT_MSG, "transient_api_error"
+        else:
+            display_msg, code = error_msg, "sdk_error"
+
+        # Append error marker to session (non-invasive text parsing approach).
+        # The finally block will persist the session with this error marker.
+        # Skip if a marker was already appended inside the stream loop
+        # (ended_with_stream_error) to avoid duplicate stale markers.
+        if not ended_with_stream_error:
+            _append_error_marker(session, display_msg, retryable=is_transient)
             logger.debug(
                 "%s Appended error marker, will be persisted in finally",
                 log_prefix,
@@ -1397,10 +1551,7 @@ async def stream_chat_completion_sdk(
             isinstance(e, RuntimeError) and "cancel scope" in str(e)
         )
         if not is_cancellation:
-            yield StreamError(
-                errorText=error_msg,
-                code="sdk_error",
-            )
+            yield StreamError(errorText=display_msg, code=code)
 
         raise
     finally:
@@ -1410,6 +1561,20 @@ async def stream_chat_completion_sdk(
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
+
+        # --- Persist token usage to session + rate-limit counters ---
+        # Both must live in finally so they stay consistent even when an
+        # exception interrupts the try block after StreamUsage was yielded.
+        await persist_and_record_usage(
+            session=session,
+            user_id=user_id,
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            cache_read_tokens=turn_cache_read_tokens,
+            cache_creation_tokens=turn_cache_creation_tokens,
+            log_prefix=log_prefix,
+            cost_usd=turn_cost_usd,
+        )
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
@@ -1486,11 +1651,14 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
 
-        if sdk_cwd:
-            _cleanup_sdk_tool_results(sdk_cwd)
-
-        # Release stream lock to allow new streams for this session
-        await lock.release()
+        try:
+            if sdk_cwd:
+                await _cleanup_sdk_tool_results(sdk_cwd)
+        except Exception:
+            logger.warning("%s SDK cleanup failed", log_prefix, exc_info=True)
+        finally:
+            # Release stream lock to allow new streams for this session
+            await lock.release()
 
 
 async def _update_title_async(
