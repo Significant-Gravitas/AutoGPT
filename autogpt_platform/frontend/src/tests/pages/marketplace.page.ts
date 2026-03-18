@@ -128,7 +128,8 @@ export class MarketplacePage extends BasePage {
   }
 
   async getFirstCreatorProfile(page: Page) {
-    const card = page.locator('[data-testid="creator-card"]:visible').first();
+    const { getId } = getSelectors(page);
+    const card = getId("creator-card").first();
     await card.waitFor({ state: "visible", timeout: 15000 });
     return card;
   }
