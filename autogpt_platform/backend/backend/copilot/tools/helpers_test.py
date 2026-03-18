@@ -827,3 +827,36 @@ async def test_prepare_block_excluded_by_id() -> None:
         )
     assert isinstance(result, ErrorResponse)
     assert "cannot be run directly" in result.message
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_file_ref_expansion_error() -> None:
+    """prepare_block_for_execution returns ErrorResponse when file-ref expansion fails."""
+    from backend.copilot.sdk.file_ref import FileRefExpansionError
+
+    block = _make_simple_block(properties={"text": {"type": "string"}})
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({}, [])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(
+                side_effect=FileRefExpansionError("@@agptfile:missing.txt not found")
+            ),
+        ),
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"text": "@@agptfile:missing.txt"},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "file reference" in result.message.lower()
