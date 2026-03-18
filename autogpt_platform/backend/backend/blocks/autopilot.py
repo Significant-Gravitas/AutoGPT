@@ -99,17 +99,9 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
-        timeout_seconds: int = SchemaField(
-            description=(
-                "Maximum execution time in seconds. The autopilot stream will "
-                "be cancelled if it exceeds this limit, preventing indefinite "
-                "executor slot occupation."
-            ),
-            default=300,
-            ge=10,
-            le=3600,
-            advanced=True,
-        )
+        # timeout_seconds removed: the SDK manages its own heartbeat-based
+        # timeouts internally; wrapping with asyncio.timeout corrupts the
+        # SDK's internal stream (see service.py CRITICAL comment).
 
     class Output(BlockSchemaOutput):
         """Output schema for the AutoPilot block."""
@@ -159,7 +151,6 @@ class AutoPilotBlock(Block):
                 "system_context": "",
                 "session_id": "",
                 "max_recursion_depth": 3,
-                "timeout_seconds": 300,
             },
             test_output=[
                 ("response", "You have 2 agents: Agent A and Agent B."),
@@ -211,9 +202,9 @@ class AutoPilotBlock(Block):
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
         """Invoke the copilot and collect all stream results.
 
-        Follows the same path as the normal copilot: create session if needed,
-        then let stream_chat_completion_sdk handle everything (session loading,
-        message append, lock, transcript, cleanup).
+        Delegates to :func:`collect_copilot_response` — the shared helper that
+        consumes ``stream_chat_completion_sdk`` without wrapping it in an
+        ``asyncio.timeout`` (the SDK manages its own heartbeat-based timeouts).
 
         Args:
             prompt: The user task/instruction.
@@ -225,96 +216,63 @@ class AutoPilotBlock(Block):
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
         """
-        from backend.copilot.response_model import (
-            StreamError,
-            StreamTextDelta,
-            StreamToolInputAvailable,
-            StreamToolOutputAvailable,
-            StreamUsage,
-        )
-        from backend.copilot.sdk.service import stream_chat_completion_sdk
+        from backend.copilot.sdk.service import collect_copilot_response
 
-        # NOTE: This calls stream_chat_completion_sdk directly in the graph
-        # executor process rather than proxying through the Copilot Executor
-        # service.  If the copilot executor env diverges (different SDK version,
-        # tool set, or model config) this block will follow the graph executor's
-        # env.  Keep shared copilot deps aligned or proxy via the executor.
         tokens = _check_recursion(max_recursion_depth)
         try:
             effective_prompt = prompt
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
 
-            # Consume the stream — same as the executor processor.
-            # Do NOT pass a session object; let the SDK load it internally
-            # so all session management (lock, persist, transcript) is handled
-            # by the SDK's own finally block.
-            response_parts: list[str] = []
-            tool_calls: list[ToolCallEntry] = []
-            tool_calls_by_id: dict[str, ToolCallEntry] = {}
-            total_usage: TokenUsage = {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-            }
-
-            async for event in stream_chat_completion_sdk(
+            result = await collect_copilot_response(
                 session_id=session_id,
                 message=effective_prompt,
-                is_user_message=True,
                 user_id=user_id,
-            ):
-                if isinstance(event, StreamTextDelta):
-                    response_parts.append(event.delta)
-                elif isinstance(event, StreamToolInputAvailable):
-                    entry: ToolCallEntry = {
-                        "tool_call_id": event.toolCallId,
-                        "tool_name": event.toolName,
-                        "input": event.input,
-                        "output": None,
-                        "success": None,
-                    }
-                    tool_calls.append(entry)
-                    tool_calls_by_id[event.toolCallId] = entry
-                elif isinstance(event, StreamToolOutputAvailable):
-                    if tc := tool_calls_by_id.get(event.toolCallId):
-                        tc["output"] = event.output
-                        tc["success"] = event.success
-                elif isinstance(event, StreamUsage):
-                    total_usage["prompt_tokens"] += event.prompt_tokens
-                    total_usage["completion_tokens"] += event.completion_tokens
-                    total_usage["total_tokens"] += event.total_tokens
-                elif isinstance(event, StreamError):
-                    raise RuntimeError(f"AutoPilot error: {event.errorText}")
+            )
 
             # Build a lightweight conversation summary from streamed data.
-            # The SDK already persists the full session; avoid a redundant DB
-            # fetch by reconstructing the current turn from what we collected.
-            response_text = "".join(response_parts)
             turn_messages: list[dict[str, Any]] = [
                 {"role": "user", "content": effective_prompt},
             ]
-            if tool_calls:
+            if result.tool_calls:
                 turn_messages.append(
                     {
                         "role": "assistant",
-                        "content": response_text,
-                        "tool_calls": tool_calls,
+                        "content": result.response_text,
+                        "tool_calls": result.tool_calls,
                     }
                 )
             else:
-                turn_messages.append({"role": "assistant", "content": response_text})
-            # Cap serialized messages to bound memory.
+                turn_messages.append(
+                    {"role": "assistant", "content": result.response_text}
+                )
             history_json = json.dumps(
                 turn_messages[-_MAX_HISTORY_MESSAGES:], default=str
             )
 
+            tool_calls: list[ToolCallEntry] = [
+                {
+                    "tool_call_id": tc["tool_call_id"],
+                    "tool_name": tc["tool_name"],
+                    "input": tc["input"],
+                    "output": tc["output"],
+                    "success": tc["success"],
+                }
+                for tc in result.tool_calls
+            ]
+
+            usage: TokenUsage = {
+                "prompt_tokens": result.prompt_tokens,
+                "completion_tokens": result.completion_tokens,
+                "total_tokens": result.total_tokens,
+            }
+
             return (
-                response_text,
+                result.response_text,
                 tool_calls,
                 history_json,
                 session_id,
-                total_usage,
+                usage,
             )
         finally:
             _reset_recursion(tokens)
@@ -348,34 +306,31 @@ class AutoPilotBlock(Block):
         if not sid:
             sid = await self.create_session(execution_context.user_id)
 
-        timeout = input_data.timeout_seconds
+        # NOTE: No asyncio.timeout() here — the SDK manages its own
+        # heartbeat-based timeouts internally.  Wrapping with asyncio.timeout
+        # would cancel the task mid-flight, corrupting the SDK's internal
+        # anyio memory stream (see service.py CRITICAL comment).
         try:
-            async with asyncio.timeout(timeout):
-                response, tool_calls, history, _, usage = await self.execute_copilot(
-                    prompt=input_data.prompt,
-                    system_context=input_data.system_context,
-                    session_id=sid,
-                    max_recursion_depth=input_data.max_recursion_depth,
-                    user_id=execution_context.user_id,
-                )
+            response, tool_calls, history, _, usage = await self.execute_copilot(
+                prompt=input_data.prompt,
+                system_context=input_data.system_context,
+                session_id=sid,
+                max_recursion_depth=input_data.max_recursion_depth,
+                user_id=execution_context.user_id,
+            )
 
             yield "response", response
             yield "tool_calls", tool_calls
             yield "conversation_history", history
             yield "session_id", sid
             yield "token_usage", usage
-        except TimeoutError:
-            logger.warning(
-                "AutoPilot execution timed out after %ds for session %s",
-                timeout,
-                sid,
-            )
-            yield "session_id", sid
-            yield "error", f"AutoPilot execution timed out after {timeout}s."
         except asyncio.CancelledError:
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
+        except Exception as exc:
+            yield "session_id", sid
+            yield "error", str(exc)
 
 
 # ---------------------------------------------------------------------------

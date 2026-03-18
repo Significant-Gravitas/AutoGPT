@@ -56,7 +56,6 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 | system_context | Optional additional context prepended to the prompt. Use this to constrain autopilot behavior, provide domain context, or set output format requirements. | str | No |
 | session_id | Session ID to continue an existing autopilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
 | max_recursion_depth | Maximum nesting depth when the autopilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
-| timeout_seconds | Maximum execution time in seconds. The autopilot stream will be cancelled if it exceeds this limit, preventing indefinite executor slot occupation. | int | No |
 
 ### Outputs
 
