@@ -282,6 +282,9 @@ def create_tool_handler(base_tool: BaseTool):
                 task = queue.get_nowait()
                 try:
                     return await task
+                except asyncio.CancelledError:
+                    logger.warning("Pre-launched tool %s was cancelled", base_tool.name)
+                    return _mcp_error(f"{base_tool.name} task was cancelled")
                 except Exception as e:
                     logger.error(
                         f"Pre-launched tool {base_tool.name} failed: {e}",

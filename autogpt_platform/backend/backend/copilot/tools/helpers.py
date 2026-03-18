@@ -274,7 +274,6 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
-    execution_mode: str = "immediate",
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -283,8 +282,8 @@ async def prepare_block_for_execution(
     unrecognized-field validation.
 
     Does NOT check for missing required fields (tools differ: run_block shows a
-    schema preview; run_block_async returns an error) and does NOT run the HITL
-    review check (use check_hitl_review separately).
+    schema preview) and does NOT run the HITL review check (use check_hitl_review
+    separately).
 
     Args:
         block_id: Block UUID to prepare.
@@ -292,8 +291,6 @@ async def prepare_block_for_execution(
         user_id: Authenticated user ID.
         session: Current chat session (needed for file-ref expansion).
         session_id: Chat session ID (used in error responses).
-        execution_mode: Label used in the setup-requirements response
-            ("immediate" for run_block, "background" for run_block_async).
 
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
@@ -385,7 +382,7 @@ async def prepare_block_for_execution(
                     "inputs": get_inputs_from_schema(
                         input_schema, exclude_fields=credentials_fields_tmp
                     ),
-                    "execution_modes": [execution_mode],
+                    "execution_modes": ["immediate"],
                 },
             ),
             graph_id=None,
