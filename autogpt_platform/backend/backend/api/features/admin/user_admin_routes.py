@@ -40,9 +40,12 @@ async def get_invited_users(
     admin_user_id: str = Security(get_user_id),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    search: str = Query("", description="Filter by email or name"),
 ) -> InvitedUsersResponse:
     logger.info("Admin user %s requested invited users", admin_user_id)
-    invited_users, total = await list_invited_users(page=page, page_size=page_size)
+    invited_users, total = await list_invited_users(
+        page=page, page_size=page_size, search=search or None
+    )
     return InvitedUsersResponse(
         invited_users=[InvitedUserResponse.from_record(iu) for iu in invited_users],
         pagination=Pagination(

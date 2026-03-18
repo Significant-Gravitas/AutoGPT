@@ -6721,6 +6721,18 @@
               "default": 50,
               "title": "Page Size"
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Filter by email or name",
+              "default": "",
+              "title": "Search"
+            },
+            "description": "Filter by email or name"
           }
         ],
         "responses": {

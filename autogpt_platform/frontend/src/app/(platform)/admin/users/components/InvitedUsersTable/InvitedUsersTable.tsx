@@ -1,8 +1,10 @@
 "use client";
 
 import type { InvitedUserResponse } from "@/app/api/__generated__/models/invitedUserResponse";
+import type { Pagination } from "@/app/api/__generated__/models/pagination";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import {
   Table,
   TableBody,
@@ -11,12 +13,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/__legacy__/ui/table";
+import { CaretLeft, CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
 
 interface Props {
   invitedUsers: InvitedUserResponse[];
+  pagination: Pagination | null;
+  currentPage: number;
+  searchQuery: string;
   isLoading: boolean;
   isRefreshing: boolean;
   pendingInviteAction: string | null;
+  onPageChange: (page: number) => void;
+  onSearchChange: (value: string) => void;
   onRetryTally: (invitedUserId: string) => void;
   onRevoke: (invitedUserId: string) => void;
 }
@@ -83,12 +91,20 @@ function isActionPending(
 
 export function InvitedUsersTable({
   invitedUsers,
+  pagination,
+  currentPage,
+  searchQuery,
   isLoading,
   isRefreshing,
   pendingInviteAction,
+  onPageChange,
+  onSearchChange,
   onRetryTally,
   onRevoke,
 }: Props) {
+  const totalItems = pagination?.total_items ?? invitedUsers.length;
+  const totalPages = pagination?.total_pages ?? 1;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
@@ -99,8 +115,25 @@ export function InvitedUsersTable({
           </p>
         </div>
         <span className="text-xs uppercase tracking-[0.18em] text-zinc-400">
-          {isRefreshing ? "Refreshing" : `${invitedUsers.length} total`}
+          {isRefreshing ? "Refreshing" : `${totalItems} total`}
         </span>
+      </div>
+
+      <div className="relative">
+        <MagnifyingGlass
+          size={16}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+        />
+        <Input
+          id="invite-search"
+          label="Search invited users"
+          hideLabel
+          type="text"
+          placeholder="Search by email or name..."
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-zinc-200">
@@ -204,6 +237,32 @@ export function InvitedUsersTable({
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:pointer-events-none disabled:opacity-50"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange(currentPage - 1)}
+          >
+            <CaretLeft size={14} />
+            Previous
+          </button>
+          <span className="text-sm text-zinc-500">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:pointer-events-none disabled:opacity-50"
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange(currentPage + 1)}
+          >
+            Next
+            <CaretRight size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

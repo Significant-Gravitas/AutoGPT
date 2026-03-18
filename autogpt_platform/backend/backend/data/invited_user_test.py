@@ -13,11 +13,13 @@ from backend.util.exceptions import NotAuthorizedError, PreconditionFailed
 
 from .invited_user import (
     InvitedUserRecord,
+    _compute_invited_user_tally_seed_inner,
     bulk_create_invited_users_from_file,
     create_invited_user,
     get_or_activate_user,
     retry_invited_user_tally,
 )
+from .tally import TallyExtractionTimeoutError
 
 
 def _invited_user_db_record(
@@ -276,6 +278,10 @@ async def test_get_or_activate_user_creates_user_from_invite(
 async def test_bulk_create_invited_users_from_text_file(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    mocker.patch(
+        "backend.data.invited_user._fetch_existing_emails",
+        AsyncMock(return_value=(set(), set())),
+    )
     create_invited = mocker.patch(
         "backend.data.invited_user.create_invited_user",
         AsyncMock(
@@ -302,6 +308,10 @@ async def test_bulk_create_invited_users_from_text_file(
 async def test_bulk_create_invited_users_handles_csv_duplicates_and_invalid_rows(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
+    mocker.patch(
+        "backend.data.invited_user._fetch_existing_emails",
+        AsyncMock(return_value=(set(), set())),
+    )
     create_invited = mocker.patch(
         "backend.data.invited_user.create_invited_user",
         AsyncMock(
@@ -326,10 +336,129 @@ async def test_bulk_create_invited_users_handles_csv_duplicates_and_invalid_rows
     assert result.created_count == 1
     assert result.skipped_count == 2
     assert result.error_count == 1
+    # Validation errors and in-file duplicates are reported first,
+    # then remaining rows go through the batch pre-check + create pass.
     assert [row.status for row in result.results] == [
-        "CREATED",
         "ERROR",
         "SKIPPED",
+        "CREATED",
         "SKIPPED",
     ]
     assert create_invited.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_skips_already_invited_emails(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.data.invited_user._fetch_existing_emails",
+        AsyncMock(
+            return_value=(
+                {"active@example.com"},
+                {"invited@example.com"},
+            )
+        ),
+    )
+    create_invited = mocker.patch(
+        "backend.data.invited_user.create_invited_user",
+        AsyncMock(return_value=_invited_user_record()),
+    )
+
+    result = await bulk_create_invited_users_from_file(
+        "invites.csv",
+        (
+            "email,name\n"
+            "active@example.com,Active User\n"
+            "invited@example.com,Already Invited\n"
+            "new@example.com,New User\n"
+        ).encode("utf-8"),
+    )
+
+    assert result.created_count == 1
+    assert result.skipped_count == 2
+    assert result.error_count == 0
+    assert [row.status for row in result.results] == [
+        "SKIPPED",
+        "SKIPPED",
+        "CREATED",
+    ]
+    assert result.results[0].message == "An active user with this email already exists"
+    assert result.results[1].message == "An invited user with this email already exists"
+    assert create_invited.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("filename", "content"),
+    [
+        (
+            "invites.txt",
+            "\n".join(f"user{i}@example.com" for i in range(5001)).encode("utf-8"),
+        ),
+        (
+            "invites.csv",
+            (
+                "email,name\n"
+                + "\n".join(f"user{i}@example.com,User {i}" for i in range(5001))
+            ).encode("utf-8"),
+        ),
+    ],
+)
+async def test_bulk_create_rejects_files_over_5000_rows(
+    filename: str,
+    content: bytes,
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    fetch_existing = mocker.patch(
+        "backend.data.invited_user._fetch_existing_emails",
+        AsyncMock(return_value=(set(), set())),
+    )
+    create_invited = mocker.patch(
+        "backend.data.invited_user.create_invited_user",
+        AsyncMock(return_value=_invited_user_record()),
+    )
+
+    with pytest.raises(ValueError, match="maximum of 5000 users"):
+        await bulk_create_invited_users_from_file(filename, content)
+
+    fetch_existing.assert_not_awaited()
+    create_invited.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_compute_invited_user_tally_seed_handles_timeout_without_traceback(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    invited_user_repo = Mock()
+    invited_user_repo.find_unique = AsyncMock(return_value=_invited_user_db_record())
+    invited_user_repo.update = AsyncMock(return_value=_invited_user_db_record())
+
+    mocker.patch(
+        "backend.data.invited_user.prisma.models.InvitedUser.prisma",
+        return_value=invited_user_repo,
+    )
+    mocker.patch(
+        "backend.data.invited_user.get_redis_async",
+        AsyncMock(return_value=None),
+    )
+    mocker.patch(
+        "backend.data.invited_user.get_business_understanding_input_from_tally",
+        AsyncMock(
+            side_effect=TallyExtractionTimeoutError(
+                attempts=3,
+                timeout_seconds=30,
+            )
+        ),
+    )
+    warning = mocker.patch("backend.data.invited_user.logger.warning")
+    exception = mocker.patch("backend.data.invited_user.logger.exception")
+
+    await _compute_invited_user_tally_seed_inner("invite-1")
+
+    assert invited_user_repo.update.await_count == 2
+    assert warning.call_count == 1
+    exception.assert_not_called()
+    failure_update = invited_user_repo.update.await_args_list[-1].kwargs["data"]
+    assert failure_update["tallyStatus"] == prisma.enums.TallyComputationStatus.FAILED
+    assert "timed out after 3 attempts" in failure_update["tallyError"]

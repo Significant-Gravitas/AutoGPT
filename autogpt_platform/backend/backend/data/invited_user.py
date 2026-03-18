@@ -19,7 +19,11 @@ from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
 from backend.data.db import transaction
 from backend.data.model import User
 from backend.data.redis_client import get_redis_async
-from backend.data.tally import get_business_understanding_input_from_tally, mask_email
+from backend.data.tally import (
+    TallyExtractionTimeoutError,
+    get_business_understanding_input_from_tally,
+    mask_email,
+)
 from backend.data.understanding import (
     BusinessUnderstandingInput,
     merge_business_understanding_data,
@@ -40,11 +44,14 @@ _settings = Settings()
 _WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
 
 _tally_seed_tasks: dict[str, asyncio.Task] = {}
+_tally_semaphore = asyncio.Semaphore(1)
+_TALLY_RATE_DELAY = 0.6  # ~100 req/min, matching the Tally rate limit
 _TALLY_STALE_SECONDS = 300
 _MAX_TALLY_ERROR_LENGTH = 200
 _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
+MAX_BULK_INVITE_ROWS = 5000
 
 
 class InvitedUserRecord(BaseModel):
@@ -212,9 +219,19 @@ async def _apply_tally_understanding(
 async def list_invited_users(
     page: int = 1,
     page_size: int = 50,
+    search: Optional[str] = None,
 ) -> tuple[list[InvitedUserRecord], int]:
-    total = await prisma.models.InvitedUser.prisma().count()
+    where: dict = {}
+    if search:
+        search = search.strip()
+        where["OR"] = [
+            {"email": {"contains": search, "mode": "insensitive"}},
+            {"name": {"contains": search, "mode": "insensitive"}},
+        ]
+
+    total = await prisma.models.InvitedUser.prisma().count(where=where)
     invited_users = await prisma.models.InvitedUser.prisma().find_many(
+        where=where,
         order={"createdAt": "desc"},
         skip=(page - 1) * page_size,
         take=page_size,
@@ -386,7 +403,26 @@ def _parse_bulk_invite_file(
     if not parsed_rows:
         raise ValueError("Invite file did not contain any emails")
 
+    if len(parsed_rows) > MAX_BULK_INVITE_ROWS:
+        raise ValueError(
+            f"Invite file exceeds the maximum of {MAX_BULK_INVITE_ROWS} users"
+        )
+
     return parsed_rows
+
+
+async def _fetch_existing_emails(emails: list[str]) -> tuple[set[str], set[str]]:
+    """Batch-fetch emails that already exist as active users or invited users."""
+    existing_users = await prisma.models.User.prisma().find_many(
+        where={"email": {"in": emails}},
+    )
+    existing_invited = await prisma.models.InvitedUser.prisma().find_many(
+        where={"email": {"in": emails}},
+    )
+    return (
+        {u.email for u in existing_users},
+        {iu.email for iu in existing_invited},
+    )
 
 
 async def bulk_create_invited_users_from_file(
@@ -395,6 +431,8 @@ async def bulk_create_invited_users_from_file(
 ) -> BulkInvitedUsersResult:
     parsed_rows = _parse_bulk_invite_file(filename, content)
 
+    # Validate and deduplicate emails before hitting the DB.
+    validated_rows: list[tuple[_ParsedInviteRow, str, Optional[str]]] = []
     created_count = 0
     skipped_count = 0
     error_count = 0
@@ -434,6 +472,38 @@ async def bulk_create_invited_users_from_file(
             continue
 
         seen_emails.add(normalized_email)
+        validated_rows.append((row, normalized_email, row_name))
+
+    # Batch pre-check: skip emails that already exist as users or invites.
+    all_emails = [email for _, email, _ in validated_rows]
+    active_emails, invited_emails = await _fetch_existing_emails(all_emails)
+
+    for row, normalized_email, row_name in validated_rows:
+        if normalized_email in active_emails:
+            skipped_count += 1
+            results.append(
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message="An active user with this email already exists",
+                )
+            )
+            continue
+
+        if normalized_email in invited_emails:
+            skipped_count += 1
+            results.append(
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message="An invited user with this email already exists",
+                )
+            )
+            continue
 
         try:
             invited_user = await create_invited_user(normalized_email, row_name)
@@ -487,6 +557,12 @@ async def bulk_create_invited_users_from_file(
 
 
 async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
+    async with _tally_semaphore:
+        await _compute_invited_user_tally_seed_inner(invited_user_id)
+        await asyncio.sleep(_TALLY_RATE_DELAY)
+
+
+async def _compute_invited_user_tally_seed_inner(invited_user_id: str) -> None:
     invited_user = await prisma.models.InvitedUser.prisma().find_unique(
         where={"id": invited_user_id}
     )
@@ -553,25 +629,31 @@ async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
             invited_user.email,
             require_api_key=True,
         )
-        payload = (
-            SafeJson(input_data.model_dump(exclude_none=True))
-            if input_data is not None
-            else None
-        )
+        update_data: dict[str, object] = {
+            "tallyStatus": prisma.enums.TallyComputationStatus.READY,
+            "tallyComputedAt": datetime.now(timezone.utc),
+            "tallyError": None,
+        }
+        if input_data is not None:
+            update_data["tallyUnderstanding"] = SafeJson(
+                input_data.model_dump(exclude_none=True)
+            )
         await prisma.models.InvitedUser.prisma().update(
             where={"id": invited_user_id},
-            data={
-                "tallyUnderstanding": payload,
-                "tallyStatus": prisma.enums.TallyComputationStatus.READY,
-                "tallyComputedAt": datetime.now(timezone.utc),
-                "tallyError": None,
-            },
+            data=update_data,
         )
     except Exception as exc:
-        logger.exception(
-            "Failed to compute Tally understanding for invited user %s",
-            invited_user_id,
-        )
+        if isinstance(exc, TallyExtractionTimeoutError):
+            logger.warning(
+                "Timed out computing Tally understanding for invited user %s after %s attempts",
+                invited_user_id,
+                exc.attempts,
+            )
+        else:
+            logger.exception(
+                "Failed to compute Tally understanding for invited user %s",
+                invited_user_id,
+            )
         sanitized_error = re.sub(
             r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}"
         )[:_MAX_TALLY_ERROR_LENGTH]

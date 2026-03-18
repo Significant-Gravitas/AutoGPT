@@ -2,13 +2,14 @@
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
 from backend.data.tally import (
     _EXTRACTION_PROMPT,
     _EXTRACTION_SUFFIX,
+    TallyExtractionTimeoutError,
     _build_email_index,
     _format_answer,
     _make_tally_client,
@@ -512,16 +513,53 @@ async def test_extract_business_understanding_from_tally_invalid_json():
 
 @pytest.mark.asyncio
 async def test_extract_business_understanding_from_tally_timeout():
-    """LLM timeout should propagate as asyncio.TimeoutError."""
+    """Repeated LLM timeouts should raise a specific exhaustion error."""
     mock_client = AsyncMock()
     mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
+    sleep = AsyncMock()
 
     with (
         patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
-        patch("backend.data.tally._LLM_TIMEOUT", 0.001),
-        pytest.raises(asyncio.TimeoutError),
+        patch("backend.data.tally.asyncio.sleep", sleep),
+        patch("backend.data.tally._LLM_MAX_ATTEMPTS", 3),
+        patch("backend.data.tally._LLM_RETRY_BASE_DELAY", 1.0),
+        patch("backend.data.tally._LLM_RETRY_MAX_DELAY", 10.0),
+        pytest.raises(TallyExtractionTimeoutError) as exc_info,
     ):
         await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
+
+    assert exc_info.value.attempts == 3
+    assert mock_client.chat.completions.create.await_count == 3
+    assert sleep.await_args_list == [call(1.0), call(2.0)]
+
+
+@pytest.mark.asyncio
+async def test_extract_business_understanding_from_tally_retries_then_succeeds():
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps({"user_name": "Alice"})
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.side_effect = [
+        asyncio.TimeoutError(),
+        asyncio.TimeoutError(),
+        mock_response,
+    ]
+    sleep = AsyncMock()
+
+    with (
+        patch("backend.data.tally.AsyncOpenAI", return_value=mock_client),
+        patch("backend.data.tally.asyncio.sleep", sleep),
+        patch("backend.data.tally._LLM_MAX_ATTEMPTS", 3),
+        patch("backend.data.tally._LLM_RETRY_BASE_DELAY", 1.0),
+        patch("backend.data.tally._LLM_RETRY_MAX_DELAY", 10.0),
+    ):
+        result = await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
+
+    assert result.user_name == "Alice"
+    assert mock_client.chat.completions.create.await_count == 3
+    assert sleep.await_args_list == [call(1.0), call(2.0)]
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────

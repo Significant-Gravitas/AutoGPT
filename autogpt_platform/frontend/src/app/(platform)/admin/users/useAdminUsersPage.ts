@@ -12,7 +12,7 @@ import {
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -34,13 +34,24 @@ export function useAdminUsersPage() {
   const [pendingInviteAction, setPendingInviteAction] = useState<string | null>(
     null,
   );
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const invitedUsersQuery = useGetV2ListInvitedUsers(undefined, {
-    query: {
-      select: okData,
-      refetchInterval: 30_000,
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const invitedUsersQuery = useGetV2ListInvitedUsers(
+    { page: currentPage, page_size: 50, search: debouncedSearch || undefined },
+    {
+      query: {
+        select: okData,
+        refetchInterval: 30_000,
+      },
     },
-  });
+  );
 
   const createInvitedUserMutation = usePostV2CreateInvitedUser({
     mutation: {
@@ -173,6 +184,11 @@ export function useAdminUsersPage() {
     revokeInvitedUserMutation.mutate({ invitedUserId });
   }
 
+  function handleSearchChange(value: string) {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  }
+
   return {
     email,
     name,
@@ -180,14 +196,19 @@ export function useAdminUsersPage() {
     bulkInviteInputKey,
     lastBulkInviteResult,
     invitedUsers: invitedUsersQuery.data?.invited_users ?? [],
+    pagination: invitedUsersQuery.data?.pagination ?? null,
     invitedUsersError: invitedUsersQuery.error,
     isLoadingInvitedUsers: invitedUsersQuery.isLoading,
     isRefreshingInvitedUsers: invitedUsersQuery.isFetching,
     isCreatingInvite: createInvitedUserMutation.isPending,
     isBulkInviting: bulkCreateInvitedUsersMutation.isPending,
     pendingInviteAction,
+    searchQuery,
+    currentPage,
     setEmail,
     setName,
+    setCurrentPage,
+    handleSearchChange,
     handleBulkInviteFileChange,
     handleBulkInviteSubmit,
     handleCreateInvite,

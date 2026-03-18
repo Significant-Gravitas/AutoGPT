@@ -38,7 +38,24 @@ _PAGE_LIMIT = 500
 _MAX_PAGES = 100
 
 # LLM extraction timeout (seconds)
-_LLM_TIMEOUT = 30
+_LLM_TIMEOUT = 120
+_LLM_MAX_ATTEMPTS = 10
+_LLM_RETRY_BASE_DELAY = 1.0
+_LLM_RETRY_MAX_DELAY = 10.0
+
+
+class TallyExtractionTimeoutError(asyncio.TimeoutError):
+    def __init__(self, *, attempts: int, timeout_seconds: float):
+        self.attempts = attempts
+        self.timeout_seconds = timeout_seconds
+        super().__init__(
+            "Tally extraction timed out after "
+            f"{attempts} attempts ({timeout_seconds}s timeout each)"
+        )
+
+
+def _get_llm_retry_delay(attempt: int) -> float:
+    return min(_LLM_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _LLM_RETRY_MAX_DELAY)
 
 
 def mask_email(email: str) -> str:
@@ -347,29 +364,52 @@ async def extract_business_understanding_from_tally(
     """
     Use an LLM to extract structured business understanding from form text.
 
-    Raises on timeout or unparseable response so the caller can handle it.
+    Retries transient timeouts with exponential backoff and raises on
+    retry exhaustion or unparseable response so the caller can handle it.
     """
     api_key = _settings.secrets.open_router_api_key
     client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
 
-    try:
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=_settings.config.tally_extraction_llm_model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
-                    }
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.0,
-            ),
-            timeout=_LLM_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Tally: LLM extraction timed out")
-        raise
+    response = None
+    for attempt in range(1, _LLM_MAX_ATTEMPTS + 1):
+        try:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=_settings.config.tally_extraction_llm_model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": f"{_EXTRACTION_PROMPT}{formatted_text}{_EXTRACTION_SUFFIX}",
+                        }
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
+                ),
+                timeout=_LLM_TIMEOUT,
+            )
+            break
+        except asyncio.TimeoutError as exc:
+            if attempt == _LLM_MAX_ATTEMPTS:
+                logger.warning(
+                    "Tally: LLM extraction timed out after %s attempts",
+                    _LLM_MAX_ATTEMPTS,
+                )
+                raise TallyExtractionTimeoutError(
+                    attempts=_LLM_MAX_ATTEMPTS,
+                    timeout_seconds=_LLM_TIMEOUT,
+                ) from exc
+
+            delay = _get_llm_retry_delay(attempt)
+            logger.warning(
+                "Tally: LLM extraction timed out on attempt %s/%s, retrying in %.1fs",
+                attempt,
+                _LLM_MAX_ATTEMPTS,
+                delay,
+            )
+            await asyncio.sleep(delay)
+
+    if response is None:
+        raise RuntimeError("Tally extraction did not produce a response")
 
     raw = response.choices[0].message.content or "{}"
     try:
@@ -453,5 +493,13 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         await upsert_business_understanding(user_id, understanding_input)
         logger.info(f"Tally: successfully populated understanding for user {user_id}")
 
-    except Exception:
+    except Exception as exc:
+        if isinstance(exc, TallyExtractionTimeoutError):
+            logger.warning(
+                "Tally: timed out populating understanding for user %s after %s attempts",
+                user_id,
+                exc.attempts,
+            )
+            return
+
         logger.exception(f"Tally: error populating understanding for user {user_id}")

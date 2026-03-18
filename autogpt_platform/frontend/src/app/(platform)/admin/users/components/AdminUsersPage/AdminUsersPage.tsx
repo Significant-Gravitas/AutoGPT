@@ -14,13 +14,18 @@ export function AdminUsersPage() {
     bulkInviteInputKey,
     lastBulkInviteResult,
     invitedUsers,
+    pagination,
     isLoadingInvitedUsers,
     isRefreshingInvitedUsers,
     isCreatingInvite,
     isBulkInviting,
     pendingInviteAction,
+    searchQuery,
+    currentPage,
     setEmail,
     setName,
+    setCurrentPage,
+    handleSearchChange,
     handleBulkInviteFileChange,
     handleBulkInviteSubmit,
     handleCreateInvite,
@@ -39,42 +44,45 @@ export function AdminUsersPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[24rem,1fr]">
-        <div className="flex flex-col gap-6">
-          <Card className="border border-zinc-200 shadow-sm">
-            <InviteUserForm
-              email={email}
-              name={name}
-              isSubmitting={isCreatingInvite}
-              onEmailChange={setEmail}
-              onNameChange={setName}
-              onSubmit={handleCreateInvite}
-            />
-          </Card>
-
-          <Card className="border border-zinc-200 shadow-sm">
-            <BulkInviteForm
-              selectedFile={bulkInviteFile}
-              inputKey={bulkInviteInputKey}
-              isSubmitting={isBulkInviting}
-              lastResult={lastBulkInviteResult}
-              onFileChange={handleBulkInviteFileChange}
-              onSubmit={handleBulkInviteSubmit}
-            />
-          </Card>
-        </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <Card className="border border-zinc-200 shadow-sm">
+          <InviteUserForm
+            email={email}
+            name={name}
+            isSubmitting={isCreatingInvite}
+            onEmailChange={setEmail}
+            onNameChange={setName}
+            onSubmit={handleCreateInvite}
+          />
+        </Card>
 
         <Card className="border border-zinc-200 shadow-sm">
-          <InvitedUsersTable
-            invitedUsers={invitedUsers}
-            isLoading={isLoadingInvitedUsers}
-            isRefreshing={isRefreshingInvitedUsers}
-            pendingInviteAction={pendingInviteAction}
-            onRetryTally={handleRetryTally}
-            onRevoke={handleRevoke}
+          <BulkInviteForm
+            selectedFile={bulkInviteFile}
+            inputKey={bulkInviteInputKey}
+            isSubmitting={isBulkInviting}
+            lastResult={lastBulkInviteResult}
+            onFileChange={handleBulkInviteFileChange}
+            onSubmit={handleBulkInviteSubmit}
           />
         </Card>
       </div>
+
+      <Card className="border border-zinc-200 shadow-sm">
+        <InvitedUsersTable
+          invitedUsers={invitedUsers}
+          pagination={pagination}
+          currentPage={currentPage}
+          searchQuery={searchQuery}
+          isLoading={isLoadingInvitedUsers}
+          isRefreshing={isRefreshingInvitedUsers}
+          pendingInviteAction={pendingInviteAction}
+          onPageChange={setCurrentPage}
+          onSearchChange={handleSearchChange}
+          onRetryTally={handleRetryTally}
+          onRevoke={handleRevoke}
+        />
+      </Card>
     </div>
   );
 }
