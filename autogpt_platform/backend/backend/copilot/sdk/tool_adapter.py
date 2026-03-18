@@ -50,6 +50,14 @@ _MCP_MAX_CHARS = 500_000
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 
+# Background jobs started by run_block_async — keyed by job_id.
+# Initialised per-session in set_execution_context() so concurrent sessions
+# never share the same dict.
+_background_jobs: ContextVar[dict[str, asyncio.Task]] = ContextVar(
+    "_background_jobs",
+    default=None,  # type: ignore[arg-type]
+)
+
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
@@ -91,6 +99,7 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
+    _background_jobs.set({})
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -117,6 +126,11 @@ def pop_pending_tool_output(tool_name: str) -> str | None:
     if not queue:
         del pending[tool_name]
     return value
+
+
+def get_background_jobs() -> dict[str, asyncio.Task] | None:
+    """Return the background-jobs dict for the current session, or None if not initialised."""
+    return _background_jobs.get(None)
 
 
 def stash_pending_tool_output(tool_name: str, output: Any) -> None:

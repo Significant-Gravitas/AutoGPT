@@ -11600,6 +11600,8 @@
           "block_details",
           "block_output",
           "review_required",
+          "block_job_started",
+          "block_job_result",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",

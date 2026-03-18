@@ -23,6 +23,7 @@ from .find_block import FindBlockTool
 from .find_library_agent import FindLibraryAgentTool
 from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
+from .get_block_result import GetBlockResultTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
 from .manage_folders import (
@@ -35,6 +36,7 @@ from .manage_folders import (
 )
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
+from .run_block_async import RunBlockAsyncTool
 from .run_mcp_tool import RunMCPToolTool
 from .search_docs import SearchDocsTool
 from .validate_agent import ValidateAgentGraphTool
@@ -70,6 +72,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "move_agents_to_folder": MoveAgentsToFolderTool(),
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
+    "run_block_async": RunBlockAsyncTool(),
+    "get_block_result": GetBlockResultTool(),
     "continue_run_block": ContinueRunBlockTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
