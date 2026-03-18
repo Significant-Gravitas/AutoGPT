@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 
 from backend.util import json
+from backend.util.prompt import CompressResult
 
 from .conftest import build_test_transcript as _build_transcript
-from .service import _is_prompt_too_long
+from .service import _friendly_error_text, _is_prompt_too_long
 from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
     _messages_to_transcript,
+    _run_compression,
     _transcript_to_messages,
     compact_transcript,
     validate_transcript,
@@ -520,3 +523,129 @@ class TestIsPromptTooLong:
         Only 'input tokens exceed' should match now."""
         err = Exception("max_tokens_exceeded")
         assert _is_prompt_too_long(err) is False
+
+
+# ---------------------------------------------------------------------------
+# _run_compression timeout fallback
+# ---------------------------------------------------------------------------
+
+
+class TestRunCompressionTimeout:
+    """Verify _run_compression falls back to truncation when LLM times out."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_falls_back_to_truncation(self):
+        """When compress_context with LLM client times out,
+        _run_compression falls back to truncation (client=None)."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+        truncation_result = CompressResult(
+            messages=messages,
+            was_compacted=False,
+            original_token_count=50,
+            token_count=50,
+            messages_summarized=0,
+            messages_dropped=0,
+        )
+
+        call_args: list[dict] = []
+
+        async def _mock_compress(**kwargs):
+            call_args.append(kwargs)
+            if kwargs.get("client") is not None:
+                # Simulate timeout by raising asyncio.TimeoutError
+                raise asyncio.TimeoutError("LLM compaction timed out")
+            return truncation_result
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value="fake-client",
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                side_effect=_mock_compress,
+            ),
+        ):
+            result = await _run_compression(messages, "test-model", "[test]")
+
+        assert result == truncation_result
+        # Should have been called twice: once with client, once without
+        assert len(call_args) == 2
+        assert call_args[0]["client"] is not None  # LLM attempt
+        assert call_args[1]["client"] is None  # truncation fallback
+
+    @pytest.mark.asyncio
+    async def test_no_client_uses_truncation_directly(self):
+        """When no OpenAI client is configured, goes straight to truncation."""
+        messages = [
+            {"role": "user", "content": "Hello"},
+            {"role": "assistant", "content": "Hi there"},
+        ]
+        truncation_result = CompressResult(
+            messages=messages,
+            was_compacted=False,
+            original_token_count=50,
+            token_count=50,
+            messages_summarized=0,
+            messages_dropped=0,
+        )
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                new_callable=AsyncMock,
+                return_value=truncation_result,
+            ) as mock_compress,
+        ):
+            result = await _run_compression(messages, "test-model", "[test]")
+
+        assert result == truncation_result
+        mock_compress.assert_called_once()
+        # When no client, compress_context is called with client=None
+        assert mock_compress.call_args.kwargs.get("client") is None
+
+
+# ---------------------------------------------------------------------------
+# _friendly_error_text
+# ---------------------------------------------------------------------------
+
+
+class TestFriendlyErrorText:
+    """Verify user-friendly error message mapping."""
+
+    def test_authentication_error(self):
+        result = _friendly_error_text("authentication failed: invalid API key")
+        assert "Authentication" in result
+        assert "API key" in result
+
+    def test_rate_limit_error(self):
+        result = _friendly_error_text("rate limit exceeded")
+        assert "Rate limit" in result
+
+    def test_overloaded_error(self):
+        result = _friendly_error_text("API is overloaded")
+        assert "overloaded" in result
+
+    def test_timeout_error(self):
+        result = _friendly_error_text("Request timeout after 30s")
+        assert "timed out" in result
+
+    def test_connection_error(self):
+        result = _friendly_error_text("Connection refused")
+        assert "Connection" in result or "connection" in result
+
+    def test_unknown_error_passthrough(self):
+        result = _friendly_error_text("some unknown error XYZ")
+        assert "SDK stream error:" in result
+        assert "XYZ" in result
+
+    def test_unauthorized_error(self):
+        result = _friendly_error_text("401 Unauthorized")
+        assert "Authentication" in result
