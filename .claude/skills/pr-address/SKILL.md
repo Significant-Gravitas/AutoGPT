@@ -126,11 +126,16 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json baseRefName --jq '.bas
 git pull origin {base-branch} --no-rebase
 ```
 
-3. Resolve conflicting files, then stage and push:
+3. Resolve conflicting files, then verify no conflict markers remain:
+```bash
+grep -r "<<<<<<" <conflicted-files>   # must return no output before proceeding
+```
+
+4. Stage and push:
 ```bash
 git add <conflicted-files>
 git commit
 git push
 ```
 
-4. Restart the polling loop from the top — new commits reset CI status.
+5. Restart the polling loop from the top — new commits reset CI status.
