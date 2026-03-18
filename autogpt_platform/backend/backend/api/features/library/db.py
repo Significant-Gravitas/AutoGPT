@@ -59,7 +59,7 @@ async def list_library_agents(
     Args:
         user_id: The ID of the user whose LibraryAgents we want to retrieve.
         search_term: Optional string to filter agents by name/description.
-        sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
+        sort_by: Sorting field (createdAt, updatedAt, lastExecuted).
         page: Current page (1-indexed).
         page_size: Number of items per page.
         folder_id: Filter by folder ID. If provided, only returns agents in this folder.
