@@ -50,7 +50,7 @@ RUN poetry install --no-ansi --no-root
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
 RUN poetry run prisma generate && poetry run gen-prisma-stub
 
 # =============================== DB MIGRATOR =============================== #
@@ -82,7 +82,7 @@ RUN pip3 install prisma>=0.15.0 --break-system-packages
 
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-COPY autogpt_platform/backend/gen_prisma_types_stub.py ./
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
 COPY autogpt_platform/backend/migrations ./migrations
 
 # ============================== BACKEND SERVER ============================== #
@@ -121,18 +121,36 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-# Install agent-browser (Copilot browser tool) + Chromium runtime dependencies.
-# These are the runtime libraries Chromium/Playwright needs on Debian 13 (trixie).
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libdbus-1-3 libxkbcommon0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
-    libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 \
-    libx11-6 libx11-xcb1 libxcb1 libxext6 libglib2.0-0t64 \
-    fonts-liberation libfontconfig1 \
+# Install agent-browser (Copilot browser tool) + Chromium.
+# On amd64: install runtime libs + run `agent-browser install` to download
+#   Chrome for Testing (pinned version, tested with Playwright).
+# On arm64: install system chromium package — Chrome for Testing has no ARM64
+#   binary. AGENT_BROWSER_EXECUTABLE_PATH is set at runtime by the entrypoint
+#   script (below) to redirect agent-browser to the system binary.
+ARG TARGETARCH
+RUN apt-get update \
+    && if [ "$TARGETARCH" = "arm64" ]; then \
+         apt-get install -y --no-install-recommends chromium fonts-liberation; \
+       else \
+         apt-get install -y --no-install-recommends \
+           libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+           libdbus-1-3 libxkbcommon0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
+           libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 \
+           libx11-6 libx11-xcb1 libxcb1 libxext6 libglib2.0-0t64 \
+           fonts-liberation libfontconfig1; \
+       fi \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g agent-browser \
-    && agent-browser install \
+    && ([ "$TARGETARCH" = "arm64" ] || agent-browser install) \
     && rm -rf /tmp/* /root/.npm
+
+# On arm64 the system chromium is at /usr/bin/chromium; set
+# AGENT_BROWSER_EXECUTABLE_PATH so agent-browser's daemon uses it instead of
+# Chrome for Testing (which has no ARM64 binary). On amd64 the variable is left
+# unset so agent-browser uses the Chrome for Testing binary it downloaded above.
+RUN printf '#!/bin/sh\n[ -x /usr/bin/chromium ] && export AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium\nexec "$@"\n' \
+    > /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /app/autogpt_platform/backend
 
@@ -155,4 +173,5 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
 
 ENV PORT=8000
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["rest"]
