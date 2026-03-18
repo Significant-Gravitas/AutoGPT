@@ -499,3 +499,123 @@ class TestFindBlockFiltering:
         assert response.blocks[0].input_schema == input_schema
         assert response.blocks[0].output_schema == output_schema
         assert response.blocks[0].static_output is True
+
+
+class TestFindBlockDirectLookup:
+    """Tests for direct UUID lookup in FindBlockTool."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_found(self):
+        """UUID query returns the block directly without search."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        block = make_mock_block(block_id, "Test Block", BlockType.STANDARD)
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID, session=session, query=block_id
+            )
+
+        assert isinstance(response, BlockListResponse)
+        assert response.count == 1
+        assert response.blocks[0].id == block_id
+        assert response.blocks[0].name == "Test Block"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_not_found_falls_through(self):
+        """UUID that doesn't match any block falls through to search."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+
+        mock_search_db = MagicMock()
+        mock_search_db.unified_hybrid_search = AsyncMock(return_value=([], 0))
+
+        with (
+            patch(
+                "backend.copilot.tools.find_block.get_block",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.tools.find_block.search",
+                return_value=mock_search_db,
+            ),
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID, session=session, query=block_id
+            )
+
+        from .models import NoResultsResponse
+
+        assert isinstance(response, NoResultsResponse)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_disabled_block(self):
+        """UUID matching a disabled block returns NoResultsResponse."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        block = make_mock_block(
+            block_id, "Disabled Block", BlockType.STANDARD, disabled=True
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID, session=session, query=block_id
+            )
+
+        from .models import NoResultsResponse
+
+        assert isinstance(response, NoResultsResponse)
+        assert "disabled" in response.message.lower()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_excluded_block_type(self):
+        """UUID matching an excluded block type returns NoResultsResponse."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        block = make_mock_block(block_id, "Input Block", BlockType.INPUT)
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID, session=session, query=block_id
+            )
+
+        from .models import NoResultsResponse
+
+        assert isinstance(response, NoResultsResponse)
+        assert "not available" in response.message.lower()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_uuid_lookup_excluded_block_id(self):
+        """UUID matching an excluded block ID returns NoResultsResponse."""
+        session = make_session(user_id=_TEST_USER_ID)
+        smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        block = make_mock_block(
+            smart_decision_id, "Smart Decision Maker", BlockType.STANDARD
+        )
+
+        with patch(
+            "backend.copilot.tools.find_block.get_block",
+            return_value=block,
+        ):
+            tool = FindBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID, session=session, query=smart_decision_id
+            )
+
+        from .models import NoResultsResponse
+
+        assert isinstance(response, NoResultsResponse)
+        assert "not available" in response.message.lower()

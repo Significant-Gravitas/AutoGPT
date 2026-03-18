@@ -122,7 +122,7 @@ def test_read_no_cwd_denies_absolute():
 
 def test_read_tool_results_allowed():
     home = os.path.expanduser("~")
-    path = f"{home}/.claude/projects/-tmp-copilot-abc123/tool-results/12345.txt"
+    path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/12345.txt"
     # is_allowed_local_path requires the session's encoded cwd to be set
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
