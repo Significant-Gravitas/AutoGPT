@@ -127,11 +127,6 @@ def pop_pending_tool_output(tool_name: str) -> str | None:
     return value
 
 
-def get_tool_task_queues() -> dict[str, asyncio.Queue] | None:
-    """Return the pre-launched tool task queues for the current session, or None."""
-    return _tool_task_queues.get()
-
-
 def stash_pending_tool_output(tool_name: str, output: Any) -> None:
     """Stash tool output for later retrieval by the response adapter.
 
