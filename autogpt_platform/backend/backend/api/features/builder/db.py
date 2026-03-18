@@ -433,9 +433,10 @@ async def _hybrid_search_blocks(
         score = _score_primary_fields(name, description, normalized_query)
 
         # Add LLM model match bonus
-        if block_cls is not None:
-            if _matches_llm_model(block.input_schema, normalized_query):
-                score += 20
+        if block_cls is not None and _matches_llm_model(
+            block_cls().input_schema, normalized_query
+        ):
+            score += 20
 
         if score >= MIN_SCORE_FOR_FILTERED_RESULTS:
             results.append(
