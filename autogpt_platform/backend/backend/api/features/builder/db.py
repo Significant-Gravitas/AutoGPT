@@ -416,13 +416,24 @@ async def _hybrid_search_blocks(
         block_info = item.item
         assert isinstance(block_info, BlockInfo)
         name = block_info.name.lower()
-        description = (block_info.description or "").lower()
-        score = _score_primary_fields(name, description, normalized_query)
 
-        # Add LLM model match bonus
+        # Build rich description including input field descriptions,
+        # matching the searchable text that the embedding pipeline uses
+        desc_parts = [block_info.description or ""]
         block_cls = all_blocks.get(block_info.id)
         if block_cls is not None:
             block: AnyBlockSchema = block_cls()
+            desc_parts += [
+                f"{f}: {info.description}"
+                for f, info in block.input_schema.model_fields.items()
+                if info.description
+            ]
+        description = " ".join(desc_parts).lower()
+
+        score = _score_primary_fields(name, description, normalized_query)
+
+        # Add LLM model match bonus
+        if block_cls is not None:
             if _matches_llm_model(block.input_schema, normalized_query):
                 score += 20
 
