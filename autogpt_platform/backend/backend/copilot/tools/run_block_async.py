@@ -90,9 +90,15 @@ class RunBlockAsyncTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        block_id = kwargs.get("block_id", "").strip()
+        raw_block_id = kwargs.get("block_id", "")
         input_data = kwargs.get("input_data", {})
         session_id = session.session_id
+
+        if not isinstance(raw_block_id, str):
+            return ErrorResponse(
+                message="block_id must be a string", session_id=session_id
+            )
+        block_id = raw_block_id.strip()
 
         if not block_id:
             return ErrorResponse(

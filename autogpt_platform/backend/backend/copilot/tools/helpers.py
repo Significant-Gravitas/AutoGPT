@@ -360,7 +360,7 @@ async def prepare_block_for_execution(
             )
 
     if missing_credentials:
-        credentials_fields_info = block.input_schema.get_credentials_fields_info()
+        credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )

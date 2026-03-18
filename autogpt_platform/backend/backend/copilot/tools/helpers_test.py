@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
 from backend.copilot.tools.helpers import (
     BlockPreparation,
     check_hitl_review,
@@ -717,7 +718,7 @@ def _make_hitl_prep(
     block = MagicMock()
     block.id = block_id
     block.name = "HITL Block"
-    data = input_data or {"action": "delete"}
+    data = input_data if input_data is not None else {"action": "delete"}
     block.is_block_exec_need_review = AsyncMock(return_value=(needs_review, data))
     return BlockPreparation(
         block=block,
@@ -728,8 +729,8 @@ def _make_hitl_prep(
         credentials_fields=set(),
         required_non_credential_keys=set(),
         provided_input_keys=set(),
-        synthetic_graph_id=f"copilot_session_{session_id}",
-        synthetic_node_id=f"copilot_node_{block_id}",
+        synthetic_graph_id=f"{COPILOT_SESSION_PREFIX}{session_id}",
+        synthetic_node_id=f"{COPILOT_NODE_PREFIX}{block_id}",
     )
 
 
@@ -744,7 +745,7 @@ async def test_check_hitl_no_review_needed() -> None:
 
     assert isinstance(result, tuple)
     node_exec_id, returned_data = result
-    assert node_exec_id.startswith("copilot_node_blk-hitl")
+    assert node_exec_id.startswith(f"{COPILOT_NODE_PREFIX}blk-hitl")
     assert returned_data == {"action": "read"}
 
 

@@ -56,8 +56,14 @@ class GetBlockResultTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        job_id = kwargs.get("job_id", "").strip()
+        raw_job_id = kwargs.get("job_id", "")
         session_id = session.session_id
+
+        if not isinstance(raw_job_id, str):
+            return ErrorResponse(
+                message="job_id must be a string", session_id=session_id
+            )
+        job_id = raw_job_id.strip()
 
         if not job_id:
             return ErrorResponse(
@@ -88,8 +94,13 @@ class GetBlockResultTool(BaseTool):
             )
 
         try:
-            result = await task
+            result = await asyncio.shield(task)
         except asyncio.CancelledError:
+            if not task.cancelled():
+                # The outer await was cancelled but the task is still running —
+                # do not remove it from the registry; re-raise so the caller
+                # can retry with the same job_id.
+                raise
             jobs.pop(job_id, None)
             return BlockJobResultResponse(
                 message="Block execution was cancelled.",
