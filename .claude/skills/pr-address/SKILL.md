@@ -111,12 +111,22 @@ done
 
 4. When new comments arrive, address them immediately while CI continues in the background.
    If you push new commits, the old CI_PID becomes stale (new commits trigger new CI runs) — restart the combined wait from step 1 (recompute COMMENT_COUNT and start a fresh CI watch for the new HEAD).
-   Otherwise, update COMMENT_COUNT and go back to step 3 to resume polling.
+   Otherwise, update the baseline (`COMMENT_COUNT=$NEW_COUNT`) and go back to step 3 to resume polling (CI continues running in the background).
 
-5. When CI finishes (CI_PID exits), collect its exit status:
+5. When CI finishes (the polling loop in step 3 exits because CI_PID is no longer alive), collect its exit status and do a final comment check:
 ```bash
 wait $CI_PID
 CI_EXIT=$?
+
+# Final check for comments that arrived after last poll
+c1=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') || exit 1
+c2=$(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') || exit 1
+c3=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') || exit 1
+FINAL_COUNT=$((c1 + c2 + c3))
+if [ "$FINAL_COUNT" -gt "$COMMENT_COUNT" ]; then
+  echo "New comments detected after CI completed ($COMMENT_COUNT → $FINAL_COUNT)"
+  # Address these comments, then proceed to check CI_EXIT below
+fi
 ```
 
 If CI failed:
