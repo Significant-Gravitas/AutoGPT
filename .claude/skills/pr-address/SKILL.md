@@ -99,11 +99,10 @@ CI_PID=$!
 ```bash
 while kill -0 $CI_PID 2>/dev/null; do
   sleep 30
-  NEW_COUNT=$(( \
-    $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') + \
-    $(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') + \
-    $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') \
-  ))
+  c1=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') || continue
+  c2=$(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') || continue
+  c3=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') || continue
+  NEW_COUNT=$((c1 + c2 + c3))
   if [ "$NEW_COUNT" -gt "$COMMENT_COUNT" ]; then
     echo "New comments detected ($COMMENT_COUNT → $NEW_COUNT)"
     break
@@ -122,7 +121,7 @@ CI_EXIT=$?
 ```
 
 If CI failed:
-1. Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json name,state,link --jq '.[] | select(.state == "FAILURE") | .link'`
+1. Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] | select(.bucket == "fail") | .link'`
 2. Extract the run ID from the link (format: `.../actions/runs/<run-id>/job/...`), then view logs: `gh run view <run-id> --log-failed`
 3. Fix → commit → push → restart the combined wait (from step 1)
 
