@@ -11,6 +11,7 @@ import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 from backend.blocks import load_all_blocks
+from backend.util.text import split_camelcase
 from backend.blocks._base import (
     AnyBlockSchema,
     BlockCategory,
@@ -415,7 +416,7 @@ async def _hybrid_search_blocks(
     for item in all_results:
         block_info = item.item
         assert isinstance(block_info, BlockInfo)
-        name = block_info.name.lower()
+        name = split_camelcase(block_info.name).lower()
 
         # Build rich description including input field descriptions,
         # matching the searchable text that the embedding pipeline uses
