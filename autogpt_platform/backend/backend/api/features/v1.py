@@ -172,9 +172,12 @@ async def check_invite_route(
         # This prevents the key from persisting indefinitely when expire fails
         # after a successful incr (which would permanently block the IP once
         # the count exceeds the limit).
+        # NOTE: pipeline command methods (incr, expire) are NOT awaitable —
+        # they queue the command and return the pipeline. Only execute() is
+        # awaited, which flushes all queued commands in a single round-trip.
         pipe = redis.pipeline()
-        await pipe.incr(rate_key)
-        await pipe.expire(rate_key, _CHECK_INVITE_RATE_WINDOW)
+        pipe.incr(rate_key)
+        pipe.expire(rate_key, _CHECK_INVITE_RATE_WINDOW)
         results = await pipe.execute()
         count = results[0]
         if count > _CHECK_INVITE_RATE_LIMIT:
