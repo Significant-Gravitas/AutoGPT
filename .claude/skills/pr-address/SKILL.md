@@ -40,8 +40,8 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 
 | Comment type | How to reply |
 |---|---|
-| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="Fixed in <commit-sha>: <description>"` |
-| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="Fixed in <commit-sha>: <description>"` |
+| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in <commit-sha>: <description>"` |
+| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in <commit-sha>: <description>"` |
 
 ## Format and commit
 
@@ -74,21 +74,35 @@ address comments → format → commit → push
 → repeat until: all comments addressed AND CI green AND no new comments arriving
 ```
 
-### Waiting for CI
+### Polling for CI + new comments
 
-Use `gh pr checks --watch --fail-fast` to efficiently wait for CI. This blocks until all checks finish (or one fails early):
+After pushing, poll for **both** CI status and new comments in a single loop. Do not use `gh pr checks --watch` — it blocks the tool and prevents reacting to new comments while CI is running.
 
+> **Note:** `gh pr checks --watch --fail-fast` is tempting but it blocks the entire Bash tool call, meaning the agent cannot check for or address new comments until CI fully completes. Always poll manually instead.
+
+**Polling loop — repeat every 30 seconds:**
+
+1. Check CI status:
 ```bash
-gh pr checks --watch --fail-fast
+gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,name,link
 ```
+   Parse the results: if every check has `bucket` of `"pass"` or `"skipping"`, CI is green. If any has `"fail"`, CI has failed. Otherwise CI is still pending.
 
-If a check fails:
-1. Get the failed run ID: `gh pr checks --json name,state,link --jq '.[] | select(.state == "FAILURE")'`
-2. Read logs: `gh run view <run-id> --log-failed`
-3. Fix → commit → push → wait again with `gh pr checks --watch --fail-fast`
+2. Check for new comments (all three sources):
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
+gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
+```
+   Compare against previously seen comments to detect new ones.
 
-### Between CI waits
+3. **React to whichever changed first:**
 
-After each push and while waiting for CI, re-fetch comments — bots like `coderabbitai` and `sentry` often post new comments on fresh commits. Address those while CI is still running, then wait again.
+| What happened | Action |
+|---|---|
+| New comments detected | Address them (fix → commit → push → reply). After pushing, re-fetch all comments to update your baseline, then restart this polling loop from the top (new commits invalidate CI status). |
+| CI failed (bucket == "fail") | Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] \| select(.bucket == "fail") \| .link'`. Extract run ID from link (format: `.../actions/runs/<run-id>/job/...`), read logs with `gh run view <run-id> --repo Significant-Gravitas/AutoGPT --log-failed`. Fix → commit → push → restart polling. |
+| CI green + no new comments | **Do not exit immediately.** Bots (coderabbitai, sentry) often post reviews shortly after CI settles. Continue polling for **2 more cycles (60s)** after CI goes green. Only exit after 2 consecutive green+quiet polls. |
+| CI pending + no new comments | Sleep 30 seconds, then poll again. |
 
-**The loop ends when:** CI fully green + all comments addressed + no new comments since CI settled.
+**The loop ends when:** CI fully green + all comments addressed + **2 consecutive polls with no new comments after CI settled.**
