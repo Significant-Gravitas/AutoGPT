@@ -122,7 +122,7 @@ export function InvitedUsersTable({
       <div className="relative">
         <MagnifyingGlass
           size={16}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"
         />
         <Input
           id="invite-search"
@@ -240,27 +240,31 @@ export function InvitedUsersTable({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4">
-          <button
+          <Button
             type="button"
-            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:pointer-events-none disabled:opacity-50"
+            variant="outline"
+            size="small"
+            className="min-w-0 rounded-lg border-zinc-200 text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50"
             disabled={currentPage <= 1}
             onClick={() => onPageChange(currentPage - 1)}
+            leftIcon={<CaretLeft size={14} />}
           >
-            <CaretLeft size={14} />
             Previous
-          </button>
+          </Button>
           <span className="text-sm text-zinc-500">
             Page {currentPage} of {totalPages}
           </span>
-          <button
+          <Button
             type="button"
-            className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 disabled:pointer-events-none disabled:opacity-50"
+            variant="outline"
+            size="small"
+            className="min-w-0 rounded-lg border-zinc-200 text-zinc-700 hover:border-zinc-200 hover:bg-zinc-50"
             disabled={currentPage >= totalPages}
             onClick={() => onPageChange(currentPage + 1)}
+            rightIcon={<CaretRight size={14} />}
           >
             Next
-            <CaretRight size={14} />
-          </button>
+          </Button>
         </div>
       )}
     </div>

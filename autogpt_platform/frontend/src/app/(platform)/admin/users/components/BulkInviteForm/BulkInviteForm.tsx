@@ -3,7 +3,17 @@
 import type { BulkInvitedUsersResponse } from "@/app/api/__generated__/models/bulkInvitedUsersResponse";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
-import type { FormEvent } from "react";
+import { type ChangeEvent, type FormEvent, useState } from "react";
+
+const MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024;
+
+function getFileSizeError(file: File) {
+  if (file.size > MAX_BULK_INVITE_FILE_BYTES) {
+    return "Invite file exceeds the maximum size of 1 MB";
+  }
+
+  return null;
+}
 
 interface Props {
   selectedFile: File | null;
@@ -34,6 +44,28 @@ export function BulkInviteForm({
   onFileChange,
   onSubmit,
 }: Props) {
+  const [fileError, setFileError] = useState<string | null>(null);
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.item(0) ?? null;
+    if (!file) {
+      setFileError(null);
+      onFileChange(null);
+      return;
+    }
+
+    const nextFileError = getFileSizeError(file);
+    if (nextFileError) {
+      setFileError(nextFileError);
+      onFileChange(null);
+      event.target.value = "";
+      return;
+    }
+
+    setFileError(null);
+    onFileChange(file);
+  }
+
   return (
     <form className="flex flex-col gap-4" onSubmit={onSubmit}>
       <div className="flex flex-col gap-1">
@@ -54,7 +86,7 @@ export function BulkInviteForm({
         <span className="font-medium text-zinc-900">
           {selectedFile ? selectedFile.name : "Choose invite file"}
         </span>
-        <span>Maximum 5,000 users per upload.</span>
+        <span>Maximum 5,000 users and 1 MB per upload.</span>
         <input
           id="bulk-invite-file-input"
           key={inputKey}
@@ -62,11 +94,11 @@ export function BulkInviteForm({
           accept=".txt,.csv,text/plain,text/csv"
           disabled={isSubmitting}
           className="sr-only"
-          onChange={(event) =>
-            onFileChange(event.target.files?.item(0) ?? null)
-          }
+          onChange={handleFileChange}
         />
       </label>
+
+      {fileError ? <p className="text-sm text-red-600">{fileError}</p> : null}
 
       <Button
         type="submit"

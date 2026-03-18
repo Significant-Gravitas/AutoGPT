@@ -14,7 +14,7 @@ from backend.util.exceptions import NotAuthorizedError, PreconditionFailed
 
 from .invited_user import (
     InvitedUserRecord,
-    _compute_invited_user_tally_seed_inner,
+    _compute_invited_user_tally_seed,
     _fetch_existing_emails,
     _get_invited_user_tally_understanding,
     bulk_create_invited_users_from_file,
@@ -574,7 +574,7 @@ async def test_compute_invited_user_tally_seed_handles_timeout_without_traceback
     warning = mocker.patch("backend.data.invited_user.logger.warning")
     exception = mocker.patch("backend.data.invited_user.logger.exception")
 
-    await _compute_invited_user_tally_seed_inner("invite-1")
+    await _compute_invited_user_tally_seed("invite-1")
 
     assert invited_user_repo.update.await_count == 2
     assert warning.call_count == 1

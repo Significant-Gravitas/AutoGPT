@@ -665,18 +665,20 @@ async def _get_invited_user_tally_understanding(
     return await extract_business_understanding_from_tally(formatted)
 
 
-async def _compute_invited_user_tally_seed(
-    invited_user_id: str,
-    *,
-    tally_mode: TallyMode = "default",
-) -> None:
-    await _compute_invited_user_tally_seed_inner(
-        invited_user_id,
-        tally_mode=tally_mode,
+async def _fail_tally_seed(invited_user_id: str, exc: Exception) -> None:
+    sanitized_error = re.sub(r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}")[
+        :_MAX_TALLY_ERROR_LENGTH
+    ]
+    await prisma.models.InvitedUser.prisma().update(
+        where={"id": invited_user_id},
+        data={
+            "tallyStatus": prisma.enums.TallyComputationStatus.FAILED,
+            "tallyError": sanitized_error,
+        },
     )
 
 
-async def _compute_invited_user_tally_seed_inner(
+async def _compute_invited_user_tally_seed(
     invited_user_id: str,
     *,
     tally_mode: TallyMode = "default",
@@ -707,7 +709,9 @@ async def _compute_invited_user_tally_seed_inner(
         current_owner = await lock.try_acquire()
 
         if current_owner is None:
-            logger.warn("Redis unvailable for tally lock - skipping tally enrichement")
+            logger.warning(
+                "Redis unavailable for tally lock - skipping tally enrichment"
+            )
             return
         elif current_owner != _WORKER_ID:
             logger.debug(
@@ -766,31 +770,13 @@ async def _compute_invited_user_tally_seed_inner(
             invited_user_id,
             exc.attempts,
         )
-        sanitized_error = re.sub(
-            r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}"
-        )[:_MAX_TALLY_ERROR_LENGTH]
-        await prisma.models.InvitedUser.prisma().update(
-            where={"id": invited_user_id},
-            data={
-                "tallyStatus": prisma.enums.TallyComputationStatus.FAILED,
-                "tallyError": sanitized_error,
-            },
-        )
+        await _fail_tally_seed(invited_user_id, exc)
     except Exception as exc:
         logger.exception(
             "Failed to compute Tally understanding for invited user %s",
             invited_user_id,
         )
-        sanitized_error = re.sub(
-            r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}"
-        )[:_MAX_TALLY_ERROR_LENGTH]
-        await prisma.models.InvitedUser.prisma().update(
-            where={"id": invited_user_id},
-            data={
-                "tallyStatus": prisma.enums.TallyComputationStatus.FAILED,
-                "tallyError": sanitized_error,
-            },
-        )
+        await _fail_tally_seed(invited_user_id, exc)
 
 
 def schedule_invited_user_tally_precompute(
