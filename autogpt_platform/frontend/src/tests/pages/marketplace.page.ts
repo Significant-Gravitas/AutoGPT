@@ -9,12 +9,10 @@ export class MarketplacePage extends BasePage {
 
   async goto(page: Page) {
     await page.goto("/marketplace");
-    // Use :visible to skip hidden mobile-carousel duplicates
+    // Wait for the page content to render (title is always present,
+    // even when store agent data is empty — e.g. fork PR CI)
     await page
-      .locator(
-        '[data-testid="store-card"]:visible, [data-testid="featured-store-card"]:visible',
-      )
-      .first()
+      .getByText("Explore AI agents", { exact: false })
       .waitFor({ state: "visible", timeout: 20000 });
   }
 
