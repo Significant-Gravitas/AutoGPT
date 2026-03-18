@@ -45,6 +45,7 @@ _MAX_TALLY_ERROR_LENGTH = 200
 _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
+MAX_BULK_INVITE_ROWS = 5000
 
 
 class InvitedUserRecord(BaseModel):
@@ -335,6 +336,8 @@ def _parse_bulk_invite_csv(text: str) -> list[_ParsedInviteRow]:
 
     parsed_rows: list[_ParsedInviteRow] = []
     for row_number, row in data_rows:
+        if len(parsed_rows) >= MAX_BULK_INVITE_ROWS:
+            break
         email = row[email_index].strip() if len(row) > email_index else ""
         name = (
             row[name_index].strip()
@@ -356,6 +359,8 @@ def _parse_bulk_invite_text(text: str) -> list[_ParsedInviteRow]:
     parsed_rows: list[_ParsedInviteRow] = []
 
     for row_number, raw_line in enumerate(text.splitlines(), start=1):
+        if len(parsed_rows) >= MAX_BULK_INVITE_ROWS:
+            break
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
