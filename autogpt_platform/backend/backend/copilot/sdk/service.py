@@ -150,7 +150,7 @@ def _friendly_error_text(raw: str) -> str:
 def _is_prompt_too_long(err: BaseException) -> bool:
     """Return True if *err* indicates the prompt exceeds the model's limit.
 
-    Walks the exception chain (``__cause__`` / ``__context__``) so that
+    Walks the exception chain (`__cause__` / `__context__`) so that
     wrapped errors are detected too.
     """
     seen: set[int] = set()
@@ -176,9 +176,9 @@ class ReducedContext(NamedTuple):
 class _TokenUsage:
     """Token usage accumulators for a single turn.
 
-    Separated from ``_RetryState`` because usage is reset between retry
+    Separated from `_RetryState` because usage is reset between retry
     attempts independently of the retry-control fields, and is read by
-    the outer ``stream_chat_completion_sdk`` scope after the retry loop
+    the outer `stream_chat_completion_sdk` scope after the retry loop
     completes.
     """
 
@@ -199,7 +199,7 @@ class _TokenUsage:
 
 @dataclass
 class _RetryState:
-    """Mutable state passed to ``_run_stream_attempt`` instead of closures.
+    """Mutable state passed to `_run_stream_attempt` instead of closures.
 
     Holds values that the retry loop modifies between attempts so the inner
     generator does not rely on reassigning closure variables.
@@ -220,15 +220,15 @@ class _RetryState:
 class _StreamContext:
     """Per-request variables shared across all retry attempts.
 
-    Extracted so that ``_run_stream_attempt`` can be a module-level function
+    Extracted so that `_run_stream_attempt` can be a module-level function
     rather than a closure, making it independently testable and reducing the
-    cognitive load of the 970-line ``stream_chat_completion_sdk`` function.
+    cognitive load of the 970-line `stream_chat_completion_sdk` function.
 
     Scalar fields (IDs, paths, the message string) are set once before the
-    retry loop and never reassigned.  ``session``, ``compaction``, and
-    ``lock`` are **shared mutable references** whose internal state is
-    modified by both the retry loop and ``_run_stream_attempt`` (e.g.
-    ``session.messages`` is rolled back on retry, ``compaction`` tracks
+    retry loop and never reassigned.  `session`, `compaction`, and
+    `lock` are **shared mutable references** whose internal state is
+    modified by both the retry loop and `_run_stream_attempt` (e.g.
+    `session.messages` is rolled back on retry, `compaction` tracks
     mid-stream compaction events).  Their *references* are constant even
     though the objects they point to are mutated.
     """
@@ -258,8 +258,8 @@ async def _reduce_context(
     On subsequent retries (or if compaction fails), drops the transcript
     entirely so the query is rebuilt from DB messages only.
 
-    ``transcript_lost`` is True when the transcript was dropped (caller
-    should set ``skip_transcript_upload``).
+    `transcript_lost` is True when the transcript was dropped (caller
+    should set `skip_transcript_upload`).
     """
     # First retry: try compacting
     if transcript_content and not tried_compaction:
@@ -296,9 +296,9 @@ def _append_error_marker(
     """Append a copilot error marker to *session* so it persists across refresh.
 
     Args:
-        session: The chat session to append to (no-op if ``None``).
+        session: The chat session to append to (no-op if `None`).
         display_msg: User-visible error text.
-        retryable: If ``True``, use the retryable prefix so the frontend
+        retryable: If `True`, use the retryable prefix so the frontend
             shows a "Try Again" button.
     """
     if session is None:
@@ -313,11 +313,11 @@ def _setup_langfuse_otel() -> None:
     """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
 
     This uses LangSmith's built-in Claude Agent SDK integration to monkey-patch
-    ``ClaudeSDKClient``, capturing every tool call and model turn as OTEL spans.
+    `ClaudeSDKClient`, capturing every tool call and model turn as OTEL spans.
     Spans are exported via OTLP to Langfuse (or any OTEL-compatible backend).
 
-    To route traces elsewhere, override ``OTEL_EXPORTER_OTLP_ENDPOINT`` and
-    ``OTEL_EXPORTER_OTLP_HEADERS`` environment variables — no code changes needed.
+    To route traces elsewhere, override `OTEL_EXPORTER_OTLP_ENDPOINT` and
+    `OTEL_EXPORTER_OTLP_HEADERS` environment variables — no code changes needed.
     """
     if not _is_langfuse_configured():
         return
@@ -382,24 +382,24 @@ async def _iter_sdk_messages(
 
     Uses an explicit async iterator with non-cancelling heartbeats.
 
-    CRITICAL: we must NOT cancel ``__anext__()`` mid-flight — doing so
-    (via ``asyncio.timeout`` or ``wait_for``) corrupts the SDK's internal
-    anyio memory stream, causing ``StopAsyncIteration`` on the next call
+    CRITICAL: we must NOT cancel `__anext__()` mid-flight — doing so
+    (via `asyncio.timeout` or `wait_for`) corrupts the SDK's internal
+    anyio memory stream, causing `StopAsyncIteration` on the next call
     and silently dropping all in-flight tool results.  Instead, wrap
-    ``__anext__()`` in a ``Task`` and use ``asyncio.wait()`` with a
+    `__anext__()` in a `Task` and use `asyncio.wait()` with a
     timeout.  On timeout we yield a heartbeat sentinel but keep the Task
     alive so it can deliver the next message.
 
-    Yields ``None`` on heartbeat timeout (caller should refresh locks and
+    Yields `None` on heartbeat timeout (caller should refresh locks and
     emit heartbeat events).  Yields the raw SDK message otherwise.
-    On stream end (``StopAsyncIteration``), the generator returns normally.
+    On stream end (`StopAsyncIteration`), the generator returns normally.
     Any other exception from the SDK propagates to the caller.
     """
     msg_iter = client.receive_response().__aiter__()
     pending_task: asyncio.Task[Any] | None = None
 
     async def _next_msg() -> Any:
-        """Await the next SDK message, wrapped for use with ``asyncio.Task``."""
+        """Await the next SDK message, wrapped for use with `asyncio.Task`."""
         return await msg_iter.__anext__()
 
     try:
@@ -430,17 +430,17 @@ async def _iter_sdk_messages(
 def _resolve_sdk_model() -> str | None:
     """Resolve the model name for the Claude Agent SDK CLI.
 
-    Uses ``config.claude_agent_model`` if set, otherwise derives from
-    ``config.model`` by stripping the OpenRouter provider prefix (e.g.,
-    ``"anthropic/claude-opus-4.6"`` → ``"claude-opus-4-6"``).
+    Uses `config.claude_agent_model` if set, otherwise derives from
+    `config.model` by stripping the OpenRouter provider prefix (e.g.,
+    `"anthropic/claude-opus-4.6"` → `"claude-opus-4-6"`).
 
-    OpenRouter uses dot-separated versions (``claude-opus-4.6``) while the
-    direct Anthropic API uses hyphen-separated versions (``claude-opus-4-6``).
+    OpenRouter uses dot-separated versions (`claude-opus-4.6`) while the
+    direct Anthropic API uses hyphen-separated versions (`claude-opus-4-6`).
     Normalisation is only applied when the SDK will actually talk to
     Anthropic directly (not through OpenRouter).
 
-    When ``use_claude_code_subscription`` is enabled and no explicit
-    ``claude_agent_model`` is set, returns ``None`` so the CLI uses the
+    When `use_claude_code_subscription` is enabled and no explicit
+    `claude_agent_model` is set, returns `None` so the CLI uses the
     default model for the user's subscription plan.
     """
     if config.claude_agent_model:
@@ -460,7 +460,7 @@ def _resolve_sdk_model() -> str | None:
 
 @functools.cache
 def _validate_claude_code_subscription() -> None:
-    """Validate Claude CLI is installed and responds to ``--version``.
+    """Validate Claude CLI is installed and responds to `--version`.
 
     Cached so the blocking subprocess check runs at most once per process
     lifetime.  A failure (CLI not installed) is a config error that requires
@@ -496,9 +496,9 @@ def _build_sdk_env(
     """Build env vars for the SDK CLI subprocess.
 
     Three modes (checked in order):
-    1. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    2. **Direct Anthropic** — returns ``{}``; subprocess inherits
-       ``ANTHROPIC_API_KEY`` from the parent environment.
+    1. **Subscription** — clears all keys; CLI uses `claude login` auth.
+    2. **Direct Anthropic** — returns `{}`; subprocess inherits
+       `ANTHROPIC_API_KEY` from the parent environment.
     3. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
     """
@@ -512,7 +512,7 @@ def _build_sdk_env(
         }
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    # ``openrouter_active`` checks the flag *and* credential presence.
+    # `openrouter_active` checks the flag *and* credential presence.
     if not config.openrouter_active:
         return {}
 
@@ -561,13 +561,13 @@ def _make_sdk_cwd(session_id: str) -> str:
 async def _cleanup_sdk_tool_results(cwd: str) -> None:
     """Remove SDK session artifacts for a specific working directory.
 
-    Cleans up the ephemeral working directory ``/tmp/copilot-<session>/``.
+    Cleans up the ephemeral working directory `/tmp/copilot-<session>/`.
 
     Also sweeps stale CLI project directories (older than 12 h) to prevent
     unbounded disk growth.  The sweep is best-effort, rate-limited to once
     every 5 minutes, and capped at 50 directories per sweep.
 
-    Security: *cwd* MUST be created by ``_make_sdk_cwd()`` which sanitizes
+    Security: *cwd* MUST be created by `_make_sdk_cwd()` which sanitizes
     the session_id.
     """
     normalized = os.path.normpath(cwd)
@@ -637,15 +637,15 @@ async def _compress_messages(
 ) -> tuple[list[ChatMessage], bool]:
     """Compress a list of messages if they exceed the token threshold.
 
-    Delegates to ``_run_compression`` (``transcript.py``) which centralizes
+    Delegates to `_run_compression` (`transcript.py`) which centralizes
     the "try LLM, fallback to truncation" pattern with timeouts.  Both
-    ``_compress_messages`` and ``compact_transcript`` share this helper so
+    `_compress_messages` and `compact_transcript` share this helper so
     client acquisition and error handling are consistent.
 
     See also:
-        ``_run_compression`` — shared compression with timeout guards.
-        ``compact_transcript`` — compresses JSONL transcript entries.
-        ``CompactionTracker`` — emits UI events for mid-stream compaction.
+        `_run_compression` — shared compression with timeout guards.
+        `compact_transcript` — compresses JSONL transcript entries.
+        `CompactionTracker` — emits UI events for mid-stream compaction.
     """
     messages = filter_compaction_messages(messages)
 
@@ -926,15 +926,15 @@ def _dispatch_response(
 ) -> StreamBaseResponse | None:
     """Process a single adapter response and update session/accumulator state.
 
-    Returns the response to yield to the client, or ``None`` if the response
-    should be suppressed (e.g. ``StreamStart`` duplicates).
+    Returns the response to yield to the client, or `None` if the response
+    should be suppressed (e.g. `StreamStart` duplicates).
 
     Handles:
     - Logging tool events and errors
     - Persisting error markers
-    - Accumulating text deltas into ``assistant_response``
+    - Accumulating text deltas into `assistant_response`
     - Appending tool input/output to session messages and transcript
-    - Detecting ``StreamFinish``
+    - Detecting `StreamFinish`
     """
     if isinstance(response, StreamStart):
         return None
@@ -1029,12 +1029,12 @@ def _dispatch_response(
 
 
 class _TransientErrorHandled(Exception):
-    """Raised by ``_run_stream_attempt`` after it has already yielded a
-    ``StreamError`` for a transient API error.
+    """Raised by `_run_stream_attempt` after it has already yielded a
+    `StreamError` for a transient API error.
 
     This signals the outer retry loop that the attempt failed so it can
-    perform session-message rollback and set the ``ended_with_stream_error``
-    flag, **without** yielding a duplicate ``StreamError`` to the client.
+    perform session-message rollback and set the `ended_with_stream_error`
+    flag, **without** yielding a duplicate `StreamError` to the client.
     """
 
 
@@ -1044,7 +1044,7 @@ async def _run_stream_attempt(
 ) -> AsyncIterator[StreamBaseResponse]:
     """Run one SDK streaming attempt.
 
-    Opens a ``ClaudeSDKClient``, sends the query, iterates SDK messages with
+    Opens a `ClaudeSDKClient`, sends the query, iterates SDK messages with
     heartbeat timeouts, dispatches adapter responses, and performs post-stream
     cleanup (safety-net flush, stopped-by-user handling).
 
@@ -1054,17 +1054,17 @@ async def _run_stream_attempt(
     Args:
         ctx: Per-request context shared across retry attempts.  Scalar
             fields (IDs, paths, message string) are set once and never
-            reassigned.  ``session``, ``compaction``, and ``lock`` are
-            shared mutable references: ``session.messages`` is rolled back
-            on retry, ``compaction`` tracks mid-stream compaction events,
-            and ``lock`` is refreshed during heartbeats.  Their references
+            reassigned.  `session`, `compaction`, and `lock` are
+            shared mutable references: `session.messages` is rolled back
+            on retry, `compaction` tracks mid-stream compaction events,
+            and `lock` is refreshed during heartbeats.  Their references
             are constant even though the objects they point to are mutated.
         state: Mutable retry state — holds values that the retry loop
             modifies between attempts (options, query, adapter, etc.).
 
     See also:
-        ``stream_chat_completion_sdk`` — owns the retry loop that calls this
-        function up to ``_MAX_STREAM_ATTEMPTS`` times with reduced context.
+        `stream_chat_completion_sdk` — owns the retry loop that calls this
+        function up to `_MAX_STREAM_ATTEMPTS` times with reduced context.
     """
     acc = _StreamAccumulator(
         assistant_response=ChatMessage(role="assistant", content=""),
@@ -1710,7 +1710,7 @@ async def stream_chat_completion_sdk(
 
         # Build the per-request context carrier (shared across attempts).
         # Scalar fields are immutable; session/compaction/lock are shared
-        # mutable references (see ``_StreamContext`` docstring for details).
+        # mutable references (see `_StreamContext` docstring for details).
         stream_ctx = _StreamContext(
             session=session,
             session_id=session_id,
