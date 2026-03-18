@@ -2,7 +2,7 @@
 name: pr-address
 description: Address PR review comments and loop until CI green and all comments resolved. TRIGGER when user asks to address comments, fix PR feedback, respond to reviewers, or babysit/monitor a PR.
 user-invocable: true
-args: "[PR number or URL] — if omitted, finds PR for current branch."
+argument-hint: "[PR number or URL] — if omitted, finds PR for current branch."
 metadata:
   author: autogpt-team
   version: "1.0.0"
@@ -92,7 +92,7 @@ gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,name,link
 ```bash
 gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.mergeable'
 ```
-   If the result is `"CONFLICTING"`, the PR has a merge conflict — see "Resolving merge conflicts" below.
+   If the result is `"CONFLICTING"`, the PR has a merge conflict — see "Resolving merge conflicts" below. If `"UNKNOWN"`, GitHub is still computing mergeability — wait and re-check next poll.
 
 3. Check for new comments (all three sources):
 ```bash
@@ -116,14 +116,15 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level re
 
 ### Resolving merge conflicts
 
-1. Identify the PR's target branch:
+1. Identify the PR's target branch and remote:
 ```bash
 gh pr view {N} --repo Significant-Gravitas/AutoGPT --json baseRefName --jq '.baseRefName'
+git remote -v   # find the remote pointing to Significant-Gravitas/AutoGPT (typically 'upstream' in forks, 'origin' for direct contributors)
 ```
 
-2. Pull the latest upstream with a 3-way merge:
+2. Pull the latest base branch with a 3-way merge:
 ```bash
-git pull origin {base-branch} --no-rebase
+git pull {base-remote} {base-branch} --no-rebase
 ```
 
 3. Resolve conflicting files, then verify no conflict markers remain:
@@ -134,7 +135,7 @@ grep -r "<<<<<<" <conflicted-files>   # must return no output before proceeding
 4. Stage and push:
 ```bash
 git add <conflicted-files>
-git commit
+git commit -m "Resolve merge conflicts with {base-branch}"
 git push
 ```
 
