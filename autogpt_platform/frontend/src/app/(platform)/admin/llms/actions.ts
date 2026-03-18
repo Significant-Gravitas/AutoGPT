@@ -2,492 +2,216 @@
 
 import { revalidatePath } from "next/cache";
 
-// Generated API functions
-import {
-  getV2ListLlmProviders,
-  postV2CreateLlmProvider,
-  patchV2UpdateLlmProvider,
-  deleteV2DeleteLlmProvider,
-  getV2ListLlmModels,
-  postV2CreateLlmModel,
-  patchV2UpdateLlmModel,
-  patchV2ToggleLlmModelAvailability,
-  deleteV2DeleteLlmModelAndMigrateWorkflows,
-  getV2GetModelUsageCount,
-  getV2ListModelMigrations,
-  postV2RevertAModelMigration,
-  getV2ListModelCreators,
-  postV2CreateModelCreator,
-  patchV2UpdateModelCreator,
-  deleteV2DeleteModelCreator,
-  postV2SetRecommendedModel,
-} from "@/app/api/__generated__/endpoints/admin/admin";
-
-// Generated types
-import type { LlmProvidersResponse } from "@/app/api/__generated__/models/llmProvidersResponse";
-import type { LlmModelsResponse } from "@/app/api/__generated__/models/llmModelsResponse";
-import type { UpsertLlmProviderRequest } from "@/app/api/__generated__/models/upsertLlmProviderRequest";
-import type { CreateLlmModelRequest } from "@/app/api/__generated__/models/createLlmModelRequest";
-import type { UpdateLlmModelRequest } from "@/app/api/__generated__/models/updateLlmModelRequest";
-import type { ToggleLlmModelRequest } from "@/app/api/__generated__/models/toggleLlmModelRequest";
-import type { LlmMigrationsResponse } from "@/app/api/__generated__/models/llmMigrationsResponse";
-import type { LlmCreatorsResponse } from "@/app/api/__generated__/models/llmCreatorsResponse";
-import type { UpsertLlmCreatorRequest } from "@/app/api/__generated__/models/upsertLlmCreatorRequest";
-import type { LlmModelUsageResponse } from "@/app/api/__generated__/models/llmModelUsageResponse";
-import { LlmCostUnit } from "@/app/api/__generated__/models/llmCostUnit";
-
 const ADMIN_LLM_PATH = "/admin/llms";
+const API_BASE = process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8000";
 
-// =============================================================================
-// Utilities
-// =============================================================================
+// Helper to make authenticated API calls
+async function apiCall(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  // TODO: Add auth token from session
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers,
+  });
 
-/**
- * Extracts and validates a required string field from FormData.
- * Throws an error if the field is missing or empty.
- */
-function getRequiredFormField(
-  formData: FormData,
-  fieldName: string,
-  displayName?: string,
-): string {
-  const raw = formData.get(fieldName);
-  const value = raw ? String(raw).trim() : "";
-  if (!value) {
-    throw new Error(`${displayName || fieldName} is required`);
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`API Error (${response.status}): ${error}`);
   }
-  return value;
-}
 
-/**
- * Extracts and validates a required positive number field from FormData.
- * Throws an error if the field is missing, empty, or not a positive number.
- */
-function getRequiredPositiveNumber(
-  formData: FormData,
-  fieldName: string,
-  displayName?: string,
-): number {
-  const raw = formData.get(fieldName);
-  const value = Number(raw);
-  if (raw === null || raw === "" || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`${displayName || fieldName} must be a positive number`);
-  }
-  return value;
-}
-
-/**
- * Extracts and validates a required number field from FormData.
- * Throws an error if the field is missing, empty, or not a finite number.
- */
-function getRequiredNumber(
-  formData: FormData,
-  fieldName: string,
-  displayName?: string,
-): number {
-  const raw = formData.get(fieldName);
-  const value = Number(raw);
-  if (raw === null || raw === "" || !Number.isFinite(value)) {
-    throw new Error(`${displayName || fieldName} is required`);
-  }
-  return value;
+  return response;
 }
 
 // =============================================================================
 // Provider Actions
 // =============================================================================
 
-export async function fetchLlmProviders(): Promise<LlmProvidersResponse> {
-  const response = await getV2ListLlmProviders({ include_models: true });
-  if (response.status !== 200) {
-    throw new Error("Failed to fetch LLM providers");
+export async function createProvider(formData: FormData) {
+  try {
+    const data = {
+      name: formData.get("name") as string,
+      display_name: formData.get("display_name") as string,
+      description: formData.get("description") as string || null,
+      default_credential_provider: formData.get("default_credential_provider") as string || null,
+      metadata: {},
+    };
+
+    await apiCall("/api/llm/providers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+
+    revalidatePath(ADMIN_LLM_PATH);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to create provider:", error);
+    return { success: false, error: String(error) };
   }
-  return response.data;
 }
 
-export async function createLlmProviderAction(formData: FormData) {
-  const payload: UpsertLlmProviderRequest = {
-    name: String(formData.get("name") || "").trim(),
-    display_name: String(formData.get("display_name") || "").trim(),
-    description: formData.get("description")
-      ? String(formData.get("description"))
-      : undefined,
-    default_credential_provider: formData.get("default_credential_provider")
-      ? String(formData.get("default_credential_provider")).trim()
-      : undefined,
-    default_credential_id: formData.get("default_credential_id")
-      ? String(formData.get("default_credential_id")).trim()
-      : undefined,
-    default_credential_type: formData.get("default_credential_type")
-      ? String(formData.get("default_credential_type")).trim()
-      : "api_key",
-    supports_tools: formData.getAll("supports_tools").includes("on"),
-    supports_json_output: formData
-      .getAll("supports_json_output")
-      .includes("on"),
-    supports_reasoning: formData.getAll("supports_reasoning").includes("on"),
-    supports_parallel_tool: formData
-      .getAll("supports_parallel_tool")
-      .includes("on"),
-    metadata: {},
-  };
+export async function updateProvider(name: string, formData: FormData) {
+  try {
+    const data = {
+      display_name: formData.get("display_name") as string,
+      description: formData.get("description") as string || null,
+      default_credential_provider: formData.get("default_credential_provider") as string || null,
+      metadata: {},
+    };
 
-  const response = await postV2CreateLlmProvider(payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to create LLM provider");
+    await apiCall(`/api/llm/providers/${name}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+
+    revalidatePath(ADMIN_LLM_PATH);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update provider:", error);
+    return { success: false, error: String(error) };
   }
-  revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function deleteLlmProviderAction(
-  formData: FormData,
-): Promise<void> {
-  const providerId = getRequiredFormField(
-    formData,
-    "provider_id",
-    "Provider id",
-  );
+export async function deleteProvider(name: string) {
+  try {
+    await apiCall(`/api/llm/providers/${name}`, {
+      method: "DELETE",
+    });
 
-  const response = await deleteV2DeleteLlmProvider(providerId);
-  if (response.status !== 200) {
-    const errorData = response.data as { detail?: string };
-    throw new Error(errorData?.detail || "Failed to delete provider");
+    revalidatePath(ADMIN_LLM_PATH);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to delete provider:", error);
+    return { success: false, error: String(error) };
   }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-export async function updateLlmProviderAction(formData: FormData) {
-  const providerId = getRequiredFormField(
-    formData,
-    "provider_id",
-    "Provider id",
-  );
-
-  const payload: UpsertLlmProviderRequest = {
-    name: String(formData.get("name") || "").trim(),
-    display_name: String(formData.get("display_name") || "").trim(),
-    description: formData.get("description")
-      ? String(formData.get("description"))
-      : undefined,
-    default_credential_provider: formData.get("default_credential_provider")
-      ? String(formData.get("default_credential_provider")).trim()
-      : undefined,
-    default_credential_id: formData.get("default_credential_id")
-      ? String(formData.get("default_credential_id")).trim()
-      : undefined,
-    default_credential_type: formData.get("default_credential_type")
-      ? String(formData.get("default_credential_type")).trim()
-      : "api_key",
-    supports_tools: formData.getAll("supports_tools").includes("on"),
-    supports_json_output: formData
-      .getAll("supports_json_output")
-      .includes("on"),
-    supports_reasoning: formData.getAll("supports_reasoning").includes("on"),
-    supports_parallel_tool: formData
-      .getAll("supports_parallel_tool")
-      .includes("on"),
-    metadata: {},
-  };
-
-  const response = await patchV2UpdateLlmProvider(providerId, payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to update LLM provider");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
 }
 
 // =============================================================================
 // Model Actions
 // =============================================================================
 
-export async function fetchLlmModels(): Promise<LlmModelsResponse> {
-  const response = await getV2ListLlmModels();
-  if (response.status !== 200) {
-    throw new Error("Failed to fetch LLM models");
+export async function createModel(formData: FormData) {
+  try {
+    const data = {
+      slug: formData.get("slug") as string,
+      display_name: formData.get("display_name") as string,
+      description: formData.get("description") as string || null,
+      provider_id: formData.get("provider_id") as string,
+      creator_id: formData.get("creator_id") as string || null,
+      context_window: parseInt(formData.get("context_window") as string),
+      max_output_tokens: formData.get("max_output_tokens") 
+        ? parseInt(formData.get("max_output_tokens") as string) 
+        : null,
+      price_tier: parseInt(formData.get("price_tier") as string),
+      is_enabled: formData.get("is_enabled") === "true",
+      is_recommended: formData.get("is_recommended") === "true",
+      supports_tools: formData.get("supports_tools") === "true",
+      supports_json_output: formData.get("supports_json_output") === "true",
+      supports_reasoning: formData.get("supports_reasoning") === "true",
+      supports_parallel_tool_calls: formData.get("supports_parallel_tool_calls") === "true",
+      capabilities: {},
+      metadata: {},
+    };
+
+    await apiCall("/api/llm/models", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+
+    revalidatePath(ADMIN_LLM_PATH);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to create model:", error);
+    return { success: false, error: String(error) };
   }
-  return response.data;
 }
 
-export async function createLlmModelAction(formData: FormData) {
-  const providerId = getRequiredFormField(formData, "provider_id", "Provider");
-  const creatorId = formData.get("creator_id");
-  const contextWindow = getRequiredPositiveNumber(
-    formData,
-    "context_window",
-    "Context window",
-  );
-  const creditCost = getRequiredNumber(formData, "credit_cost", "Credit cost");
+export async function updateModel(slug: string, formData: FormData) {
+  try {
+    const data: Record<string, any> = {};
+    
+    // Only include fields that are present in formData
+    const displayName = formData.get("display_name");
+    if (displayName) data.display_name = displayName as string;
+    
+    const description = formData.get("description");
+    if (description !== null) data.description = description as string;
+    
+    const contextWindow = formData.get("context_window");
+    if (contextWindow) data.context_window = parseInt(contextWindow as string);
+    
+    const maxOutputTokens = formData.get("max_output_tokens");
+    if (maxOutputTokens) data.max_output_tokens = parseInt(maxOutputTokens as string);
+    
+    const priceTier = formData.get("price_tier");
+    if (priceTier) data.price_tier = parseInt(priceTier as string);
+    
+    const isEnabled = formData.get("is_enabled");
+    if (isEnabled !== null) data.is_enabled = isEnabled === "true";
+    
+    const isRecommended = formData.get("is_recommended");
+    if (isRecommended !== null) data.is_recommended = isRecommended === "true";
 
-  // Fetch provider to get default credentials
-  const providersResponse = await getV2ListLlmProviders({
-    include_models: false,
-  });
-  if (providersResponse.status !== 200) {
-    throw new Error("Failed to fetch providers");
+    await apiCall(`/api/llm/models/${slug}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+
+    revalidatePath(ADMIN_LLM_PATH);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to update model:", error);
+    return { success: false, error: String(error) };
   }
-  const provider = providersResponse.data.providers.find(
-    (p) => p.id === providerId,
-  );
-
-  if (!provider) {
-    throw new Error("Provider not found");
-  }
-
-  const payload: CreateLlmModelRequest = {
-    slug: String(formData.get("slug") || "").trim(),
-    display_name: String(formData.get("display_name") || "").trim(),
-    description: formData.get("description")
-      ? String(formData.get("description"))
-      : undefined,
-    provider_id: providerId,
-    creator_id: creatorId ? String(creatorId) : undefined,
-    context_window: contextWindow,
-    max_output_tokens: formData.get("max_output_tokens")
-      ? Number(formData.get("max_output_tokens"))
-      : undefined,
-    is_enabled: formData.getAll("is_enabled").includes("on"),
-    capabilities: {},
-    metadata: {},
-    costs: [
-      {
-        unit: (formData.get("unit") as LlmCostUnit) || LlmCostUnit.RUN,
-        credit_cost: creditCost,
-        credential_provider:
-          provider.default_credential_provider || provider.name,
-        credential_id: provider.default_credential_id || undefined,
-        credential_type: provider.default_credential_type || "api_key",
-        metadata: {},
-      },
-    ],
-  };
-
-  const response = await postV2CreateLlmModel(payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to create LLM model");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function updateLlmModelAction(formData: FormData) {
-  const modelId = getRequiredFormField(formData, "model_id", "Model id");
-  const creatorId = formData.get("creator_id");
+export async function deleteModel(slug: string) {
+  try {
+    await apiCall(`/api/llm/models/${slug}`, {
+      method: "DELETE",
+    });
 
-  const payload: UpdateLlmModelRequest = {
-    display_name: formData.get("display_name")
-      ? String(formData.get("display_name"))
-      : undefined,
-    description: formData.get("description")
-      ? String(formData.get("description"))
-      : undefined,
-    provider_id: formData.get("provider_id")
-      ? String(formData.get("provider_id"))
-      : undefined,
-    creator_id: creatorId ? String(creatorId) : undefined,
-    context_window: formData.get("context_window")
-      ? Number(formData.get("context_window"))
-      : undefined,
-    max_output_tokens: formData.get("max_output_tokens")
-      ? Number(formData.get("max_output_tokens"))
-      : undefined,
-    is_enabled: formData.has("is_enabled")
-      ? formData.getAll("is_enabled").includes("on")
-      : undefined,
-    costs: formData.get("credit_cost")
-      ? [
-          {
-            unit: (formData.get("unit") as LlmCostUnit) || LlmCostUnit.RUN,
-            credit_cost: Number(formData.get("credit_cost")),
-            credential_provider: String(
-              formData.get("credential_provider") || "",
-            ).trim(),
-            credential_id: formData.get("credential_id")
-              ? String(formData.get("credential_id"))
-              : undefined,
-            credential_type: formData.get("credential_type")
-              ? String(formData.get("credential_type"))
-              : undefined,
-            metadata: {},
-          },
-        ]
-      : undefined,
-  };
-
-  const response = await patchV2UpdateLlmModel(modelId, payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to update LLM model");
+    revalidatePath(ADMIN_LLM_PATH);
+    return { success: true };
+  } catch (error) {
+    console.error("Failed to delete model:", error);
+    return { success: false, error: String(error) };
   }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-export async function toggleLlmModelAction(formData: FormData): Promise<void> {
-  const modelId = getRequiredFormField(formData, "model_id", "Model id");
-  const shouldEnable = formData.get("is_enabled") === "true";
-  const migrateToSlug = formData.get("migrate_to_slug");
-  const migrationReason = formData.get("migration_reason");
-  const customCreditCost = formData.get("custom_credit_cost");
-
-  const payload: ToggleLlmModelRequest = {
-    is_enabled: shouldEnable,
-    migrate_to_slug: migrateToSlug ? String(migrateToSlug) : undefined,
-    migration_reason: migrationReason ? String(migrationReason) : undefined,
-    custom_credit_cost: customCreditCost ? Number(customCreditCost) : undefined,
-  };
-
-  const response = await patchV2ToggleLlmModelAvailability(modelId, payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to toggle LLM model");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-export async function deleteLlmModelAction(formData: FormData): Promise<void> {
-  const modelId = getRequiredFormField(formData, "model_id", "Model id");
-  const rawReplacement = formData.get("replacement_model_slug");
-  const replacementModelSlug =
-    rawReplacement && String(rawReplacement).trim()
-      ? String(rawReplacement).trim()
-      : undefined;
-
-  const response = await deleteV2DeleteLlmModelAndMigrateWorkflows(modelId, {
-    replacement_model_slug: replacementModelSlug,
-  });
-  if (response.status !== 200) {
-    throw new Error("Failed to delete model");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-export async function fetchLlmModelUsage(
-  modelId: string,
-): Promise<LlmModelUsageResponse> {
-  const response = await getV2GetModelUsageCount(modelId);
-  if (response.status !== 200) {
-    throw new Error("Failed to fetch model usage");
-  }
-  return response.data;
 }
 
 // =============================================================================
-// Migration Actions
+// Data Fetching (for page load)
 // =============================================================================
 
-export async function fetchLlmMigrations(
-  includeReverted: boolean = false,
-): Promise<LlmMigrationsResponse> {
-  const response = await getV2ListModelMigrations({
-    include_reverted: includeReverted,
-  });
-  if (response.status !== 200) {
-    throw new Error("Failed to fetch migrations");
+export async function fetchProviders() {
+  try {
+    const response = await apiCall("/api/llm/providers");
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to fetch providers:", error);
+    return { providers: [] };
   }
-  return response.data;
 }
 
-export async function revertLlmMigrationAction(
-  formData: FormData,
-): Promise<void> {
-  const migrationId = getRequiredFormField(
-    formData,
-    "migration_id",
-    "Migration id",
-  );
-
-  const response = await postV2RevertAModelMigration(migrationId, null);
-  if (response.status !== 200) {
-    throw new Error("Failed to revert migration");
+export async function fetchModels() {
+  try {
+    const response = await apiCall("/api/llm/models");
+    return await response.json();
+  } catch (error) {
+    console.error("Failed to fetch models:", error);
+    return { models: [], total: 0 };
   }
-  revalidatePath(ADMIN_LLM_PATH);
 }
 
-// =============================================================================
-// Creator Actions
-// =============================================================================
-
-export async function fetchLlmCreators(): Promise<LlmCreatorsResponse> {
-  const response = await getV2ListModelCreators();
-  if (response.status !== 200) {
-    throw new Error("Failed to fetch creators");
-  }
-  return response.data;
+// Placeholder for features not yet implemented in backend
+export async function fetchCreators() {
+  return { creators: [] };
 }
 
-export async function createLlmCreatorAction(
-  formData: FormData,
-): Promise<void> {
-  const payload: UpsertLlmCreatorRequest = {
-    name: String(formData.get("name") || "").trim(),
-    display_name: String(formData.get("display_name") || "").trim(),
-    description: formData.get("description")
-      ? String(formData.get("description"))
-      : undefined,
-    website_url: formData.get("website_url")
-      ? String(formData.get("website_url")).trim()
-      : undefined,
-    logo_url: formData.get("logo_url")
-      ? String(formData.get("logo_url")).trim()
-      : undefined,
-    metadata: {},
-  };
-
-  const response = await postV2CreateModelCreator(payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to create creator");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-export async function updateLlmCreatorAction(
-  formData: FormData,
-): Promise<void> {
-  const creatorId = getRequiredFormField(formData, "creator_id", "Creator id");
-
-  const payload: UpsertLlmCreatorRequest = {
-    name: String(formData.get("name") || "").trim(),
-    display_name: String(formData.get("display_name") || "").trim(),
-    description: formData.get("description")
-      ? String(formData.get("description"))
-      : undefined,
-    website_url: formData.get("website_url")
-      ? String(formData.get("website_url")).trim()
-      : undefined,
-    logo_url: formData.get("logo_url")
-      ? String(formData.get("logo_url")).trim()
-      : undefined,
-    metadata: {},
-  };
-
-  const response = await patchV2UpdateModelCreator(creatorId, payload);
-  if (response.status !== 200) {
-    throw new Error("Failed to update creator");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-export async function deleteLlmCreatorAction(
-  formData: FormData,
-): Promise<void> {
-  const creatorId = getRequiredFormField(formData, "creator_id", "Creator id");
-
-  const response = await deleteV2DeleteModelCreator(creatorId);
-  if (response.status !== 200) {
-    throw new Error("Failed to delete creator");
-  }
-  revalidatePath(ADMIN_LLM_PATH);
-}
-
-// =============================================================================
-// Recommended Model Actions
-// =============================================================================
-
-export async function setRecommendedModelAction(
-  formData: FormData,
-): Promise<void> {
-  const modelId = getRequiredFormField(formData, "model_id", "Model id");
-
-  const response = await postV2SetRecommendedModel({ model_id: modelId });
-  if (response.status !== 200) {
-    throw new Error("Failed to set recommended model");
-  }
-
-  revalidatePath(ADMIN_LLM_PATH);
+export async function fetchMigrations() {
+  return { migrations: [] };
 }
