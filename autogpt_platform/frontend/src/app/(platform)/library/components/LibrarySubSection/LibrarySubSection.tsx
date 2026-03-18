@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import {
   TabsLine,
   TabsLineList,
@@ -7,14 +8,21 @@ import {
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
 import { LibraryTab } from "../../types";
 import LibraryFolderCreationDialog from "../LibraryFolderCreationDialog/LibraryFolderCreationDialog";
+import { LibrarySortMenu } from "../LibrarySortMenu/LibrarySortMenu";
 
 interface Props {
   tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
+  setLibrarySort: (value: LibraryAgentSort) => void;
 }
 
-export function LibrarySubSection({ tabs, activeTab, onTabChange }: Props) {
+export function LibrarySubSection({
+  tabs,
+  activeTab,
+  onTabChange,
+  setLibrarySort,
+}: Props) {
   const { registerFavoritesTabRef } = useFavoriteAnimation();
   const favoritesRef = useRef<HTMLButtonElement>(null);
 
@@ -42,6 +50,7 @@ export function LibrarySubSection({ tabs, activeTab, onTabChange }: Props) {
           ))}
         </TabsLineList>
       </TabsLine>
+      <LibrarySortMenu setLibrarySort={setLibrarySort} />
       <LibraryFolderCreationDialog />
     </div>
   );

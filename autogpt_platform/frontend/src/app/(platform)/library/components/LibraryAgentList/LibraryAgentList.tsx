@@ -120,15 +120,13 @@ export function LibraryAgentList({
 
   return (
     <>
-      <LibraryActionSubHeader
-        agentCount={agentCount}
-        setLibrarySort={setLibrarySort}
-      />
+      <LibraryActionSubHeader agentCount={agentCount} />
       {!selectedFolderId && (
         <LibrarySubSection
           tabs={tabs}
           activeTab={activeTab}
           onTabChange={onTabChange}
+          setLibrarySort={setLibrarySort}
         />
       )}
 

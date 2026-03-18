@@ -10,7 +10,7 @@ import { FavoriteAnimationProvider } from "./context/FavoriteAnimationContext";
 import { LibraryTab } from "./types";
 
 const LIBRARY_TABS: LibraryTab[] = [
-  { id: "all", title: "All", icon: ListIcon },
+  { id: "all", title: "All agents", icon: ListIcon },
   { id: "favorites", title: "Favorites", icon: HeartIcon },
 ];
 
@@ -39,8 +39,8 @@ export default function LibraryPage() {
       onAnimationComplete={handleFavoriteAnimationComplete}
     >
       <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
-        <JumpBackIn />
         <LibraryActionHeader setSearchTerm={setSearchTerm} />
+        <JumpBackIn />
         <LibraryAgentList
           searchTerm={searchTerm}
           librarySort={librarySort}
