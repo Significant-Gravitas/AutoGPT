@@ -1,6 +1,8 @@
-import Image from "next/image";
-import { PlayIcon } from "@radix-ui/react-icons";
 import { Button } from "@/components/__legacy__/ui/button";
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { PlayIcon } from "@radix-ui/react-icons";
+import Image from "next/image";
+import { useState } from "react";
 import {
   getYouTubeVideoId,
   isValidVideoFile,
@@ -25,10 +27,11 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
 }) => {
   const { videoRef } = useAgentImageItem({ playingVideoIndex, index });
   const isVideoFile = isValidVideoFile(image);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   return (
     <div className="relative">
-      <div className="h-[15rem] overflow-hidden rounded-[26px] bg-[#a8a8a8] dark:bg-neutral-700 sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+      <div className="h-[15rem] overflow-hidden rounded-xl border border-neutral-100 bg-[#a8a8a8] sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
         {isValidVideoUrl(image) ? (
           getYouTubeVideoId(image) ? (
             <iframe
@@ -60,12 +63,16 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
           )
         ) : (
           <div className="relative h-full w-full">
+            {!imageLoaded && (
+              <Skeleton className="absolute inset-0 rounded-xl" />
+            )}
             <Image
               src={image}
               alt="Image"
               fill
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               className="rounded-xl object-cover"
+              onLoad={() => setImageLoaded(true)}
             />
           </div>
         )}

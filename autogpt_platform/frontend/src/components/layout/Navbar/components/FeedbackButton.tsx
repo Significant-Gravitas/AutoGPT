@@ -1,0 +1,37 @@
+"use client";
+
+import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
+import { ChatCircleDotsIcon } from "@phosphor-icons/react";
+
+export function FeedbackButton() {
+  const { state } = useTallyPopup();
+
+  if (state.isFormVisible) return null;
+
+  return (
+    <button
+      type="button"
+      className="group inline-flex backdrop-blur-md transition-[transform] duration-150 ease-out active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+      data-tally-open="3yx2L0"
+      data-tally-emoji-text="👋"
+      data-tally-emoji-animation="wave"
+      data-sentry-replay-id={state.sentryReplayId || "not-initialized"}
+      data-sentry-replay-url={state.replayUrl || "not-initialized"}
+      data-user-agent={state.userAgent}
+      data-page-url={state.pageUrl}
+      data-is-authenticated={
+        state.isAuthenticated === null
+          ? "unknown"
+          : String(state.isAuthenticated)
+      }
+      data-email={state.userEmail || "not-authenticated"}
+    >
+      <div className="rounded-full bg-gradient-to-r from-indigo-100 to-indigo-300 to-zinc-400 p-[1px]">
+        <div className="flex items-center gap-1.5 rounded-full bg-zinc-50 px-3 py-1.5 text-sm font-medium text-neutral-700 transition-colors duration-150 ease-out group-hover:bg-zinc-100">
+          Give Feedback
+          <ChatCircleDotsIcon size={16} />
+        </div>
+      </div>
+    </button>
+  );
+}

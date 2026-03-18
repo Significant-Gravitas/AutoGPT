@@ -1,5 +1,6 @@
 import { getIconForSocial } from "@/components/__legacy__/ui/icons";
-import { Fragment } from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
 
 interface CreatorLinksProps {
   links: string[];
@@ -21,39 +22,30 @@ function getHostnameFromURL(url: string): string {
   }
 }
 
-export const CreatorLinks = ({ links }: CreatorLinksProps) => {
-  if (!links || links.length === 0) {
-    return null;
-  }
-
-  const renderLinkButton = (url: string) => (
-    <a
-      href={normalizeURL(url)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex min-w-[200px] flex-1 items-center justify-between rounded-[34px] border border-neutral-600 px-5 py-3 dark:border-neutral-400"
-    >
-      <div className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        {getHostnameFromURL(url)}
-      </div>
-      <div className="relative h-6 w-6">
-        {getIconForSocial(url, {
-          className: "h-6 w-6 text-neutral-800 dark:text-neutral-200",
-        })}
-      </div>
-    </a>
-  );
+export function CreatorLinks({ links }: CreatorLinksProps) {
+  if (!links || links.length === 0) return null;
 
   return (
-    <div className="flex flex-col items-start justify-start gap-4">
-      <div className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        Other links
-      </div>
-      <div className="flex w-full flex-wrap gap-3">
+    <div className="flex flex-col items-start gap-3">
+      <Text variant="h5">Links</Text>
+      <div className="flex flex-wrap gap-2">
         {links.map((link, index) => (
-          <Fragment key={index}>{renderLinkButton(link)}</Fragment>
+          <Button
+            key={index}
+            variant="secondary"
+            size="small"
+            as="NextLink"
+            href={normalizeURL(link)}
+            target="_blank"
+            rel="noopener noreferrer"
+            rightIcon={getIconForSocial(link, {
+              className: "h-4 w-4",
+            })}
+          >
+            {getHostnameFromURL(link)}
+          </Button>
         ))}
       </div>
     </div>
   );
-};
+}

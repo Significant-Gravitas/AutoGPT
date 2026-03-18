@@ -13,7 +13,8 @@ import {
   MarketplaceIcon,
 } from "./MenuIcon/MenuIcon";
 
-const iconWidthClass = "h-5 w-5";
+const iconBaseClass = "h-4 w-4 shrink-0";
+const iconNudgedClass = "relative bottom-[2px] h-4 w-4 shrink-0";
 
 interface Props {
   name: string;
@@ -34,15 +35,15 @@ export function NavbarLink({ name, href }: Props) {
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={cn(
-          "flex items-center justify-start gap-1 p-1 md:p-2",
+          "flex items-center justify-start gap-2.5 p-1 md:p-2",
           isActive &&
-            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 dark:bg-neutral-200 md:py-2 md:pl-2 md:pr-3",
+            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 md:py-[0.7rem] md:pl-2 md:pr-3",
         )}
       >
         {href === "/marketplace" && (
           <div
             className={cn(
-              iconWidthClass,
+              iconNudgedClass,
               isActive && "text-white dark:text-black",
             )}
           >
@@ -52,7 +53,7 @@ export function NavbarLink({ name, href }: Props) {
         {href === "/build" && (
           <div
             className={cn(
-              iconWidthClass,
+              iconNudgedClass,
               isActive && "text-white dark:text-black",
             )}
           >
@@ -62,7 +63,7 @@ export function NavbarLink({ name, href }: Props) {
         {href === "/monitor" && (
           <IconLaptop
             className={cn(
-              iconWidthClass,
+              iconBaseClass,
               isActive && "text-white dark:text-black",
             )}
           />
@@ -70,7 +71,7 @@ export function NavbarLink({ name, href }: Props) {
         {href === "/copilot" && (
           <div
             className={cn(
-              iconWidthClass,
+              iconNudgedClass,
               isActive && "text-white dark:text-black",
             )}
           >
@@ -81,14 +82,14 @@ export function NavbarLink({ name, href }: Props) {
           (isChatEnabled ? (
             <ListChecksIcon
               className={cn(
-                iconWidthClass,
+                "h-5 w-5 shrink-0",
                 isActive && "text-white dark:text-black",
               )}
             />
           ) : (
             <div
               className={cn(
-                iconWidthClass,
+                iconNudgedClass,
                 isActive && "text-white dark:text-black",
               )}
             >
@@ -98,7 +99,7 @@ export function NavbarLink({ name, href }: Props) {
         <Text
           variant="h5"
           className={cn(
-            "hidden !font-poppins lg:block",
+            "hidden !font-poppins leading-none lg:block",
             isActive ? "!text-white" : "!text-black",
           )}
         >
