@@ -209,8 +209,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Ad Maker Video Creator](block-integrations/llm.md#ai-ad-maker-video-creator) | Creates an AI‑generated 30‑second advert (text + images) |
 | [AI Condition](block-integrations/llm.md#ai-condition) | Uses AI to evaluate natural language conditions and provide conditional outputs |
 | [AI Conversation](block-integrations/llm.md#ai-conversation) | A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges |
-| [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana model from Gemini 2 |
-| [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using BlackForest Labs' Flux Kontext models |
+| [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana models from Gemini |
+| [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using Flux Kontext or Google Nano Banana models |
 | [AI Image Generator](block-integrations/llm.md#ai-image-generator) | Generate images using various AI models through a unified interface |
 | [AI List Generator](block-integrations/llm.md#ai-list-generator) | A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context |
 | [AI Music Generator](block-integrations/llm.md#ai-music-generator) | This block generates music using Meta's MusicGen model on Replicate |
@@ -332,7 +332,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To Facebook](block-integrations/ayrshare/post_to_facebook.md#post-to-facebook) | Post to Facebook using Ayrshare |
 | [Post To GMB](block-integrations/ayrshare/post_to_gmb.md#post-to-gmb) | Post to Google My Business using Ayrshare |
 | [Post To Instagram](block-integrations/ayrshare/post_to_instagram.md#post-to-instagram) | Post to Instagram using Ayrshare |
-| [Post To Linked In](block-integrations/ayrshare/post_to_linkedin.md#post-to-linked-in) | Post to LinkedIn using Ayrshare |
+| [Post To LinkedIn](block-integrations/ayrshare/post_to_linkedin.md#post-to-linkedin) | Post to LinkedIn using Ayrshare |
 | [Post To Pinterest](block-integrations/ayrshare/post_to_pinterest.md#post-to-pinterest) | Post to Pinterest using Ayrshare |
 | [Post To Reddit](block-integrations/ayrshare/post_to_reddit.md#post-to-reddit) | Post to Reddit using Ayrshare |
 | [Post To Snapchat](block-integrations/ayrshare/post_to_snapchat.md#post-to-snapchat) | Post to Snapchat using Ayrshare |
@@ -340,7 +340,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To Threads](block-integrations/ayrshare/post_to_threads.md#post-to-threads) | Post to Threads using Ayrshare |
 | [Post To Tik Tok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tik-tok) | Post to TikTok using Ayrshare |
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
-| [Post To You Tube](block-integrations/ayrshare/post_to_youtube.md#post-to-you-tube) | Post to YouTube using Ayrshare |
+| [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
 | [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads messages from a Discord channel using a bot token |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
@@ -616,6 +616,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
+| [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
 
 ## CRM Services
 
