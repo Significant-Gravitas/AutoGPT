@@ -211,18 +211,18 @@ async def _fallback_store_agent_search(
 
     # Text search using ad-hoc tsvector on StoreAgent view fields
     params: list[Any] = [search_query]
-    filters = ['sa.is_available = true']
+    filters = ["sa.is_available = true"]
     param_idx = 2
 
     if featured:
-        filters.append('sa.featured = true')
+        filters.append("sa.featured = true")
     if creators:
         params.append(creators)
-        filters.append(f'sa.creator_username = ANY(${param_idx})')
+        filters.append(f"sa.creator_username = ANY(${param_idx})")
         param_idx += 1
     if category:
         params.append(category)
-        filters.append(f'${param_idx} = ANY(sa.categories)')
+        filters.append(f"${param_idx} = ANY(sa.categories)")
         param_idx += 1
 
     where_sql = " AND ".join(filters)
