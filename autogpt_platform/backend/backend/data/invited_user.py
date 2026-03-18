@@ -488,6 +488,7 @@ async def bulk_create_invited_users_from_file(
                     )
                 )
 
+    results.sort(key=lambda r: r.row_number)
     return BulkInvitedUsersResult(
         created_count=created_count,
         skipped_count=skipped_count,
