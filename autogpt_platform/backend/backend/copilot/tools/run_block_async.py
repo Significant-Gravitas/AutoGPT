@@ -2,36 +2,36 @@
 
 import asyncio
 import logging
-import uuid
 from typing import Any
 
-from backend.blocks import BlockType, get_block
-from backend.copilot.constants import (
-    COPILOT_NODE_EXEC_ID_SEPARATOR,
-    COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
-)
+from backend.blocks._base import AnyBlockSchema
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
-from backend.data.db_accessors import review_db
-from backend.data.execution import ExecutionContext
 
 from .base import BaseTool
-from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
-from .helpers import execute_block, get_inputs_from_schema, resolve_block_credentials
-from .models import (
-    BlockJobStartedResponse,
-    ErrorResponse,
-    InputValidationErrorResponse,
-    ReviewRequiredResponse,
-    SetupInfo,
-    SetupRequirementsResponse,
-    ToolResponseBase,
-    UserReadiness,
+from .helpers import (
+    BlockPreparation,
+    check_hitl_review,
+    execute_block,
+    get_inputs_from_schema,
+    prepare_block_for_execution,
 )
-from .utils import build_missing_credentials_from_field_info
+from .models import BlockJobStartedResponse, ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
+
+
+def _log_task_exception(task: asyncio.Task, job_id: str) -> None:
+    """Log unhandled exceptions from background block tasks.
+
+    Without this callback, tasks that fail before get_block_result is called
+    would emit a silent 'Task exception was never retrieved' warning.
+    """
+    if not task.cancelled() and task.exception() is not None:
+        logger.warning(
+            "Background block job %s raised an unhandled exception",
+            job_id,
+            exc_info=task.exception(),
+        )
 
 
 class RunBlockAsyncTool(BaseTool):
@@ -110,221 +110,61 @@ class RunBlockAsyncTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        block = get_block(block_id)
-        if not block:
-            return ErrorResponse(
-                message=f"Block '{block_id}' not found", session_id=session_id
-            )
-        if block.disabled:
-            return ErrorResponse(
-                message=f"Block '{block_id}' is disabled", session_id=session_id
-            )
+        logger.info(f"Starting async block execution: {block_id} for user {user_id}")
 
-        if (
-            block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
-            or block.id in COPILOT_EXCLUDED_BLOCK_IDS
-        ):
-            if block.block_type == BlockType.MCP_TOOL:
-                hint = (
-                    " Use the `run_mcp_tool` tool instead — it handles "
-                    "MCP server discovery, authentication, and execution."
-                )
-            elif block.block_type == BlockType.AGENT:
-                hint = " Use the `run_agent` tool instead."
-            else:
-                hint = " This block is designed for use within graphs only."
-            return ErrorResponse(
-                message=f"Block '{block.name}' cannot be run directly.{hint}",
-                session_id=session_id,
-            )
-
-        logger.info(
-            f"Starting async block execution: {block.name} ({block_id}) for user {user_id}"
-        )
-
-        (matched_credentials, missing_credentials) = await resolve_block_credentials(
-            user_id, block, input_data
-        )
-
-        try:
-            input_schema: dict[str, Any] = block.input_schema.jsonschema()
-        except Exception as e:
-            logger.warning(
-                "Failed to generate input schema for block %s: %s", block_id, e
-            )
-            return ErrorResponse(
-                message=f"Block '{block.name}' has an invalid input schema",
-                error=str(e),
-                session_id=session_id,
-            )
-
-        if input_data:
-            try:
-                input_data = await expand_file_refs_in_args(
-                    input_data, user_id, session, input_schema=input_schema
-                )
-            except FileRefExpansionError as exc:
-                return ErrorResponse(
-                    message=(
-                        f"Failed to resolve file reference: {exc}. "
-                        "Ensure the file exists before referencing it."
-                    ),
-                    session_id=session_id,
-                )
-
-        if missing_credentials:
-            credentials_fields_info = block.input_schema.get_credentials_fields_info()
-            missing_creds_dict = build_missing_credentials_from_field_info(
-                credentials_fields_info, set(matched_credentials.keys())
-            )
-            missing_creds_list = list(missing_creds_dict.values())
-            return SetupRequirementsResponse(
-                message=(
-                    f"Block '{block.name}' requires credentials that are not configured. "
-                    "Please set up the required credentials before running this block."
-                ),
-                session_id=session_id,
-                setup_info=SetupInfo(
-                    agent_id=block_id,
-                    agent_name=block.name,
-                    user_readiness=UserReadiness(
-                        has_all_credentials=False,
-                        missing_credentials=missing_creds_dict,
-                        ready_to_run=False,
-                    ),
-                    requirements={
-                        "credentials": missing_creds_list,
-                        "inputs": self._get_inputs_list(block),
-                        "execution_modes": ["background"],
-                    },
-                ),
-                graph_id=None,
-                graph_version=None,
-            )
-
-        # Validate required fields and field names
-        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-        required_keys = set(input_schema.get("required", []))
-        required_non_credential_keys = required_keys - credentials_fields
-        provided_input_keys = set(input_data.keys()) - credentials_fields
-
-        valid_fields = (
-            set(input_schema.get("properties", {}).keys()) - credentials_fields
-        )
-        unrecognized_fields = provided_input_keys - valid_fields
-        if unrecognized_fields:
-            return InputValidationErrorResponse(
-                message=(
-                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
-                    "Block was not executed. Please use the correct field names from the schema."
-                ),
-                session_id=session_id,
-                unrecognized_fields=sorted(unrecognized_fields),
-                inputs=input_schema,
-            )
-
-        if not (required_non_credential_keys <= provided_input_keys):
-            return ErrorResponse(
-                message=(
-                    f"Block '{block.name}' is missing required inputs: "
-                    f"{', '.join(sorted(required_non_credential_keys - provided_input_keys))}. "
-                    "Please provide all required inputs."
-                ),
-                session_id=session_id,
-            )
-
-        # Generate synthetic IDs for CoPilot context
-        synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session.session_id}"
-        synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
-
-        # Reuse existing WAITING review if LLM retries with identical input
-        existing_reviews = await review_db().get_pending_reviews_for_execution(
-            synthetic_graph_id, user_id
-        )
-        existing_review = next(
-            (
-                r
-                for r in existing_reviews
-                if r.node_id == synthetic_node_id
-                and r.status.value == "WAITING"
-                and r.payload == input_data
-            ),
-            None,
-        )
-        if existing_review:
-            return ReviewRequiredResponse(
-                message=(
-                    f"Block '{block.name}' requires human review. "
-                    f"After the user approves, call continue_run_block with "
-                    f"review_id='{existing_review.node_exec_id}' to execute."
-                ),
-                session_id=session_id,
-                block_id=block_id,
-                block_name=block.name,
-                review_id=existing_review.node_exec_id,
-                graph_exec_id=synthetic_graph_id,
-                input_data=input_data,
-            )
-
-        synthetic_node_exec_id = (
-            f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}"
-            f"{uuid.uuid4().hex[:8]}"
-        )
-
-        # Check for HITL review
-        review_context = ExecutionContext(
+        prep_or_err = await prepare_block_for_execution(
+            block_id=block_id,
+            input_data=input_data,
             user_id=user_id,
-            graph_id=synthetic_graph_id,
-            graph_exec_id=synthetic_graph_id,
-            graph_version=1,
-            node_id=synthetic_node_id,
-            node_exec_id=synthetic_node_exec_id,
-            sensitive_action_safe_mode=True,
+            session=session,
+            session_id=session_id,
+            execution_mode="background",
         )
-        should_pause, input_data = await block.is_block_exec_need_review(
-            input_data,
-            user_id=user_id,
-            node_id=synthetic_node_id,
-            node_exec_id=synthetic_node_exec_id,
-            graph_exec_id=synthetic_graph_id,
-            graph_id=synthetic_graph_id,
-            graph_version=1,
-            execution_context=review_context,
-            is_graph_execution=False,
-        )
-        if should_pause:
-            return ReviewRequiredResponse(
+        if isinstance(prep_or_err, ToolResponseBase):
+            return prep_or_err
+        prep: BlockPreparation = prep_or_err
+
+        # Unlike run_block (which shows a schema preview), we require all inputs
+        # upfront — there is no two-step UX for background execution.
+        if not (prep.required_non_credential_keys <= prep.provided_input_keys):
+            missing = sorted(
+                prep.required_non_credential_keys - prep.provided_input_keys
+            )
+            return ErrorResponse(
                 message=(
-                    f"Block '{block.name}' requires human review. "
-                    f"After the user approves, call continue_run_block with "
-                    f"review_id='{synthetic_node_exec_id}' to execute."
+                    f"Block '{prep.block.name}' is missing required inputs: "
+                    f"{', '.join(missing)}. Please provide all required inputs."
                 ),
                 session_id=session_id,
-                block_id=block_id,
-                block_name=block.name,
-                review_id=synthetic_node_exec_id,
-                graph_exec_id=synthetic_graph_id,
-                input_data=input_data,
             )
 
-        # Start execution as a background task and return the job_id immediately
+        hitl_or_err = await check_hitl_review(prep, user_id, session_id)
+        if isinstance(hitl_or_err, ToolResponseBase):
+            return hitl_or_err
+        synthetic_node_exec_id, input_data = hitl_or_err
+
+        # Start execution as a background task and return immediately.
+        import uuid
+
         job_id = uuid.uuid4().hex
 
         async def _run() -> Any:
             return await execute_block(
-                block=block,
+                block=prep.block,
                 block_id=block_id,
                 input_data=input_data,
                 user_id=user_id,
                 session_id=session_id,
                 node_exec_id=synthetic_node_exec_id,
-                matched_credentials=matched_credentials,
+                matched_credentials=prep.matched_credentials,
             )
 
         task = asyncio.create_task(_run())
-        from backend.copilot.sdk.tool_adapter import (
-            get_background_jobs,  # avoid circular import at module level
-        )
+        task.add_done_callback(lambda t: _log_task_exception(t, job_id))
+
+        # Lazy import to avoid circular dependency at module level:
+        # tools/__init__.py → run_block_async → tool_adapter → tools/__init__.py
+        from backend.copilot.sdk.tool_adapter import get_background_jobs
 
         jobs = get_background_jobs()
         if jobs is None:
@@ -338,16 +178,16 @@ class RunBlockAsyncTool(BaseTool):
 
         return BlockJobStartedResponse(
             message=(
-                f"Block '{block.name}' started in the background. "
+                f"Block '{prep.block.name}' started in the background. "
                 f"Call get_block_result with job_id='{job_id}' to retrieve the output."
             ),
             session_id=session_id,
             job_id=job_id,
             block_id=block_id,
-            block_name=block.name,
+            block_name=prep.block.name,
         )
 
-    def _get_inputs_list(self, block: Any) -> list[dict[str, Any]]:
+    def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
         schema = block.input_schema.jsonschema()
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
         return get_inputs_from_schema(schema, exclude_fields=credentials_fields)

@@ -60,64 +60,75 @@ async def test_run_block_async_no_auth(run_block_async_tool: RunBlockAsyncTool) 
 
 
 @pytest.mark.asyncio
-async def test_run_block_async_block_not_found(
+async def test_run_block_async_prepare_error_propagated(
     run_block_async_tool: RunBlockAsyncTool,
 ) -> None:
-    with patch("backend.copilot.tools.run_block_async.get_block", return_value=None):
+    """prepare_block_for_execution errors (e.g. block not found) are returned as-is."""
+    with patch(
+        "backend.copilot.tools.run_block_async.prepare_block_for_execution",
+        AsyncMock(
+            return_value=ErrorResponse(
+                message="Block 'nonexistent-id' not found", session_id="test-session"
+            )
+        ),
+    ):
         result = await run_block_async_tool._execute(
             user_id="user1",
             session=_make_session(),
             block_id="nonexistent-id",
             block_name="Test",
-            input_data={},
+            input_data={"text": "hello"},
         )
     assert isinstance(result, ErrorResponse)
     assert "not found" in result.message
 
 
 @pytest.mark.asyncio
+async def test_run_block_async_missing_required_inputs(
+    run_block_async_tool: RunBlockAsyncTool,
+) -> None:
+    """Returns ErrorResponse when required inputs are missing (no schema preview for async)."""
+    mock_prep = MagicMock()
+    mock_prep.block.name = "Test Block"
+    mock_prep.required_non_credential_keys = {"text"}
+    mock_prep.provided_input_keys = set()
+
+    with patch(
+        "backend.copilot.tools.run_block_async.prepare_block_for_execution",
+        AsyncMock(return_value=mock_prep),
+    ):
+        result = await run_block_async_tool._execute(
+            user_id="user1",
+            session=_make_session(),
+            block_id="block-uuid",
+            block_name="Test Block",
+            input_data={},
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "missing required inputs" in result.message.lower()
+
+
+@pytest.mark.asyncio
 async def test_run_block_async_returns_job_started(
     run_block_async_tool: RunBlockAsyncTool,
 ) -> None:
-    mock_block = MagicMock()
-    mock_block.disabled = False
-    mock_block.block_type = MagicMock()
-    mock_block.id = "block-uuid"
-    mock_block.name = "Test Block"
-
-    schema_mock = MagicMock()
-    schema_mock.jsonschema.return_value = {
-        "properties": {"text": {"type": "string"}},
-        "required": ["text"],
-    }
-    schema_mock.get_credentials_fields.return_value = {}
-    schema_mock.get_credentials_fields_info.return_value = {}
-    mock_block.input_schema = schema_mock
-    mock_block.is_block_exec_need_review = AsyncMock(
-        return_value=(False, {"text": "hello"})
-    )
+    mock_prep = MagicMock()
+    mock_prep.block.name = "Test Block"
+    mock_prep.block_id = "block-uuid"
+    mock_prep.required_non_credential_keys = {"text"}
+    mock_prep.provided_input_keys = {"text"}
+    mock_prep.matched_credentials = {}
 
     jobs: dict = {}
 
     with (
         patch(
-            "backend.copilot.tools.run_block_async.get_block", return_value=mock_block
+            "backend.copilot.tools.run_block_async.prepare_block_for_execution",
+            AsyncMock(return_value=mock_prep),
         ),
         patch(
-            "backend.copilot.tools.run_block_async.COPILOT_EXCLUDED_BLOCK_TYPES", set()
-        ),
-        patch(
-            "backend.copilot.tools.run_block_async.COPILOT_EXCLUDED_BLOCK_IDS", set()
-        ),
-        patch(
-            "backend.copilot.tools.run_block_async.resolve_block_credentials",
-            AsyncMock(return_value=({}, set())),
-        ),
-        patch(
-            "backend.copilot.tools.run_block_async.review_db",
-            return_value=MagicMock(
-                get_pending_reviews_for_execution=AsyncMock(return_value=[])
-            ),
+            "backend.copilot.tools.run_block_async.check_hitl_review",
+            AsyncMock(return_value=("node-exec-id", {"text": "hello"})),
         ),
         patch(
             "backend.copilot.tools.run_block_async.execute_block",
@@ -147,6 +158,9 @@ async def test_run_block_async_returns_job_started(
     assert result.type == ResponseType.BLOCK_JOB_STARTED
     assert result.job_id
     assert result.block_id == "block-uuid"
+    # task must be stored so get_block_result can retrieve it
+    assert len(jobs) == 1
+    assert result.job_id in jobs
 
 
 @pytest.mark.asyncio
@@ -198,5 +212,5 @@ async def test_get_block_result_returns_output(
     assert result.type == ResponseType.BLOCK_JOB_RESULT
     assert result.outputs == {"result": ["value"]}
     assert result.success is True
-    # job should be cleaned up
+    # job should be cleaned up after retrieval
     assert "job-123" not in jobs
