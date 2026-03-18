@@ -16,6 +16,7 @@ from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -246,17 +247,25 @@ class CoPilotProcessor:
             # Choose service based on LaunchDarkly flag.
             # Claude Code subscription forces SDK mode (CLI subprocess auth).
             config = ChatConfig()
-            use_sdk = config.use_claude_code_subscription or await is_feature_enabled(
-                Flag.COPILOT_SDK,
-                entry.user_id or "anonymous",
-                default=config.use_claude_agent_sdk,
-            )
-            stream_fn = (
-                sdk_service.stream_chat_completion_sdk
-                if use_sdk
-                else stream_chat_completion_baseline
-            )
-            log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+
+            if config.test_mode:
+                stream_fn = stream_chat_completion_dummy
+                log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+            else:
+                use_sdk = (
+                    config.use_claude_code_subscription
+                    or await is_feature_enabled(
+                        Flag.COPILOT_SDK,
+                        entry.user_id or "anonymous",
+                        default=config.use_claude_agent_sdk,
+                    )
+                )
+                stream_fn = (
+                    sdk_service.stream_chat_completion_sdk
+                    if use_sdk
+                    else stream_chat_completion_baseline
+                )
+                log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             # Stream chat completion and publish chunks to Redis.
             async for chunk in stream_fn(

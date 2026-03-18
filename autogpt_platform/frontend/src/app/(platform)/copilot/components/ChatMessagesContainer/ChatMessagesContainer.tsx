@@ -32,16 +32,17 @@ interface Props {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
-  headerSlot?: React.ReactNode;
   sessionID?: string | null;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
+  onRetry?: () => void;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
+  onRetry?: () => void,
 ): React.ReactNode[] {
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
@@ -53,6 +54,7 @@ function renderSegments(
         part={seg.part}
         messageID={messageID}
         partIndex={seg.index}
+        onRetry={onRetry}
       />
     );
   });
@@ -181,11 +183,11 @@ export function ChatMessagesContainer({
   status,
   error,
   isLoading,
-  headerSlot,
   sessionID,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
+  onRetry,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -250,7 +252,6 @@ export function ChatMessagesContainer({
             onLoadMore={onLoadMore}
           />
         )}
-        {headerSlot}
         {isLoading && messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center">
             <LoadingSpinner className="text-neutral-600" />
@@ -276,9 +277,12 @@ export function ChatMessagesContainer({
             (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
           );
           const lastTextPart = textParts[textParts.length - 1];
+          const markerType =
+            lastTextPart !== undefined
+              ? parseSpecialMarkers(lastTextPart.text).markerType
+              : null;
           const hasErrorMarker =
-            lastTextPart !== undefined &&
-            parseSpecialMarkers(lastTextPart.text).markerType === "error";
+            markerType === "error" || markerType === "retryable_error";
           const showActions =
             isLastInTurn &&
             !isCurrentlyStreaming &&
@@ -324,13 +328,18 @@ export function ChatMessagesContainer({
                   </ReasoningCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(responseSegments, message.id)
+                  ? renderSegments(
+                      responseSegments,
+                      message.id,
+                      isLastAssistant ? onRetry : undefined,
+                    )
                   : message.parts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
                         part={part}
                         messageID={message.id}
                         partIndex={i}
+                        onRetry={isLastAssistant ? onRetry : undefined}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (

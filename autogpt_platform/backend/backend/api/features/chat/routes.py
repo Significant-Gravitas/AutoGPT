@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, Field, field_validator
@@ -27,6 +27,12 @@ from backend.copilot.model import (
     get_chat_session,
     get_user_sessions,
     update_session_title,
+)
+from backend.copilot.rate_limit import (
+    CoPilotUsageStatus,
+    RateLimitExceeded,
+    check_rate_limit,
+    get_usage_status,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -123,6 +129,8 @@ class SessionDetailResponse(BaseModel):
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
     has_more_messages: bool = False
     oldest_sequence: int | None = None
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
 
 
 class SessionSummaryResponse(BaseModel):
@@ -210,7 +218,7 @@ async def list_sessions(
             }
         except Exception:
             logger.warning(
-                "Failed to fetch processing status from Redis; " "defaulting to empty"
+                "Failed to fetch processing status from Redis; defaulting to empty"
             )
 
     return ListSessionsResponse(
@@ -232,7 +240,7 @@ async def list_sessions(
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -351,7 +359,7 @@ async def update_session_title_route(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
     limit: int = Query(default=50, ge=1, le=200),
     before_sequence: int | None = Query(default=None, ge=0),
 ) -> SessionDetailResponse:
@@ -363,7 +371,7 @@ async def get_session(
 
     Args:
         session_id: The unique identifier for the desired chat session.
-        user_id: The optional authenticated user ID, or None for anonymous access.
+        user_id: The authenticated user's ID.
         limit: Maximum number of messages to return (1-200, default 50).
         before_sequence: Return messages with sequence < this value (cursor).
 
@@ -394,6 +402,10 @@ async def get_session(
                 last_message_id=last_message_id,
             )
 
+    # Sum token usage from session
+    total_prompt = sum(u.prompt_tokens for u in page.session.usage)
+    total_completion = sum(u.completion_tokens for u in page.session.usage)
+
     return SessionDetailResponse(
         id=page.session.session_id,
         created_at=page.session.started_at.isoformat(),
@@ -403,6 +415,25 @@ async def get_session(
         active_stream=active_stream_info,
         has_more_messages=page.has_more,
         oldest_sequence=page.oldest_sequence,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+    )
+
+
+@router.get(
+    "/usage",
+)
+async def get_copilot_usage(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> CoPilotUsageStatus:
+    """Get CoPilot usage status for the authenticated user.
+
+    Returns current token usage vs limits for daily and weekly windows.
+    """
+    return await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=config.daily_token_limit,
+        weekly_token_limit=config.weekly_token_limit,
     )
 
 
@@ -412,7 +443,7 @@ async def get_session(
 )
 async def cancel_session_task(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
@@ -457,7 +488,7 @@ async def cancel_session_task(
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -474,7 +505,7 @@ async def stream_chat_post(
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
-        user_id: Optional authenticated user ID.
+        user_id: Authenticated user ID.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -483,9 +514,7 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
-    log_meta = {"component": "ChatStream", "session_id": session_id}
-    if user_id:
-        log_meta["user_id"] = user_id
+    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
         f"[TIMING] stream_chat_post STARTED, session={session_id}, "
@@ -502,6 +531,18 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Pre-turn rate limit check (token-based).
+    # check_rate_limit short-circuits internally when both limits are 0.
+    if user_id:
+        try:
+            await check_rate_limit(
+                user_id=user_id,
+                daily_token_limit=config.daily_token_limit,
+                weekly_token_limit=config.weekly_token_limit,
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(status_code=429, detail=str(e)) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -737,7 +778,7 @@ async def stream_chat_post(
 )
 async def resume_session_stream(
     session_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Resume an active stream for a session.
