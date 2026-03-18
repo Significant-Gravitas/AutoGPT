@@ -9,17 +9,28 @@ Run with:
 
 Skipped automatically when agent-browser binary is not found.
 
-NOTE: These tests call agent-browser directly via subprocess to avoid importing
-backend modules (which would trigger service initialization requiring Postgres/RabbitMQ).
+Two test tiers:
+  - CLI tests: call agent-browser subprocess directly (no backend imports needed)
+  - Tool class tests: call BrowserNavigateTool/BrowserActTool._execute() directly
+    with user_id=None (skips workspace/DB interactions — no Postgres/RabbitMQ needed)
 """
 
 import os
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import pytest
+
+from backend.copilot.model import ChatSession
+from backend.copilot.tools.agent_browser import BrowserActTool, BrowserNavigateTool
+from backend.copilot.tools.models import (
+    BrowserActResponse,
+    BrowserNavigateResponse,
+    ErrorResponse,
+)
 
 pytestmark = pytest.mark.skipif(
     shutil.which("agent-browser") is None,
@@ -193,3 +204,127 @@ def test_close_session():
 
     rc, _, stderr = _ab("close", timeout=10)
     assert rc == 0, f"close failed: {stderr}"
+
+
+# ---------------------------------------------------------------------------
+# Python tool class integration tests
+#
+# These tests exercise the actual BrowserNavigateTool / BrowserActTool Python
+# classes (not just the CLI binary) to verify the full call path — URL
+# validation, subprocess dispatch, response parsing — works with system
+# chromium.  user_id=None skips workspace/DB interactions so no Postgres or
+# RabbitMQ is needed.
+# ---------------------------------------------------------------------------
+
+_TOOL_SESSION_ID = "integration-tool-test-session"
+_FAKE_SESSION = ChatSession(
+    session_id=_TOOL_SESSION_ID,
+    user_id="test-user",
+    messages=[],
+    usage=[],
+    started_at=datetime.now(timezone.utc),
+    updated_at=datetime.now(timezone.utc),
+)
+
+
+@pytest.fixture(autouse=False)
+def _close_tool_session():
+    """Tear down the tool-test browser session after each tool test."""
+    yield
+    _close_session(_TOOL_SESSION_ID)
+
+
+@pytest.mark.asyncio
+async def test_tool_navigate_returns_response(_close_tool_session):
+    """BrowserNavigateTool._execute returns a BrowserNavigateResponse with real content."""
+    tool = BrowserNavigateTool()
+    resp = await tool._execute(
+        user_id=None, session=_FAKE_SESSION, url="https://example.com"
+    )
+    assert isinstance(
+        resp, BrowserNavigateResponse
+    ), f"Expected BrowserNavigateResponse, got: {resp}"
+    assert urlparse(resp.url).netloc == "example.com"
+    assert resp.title, "Expected non-empty page title"
+    assert resp.snapshot, "Expected non-empty accessibility snapshot"
+
+
+@pytest.mark.asyncio
+async def test_tool_navigate_blocked_url(_close_tool_session):
+    """BrowserNavigateTool._execute rejects internal/private URLs (SSRF guard)."""
+    tool = BrowserNavigateTool()
+    resp = await tool._execute(
+        user_id=None, session=_FAKE_SESSION, url="http://169.254.169.254/"
+    )
+    assert isinstance(
+        resp, ErrorResponse
+    ), f"Expected ErrorResponse for SSRF URL, got: {resp}"
+    assert resp.error == "blocked_url"
+
+
+@pytest.mark.asyncio
+async def test_tool_navigate_missing_url(_close_tool_session):
+    """BrowserNavigateTool._execute returns an error when url is empty."""
+    tool = BrowserNavigateTool()
+    resp = await tool._execute(user_id=None, session=_FAKE_SESSION, url="")
+    assert isinstance(resp, ErrorResponse)
+    assert resp.error == "missing_url"
+
+
+@pytest.mark.asyncio
+async def test_tool_act_scroll(_close_tool_session):
+    """BrowserActTool._execute can scroll after a navigate."""
+    nav = BrowserNavigateTool()
+    nav_resp = await nav._execute(
+        user_id=None, session=_FAKE_SESSION, url="https://example.com"
+    )
+    assert isinstance(nav_resp, BrowserNavigateResponse)
+
+    act = BrowserActTool()
+    resp = await act._execute(
+        user_id=None, session=_FAKE_SESSION, action="scroll", direction="down"
+    )
+    assert isinstance(
+        resp, BrowserActResponse
+    ), f"Expected BrowserActResponse, got: {resp}"
+    assert resp.action == "scroll"
+
+
+@pytest.mark.asyncio
+async def test_tool_act_fill_and_click(_close_tool_session):
+    """BrowserActTool._execute can fill a form field."""
+    nav = BrowserNavigateTool()
+    nav_resp = await nav._execute(
+        user_id=None, session=_FAKE_SESSION, url="https://httpbin.org/forms/post"
+    )
+    assert isinstance(nav_resp, BrowserNavigateResponse)
+
+    act = BrowserActTool()
+    resp = await act._execute(
+        user_id=None,
+        session=_FAKE_SESSION,
+        action="fill",
+        target="input[name=custname]",
+        value="ToolIntegrationTest",
+    )
+    assert isinstance(resp, BrowserActResponse), f"fill failed: {resp}"
+
+
+@pytest.mark.asyncio
+async def test_tool_act_missing_action(_close_tool_session):
+    """BrowserActTool._execute returns an error when action is missing."""
+    act = BrowserActTool()
+    resp = await act._execute(user_id=None, session=_FAKE_SESSION, action="")
+    assert isinstance(resp, ErrorResponse)
+    assert resp.error == "missing_action"
+
+
+@pytest.mark.asyncio
+async def test_tool_act_missing_target(_close_tool_session):
+    """BrowserActTool._execute returns an error when click target is missing."""
+    act = BrowserActTool()
+    resp = await act._execute(
+        user_id=None, session=_FAKE_SESSION, action="click", target=""
+    )
+    assert isinstance(resp, ErrorResponse)
+    assert resp.error == "missing_target"
