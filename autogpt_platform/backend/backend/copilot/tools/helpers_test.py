@@ -1,4 +1,4 @@
-"""Tests for execute_block — credit charging and type coercion."""
+"""Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
 from collections.abc import AsyncIterator
 from typing import Any
@@ -7,8 +7,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
-from backend.copilot.tools.helpers import execute_block
-from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
+from backend.copilot.tools.helpers import (
+    BlockPreparation,
+    check_hitl_review,
+    execute_block,
+    prepare_block_for_execution,
+)
+from backend.copilot.tools.models import (
+    BlockOutputResponse,
+    ErrorResponse,
+    InputValidationErrorResponse,
+    ReviewRequiredResponse,
+    SetupRequirementsResponse,
+)
 
 _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
@@ -510,3 +521,261 @@ async def test_coerce_inner_elements_of_generic():
     # Inner elements should be coerced from int to str
     assert block._captured_inputs["values"] == ["1", "2", "3"]
     assert all(isinstance(v, str) for v in block._captured_inputs["values"])
+
+
+# ---------------------------------------------------------------------------
+# prepare_block_for_execution tests
+# ---------------------------------------------------------------------------
+
+_PREP_USER = "prep-user"
+_PREP_SESSION = "prep-session"
+
+
+def _make_prep_session(session_id: str = _PREP_SESSION) -> MagicMock:
+    session = MagicMock()
+    session.session_id = session_id
+    return session
+
+
+def _make_simple_block(
+    block_id: str = "blk-1",
+    name: str = "Simple Block",
+    disabled: bool = False,
+    required: list[str] | None = None,
+    properties: dict[str, Any] | None = None,
+) -> MagicMock:
+    block = MagicMock()
+    block.id = block_id
+    block.name = name
+    block.disabled = disabled
+    block.description = ""
+    block.block_type = MagicMock()
+
+    schema = {
+        "type": "object",
+        "properties": properties or {"text": {"type": "string"}},
+        "required": required or [],
+    }
+    block.input_schema.jsonschema.return_value = schema
+    block.input_schema.get_credentials_fields.return_value = {}
+    block.input_schema.get_credentials_fields_info.return_value = {}
+    return block
+
+
+def _patch_excluded(block_ids: set | None = None, block_types: set | None = None):
+    return (
+        patch(
+            "backend.copilot.tools.find_block.COPILOT_EXCLUDED_BLOCK_IDS",
+            new=block_ids or set(),
+            create=True,
+        ),
+        patch(
+            "backend.copilot.tools.find_block.COPILOT_EXCLUDED_BLOCK_TYPES",
+            new=block_types or set(),
+            create=True,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_not_found() -> None:
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=None),
+        excl_ids,
+        excl_types,
+    ):
+        result = await prepare_block_for_execution(
+            block_id="missing",
+            input_data={},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "not found" in result.message
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_disabled() -> None:
+    block = _make_simple_block(disabled=True)
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, ErrorResponse)
+    assert "disabled" in result.message
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_unrecognized_fields() -> None:
+    block = _make_simple_block(properties={"text": {"type": "string"}})
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({}, [])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"text": "hi", "unknown_field": "oops"},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, InputValidationErrorResponse)
+    assert "unknown_field" in result.unrecognized_fields
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_missing_credentials() -> None:
+    block = _make_simple_block()
+    mock_cred = MagicMock()
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({}, [mock_cred])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.build_missing_credentials_from_field_info",
+            return_value={"cred_key": mock_cred},
+        ),
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, SetupRequirementsResponse)
+
+
+@pytest.mark.asyncio
+async def test_prepare_block_success_returns_preparation() -> None:
+    block = _make_simple_block(
+        required=["text"], properties={"text": {"type": "string"}}
+    )
+    excl_ids, excl_types = _patch_excluded()
+    with (
+        patch("backend.copilot.tools.helpers.get_block", return_value=block),
+        excl_ids,
+        excl_types,
+        patch(
+            "backend.copilot.tools.helpers.resolve_block_credentials",
+            AsyncMock(return_value=({}, [])),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.expand_file_refs_in_args",
+            AsyncMock(side_effect=lambda d, *a, **kw: d),
+        ),
+    ):
+        result = await prepare_block_for_execution(
+            block_id="blk-1",
+            input_data={"text": "hello"},
+            user_id=_PREP_USER,
+            session=_make_prep_session(),
+            session_id=_PREP_SESSION,
+        )
+    assert isinstance(result, BlockPreparation)
+    assert result.required_non_credential_keys == {"text"}
+    assert result.provided_input_keys == {"text"}
+
+
+# ---------------------------------------------------------------------------
+# check_hitl_review tests
+# ---------------------------------------------------------------------------
+
+
+def _make_hitl_prep(
+    block_id: str = "blk-hitl",
+    input_data: dict | None = None,
+    session_id: str = "hitl-sess",
+    needs_review: bool = False,
+) -> BlockPreparation:
+    block = MagicMock()
+    block.id = block_id
+    block.name = "HITL Block"
+    data = input_data or {"action": "delete"}
+    block.is_block_exec_need_review = AsyncMock(return_value=(needs_review, data))
+    return BlockPreparation(
+        block=block,
+        block_id=block_id,
+        input_data=data,
+        matched_credentials={},
+        input_schema={},
+        credentials_fields=set(),
+        required_non_credential_keys=set(),
+        provided_input_keys=set(),
+        synthetic_graph_id=f"copilot_session_{session_id}",
+        synthetic_node_id=f"copilot_node_{block_id}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_check_hitl_no_review_needed() -> None:
+    prep = _make_hitl_prep(input_data={"action": "read"}, needs_review=False)
+    mock_rdb = MagicMock()
+    mock_rdb.get_pending_reviews_for_execution = AsyncMock(return_value=[])
+
+    with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
+        result = await check_hitl_review(prep, "user1", "hitl-sess")
+
+    assert isinstance(result, tuple)
+    node_exec_id, returned_data = result
+    assert node_exec_id.startswith("copilot_node_blk-hitl")
+    assert returned_data == {"action": "read"}
+
+
+@pytest.mark.asyncio
+async def test_check_hitl_review_required() -> None:
+    prep = _make_hitl_prep(input_data={"action": "delete"}, needs_review=True)
+    mock_rdb = MagicMock()
+    mock_rdb.get_pending_reviews_for_execution = AsyncMock(return_value=[])
+
+    with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
+        result = await check_hitl_review(prep, "user1", "hitl-sess")
+
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.block_id == "blk-hitl"
+
+
+@pytest.mark.asyncio
+async def test_check_hitl_reuses_existing_waiting_review() -> None:
+    prep = _make_hitl_prep(input_data={"action": "delete"}, needs_review=False)
+
+    existing = MagicMock()
+    existing.node_id = prep.synthetic_node_id
+    existing.status.value = "WAITING"
+    existing.payload = {"action": "delete"}
+    existing.node_exec_id = "existing-review-42"
+
+    mock_rdb = MagicMock()
+    mock_rdb.get_pending_reviews_for_execution = AsyncMock(return_value=[existing])
+
+    with patch("backend.copilot.tools.helpers.review_db", return_value=mock_rdb):
+        result = await check_hitl_review(prep, "user1", "hitl-sess")
+
+    assert isinstance(result, ReviewRequiredResponse)
+    assert result.review_id == "existing-review-42"
