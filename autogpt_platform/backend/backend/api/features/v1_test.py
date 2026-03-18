@@ -35,6 +35,102 @@ def setup_app_auth(mock_jwt_user, setup_test_user):
     app.dependency_overrides.clear()
 
 
+# check_invite_route tests
+
+_RATE_LIMIT_PATCH = "backend.api.features.v1.get_redis_async"
+
+
+def _make_redis_mock(count: int = 1) -> AsyncMock:
+    """Return a mock Redis client that reports `count` for the rate-limit key.
+
+    The route uses a pipeline where incr/expire are synchronous (they queue
+    commands and return the pipeline) and only execute() is awaited.
+    """
+    mock_pipe = Mock()
+    mock_pipe.incr = Mock(return_value=mock_pipe)
+    mock_pipe.expire = Mock(return_value=mock_pipe)
+    mock_pipe.execute = AsyncMock(return_value=[count, True])
+
+    mock_redis = AsyncMock()
+    mock_redis.pipeline = Mock(return_value=mock_pipe)
+    return mock_redis
+
+
+def test_check_invite_gate_disabled(mocker: pytest_mock.MockFixture) -> None:
+    """When enable_invite_gate is False every email is allowed."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=False)),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "anyone@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True}
+
+
+def test_check_invite_internal_email_bypasses_gate(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """@agpt.co addresses bypass the gate even when it is enabled."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=True)),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "employee@agpt.co"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True}
+
+
+def test_check_invite_eligible_email(mocker: pytest_mock.MockFixture) -> None:
+    """An email with INVITED status is allowed when the gate is enabled."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=True)),
+    )
+    mocker.patch(
+        "backend.api.features.v1.check_invite_eligibility",
+        new=AsyncMock(return_value=True),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "invited@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True}
+
+
+def test_check_invite_ineligible_email(mocker: pytest_mock.MockFixture) -> None:
+    """An email without an active invite is denied when the gate is enabled."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=True)),
+    )
+    mocker.patch(
+        "backend.api.features.v1.check_invite_eligibility",
+        new=AsyncMock(return_value=False),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "stranger@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": False}
+
+
+def test_check_invite_rate_limit_exceeded(mocker: pytest_mock.MockFixture) -> None:
+    """Requests beyond the per-IP rate limit receive HTTP 429."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock(count=11))
+
+    response = client.post("/auth/check-invite", json={"email": "flood@example.com"})
+
+    assert response.status_code == 429
+
+
 # Auth endpoints tests
 def test_get_or_create_user_route(
     mocker: pytest_mock.MockFixture,

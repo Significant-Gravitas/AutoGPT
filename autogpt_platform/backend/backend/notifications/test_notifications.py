@@ -19,6 +19,7 @@ class TestNotificationErrorHandling:
         with patch("backend.notifications.notifications.AppService.__init__"):
             manager = NotificationManager()
             manager.email_sender = MagicMock()
+            manager.email_sender.send_templated = AsyncMock()
             # Mock the _get_template method used by _process_batch
             template_mock = Mock()
             template_mock.base_template = "base"

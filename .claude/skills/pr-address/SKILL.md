@@ -2,7 +2,7 @@
 name: pr-address
 description: Address PR review comments and loop until CI green and all comments resolved. TRIGGER when user asks to address comments, fix PR feedback, respond to reviewers, or babysit/monitor a PR.
 user-invocable: true
-args: "[PR number or URL] — if omitted, finds PR for current branch."
+argument-hint: "[PR number or URL] — if omitted, finds PR for current branch."
 metadata:
   author: autogpt-team
   version: "1.0.0"
@@ -88,7 +88,13 @@ gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,name,link
 ```
    Parse the results: if every check has `bucket` of `"pass"` or `"skipping"`, CI is green. If any has `"fail"`, CI has failed. Otherwise CI is still pending.
 
-2. Check for new comments (all three sources):
+2. Check for merge conflicts:
+```bash
+gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.mergeable'
+```
+   If the result is `"CONFLICTING"`, the PR has a merge conflict — see "Resolving merge conflicts" below. If `"UNKNOWN"`, GitHub is still computing mergeability — wait and re-check next poll.
+
+3. Check for new comments (all three sources):
 ```bash
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
@@ -96,13 +102,45 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level re
 ```
    Compare against previously seen comments to detect new ones.
 
-3. **React to whichever changed first:**
+4. **React in this precedence order (first match wins):**
 
 | What happened | Action |
 |---|---|
+| Merge conflict detected | See "Resolving merge conflicts" below. |
+| Mergeability is `UNKNOWN` | GitHub is still computing mergeability. Sleep 30 seconds, then restart polling from the top. |
 | New comments detected | Address them (fix → commit → push → reply). After pushing, re-fetch all comments to update your baseline, then restart this polling loop from the top (new commits invalidate CI status). |
 | CI failed (bucket == "fail") | Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] \| select(.bucket == "fail") \| .link'`. Extract run ID from link (format: `.../actions/runs/<run-id>/job/...`), read logs with `gh run view <run-id> --repo Significant-Gravitas/AutoGPT --log-failed`. Fix → commit → push → restart polling. |
 | CI green + no new comments | **Do not exit immediately.** Bots (coderabbitai, sentry) often post reviews shortly after CI settles. Continue polling for **2 more cycles (60s)** after CI goes green. Only exit after 2 consecutive green+quiet polls. |
 | CI pending + no new comments | Sleep 30 seconds, then poll again. |
 
 **The loop ends when:** CI fully green + all comments addressed + **2 consecutive polls with no new comments after CI settled.**
+
+### Resolving merge conflicts
+
+1. Identify the PR's target branch and remote:
+```bash
+gh pr view {N} --repo Significant-Gravitas/AutoGPT --json baseRefName --jq '.baseRefName'
+git remote -v   # find the remote pointing to Significant-Gravitas/AutoGPT (typically 'upstream' in forks, 'origin' for direct contributors)
+```
+
+2. Pull the latest base branch with a 3-way merge:
+```bash
+git pull {base-remote} {base-branch} --no-rebase
+```
+
+3. Resolve conflicting files, then verify no conflict markers remain:
+```bash
+if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' <conflicted-files>; then
+  echo "Unresolved conflict markers found — resolve before proceeding."
+  exit 1
+fi
+```
+
+4. Stage and push:
+```bash
+git add <conflicted-files>
+git commit -m "Resolve merge conflicts with {base-branch}"
+git push
+```
+
+5. Restart the polling loop from the top — new commits reset CI status.
