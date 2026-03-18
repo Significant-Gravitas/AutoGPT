@@ -1276,8 +1276,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         values = input_data.prompt_values
         if values:
-            input_data.prompt = fmt.format_string(input_data.prompt, values)
-            input_data.sys_prompt = fmt.format_string(input_data.sys_prompt, values)
+            input_data.prompt = await fmt.format_string(input_data.prompt, values)
+            input_data.sys_prompt = await fmt.format_string(
+                input_data.sys_prompt, values
+            )
 
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})
