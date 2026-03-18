@@ -27,9 +27,10 @@ class TestNotificationErrorHandling:
             manager.email_sender._get_template = Mock(return_value=template_mock)
             # Mock the formatter
             manager.email_sender.formatter = Mock()
-            manager.email_sender.formatter.format_email = Mock(
+            manager.email_sender.formatter.format_email = AsyncMock(
                 return_value=("subject", "body content")
             )
+            manager.email_sender.send_templated = AsyncMock()
             manager.email_sender.formatter.env = Mock()
             manager.email_sender.formatter.env.globals = {
                 "base_url": "http://example.com"
@@ -331,7 +332,7 @@ class TestNotificationErrorHandling:
                         return ("subject", "x" * 5_000_000)  # Over 4.5MB limit
                 return ("subject", "normal sized content")
 
-            notification_manager.email_sender.formatter.format_email = Mock(
+            notification_manager.email_sender.formatter.format_email = AsyncMock(
                 side_effect=format_side_effect
             )
 
