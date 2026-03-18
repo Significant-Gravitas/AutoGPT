@@ -34,7 +34,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="flex h-[27rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-background transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
+      className="flex h-[27rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl border border-border/50 bg-background p-4 transition-all duration-300 hover:shadow-lg dark:hover:shadow-gray-700"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
