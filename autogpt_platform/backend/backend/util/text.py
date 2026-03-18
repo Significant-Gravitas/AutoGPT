@@ -260,6 +260,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
 # Mirrors the frontend exception list in frontend/src/lib/utils.ts.
 _CAMELCASE_EXCEPTIONS: dict[str, str] = {
     "Auto GPT": "AutoGPT",
+    "Auto Pilot": "AutoPilot",
     "Open AI": "OpenAI",
     "You Tube": "YouTube",
     "Git Hub": "GitHub",

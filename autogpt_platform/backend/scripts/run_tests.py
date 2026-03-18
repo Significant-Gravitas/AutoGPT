@@ -79,7 +79,7 @@ def test():
     test_env = os.environ.copy()
 
     # Load database configuration from .env file
-    dotenv_path = os.path.join(os.path.dirname(__file__), "../.env")
+    dotenv_path = os.path.join(os.path.dirname(__file__), "../../.env")
     if os.path.exists(dotenv_path):
         with open(dotenv_path) as f:
             for line in f:

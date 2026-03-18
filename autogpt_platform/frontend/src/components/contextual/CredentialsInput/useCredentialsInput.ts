@@ -125,9 +125,9 @@ export function useCredentialsInput({
       if (hasAttemptedAutoSelect.current) return;
       hasAttemptedAutoSelect.current = true;
 
-      // Auto-select if exactly one credential matches.
-      // For optional fields with multiple options, let the user choose.
-      if (isOptional && savedCreds.length > 1) return;
+      // Auto-select only when there is exactly one saved credential.
+      // With multiple options the user must choose — regardless of optional/required.
+      if (savedCreds.length > 1) return;
 
       const cred = savedCreds[0];
       onSelectCredential({
