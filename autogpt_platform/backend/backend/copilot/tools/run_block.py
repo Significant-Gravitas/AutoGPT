@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-from backend.blocks._base import AnyBlockSchema
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -11,7 +10,6 @@ from .helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
-    get_inputs_from_schema,
     prepare_block_for_execution,
 )
 from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
@@ -158,9 +156,3 @@ class RunBlockTool(BaseTool):
             node_exec_id=synthetic_node_exec_id,
             matched_credentials=prep.matched_credentials,
         )
-
-    def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
-        """Extract non-credential inputs from block schema."""
-        schema = block.input_schema.jsonschema()
-        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-        return get_inputs_from_schema(schema, exclude_fields=credentials_fields)

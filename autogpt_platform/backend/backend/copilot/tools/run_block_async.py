@@ -2,9 +2,9 @@
 
 import asyncio
 import logging
+import uuid
 from typing import Any
 
-from backend.blocks._base import AnyBlockSchema
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -12,7 +12,6 @@ from .helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
-    get_inputs_from_schema,
     prepare_block_for_execution,
 )
 from .models import BlockJobStartedResponse, ErrorResponse, ToolResponseBase
@@ -144,8 +143,6 @@ class RunBlockAsyncTool(BaseTool):
         synthetic_node_exec_id, input_data = hitl_or_err
 
         # Start execution as a background task and return immediately.
-        import uuid
-
         job_id = uuid.uuid4().hex
 
         async def _run() -> Any:
@@ -190,8 +187,3 @@ class RunBlockAsyncTool(BaseTool):
             block_id=block_id,
             block_name=prep.block.name,
         )
-
-    def _get_inputs_list(self, block: AnyBlockSchema) -> list[dict[str, Any]]:
-        schema = block.input_schema.jsonschema()
-        credentials_fields = set(block.input_schema.get_credentials_fields().keys())
-        return get_inputs_from_schema(schema, exclude_fields=credentials_fields)
