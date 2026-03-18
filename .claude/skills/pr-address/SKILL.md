@@ -74,21 +74,54 @@ address comments → format → commit → push
 → repeat until: all comments addressed AND CI green AND no new comments arriving
 ```
 
-### Waiting for CI
+### Waiting for CI + new comments
 
-Use `gh pr checks --watch --fail-fast` to efficiently wait for CI. This blocks until all checks finish (or one fails early):
+Wait for **both** CI completion and new PR comments simultaneously. Do not block only on CI — bots often post new comments on fresh commits while CI is still running.
 
+**Combined wait approach:**
+
+1. Record current comment count before waiting:
 ```bash
-gh pr checks --watch --fail-fast
+COMMENT_COUNT=$(( \
+  $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') + \
+  $(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') + \
+  $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') \
+))
 ```
 
-If a check fails:
+2. Start CI watch in background:
+```bash
+gh pr checks --watch --fail-fast &
+CI_PID=$!
+```
+
+3. Poll for new comments every 30 seconds while CI runs:
+```bash
+while kill -0 $CI_PID 2>/dev/null; do
+  sleep 30
+  NEW_COUNT=$(( \
+    $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') + \
+    $(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') + \
+    $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') \
+  ))
+  if [ "$NEW_COUNT" -gt "$COMMENT_COUNT" ]; then
+    echo "New comments detected ($COMMENT_COUNT → $NEW_COUNT)"
+    break
+  fi
+done
+```
+
+4. When new comments arrive, address them immediately while CI continues in the background. After addressing, update COMMENT_COUNT and resume polling.
+
+5. When CI finishes (CI_PID exits), collect its exit status:
+```bash
+wait $CI_PID
+CI_EXIT=$?
+```
+
+If CI failed:
 1. Get the failed run ID: `gh pr checks --json name,state,link --jq '.[] | select(.state == "FAILURE")'`
 2. Read logs: `gh run view <run-id> --log-failed`
-3. Fix → commit → push → wait again with `gh pr checks --watch --fail-fast`
-
-### Between CI waits
-
-After each push and while waiting for CI, re-fetch comments — bots like `coderabbitai` and `sentry` often post new comments on fresh commits. Address those while CI is still running, then wait again.
+3. Fix → commit → push → restart the combined wait
 
 **The loop ends when:** CI fully green + all comments addressed + no new comments since CI settled.
