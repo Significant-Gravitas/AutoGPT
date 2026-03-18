@@ -9,10 +9,11 @@ export class MarketplacePage extends BasePage {
 
   async goto(page: Page) {
     await page.goto("/marketplace");
-    // Wait for the page content to render (title is always present,
-    // even when store agent data is empty — e.g. fork PR CI)
     await page
-      .getByText("Explore AI agents", { exact: false })
+      .locator(
+        '[data-testid="store-card"], [data-testid="featured-store-card"]',
+      )
+      .first()
       .waitFor({ state: "visible", timeout: 20000 });
   }
 
