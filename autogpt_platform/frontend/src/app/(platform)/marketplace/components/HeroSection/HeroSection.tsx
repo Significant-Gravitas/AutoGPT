@@ -30,7 +30,7 @@ export const HeroSection = () => {
           Bringing you AI agents designed by thinkers from around the world
         </h3>
         <div className="mb-4 flex justify-center sm:mb-5">
-          <SearchBar height="h-[74px]" />
+          <SearchBar />
         </div>
         <div>
           <div className="flex justify-center">
