@@ -50,12 +50,11 @@ _MCP_MAX_CHARS = 500_000
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 
-# Background jobs started by run_block_async — keyed by job_id.
+# Map from tool_name -> Queue of pre-launched asyncio.Tasks.
 # Initialised per-session in set_execution_context() so concurrent sessions
 # never share the same dict.
-_background_jobs: ContextVar[dict[str, asyncio.Task]] = ContextVar(
-    "_background_jobs",
-    default=None,  # type: ignore[arg-type]
+_tool_task_queues: ContextVar[dict[str, asyncio.Queue] | None] = ContextVar(
+    "_tool_task_queues", default=None
 )
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
@@ -99,7 +98,7 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
-    _background_jobs.set({})
+    _tool_task_queues.set({})
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -128,9 +127,9 @@ def pop_pending_tool_output(tool_name: str) -> str | None:
     return value
 
 
-def get_background_jobs() -> dict[str, asyncio.Task] | None:
-    """Return the background-jobs dict for the current session, or None if not initialised."""
-    return _background_jobs.get(None)
+def get_tool_task_queues() -> dict[str, asyncio.Queue] | None:
+    """Return the pre-launched tool task queues for the current session, or None."""
+    return _tool_task_queues.get()
 
 
 def stash_pending_tool_output(tool_name: str, output: Any) -> None:
@@ -193,6 +192,38 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
         return False
 
 
+async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
+    """Pre-launch a tool as a background task so parallel calls run concurrently.
+
+    Called when an AssistantMessage with ToolUseBlocks is received, before the
+    SDK dispatches the MCP tool/call requests. The tool_handler will await the
+    pre-launched task instead of executing fresh.
+
+    The tool_name may include an MCP prefix (e.g. ``mcp__copilot__run_block``);
+    the prefix is stripped automatically before looking up the tool.
+    """
+    queues = _tool_task_queues.get()
+    if queues is None:
+        return
+
+    # Strip MCP prefix (mcp__<server>__<tool>) to get the bare tool name.
+    bare_name = tool_name.split("__")[-1] if "__" in tool_name else tool_name
+
+    base_tool = TOOL_REGISTRY.get(bare_name)
+    if base_tool is None:
+        return
+
+    user_id, session = get_execution_context()
+    if session is None:
+        return
+
+    task = asyncio.create_task(_execute_tool_sync(base_tool, user_id, session, args))
+
+    if bare_name not in queues:
+        queues[bare_name] = asyncio.Queue()
+    queues[bare_name].put_nowait(task)
+
+
 async def _execute_tool_sync(
     base_tool: BaseTool,
     user_id: str | None,
@@ -239,7 +270,26 @@ def create_tool_handler(base_tool: BaseTool):
     """
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
-        """Execute the wrapped tool and return MCP-formatted response."""
+        """Execute the wrapped tool and return MCP-formatted response.
+
+        If a pre-launched task exists (from parallel tool pre-launch in the
+        message loop), await it instead of executing fresh.
+        """
+        queues = _tool_task_queues.get()
+        if queues and base_tool.name in queues:
+            queue = queues[base_tool.name]
+            if not queue.empty():
+                task = queue.get_nowait()
+                try:
+                    return await task
+                except Exception as e:
+                    logger.error(
+                        f"Pre-launched tool {base_tool.name} failed: {e}",
+                        exc_info=True,
+                    )
+                    return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+
+        # No pre-launched task — execute directly (fallback for non-parallel calls).
         user_id, session = get_execution_context()
 
         if session is None:

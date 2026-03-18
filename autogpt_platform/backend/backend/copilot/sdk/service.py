@@ -80,6 +80,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    pre_launch_tool_call,
     set_execution_context,
     wait_for_stash,
 )
@@ -1141,6 +1142,17 @@ async def _run_stream_attempt(
                     ended_with_stream_error = True
                     break
 
+            # Parallel tool execution: when the SDK sends an
+            # AssistantMessage containing ToolUseBlocks, pre-launch
+            # all tool executions as asyncio.Tasks immediately.
+            # The MCP handlers will await the already-running tasks
+            # instead of executing fresh, making all tools in a
+            # single assistant turn run concurrently.
+            if isinstance(sdk_msg, AssistantMessage):
+                for block in sdk_msg.content:
+                    if isinstance(block, ToolUseBlock):
+                        await pre_launch_tool_call(block.name, block.input)
+
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next
             # message can arrive before the hook stashes output.
@@ -1162,7 +1174,7 @@ async def _run_stream_attempt(
                 and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
                 and not is_parallel_continuation
             ):
-                if await wait_for_stash(timeout=0.5):
+                if await wait_for_stash(timeout=2.0):
                     await asyncio.sleep(0)
                 else:
                     logger.warning(

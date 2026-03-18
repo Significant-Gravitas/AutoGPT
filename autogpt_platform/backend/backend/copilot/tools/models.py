@@ -40,8 +40,6 @@ class ResponseType(str, Enum):
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
     REVIEW_REQUIRED = "review_required"
-    BLOCK_JOB_STARTED = "block_job_started"
-    BLOCK_JOB_RESULT = "block_job_result"
 
     # MCP
     MCP_GUIDE = "mcp_guide"
@@ -474,27 +472,6 @@ class ReviewRequiredResponse(ToolResponseBase):
     input_data: dict[str, Any] = Field(
         description="The input data that requires review"
     )
-
-
-class BlockJobStartedResponse(ToolResponseBase):
-    """Response for run_block_async tool — returned immediately before execution."""
-
-    type: ResponseType = ResponseType.BLOCK_JOB_STARTED
-    job_id: str
-    block_id: str
-    block_name: str
-
-
-class BlockJobResultResponse(ToolResponseBase):
-    """Response for get_block_result tool."""
-
-    type: ResponseType = ResponseType.BLOCK_JOB_RESULT
-    job_id: str
-    block_id: str
-    block_name: str
-    outputs: dict[str, list[Any]] | None = None
-    success: bool = True
-    error: str | None = None
 
 
 class WebFetchResponse(ToolResponseBase):
