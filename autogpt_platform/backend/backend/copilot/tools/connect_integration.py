@@ -26,20 +26,22 @@ class _CredentialEntry(TypedDict):
     """Shape of each entry inside SetupRequirementsResponse.user_readiness.missing_credentials.
 
     Partially overlaps with :class:`~backend.data.model.CredentialsMetaInput`
-    (``id``, ``title``, ``provider``, ``type``) but carries extra UI-facing
-    fields (``provider_name``, ``types``, ``scopes``) that the frontend
-    ``SetupRequirementsCard`` needs to render the inline credential setup card.
+    (``id``, ``title``, ``provider``) but carries extra UI-facing fields
+    (``types``, ``scopes``) that the frontend ``SetupRequirementsCard`` needs
+    to render the inline credential setup card.
+
+    Display name is derived from :data:`SUPPORTED_PROVIDERS` at build time
+    rather than stored here — eliminates the old ``provider_name`` field.
+    ``types`` replaces the old singular ``type`` field; the frontend already
+    prefers ``types`` and only fell back to ``type`` for compatibility.
     """
 
     id: str
     title: str
     # Slug used as the credential key (e.g. "github").
     provider: str
-    # Human-readable display name (e.g. "GitHub") — distinct from ``provider``.
-    provider_name: str
-    # Primary credential type for this entry (e.g. "oauth2").
-    type: str
     # All supported credential types the user can choose from (e.g. ["api_key", "oauth2"]).
+    # The first element is the default/primary type.
     types: list[str]
     scopes: list[str]
 
@@ -146,7 +148,7 @@ class ConnectIntegrationTool(BaseTool):
                 session_id=session_id,
             )
 
-        provider_name: str = entry["name"]
+        display_name: str = entry["name"]
         supported_types: list[str] = get_provider_auth_types(provider)
         # Merge agent-requested scopes with provider defaults (deduplicated, order preserved).
         default_scopes: list[str] = entry["default_scopes"]
@@ -159,17 +161,15 @@ class ConnectIntegrationTool(BaseTool):
         field_key = f"{provider}_credentials"
 
         message_parts = [
-            f"To continue, please connect your {provider_name} account.",
+            f"To continue, please connect your {display_name} account.",
         ]
         if reason:
             message_parts.append(reason)
 
         credential_entry: _CredentialEntry = {
             "id": field_key,
-            "title": f"{provider_name} Credentials",
+            "title": f"{display_name} Credentials",
             "provider": provider,
-            "provider_name": provider_name,
-            "type": supported_types[0],
             "types": supported_types,
             "scopes": scopes,
         }
@@ -181,7 +181,7 @@ class ConnectIntegrationTool(BaseTool):
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=f"connect_{provider}",
-                agent_name=provider_name,
+                agent_name=display_name,
                 user_readiness=UserReadiness(
                     has_all_credentials=False,
                     missing_credentials=missing_credentials,
