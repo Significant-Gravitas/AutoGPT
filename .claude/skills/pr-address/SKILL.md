@@ -121,21 +121,16 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level re
 gh pr view {N} --repo Significant-Gravitas/AutoGPT --json baseRefName --jq '.baseRefName'
 ```
 
-2. Fetch and rebase onto the latest upstream:
+2. Pull the latest upstream with a 3-way merge:
 ```bash
-git fetch origin
-git rebase origin/{base-branch}
+git pull origin {base-branch} --no-rebase
 ```
 
-3. Resolve conflicting files, then stage and continue:
+3. Resolve conflicting files, then stage and push:
 ```bash
 git add <conflicted-files>
-git rebase --continue
+git commit
+git push
 ```
 
-4. Force-push (rebase rewrites history):
-```bash
-git push --force-with-lease
-```
-
-5. Restart the polling loop from the top — new commits reset CI status.
+4. Restart the polling loop from the top — new commits reset CI status.
