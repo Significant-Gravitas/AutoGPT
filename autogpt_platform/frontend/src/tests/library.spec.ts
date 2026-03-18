@@ -24,7 +24,7 @@ test.describe("Library", () => {
     await page.goto("/library");
 
     await expect(getId("search-bar").first()).toBeVisible();
-    await expect(getId("upload-agent-button").first()).toBeVisible();
+    await expect(getId("import-button").first()).toBeVisible();
     await expect(getId("sort-by-dropdown").first()).toBeVisible();
   });
 
