@@ -547,10 +547,8 @@ services:
 networks:
   shared-network:
     name: shared-network
-    external: true
   app-network:
     name: app-network
-    external: true
 
 volumes:
   supabase-config:
