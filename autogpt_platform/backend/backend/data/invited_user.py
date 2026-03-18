@@ -5,7 +5,6 @@ import logging
 import os
 import re
 import socket
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 from uuid import uuid4
@@ -14,7 +13,7 @@ import prisma.enums
 import prisma.models
 import prisma.types
 from prisma.errors import UniqueViolationError
-from pydantic import BaseModel, EmailStr, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, EmailStr, TypeAdapter, ValidationError
 
 from backend.data.db import transaction
 from backend.data.model import User
@@ -58,6 +57,8 @@ MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
 MAX_BULK_INVITE_ROWS = 5000
 _FETCH_EXISTING_EMAILS_CHUNK_SIZE = 500
 _BULK_INVITE_CREATE_CONCURRENCY = 50
+# Bulk uploads use a much shorter extraction budget so a few slow timeouts
+# cannot block the queued enrichment backlog for hours.
 _BULK_TALLY_LLM_TIMEOUT = 30
 _BULK_TALLY_LLM_MAX_ATTEMPTS = 3
 
@@ -113,11 +114,14 @@ class BulkInvitedUsersResult(BaseModel):
     results: list[BulkInvitedUserRowResult]
 
 
-@dataclass(frozen=True)
-class _ParsedInviteRow:
+class _ParsedInviteRow(BaseModel):
+    model_config = ConfigDict(frozen=True)
     row_number: int
     email: str
     name: Optional[str]
+
+
+_EmailValidatedInviteRow = tuple[_ParsedInviteRow, str, Optional[str]]
 
 
 def normalize_email(email: str) -> str:
@@ -479,22 +483,33 @@ async def _create_bulk_invited_user(
         return await create_invited_user(email, name, tally_mode="bulk")
 
 
-async def bulk_create_invited_users_from_file(
-    filename: Optional[str],
-    content: bytes,
-) -> BulkInvitedUsersResult:
-    parsed_rows = _parse_bulk_invite_file(filename, content)
+def _build_bulk_invited_user_row_result(
+    row_number: int,
+    email: Optional[str],
+    name: Optional[str],
+    status: Literal["CREATED", "SKIPPED", "ERROR"],
+    message: str,
+    invited_user: Optional[InvitedUserRecord] = None,
+) -> BulkInvitedUserRowResult:
+    return BulkInvitedUserRowResult(
+        row_number=row_number,
+        email=email,
+        name=name,
+        status=status,
+        message=message,
+        invited_user=invited_user,
+    )
 
-    # Validate and deduplicate emails before hitting the DB.
-    validated_rows: list[tuple[_ParsedInviteRow, str, Optional[str]]] = []
-    created_count = 0
+
+def _validate_bulk_invite_rows(
+    parsed_rows: list[_ParsedInviteRow],
+) -> tuple[list[_EmailValidatedInviteRow], list[BulkInvitedUserRowResult], int, int]:
+    email_validated_rows: list[_EmailValidatedInviteRow] = []
+    results: list[BulkInvitedUserRowResult] = []
     skipped_count = 0
     error_count = 0
-    results: list[BulkInvitedUserRowResult] = []
     seen_emails: set[str] = set()
 
-    # First pass: validate emails and deduplicate (cheap, serial).
-    valid_rows: list[tuple[_ParsedInviteRow, str, str | None]] = []
     for row in parsed_rows:
         row_name = _normalize_name(row.name)
         try:
@@ -502,12 +517,12 @@ async def bulk_create_invited_users_from_file(
         except ValidationError:
             error_count += 1
             results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=row.email or None,
-                    name=row_name,
-                    status="ERROR",
-                    message="Invalid email address",
+                _build_bulk_invited_user_row_result(
+                    row.row_number,
+                    row.email or None,
+                    row_name,
+                    "ERROR",
+                    "Invalid email address",
                 )
             )
             continue
@@ -516,33 +531,42 @@ async def bulk_create_invited_users_from_file(
         if normalized_email in seen_emails:
             skipped_count += 1
             results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="SKIPPED",
-                    message="Duplicate email in upload file",
+                _build_bulk_invited_user_row_result(
+                    row.row_number,
+                    normalized_email,
+                    row_name,
+                    "SKIPPED",
+                    "Duplicate email in upload file",
                 )
             )
             continue
 
         seen_emails.add(normalized_email)
-        validated_rows.append((row, normalized_email, row_name))
+        email_validated_rows.append((row, normalized_email, row_name))
 
-    # Batch pre-check: skip emails that already exist as users or invites.
-    all_emails = [email for _, email, _ in validated_rows]
+    return email_validated_rows, results, skipped_count, error_count
+
+
+async def _filter_preexisting_bulk_invite_rows(
+    email_validated_rows: list[_EmailValidatedInviteRow],
+) -> tuple[list[_EmailValidatedInviteRow], list[BulkInvitedUserRowResult], int]:
+    all_emails = [email for _, email, _ in email_validated_rows]
     active_emails, invited_emails = await _fetch_existing_emails(all_emails)
 
-    for row, normalized_email, row_name in validated_rows:
+    precheck_passed_rows: list[_EmailValidatedInviteRow] = []
+    results: list[BulkInvitedUserRowResult] = []
+    skipped_count = 0
+
+    for row, normalized_email, row_name in email_validated_rows:
         if normalized_email in active_emails:
             skipped_count += 1
             results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="SKIPPED",
-                    message="An active user with this email already exists",
+                _build_bulk_invited_user_row_result(
+                    row.row_number,
+                    normalized_email,
+                    row_name,
+                    "SKIPPED",
+                    "An active user with this email already exists",
                 )
             )
             continue
@@ -550,39 +574,55 @@ async def bulk_create_invited_users_from_file(
         if normalized_email in invited_emails:
             skipped_count += 1
             results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="SKIPPED",
-                    message="An invited user with this email already exists",
+                _build_bulk_invited_user_row_result(
+                    row.row_number,
+                    normalized_email,
+                    row_name,
+                    "SKIPPED",
+                    "An invited user with this email already exists",
                 )
             )
             continue
 
-        valid_rows.append((row, normalized_email, row_name))
+        precheck_passed_rows.append((row, normalized_email, row_name))
 
+    return precheck_passed_rows, results, skipped_count
+
+
+async def _create_bulk_invite_results(
+    precheck_passed_rows: list[_EmailValidatedInviteRow],
+) -> tuple[list[BulkInvitedUserRowResult], int, int, int]:
     create_semaphore = asyncio.Semaphore(_BULK_INVITE_CREATE_CONCURRENCY)
-    batch_outcomes = await asyncio.gather(
+    outcomes = await asyncio.gather(
         *(
             _create_bulk_invited_user(create_semaphore, email, name)
-            for _, email, name in valid_rows
+            for _, email, name in precheck_passed_rows
         ),
         return_exceptions=True,
     )
-    for (row, normalized_email, row_name), outcome in zip(valid_rows, batch_outcomes):
+
+    results: list[BulkInvitedUserRowResult] = []
+    created_count = 0
+    skipped_count = 0
+    error_count = 0
+
+    for (row, normalized_email, row_name), outcome in zip(
+        precheck_passed_rows, outcomes
+    ):
         if isinstance(outcome, PreconditionFailed):
             skipped_count += 1
             results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="SKIPPED",
-                    message=str(outcome),
+                _build_bulk_invited_user_row_result(
+                    row.row_number,
+                    normalized_email,
+                    row_name,
+                    "SKIPPED",
+                    str(outcome),
                 )
             )
-        elif isinstance(outcome, BaseException):
+            continue
+
+        if isinstance(outcome, BaseException):
             masked = mask_email(normalized_email)
             logger.exception(
                 "Failed to create bulk invite for row %s (%s)",
@@ -592,32 +632,67 @@ async def bulk_create_invited_users_from_file(
             )
             error_count += 1
             results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="ERROR",
-                    message="Unexpected error creating invite",
+                _build_bulk_invited_user_row_result(
+                    row.row_number,
+                    normalized_email,
+                    row_name,
+                    "ERROR",
+                    "Unexpected error creating invite",
                 )
             )
-        else:
-            created_count += 1
-            results.append(
-                BulkInvitedUserRowResult(
-                    row_number=row.row_number,
-                    email=normalized_email,
-                    name=row_name,
-                    status="CREATED",
-                    message="Invite created",
-                    invited_user=outcome,
-                )
+            continue
+
+        created_count += 1
+        results.append(
+            _build_bulk_invited_user_row_result(
+                row.row_number,
+                normalized_email,
+                row_name,
+                "CREATED",
+                "Invite created",
+                invited_user=outcome,
             )
+        )
+
+    return results, created_count, skipped_count, error_count
+
+
+async def bulk_create_invited_users_from_file(
+    filename: Optional[str],
+    content: bytes,
+) -> BulkInvitedUsersResult:
+    parsed_rows = _parse_bulk_invite_file(filename, content)
+    (
+        email_validated_rows,
+        validation_results,
+        validation_skipped_count,
+        validation_error_count,
+    ) = _validate_bulk_invite_rows(parsed_rows)
+    (
+        precheck_passed_rows,
+        precheck_results,
+        precheck_skipped_count,
+    ) = await _filter_preexisting_bulk_invite_rows(email_validated_rows)
+    (
+        creation_results,
+        created_count,
+        creation_skipped_count,
+        creation_error_count,
+    ) = await _create_bulk_invite_results(precheck_passed_rows)
+
+    results = [
+        *validation_results,
+        *precheck_results,
+        *creation_results,
+    ]
 
     results.sort(key=lambda r: r.row_number)
     return BulkInvitedUsersResult(
         created_count=created_count,
-        skipped_count=skipped_count,
-        error_count=error_count,
+        skipped_count=(
+            validation_skipped_count + precheck_skipped_count + creation_skipped_count
+        ),
+        error_count=validation_error_count + creation_error_count,
         results=results,
     )
 
@@ -678,6 +753,95 @@ async def _fail_tally_seed(invited_user_id: str, exc: Exception) -> None:
     )
 
 
+async def _should_skip_tally_seed_for_lock(invited_user_id: str) -> bool:
+    try:
+        redis = await get_redis_async()
+    except Exception:
+        return False
+
+    if redis is None:
+        return False
+
+    lock = AsyncClusterLock(
+        redis=redis,
+        key=f"tally_seed:{invited_user_id}",
+        owner_id=_WORKER_ID,
+        timeout=_TALLY_STALE_SECONDS,
+    )
+    current_owner = await lock.try_acquire()
+
+    if current_owner is None:
+        logger.warning("Redis unavailable for tally lock - skipping tally enrichment")
+        return True
+
+    if current_owner != _WORKER_ID:
+        logger.debug(
+            "Tally seed for %s already locked by %s, skipping",
+            invited_user_id,
+            current_owner,
+        )
+        return True
+
+    return False
+
+
+def _should_skip_running_tally_seed(
+    invited_user: "prisma.models.InvitedUser",
+    invited_user_id: str,
+) -> bool:
+    if (
+        invited_user.tallyStatus != prisma.enums.TallyComputationStatus.RUNNING
+        or invited_user.updatedAt is None
+    ):
+        return False
+
+    age = (datetime.now(timezone.utc) - invited_user.updatedAt).total_seconds()
+    if age < _TALLY_STALE_SECONDS:
+        logger.debug(
+            "Tally task for %s still RUNNING (age=%ds), skipping",
+            invited_user_id,
+            int(age),
+        )
+        return True
+
+    logger.info(
+        "Tally task for %s is stale (age=%ds), re-running",
+        invited_user_id,
+        int(age),
+    )
+    return False
+
+
+async def _mark_tally_seed_running(invited_user_id: str) -> None:
+    await prisma.models.InvitedUser.prisma().update(
+        where={"id": invited_user_id},
+        data={
+            "tallyStatus": prisma.enums.TallyComputationStatus.RUNNING,
+            "tallyError": None,
+        },
+    )
+
+
+async def _mark_tally_seed_ready(
+    invited_user_id: str,
+    input_data: Optional[BusinessUnderstandingInput],
+) -> None:
+    update_data: dict[str, object] = {
+        "tallyStatus": prisma.enums.TallyComputationStatus.READY,
+        "tallyComputedAt": datetime.now(timezone.utc),
+        "tallyError": None,
+    }
+    if input_data is not None:
+        update_data["tallyUnderstanding"] = SafeJson(
+            input_data.model_dump(exclude_none=True)
+        )
+
+    await prisma.models.InvitedUser.prisma().update(
+        where={"id": invited_user_id},
+        data=update_data,
+    )
+
+
 async def _compute_invited_user_tally_seed(
     invited_user_id: str,
     *,
@@ -692,78 +856,20 @@ async def _compute_invited_user_tally_seed(
     if invited_user.status == prisma.enums.InvitedUserStatus.REVOKED:
         return
 
-    try:
-        r = await get_redis_async()
-    except Exception:
-        r = None
+    if await _should_skip_tally_seed_for_lock(invited_user_id):
+        return
 
-    lock: AsyncClusterLock | None = None
+    if _should_skip_running_tally_seed(invited_user, invited_user_id):
+        return
 
-    if r is not None:
-        lock = AsyncClusterLock(
-            redis=r,
-            key=f"tally_seed:{invited_user_id}",
-            owner_id=_WORKER_ID,
-            timeout=_TALLY_STALE_SECONDS,
-        )
-        current_owner = await lock.try_acquire()
-
-        if current_owner is None:
-            logger.warning(
-                "Redis unavailable for tally lock - skipping tally enrichment"
-            )
-            return
-        elif current_owner != _WORKER_ID:
-            logger.debug(
-                "Tally seed for %s already locked by %s, skipping",
-                invited_user_id,
-                current_owner,
-            )
-            return
-    if (
-        invited_user.tallyStatus == prisma.enums.TallyComputationStatus.RUNNING
-        and invited_user.updatedAt is not None
-    ):
-        age = (datetime.now(timezone.utc) - invited_user.updatedAt).total_seconds()
-        if age < _TALLY_STALE_SECONDS:
-            logger.debug(
-                "Tally task for %s still RUNNING (age=%ds), skipping",
-                invited_user_id,
-                int(age),
-            )
-            return
-        logger.info(
-            "Tally task for %s is stale (age=%ds), re-running",
-            invited_user_id,
-            int(age),
-        )
-
-    await prisma.models.InvitedUser.prisma().update(
-        where={"id": invited_user_id},
-        data={
-            "tallyStatus": prisma.enums.TallyComputationStatus.RUNNING,
-            "tallyError": None,
-        },
-    )
+    await _mark_tally_seed_running(invited_user_id)
 
     try:
         input_data = await _get_invited_user_tally_understanding(
             invited_user.email,
             tally_mode=tally_mode,
         )
-        update_data: dict[str, object] = {
-            "tallyStatus": prisma.enums.TallyComputationStatus.READY,
-            "tallyComputedAt": datetime.now(timezone.utc),
-            "tallyError": None,
-        }
-        if input_data is not None:
-            update_data["tallyUnderstanding"] = SafeJson(
-                input_data.model_dump(exclude_none=True)
-            )
-        await prisma.models.InvitedUser.prisma().update(
-            where={"id": invited_user_id},
-            data=update_data,
-        )
+        await _mark_tally_seed_ready(invited_user_id, input_data)
     except TallyExtractionTimeoutError as exc:
         logger.warning(
             "Timed out computing Tally understanding for invited user %s after %s attempts",
@@ -835,7 +941,6 @@ async def _open_signup_create_user(
     return User.from_db(user)
 
 
-# TODO: We need to change this functions logic before going live
 async def get_or_activate_user(user_data: dict) -> User:
     auth_user_id = user_data.get("sub")
     if not auth_user_id:

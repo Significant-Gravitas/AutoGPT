@@ -5,14 +5,6 @@ import type { Pagination } from "@/app/api/__generated__/models/pagination";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/__legacy__/ui/table";
 import { CaretLeft, CaretRight, MagnifyingGlass } from "@phosphor-icons/react";
 
 interface Props {
@@ -137,50 +129,69 @@ export function InvitedUsersTable({
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-zinc-200">
-        <Table>
-          <TableHeader className="bg-zinc-50">
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Invite</TableHead>
-              <TableHead>Tally</TableHead>
-              <TableHead>Claimed User</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+        <table className="w-full text-sm">
+          <thead className="bg-zinc-50">
+            <tr className="border-b border-zinc-200">
+              <th className="h-10 px-4 text-left font-medium text-zinc-600">
+                Email
+              </th>
+              <th className="h-10 px-4 text-left font-medium text-zinc-600">
+                Name
+              </th>
+              <th className="h-10 px-4 text-left font-medium text-zinc-600">
+                Invite
+              </th>
+              <th className="h-10 px-4 text-left font-medium text-zinc-600">
+                Tally
+              </th>
+              <th className="h-10 px-4 text-left font-medium text-zinc-600">
+                Claimed User
+              </th>
+              <th className="h-10 px-4 text-left font-medium text-zinc-600">
+                Created
+              </th>
+              <th className="h-10 px-4 text-right font-medium text-zinc-600">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
             {isLoading ? (
-              <TableRow>
-                <TableCell
+              <tr className="border-b border-zinc-100">
+                <td
                   colSpan={7}
-                  className="py-10 text-center text-zinc-500"
+                  className="px-4 py-10 text-center text-zinc-500"
                 >
                   Loading invited users...
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ) : invitedUsers.length === 0 ? (
-              <TableRow>
-                <TableCell
+              <tr className="border-b border-zinc-100">
+                <td
                   colSpan={7}
-                  className="py-10 text-center text-zinc-500"
+                  className="px-4 py-10 text-center text-zinc-500"
                 >
                   No invited users yet
-                </TableCell>
-              </TableRow>
+                </td>
+              </tr>
             ) : (
               invitedUsers.map((invitedUser) => (
-                <TableRow key={invitedUser.id} className="align-top">
-                  <TableCell className="font-medium text-zinc-900">
+                <tr
+                  key={invitedUser.id}
+                  className="border-b border-zinc-100 align-top last:border-b-0"
+                >
+                  <td className="px-4 py-3 align-top font-medium text-zinc-900">
                     {invitedUser.email}
-                  </TableCell>
-                  <TableCell>{invitedUser.name || "-"}</TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    {invitedUser.name || "-"}
+                  </td>
+                  <td className="px-4 py-3 align-top">
                     <Badge variant={getInviteBadgeVariant(invitedUser.status)}>
                       {invitedUser.status}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="px-4 py-3 align-top">
                     <div className="flex max-w-xs flex-col gap-2">
                       <Badge
                         variant={getTallyBadgeVariant(invitedUser.tally_status)}
@@ -194,14 +205,14 @@ export function InvitedUsersTable({
                         {formatDate(invitedUser.tally_computed_at ?? undefined)}
                       </span>
                     </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-zinc-500">
+                  </td>
+                  <td className="px-4 py-3 align-top font-mono text-xs text-zinc-500">
                     {invitedUser.auth_user_id || "-"}
-                  </TableCell>
-                  <TableCell className="text-sm text-zinc-500">
+                  </td>
+                  <td className="px-4 py-3 align-top text-sm text-zinc-500">
                     {formatDate(invitedUser.created_at)}
-                  </TableCell>
-                  <TableCell>
+                  </td>
+                  <td className="px-4 py-3 align-top">
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="outline"
@@ -230,12 +241,12 @@ export function InvitedUsersTable({
                         Revoke
                       </Button>
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))
             )}
-          </TableBody>
-        </Table>
+          </tbody>
+        </table>
       </div>
 
       {totalPages > 1 && (

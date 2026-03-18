@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
@@ -13,6 +14,7 @@ from backend.data.tally import (
     _LLM_TIMEOUT,
     TallyExtractionTimeoutError,
     _build_email_index,
+    _fetch_tally_page,
     _format_answer,
     _make_tally_client,
     _refresh_cache,
@@ -392,8 +394,6 @@ def test_extraction_prompt_no_format_placeholders():
     assert "{submission_text}" not in _EXTRACTION_PROMPT
     # Ensure no stray single-brace placeholders
     # (double braces {{ are fine — they're literal in format strings)
-    import re
-
     single_braces = re.findall(r"(?<!\{)\{[^{].*?\}(?!\})", _EXTRACTION_PROMPT)
     assert single_braces == [], f"Found format placeholders: {single_braces}"
 
@@ -727,8 +727,6 @@ def test_make_tally_client_returns_configured_client():
 @pytest.mark.asyncio
 async def test_fetch_tally_page_uses_provided_client():
     """_fetch_tally_page should use the passed client, not create its own."""
-    from backend.data.tally import _fetch_tally_page
-
     mock_response = MagicMock()
     mock_response.json.return_value = {"submissions": [], "questions": []}
 
