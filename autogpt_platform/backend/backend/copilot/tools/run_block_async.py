@@ -168,13 +168,17 @@ class RunBlockAsyncTool(BaseTool):
 
         jobs = get_background_jobs()
         if jobs is None:
-            logger.warning(
-                "Background job store not initialised for session %s; "
-                "run_block_async results will not be retrievable.",
-                session_id,
+            # Job store not initialised — cancel the task and fail fast rather
+            # than returning a job_id the caller can never retrieve.
+            task.cancel()
+            logger.error(
+                "Background job store not initialised for session %s", session_id
             )
-        else:
-            jobs[job_id] = task
+            return ErrorResponse(
+                message="Background job store is not available in this session.",
+                session_id=session_id,
+            )
+        jobs[job_id] = task
 
         return BlockJobStartedResponse(
             message=(
