@@ -299,6 +299,40 @@
         }
       }
     },
+    "/api/auth/check-invite": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Check if an email is allowed to sign up",
+        "description": "Check if an email is allowed to sign up (no auth required).\n\nCalled by the frontend before creating a Supabase auth user to prevent\norphaned accounts when the invite gate is enabled.",
+        "operationId": "postV1Check if an email is allowed to sign up",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckInviteRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CheckInviteResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -8440,6 +8474,20 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
+      },
+      "CheckInviteRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "CheckInviteRequest"
+      },
+      "CheckInviteResponse": {
+        "properties": { "allowed": { "type": "boolean", "title": "Allowed" } },
+        "type": "object",
+        "required": ["allowed"],
+        "title": "CheckInviteResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {

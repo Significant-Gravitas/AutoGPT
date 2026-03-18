@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 
-directory = os.path.dirname(os.path.realpath(__file__))
+backend_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 BACKEND_DIR = "."
 LIBS_DIR = "../autogpt_libs"
@@ -14,7 +14,7 @@ def run(*command: str) -> None:
     try:
         subprocess.run(
             ["poetry", "run"] + list(command),
-            cwd=directory,
+            cwd=backend_dir,
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -25,16 +25,20 @@ def run(*command: str) -> None:
 
 
 def lint():
-    # Generate Prisma types stub before running pyright to prevent type budget exhaustion
-    run("gen-prisma-stub")
+    skip_pyright = "--skip-pyright" in sys.argv
+
+    if not skip_pyright:
+        # Generate Prisma types stub before running pyright to prevent type budget exhaustion
+        run("gen-prisma-stub")
 
     lint_step_args: list[list[str]] = [
         ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
         ["ruff", "format", "--diff", "--check", LIBS_DIR],
         ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],
         ["black", "--diff", "--check", BACKEND_DIR],
-        ["pyright", *TARGET_DIRS],
     ]
+    if not skip_pyright:
+        lint_step_args.append(["pyright", *TARGET_DIRS])
     lint_error = None
     for args in lint_step_args:
         try:
