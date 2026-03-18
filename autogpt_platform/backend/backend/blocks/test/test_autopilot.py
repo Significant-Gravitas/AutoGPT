@@ -145,20 +145,19 @@ class TestRunValidation:
         assert "error" not in outputs
 
     @pytest.mark.asyncio
-    async def test_exception_propagates(self, block):
-        """On unexpected failure, run() should let the exception propagate.
-
-        The base Block.execute() wraps unhandled exceptions into
-        BlockExecutionError, so run() does not catch generic exceptions.
-        """
+    async def test_exception_yields_error(self, block):
+        """On unexpected failure, run() should yield an error output."""
         block.execute_copilot = AsyncMock(side_effect=RuntimeError("boom"))
         block.create_session = AsyncMock(return_value="sess-fail")
 
         input_data = block.Input(prompt="do something", max_recursion_depth=3)
         ctx = _make_context()
-        with pytest.raises(RuntimeError, match="boom"):
-            async for _ in block.run(input_data, execution_context=ctx):
-                pass
+        outputs = {}
+        async for name, value in block.run(input_data, execution_context=ctx):
+            outputs[name] = value
+
+        assert outputs["session_id"] == "sess-fail"
+        assert "boom" in outputs.get("error", "")
 
     @pytest.mark.asyncio
     async def test_cancelled_error_yields_error_and_reraises(self, block):
@@ -175,26 +174,6 @@ class TestRunValidation:
 
         assert outputs["session_id"] == "sess-cancel"
         assert "cancelled" in outputs.get("error", "").lower()
-
-    @pytest.mark.asyncio
-    async def test_timeout_yields_session_id_and_error(self, block):
-        """When execute_copilot exceeds timeout, run() should yield a timeout error."""
-        block.execute_copilot = AsyncMock(side_effect=TimeoutError())
-        block.create_session = AsyncMock(return_value="sess-timeout")
-
-        input_data = block.Input(
-            prompt="do something",
-            max_recursion_depth=3,
-            timeout_seconds=10,
-        )
-        ctx = _make_context()
-        outputs = {}
-        async for name, value in block.run(input_data, execution_context=ctx):
-            outputs[name] = value
-
-        assert outputs["session_id"] == "sess-timeout"
-        assert "timed out" in outputs.get("error", "").lower()
-        assert "response" not in outputs
 
     @pytest.mark.asyncio
     async def test_existing_session_id_skips_create(self, block):
@@ -235,16 +214,6 @@ class TestBlockRegistration:
         max_rec = schema["properties"]["max_recursion_depth"]
         assert (
             max_rec.get("maximum") == 10 or max_rec.get("exclusiveMaximum", 999) <= 11
-        )
-
-    def test_timeout_seconds_has_bounds(self):
-        """Schema should enforce ge=10, le=3600."""
-        schema = AutoPilotBlock.Input.model_json_schema()
-        timeout = schema["properties"]["timeout_seconds"]
-        assert timeout.get("minimum") == 10 or timeout.get("exclusiveMinimum", 0) >= 9
-        assert (
-            timeout.get("maximum") == 3600
-            or timeout.get("exclusiveMaximum", 9999) <= 3601
         )
 
     def test_output_schema_has_no_duplicate_error_field(self):

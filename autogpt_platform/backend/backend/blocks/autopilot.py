@@ -25,9 +25,6 @@ logger = logging.getLogger(__name__)
 # Block ID shared between autopilot.py and copilot prompting.py.
 AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
 
-# Maximum history messages to serialize (caps memory for resumed sessions).
-_MAX_HISTORY_MESSAGES = 200
-
 
 class ToolCallEntry(TypedDict):
     """A single tool invocation record from an autopilot execution."""
@@ -117,7 +114,7 @@ class AutoPilotBlock(Block):
         )
         conversation_history: str = SchemaField(
             description=(
-                "Full conversation history as JSON. "
+                "Current turn messages (user prompt + assistant reply) as JSON. "
                 "It can be used for logging or analysis."
             ),
         )
@@ -246,9 +243,7 @@ class AutoPilotBlock(Block):
                 turn_messages.append(
                     {"role": "assistant", "content": result.response_text}
                 )
-            history_json = json.dumps(
-                turn_messages[-_MAX_HISTORY_MESSAGES:], default=str
-            )
+            history_json = json.dumps(turn_messages, default=str)
 
             tool_calls: list[ToolCallEntry] = [
                 {
