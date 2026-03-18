@@ -50,15 +50,23 @@ def _ab_session(session: str, *args: str, timeout: int = 30) -> tuple[int, str, 
     return result.returncode, result.stdout, result.stderr
 
 
+def _close_session(session: str, timeout: int = 5) -> None:
+    """Best-effort close for a browser session; never raises on failure."""
+    try:
+        subprocess.run(
+            ["agent-browser", "--session", session, "--session-name", session, "close"],
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _teardown():
     """Close the shared test session after each test (best-effort)."""
     yield
-    subprocess.run(
-        ["agent-browser", "--session", _SESSION, "close"],
-        capture_output=True,
-        timeout=5,
-    )
+    _close_session(_SESSION)
 
 
 # ---------------------------------------------------------------------------
@@ -67,11 +75,11 @@ def _teardown():
 
 
 def test_chromium_executable_env_is_set():
-    """AGENT_BROWSER_EXECUTABLE_PATH must point to an executable binary in Docker."""
+    """AGENT_BROWSER_EXECUTABLE_PATH must be set and point to an executable binary."""
     exe = os.environ.get("AGENT_BROWSER_EXECUTABLE_PATH", "")
-    if exe:
-        assert os.path.isfile(exe), f"Chromium binary not found at {exe}"
-        assert os.access(exe, os.X_OK), f"Chromium binary at {exe} is not executable"
+    assert exe, "AGENT_BROWSER_EXECUTABLE_PATH is not set"
+    assert os.path.isfile(exe), f"Chromium binary not found at {exe}"
+    assert os.access(exe, os.X_OK), f"Chromium binary at {exe} is not executable"
 
 
 def test_navigate_returns_success():
@@ -97,7 +105,7 @@ def test_get_url_after_navigate():
 
     rc, stdout, stderr = _ab("get", "url", timeout=10)
     assert rc == 0, f"get url failed: {stderr}"
-    assert "example.com" in stdout
+    assert stdout.strip().startswith("https://example.com")
 
 
 def test_snapshot_returns_interactive_elements():
@@ -166,19 +174,11 @@ def test_concurrent_independent_sessions():
 
         _, url_a, _ = _ab_session(session_a, "get", "url", timeout=10)
         _, url_b, _ = _ab_session(session_b, "get", "url", timeout=10)
-        assert "example.com" in url_a
-        assert "httpbin.org" in url_b
+        assert url_a.strip().startswith("https://example.com")
+        assert url_b.strip().startswith("https://httpbin.org")
     finally:
-        subprocess.run(
-            ["agent-browser", "--session", session_a, "close"],
-            capture_output=True,
-            timeout=5,
-        )
-        subprocess.run(
-            ["agent-browser", "--session", session_b, "close"],
-            capture_output=True,
-            timeout=5,
-        )
+        _close_session(session_a)
+        _close_session(session_b)
 
 
 def test_close_session():

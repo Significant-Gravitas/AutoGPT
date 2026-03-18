@@ -124,7 +124,7 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 # Install agent-browser (Copilot browser tool) using the system chromium package.
 # Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
 # has no ARM64 builds, so we use the distro-packaged chromium instead — verified to
-# work with agent-browser via Docker tests on both arm64 and amd64.
+# work with agent-browser via Docker tests on arm64; amd64 is validated in CI.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
