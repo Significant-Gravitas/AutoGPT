@@ -5,7 +5,7 @@ These tests actually invoke the agent-browser binary via subprocess and require:
   - AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium (set in Docker)
 
 Run with:
-    poetry run pytest backend/copilot/tools/agent_browser_integration_test.py -v -p no:autogpt_platform
+    poetry run test backend/copilot/tools/agent_browser_integration_test.py -v
 
 Skipped automatically when agent-browser binary is not found.
 
@@ -170,11 +170,15 @@ def test_concurrent_independent_sessions():
             fut_b = pool.submit(
                 _ab_session, session_b, "open", "https://httpbin.org/html"
             )
-            fut_a.result(timeout=40)
-            fut_b.result(timeout=40)
+            rc_a, _, err_a = fut_a.result(timeout=40)
+            rc_b, _, err_b = fut_b.result(timeout=40)
+        assert rc_a == 0, f"session_a open failed: {err_a}"
+        assert rc_b == 0, f"session_b open failed: {err_b}"
 
-        _, url_a, _ = _ab_session(session_a, "get", "url", timeout=10)
-        _, url_b, _ = _ab_session(session_b, "get", "url", timeout=10)
+        rc_ua, url_a, err_ua = _ab_session(session_a, "get", "url", timeout=10)
+        rc_ub, url_b, err_ub = _ab_session(session_b, "get", "url", timeout=10)
+        assert rc_ua == 0, f"session_a get url failed: {err_ua}"
+        assert rc_ub == 0, f"session_b get url failed: {err_ub}"
         assert urlparse(url_a.strip()).netloc == "example.com"
         assert urlparse(url_b.strip()).netloc == "httpbin.org"
     finally:
