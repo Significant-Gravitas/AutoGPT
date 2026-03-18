@@ -82,11 +82,10 @@ Wait for **both** CI completion and new PR comments simultaneously. Do not block
 
 1. Record current comment count before waiting:
 ```bash
-COMMENT_COUNT=$(( \
-  $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') + \
-  $(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') + \
-  $(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') \
-))
+c1=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --jq 'length') || exit 1
+c2=$(gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --jq 'length') || exit 1
+c3=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --jq 'length') || exit 1
+COMMENT_COUNT=$((c1 + c2 + c3))
 ```
 
 2. Start CI watch in background:
@@ -112,7 +111,7 @@ done
 
 4. When new comments arrive, address them immediately while CI continues in the background.
    If you push new commits, the old CI_PID becomes stale (new commits trigger new CI runs) — restart the combined wait from step 1 (recompute COMMENT_COUNT and start a fresh CI watch for the new HEAD).
-   Otherwise, update COMMENT_COUNT and resume polling.
+   Otherwise, update COMMENT_COUNT and go back to step 3 to resume polling.
 
 5. When CI finishes (CI_PID exits), collect its exit status:
 ```bash
