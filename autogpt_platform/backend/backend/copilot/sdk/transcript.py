@@ -10,6 +10,9 @@ Storage is handled via ``WorkspaceStorageBackend`` (GCS in prod, local
 filesystem for self-hosted) — no DB column needed.
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 import os
 import re
@@ -17,8 +20,12 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from backend.util import json
+from backend.util.clients import get_openai_client
+from backend.util.prompt import CompressResult, compress_context
+from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +106,14 @@ def strip_progress_entries(content: str) -> str:
             continue
         parent = entry.get("parentUuid", "")
         original_parent = parent
-        while parent in stripped_uuids:
+        # seen_parents is local per-entry (not shared across iterations) so
+        # it can only detect cycles within a single ancestry walk, not across
+        # entries.  This is intentional: each entry's parent chain is
+        # independent, and reusing a global set would incorrectly short-circuit
+        # valid re-use of the same UUID as a parent in different subtrees.
+        seen_parents: set[str] = set()
+        while parent in stripped_uuids and parent not in seen_parents:
+            seen_parents.add(parent)
             parent = uuid_to_parent.get(parent, "")
         if parent != original_parent:
             entry["parentUuid"] = parent
@@ -336,7 +350,7 @@ def write_transcript_to_tempfile(
     # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
     real_cwd = os.path.realpath(cwd)
     if not real_cwd.startswith(_SAFE_CWD_PREFIX):
-        logger.warning(f"[Transcript] cwd outside sandbox: {cwd}")
+        logger.warning("[Transcript] cwd outside sandbox: %s", cwd)
         return None
 
     try:
@@ -346,17 +360,17 @@ def write_transcript_to_tempfile(
             os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
         )
         if not jsonl_path.startswith(real_cwd):
-            logger.warning(f"[Transcript] Path escaped cwd: {jsonl_path}")
+            logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
             return None
 
         with open(jsonl_path, "w") as f:
             f.write(transcript_content)
 
-        logger.info(f"[Transcript] Wrote resume file: {jsonl_path}")
+        logger.info("[Transcript] Wrote resume file: %s", jsonl_path)
         return jsonl_path
 
     except OSError as e:
-        logger.warning(f"[Transcript] Failed to write resume file: {e}")
+        logger.warning("[Transcript] Failed to write resume file: %s", e)
         return None
 
 
@@ -417,8 +431,6 @@ def _meta_storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, s
 
 def _build_path_from_parts(parts: tuple[str, str, str], backend: object) -> str:
     """Build a full storage path from (workspace_id, file_id, filename) parts."""
-    from backend.util.workspace_storage import GCSWorkspaceStorage
-
     wid, fid, fname = parts
     if isinstance(backend, GCSWorkspaceStorage):
         blob = f"workspaces/{wid}/{fid}/{fname}"
@@ -457,17 +469,15 @@ async def upload_transcript(
         content: Complete JSONL transcript (from TranscriptBuilder).
         message_count: ``len(session.messages)`` at upload time.
     """
-    from backend.util.workspace_storage import get_workspace_storage
-
     # Strip metadata entries (progress, file-history-snapshot, etc.)
     # Note: SDK-built transcripts shouldn't have these, but strip for safety
     stripped = strip_progress_entries(content)
     if not validate_transcript(stripped):
         # Log entry types for debugging — helps identify why validation failed
-        entry_types: list[str] = []
-        for line in stripped.strip().split("\n"):
-            entry = json.loads(line, fallback={"type": "INVALID_JSON"})
-            entry_types.append(entry.get("type", "?"))
+        entry_types = [
+            json.loads(line, fallback={"type": "INVALID_JSON"}).get("type", "?")
+            for line in stripped.strip().split("\n")
+        ]
         logger.warning(
             "%s Skipping upload — stripped content not valid "
             "(types=%s, stripped_len=%d, raw_len=%d)",
@@ -503,11 +513,14 @@ async def upload_transcript(
             content=json.dumps(meta).encode("utf-8"),
         )
     except Exception as e:
-        logger.warning(f"{log_prefix} Failed to write metadata: {e}")
+        logger.warning("%s Failed to write metadata: %s", log_prefix, e)
 
     logger.info(
-        f"{log_prefix} Uploaded {len(encoded)}B "
-        f"(stripped from {len(content)}B, msg_count={message_count})"
+        "%s Uploaded %dB (stripped from %dB, msg_count=%d)",
+        log_prefix,
+        len(encoded),
+        len(content),
+        message_count,
     )
 
 
@@ -521,8 +534,6 @@ async def download_transcript(
     Returns a ``TranscriptDownload`` with the JSONL content and the
     ``message_count`` watermark from the upload, or ``None`` if not found.
     """
-    from backend.util.workspace_storage import get_workspace_storage
-
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
 
@@ -530,10 +541,10 @@ async def download_transcript(
         data = await storage.retrieve(path)
         content = data.decode("utf-8")
     except FileNotFoundError:
-        logger.debug(f"{log_prefix} No transcript in storage")
+        logger.debug("%s No transcript in storage", log_prefix)
         return None
     except Exception as e:
-        logger.warning(f"{log_prefix} Failed to download transcript: {e}")
+        logger.warning("%s Failed to download transcript: %s", log_prefix, e)
         return None
 
     # Try to load metadata (best-effort — old transcripts won't have it)
@@ -545,10 +556,14 @@ async def download_transcript(
         meta = json.loads(meta_data.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
         uploaded_at = meta.get("uploaded_at", 0.0)
-    except (FileNotFoundError, Exception):
+    except FileNotFoundError:
         pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
+    except Exception as e:
+        logger.debug("%s Failed to load transcript metadata: %s", log_prefix, e)
 
-    logger.info(f"{log_prefix} Downloaded {len(content)}B (msg_count={message_count})")
+    logger.info(
+        "%s Downloaded %dB (msg_count=%d)", log_prefix, len(content), message_count
+    )
     return TranscriptDownload(
         content=content,
         message_count=message_count,
@@ -562,8 +577,6 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
     Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
     so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
     """
-    from backend.util.workspace_storage import get_workspace_storage
-
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
 
@@ -580,3 +593,280 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
         logger.info("[Transcript] Deleted metadata for session %s", session_id)
     except Exception as e:
         logger.warning("[Transcript] Failed to delete metadata: %s", e)
+
+
+# ---------------------------------------------------------------------------
+# Transcript compaction — LLM summarization for prompt-too-long recovery
+# ---------------------------------------------------------------------------
+
+# JSONL protocol values used in transcript serialization.
+STOP_REASON_END_TURN = "end_turn"
+COMPACT_MSG_ID_PREFIX = "msg_compact_"
+ENTRY_TYPE_MESSAGE = "message"
+
+
+def _flatten_assistant_content(blocks: list) -> str:
+    """Flatten assistant content blocks into a single plain-text string.
+
+    Structured ``tool_use`` blocks are converted to ``[tool_use: name]``
+    placeholders.  This is intentional: ``compress_context`` requires plain
+    text for token counting and LLM summarization.  The structural loss is
+    acceptable because compaction only runs when the original transcript was
+    already too large for the model — a summarized plain-text version is
+    better than no context at all.
+    """
+    parts: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict):
+            btype = block.get("type", "")
+            if btype == "text":
+                parts.append(block.get("text", ""))
+            elif btype == "tool_use":
+                parts.append(f"[tool_use: {block.get('name', '?')}]")
+            else:
+                # Preserve non-text blocks (e.g. image) as placeholders.
+                # Use __prefix__ to distinguish from literal user text.
+                parts.append(f"[__{btype}__]")
+        elif isinstance(block, str):
+            parts.append(block)
+    return "\n".join(parts) if parts else ""
+
+
+def _flatten_tool_result_content(blocks: list) -> str:
+    """Flatten tool_result and other content blocks into plain text.
+
+    Handles nested tool_result structures, text blocks, and raw strings.
+    Uses ``json.dumps`` as fallback for dict blocks without a ``text`` key
+    or where ``text`` is ``None``.
+
+    Like ``_flatten_assistant_content``, structured blocks (images, nested
+    tool results) are reduced to text representations for compression.
+    """
+    str_parts: list[str] = []
+    for block in blocks:
+        if isinstance(block, dict) and block.get("type") == "tool_result":
+            inner = block.get("content") or ""
+            if isinstance(inner, list):
+                for sub in inner:
+                    if isinstance(sub, dict):
+                        sub_type = sub.get("type")
+                        if sub_type in ("image", "document"):
+                            # Avoid serializing base64 binary data into
+                            # the compaction input — use a placeholder.
+                            str_parts.append(f"[__{sub_type}__]")
+                        elif sub_type == "text" or sub.get("text") is not None:
+                            str_parts.append(str(sub.get("text", "")))
+                        else:
+                            str_parts.append(json.dumps(sub))
+                    else:
+                        str_parts.append(str(sub))
+            else:
+                str_parts.append(str(inner))
+        elif isinstance(block, dict) and block.get("type") == "text":
+            str_parts.append(str(block.get("text", "")))
+        elif isinstance(block, dict):
+            # Preserve non-text/non-tool_result blocks (e.g. image) as placeholders.
+            # Use __prefix__ to distinguish from literal user text.
+            btype = block.get("type", "unknown")
+            str_parts.append(f"[__{btype}__]")
+        elif isinstance(block, str):
+            str_parts.append(block)
+    return "\n".join(str_parts) if str_parts else ""
+
+
+def _transcript_to_messages(content: str) -> list[dict]:
+    """Convert JSONL transcript entries to plain message dicts for compression.
+
+    Parses each line of the JSONL *content*, skips strippable metadata entries
+    (progress, file-history-snapshot, etc.), and extracts the ``role`` and
+    flattened ``content`` from the ``message`` field of each remaining entry.
+
+    Structured content blocks (``tool_use``, ``tool_result``, images) are
+    flattened to plain text via ``_flatten_assistant_content`` and
+    ``_flatten_tool_result_content`` so that ``compress_context`` can
+    perform token counting and LLM summarization on uniform strings.
+
+    Returns:
+        A list of ``{"role": str, "content": str}`` dicts suitable for
+        ``compress_context``.
+    """
+    messages: list[dict] = []
+    for line in content.strip().split("\n"):
+        if not line.strip():
+            continue
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
+            "isCompactSummary"
+        ):
+            continue
+        msg = entry.get("message", {})
+        role = msg.get("role", "")
+        if not role:
+            continue
+        msg_dict: dict = {"role": role}
+        raw_content = msg.get("content")
+        if role == "assistant" and isinstance(raw_content, list):
+            msg_dict["content"] = _flatten_assistant_content(raw_content)
+        elif isinstance(raw_content, list):
+            msg_dict["content"] = _flatten_tool_result_content(raw_content)
+        else:
+            msg_dict["content"] = raw_content or ""
+        messages.append(msg_dict)
+    return messages
+
+
+def _messages_to_transcript(messages: list[dict]) -> str:
+    """Convert compressed message dicts back to JSONL transcript format.
+
+    Rebuilds a minimal JSONL transcript from the ``{"role", "content"}``
+    dicts returned by ``compress_context``.  Each message becomes one JSONL
+    line with a fresh ``uuid`` / ``parentUuid`` chain so the CLI's
+    ``--resume`` flag can reconstruct a valid conversation tree.
+
+    Assistant messages are wrapped in the full ``message`` envelope
+    (``id``, ``model``, ``stop_reason``, structured ``content`` blocks)
+    that the CLI expects.  User messages use the simpler ``{role, content}``
+    form.
+
+    Returns:
+        A newline-terminated JSONL string, or an empty string if *messages*
+        is empty.
+    """
+    lines: list[str] = []
+    last_uuid: str = ""  # root entry uses empty string, not null
+    for msg in messages:
+        role = msg.get("role", "user")
+        entry_type = "assistant" if role == "assistant" else "user"
+        uid = str(uuid4())
+        content = msg.get("content", "")
+        if role == "assistant":
+            message: dict = {
+                "role": "assistant",
+                "model": "",
+                "id": f"{COMPACT_MSG_ID_PREFIX}{uuid4().hex[:24]}",
+                "type": ENTRY_TYPE_MESSAGE,
+                "content": [{"type": "text", "text": content}] if content else [],
+                "stop_reason": STOP_REASON_END_TURN,
+                "stop_sequence": None,
+            }
+        else:
+            message = {"role": role, "content": content}
+        entry = {
+            "type": entry_type,
+            "uuid": uid,
+            "parentUuid": last_uuid,
+            "message": message,
+        }
+        lines.append(json.dumps(entry, separators=(",", ":")))
+        last_uuid = uid
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+_COMPACTION_TIMEOUT_SECONDS = 60
+_TRUNCATION_TIMEOUT_SECONDS = 30
+
+
+async def _run_compression(
+    messages: list[dict],
+    model: str,
+    log_prefix: str,
+) -> CompressResult:
+    """Run LLM-based compression with truncation fallback.
+
+    Uses the shared OpenAI client from ``get_openai_client()``.
+    If no client is configured or the LLM call fails, falls back to
+    truncation-based compression which drops older messages without
+    summarization.
+
+    A 60-second timeout prevents a hung LLM call from blocking the
+    retry path indefinitely.  The truncation fallback also has a
+    30-second timeout to guard against slow tokenization on very large
+    transcripts.
+    """
+    client = get_openai_client()
+    if client is None:
+        logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
+        return await asyncio.wait_for(
+            compress_context(messages=messages, model=model, client=None),
+            timeout=_TRUNCATION_TIMEOUT_SECONDS,
+        )
+    try:
+        return await asyncio.wait_for(
+            compress_context(messages=messages, model=model, client=client),
+            timeout=_COMPACTION_TIMEOUT_SECONDS,
+        )
+    except Exception as e:
+        logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
+        return await asyncio.wait_for(
+            compress_context(messages=messages, model=model, client=None),
+            timeout=_TRUNCATION_TIMEOUT_SECONDS,
+        )
+
+
+async def compact_transcript(
+    content: str,
+    *,
+    model: str,
+    log_prefix: str = "[Transcript]",
+) -> str | None:
+    """Compact an oversized JSONL transcript using LLM summarization.
+
+    Converts transcript entries to plain messages, runs ``compress_context``
+    (the same compressor used for pre-query history), and rebuilds JSONL.
+
+    Structured content (``tool_use`` blocks, ``tool_result`` nesting, images)
+    is flattened to plain text for compression.  This matches the fidelity of
+    the Plan C (DB compression) fallback path, where
+    ``_format_conversation_context`` similarly renders tool calls as
+    ``You called tool: name(args)`` and results as ``Tool result: ...``.
+    Neither path preserves structured API content blocks — the compacted
+    context serves as text history for the LLM, which creates proper
+    structured tool calls going forward.
+
+    Images are per-turn attachments loaded from workspace storage by file ID
+    (via ``_prepare_file_attachments``), not part of the conversation history.
+    They are re-attached each turn and are unaffected by compaction.
+
+    Returns the compacted JSONL string, or ``None`` on failure.
+
+    See also:
+        ``_compress_messages`` in ``service.py`` — compresses ``ChatMessage``
+        lists for pre-query DB history.  Both share ``compress_context()``
+        but operate on different input formats (JSONL transcript entries
+        here vs. ChatMessage dicts there).
+    """
+    messages = _transcript_to_messages(content)
+    if len(messages) < 2:
+        logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))
+        return None
+    try:
+        result = await _run_compression(messages, model, log_prefix)
+        if not result.was_compacted:
+            # Compressor says it's within budget, but the SDK rejected it.
+            # Return None so the caller falls through to DB fallback.
+            logger.warning(
+                "%s Compressor reports within budget but SDK rejected — "
+                "signalling failure",
+                log_prefix,
+            )
+            return None
+        logger.info(
+            "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",
+            log_prefix,
+            result.original_token_count,
+            result.token_count,
+            result.messages_summarized,
+            result.messages_dropped,
+        )
+        compacted = _messages_to_transcript(result.messages)
+        if not validate_transcript(compacted):
+            logger.warning("%s Compacted transcript failed validation", log_prefix)
+            return None
+        return compacted
+    except Exception as e:
+        logger.error(
+            "%s Transcript compaction failed: %s", log_prefix, e, exc_info=True
+        )
+        return None

@@ -25,6 +25,53 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 
+_on_creds_changed: Callable[[str, str], None] | None = None
+
+
+def register_creds_changed_hook(hook: Callable[[str, str], None]) -> None:
+    """Register a callback invoked after any credential is created/updated/deleted.
+
+    The callback receives ``(user_id, provider)`` and should be idempotent.
+    Only one hook can be registered at a time.  Intended to be called once at
+    application startup (e.g. by the copilot module) without creating an
+    import cycle.
+
+    Raises:
+        RuntimeError: If a hook is already registered.  Call
+            :func:`unregister_creds_changed_hook` first if replacement is needed.
+    """
+    global _on_creds_changed
+    if _on_creds_changed is not None:
+        raise RuntimeError(
+            "A creds_changed hook is already registered. "
+            "Call unregister_creds_changed_hook() before registering a new one."
+        )
+    _on_creds_changed = hook
+
+
+def unregister_creds_changed_hook() -> None:
+    """Remove the currently registered creds-changed hook (if any).
+
+    Primarily useful in tests to reset global state between test cases.
+    """
+    global _on_creds_changed
+    _on_creds_changed = None
+
+
+def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
+    """Invoke the registered creds-changed hook (if any)."""
+    if _on_creds_changed is not None:
+        try:
+            _on_creds_changed(user_id, provider)
+        except Exception:
+            logger.warning(
+                "Credential-change hook failed for user=%s provider=%s",
+                user_id,
+                provider,
+                exc_info=True,
+            )
+
+
 class IntegrationCredentialsManager:
     """
     Handles the lifecycle of integration credentials.
@@ -69,7 +116,10 @@ class IntegrationCredentialsManager:
         return self._locks
 
     async def create(self, user_id: str, credentials: Credentials) -> None:
-        return await self.store.add_creds(user_id, credentials)
+        result = await self.store.add_creds(user_id, credentials)
+        # Notify listeners so downstream caches are invalidated immediately.
+        _invoke_creds_changed_hook(user_id, credentials.provider)
+        return result
 
     async def exists(self, user_id: str, credentials_id: str) -> bool:
         return (await self.store.get_creds_by_id(user_id, credentials_id)) is not None
@@ -146,8 +196,7 @@ class IntegrationCredentialsManager:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
-                    f"Refreshing '{credentials.provider}' "
-                    f"credentials #{credentials.id}"
+                    f"Refreshing '{credentials.provider}' credentials #{credentials.id}"
                 )
                 _lock = None
                 if lock:
@@ -156,11 +205,16 @@ class IntegrationCredentialsManager:
 
                 fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                 await self.store.update_creds(user_id, fresh_credentials)
+                # Notify listeners so the refreshed token is picked up immediately.
+                _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
                 if _lock and (await _lock.locked()) and (await _lock.owned()):
                     try:
                         await _lock.release()
-                    except Exception as e:
-                        logger.warning(f"Failed to release OAuth refresh lock: {e}")
+                    except Exception:
+                        logger.warning(
+                            "Failed to release OAuth refresh lock",
+                            exc_info=True,
+                        )
 
                 credentials = fresh_credentials
         return credentials
@@ -168,10 +222,17 @@ class IntegrationCredentialsManager:
     async def update(self, user_id: str, updated: Credentials) -> None:
         async with self._locked(user_id, updated.id):
             await self.store.update_creds(user_id, updated)
+        # Notify listeners so the updated credential is picked up immediately.
+        _invoke_creds_changed_hook(user_id, updated.provider)
 
     async def delete(self, user_id: str, credentials_id: str) -> None:
         async with self._locked(user_id, credentials_id):
+            # Read inside the lock to avoid TOCTOU — another coroutine could
+            # delete the same credential between the read and the delete.
+            creds = await self.store.get_creds_by_id(user_id, credentials_id)
             await self.store.delete_creds_by_id(user_id, credentials_id)
+        if creds:
+            _invoke_creds_changed_hook(user_id, creds.provider)
 
     # -- Locking utilities -- #
 
@@ -195,8 +256,11 @@ class IntegrationCredentialsManager:
             if (await lock.locked()) and (await lock.owned()):
                 try:
                     await lock.release()
-                except Exception as e:
-                    logger.warning(f"Failed to release credentials lock: {e}")
+                except Exception:
+                    logger.warning(
+                        "Failed to release credentials lock",
+                        exc_info=True,
+                    )
 
     async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""

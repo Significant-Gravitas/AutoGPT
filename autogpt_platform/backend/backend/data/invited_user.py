@@ -110,6 +110,11 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
+def is_internal_email(email: str) -> bool:
+    """Return True for @agpt.co addresses, which always bypass the invite gate."""
+    return normalize_email(email).endswith("@agpt.co")
+
+
 def _normalize_name(name: Optional[str]) -> Optional[str]:
     if name is None:
         return None
@@ -207,6 +212,25 @@ async def _apply_tally_understanding(
             "create": {"userId": user_id, "data": SafeJson(payload)},
             "update": {"data": SafeJson(payload)},
         },
+    )
+
+
+async def check_invite_eligibility(email: str) -> bool:
+    """Check if an email is allowed to sign up based on the invite list.
+
+    Args:
+        email: The email to check (will be normalized internally).
+
+    Returns True if the email has an active (INVITED) invite record.
+    Does NOT check enable_invite_gate — the caller is responsible for that.
+    """
+    email = normalize_email(email)
+    invited_user = await prisma.models.InvitedUser.prisma().find_unique(
+        where={"email": email}
+    )
+    return (
+        invited_user is not None
+        and invited_user.status == prisma.enums.InvitedUserStatus.INVITED
     )
 
 
@@ -664,7 +688,7 @@ async def get_or_activate_user(user_data: dict) -> User:
     if existing_user is not None:
         return existing_user
 
-    if not _settings.config.enable_invite_gate or normalized_email.endswith("@agpt.co"):
+    if not _settings.config.enable_invite_gate or is_internal_email(normalized_email):
         return await _open_signup_create_user(
             auth_user_id, normalized_email, metadata_name
         )
