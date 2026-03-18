@@ -350,6 +350,7 @@ async def test_bulk_create_invited_users_handles_csv_duplicates_and_invalid_rows
     ]
     assert create_invited.await_count == 2
 
+
 @pytest.mark.asyncio
 async def test_bulk_create_skips_already_invited_emails(
     mocker: pytest_mock.MockerFixture,
