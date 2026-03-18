@@ -20,9 +20,9 @@ SSRF protection:
 
 Requires:
   npm install -g agent-browser
-  agent-browser install   (downloads Chromium, one-time — skipped in Docker
-                           where system chromium is pre-installed and
-                           AGENT_BROWSER_EXECUTABLE_PATH is set)
+  In Docker: system chromium package with AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+             (set automatically — no `agent-browser install` needed).
+  Locally: run `agent-browser install` to download Chromium.
 """
 
 import asyncio
