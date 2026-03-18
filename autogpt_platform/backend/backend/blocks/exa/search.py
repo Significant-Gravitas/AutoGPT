@@ -25,10 +25,11 @@ from .helpers import (
 
 
 class ExaSearchTypes(Enum):
+    AUTO = "auto"
+    FAST = "fast"
+    DEEP = "deep"
     KEYWORD = "keyword"
     NEURAL = "neural"
-    FAST = "fast"
-    AUTO = "auto"
 
 
 class ExaSearchCategories(Enum):
@@ -124,7 +125,7 @@ class ExaSearchBlock(Block):
     def __init__(self):
         super().__init__(
             id="996cec64-ac40-4dde-982f-b0dc60a5824d",
-            description="Searches the web using Exa's advanced search API",
+            description="Searches the web using Exa, the best search engine for AI agents. Supports auto, fast, and deep search modes.",
             categories={BlockCategory.SEARCH},
             input_schema=ExaSearchBlock.Input,
             output_schema=ExaSearchBlock.Output,
