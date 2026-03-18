@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
+import type { LlmModel } from "../types";
 import { toggleLlmModelAction, fetchLlmModelUsage } from "../actions";
 
 export function DisableModelModal({

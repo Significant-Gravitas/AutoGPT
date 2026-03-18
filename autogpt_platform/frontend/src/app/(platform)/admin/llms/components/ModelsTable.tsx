@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
-import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
-import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmModel } from "../types";
+import type { LlmModelCreator } from "../types";
+import type { LlmProvider } from "../types";
 import {
   Table,
   TableBody,

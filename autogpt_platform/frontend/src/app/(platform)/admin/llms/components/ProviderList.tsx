@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/atoms/Table/Table";
-import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmProvider } from "../types";
 import { DeleteProviderModal } from "./DeleteProviderModal";
 import { EditProviderModal } from "./EditProviderModal";
 

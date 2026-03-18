@@ -1,9 +1,9 @@
 "use client";
 
-import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
-import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
-import type { LlmModelMigration } from "@/app/api/__generated__/models/llmModelMigration";
-import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmModel } from "../types";
+import type { LlmModelCreator } from "../types";
+import type { LlmModelMigration } from "../types";
+import type { LlmProvider } from "../types";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { AddProviderModal } from "./AddProviderModal";

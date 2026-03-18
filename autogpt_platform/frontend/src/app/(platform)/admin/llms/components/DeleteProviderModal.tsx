@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmProvider } from "../types";
 import { deleteLlmProviderAction } from "../actions";
 
 export function DeleteProviderModal({ provider }: { provider: LlmProvider }) {

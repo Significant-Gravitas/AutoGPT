@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { LlmModelMigration } from "@/app/api/__generated__/models/llmModelMigration";
+import type { LlmModelMigration } from "../types";
 import { Button } from "@/components/atoms/Button/Button";
 import {
   Table,

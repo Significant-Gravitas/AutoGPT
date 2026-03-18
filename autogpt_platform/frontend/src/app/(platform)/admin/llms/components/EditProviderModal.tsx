@@ -5,7 +5,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
 import { updateLlmProviderAction } from "../actions";
 import { useRouter } from "next/navigation";
-import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmProvider } from "../types";
 
 export function EditProviderModal({ provider }: { provider: LlmProvider }) {
   const [open, setOpen] = useState(false);

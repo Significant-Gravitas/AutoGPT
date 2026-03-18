@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
+import type { LlmModel } from "../types";
 import { Button } from "@/components/atoms/Button/Button";
 import { setRecommendedModelAction } from "../actions";
 import { Star } from "@phosphor-icons/react";

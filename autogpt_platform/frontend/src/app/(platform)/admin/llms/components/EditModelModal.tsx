@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmModel } from "@/app/api/__generated__/models/llmModel";
-import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
-import type { LlmProvider } from "@/app/api/__generated__/models/llmProvider";
+import type { LlmModel } from "../types";
+import type { LlmModelCreator } from "../types";
+import type { LlmProvider } from "../types";
 import { updateLlmModelAction } from "../actions";
 
 export function EditModelModal({

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Button } from "@/components/atoms/Button/Button";
-import type { LlmModelCreator } from "@/app/api/__generated__/models/llmModelCreator";
+import type { LlmModelCreator } from "../types";
 import { deleteLlmCreatorAction } from "../actions";
 
 export function DeleteCreatorModal({ creator }: { creator: LlmModelCreator }) {
