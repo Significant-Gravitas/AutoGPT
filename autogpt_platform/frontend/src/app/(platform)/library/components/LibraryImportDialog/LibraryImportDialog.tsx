@@ -24,19 +24,11 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
 
-const PLATFORM_EXAMPLES = [
-  {
-    name: "n8n",
-    url: "https://n8n.io/workflows/1234-example-workflow",
-  },
-  {
-    name: "Make.com",
-    url: "https://www.make.com/en/templates/12345",
-  },
-  {
-    name: "Zapier",
-    url: "https://zapier.com/shared/abc123",
-  },
+// Only n8n template URLs are supported for direct URL fetching.
+// Make.com and Zapier don't expose public JSON endpoints — use file upload instead.
+const N8N_EXAMPLES = [
+  { label: "Gmail → Slack", url: "https://n8n.io/workflows/1252" },
+  { label: "HTTP → Google Sheets", url: "https://n8n.io/workflows/1371" },
 ];
 
 export default function LibraryImportDialog() {
@@ -119,7 +111,7 @@ export default function LibraryImportDialog() {
         <TabsLine defaultValue="agent">
           <TabsLineList>
             <TabsLineTrigger value="agent">Upload agent</TabsLineTrigger>
-            <TabsLineTrigger value="url">From URL</TabsLineTrigger>
+            <TabsLineTrigger value="url">From n8n URL</TabsLineTrigger>
             <TabsLineTrigger value="workflow-file">
               Upload workflow
             </TabsLineTrigger>
@@ -209,21 +201,22 @@ export default function LibraryImportDialog() {
             </Form>
           </TabsLineContent>
 
-          {/* Tab: Import from competitor URL */}
+          {/* Tab: Import from n8n template URL */}
           <TabsLineContent value="url">
             <p className="mb-3 text-sm text-neutral-500">
-              Paste a workflow URL from n8n, Make.com, or Zapier. AutoPilot will
-              automatically convert it to an AutoGPT agent.
+              Paste an n8n template URL. AutoPilot will automatically convert it
+              to an AutoGPT agent. For Make.com or Zapier, use the{" "}
+              <strong>Upload workflow</strong> tab instead.
             </p>
             <div className="mb-4 flex flex-wrap gap-2">
-              {PLATFORM_EXAMPLES.map((p) => (
+              {N8N_EXAMPLES.map((p) => (
                 <button
-                  key={p.name}
+                  key={p.label}
                   type="button"
                   onClick={() => importWorkflow.setUrlValue(p.url)}
                   className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600"
                 >
-                  {p.name} example
+                  {p.label}
                 </button>
               ))}
             </div>
@@ -231,8 +224,8 @@ export default function LibraryImportDialog() {
               id="template-url"
               value={importWorkflow.urlValue}
               onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
-              label="Workflow URL"
-              placeholder="https://n8n.io/workflows/1234  •  make.com/templates/…  •  zapier.com/shared/…"
+              label="n8n workflow URL"
+              placeholder="https://n8n.io/workflows/1234"
               className="mb-4 w-full rounded-[10px]"
             />
             <Button
