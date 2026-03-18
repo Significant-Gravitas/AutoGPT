@@ -88,7 +88,13 @@ gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,name,link
 ```
    Parse the results: if every check has `bucket` of `"pass"` or `"skipping"`, CI is green. If any has `"fail"`, CI has failed. Otherwise CI is still pending.
 
-2. Check for new comments (all three sources):
+2. Check for merge conflicts:
+```bash
+gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.mergeable'
+```
+   If the result is `"CONFLICTING"`, the PR has a merge conflict — see "Resolving merge conflicts" below.
+
+3. Check for new comments (all three sources):
 ```bash
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
@@ -96,13 +102,40 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level re
 ```
    Compare against previously seen comments to detect new ones.
 
-3. **React to whichever changed first:**
+4. **React to whichever changed first:**
 
 | What happened | Action |
 |---|---|
+| Merge conflict detected | See "Resolving merge conflicts" below. |
 | New comments detected | Address them (fix → commit → push → reply). After pushing, re-fetch all comments to update your baseline, then restart this polling loop from the top (new commits invalidate CI status). |
 | CI failed (bucket == "fail") | Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] \| select(.bucket == "fail") \| .link'`. Extract run ID from link (format: `.../actions/runs/<run-id>/job/...`), read logs with `gh run view <run-id> --repo Significant-Gravitas/AutoGPT --log-failed`. Fix → commit → push → restart polling. |
 | CI green + no new comments | **Do not exit immediately.** Bots (coderabbitai, sentry) often post reviews shortly after CI settles. Continue polling for **2 more cycles (60s)** after CI goes green. Only exit after 2 consecutive green+quiet polls. |
 | CI pending + no new comments | Sleep 30 seconds, then poll again. |
 
 **The loop ends when:** CI fully green + all comments addressed + **2 consecutive polls with no new comments after CI settled.**
+
+### Resolving merge conflicts
+
+1. Identify the PR's target branch:
+```bash
+gh pr view {N} --repo Significant-Gravitas/AutoGPT --json baseRefName --jq '.baseRefName'
+```
+
+2. Fetch and rebase onto the latest upstream:
+```bash
+git fetch origin
+git rebase origin/{base-branch}
+```
+
+3. Resolve conflicting files, then stage and continue:
+```bash
+git add <conflicted-files>
+git rebase --continue
+```
+
+4. Force-push (rebase rewrites history):
+```bash
+git push --force-with-lease
+```
+
+5. Restart the polling loop from the top — new commits reset CI status.
