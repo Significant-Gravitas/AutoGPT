@@ -12,14 +12,12 @@ export function useLibraryImportWorkflowDialog() {
 
   const hasInput = importMode === "url" ? !!urlValue : !!fileValue;
 
-  function onSubmit() {
+  function submitWithMode(mode: "url" | "file") {
     let prompt: string;
 
-    if (importMode === "url" && urlValue) {
-      // Just pass the URL to AutoPilot — it has the import_workflow tool
+    if (mode === "url" && urlValue) {
       prompt = `Import this workflow and recreate it as an AutoGPT agent: ${urlValue}`;
-    } else if (importMode === "file" && fileValue) {
-      // Decode the base64 file and pass the JSON to AutoPilot
+    } else if (mode === "file" && fileValue) {
       const base64Match = fileValue.match(/^data:[^;]+;base64,(.+)$/);
       if (!base64Match) {
         toast({
@@ -31,7 +29,6 @@ export function useLibraryImportWorkflowDialog() {
       }
       try {
         const jsonString = atob(base64Match[1]);
-        // Validate it's valid JSON
         JSON.parse(jsonString);
         prompt = `Import this workflow JSON and recreate it as an AutoGPT agent:\n\`\`\`json\n${jsonString}\n\`\`\``;
       } catch {
@@ -55,13 +52,17 @@ export function useLibraryImportWorkflowDialog() {
       description: "AutoPilot will import and convert the workflow for you.",
     });
 
-    // Use sessionStorage for large prompts to avoid URL length limits
     sessionStorage.setItem("importWorkflowPrompt", prompt);
     router.push("/copilot?source=import&autosubmit=true");
   }
 
+  function onSubmit() {
+    submitWithMode(importMode);
+  }
+
   return {
     onSubmit,
+    submitWithMode,
     isOpen,
     setIsOpen,
     importMode,

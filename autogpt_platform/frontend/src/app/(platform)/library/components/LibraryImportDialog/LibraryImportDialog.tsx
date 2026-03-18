@@ -20,8 +20,6 @@ import {
 import { UploadSimpleIcon } from "@phosphor-icons/react";
 import { useLibraryImportWorkflowDialog } from "../LibraryImportWorkflowDialog/useLibraryImportWorkflowDialog";
 import { useLibraryUploadAgentDialog } from "../LibraryUploadAgentDialog/useLibraryUploadAgentDialog";
-import { useRouter } from "next/navigation";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
 
 // Only n8n template URLs are supported for direct URL fetching.
@@ -33,8 +31,6 @@ const N8N_EXAMPLES = [
 
 export default function LibraryImportDialog() {
   const [isOpen, setIsOpen] = useState(false);
-  const { toast } = useToast();
-  const router = useRouter();
 
   const upload = useLibraryUploadAgentDialog();
   const importWorkflow = useLibraryImportWorkflowDialog();
@@ -43,47 +39,6 @@ export default function LibraryImportDialog() {
     setIsOpen(false);
     importWorkflow.setFileValue("");
     importWorkflow.setUrlValue("");
-  }
-
-  function submitImport(mode: "url" | "file") {
-    let prompt: string;
-    if (mode === "url" && importWorkflow.urlValue) {
-      prompt = `Import this workflow and recreate it as an AutoGPT agent: ${importWorkflow.urlValue}`;
-    } else if (mode === "file" && importWorkflow.fileValue) {
-      const base64Match = importWorkflow.fileValue.match(
-        /^data:[^;]+;base64,(.+)$/,
-      );
-      if (!base64Match) {
-        toast({
-          title: "Invalid file",
-          description: "Could not read the uploaded file.",
-          variant: "destructive",
-        });
-        return;
-      }
-      try {
-        const jsonString = atob(base64Match[1]);
-        JSON.parse(jsonString);
-        prompt = `Import this workflow JSON and recreate it as an AutoGPT agent:\n\`\`\`json\n${jsonString}\n\`\`\``;
-      } catch {
-        toast({
-          title: "Invalid JSON",
-          description: "The uploaded file is not valid JSON.",
-          variant: "destructive",
-        });
-        return;
-      }
-    } else {
-      return;
-    }
-
-    handleClose();
-    toast({
-      title: "Redirecting to AutoPilot",
-      description: "AutoPilot will import and convert the workflow for you.",
-    });
-    sessionStorage.setItem("importWorkflowPrompt", prompt);
-    router.push("/copilot?source=import&autosubmit=true");
   }
 
   return (
@@ -233,7 +188,7 @@ export default function LibraryImportDialog() {
               variant="primary"
               className="min-w-[18rem]"
               disabled={!importWorkflow.urlValue}
-              onClick={() => submitImport("url")}
+              onClick={() => importWorkflow.submitWithMode("url")}
             >
               Import to AutoPilot
             </Button>
@@ -260,7 +215,7 @@ export default function LibraryImportDialog() {
               variant="primary"
               className="min-w-[18rem]"
               disabled={!importWorkflow.fileValue}
-              onClick={() => submitImport("file")}
+              onClick={() => importWorkflow.submitWithMode("file")}
             >
               Import to AutoPilot
             </Button>
