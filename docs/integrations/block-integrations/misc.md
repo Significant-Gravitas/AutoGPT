@@ -64,7 +64,7 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 | error | Error message if the operation failed | str |
 | response | The final text response from the autopilot. | str |
 | tool_calls | List of tools called during execution. Each entry has tool_call_id, tool_name, input, output, and success fields. | List[ToolCallEntry] |
-| conversation_history | Full conversation history as JSON. It can be used for logging or analysis. | str |
+| conversation_history | Current turn messages (user prompt + assistant reply) as JSON. It can be used for logging or analysis. | str |
 | session_id | Session ID for this conversation. Pass this back to continue the conversation in a future run. | str |
 | token_usage | Token usage statistics: prompt_tokens, completion_tokens, total_tokens. | TokenUsage |
 
