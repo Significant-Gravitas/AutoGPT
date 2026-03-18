@@ -760,18 +760,27 @@ async def _compute_invited_user_tally_seed_inner(
             where={"id": invited_user_id},
             data=update_data,
         )
+    except TallyExtractionTimeoutError as exc:
+        logger.warning(
+            "Timed out computing Tally understanding for invited user %s after %s attempts",
+            invited_user_id,
+            exc.attempts,
+        )
+        sanitized_error = re.sub(
+            r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}"
+        )[:_MAX_TALLY_ERROR_LENGTH]
+        await prisma.models.InvitedUser.prisma().update(
+            where={"id": invited_user_id},
+            data={
+                "tallyStatus": prisma.enums.TallyComputationStatus.FAILED,
+                "tallyError": sanitized_error,
+            },
+        )
     except Exception as exc:
-        if isinstance(exc, TallyExtractionTimeoutError):
-            logger.warning(
-                "Timed out computing Tally understanding for invited user %s after %s attempts",
-                invited_user_id,
-                exc.attempts,
-            )
-        else:
-            logger.exception(
-                "Failed to compute Tally understanding for invited user %s",
-                invited_user_id,
-            )
+        logger.exception(
+            "Failed to compute Tally understanding for invited user %s",
+            invited_user_id,
+        )
         sanitized_error = re.sub(
             r"https?://\S+", "<url>", f"{type(exc).__name__}: {exc}"
         )[:_MAX_TALLY_ERROR_LENGTH]

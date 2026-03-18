@@ -522,13 +522,12 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
         await upsert_business_understanding(user_id, understanding_input)
         logger.info(f"Tally: successfully populated understanding for user {user_id}")
 
-    except Exception as exc:
-        if isinstance(exc, TallyExtractionTimeoutError):
-            logger.warning(
-                "Tally: timed out populating understanding for user %s after %s attempts",
-                user_id,
-                exc.attempts,
-            )
-            return
-
+    except TallyExtractionTimeoutError as exc:
+        logger.warning(
+            "Tally: timed out populating understanding for user %s after %s attempts",
+            user_id,
+            exc.attempts,
+        )
+        return
+    except Exception:
         logger.exception(f"Tally: error populating understanding for user {user_id}")

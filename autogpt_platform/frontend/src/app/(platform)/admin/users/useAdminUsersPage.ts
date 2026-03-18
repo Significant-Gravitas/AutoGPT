@@ -12,7 +12,8 @@ import {
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { type FormEvent, useEffect, useState } from "react";
+import debounce from "lodash/debounce";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
@@ -37,11 +38,18 @@ export function useAdminUsersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debouncedSearchRef = useRef(
+    debounce((value: string) => {
+      setDebouncedSearch(value.trim());
+      setCurrentPage(1);
+    }, 300),
+  );
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    return () => {
+      debouncedSearchRef.current.cancel();
+    };
+  }, []);
 
   const invitedUsersQuery = useGetV2ListInvitedUsers(
     { page: currentPage, page_size: 50, search: debouncedSearch || undefined },
@@ -186,7 +194,7 @@ export function useAdminUsersPage() {
 
   function handleSearchChange(value: string) {
     setSearchQuery(value);
-    setCurrentPage(1);
+    debouncedSearchRef.current(value);
   }
 
   return {
