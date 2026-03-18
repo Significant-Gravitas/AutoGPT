@@ -1,9 +1,9 @@
-"""Tests for creds_manager hook system: register, guard, bust, and CRUD integration."""
+"""Tests for creds_manager hook system: register, invoke, and CRUD integration."""
 
 import pytest
 
 from backend.integrations.creds_manager import (
-    _bust_copilot_cache,
+    _invoke_creds_changed_hook,
     register_creds_changed_hook,
     unregister_creds_changed_hook,
 )
@@ -22,7 +22,7 @@ class TestRegisterCredsChangedHook:
         calls: list[tuple[str, str]] = []
         register_creds_changed_hook(lambda u, p: calls.append((u, p)))
 
-        _bust_copilot_cache("user-1", "github")
+        _invoke_creds_changed_hook("user-1", "github")
         assert calls == [("user-1", "github")]
 
     def test_double_register_raises(self):
@@ -37,10 +37,10 @@ class TestRegisterCredsChangedHook:
         register_creds_changed_hook(lambda u, p: None)
 
 
-class TestBustCopilotCache:
+class TestInvokeCredsChangedHook:
     def test_noop_when_no_hook_registered(self):
         # Must not raise even when no hook is registered.
-        _bust_copilot_cache("user-1", "github")
+        _invoke_creds_changed_hook("user-1", "github")
 
     def test_hook_exception_is_swallowed(self):
         def bad_hook(user_id: str, provider: str) -> None:
@@ -48,13 +48,13 @@ class TestBustCopilotCache:
 
         register_creds_changed_hook(bad_hook)
         # Must not propagate the exception.
-        _bust_copilot_cache("user-1", "github")
+        _invoke_creds_changed_hook("user-1", "github")
 
     def test_hook_receives_correct_args(self):
         calls: list[tuple[str, str]] = []
         register_creds_changed_hook(lambda u, p: calls.append((u, p)))
 
-        _bust_copilot_cache("user-a", "github")
-        _bust_copilot_cache("user-b", "slack")
+        _invoke_creds_changed_hook("user-a", "github")
+        _invoke_creds_changed_hook("user-b", "slack")
 
         assert calls == [("user-a", "github"), ("user-b", "slack")]

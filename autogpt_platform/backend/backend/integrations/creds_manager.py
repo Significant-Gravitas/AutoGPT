@@ -33,8 +33,8 @@ def register_creds_changed_hook(hook: Callable[[str, str], None]) -> None:
 
     The callback receives ``(user_id, provider)`` and should be idempotent.
     Only one hook can be registered at a time.  Intended to be called once at
-    application startup by the copilot module to bust its token cache without
-    creating an import cycle.
+    application startup (e.g. by the copilot module) without creating an
+    import cycle.
 
     Raises:
         RuntimeError: If a hook is already registered.  Call
@@ -58,8 +58,8 @@ def unregister_creds_changed_hook() -> None:
     _on_creds_changed = None
 
 
-def _bust_copilot_cache(user_id: str, provider: str) -> None:
-    """Invoke the registered hook (if any) to bust downstream token caches."""
+def _invoke_creds_changed_hook(user_id: str, provider: str) -> None:
+    """Invoke the registered creds-changed hook (if any)."""
     if _on_creds_changed is not None:
         try:
             _on_creds_changed(user_id, provider)
@@ -117,9 +117,8 @@ class IntegrationCredentialsManager:
 
     async def create(self, user_id: str, credentials: Credentials) -> None:
         result = await self.store.add_creds(user_id, credentials)
-        # Bust the copilot token cache so that the next bash_exec picks up the
-        # new credential immediately instead of waiting for _NULL_CACHE_TTL.
-        _bust_copilot_cache(user_id, credentials.provider)
+        # Notify listeners so downstream caches are invalidated immediately.
+        _invoke_creds_changed_hook(user_id, credentials.provider)
         return result
 
     async def exists(self, user_id: str, credentials_id: str) -> bool:
@@ -197,8 +196,7 @@ class IntegrationCredentialsManager:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
-                    f"Refreshing '{credentials.provider}' "
-                    f"credentials #{credentials.id}"
+                    f"Refreshing '{credentials.provider}' credentials #{credentials.id}"
                 )
                 _lock = None
                 if lock:
@@ -207,8 +205,8 @@ class IntegrationCredentialsManager:
 
                 fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                 await self.store.update_creds(user_id, fresh_credentials)
-                # Bust copilot cache so the refreshed token is picked up immediately.
-                _bust_copilot_cache(user_id, fresh_credentials.provider)
+                # Notify listeners so the refreshed token is picked up immediately.
+                _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
                 if _lock and (await _lock.locked()) and (await _lock.owned()):
                     try:
                         await _lock.release()
@@ -224,8 +222,8 @@ class IntegrationCredentialsManager:
     async def update(self, user_id: str, updated: Credentials) -> None:
         async with self._locked(user_id, updated.id):
             await self.store.update_creds(user_id, updated)
-        # Bust the copilot token cache so the updated credential is picked up immediately.
-        _bust_copilot_cache(user_id, updated.provider)
+        # Notify listeners so the updated credential is picked up immediately.
+        _invoke_creds_changed_hook(user_id, updated.provider)
 
     async def delete(self, user_id: str, credentials_id: str) -> None:
         async with self._locked(user_id, credentials_id):
@@ -234,7 +232,7 @@ class IntegrationCredentialsManager:
             creds = await self.store.get_creds_by_id(user_id, credentials_id)
             await self.store.delete_creds_by_id(user_id, credentials_id)
         if creds:
-            _bust_copilot_cache(user_id, creds.provider)
+            _invoke_creds_changed_hook(user_id, creds.provider)
 
     # -- Locking utilities -- #
 
