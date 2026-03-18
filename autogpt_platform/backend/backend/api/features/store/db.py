@@ -104,7 +104,8 @@ async def get_store_agents(
                 # search_used_hybrid remains False, will use fallback path below
 
             # Convert hybrid search results (dict format) if hybrid succeeded
-            if search_used_hybrid:
+            # Fall through to direct DB search if hybrid returned nothing
+            if search_used_hybrid and agents:
                 total_pages = (total + page_size - 1) // page_size
                 store_agents: list[store_model.StoreAgent] = []
                 for agent in agents:
@@ -130,7 +131,7 @@ async def get_store_agents(
                         )
                         continue
 
-        if not search_used_hybrid:
+        if not search_used_hybrid or not agents:
             # Fallback path - use basic search or no search
             where_clause: prisma.types.StoreAgentWhereInput = {"is_available": True}
             if featured:
