@@ -213,7 +213,7 @@ class AutoPilotBlock(Block):
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
         """
-        from backend.copilot.sdk.service import collect_copilot_response
+        from backend.copilot.sdk.collect import collect_copilot_response
 
         tokens = _check_recursion(max_recursion_depth)
         try:
