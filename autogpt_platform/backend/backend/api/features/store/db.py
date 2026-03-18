@@ -274,7 +274,7 @@ async def _fallback_store_agent_search(
                     description=row["description"],
                     runs=row["runs"],
                     rating=row["rating"],
-                    agent_graph_id=row.get("agentGraphId", ""),
+                    agent_graph_id=row.get("graph_id", ""),
                 )
             )
         except Exception as e:
