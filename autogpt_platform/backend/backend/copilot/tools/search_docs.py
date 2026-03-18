@@ -37,6 +37,10 @@ class SearchDocsTool(BaseTool):
         return "search_docs"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Search the AutoGPT platform documentation for information about "

@@ -100,7 +100,10 @@ async def test_block_credit_usage(server: SpinTestServer):
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
-            inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
+            inputs={
+                "model": "gpt-4-turbo",
+                "api_key": "owned_api_key",  # pragma: allowlist secret
+            },
             execution_context=ExecutionContext(user_timezone="UTC"),
         ),
     )

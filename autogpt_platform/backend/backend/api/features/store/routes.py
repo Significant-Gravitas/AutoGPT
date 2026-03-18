@@ -53,7 +53,7 @@ async def get_profile(
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
 async def update_or_create_profile(
-    profile: store_model.Profile,
+    profile: store_model.ProfileUpdateRequest,
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
     """Update the store profile for the authenticated user."""
@@ -350,7 +350,7 @@ async def delete_submission(
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
         user_id=user_id,
-        submission_id=submission_id,
+        store_listing_version_id=submission_id,
     )
     return result
 

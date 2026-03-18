@@ -53,49 +53,52 @@ logger = logging.getLogger(__name__)
 
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
-    "add_understanding": AddUnderstandingTool(),
-    "create_agent": CreateAgentTool(),
-    "customize_agent": CustomizeAgentTool(),
-    "edit_agent": EditAgentTool(),
-    "find_agent": FindAgentTool(),
-    "find_block": FindBlockTool(),
-    "find_library_agent": FindLibraryAgentTool(),
-    # Folder management tools
-    "create_folder": CreateFolderTool(),
-    "list_folders": ListFoldersTool(),
-    "update_folder": UpdateFolderTool(),
-    "move_folder": MoveFolderTool(),
-    "delete_folder": DeleteFolderTool(),
-    "move_agents_to_folder": MoveAgentsToFolderTool(),
-    "run_agent": RunAgentTool(),
-    "run_block": RunBlockTool(),
-    "continue_run_block": ContinueRunBlockTool(),
-    "run_mcp_tool": RunMCPToolTool(),
-    "get_mcp_guide": GetMCPGuideTool(),
-    "view_agent_output": AgentOutputTool(),
-    "search_docs": SearchDocsTool(),
-    "get_doc_page": GetDocPageTool(),
-    "get_agent_building_guide": GetAgentBuildingGuideTool(),
-    # Web fetch for safe URL retrieval
-    "web_fetch": WebFetchTool(),
-    # Agent-browser multi-step automation (navigate, act, screenshot)
-    "browser_navigate": BrowserNavigateTool(),
-    "browser_act": BrowserActTool(),
-    "browser_screenshot": BrowserScreenshotTool(),
-    # Sandboxed code execution (bubblewrap)
-    "bash_exec": BashExecTool(),
-    # Persistent workspace tools (cloud storage, survives across sessions)
-    # Feature request tools
-    "search_feature_requests": SearchFeatureRequestsTool(),
-    "create_feature_request": CreateFeatureRequestTool(),
-    # Agent generation tools (local validation/fixing)
-    "validate_agent_graph": ValidateAgentGraphTool(),
-    "fix_agent_graph": FixAgentGraphTool(),
-    # Workspace tools for CoPilot file operations
-    "list_workspace_files": ListWorkspaceFilesTool(),
-    "read_workspace_file": ReadWorkspaceFileTool(),
-    "write_workspace_file": WriteWorkspaceFileTool(),
-    "delete_workspace_file": DeleteWorkspaceFileTool(),
+    tool.name: tool
+    for tool in [
+        AddUnderstandingTool(),
+        CreateAgentTool(),
+        CustomizeAgentTool(),
+        EditAgentTool(),
+        FindAgentTool(),
+        FindBlockTool(),
+        FindLibraryAgentTool(),
+        # Folder management tools
+        CreateFolderTool(),
+        ListFoldersTool(),
+        UpdateFolderTool(),
+        MoveFolderTool(),
+        DeleteFolderTool(),
+        MoveAgentsToFolderTool(),
+        RunAgentTool(),
+        RunBlockTool(),
+        ContinueRunBlockTool(),
+        RunMCPToolTool(),
+        GetMCPGuideTool(),
+        AgentOutputTool(),
+        SearchDocsTool(),
+        GetDocPageTool(),
+        GetAgentBuildingGuideTool(),
+        # Web fetch for safe URL retrieval
+        WebFetchTool(),
+        # Agent-browser multi-step automation (navigate, act, screenshot)
+        BrowserNavigateTool(),
+        BrowserActTool(),
+        BrowserScreenshotTool(),
+        # Sandboxed code execution (bubblewrap)
+        BashExecTool(),
+        # Persistent workspace tools (cloud storage, survives across sessions)
+        # Feature request tools
+        SearchFeatureRequestsTool(),
+        CreateFeatureRequestTool(),
+        # Agent generation tools (local validation/fixing)
+        ValidateAgentGraphTool(),
+        FixAgentGraphTool(),
+        # Workspace tools for CoPilot file operations
+        ListWorkspaceFilesTool(),
+        ReadWorkspaceFileTool(),
+        WriteWorkspaceFileTool(),
+        DeleteWorkspaceFileTool(),
+    ]
 }
 
 # Export individual tool instances for backwards compatibility

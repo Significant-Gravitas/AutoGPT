@@ -26,7 +26,7 @@ from .e2b_sandbox import (
 )
 
 _SESSION_ID = "sess-123"
-_API_KEY = "test-api-key"
+_API_KEY = "test-api-key"  # pragma: allowlist secret
 _SANDBOX_ID = "sb-abc"
 _TIMEOUT = 300
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AutoGPT platform implements OAuth 2.0 in two distinct contexts:
+The AutoGPT Platform implements OAuth 2.0 in two distinct contexts:
 
 1. **User Authentication (SSO)**: Handled by Supabase for platform login
 2. **API Integration Credentials**: Custom OAuth implementation for third-party service access
@@ -324,7 +324,7 @@ stateDiagram-v2
 
 ### User Authentication (SSO) via Supabase
 
-- **Purpose**: Authenticate users to access the AutoGPT platform
+- **Purpose**: Authenticate users to access the AutoGPT Platform
 - **Provider**: Supabase Auth (currently supports Google SSO)
 - **Flow Path**: `/login` → Supabase OAuth → `/auth/callback`
 - **Session Storage**: Supabase-managed cookies

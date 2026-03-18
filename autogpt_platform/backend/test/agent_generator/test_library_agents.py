@@ -377,7 +377,7 @@ class TestExtractSearchTermsFromSteps:
 
     def test_extracts_terms_from_instructions_type(self):
         """Test extraction from valid instructions decomposition result."""
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [
                 {
@@ -397,7 +397,7 @@ class TestExtractSearchTermsFromSteps:
 
     def test_returns_empty_for_non_instructions_type(self):
         """Test that non-instructions types return empty list."""
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "clarifying_questions",
             "questions": [{"question": "What email?"}],
         }
@@ -408,7 +408,7 @@ class TestExtractSearchTermsFromSteps:
 
     def test_deduplicates_terms_case_insensitively(self):
         """Test that duplicate terms are removed (case-insensitive)."""
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [
                 {"description": "Send Email", "name": "send email"},
@@ -424,7 +424,7 @@ class TestExtractSearchTermsFromSteps:
 
     def test_filters_short_terms(self):
         """Test that terms with 3 or fewer characters are filtered out."""
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [
                 {"description": "ab", "action": "xyz"},  # Both too short
@@ -440,7 +440,7 @@ class TestExtractSearchTermsFromSteps:
 
     def test_handles_empty_steps(self):
         """Test handling of empty steps list."""
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [],
         }
@@ -456,7 +456,7 @@ class TestEnrichLibraryAgentsFromSteps:
     @pytest.mark.asyncio
     async def test_enriches_with_additional_agents(self):
         """Test that additional agents are found based on steps."""
-        existing_agents = [
+        existing_agents: list[core.LibraryAgentSummary] = [
             {
                 "graph_id": "existing-123",
                 "graph_version": 1,
@@ -478,7 +478,7 @@ class TestEnrichLibraryAgentsFromSteps:
             }
         ]
 
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [
                 {"description": "Send email notification"},
@@ -506,7 +506,7 @@ class TestEnrichLibraryAgentsFromSteps:
     @pytest.mark.asyncio
     async def test_deduplicates_by_graph_id(self):
         """Test that agents with same graph_id are not duplicated."""
-        existing_agents = [
+        existing_agents: list[core.LibraryAgentSummary] = [
             {
                 "graph_id": "agent-123",
                 "graph_version": 1,
@@ -529,7 +529,7 @@ class TestEnrichLibraryAgentsFromSteps:
             }
         ]
 
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [{"description": "Some action"}],
         }
@@ -552,7 +552,7 @@ class TestEnrichLibraryAgentsFromSteps:
     @pytest.mark.asyncio
     async def test_deduplicates_by_name(self):
         """Test that agents with same name are not duplicated."""
-        existing_agents = [
+        existing_agents: list[core.LibraryAgentSummary] = [
             {
                 "graph_id": "agent-123",
                 "graph_version": 1,
@@ -575,7 +575,7 @@ class TestEnrichLibraryAgentsFromSteps:
             }
         ]
 
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [{"description": "Send email"}],
         }
@@ -599,7 +599,7 @@ class TestEnrichLibraryAgentsFromSteps:
     @pytest.mark.asyncio
     async def test_returns_existing_when_no_steps(self):
         """Test that existing agents are returned when no search terms extracted."""
-        existing_agents = [
+        existing_agents: list[core.LibraryAgentSummary] = [
             {
                 "graph_id": "existing-123",
                 "graph_version": 1,
@@ -610,7 +610,7 @@ class TestEnrichLibraryAgentsFromSteps:
             }
         ]
 
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "clarifying_questions",  # Not instructions type
             "questions": [],
         }
@@ -629,7 +629,7 @@ class TestEnrichLibraryAgentsFromSteps:
         """Test that only first 3 search terms are used."""
         existing_agents = []
 
-        decomposition_result = {
+        decomposition_result: core.DecompositionResult = {
             "type": "instructions",
             "steps": [
                 {"description": "First action"},

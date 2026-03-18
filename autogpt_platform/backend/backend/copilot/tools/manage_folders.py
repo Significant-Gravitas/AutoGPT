@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.api.features.library import model as library_model
 from backend.api.features.library.db import collect_tree_ids
 from backend.copilot.model import ChatSession
@@ -85,6 +87,10 @@ class CreateFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "create_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -171,6 +177,10 @@ class ListFoldersTool(BaseTool):
     @property
     def name(self) -> str:
         return "list_folders"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:
@@ -276,6 +286,10 @@ class UpdateFolderTool(BaseTool):
         return "update_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return "Update a folder's name, icon, or color."
 
@@ -356,6 +370,10 @@ class MoveFolderTool(BaseTool):
         return "move_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return (
             "Move a folder to a different parent folder. "
@@ -432,6 +450,10 @@ class DeleteFolderTool(BaseTool):
         return "delete_folder"
 
     @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
+
+    @property
     def description(self) -> str:
         return (
             "Delete a folder from the user's library. "
@@ -496,6 +518,10 @@ class MoveAgentsToFolderTool(BaseTool):
     @property
     def name(self) -> str:
         return "move_agents_to_folder"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

@@ -2,9 +2,10 @@
 
 import json
 import logging
-from typing import Any
+from typing import Any, Literal, Sequence
 
 from openai.types.chat import ChatCompletionToolParam
+from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
@@ -120,11 +121,6 @@ class BaseTool:
         raise NotImplementedError
 
     @property
-    def requires_auth(self) -> bool:
-        """Whether this tool requires authentication."""
-        return False
-
-    @property
     def is_available(self) -> bool:
         """Whether this tool is available in the current environment.
 
@@ -133,6 +129,21 @@ class BaseTool:
         never offered an option that will immediately fail.
         """
         return True
+
+    @property
+    def requires_auth(self) -> bool:
+        """Whether this tool requires an authenticated end user."""
+        return False
+
+    @property
+    def allow_external_use(
+        self,
+    ) -> tuple[Literal[False], None] | tuple[Literal[True], Sequence[APIKeyPermission]]:
+        """
+        Whether this tool maybe used through our external MCP server.
+        Returns `True` and a list of required permissions if so.
+        """
+        return False, None
 
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""

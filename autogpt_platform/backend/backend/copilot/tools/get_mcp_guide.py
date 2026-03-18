@@ -37,6 +37,10 @@ class GetMCPGuideTool(BaseTool):
         return "get_mcp_guide"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Returns the MCP tool guide: known hosted server URLs (Notion, Linear, "

@@ -160,7 +160,6 @@ async def add_test_data(db):
                 data={
                     "slug": f"test-agent-{graph.id[:8]}",
                     "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
                     "hasApprovedVersion": True,
                     "owningUserId": graph.userId,
                 }
