@@ -32,7 +32,6 @@ const N8N_EXAMPLES = [
 export default function LibraryImportDialog() {
   const [isOpen, setIsOpen] = useState(false);
 
-  const upload = useLibraryUploadAgentDialog();
   const importWorkflow = useLibraryImportWorkflowDialog();
 
   function handleClose() {
@@ -40,6 +39,8 @@ export default function LibraryImportDialog() {
     importWorkflow.setFileValue("");
     importWorkflow.setUrlValue("");
   }
+
+  const upload = useLibraryUploadAgentDialog({ onSuccess: handleClose });
 
   return (
     <Dialog

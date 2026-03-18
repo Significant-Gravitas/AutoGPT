@@ -3,14 +3,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function useLibraryImportWorkflowDialog() {
-  const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const router = useRouter();
-  const [importMode, setImportMode] = useState<"file" | "url">("file");
   const [fileValue, setFileValue] = useState("");
   const [urlValue, setUrlValue] = useState("");
-
-  const hasInput = importMode === "url" ? !!urlValue : !!fileValue;
 
   function submitWithMode(mode: "url" | "file") {
     let prompt: string;
@@ -43,7 +39,6 @@ export function useLibraryImportWorkflowDialog() {
       return;
     }
 
-    setIsOpen(false);
     setFileValue("");
     setUrlValue("");
 
@@ -56,18 +51,8 @@ export function useLibraryImportWorkflowDialog() {
     router.push("/copilot?source=import&autosubmit=true");
   }
 
-  function onSubmit() {
-    submitWithMode(importMode);
-  }
-
   return {
-    onSubmit,
     submitWithMode,
-    isOpen,
-    setIsOpen,
-    importMode,
-    setImportMode,
-    hasInput,
     fileValue,
     setFileValue,
     urlValue,

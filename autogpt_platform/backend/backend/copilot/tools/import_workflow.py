@@ -17,6 +17,15 @@ from .models import ErrorResponse, ResponseType
 
 logger = logging.getLogger(__name__)
 
+_MAX_RAW_JSON_BYTES = 500_000  # ~500 KB
+
+
+def _cap_json(workflow_json: dict[str, Any]) -> str:
+    raw = json.dumps(workflow_json, default=str)
+    if len(raw) > _MAX_RAW_JSON_BYTES:
+        return raw[:_MAX_RAW_JSON_BYTES] + "... [truncated]"
+    return raw
+
 
 class ImportWorkflowResponse(ToolResponseBase):
     """Response from importing an external workflow."""
@@ -158,6 +167,6 @@ class ImportWorkflowTool(BaseTool):
             source_format=fmt.value,
             source_name=desc.name,
             summary=summary,
-            raw_workflow_json=json.dumps(workflow_json, default=str),
+            raw_workflow_json=_cap_json(workflow_json),
             session_id=session_id,
         )
