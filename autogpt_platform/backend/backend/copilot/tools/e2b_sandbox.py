@@ -41,8 +41,7 @@ import contextlib
 import logging
 from typing import Any, Awaitable, Callable, Literal
 
-from e2b import AsyncSandbox
-from e2b.sandbox.sandbox_api import SandboxLifecycle
+from e2b import AsyncSandbox, SandboxLifecycle
 
 from backend.data.redis_client import get_redis_async
 
