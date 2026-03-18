@@ -6,10 +6,11 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
+from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
 from backend.copilot.tools import TOOL_REGISTRY
 
 # Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = """\
+_SHARED_TOOL_NOTES = f"""\
 
 ### Sharing files with the user
 After saving a file to the persistent workspace with `write_workspace_file`,
@@ -81,18 +82,53 @@ that would be corrupted by text encoding.
 
 Example — committing an image file to GitHub:
 ```json
-{
-  "files": [{
+{{
+  "files": [{{
     "path": "docs/hero.png",
     "content": "workspace://abc123#image/png",
     "operation": "upsert"
-  }]
-}
+  }}]
+}}
 ```
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
+
+### Delegating to another autopilot (sub-autopilot pattern)
+Use the **AutoPilotBlock** (`run_block` with block_id
+`{AUTOPILOT_BLOCK_ID}`) to delegate a task to a fresh
+autopilot instance.  The sub-autopilot has its own full tool set and can
+perform multi-step work autonomously.
+
+- **Input**: `prompt` (required) — the task description.
+  Optional: `system_context` to constrain behavior, `session_id` to
+  continue a previous conversation, `max_recursion_depth` (default 3).
+- **Output**: `response` (text), `tool_calls` (list), `session_id`
+  (for continuation), `conversation_history`, `token_usage`.
+
+Use this when a task is complex enough to benefit from a separate
+autopilot context, e.g. "research X and write a report" while the
+parent autopilot handles orchestration.
+"""
+
+# E2B-only notes — E2B has full internet access so gh CLI works there.
+# Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
+_E2B_TOOL_NOTES = """
+### GitHub CLI (`gh`) and git
+- If the user has connected their GitHub account, both `gh` and `git` are
+  pre-authenticated — use them directly without any manual login step.
+  `git` HTTPS operations (clone, push, pull) work automatically.
+- If the token changes mid-session (e.g. user reconnects with a new token),
+  run `gh auth setup-git` to re-register the credential helper.
+- If `gh` or `git` fails with an authentication error (e.g. "authentication
+  required", "could not read Username", or exit code 128), call
+  `connect_integration(provider="github")` to surface the GitHub credentials
+  setup card so the user can connect their account. Once connected, retry
+  the operation.
+- For operations that need broader access (e.g. private org repos, GitHub
+  Actions), pass the required scopes: e.g.
+  `connect_integration(provider="github", scopes=["repo", "read:org"])`.
 """
 
 
@@ -105,6 +141,7 @@ def _build_storage_supplement(
     storage_system_1_persistence: list[str],
     file_move_name_1_to_2: str,
     file_move_name_2_to_1: str,
+    extra_notes: str = "",
 ) -> str:
     """Build storage/filesystem supplement for a specific environment.
 
@@ -119,6 +156,7 @@ def _build_storage_supplement(
         storage_system_1_persistence: List of persistence behavior descriptions
         file_move_name_1_to_2: Direction label for primary→persistent
         file_move_name_2_to_1: Direction label for persistent→primary
+        extra_notes: Environment-specific notes appended after shared notes
     """
     # Format lists as bullet points with proper indentation
     characteristics = "\n".join(f"   - {c}" for c in storage_system_1_characteristics)
@@ -159,12 +197,16 @@ a local file under `~/.claude/projects/.../tool-results/`. To read these files,
 always use `read_file` or `Read` (NOT `read_workspace_file`).
 `read_workspace_file` reads from cloud workspace storage, where SDK
 tool-results are NOT stored.
-{_SHARED_TOOL_NOTES}"""
+{_SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
 def _get_local_storage_supplement(cwd: str) -> str:
-    """Local ephemeral storage (files lost between turns)."""
+    """Local ephemeral storage (files lost between turns).
+
+    Network is isolated (bubblewrap --unshare-net), so internet-dependent CLIs
+    like gh will not work — no integration env-var notes are included.
+    """
     return _build_storage_supplement(
         working_dir=cwd,
         sandbox_type="in a network-isolated sandbox",
@@ -182,7 +224,11 @@ def _get_local_storage_supplement(cwd: str) -> str:
 
 
 def _get_cloud_sandbox_supplement() -> str:
-    """Cloud persistent sandbox (files survive across turns in session)."""
+    """Cloud persistent sandbox (files survive across turns in session).
+
+    E2B has full internet access, so integration tokens (GH_TOKEN etc.) are
+    injected per command in bash_exec — include the CLI guidance notes.
+    """
     return _build_storage_supplement(
         working_dir="/home/user",
         sandbox_type="in a cloud sandbox with full internet access",
@@ -197,6 +243,7 @@ def _get_cloud_sandbox_supplement() -> str:
         ],
         file_move_name_1_to_2="Sandbox → Persistent",
         file_move_name_2_to_1="Persistent → Sandbox",
+        extra_notes=_E2B_TOOL_NOTES,
     )
 
 
