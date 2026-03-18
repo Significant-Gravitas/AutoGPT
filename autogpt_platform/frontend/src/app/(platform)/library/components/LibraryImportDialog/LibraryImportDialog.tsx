@@ -25,8 +25,8 @@ import { useState } from "react";
 // Only n8n template URLs are supported for direct URL fetching.
 // Make.com and Zapier don't expose public JSON endpoints — use file upload instead.
 const N8N_EXAMPLES = [
-  { label: "Gmail → Slack", url: "https://n8n.io/workflows/1252" },
-  { label: "HTTP → Google Sheets", url: "https://n8n.io/workflows/1371" },
+  { label: "Build Your First AI Agent", url: "https://n8n.io/workflows/6270" },
+  { label: "Interactive AI Chat Agent", url: "https://n8n.io/workflows/5819" },
 ];
 
 export default function LibraryImportDialog() {
