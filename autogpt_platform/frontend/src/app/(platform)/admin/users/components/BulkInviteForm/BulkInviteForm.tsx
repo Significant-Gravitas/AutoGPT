@@ -54,7 +54,7 @@ export function BulkInviteForm({
         <span className="font-medium text-zinc-900">
           {selectedFile ? selectedFile.name : "Choose invite file"}
         </span>
-        <span>UTF-8 encoded, max 1 MB / 5 000 rows.</span>
+        <span>UTF-8 encoded, max 1 MB file size.</span>
         <input
           id="bulk-invite-file-input"
           key={inputKey}
