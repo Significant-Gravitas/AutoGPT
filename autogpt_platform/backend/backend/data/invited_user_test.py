@@ -336,12 +336,11 @@ async def test_bulk_create_invited_users_handles_csv_duplicates_and_invalid_rows
     assert result.created_count == 1
     assert result.skipped_count == 2
     assert result.error_count == 1
-    # Validation errors and in-file duplicates are reported first,
-    # then remaining rows go through the batch pre-check + create pass.
+    # Results are returned in upload row order after processing.
     assert [row.status for row in result.results] == [
+        "CREATED",
         "ERROR",
         "SKIPPED",
-        "CREATED",
         "SKIPPED",
     ]
     assert create_invited.await_count == 2

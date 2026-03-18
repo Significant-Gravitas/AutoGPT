@@ -52,6 +52,7 @@ _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
 MAX_BULK_INVITE_ROWS = 5000
+_BULK_INVITE_BATCH_SIZE = 500
 
 
 class InvitedUserRecord(BaseModel):
@@ -505,6 +506,8 @@ async def bulk_create_invited_users_from_file(
                 )
             )
             continue
+
+        valid_rows.append((row, normalized_email, row_name))
 
     # Second pass: create invites in batches to bound concurrent DB load.
     for i in range(0, len(valid_rows), _BULK_INVITE_BATCH_SIZE):
