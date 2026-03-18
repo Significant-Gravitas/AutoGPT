@@ -1,7 +1,8 @@
 """Unit tests for JSONL transcript management utilities."""
 
+import asyncio
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -301,7 +302,7 @@ class TestDeleteTranscript:
         mock_storage.delete = AsyncMock()
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -321,7 +322,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -339,7 +340,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -816,6 +817,183 @@ class TestCompactionFlowIntegration:
         output2 = builder2.to_jsonl()
         lines2 = [json.loads(line) for line in output2.strip().split("\n")]
         assert lines2[-1]["parentUuid"] == "a2"
+
+
+# ---------------------------------------------------------------------------
+# _run_compression (direct tests for the 3 code paths)
+# ---------------------------------------------------------------------------
+
+
+class TestRunCompression:
+    """Direct tests for ``_run_compression`` covering all 3 code paths.
+
+    Paths:
+    (a) No OpenAI client configured → truncation fallback immediately.
+    (b) LLM success → returns LLM-compressed result.
+    (c) LLM call raises → truncation fallback.
+    """
+
+    def _make_compress_result(self, was_compacted: bool, msgs=None):
+        """Build a minimal CompressResult-like object."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            was_compacted=was_compacted,
+            messages=msgs or [{"role": "user", "content": "summary"}],
+            original_token_count=500,
+            token_count=100 if was_compacted else 500,
+            messages_summarized=2 if was_compacted else 0,
+            messages_dropped=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_client_uses_truncation(self):
+        """Path (a): ``get_openai_client()`` returns None → truncation only."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated"}]
+        )
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                new_callable=AsyncMock,
+                return_value=truncation_result,
+            ) as mock_compress,
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "hello"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called with client=None (truncation mode)
+        call_kwargs = mock_compress.call_args
+        assert (
+            call_kwargs.kwargs.get("client") is None
+            or (call_kwargs.args and call_kwargs.args[2] is None)
+            or mock_compress.call_args[1].get("client") is None
+        )
+        assert result is truncation_result
+
+    @pytest.mark.asyncio
+    async def test_llm_success_returns_llm_result(self):
+        """Path (b): ``get_openai_client()`` returns a client → LLM compresses."""
+        from .transcript import _run_compression
+
+        llm_result = self._make_compress_result(
+            True, [{"role": "user", "content": "LLM summary"}]
+        )
+        mock_client = MagicMock()
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                new_callable=AsyncMock,
+                return_value=llm_result,
+            ) as mock_compress,
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called with the real client
+        assert mock_compress.called
+        assert result is llm_result
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_falls_back_to_truncation(self):
+        """Path (c): LLM call raises → truncation fallback used instead."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated fallback"}]
+        )
+        mock_client = MagicMock()
+        call_count = [0]
+
+        async def _compress_side_effect(**kwargs):
+            call_count[0] += 1
+            if kwargs.get("client") is not None:
+                raise RuntimeError("LLM timeout")
+            return truncation_result
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                side_effect=_compress_side_effect,
+            ),
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called twice: once for LLM (raises), once for truncation
+        assert call_count[0] == 2
+        assert result is truncation_result
+
+    @pytest.mark.asyncio
+    async def test_llm_timeout_falls_back_to_truncation(self):
+        """Path (d): LLM call exceeds timeout → truncation fallback used."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated after timeout"}]
+        )
+        call_count = [0]
+
+        async def _compress_side_effect(*, messages, model, client):
+            call_count[0] += 1
+            if client is not None:
+                # Simulate a hang that exceeds the timeout
+                await asyncio.sleep(9999)
+            return truncation_result
+
+        fake_client = MagicMock()
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                side_effect=_compress_side_effect,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._COMPACTION_TIMEOUT_SECONDS",
+                0.05,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._TRUNCATION_TIMEOUT_SECONDS",
+                5,
+            ),
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called twice: once for LLM (times out), once truncation
+        assert call_count[0] == 2
+        assert result is truncation_result
 
 
 # ---------------------------------------------------------------------------

@@ -3,16 +3,14 @@
 Blocks for posting content to LinkedIn using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
-## Post To Linked In
+## Post To LinkedIn
 
 ### What it is
 Post to LinkedIn using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses Ayrshare's social media API to post content to LinkedIn. It handles text posts, images, videos, and documents, with support for scheduling and audience targeting. The block authenticates through Ayrshare's API.
-
-LinkedIn-specific features include visibility controls, comment management, and targeting by country, seniority, industry, and other demographics (requires 300+ followers in target audience).
+_Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
@@ -53,11 +51,7 @@ LinkedIn-specific features include visibility controls, comment management, and 
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Thought Leadership**: Automatically share blog posts or industry insights with professional network.
-
-**Scheduled Content**: Queue up a week's worth of LinkedIn posts with scheduled publishing times.
-
-**Targeted Announcements**: Share company updates targeted to specific industries or seniority levels.
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---
