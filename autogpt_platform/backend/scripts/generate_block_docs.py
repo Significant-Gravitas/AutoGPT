@@ -112,13 +112,10 @@ CATEGORY_FILE_MAP = {
 }
 
 
-_BRAND_NAMES: dict[str, str] = {
-    "AutoPilot": "AutoPilot",
-}
-
-
 def class_name_to_display_name(class_name: str) -> str:
     """Convert BlockClassName to 'Block Class Name'."""
+    from backend.util.text import _CAMELCASE_EXCEPTIONS
+
     # Remove 'Block' suffix (only at the end, not all occurrences)
     name = class_name.removesuffix("Block")
     # Insert space before capitals
@@ -127,10 +124,8 @@ def class_name_to_display_name(class_name: str) -> str:
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", name)
     name = name.strip()
     # Restore brand names that shouldn't be split
-    for split_form, brand in _BRAND_NAMES.items():
-        # Build the split version (e.g., "AutoPilot" -> "Auto Pilot")
-        split = re.sub(r"([a-z])([A-Z])", r"\1 \2", split_form)
-        name = name.replace(split, brand)
+    for split_form, brand in _CAMELCASE_EXCEPTIONS.items():
+        name = name.replace(split_form, brand)
     return name
 
 
