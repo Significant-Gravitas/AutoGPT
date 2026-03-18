@@ -24,7 +24,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -55,7 +55,11 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
-from backend.data.invited_user import get_or_activate_user
+from backend.data.invited_user import (
+    check_invite_eligibility,
+    get_or_activate_user,
+    is_internal_email,
+)
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -70,6 +74,7 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.redis_client import get_redis_async
 from backend.data.user import (
     get_user_by_id,
     get_user_notification_preference,
@@ -127,6 +132,69 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+
+
+class CheckInviteRequest(BaseModel):
+    email: EmailStr
+
+
+class CheckInviteResponse(BaseModel):
+    allowed: bool
+
+
+_CHECK_INVITE_RATE_LIMIT = 10  # requests
+_CHECK_INVITE_RATE_WINDOW = 60  # seconds
+
+
+@v1_router.post(
+    "/auth/check-invite",
+    summary="Check if an email is allowed to sign up",
+    tags=["auth"],
+)
+async def check_invite_route(
+    http_request: Request,
+    request: CheckInviteRequest,
+) -> CheckInviteResponse:
+    """Check if an email is allowed to sign up (no auth required).
+
+    Called by the frontend before creating a Supabase auth user to prevent
+    orphaned accounts when the invite gate is enabled.
+    """
+    client_ip = (
+        http_request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or http_request.headers.get("x-real-ip", "")
+        or (http_request.client.host if http_request.client else "unknown")
+    )
+    rate_key = f"rate:check-invite:{client_ip}"
+    try:
+        redis = await get_redis_async()
+        # Use a pipeline so that incr + expire are sent atomically.
+        # This prevents the key from persisting indefinitely when expire fails
+        # after a successful incr (which would permanently block the IP once
+        # the count exceeds the limit).
+        # NOTE: pipeline command methods (incr, expire) are NOT awaitable —
+        # they queue the command and return the pipeline. Only execute() is
+        # awaited, which flushes all queued commands in a single round-trip.
+        pipe = redis.pipeline()
+        pipe.incr(rate_key)
+        pipe.expire(rate_key, _CHECK_INVITE_RATE_WINDOW)
+        results = await pipe.execute()
+        count = results[0]
+        if count > _CHECK_INVITE_RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="Too many requests")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.debug("Rate limit check failed for check-invite, failing open")
+
+    if not settings.config.enable_invite_gate:
+        return CheckInviteResponse(allowed=True)
+
+    if is_internal_email(request.email):
+        return CheckInviteResponse(allowed=True)
+
+    allowed = await check_invite_eligibility(request.email)
+    return CheckInviteResponse(allowed=allowed)
 
 
 @v1_router.post(
