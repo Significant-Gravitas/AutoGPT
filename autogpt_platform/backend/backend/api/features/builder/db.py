@@ -11,7 +11,6 @@ import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
 from backend.blocks import load_all_blocks
-from backend.util.text import split_camelcase
 from backend.blocks._base import (
     AnyBlockSchema,
     BlockCategory,
@@ -23,6 +22,7 @@ from backend.blocks.llm import LlmModel
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
+from backend.util.text import split_camelcase
 
 from .model import (
     BlockCategoryResponse,
