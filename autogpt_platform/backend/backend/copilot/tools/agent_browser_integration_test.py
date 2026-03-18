@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from urllib.parse import urlparse
 
 import pytest
 
@@ -105,7 +106,7 @@ def test_get_url_after_navigate():
 
     rc, stdout, stderr = _ab("get", "url", timeout=10)
     assert rc == 0, f"get url failed: {stderr}"
-    assert stdout.strip().startswith("https://example.com")
+    assert urlparse(stdout.strip()).netloc == "example.com"
 
 
 def test_snapshot_returns_interactive_elements():
@@ -174,8 +175,8 @@ def test_concurrent_independent_sessions():
 
         _, url_a, _ = _ab_session(session_a, "get", "url", timeout=10)
         _, url_b, _ = _ab_session(session_b, "get", "url", timeout=10)
-        assert url_a.strip().startswith("https://example.com")
-        assert url_b.strip().startswith("https://httpbin.org")
+        assert urlparse(url_a.strip()).netloc == "example.com"
+        assert urlparse(url_b.strip()).netloc == "httpbin.org"
     finally:
         _close_session(session_a)
         _close_session(session_b)
