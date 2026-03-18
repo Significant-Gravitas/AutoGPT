@@ -427,6 +427,38 @@ async def _hybrid_search_blocks(
         min_score=0.10,
     )
 
+    # Fallback: if hybrid search returned no results (e.g. no block rows in
+    # UnifiedContentEmbedding because OpenAI credentials are unavailable),
+    # use in-memory text search over the block registry.
+    if not search_results:
+        logger.info(
+            "Hybrid block search returned no results, "
+            "falling back to in-memory text search"
+        )
+        all_results, block_count, integration_count = _collect_block_results(
+            include_blocks=include_blocks,
+            include_integrations=include_integrations,
+        )
+        # Re-score with text relevance instead of flat BLOCK_SCORE_BOOST
+        for item in all_results:
+            block_info = item.item
+            assert isinstance(block_info, BlockInfo)
+            name = block_info.name.lower()
+            description = (block_info.description or "").lower()
+            score = _score_primary_fields(name, description, normalized_query)
+            if score >= MIN_SCORE_FOR_FILTERED_RESULTS:
+                results.append(
+                    _ScoredItem(
+                        item=block_info,
+                        filter_type=item.filter_type,
+                        score=score + BLOCK_SCORE_BOOST,
+                        sort_key=name,
+                    )
+                )
+        block_count = sum(1 for r in results if r.filter_type == "blocks")
+        integration_count = sum(1 for r in results if r.filter_type == "integrations")
+        return results, block_count, integration_count
+
     # Load all blocks for getting BlockInfo
     all_blocks = load_all_blocks()
 
