@@ -100,7 +100,7 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level re
 
 | What happened | Action |
 |---|---|
-| New comments detected | Address them (fix → commit → push → reply). After pushing, restart this polling loop from the top (new commits invalidate CI status). |
+| New comments detected | Address them (fix → commit → push → reply). After pushing, re-fetch all comments to update your baseline, then restart this polling loop from the top (new commits invalidate CI status). |
 | CI failed (bucket == "fail") | Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] \| select(.bucket == "fail") \| .link'`. Extract run ID from link (format: `.../actions/runs/<run-id>/job/...`), read logs with `gh run view <run-id> --repo Significant-Gravitas/AutoGPT --log-failed`. Fix → commit → push → restart polling. |
 | CI green + no new comments | **Do not exit immediately.** Bots (coderabbitai, sentry) often post reviews shortly after CI settles. Continue polling for **2 more cycles (60s)** after CI goes green. Only exit after 2 consecutive green+quiet polls. |
 | CI pending + no new comments | Sleep 30 seconds, then poll again. |
