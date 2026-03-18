@@ -209,8 +209,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Ad Maker Video Creator](block-integrations/llm.md#ai-ad-maker-video-creator) | Creates an AI‑generated 30‑second advert (text + images) |
 | [AI Condition](block-integrations/llm.md#ai-condition) | Uses AI to evaluate natural language conditions and provide conditional outputs |
 | [AI Conversation](block-integrations/llm.md#ai-conversation) | A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges |
-| [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana model from Gemini 2 |
-| [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using BlackForest Labs' Flux Kontext models |
+| [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana models from Gemini |
+| [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using Flux Kontext or Google Nano Banana models |
 | [AI Image Generator](block-integrations/llm.md#ai-image-generator) | Generate images using various AI models through a unified interface |
 | [AI List Generator](block-integrations/llm.md#ai-list-generator) | A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context |
 | [AI Music Generator](block-integrations/llm.md#ai-music-generator) | This block generates music using Meta's MusicGen model on Replicate |
