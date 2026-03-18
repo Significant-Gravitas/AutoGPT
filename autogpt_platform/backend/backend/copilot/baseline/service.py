@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 import orjson
+from langfuse import propagate_attributes
 
 from backend.copilot.model import (
     ChatMessage,
@@ -21,6 +22,7 @@ from backend.copilot.model import (
     update_session_title,
     upsert_chat_session,
 )
+from backend.copilot.prompting import get_baseline_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -34,13 +36,15 @@ from backend.copilot.response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamUsage,
 )
 from backend.copilot.service import (
     _build_system_prompt,
     _generate_session_title,
-    client,
+    _get_openai_client,
     config,
 )
+from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
@@ -61,8 +65,8 @@ async def _update_title_async(
     """Generate and persist a session title in the background."""
     try:
         title = await _generate_session_title(message, user_id, session_id)
-        if title:
-            await update_session_title(session_id, title)
+        if title and user_id:
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
     except Exception as e:
         logger.warning("[Baseline] Failed to update session title: %s", e)
 
@@ -87,7 +91,7 @@ async def _compress_session_messages(
         result = await compress_context(
             messages=messages_dict,
             model=config.model,
-            client=client,
+            client=_get_openai_client(),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
@@ -175,13 +179,16 @@ async def stream_chat_completion_baseline(
     # changes from concurrent chats updating business understanding.
     is_first_turn = len(session.messages) <= 1
     if is_first_turn:
-        system_prompt, _ = await _build_system_prompt(
+        base_system_prompt, _ = await _build_system_prompt(
             user_id, has_conversation_history=False
         )
     else:
-        system_prompt, _ = await _build_system_prompt(
+        base_system_prompt, _ = await _build_system_prompt(
             user_id=None, has_conversation_history=True
         )
+
+    # Append tool documentation and technical notes
+    system_prompt = base_system_prompt + get_baseline_supplement()
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)
@@ -198,10 +205,28 @@ async def stream_chat_completion_baseline(
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
+    # Propagate user/session context to Langfuse so all LLM calls within
+    # this request are grouped under a single trace with proper attribution.
+    _trace_ctx: Any = None
+    try:
+        _trace_ctx = propagate_attributes(
+            user_id=user_id,
+            session_id=session_id,
+            trace_name="copilot-baseline",
+            tags=["baseline"],
+        )
+        _trace_ctx.__enter__()
+    except Exception:
+        logger.warning("[Baseline] Langfuse trace context setup failed")
+
     assistant_text = ""
     text_block_id = str(uuid.uuid4())
     text_started = False
     step_open = False
+    # Token usage accumulators — populated from streaming chunks
+    turn_prompt_tokens = 0
+    turn_completion_tokens = 0
+    _stream_error = False  # Track whether an error occurred during streaming
     try:
         for _round in range(_MAX_TOOL_ROUNDS):
             # Open a new step for each LLM round
@@ -213,16 +238,31 @@ async def stream_chat_completion_baseline(
                 model=config.model,
                 messages=openai_messages,
                 stream=True,
+                stream_options={"include_usage": True},
             )
             if tools:
                 create_kwargs["tools"] = tools
-            response = await client.chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
+            response = await _get_openai_client().chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
             # Accumulate streamed response (text + tool calls)
             round_text = ""
             tool_calls_by_index: dict[int, dict[str, str]] = {}
 
             async for chunk in response:
+                # Capture token usage from the streaming chunk.
+                # OpenRouter normalises all providers into OpenAI format
+                # where prompt_tokens already includes cached tokens
+                # (unlike Anthropic's native API). Use += to sum all
+                # tool-call rounds since each API call is independent.
+                # NOTE: stream_options={"include_usage": True} is not
+                # universally supported — some providers (Mistral, Llama
+                # via OpenRouter) always return chunk.usage=None. When
+                # that happens, tokens stay 0 and the tiktoken fallback
+                # below activates. Fail-open: one round is estimated.
+                if chunk.usage:
+                    turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    turn_completion_tokens += chunk.usage.completion_tokens or 0
+
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
                     continue
@@ -272,7 +312,7 @@ async def stream_chat_completion_baseline(
             yield StreamFinishStep()
             step_open = False
 
-            # Append the assistant message with tool_calls to context
+            # Append the assistant message with tool_calls to context.
             assistant_msg: dict[str, Any] = {"role": "assistant"}
             if round_text:
                 assistant_msg["content"] = round_text
@@ -282,7 +322,7 @@ async def stream_chat_completion_baseline(
                     "type": "function",
                     "function": {
                         "name": tc["name"],
-                        "arguments": tc["arguments"],
+                        "arguments": tc["arguments"] or "{}",
                     },
                 }
                 for tc in tool_calls_by_index.values()
@@ -375,6 +415,7 @@ async def stream_chat_completion_baseline(
             )
 
     except Exception as e:
+        _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
         # Close any open text/step before emitting error
@@ -385,6 +426,56 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
+        # Close Langfuse trace context
+        if _trace_ctx is not None:
+            try:
+                _trace_ctx.__exit__(None, None, None)
+            except Exception:
+                logger.warning("[Baseline] Langfuse trace context teardown failed")
+
+        # Fallback: estimate tokens via tiktoken when the provider does
+        # not honour stream_options={"include_usage": True}.
+        # Count the full message list (system + history + turn) since
+        # each API call sends the complete context window.
+        # NOTE: This estimates one round's prompt tokens. Multi-round tool-calling
+        # turns consume prompt tokens on each API call, so the total is underestimated.
+        # Skip fallback when an error occurred and no output was produced —
+        # charging rate-limit tokens for completely failed requests is unfair.
+        if (
+            turn_prompt_tokens == 0
+            and turn_completion_tokens == 0
+            and not (_stream_error and not assistant_text)
+        ):
+            from backend.util.prompt import (
+                estimate_token_count,
+                estimate_token_count_str,
+            )
+
+            turn_prompt_tokens = max(
+                estimate_token_count(openai_messages, model=config.model), 1
+            )
+            turn_completion_tokens = estimate_token_count_str(
+                assistant_text, model=config.model
+            )
+            logger.info(
+                "[Baseline] No streaming usage reported; estimated tokens: "
+                "prompt=%d, completion=%d",
+                turn_prompt_tokens,
+                turn_completion_tokens,
+            )
+
+        # Persist token usage to session and record for rate limiting.
+        # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we
+        # cannot break out cache_read/cache_creation weights. Users on the
+        # baseline path may be slightly over-counted vs the SDK path.
+        await persist_and_record_usage(
+            session=session,
+            user_id=user_id,
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            log_prefix="[Baseline]",
+        )
+
         # Persist assistant response
         if assistant_text:
             session.messages.append(
@@ -394,5 +485,17 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+    # Yield usage and finish AFTER try/finally (not inside finally).
+    # PEP 525 prohibits yielding from finally in async generators during
+    # aclose() — doing so raises RuntimeError on client disconnect.
+    # On GeneratorExit the client is already gone, so unreachable yields
+    # are harmless; on normal completion they reach the SSE stream.
+    if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+        yield StreamUsage(
+            prompt_tokens=turn_prompt_tokens,
+            completion_tokens=turn_completion_tokens,
+            total_tokens=turn_prompt_tokens + turn_completion_tokens,
+        )
 
     yield StreamFinish()

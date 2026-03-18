@@ -100,7 +100,7 @@ async def test_ssrf_blocked_url_returns_error():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url",
+        "backend.copilot.tools.run_mcp_tool.validate_url_host",
         new_callable=AsyncMock,
         side_effect=ValueError("blocked loopback"),
     ):
@@ -138,7 +138,7 @@ async def test_non_dict_tool_arguments_returns_error():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url",
+        "backend.copilot.tools.run_mcp_tool.validate_url_host",
         new_callable=AsyncMock,
     ):
         with patch(
@@ -171,7 +171,7 @@ async def test_discover_tools_returns_discovered_response():
     mock_tools = _make_tool_list("fetch", "search")
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -208,7 +208,7 @@ async def test_discover_tools_with_credentials():
     mock_tools = _make_tool_list("push_notification")
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -249,7 +249,7 @@ async def test_execute_tool_returns_output_response():
     text_result = "# Example Domain\nThis domain is for examples."
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -285,7 +285,7 @@ async def test_execute_tool_parses_json_result():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -320,7 +320,7 @@ async def test_execute_tool_image_content():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -359,7 +359,7 @@ async def test_execute_tool_resource_content():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -399,7 +399,7 @@ async def test_execute_tool_multi_item_content():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -437,7 +437,7 @@ async def test_execute_tool_empty_content_returns_none():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -470,7 +470,7 @@ async def test_execute_tool_returns_error_on_tool_failure():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -512,7 +512,7 @@ async def test_auth_required_without_creds_returns_setup_requirements():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -555,7 +555,7 @@ async def test_auth_error_with_existing_creds_returns_error():
     mock_creds.access_token = SecretStr("stale-token")
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -581,6 +581,49 @@ async def test_auth_error_with_existing_creds_returns_error():
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_http_error_returns_clean_message_with_collapsible_detail():
+    """Non-auth HTTP errors return a clean message with raw detail in the `error` field."""
+    from backend.util.request import HTTPClientError
+
+    tool = RunMCPToolTool()
+    session = make_session(_USER_ID)
+
+    with patch(
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
+    ):
+        with patch(
+            "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            mock_client = AsyncMock()
+            mock_client.initialize = AsyncMock(
+                side_effect=HTTPClientError(
+                    "<!doctype html><html><body>Not Found</body></html>",
+                    status_code=404,
+                )
+            )
+            with patch(
+                "backend.copilot.tools.run_mcp_tool.MCPClient",
+                return_value=mock_client,
+            ):
+                response = await tool._execute(
+                    user_id=_USER_ID,
+                    session=session,
+                    server_url=_SERVER_URL,
+                )
+
+    assert isinstance(response, ErrorResponse)
+    assert "404" in response.message
+    # Raw HTML body must NOT leak into the user-facing message
+    assert "<!doctype" not in response.message
+    # Raw detail (including original body) goes in the collapsible `error` field
+    assert response.error is not None
+    assert "404" in response.error
+    assert "<!doctype" in response.error.lower()
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_mcp_client_error_returns_error_response():
     """MCPClientError (protocol-level) maps to a clean ErrorResponse."""
     from backend.blocks.mcp.client import MCPClientError
@@ -589,7 +632,7 @@ async def test_mcp_client_error_returns_error_response():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -621,7 +664,7 @@ async def test_unexpected_exception_returns_generic_error():
     session = make_session(_USER_ID)
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -719,7 +762,7 @@ async def test_credential_lookup_normalizes_trailing_slash():
     url_with_slash = "https://mcp.example.com/mcp/"
 
     with patch(
-        "backend.copilot.tools.run_mcp_tool.validate_url", new_callable=AsyncMock
+        "backend.copilot.tools.run_mcp_tool.validate_url_host", new_callable=AsyncMock
     ):
         with patch(
             "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
@@ -756,4 +799,4 @@ async def test_build_setup_requirements_returns_setup_response():
     )
     assert isinstance(result, SetupRequirementsResponse)
     assert result.setup_info.agent_id == _SERVER_URL
-    assert "authentication" in result.message.lower()
+    assert "sign in" in result.message.lower()

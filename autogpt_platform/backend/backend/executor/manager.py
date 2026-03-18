@@ -61,7 +61,12 @@ from backend.util.decorator import (
     error_logged,
     time_measured,
 )
-from backend.util.exceptions import InsufficientBalanceError, ModerationError
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    InsufficientBalanceError,
+    ModerationError,
+    NotFoundError,
+)
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.metrics import DiscordChannel
@@ -375,9 +380,16 @@ async def execute_node(
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
     except Exception as ex:
-        # Capture exception WITH context still set before restoring scope
-        sentry_sdk.capture_exception(error=ex, scope=scope)
-        sentry_sdk.flush()  # Ensure it's sent before we restore scope
+        # Only capture unexpected errors to Sentry, not user-caused ones.
+        # Most ValueError subclasses here are expected (BlockExecutionError,
+        # InsufficientBalanceError, plain ValueError for auth/disabled blocks, etc.)
+        # but NotFoundError/GraphNotFoundError could indicate real platform issues.
+        is_expected = isinstance(ex, ValueError) and not isinstance(
+            ex, (NotFoundError, GraphNotFoundError)
+        )
+        if not is_expected:
+            sentry_sdk.capture_exception(error=ex, scope=scope)
+            sentry_sdk.flush()
         # Re-raise to maintain normal error flow
         raise
     finally:
@@ -1478,7 +1490,7 @@ class ExecutionProcessor:
                     alert_message, DiscordChannel.PRODUCT
                 )
             except Exception as e:
-                logger.error(f"Failed to send low balance Discord alert: {e}")
+                logger.warning(f"Failed to send low balance Discord alert: {e}")
 
 
 class ExecutionManager(AppProcess):
@@ -1900,17 +1912,16 @@ class ExecutionManager(AppProcess):
             channel = client.get_channel()
             channel.connection.add_callback_threadsafe(lambda: channel.stop_consuming())
 
-            try:
-                thread.join(timeout=300)
-            except TimeoutError:
-                logger.error(
+            thread.join(timeout=300)
+            if thread.is_alive():
+                logger.warning(
                     f"{prefix} ⚠️ Run thread did not finish in time, forcing disconnect"
                 )
 
             client.disconnect()
             logger.info(f"{prefix} ✅ Run client disconnected")
         except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
+            logger.warning(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
 
     def cleanup(self):
         """Override cleanup to implement graceful shutdown with active execution waiting."""
@@ -1926,7 +1937,9 @@ class ExecutionManager(AppProcess):
             )
             logger.info(f"{prefix} ✅ Exec consumer has been signaled to stop")
         except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}")
+            logger.warning(
+                f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}"
+            )
 
         # Wait for active executions to complete
         if self.active_graph_runs:
@@ -1957,7 +1970,7 @@ class ExecutionManager(AppProcess):
                 waited += wait_interval
 
             if self.active_graph_runs:
-                logger.error(
+                logger.warning(
                     f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
                 )
             else:
@@ -1968,7 +1981,7 @@ class ExecutionManager(AppProcess):
             self.executor.shutdown(cancel_futures=True, wait=False)
             logger.info(f"{prefix} ✅ Executor shutdown completed")
         except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
+            logger.warning(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
 
         # Release remaining execution locks
         try:

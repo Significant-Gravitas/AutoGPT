@@ -19,6 +19,7 @@ from prisma.errors import PrismaError
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -55,6 +56,7 @@ from backend.util.exceptions import (
     MissingConfigError,
     NotAuthorizedError,
     NotFoundError,
+    PreconditionFailed,
 )
 from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchdarkly
 from backend.util.service import UnhealthyServiceError
@@ -275,6 +277,7 @@ app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
+app.add_exception_handler(PreconditionFailed, handle_internal_http_error(428))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 
 app.include_router(backend.api.features.v1.v1_router, tags=["v1"], prefix="/api")
@@ -308,6 +311,11 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/users",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,

@@ -10,13 +10,7 @@ from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.data.graph import Graph, Link, Node
 from backend.util.exceptions import DatabaseError, NotFoundError
 
-from .service import (
-    customize_template_external,
-    decompose_goal_external,
-    generate_agent_external,
-    generate_agent_patch_external,
-    is_external_service_configured,
-)
+from .helpers import UUID_RE_STR
 
 logger = logging.getLogger(__name__)
 
@@ -78,38 +72,7 @@ class DecompositionResult(TypedDict, total=False):
 AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary | dict[str, Any]
 
 
-def _to_dict_list(
-    agents: Sequence[AgentSummary] | Sequence[dict[str, Any]] | None,
-) -> list[dict[str, Any]] | None:
-    """Convert typed agent summaries to plain dicts for external service calls."""
-    if agents is None:
-        return None
-    return [dict(a) for a in agents]
-
-
-class AgentGeneratorNotConfiguredError(Exception):
-    """Raised when the external Agent Generator service is not configured."""
-
-    pass
-
-
-def _check_service_configured() -> None:
-    """Check if the external Agent Generator service is configured.
-
-    Raises:
-        AgentGeneratorNotConfiguredError: If the service is not configured.
-    """
-    if not is_external_service_configured():
-        raise AgentGeneratorNotConfiguredError(
-            "Agent Generator service is not configured. "
-            "Set AGENTGENERATOR_HOST environment variable to enable agent generation."
-        )
-
-
-_UUID_PATTERN = re.compile(
-    r"[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}",
-    re.IGNORECASE,
-)
+_UUID_PATTERN = re.compile(UUID_RE_STR, re.IGNORECASE)
 
 
 def extract_uuids_from_text(text: str) -> list[str]:
@@ -553,69 +516,6 @@ async def enrich_library_agents_from_steps(
     return all_agents
 
 
-async def decompose_goal(
-    description: str,
-    context: str = "",
-    library_agents: Sequence[AgentSummary] | None = None,
-) -> DecompositionResult | None:
-    """Break down a goal into steps or return clarifying questions.
-
-    Args:
-        description: Natural language goal description
-        context: Additional context (e.g., answers to previous questions)
-        library_agents: User's library agents available for sub-agent composition
-
-    Returns:
-        DecompositionResult with either:
-        - {"type": "clarifying_questions", "questions": [...]}
-        - {"type": "instructions", "steps": [...]}
-        Or None on error
-
-    Raises:
-        AgentGeneratorNotConfiguredError: If the external service is not configured.
-    """
-    _check_service_configured()
-    logger.info("Calling external Agent Generator service for decompose_goal")
-    result = await decompose_goal_external(
-        description, context, _to_dict_list(library_agents)
-    )
-    return result  # type: ignore[return-value]
-
-
-async def generate_agent(
-    instructions: DecompositionResult | dict[str, Any],
-    library_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]] | None = None,
-) -> dict[str, Any] | None:
-    """Generate agent JSON from instructions.
-
-    Args:
-        instructions: Structured instructions from decompose_goal
-        library_agents: User's library agents available for sub-agent composition
-
-    Returns:
-        Agent JSON dict, error dict {"type": "error", ...}, or None on error
-
-    Raises:
-        AgentGeneratorNotConfiguredError: If the external service is not configured.
-    """
-    _check_service_configured()
-    logger.info("Calling external Agent Generator service for generate_agent")
-    result = await generate_agent_external(
-        dict(instructions), _to_dict_list(library_agents)
-    )
-
-    if result:
-        if isinstance(result, dict) and result.get("type") == "error":
-            return result
-        if "id" not in result:
-            result["id"] = str(uuid.uuid4())
-        if "version" not in result:
-            result["version"] = 1
-        if "is_active" not in result:
-            result["is_active"] = True
-    return result
-
-
 class AgentJsonValidationError(Exception):
     """Raised when agent JSON is invalid or missing required fields."""
 
@@ -695,7 +595,10 @@ def json_to_graph(agent_json: dict[str, Any]) -> Graph:
 
 
 async def save_agent_to_library(
-    agent_json: dict[str, Any], user_id: str, is_update: bool = False
+    agent_json: dict[str, Any],
+    user_id: str,
+    is_update: bool = False,
+    folder_id: str | None = None,
 ) -> tuple[Graph, Any]:
     """Save agent to database and user's library.
 
@@ -703,6 +606,7 @@ async def save_agent_to_library(
         agent_json: Agent JSON dict
         user_id: User ID
         is_update: Whether this is an update to an existing agent
+        folder_id: Optional folder ID to place the agent in
 
     Returns:
         Tuple of (created Graph, LibraryAgent)
@@ -711,7 +615,7 @@ async def save_agent_to_library(
     db = library_db()
     if is_update:
         return await db.update_graph_in_library(graph, user_id)
-    return await db.create_graph_in_library(graph, user_id)
+    return await db.create_graph_in_library(graph, user_id, folder_id=folder_id)
 
 
 def graph_to_json(graph: Graph) -> dict[str, Any]:
@@ -788,70 +692,3 @@ async def get_agent_as_json(
         return None
 
     return graph_to_json(graph)
-
-
-async def generate_agent_patch(
-    update_request: str,
-    current_agent: dict[str, Any],
-    library_agents: Sequence[AgentSummary] | None = None,
-) -> dict[str, Any] | None:
-    """Update an existing agent using natural language.
-
-    The external Agent Generator service handles:
-    - Generating the patch
-    - Applying the patch
-    - Fixing and validating the result
-
-    Args:
-        update_request: Natural language description of changes
-        current_agent: Current agent JSON
-        library_agents: User's library agents available for sub-agent composition
-
-    Returns:
-        Updated agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
-        error dict {"type": "error", ...}, or None on error
-
-    Raises:
-        AgentGeneratorNotConfiguredError: If the external service is not configured.
-    """
-    _check_service_configured()
-    logger.info("Calling external Agent Generator service for generate_agent_patch")
-    return await generate_agent_patch_external(
-        update_request,
-        current_agent,
-        _to_dict_list(library_agents),
-    )
-
-
-async def customize_template(
-    template_agent: dict[str, Any],
-    modification_request: str,
-    context: str = "",
-) -> dict[str, Any] | None:
-    """Customize a template/marketplace agent using natural language.
-
-    This is used when users want to modify a template or marketplace agent
-    to fit their specific needs before adding it to their library.
-
-    The external Agent Generator service handles:
-    - Understanding the modification request
-    - Applying changes to the template
-    - Fixing and validating the result
-
-    Args:
-        template_agent: The template agent JSON to customize
-        modification_request: Natural language description of customizations
-        context: Additional context (e.g., answers to previous questions)
-
-    Returns:
-        Customized agent JSON, clarifying questions dict {"type": "clarifying_questions", ...},
-        error dict {"type": "error", ...}, or None on unexpected error
-
-    Raises:
-        AgentGeneratorNotConfiguredError: If the external service is not configured.
-    """
-    _check_service_configured()
-    logger.info("Calling external Agent Generator service for customize_template")
-    return await customize_template_external(
-        template_agent, modification_request, context
-    )

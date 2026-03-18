@@ -1,20 +1,16 @@
 "use client";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DotsThree, UploadSimple } from "@phosphor-icons/react";
+import { UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
+import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
+import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
@@ -87,10 +83,9 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
-    // Delete functionality
+    // Delete functionality (available via ChatSidebar context menu on all viewports)
     sessionToDelete,
     isDeleting,
-    handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
   } = useCopilotPage();
@@ -117,6 +112,7 @@ export function CopilotPage() {
         onDrop={handleDrop}
       >
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+        <NotificationBanner />
         {/* Drop overlay */}
         <div
           className={cn(
@@ -145,38 +141,6 @@ export function CopilotPage() {
             isUploadingFiles={isUploadingFiles}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
-            headerSlot={
-              isMobile && sessionId ? (
-                <div className="flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className="rounded p-1.5 hover:bg-neutral-100"
-                        aria-label="More actions"
-                      >
-                        <DotsThree className="h-5 w-5 text-neutral-600" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          const session = sessions.find(
-                            (s) => s.id === sessionId,
-                          );
-                          if (session) {
-                            handleDeleteClick(session.id, session.title);
-                          }
-                        }}
-                        disabled={isDeleting}
-                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                      >
-                        Delete chat
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : undefined
-            }
           />
         </div>
       </div>
@@ -201,6 +165,7 @@ export function CopilotPage() {
           onCancel={handleCancelDelete}
         />
       )}
+      <NotificationDialog />
     </SidebarProvider>
   );
 }

@@ -21,10 +21,11 @@ from typing import Any
 from e2b import AsyncSandbox
 from e2b.exceptions import TimeoutException
 
+from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
+from backend.copilot.integration_creds import get_integration_env_vars
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .e2b_sandbox import E2B_WORKDIR
 from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
@@ -74,7 +75,10 @@ class BashExecTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
-        return False
+        # True because _execute_on_e2b injects user tokens (GH_TOKEN etc.)
+        # when user_id is present.  Defense-in-depth: ensures only authenticated
+        # users reach the token injection path.
+        return True
 
     async def _execute(
         self,
@@ -82,6 +86,14 @@ class BashExecTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Run a bash command on E2B (if available) or in a bubblewrap sandbox.
+
+        Dispatches to :meth:`_execute_on_e2b` when a sandbox is present in the
+        current execution context, otherwise falls back to the local bubblewrap
+        sandbox.  Returns a :class:`BashExecResponse` on success or an
+        :class:`ErrorResponse` when the sandbox is unavailable or the command
+        is empty.
+        """
         session_id = session.session_id if session else None
 
         command: str = (kwargs.get("command") or "").strip()
@@ -94,12 +106,11 @@ class BashExecTool(BaseTool):
                 session_id=session_id,
             )
 
-        # E2B path: run on remote cloud sandbox when available.
-        from backend.copilot.sdk.tool_adapter import get_current_sandbox
-
         sandbox = get_current_sandbox()
         if sandbox is not None:
-            return await self._execute_on_e2b(sandbox, command, timeout, session_id)
+            return await self._execute_on_e2b(
+                sandbox, command, timeout, session_id, user_id
+            )
 
         # Bubblewrap fallback: local isolated execution.
         if not has_full_sandbox():
@@ -136,19 +147,42 @@ class BashExecTool(BaseTool):
         command: str,
         timeout: int,
         session_id: str | None,
+        user_id: str | None = None,
     ) -> ToolResponseBase:
-        """Execute *command* on the E2B sandbox via commands.run()."""
+        """Execute *command* on the E2B sandbox via commands.run().
+
+        Integration tokens (e.g. GH_TOKEN) are injected into the sandbox env
+        for any user with connected accounts. E2B has full internet access, so
+        CLI tools like ``gh`` work without manual authentication.
+        """
+        envs: dict[str, str] = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        }
+        # Collect injected secret values so we can scrub them from output.
+        secret_values: list[str] = []
+        if user_id is not None:
+            integration_env = await get_integration_env_vars(user_id)
+            secret_values = [v for v in integration_env.values() if v]
+            envs.update(integration_env)
+
         try:
             result = await sandbox.commands.run(
                 f"bash -c {shlex.quote(command)}",
                 cwd=E2B_WORKDIR,
                 timeout=timeout,
-                envs={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+                envs=envs,
             )
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            # Scrub injected tokens from command output to prevent exfiltration
+            # via `echo $GH_TOKEN`, `env`, `printenv`, etc.
+            for secret in secret_values:
+                stdout = stdout.replace(secret, "[REDACTED]")
+                stderr = stderr.replace(secret, "[REDACTED]")
             return BashExecResponse(
                 message=f"Command executed on E2B (exit {result.exit_code})",
-                stdout=result.stdout or "",
-                stderr=result.stderr or "",
+                stdout=stdout,
+                stderr=stderr,
                 exit_code=result.exit_code,
                 timed_out=False,
                 session_id=session_id,

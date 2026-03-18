@@ -2,15 +2,22 @@
 
 import base64
 import logging
+import mimetypes
 import os
 from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from backend.copilot.context import (
+    E2B_WORKDIR,
+    get_current_sandbox,
+    get_sdk_cwd,
+    get_workspace_manager,
+    is_allowed_local_path,
+    resolve_sandbox_path,
+)
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.e2b_sandbox import E2B_WORKDIR
 from backend.copilot.tools.sandbox import make_session_path
-from backend.data.db_accessors import workspace_db
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
@@ -19,6 +26,10 @@ from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
+
+# Sentinel file_id used when a tool-result file is read directly from the local
+# host filesystem (rather than from workspace storage).
+_LOCAL_TOOL_RESULT_FILE_ID = "local"
 
 
 async def _resolve_write_content(
@@ -83,13 +94,11 @@ def _resolve_sandbox_path(
 ) -> str | ErrorResponse:
     """Normalize *path* to an absolute sandbox path under :data:`E2B_WORKDIR`.
 
-    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools._resolve_remote`
+    Delegates to :func:`~backend.copilot.sdk.e2b_file_tools.resolve_sandbox_path`
     and wraps any ``ValueError`` into an :class:`ErrorResponse`.
     """
-    from backend.copilot.sdk.e2b_file_tools import _resolve_remote
-
     try:
-        return _resolve_remote(path)
+        return resolve_sandbox_path(path)
     except ValueError:
         return ErrorResponse(
             message=f"{param_name} must be within {E2B_WORKDIR}",
@@ -99,7 +108,6 @@ def _resolve_sandbox_path(
 
 async def _read_source_path(source_path: str, session_id: str) -> bytes | ErrorResponse:
     """Read *source_path* from E2B sandbox or local ephemeral directory."""
-    from backend.copilot.sdk.tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is not None:
@@ -143,7 +151,6 @@ async def _save_to_path(
 
     Returns the resolved path on success, or an ``ErrorResponse`` on failure.
     """
-    from backend.copilot.sdk.tool_adapter import get_current_sandbox
 
     sandbox = get_current_sandbox()
     if sandbox is not None:
@@ -218,12 +225,6 @@ def _is_text_mime(mime_type: str) -> bool:
     return any(mime_type.startswith(t) for t in _TEXT_MIME_PREFIXES)
 
 
-async def get_manager(user_id: str, session_id: str) -> WorkspaceManager:
-    """Create a session-scoped WorkspaceManager."""
-    workspace = await workspace_db().get_or_create_workspace(user_id)
-    return WorkspaceManager(user_id, workspace.id, session_id)
-
-
 async def _resolve_file(
     manager: WorkspaceManager,
     file_id: str | None,
@@ -279,6 +280,93 @@ class WorkspaceFileContentResponse(ToolResponseBase):
     path: str
     mime_type: str
     content_base64: str
+
+
+_MAX_LOCAL_TOOL_RESULT_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+def _read_local_tool_result(
+    path: str,
+    char_offset: int,
+    char_length: Optional[int],
+    session_id: str,
+    sdk_cwd: str | None = None,
+) -> ToolResponseBase:
+    """Read an SDK tool-result file from local disk.
+
+    This is a fallback for when the model mistakenly calls
+    ``read_workspace_file`` with an SDK tool-result path that only exists on
+    the host filesystem, not in cloud workspace storage.
+
+    Defence-in-depth: validates *path* via :func:`is_allowed_local_path`
+    regardless of what the caller has already checked.
+    """
+    # TOCTOU: path validated then opened separately. Acceptable because
+    # the tool-results directory is server-controlled, not user-writable.
+    expanded = os.path.realpath(os.path.expanduser(path))
+    # Defence-in-depth: re-check with resolved path (caller checked raw path).
+    if not is_allowed_local_path(expanded, sdk_cwd or get_sdk_cwd()):
+        return ErrorResponse(
+            message=f"Path not allowed: {os.path.basename(path)}", session_id=session_id
+        )
+    try:
+        # The 10 MB cap (_MAX_LOCAL_TOOL_RESULT_BYTES) bounds memory usage.
+        # Pre-read size check prevents loading files far above the cap;
+        # the remaining TOCTOU gap is acceptable for server-controlled paths.
+        file_size = os.path.getsize(expanded)
+        if file_size > _MAX_LOCAL_TOOL_RESULT_BYTES:
+            return ErrorResponse(
+                message=(f"File too large: {os.path.basename(path)}"),
+                session_id=session_id,
+            )
+
+        # Detect binary files: try strict UTF-8 first, fall back to
+        # base64-encoding the raw bytes for binary content.
+        with open(expanded, "rb") as fh:
+            raw = fh.read()
+        try:
+            text_content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # Binary file — return raw base64, ignore char_offset/char_length
+            return WorkspaceFileContentResponse(
+                file_id=_LOCAL_TOOL_RESULT_FILE_ID,
+                name=os.path.basename(path),
+                path=path,
+                mime_type=mimetypes.guess_type(path)[0] or "application/octet-stream",
+                content_base64=base64.b64encode(raw).decode("ascii"),
+                message=(
+                    f"Read {file_size:,} bytes (binary) from local tool-result "
+                    f"{os.path.basename(path)}"
+                ),
+                session_id=session_id,
+            )
+
+        end = (
+            char_offset + char_length if char_length is not None else len(text_content)
+        )
+        slice_text = text_content[char_offset:end]
+    except FileNotFoundError:
+        return ErrorResponse(
+            message=f"File not found: {os.path.basename(path)}", session_id=session_id
+        )
+    except Exception as exc:
+        return ErrorResponse(
+            message=f"Error reading file: {type(exc).__name__}", session_id=session_id
+        )
+
+    return WorkspaceFileContentResponse(
+        file_id=_LOCAL_TOOL_RESULT_FILE_ID,
+        name=os.path.basename(path),
+        path=path,
+        mime_type=mimetypes.guess_type(path)[0] or "text/plain",
+        content_base64=base64.b64encode(slice_text.encode("utf-8")).decode("ascii"),
+        message=(
+            f"Read chars {char_offset}\u2013{char_offset + len(slice_text)} "
+            f"of {len(text_content):,} chars from local tool-result "
+            f"{os.path.basename(path)}"
+        ),
+        session_id=session_id,
+    )
 
 
 class WorkspaceFileMetadataResponse(ToolResponseBase):
@@ -386,7 +474,7 @@ class ListWorkspaceFilesTool(BaseTool):
         include_all_sessions: bool = kwargs.get("include_all_sessions", False)
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             files = await manager.list_files(
                 path=path_prefix, limit=limit, include_all_sessions=include_all_sessions
             )
@@ -432,7 +520,7 @@ class ListWorkspaceFilesTool(BaseTool):
 class ReadWorkspaceFileTool(BaseTool):
     """Tool for reading file content from workspace."""
 
-    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB
+    MAX_INLINE_SIZE_BYTES = 32 * 1024  # 32KB for text/image files
     PREVIEW_SIZE = 500
 
     @property
@@ -448,8 +536,10 @@ class ReadWorkspaceFileTool(BaseTool):
             "Specify either file_id or path to identify the file. "
             "For small text files, returns content directly. "
             "For large or binary files, returns metadata and a download URL. "
-            "Optionally use 'save_to_path' to copy the file to the ephemeral "
-            "working directory for processing with bash_exec or SDK tools. "
+            "Use 'save_to_path' to copy the file to the working directory "
+            "(sandbox or ephemeral) for processing with bash_exec or file tools. "
+            "Use 'offset' and 'length' for paginated reads of large files "
+            "(e.g., persisted tool outputs). "
             "Paths are scoped to the current session by default. "
             "Use /sessions/<session_id>/... for cross-session access."
         )
@@ -473,9 +563,10 @@ class ReadWorkspaceFileTool(BaseTool):
                 "save_to_path": {
                     "type": "string",
                     "description": (
-                        "If provided, save the file to this path in the ephemeral "
-                        "working directory (e.g., '/tmp/copilot-.../data.csv') "
-                        "so it can be processed with bash_exec or SDK tools. "
+                        "If provided, save the file to this path in the working "
+                        "directory (cloud sandbox when E2B is active, or "
+                        "ephemeral dir otherwise) so it can be processed with "
+                        "bash_exec or file tools. "
                         "The file content is still returned in the response."
                     ),
                 },
@@ -484,6 +575,20 @@ class ReadWorkspaceFileTool(BaseTool):
                     "description": (
                         "If true, always return metadata+URL instead of inline content. "
                         "Default is false (auto-selects based on file size/type)."
+                    ),
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": (
+                        "Character offset to start reading from (0-based). "
+                        "Use with 'length' for paginated reads of large files."
+                    ),
+                },
+                "length": {
+                    "type": "integer",
+                    "description": (
+                        "Maximum number of characters to return. "
+                        "Defaults to full file. Use with 'offset' for paginated reads."
                     ),
                 },
             },
@@ -510,6 +615,8 @@ class ReadWorkspaceFileTool(BaseTool):
         path: Optional[str] = kwargs.get("path")
         save_to_path: Optional[str] = kwargs.get("save_to_path")
         force_download_url: bool = kwargs.get("force_download_url", False)
+        char_offset: int = max(0, kwargs.get("offset", 0))
+        char_length: Optional[int] = kwargs.get("length")
 
         if not file_id and not path:
             return ErrorResponse(
@@ -517,9 +624,17 @@ class ReadWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
+                # Fallback: if the path is an SDK tool-result on local disk,
+                # read it directly instead of failing.  The model sometimes
+                # calls read_workspace_file for these paths by mistake.
+                sdk_cwd = get_sdk_cwd()
+                if path and is_allowed_local_path(path, sdk_cwd):
+                    return _read_local_tool_result(
+                        path, char_offset, char_length, session_id, sdk_cwd=sdk_cwd
+                    )
                 return resolved
             target_file_id, file_info = resolved
 
@@ -531,6 +646,34 @@ class ReadWorkspaceFileTool(BaseTool):
                 if isinstance(result, ErrorResponse):
                     return result
                 save_to_path = result
+
+            # Ranged read: return a character slice directly.
+            if char_offset > 0 or char_length is not None:
+                raw = cached_content or await manager.read_file_by_id(target_file_id)
+                text = raw.decode("utf-8", errors="replace")
+                total_chars = len(text)
+                end = (
+                    char_offset + char_length
+                    if char_length is not None
+                    else total_chars
+                )
+                slice_text = text[char_offset:end]
+                return WorkspaceFileContentResponse(
+                    file_id=file_info.id,
+                    name=file_info.name,
+                    path=file_info.path,
+                    mime_type="text/plain",
+                    content_base64=base64.b64encode(slice_text.encode("utf-8")).decode(
+                        "utf-8"
+                    ),
+                    message=(
+                        f"Read chars {char_offset}–"
+                        f"{char_offset + len(slice_text)} "
+                        f"of {total_chars:,} total "
+                        f"from {file_info.name}"
+                    ),
+                    session_id=session_id,
+                )
 
             is_small = file_info.size_bytes <= self.MAX_INLINE_SIZE_BYTES
             is_text = _is_text_mime(file_info.mime_type)
@@ -725,7 +868,7 @@ class WriteWorkspaceFileTool(BaseTool):
 
         try:
             await scan_content_safe(content, filename=filename)
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             rec = await manager.write_file(
                 content=content,
                 filename=filename,
@@ -852,7 +995,7 @@ class DeleteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            manager = await get_manager(user_id, session_id)
+            manager = await get_workspace_manager(user_id, session_id)
             resolved = await _resolve_file(manager, file_id, path, session_id)
             if isinstance(resolved, ErrorResponse):
                 return resolved

@@ -299,6 +299,40 @@
         }
       }
     },
+    "/api/auth/check-invite": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Check if an email is allowed to sign up",
+        "description": "Check if an email is allowed to sign up (no auth required).\n\nCalled by the frontend before creating a Supabase auth user to prevent\norphaned accounts when the invite gate is enabled.",
+        "operationId": "postV1Check if an email is allowed to sign up",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CheckInviteRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CheckInviteResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -1267,7 +1301,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1303,6 +1337,105 @@
             }
           }
         }
+      }
+    },
+    "/api/chat/sessions/{session_id}/title": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session title",
+        "description": "Update the title of a chat session.\n\nAllows the user to rename their chat session.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new title.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
+        "operationId": "patchV2Update session title",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionTitleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Update Session Title"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/suggested-prompts": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Suggested Prompts",
+        "description": "Get LLM-generated suggested prompts for the authenticated user.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns an empty list if no custom prompts\nare available.",
+        "operationId": "getV2GetSuggestedPrompts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/usage": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Copilot Usage",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.",
+        "operationId": "getV2GetCopilotUsage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CoPilotUsageStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits": {
@@ -2007,16 +2140,6 @@
         "operationId": "postV1Upload file to cloud storage",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
-          {
-            "name": "provider",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "gcs",
-              "title": "Provider"
-            }
-          },
           {
             "name": "expiration_hours",
             "in": "query",
@@ -5546,7 +5669,7 @@
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
-        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
+        "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    Paginated listings with their versions",
         "operationId": "getV2Get admin listings history",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5590,7 +5713,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StoreListingsWithVersionsResponse"
+                  "$ref": "#/components/schemas/StoreListingsWithVersionsAdminViewResponse"
                 }
               }
             }
@@ -5652,7 +5775,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
-        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
+        "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmissionAdminView with updated review information",
         "operationId": "postV2Review store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5678,7 +5801,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreSubmission" }
+                "schema": {
+                  "$ref": "#/components/schemas/StoreSubmissionAdminView"
+                }
               }
             }
           },
@@ -5700,7 +5825,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "List store agents",
-        "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
+        "description": "Get a paginated list of agents from the marketplace,\nwith optional filtering and sorting.\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
         "parameters": [
           {
@@ -5709,9 +5834,11 @@
             "required": false,
             "schema": {
               "type": "boolean",
+              "description": "Filter to only show featured agents",
               "default": false,
               "title": "Featured"
-            }
+            },
+            "description": "Filter to only show featured agents"
           },
           {
             "name": "creator",
@@ -5719,32 +5846,10 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter agents by creator username",
               "title": "Creator"
-            }
-          },
-          {
-            "name": "sorted_by",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": ["rating", "runs", "name", "updated_at"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
-              "title": "Sorted By"
-            }
-          },
-          {
-            "name": "search_query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Search Query"
-            }
+            },
+            "description": "Filter agents by creator username"
           },
           {
             "name": "category",
@@ -5752,20 +5857,57 @@
             "required": false,
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Filter agents by category",
               "title": "Category"
-            }
+            },
+            "description": "Filter agents by category"
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Literal + semantic search on names and descriptions",
+              "title": "Search Query"
+            },
+            "description": "Literal + semantic search on names and descriptions"
+          },
+          {
+            "name": "sorted_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/StoreAgentsSortOptions" },
+                { "type": "null" }
+              ],
+              "description": "Property to sort results by. Ignored if search_query is provided.",
+              "title": "Sorted By"
+            },
+            "description": "Property to sort results by. Ignored if search_query is provided."
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -5788,49 +5930,11 @@
         }
       }
     },
-    "/api/store/agents/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store"],
-        "summary": "Get agent by version",
-        "description": "Get Store Agent Details from Store Listing Version ID.",
-        "operationId": "getV2Get agent by version",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "store_listing_version_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Store Listing Version Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/store/agents/{username}/{agent_name}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
-        "description": "This is only used on the AgentDetails Page.\n\nIt returns the store listing agents details.",
+        "description": "Get details of a marketplace agent",
         "operationId": "getV2Get specific agent",
         "parameters": [
           {
@@ -5880,7 +5984,7 @@
       "post": {
         "tags": ["v2", "store"],
         "summary": "Create agent review",
-        "description": "Create a review for a store agent.\n\nArgs:\n    username: Creator's username\n    agent_name: Name/slug of the agent\n    review: Review details including score and optional comments\n    user_id: ID of authenticated user creating the review\n\nReturns:\n    The created review",
+        "description": "Post a user review on a marketplace agent listing",
         "operationId": "postV2Create agent review",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5928,11 +6032,96 @@
         }
       }
     },
-    "/api/store/creator/{username}": {
+    "/api/store/creators": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "List store creators",
+        "description": "List or search marketplace creators",
+        "operationId": "getV2List store creators",
+        "parameters": [
+          {
+            "name": "featured",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Filter to only show featured creators",
+              "default": false,
+              "title": "Featured"
+            },
+            "description": "Filter to only show featured creators"
+          },
+          {
+            "name": "search_query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Literal + semantic search on names and descriptions",
+              "title": "Search Query"
+            },
+            "description": "Literal + semantic search on names and descriptions"
+          },
+          {
+            "name": "sorted_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/StoreCreatorsSortOptions" },
+                { "type": "null" }
+              ],
+              "title": "Sorted By"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CreatorsResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/creators/{username}": {
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
-        "description": "Get the details of a creator.\n- Creator Details Page",
+        "description": "Get details on a marketplace creator",
         "operationId": "getV2Get creator details",
         "parameters": [
           {
@@ -5962,103 +6151,31 @@
         }
       }
     },
-    "/api/store/creators": {
+    "/api/store/listings/versions/{store_listing_version_id}": {
       "get": {
-        "tags": ["v2", "store", "public"],
-        "summary": "List store creators",
-        "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
-        "operationId": "getV2List store creators",
-        "parameters": [
-          {
-            "name": "featured",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "boolean",
-              "default": false,
-              "title": "Featured"
-            }
-          },
-          {
-            "name": "search_query",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Search Query"
-            }
-          },
-          {
-            "name": "sorted_by",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": ["agent_rating", "agent_runs", "num_agents"],
-                  "type": "string"
-                },
-                { "type": "null" }
-              ],
-              "title": "Sorted By"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorsResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/store/download/agents/{store_listing_version_id}": {
-      "get": {
-        "tags": ["v2", "store", "public"],
-        "summary": "Download agent file",
-        "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
-        "operationId": "getV2Download agent file",
+        "tags": ["v2", "store"],
+        "summary": "Get agent by version",
+        "operationId": "getV2Get agent by version",
+        "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string",
-              "description": "The ID of the agent to download",
-              "title": "Store Listing Version Id"
-            },
-            "description": "The ID of the agent to download"
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "422": {
             "description": "Validation Error",
@@ -6071,11 +6188,11 @@
         }
       }
     },
-    "/api/store/graph/{store_listing_version_id}": {
+    "/api/store/listings/versions/{store_listing_version_id}/graph": {
       "get": {
         "tags": ["v2", "store"],
         "summary": "Get agent graph",
-        "description": "Get Agent Graph from Store Listing Version ID.",
+        "description": "Get outline of graph belonging to a specific marketplace listing version",
         "operationId": "getV2Get agent graph",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6111,6 +6228,36 @@
         }
       }
     },
+    "/api/store/listings/versions/{store_listing_version_id}/graph/download": {
+      "get": {
+        "tags": ["v2", "store", "public"],
+        "summary": "Download agent file",
+        "description": "Download agent graph file for a specific marketplace listing version",
+        "operationId": "getV2Download agent file",
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/metrics/cache": {
       "get": {
         "tags": ["v2", "store", "metrics"],
@@ -6125,11 +6272,11 @@
         }
       }
     },
-    "/api/store/myagents": {
+    "/api/store/my-unpublished-agents": {
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
-        "description": "Get user's own agents.",
+        "description": "List the authenticated user's unpublished agents",
         "operationId": "getV2Get my agents",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6161,7 +6308,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/MyAgentsResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/MyUnpublishedAgentsResponse"
+                }
               }
             }
           },
@@ -6183,7 +6332,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.\nCached for 1 hour per user.",
+        "description": "Get the profile details for the authenticated user.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -6203,7 +6352,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Update user profile",
-        "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    CreatorDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
+        "description": "Update the store profile for the authenticated user.",
         "operationId": "postV2Update user profile",
         "requestBody": {
           "content": {
@@ -6218,7 +6367,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CreatorDetails" }
+                "schema": { "$ref": "#/components/schemas/ProfileDetails" }
               }
             }
           },
@@ -6241,7 +6390,7 @@
       "get": {
         "tags": ["v2", "store", "public"],
         "summary": "Unified search across all content types",
-        "description": "Search across all content types (store agents, blocks, documentation) using hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.\n\nArgs:\n    query: The search query string\n    content_types: Optional list of content types to filter by (STORE_AGENT, BLOCK, DOCUMENTATION)\n    page: Page number for pagination (default 1)\n    page_size: Number of results per page (default 20)\n    user_id: Optional authenticated user ID (for user-scoped content in future)\n\nReturns:\n    UnifiedSearchResponse: Paginated list of search results with relevance scores",
+        "description": "Search across all content types (marketplace agents, blocks, documentation)\nusing hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.",
         "operationId": "getV2Unified search across all content types",
         "security": [{ "HTTPBearer": [] }],
         "parameters": [
@@ -6257,25 +6406,38 @@
             "required": false,
             "schema": {
               "anyOf": [
-                { "type": "array", "items": { "type": "string" } },
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ContentType" }
+                },
                 { "type": "null" }
               ],
-              "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all.",
+              "description": "Content types to search. If not specified, searches all.",
               "title": "Content Types"
             },
-            "description": "Content types to search: STORE_AGENT, BLOCK, DOCUMENTATION. If not specified, searches all."
+            "description": "Content types to search. If not specified, searches all."
           },
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -6304,7 +6466,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
-        "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
+        "description": "List the authenticated user's marketplace listing submissions",
         "operationId": "getV2List my submissions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6312,13 +6474,23 @@
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
           }
         ],
         "responses": {
@@ -6348,7 +6520,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Create store submission",
-        "description": "Create a new store listing submission.\n\nArgs:\n    submission_request (StoreSubmissionRequest): The submission details\n    user_id (str): ID of the authenticated user submitting the listing\n\nReturns:\n    StoreSubmission: The created store submission\n\nRaises:\n    HTTPException: If there is an error creating the submission",
+        "description": "Submit a new marketplace listing for review",
         "operationId": "postV2Create store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -6388,21 +6560,25 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Generate submission image",
-        "description": "Generate an image for a store listing submission.\n\nArgs:\n    agent_id (str): ID of the agent to generate an image for\n    user_id (str): ID of the authenticated user\n\nReturns:\n    JSONResponse: JSON containing the URL of the generated image",
+        "description": "Generate an image for a marketplace listing submission based on the properties\nof a given graph.",
         "operationId": "postV2Generate submission image",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
-            "name": "agent_id",
+            "name": "graph_id",
             "in": "query",
             "required": true,
-            "schema": { "type": "string", "title": "Agent Id" }
+            "schema": { "type": "string", "title": "Graph Id" }
           }
         ],
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ImageURLResponse" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -6422,7 +6598,7 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media (images/videos) for a store listing submission.\n\nArgs:\n    file (UploadFile): The media file to upload\n    user_id (str): ID of the authenticated user uploading the media\n\nReturns:\n    str: URL of the uploaded media file\n\nRaises:\n    HTTPException: If there is an error uploading the media",
+        "description": "Upload media for a marketplace listing submission",
         "operationId": "postV2Upload submission media",
         "requestBody": {
           "content": {
@@ -6437,7 +6613,14 @@
         "responses": {
           "200": {
             "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "title": "Response Postv2Upload Submission Media"
+                }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -6458,7 +6641,7 @@
       "put": {
         "tags": ["v2", "store", "private"],
         "summary": "Edit store submission",
-        "description": "Edit an existing store listing submission.\n\nArgs:\n    store_listing_version_id (str): ID of the store listing version to edit\n    submission_request (StoreSubmissionRequest): The updated submission details\n    user_id (str): ID of the authenticated user editing the listing\n\nReturns:\n    StoreSubmission: The updated store submission\n\nRaises:\n    HTTPException: If there is an error editing the submission",
+        "description": "Update a pending marketplace listing submission",
         "operationId": "putV2Edit store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6506,7 +6689,7 @@
       "delete": {
         "tags": ["v2", "store", "private"],
         "summary": "Delete store submission",
-        "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
+        "description": "Delete a marketplace listing submission",
         "operationId": "deleteV2Delete store submission",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6526,6 +6709,214 @@
                   "type": "boolean",
                   "title": "Response Deletev2Delete Store Submission"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/admin/invited-users": {
+      "get": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "List Invited Users",
+        "operationId": "getV2List invited users",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitedUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Create Invited User",
+        "operationId": "postV2Create invited user",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitedUserRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/admin/invited-users/bulk": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Bulk Create Invited Users",
+        "operationId": "postV2BulkCreateInvitedUsers",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2BulkCreateInvitedUsers"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkInvitedUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/users/admin/invited-users/{invited_user_id}/retry-tally": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Retry Invited User Tally",
+        "operationId": "postV2Retry invited user tally",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "invited_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invited User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/admin/invited-users/{invited_user_id}/revoke": {
+      "post": {
+        "tags": ["v2", "admin", "users", "admin"],
+        "summary": "Revoke Invited User",
+        "operationId": "postV2Revoke invited user",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "invited_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Invited User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
               }
             }
           },
@@ -6579,6 +6970,44 @@
                 "schema": {
                   "$ref": "#/components/schemas/backend__api__features__workspace__routes__UploadFileResponse"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}": {
+      "delete": {
+        "tags": ["workspace"],
+        "summary": "Delete a workspace file",
+        "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
+        "operationId": "deleteWorkspaceDelete a workspace file",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteFileResponse" }
               }
             }
           },
@@ -7034,6 +7463,26 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id"
           },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "input_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Input Schema",
+            "description": "JSON Schema for the agent's inputs (for AgentExecutorBlock)"
+          },
+          "output_schema": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Output Schema",
+            "description": "JSON Schema for the agent's outputs (for AgentExecutorBlock)"
+          },
           "inputs": {
             "anyOf": [
               { "additionalProperties": true, "type": "object" },
@@ -7100,7 +7549,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "agent_preview"
+            "default": "agent_builder_preview"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -7136,7 +7585,7 @@
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "agent_saved"
+            "default": "agent_builder_saved"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -7591,6 +8040,12 @@
             "title": "Output Schema",
             "description": "Full JSON schema for block outputs"
           },
+          "static_output": {
+            "type": "boolean",
+            "title": "Static Output",
+            "description": "Whether the block produces output without needing input",
+            "default": false
+          },
           "required_inputs": {
             "items": { "$ref": "#/components/schemas/BlockInputFieldInfo" },
             "type": "array",
@@ -7865,6 +8320,14 @@
         "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
       },
+      "Body_postV2BulkCreateInvitedUsers": {
+        "properties": {
+          "file": { "type": "string", "format": "binary", "title": "File" }
+        },
+        "type": "object",
+        "required": ["file"],
+        "title": "Body_postV2BulkCreateInvitedUsers"
+      },
       "Body_postV2Execute_a_preset": {
         "properties": {
           "inputs": {
@@ -7898,6 +8361,56 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postWorkspaceUpload file to workspace"
+      },
+      "BulkInvitedUserRowResponse": {
+        "properties": {
+          "row_number": { "type": "integer", "title": "Row Number" },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["CREATED", "SKIPPED", "ERROR"],
+            "title": "Status"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "invited_user": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/InvitedUserResponse" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["row_number", "status", "message"],
+        "title": "BulkInvitedUserRowResponse"
+      },
+      "BulkInvitedUsersResponse": {
+        "properties": {
+          "created_count": { "type": "integer", "title": "Created Count" },
+          "skipped_count": { "type": "integer", "title": "Skipped Count" },
+          "error_count": { "type": "integer", "title": "Error Count" },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BulkInvitedUserRowResponse"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "created_count",
+          "skipped_count",
+          "error_count",
+          "results"
+        ],
+        "title": "BulkInvitedUsersResponse"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -7962,11 +8475,25 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
+      "CheckInviteRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "CheckInviteRequest"
+      },
+      "CheckInviteResponse": {
+        "properties": { "allowed": { "type": "boolean", "title": "Allowed" } },
+        "type": "object",
+        "required": ["allowed"],
+        "title": "CheckInviteResponse"
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
             "$ref": "#/components/schemas/ResponseType",
-            "default": "clarification_needed"
+            "default": "agent_builder_clarification_needed"
           },
           "message": { "type": "string", "title": "Message" },
           "session_id": {
@@ -7997,6 +8524,27 @@
         "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
+      },
+      "CoPilotUsageStatus": {
+        "properties": {
+          "daily": { "$ref": "#/components/schemas/UsageWindow" },
+          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
+        },
+        "type": "object",
+        "required": ["daily", "weekly"],
+        "title": "CoPilotUsageStatus",
+        "description": "Current usage status for a user across all windows."
+      },
+      "ContentType": {
+        "type": "string",
+        "enum": [
+          "STORE_AGENT",
+          "BLOCK",
+          "INTEGRATION",
+          "DOCUMENTATION",
+          "LIBRARY_AGENT"
+        ],
+        "title": "ContentType"
       },
       "CountResponse": {
         "properties": {
@@ -8064,6 +8612,18 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateInvitedUserRequest": {
+        "properties": {
+          "email": { "type": "string", "format": "email", "title": "Email" },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": ["email"],
+        "title": "CreateInvitedUserRequest"
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8078,43 +8638,24 @@
         "title": "CreateSessionResponse",
         "description": "Response model containing information on a newly created chat session."
       },
-      "Creator": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "num_agents": { "type": "integer", "title": "Num Agents" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
-          "agent_runs": { "type": "integer", "title": "Agent Runs" },
-          "is_featured": { "type": "boolean", "title": "Is Featured" }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "username",
-          "description",
-          "avatar_url",
-          "num_agents",
-          "agent_rating",
-          "agent_runs",
-          "is_featured"
-        ],
-        "title": "Creator"
-      },
       "CreatorDetails": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
           "links": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Links"
           },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "agent_rating": { "type": "number", "title": "Agent Rating" },
+          "is_featured": { "type": "boolean", "title": "Is Featured" },
+          "num_agents": { "type": "integer", "title": "Num Agents" },
           "agent_runs": { "type": "integer", "title": "Agent Runs" },
+          "agent_rating": { "type": "number", "title": "Agent Rating" },
           "top_categories": {
             "items": { "type": "string" },
             "type": "array",
@@ -8123,21 +8664,24 @@
         },
         "type": "object",
         "required": [
-          "name",
           "username",
+          "name",
           "description",
-          "links",
           "avatar_url",
-          "agent_rating",
+          "links",
+          "is_featured",
+          "num_agents",
           "agent_runs",
+          "agent_rating",
           "top_categories"
         ],
-        "title": "CreatorDetails"
+        "title": "CreatorDetails",
+        "description": "Marketplace creator profile details, including aggregated stats"
       },
       "CreatorsResponse": {
         "properties": {
           "creators": {
-            "items": { "$ref": "#/components/schemas/Creator" },
+            "items": { "$ref": "#/components/schemas/CreatorDetails" },
             "type": "array",
             "title": "Creators"
           },
@@ -8247,6 +8791,12 @@
         "type": "string",
         "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
         "title": "CreditTransactionType"
+      },
+      "DeleteFileResponse": {
+        "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
+        "type": "object",
+        "required": ["deleted"],
+        "title": "DeleteFileResponse"
       },
       "DeleteGraphResponse": {
         "properties": {
@@ -9493,6 +10043,14 @@
         "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
+      "ImageURLResponse": {
+        "properties": {
+          "image_url": { "type": "string", "title": "Image Url" }
+        },
+        "type": "object",
+        "required": ["image_url"],
+        "title": "ImageURLResponse"
+      },
       "InputValidationErrorResponse": {
         "properties": {
           "type": {
@@ -9530,12 +10088,85 @@
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
       },
+      "InvitedUserResponse": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "email": { "type": "string", "title": "Email" },
+          "status": { "$ref": "#/components/schemas/InvitedUserStatus" },
+          "auth_user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Auth User Id"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "tally_understanding": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Tally Understanding"
+          },
+          "tally_status": {
+            "$ref": "#/components/schemas/TallyComputationStatus"
+          },
+          "tally_computed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Tally Computed At"
+          },
+          "tally_error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tally Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "status",
+          "tally_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InvitedUserResponse"
+      },
+      "InvitedUserStatus": {
+        "type": "string",
+        "enum": ["INVITED", "CLAIMED", "REVOKED"],
+        "title": "InvitedUserStatus"
+      },
+      "InvitedUsersResponse": {
+        "properties": {
+          "invited_users": {
+            "items": { "$ref": "#/components/schemas/InvitedUserResponse" },
+            "type": "array",
+            "title": "Invited Users"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["invited_users", "pagination"],
+        "title": "InvitedUsersResponse"
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
-          "owner_user_id": { "type": "string", "title": "Owner User Id" },
           "image_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Image Url"
@@ -9623,7 +10254,8 @@
           },
           "can_access_graph": {
             "type": "boolean",
-            "title": "Can Access Graph"
+            "title": "Can Access Graph",
+            "description": "Indicates whether the same user owns the corresponding graph"
           },
           "is_latest_version": {
             "type": "boolean",
@@ -9655,7 +10287,6 @@
           "id",
           "graph_id",
           "graph_version",
-          "owner_user_id",
           "image_url",
           "creator_name",
           "creator_image_url",
@@ -10246,10 +10877,10 @@
         "required": ["value", "label", "provider"],
         "title": "ModelInfo"
       },
-      "MyAgent": {
+      "MyUnpublishedAgent": {
         "properties": {
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "agent_name": { "type": "string", "title": "Agent Name" },
           "agent_image": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -10268,18 +10899,18 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "agent_name",
           "description",
           "last_edited"
         ],
-        "title": "MyAgent"
+        "title": "MyUnpublishedAgent"
       },
-      "MyAgentsResponse": {
+      "MyUnpublishedAgentsResponse": {
         "properties": {
           "agents": {
-            "items": { "$ref": "#/components/schemas/MyAgent" },
+            "items": { "$ref": "#/components/schemas/MyUnpublishedAgent" },
             "type": "array",
             "title": "Agents"
           },
@@ -10287,7 +10918,7 @@
         },
         "type": "object",
         "required": ["agents", "pagination"],
-        "title": "MyAgentsResponse"
+        "title": "MyUnpublishedAgentsResponse"
       },
       "NeedLoginResponse": {
         "properties": {
@@ -11173,43 +11804,51 @@
       },
       "Profile": {
         "properties": {
-          "name": { "type": "string", "title": "Name" },
           "username": { "type": "string", "title": "Username" },
-          "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
-          "avatar_url": { "type": "string", "title": "Avatar Url" },
-          "is_featured": {
-            "type": "boolean",
-            "title": "Is Featured",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": ["name", "username", "description", "links", "avatar_url"],
-        "title": "Profile"
-      },
-      "ProfileDetails": {
-        "properties": {
           "name": { "type": "string", "title": "Name" },
-          "username": { "type": "string", "title": "Username" },
           "description": { "type": "string", "title": "Description" },
-          "links": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Links"
-          },
           "avatar_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
-        "required": ["name", "username", "description", "links"],
-        "title": "ProfileDetails"
+        "required": ["username", "name", "description", "avatar_url", "links"],
+        "title": "Profile",
+        "description": "Marketplace user profile (only attributes that the user can update)"
+      },
+      "ProfileDetails": {
+        "properties": {
+          "username": { "type": "string", "title": "Username" },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "links": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Links"
+          },
+          "is_featured": { "type": "boolean", "title": "Is Featured" }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "name",
+          "description",
+          "avatar_url",
+          "links",
+          "is_featured"
+        ],
+        "title": "ProfileDetails",
+        "description": "Marketplace user profile (including read-only fields)"
       },
       "Provider": {
         "properties": {
@@ -11353,21 +11992,30 @@
       "ResponseType": {
         "type": "string",
         "enum": [
+          "error",
+          "no_results",
+          "need_login",
           "agents_found",
           "agent_details",
           "setup_requirements",
+          "input_validation_error",
           "execution_started",
-          "need_login",
-          "error",
-          "no_results",
           "agent_output",
           "understanding_updated",
-          "agent_preview",
-          "agent_saved",
-          "clarification_needed",
+          "suggested_goal",
+          "agent_builder_guide",
+          "agent_builder_preview",
+          "agent_builder_saved",
+          "agent_builder_clarification_needed",
+          "agent_builder_validation_result",
+          "agent_builder_fix_result",
           "block_list",
           "block_details",
           "block_output",
+          "review_required",
+          "mcp_guide",
+          "mcp_tools_discovered",
+          "mcp_tool_output",
           "doc_search_results",
           "doc_page",
           "workspace_file_list",
@@ -11375,18 +12023,19 @@
           "workspace_file_metadata",
           "workspace_file_written",
           "workspace_file_deleted",
-          "operation_in_progress",
-          "input_validation_error",
-          "web_fetch",
+          "folder_created",
+          "folder_list",
+          "folder_updated",
+          "folder_moved",
+          "folder_deleted",
+          "agents_moved_to_folder",
           "browser_navigate",
           "browser_act",
           "browser_screenshot",
           "bash_exec",
+          "web_fetch",
           "feature_request_search",
-          "feature_request_created",
-          "suggested_goal",
-          "mcp_tools_discovered",
-          "mcp_tool_output"
+          "feature_request_created"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -11621,6 +12270,16 @@
               { "$ref": "#/components/schemas/ActiveStreamInfo" },
               { "type": "null" }
             ]
+          },
+          "total_prompt_tokens": {
+            "type": "integer",
+            "title": "Total Prompt Tokens",
+            "default": 0
+          },
+          "total_completion_tokens": {
+            "type": "integer",
+            "title": "Total Completion Tokens",
+            "default": 0
           }
         },
         "type": "object",
@@ -11636,10 +12295,11 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
-          }
+          },
+          "is_processing": { "type": "boolean", "title": "Is Processing" }
         },
         "type": "object",
-        "required": ["id", "created_at", "updated_at"],
+        "required": ["id", "created_at", "updated_at", "is_processing"],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
       },
@@ -11885,12 +12545,12 @@
             "type": "array",
             "title": "Versions"
           },
-          "agentGraphVersions": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_versions": {
             "items": { "type": "string" },
             "type": "array",
-            "title": "Agentgraphversions"
+            "title": "Graph Versions"
           },
-          "agentGraphId": { "type": "string", "title": "Agentgraphid" },
           "last_updated": {
             "type": "string",
             "format": "date-time",
@@ -11901,13 +12561,12 @@
             "title": "Recommended Schedule Cron"
           },
           "active_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "type": "string",
             "title": "Active Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
-            "title": "Has Approved Version",
-            "default": false
+            "title": "Has Approved Version"
           },
           "changelog": {
             "anyOf": [
@@ -11936,9 +12595,11 @@
           "runs",
           "rating",
           "versions",
-          "agentGraphVersions",
-          "agentGraphId",
-          "last_updated"
+          "graph_id",
+          "graph_versions",
+          "last_updated",
+          "active_version_id",
+          "has_approved_version"
         ],
         "title": "StoreAgentDetails"
       },
@@ -11955,15 +12616,24 @@
         "required": ["agents", "pagination"],
         "title": "StoreAgentsResponse"
       },
-      "StoreListingWithVersions": {
+      "StoreAgentsSortOptions": {
+        "type": "string",
+        "enum": ["rating", "runs", "name", "updated_at"],
+        "title": "StoreAgentsSortOptions"
+      },
+      "StoreCreatorsSortOptions": {
+        "type": "string",
+        "enum": ["agent_rating", "agent_runs", "num_agents"],
+        "title": "StoreCreatorsSortOptions"
+      },
+      "StoreListingWithVersionsAdminView": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
           "slug": { "type": "string", "title": "Slug" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
-          "active_version_id": {
+          "active_listing_version_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Active Version Id"
+            "title": "Active Listing Version Id"
           },
           "has_approved_version": {
             "type": "boolean",
@@ -11976,27 +12646,29 @@
           },
           "latest_version": {
             "anyOf": [
-              { "$ref": "#/components/schemas/StoreSubmission" },
+              { "$ref": "#/components/schemas/StoreSubmissionAdminView" },
               { "type": "null" }
             ]
           },
           "versions": {
-            "items": { "$ref": "#/components/schemas/StoreSubmission" },
+            "items": {
+              "$ref": "#/components/schemas/StoreSubmissionAdminView"
+            },
             "type": "array",
             "title": "Versions",
             "default": []
           }
         },
         "type": "object",
-        "required": ["listing_id", "slug", "agent_id", "agent_version"],
-        "title": "StoreListingWithVersions",
+        "required": ["listing_id", "graph_id", "slug"],
+        "title": "StoreListingWithVersionsAdminView",
         "description": "A store listing with its version history"
       },
-      "StoreListingsWithVersionsResponse": {
+      "StoreListingsWithVersionsAdminViewResponse": {
         "properties": {
           "listings": {
             "items": {
-              "$ref": "#/components/schemas/StoreListingWithVersions"
+              "$ref": "#/components/schemas/StoreListingWithVersionsAdminView"
             },
             "type": "array",
             "title": "Listings"
@@ -12005,7 +12677,7 @@
         },
         "type": "object",
         "required": ["listings", "pagination"],
-        "title": "StoreListingsWithVersionsResponse",
+        "title": "StoreListingsWithVersionsAdminViewResponse",
         "description": "Response model for listings with version history"
       },
       "StoreReview": {
@@ -12039,59 +12711,31 @@
       "StoreSubmission": {
         "properties": {
           "listing_id": { "type": "string", "title": "Listing Id" },
-          "agent_id": { "type": "string", "title": "Agent Id" },
-          "agent_version": { "type": "integer", "title": "Agent Version" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
           "name": { "type": "string", "title": "Name" },
           "sub_heading": { "type": "string", "title": "Sub Heading" },
-          "slug": { "type": "string", "title": "Slug" },
           "description": { "type": "string", "title": "Description" },
           "instructions": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Instructions"
           },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
           "image_urls": {
             "items": { "type": "string" },
             "type": "array",
             "title": "Image Urls"
-          },
-          "date_submitted": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Date Submitted"
-          },
-          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
-          "runs": { "type": "integer", "title": "Runs" },
-          "rating": { "type": "number", "title": "Rating" },
-          "store_listing_version_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Store Listing Version Id"
-          },
-          "version": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Version"
-          },
-          "reviewer_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Reviewer Id"
-          },
-          "review_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Review Comments"
-          },
-          "internal_comments": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Internal Comments"
-          },
-          "reviewed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Reviewed At"
-          },
-          "changes_summary": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Changes Summary"
           },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -12101,29 +12745,179 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Agent Output Demo Url"
           },
-          "categories": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Categories",
-            "default": []
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
           }
         },
         "type": "object",
         "required": [
           "listing_id",
-          "agent_id",
-          "agent_version",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
           "name",
           "sub_heading",
-          "slug",
           "description",
+          "instructions",
+          "categories",
           "image_urls",
-          "date_submitted",
-          "status",
-          "runs",
-          "rating"
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status"
         ],
         "title": "StoreSubmission"
+      },
+      "StoreSubmissionAdminView": {
+        "properties": {
+          "listing_id": { "type": "string", "title": "Listing Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "slug": { "type": "string", "title": "Slug" },
+          "listing_version_id": {
+            "type": "string",
+            "title": "Listing Version Id"
+          },
+          "listing_version": { "type": "integer", "title": "Listing Version" },
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "name": { "type": "string", "title": "Name" },
+          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "description": { "type": "string", "title": "Description" },
+          "instructions": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Instructions"
+          },
+          "categories": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Categories"
+          },
+          "image_urls": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Image Urls"
+          },
+          "video_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Video Url"
+          },
+          "agent_output_demo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Output Demo Url"
+          },
+          "submitted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Submitted At"
+          },
+          "changes_summary": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Changes Summary"
+          },
+          "status": { "$ref": "#/components/schemas/SubmissionStatus" },
+          "reviewed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Reviewed At"
+          },
+          "reviewer_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reviewer Id"
+          },
+          "review_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Review Comments"
+          },
+          "run_count": {
+            "type": "integer",
+            "title": "Run Count",
+            "default": 0
+          },
+          "review_count": {
+            "type": "integer",
+            "title": "Review Count",
+            "default": 0
+          },
+          "review_avg_rating": {
+            "type": "number",
+            "title": "Review Avg Rating",
+            "default": 0.0
+          },
+          "internal_comments": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Internal Comments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "listing_id",
+          "user_id",
+          "slug",
+          "listing_version_id",
+          "listing_version",
+          "graph_id",
+          "graph_version",
+          "name",
+          "sub_heading",
+          "description",
+          "instructions",
+          "categories",
+          "image_urls",
+          "video_url",
+          "agent_output_demo_url",
+          "submitted_at",
+          "changes_summary",
+          "status",
+          "internal_comments"
+        ],
+        "title": "StoreSubmissionAdminView"
       },
       "StoreSubmissionEditRequest": {
         "properties": {
@@ -12173,17 +12967,17 @@
       },
       "StoreSubmissionRequest": {
         "properties": {
-          "agent_id": {
+          "graph_id": {
             "type": "string",
             "minLength": 1,
-            "title": "Agent Id",
-            "description": "Agent ID cannot be empty"
+            "title": "Graph Id",
+            "description": "Graph ID cannot be empty"
           },
-          "agent_version": {
+          "graph_version": {
             "type": "integer",
             "exclusiveMinimum": 0.0,
-            "title": "Agent Version",
-            "description": "Agent version must be greater than 0"
+            "title": "Graph Version",
+            "description": "Graph version must be greater than 0"
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
@@ -12228,8 +13022,8 @@
         },
         "type": "object",
         "required": [
-          "agent_id",
-          "agent_version",
+          "graph_id",
+          "graph_version",
           "slug",
           "name",
           "sub_heading"
@@ -12330,6 +13124,19 @@
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
       },
+      "SuggestedPromptsResponse": {
+        "properties": {
+          "prompts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Prompts"
+          }
+        },
+        "type": "object",
+        "required": ["prompts"],
+        "title": "SuggestedPromptsResponse",
+        "description": "Response model for user-specific suggested prompts."
+      },
       "SuggestionsResponse": {
         "properties": {
           "recent_searches": {
@@ -12354,6 +13161,11 @@
         "type": "object",
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
+      },
+      "TallyComputationStatus": {
+        "type": "string",
+        "enum": ["PENDING", "RUNNING", "READY", "FAILED"],
+        "title": "TallyComputationStatus"
       },
       "TimezoneResponse": {
         "properties": {
@@ -13247,6 +14059,13 @@
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
       },
+      "UpdateSessionTitleRequest": {
+        "properties": { "title": { "type": "string", "title": "Title" } },
+        "type": "object",
+        "required": ["title"],
+        "title": "UpdateSessionTitleRequest",
+        "description": "Request model for updating a session's title."
+      },
       "UpdateTimezoneRequest": {
         "properties": {
           "timezone": {
@@ -13857,6 +14676,25 @@
         "type": "object",
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
+      },
+      "UsageWindow": {
+        "properties": {
+          "used": { "type": "integer", "title": "Used" },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Maximum tokens allowed in this window. 0 means unlimited."
+          },
+          "resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resets At"
+          }
+        },
+        "type": "object",
+        "required": ["used", "limit", "resets_at"],
+        "title": "UsageWindow",
+        "description": "Usage within a single time window."
       },
       "UserHistoryResponse": {
         "properties": {

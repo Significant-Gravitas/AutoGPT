@@ -28,6 +28,8 @@ import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
 import { RunBlockTool } from "../tools/RunBlock/RunBlock";
 import { SearchDocsTool } from "../tools/SearchDocs/SearchDocs";
+import { ReasoningCollapse } from "../components/ChatMessagesContainer/components/ReasoningCollapse";
+import { GenericTool } from "../tools/GenericTool/GenericTool";
 import { ViewAgentOutputTool } from "../tools/ViewAgentOutput/ViewAgentOutput";
 
 // ---------------------------------------------------------------------------
@@ -57,6 +59,7 @@ const SECTIONS = [
   "Tool: Search Feature Requests",
   "Tool: Create Feature Request",
   "Full Conversation Example",
+  "Reasoning Collapse: Interactive Tool Pinning",
 ] as const;
 
 function Section({
@@ -703,8 +706,8 @@ export default function StyleguidePage() {
                     input: { block_id: "weather-block-123" },
                     output: {
                       type: ResponseType.error,
-                      message: "Failed to run the block.",
-                      error: "Block execution timed out after 30 seconds.",
+                      message: "Something went wrong while running this step.",
+                      error: "Execution timed out after 30 seconds.",
                       details: {
                         block_id: "weather-block-123",
                         timeout_ms: 30000,
@@ -1130,7 +1133,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_preview,
+                      type: ResponseType.agent_builder_preview,
                       agent_name: "Email Summarizer",
                       description:
                         "An agent that summarizes your unread emails into a daily digest.",
@@ -1158,7 +1161,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_saved,
+                      type: ResponseType.agent_builder_saved,
                       agent_id: "agent-789",
                       agent_name: "Email Summarizer",
                       library_agent_id: "lib-agent-789",
@@ -1178,7 +1181,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.clarification_needed,
+                      type: ResponseType.agent_builder_clarification_needed,
                       message:
                         "I need a bit more information before creating this agent.",
                       questions: [
@@ -1252,7 +1255,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_preview,
+                      type: ResponseType.agent_builder_preview,
                       agent_name: "Email Summarizer v2",
                       description:
                         "Updated agent with improved summarization and Slack integration.",
@@ -1282,7 +1285,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.agent_saved,
+                      type: ResponseType.agent_builder_saved,
                       agent_id: "agent-789",
                       agent_name: "Email Summarizer v2",
                       library_agent_id: "lib-agent-789",
@@ -1302,7 +1305,7 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-available",
                     output: {
-                      type: ResponseType.clarification_needed,
+                      type: ResponseType.agent_builder_clarification_needed,
                       message:
                         "I need to clarify a few things about the edits you want.",
                       questions: [
@@ -1832,6 +1835,258 @@ export default function StyleguidePage() {
                   </Message>
                 </ConversationContent>
               </Conversation>
+            </Section>
+
+            {/* ============================================================= */}
+            {/* REASONING COLLAPSE: INTERACTIVE TOOL PINNING                   */}
+            {/* ============================================================= */}
+
+            <Section title="Reasoning Collapse: Interactive Tool Pinning">
+              <p className="mb-4 text-sm text-neutral-600">
+                When the stream finishes, intermediate tool calls are collapsed
+                behind a &quot;Show reasoning&quot; button. However, tools whose
+                output requires user interaction (credentials, inputs,
+                clarification) are <strong>pinned</strong> and remain visible
+                outside the collapse.
+              </p>
+
+              <SubSection label="Collapsed reasoning with pinned setup_requirements">
+                <Conversation className="min-h-0 rounded-lg border bg-white">
+                  <ConversationContent className="gap-6 px-3 py-6">
+                    <Message from="assistant">
+                      <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                        <ReasoningCollapse>
+                          <GenericTool
+                            part={{
+                              type: "tool-bash_exec",
+                              toolCallId: uid(),
+                              state: "output-available",
+                              input: { command: "echo hello" },
+                              output: {
+                                type: ResponseType.bash_exec,
+                                stdout: "hello",
+                                stderr: "",
+                                exit_code: 0,
+                                message: "Command completed",
+                              },
+                            }}
+                          />
+                          <FindBlocksTool
+                            part={{
+                              type: "tool-find_block",
+                              toolCallId: uid(),
+                              state: "output-available",
+                              input: { query: "weather" },
+                              output: {
+                                type: ResponseType.block_list,
+                                blocks: [
+                                  {
+                                    id: "block-1",
+                                    name: "Get Weather",
+                                    description: "Fetches weather data.",
+                                    categories: [],
+                                  },
+                                ],
+                                count: 1,
+                              },
+                            }}
+                          />
+                        </ReasoningCollapse>
+
+                        <RunBlockTool
+                          part={{
+                            type: "tool-run_block",
+                            toolCallId: uid(),
+                            state: "output-available",
+                            input: {
+                              block_id: "block-1",
+                              block_name: "Get Weather",
+                            },
+                            output: {
+                              type: ResponseType.setup_requirements,
+                              message:
+                                "Missing credentials for Get Weather block.",
+                              setup_info: {
+                                agent_id: "block-1",
+                                agent_name: "Get Weather",
+                                requirements: {
+                                  credentials: [
+                                    {
+                                      id: "openweather-api",
+                                      provider: "openweather",
+                                      type: "api_key",
+                                      title: "OpenWeather API Key",
+                                      description: "Required for weather data.",
+                                    },
+                                  ],
+                                  inputs: [],
+                                  execution_modes: [],
+                                },
+                                user_readiness: {
+                                  has_all_credentials: false,
+                                  missing_credentials: {
+                                    openweather: {
+                                      id: "openweather-api",
+                                      provider: "openweather",
+                                      type: "api_key",
+                                      title: "OpenWeather API Key",
+                                    },
+                                  },
+                                  ready_to_run: false,
+                                },
+                              },
+                            },
+                          }}
+                        />
+
+                        <MessageResponse>
+                          The Get Weather block requires an OpenWeather API key.
+                          Please configure it in your credentials to proceed.
+                        </MessageResponse>
+                      </MessageContent>
+                    </Message>
+                  </ConversationContent>
+                </Conversation>
+              </SubSection>
+
+              <SubSection label="Collapsed reasoning with pinned agent_details (inputs required)">
+                <Conversation className="min-h-0 rounded-lg border bg-white">
+                  <ConversationContent className="gap-6 px-3 py-6">
+                    <Message from="assistant">
+                      <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                        <ReasoningCollapse>
+                          <FindAgentsTool
+                            part={{
+                              type: "tool-find_library_agent",
+                              toolCallId: uid(),
+                              state: "output-available",
+                              input: { query: "email sender" },
+                              output: {
+                                type: ResponseType.agents_found,
+                                title: "Library Agents",
+                                agents: [
+                                  {
+                                    id: "agent-email",
+                                    name: "Email Sender",
+                                    description: "Sends emails via SMTP.",
+                                    source: "library",
+                                    in_library: true,
+                                  },
+                                ],
+                                count: 1,
+                              },
+                            }}
+                          />
+                        </ReasoningCollapse>
+
+                        <RunAgentTool
+                          part={{
+                            type: "tool-run_agent",
+                            toolCallId: uid(),
+                            state: "output-available",
+                            input: { library_agent_id: "agent-email" },
+                            output: {
+                              type: ResponseType.agent_details,
+                              message:
+                                "Agent requires input values before it can run.",
+                              agent: {
+                                id: "agent-email",
+                                name: "Email Sender",
+                                description: "Sends emails via SMTP.",
+                                in_library: true,
+                                inputs: {
+                                  properties: {
+                                    to: {
+                                      type: "string",
+                                      description: "Recipient email",
+                                    },
+                                    subject: {
+                                      type: "string",
+                                      description: "Email subject",
+                                    },
+                                    body: {
+                                      type: "string",
+                                      description: "Email body",
+                                    },
+                                  },
+                                  required: ["to", "subject", "body"],
+                                },
+                                credentials: [],
+                              },
+                            },
+                          }}
+                        />
+
+                        <MessageResponse>
+                          I found the Email Sender agent. It needs a few inputs
+                          before it can run. Please provide the recipient,
+                          subject, and body.
+                        </MessageResponse>
+                      </MessageContent>
+                    </Message>
+                  </ConversationContent>
+                </Conversation>
+              </SubSection>
+
+              <SubSection label="Collapsed reasoning with pinned agent_saved">
+                <Conversation className="min-h-0 rounded-lg border bg-white">
+                  <ConversationContent className="gap-6 px-3 py-6">
+                    <Message from="assistant">
+                      <MessageContent className="text-[1rem] leading-relaxed group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900">
+                        <ReasoningCollapse>
+                          <FindBlocksTool
+                            part={{
+                              type: "tool-find_block",
+                              toolCallId: uid(),
+                              state: "output-available",
+                              input: { query: "HTTP request" },
+                              output: {
+                                type: ResponseType.block_list,
+                                blocks: [
+                                  {
+                                    id: "block-http",
+                                    name: "HTTP Request",
+                                    description: "Makes HTTP requests.",
+                                    categories: [],
+                                  },
+                                ],
+                                count: 1,
+                              },
+                            }}
+                          />
+                        </ReasoningCollapse>
+
+                        <CreateAgentTool
+                          part={{
+                            type: "tool-create_agent",
+                            toolCallId: uid(),
+                            state: "output-available",
+                            input: {
+                              description:
+                                "An agent that checks website uptime",
+                            },
+                            output: {
+                              type: ResponseType.agent_builder_saved,
+                              message: "Agent saved to your library!",
+                              agent_id: "graph-123",
+                              agent_name: "Website Uptime Checker",
+                              library_agent_id: "lib-agent-456",
+                              library_agent_link:
+                                "/marketplace/agent/lib-agent-456",
+                              agent_page_link: "/build?agentId=graph-123",
+                            },
+                          }}
+                        />
+
+                        <MessageResponse>
+                          Your **Website Uptime Checker** agent has been created
+                          and saved to your library!
+                        </MessageResponse>
+                      </MessageContent>
+                    </Message>
+                  </ConversationContent>
+                </Conversation>
+              </SubSection>
             </Section>
           </div>
         </div>

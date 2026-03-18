@@ -70,6 +70,10 @@ def _msg_tokens(msg: dict, enc) -> int:
                 # Count tool result tokens
                 tool_call_tokens += _tok_len(item.get("tool_use_id", ""), enc)
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
+            elif isinstance(item, dict) and item.get("type") == "text":
+                # Count text block tokens (standard: "text" key, fallback: "content")
+                text_val = item.get("text") or item.get("content", "")
+                tool_call_tokens += _tok_len(text_val, enc)
             elif isinstance(item, dict) and "content" in item:
                 # Other content types with content field
                 tool_call_tokens += _tok_len(item.get("content", ""), enc)
@@ -145,10 +149,16 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
     if len(ids) <= max_tok:
         return text  # nothing to do
 
+    # Need at least 3 tokens (head + ellipsis + tail) for meaningful truncation
+    if max_tok < 1:
+        return ""
+    mid = enc.encode(" … ")
+    if max_tok < 3:
+        return enc.decode(ids[:max_tok])
+
     # Split the allowance between the two ends:
     head = max_tok // 2 - 1  # -1 for the ellipsis
     tail = max_tok - head - 1
-    mid = enc.encode(" … ")
     return enc.decode(ids[:head] + mid + ids[-tail:])
 
 
@@ -545,6 +555,14 @@ async def _summarize_messages_llm(
                     "- Actions taken and key decisions made\n"
                     "- Technical specifics (file names, tool outputs, function signatures)\n"
                     "- Errors encountered and resolutions applied\n\n"
+                    "IMPORTANT: Preserve all concrete references verbatim — these are small but "
+                    "critical for continuing the conversation:\n"
+                    "- File paths and directory paths (e.g. /src/app/page.tsx, ./output/result.csv)\n"
+                    "- Image/media file paths from tool outputs\n"
+                    "- URLs, API endpoints, and webhook addresses\n"
+                    "- Resource IDs, session IDs, and identifiers\n"
+                    "- Tool names that were called and their key parameters\n"
+                    "- Environment variables, config keys, and credentials names (not values)\n\n"
                     "Include ONLY the sections below that have relevant content "
                     "(skip sections with nothing to report):\n\n"
                     "## 1. Primary Request and Intent\n"
@@ -552,7 +570,8 @@ async def _summarize_messages_llm(
                     "## 2. Key Technical Concepts\n"
                     "Technologies, frameworks, tools, and patterns being used or discussed.\n\n"
                     "## 3. Files and Resources Involved\n"
-                    "Specific files examined or modified, with relevant snippets and identifiers.\n\n"
+                    "Specific files examined or modified, with relevant snippets and identifiers. "
+                    "Include exact file paths, image paths from tool outputs, and resource URLs.\n\n"
                     "## 4. Errors and Fixes\n"
                     "Problems encountered, error messages, and their resolutions.\n\n"
                     "## 5. All User Messages\n"
@@ -566,7 +585,7 @@ async def _summarize_messages_llm(
             },
             {"role": "user", "content": f"Summarize:\n\n{conversation_text}"},
         ],
-        max_tokens=1500,
+        max_tokens=2000,
         temperature=0.3,
     )
 
@@ -686,11 +705,15 @@ async def compress_context(
                     msgs = [summary_msg] + recent_msgs
 
                 logger.info(
-                    f"Context summarized: {original_count} -> {total_tokens()} tokens, "
-                    f"summarized {messages_summarized} messages"
+                    "Context summarized: %d -> %d tokens, summarized %d messages",
+                    original_count,
+                    total_tokens(),
+                    messages_summarized,
                 )
             except Exception as e:
-                logger.warning(f"Summarization failed, continuing with truncation: {e}")
+                logger.warning(
+                    "Summarization failed, continuing with truncation: %s", e
+                )
                 # Fall through to content truncation
 
     # ---- STEP 2: Normalize content ----------------------------------------

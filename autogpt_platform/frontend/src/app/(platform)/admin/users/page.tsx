@@ -1,16 +1,11 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import React from "react";
+import { AdminUsersPage } from "./components/AdminUsersPage/AdminUsersPage";
 
 function AdminUsers() {
-  return (
-    <div>
-      <h1>Users Dashboard</h1>
-      {/* Add your admin-only content here */}
-    </div>
-  );
+  return <AdminUsersPage />;
 }
 
-export default async function AdminUsersPage() {
+export default async function AdminUsersRoute() {
   "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedAdminUsers = await withAdminAccess(AdminUsers);

@@ -31,12 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
-    """Simple tokenizer for BM25 - lowercase and split on non-alphanumeric."""
+    """Tokenize text for BM25."""
     if not text:
         return []
-    # Lowercase and split on non-alphanumeric characters
-    tokens = re.findall(r"\b\w+\b", text.lower())
-    return tokens
+    return re.findall(r"\b\w+\b", text.lower())
 
 
 def bm25_rerank(
@@ -568,7 +566,7 @@ async def hybrid_search(
             SELECT uce."contentId" as "storeListingVersionId"
             FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
             INNER JOIN {{schema_prefix}}"StoreAgent" sa
-                ON uce."contentId" = sa."storeListingVersionId"
+                ON uce."contentId" = sa.listing_version_id
             WHERE uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
             AND uce."userId" IS NULL
             AND uce.search @@ plainto_tsquery('english', {query_param})
@@ -582,7 +580,7 @@ async def hybrid_search(
                 SELECT uce."contentId", uce.embedding
                 FROM {{schema_prefix}}"UnifiedContentEmbedding" uce
                 INNER JOIN {{schema_prefix}}"StoreAgent" sa
-                    ON uce."contentId" = sa."storeListingVersionId"
+                    ON uce."contentId" = sa.listing_version_id
                 WHERE uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
                 AND uce."userId" IS NULL
                 AND {where_clause}
@@ -605,7 +603,7 @@ async def hybrid_search(
                 sa.featured,
                 sa.is_available,
                 sa.updated_at,
-                sa."agentGraphId",
+                sa.graph_id,
                 -- Searchable text for BM25 reranking
                 COALESCE(sa.agent_name, '') || ' ' || COALESCE(sa.sub_heading, '') || ' ' || COALESCE(sa.description, '') as searchable_text,
                 -- Semantic score
@@ -627,9 +625,9 @@ async def hybrid_search(
                 sa.runs as popularity_raw
             FROM candidates c
             INNER JOIN {{schema_prefix}}"StoreAgent" sa
-                ON c."storeListingVersionId" = sa."storeListingVersionId"
+                ON c."storeListingVersionId" = sa.listing_version_id
             INNER JOIN {{schema_prefix}}"UnifiedContentEmbedding" uce
-                ON sa."storeListingVersionId" = uce."contentId"
+                ON sa.listing_version_id = uce."contentId"
                 AND uce."contentType" = 'STORE_AGENT'::{{schema_prefix}}"ContentType"
         ),
         max_vals AS (
@@ -665,7 +663,7 @@ async def hybrid_search(
                 featured,
                 is_available,
                 updated_at,
-                "agentGraphId",
+                graph_id,
                 searchable_text,
                 semantic_score,
                 lexical_score,
