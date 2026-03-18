@@ -270,7 +270,7 @@ async def _build_cached_search_results(
 
     # Use hybrid search when query is present, otherwise list all blocks
     if (include_blocks or include_integrations) and normalized_query:
-        block_results, block_total, integration_total = await _hybrid_search_blocks(
+        block_results, block_total, integration_total = await _text_search_blocks(
             query=search_query,
             include_blocks=include_blocks,
             include_integrations=include_integrations,
@@ -382,7 +382,7 @@ def _collect_block_results(
     return results, block_count, integration_count
 
 
-async def _hybrid_search_blocks(
+async def _text_search_blocks(
     *,
     query: str,
     include_blocks: bool,
