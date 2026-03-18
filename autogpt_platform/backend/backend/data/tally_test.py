@@ -9,6 +9,8 @@ import pytest
 from backend.data.tally import (
     _EXTRACTION_PROMPT,
     _EXTRACTION_SUFFIX,
+    _LLM_MAX_ATTEMPTS,
+    _LLM_TIMEOUT,
     TallyExtractionTimeoutError,
     _build_email_index,
     _format_answer,
@@ -17,6 +19,7 @@ from backend.data.tally import (
     extract_business_understanding_from_tally,
     find_submission_by_email,
     format_submission_for_llm,
+    get_business_understanding_input_from_tally,
     mask_email,
     populate_understanding_from_tally,
 )
@@ -560,6 +563,72 @@ async def test_extract_business_understanding_from_tally_retries_then_succeeds()
     assert result.user_name == "Alice"
     assert mock_client.chat.completions.create.await_count == 3
     assert sleep.await_args_list == [call(1.0), call(2.0)]
+
+
+@pytest.mark.asyncio
+async def test_get_business_understanding_input_from_tally_passes_override_kwargs():
+    extract = AsyncMock(return_value=MagicMock())
+
+    with (
+        patch("backend.data.tally._settings.secrets.tally_api_key", "test-key"),
+        patch(
+            "backend.data.tally.find_submission_by_email",
+            new_callable=AsyncMock,
+            return_value=(
+                {
+                    "responses": [
+                        {"questionId": "q1", "value": "Alice Smith"},
+                    ],
+                },
+                SAMPLE_QUESTIONS,
+            ),
+        ),
+        patch("backend.data.tally.extract_business_understanding_from_tally", extract),
+    ):
+        result = await get_business_understanding_input_from_tally(
+            "alice@example.com",
+            timeout_seconds=30,
+            max_attempts=3,
+        )
+
+    assert result is not None
+    extract.assert_awaited_once()
+    assert extract.await_args_list[0].kwargs == {
+        "timeout_seconds": 30,
+        "max_attempts": 3,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_business_understanding_input_from_tally_uses_default_kwargs():
+    extract = AsyncMock(return_value=MagicMock())
+
+    with (
+        patch("backend.data.tally._settings.secrets.tally_api_key", "test-key"),
+        patch(
+            "backend.data.tally.find_submission_by_email",
+            new_callable=AsyncMock,
+            return_value=(
+                {
+                    "responses": [
+                        {"questionId": "q1", "value": "Alice Smith"},
+                    ],
+                },
+                SAMPLE_QUESTIONS,
+            ),
+        ),
+        patch("backend.data.tally.extract_business_understanding_from_tally", extract),
+    ):
+        result = await get_business_understanding_input_from_tally(
+            "alice@example.com",
+        )
+
+    assert result is not None
+    extract.assert_awaited_once()
+    assert extract.await_args_list[0].kwargs == {
+        "timeout_seconds": _LLM_TIMEOUT,
+        "max_attempts": _LLM_MAX_ATTEMPTS,
+    }
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────

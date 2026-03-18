@@ -21,7 +21,9 @@ from backend.data.model import User
 from backend.data.redis_client import get_redis_async
 from backend.data.tally import (
     TallyExtractionTimeoutError,
-    get_business_understanding_input_from_tally,
+    extract_business_understanding_from_tally,
+    format_submission_for_llm,
+    get_tally_submission_by_email,
     mask_email,
 )
 from backend.data.understanding import (
@@ -42,9 +44,11 @@ logger = logging.getLogger(__name__)
 _settings = Settings()
 
 _WORKER_ID = f"{socket.gethostname()}:{os.getpid()}"
+TallyMode = Literal["default", "bulk"]
 
 _tally_seed_tasks: dict[str, asyncio.Task] = {}
-_tally_semaphore = asyncio.Semaphore(1)
+_tally_lookup_semaphore = asyncio.Semaphore(1)
+_bulk_tally_extraction_semaphore = asyncio.Semaphore(3)
 _TALLY_RATE_DELAY = 0.6  # ~100 req/min, matching the Tally rate limit
 _TALLY_STALE_SECONDS = 300
 _MAX_TALLY_ERROR_LENGTH = 200
@@ -52,7 +56,10 @@ _email_adapter = TypeAdapter(EmailStr)
 
 MAX_BULK_INVITE_FILE_BYTES = 1024 * 1024
 MAX_BULK_INVITE_ROWS = 5000
-_BULK_INVITE_BATCH_SIZE = 500
+_FETCH_EXISTING_EMAILS_CHUNK_SIZE = 500
+_BULK_INVITE_CREATE_CONCURRENCY = 50
+_BULK_TALLY_LLM_TIMEOUT = 30
+_BULK_TALLY_LLM_MAX_ATTEMPTS = 3
 
 
 class InvitedUserRecord(BaseModel):
@@ -265,20 +272,23 @@ async def list_invited_users(
 
 
 async def create_invited_user(
-    email: str, name: Optional[str] = None
+    email: str,
+    name: Optional[str] = None,
+    *,
+    tally_mode: TallyMode = "default",
 ) -> InvitedUserRecord:
     normalized_email = normalize_email(email)
     normalized_name = _normalize_name(name)
 
-    existing_user = await prisma.models.User.prisma().find_unique(
-        where={"email": normalized_email}
+    existing_user, existing_invited_user = await asyncio.gather(
+        prisma.models.User.prisma().find_unique(where={"email": normalized_email}),
+        prisma.models.InvitedUser.prisma().find_unique(
+            where={"email": normalized_email}
+        ),
     )
     if existing_user is not None:
         raise PreconditionFailed("An active user with this email already exists")
 
-    existing_invited_user = await prisma.models.InvitedUser.prisma().find_unique(
-        where={"email": normalized_email}
-    )
     if existing_invited_user is not None:
         raise PreconditionFailed("An invited user with this email already exists")
 
@@ -293,7 +303,7 @@ async def create_invited_user(
         )
     except UniqueViolationError:
         raise PreconditionFailed("An invited user with this email already exists")
-    schedule_invited_user_tally_precompute(invited_user.id)
+    schedule_invited_user_tally_precompute(invited_user.id, tally_mode=tally_mode)
     return InvitedUserRecord.from_db(invited_user)
 
 
@@ -340,7 +350,7 @@ async def retry_invited_user_tally(invited_user_id: str) -> InvitedUserRecord:
     )
     if refreshed_user is None:
         raise NotFoundError(f"Invited user {invited_user_id} not found")
-    schedule_invited_user_tally_precompute(invited_user_id)
+    schedule_invited_user_tally_precompute(invited_user_id, tally_mode="default")
     return InvitedUserRecord.from_db(refreshed_user)
 
 
@@ -438,16 +448,35 @@ def _parse_bulk_invite_file(
 
 async def _fetch_existing_emails(emails: list[str]) -> tuple[set[str], set[str]]:
     """Batch-fetch emails that already exist as active users or invited users."""
-    existing_users = await prisma.models.User.prisma().find_many(
-        where={"email": {"in": emails}},
-    )
-    existing_invited = await prisma.models.InvitedUser.prisma().find_many(
-        where={"email": {"in": emails}},
-    )
-    return (
-        {u.email for u in existing_users},
-        {iu.email for iu in existing_invited},
-    )
+    if not emails:
+        return set(), set()
+
+    active_emails: set[str] = set()
+    invited_emails: set[str] = set()
+
+    for i in range(0, len(emails), _FETCH_EXISTING_EMAILS_CHUNK_SIZE):
+        email_chunk = emails[i : i + _FETCH_EXISTING_EMAILS_CHUNK_SIZE]
+        existing_users, existing_invited = await asyncio.gather(
+            prisma.models.User.prisma().find_many(
+                where={"email": {"in": email_chunk}},
+            ),
+            prisma.models.InvitedUser.prisma().find_many(
+                where={"email": {"in": email_chunk}},
+            ),
+        )
+        active_emails.update(u.email for u in existing_users)
+        invited_emails.update(iu.email for iu in existing_invited)
+
+    return active_emails, invited_emails
+
+
+async def _create_bulk_invited_user(
+    semaphore: asyncio.Semaphore,
+    email: str,
+    name: Optional[str],
+) -> InvitedUserRecord:
+    async with semaphore:
+        return await create_invited_user(email, name, tally_mode="bulk")
 
 
 async def bulk_create_invited_users_from_file(
@@ -533,55 +562,56 @@ async def bulk_create_invited_users_from_file(
 
         valid_rows.append((row, normalized_email, row_name))
 
-    # Second pass: create invites in batches to bound concurrent DB load.
-    for i in range(0, len(valid_rows), _BULK_INVITE_BATCH_SIZE):
-        batch = valid_rows[i : i + _BULK_INVITE_BATCH_SIZE]
-        batch_outcomes = await asyncio.gather(
-            *(create_invited_user(email, name) for _, email, name in batch),
-            return_exceptions=True,
-        )
-        for (row, normalized_email, row_name), outcome in zip(batch, batch_outcomes):
-            if isinstance(outcome, PreconditionFailed):
-                skipped_count += 1
-                results.append(
-                    BulkInvitedUserRowResult(
-                        row_number=row.row_number,
-                        email=normalized_email,
-                        name=row_name,
-                        status="SKIPPED",
-                        message=str(outcome),
-                    )
+    create_semaphore = asyncio.Semaphore(_BULK_INVITE_CREATE_CONCURRENCY)
+    batch_outcomes = await asyncio.gather(
+        *(
+            _create_bulk_invited_user(create_semaphore, email, name)
+            for _, email, name in valid_rows
+        ),
+        return_exceptions=True,
+    )
+    for (row, normalized_email, row_name), outcome in zip(valid_rows, batch_outcomes):
+        if isinstance(outcome, PreconditionFailed):
+            skipped_count += 1
+            results.append(
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message=str(outcome),
                 )
-            elif isinstance(outcome, BaseException):
-                masked = mask_email(normalized_email)
-                logger.exception(
-                    "Failed to create bulk invite for row %s (%s)",
-                    row.row_number,
-                    masked,
-                    exc_info=outcome,
+            )
+        elif isinstance(outcome, BaseException):
+            masked = mask_email(normalized_email)
+            logger.exception(
+                "Failed to create bulk invite for row %s (%s)",
+                row.row_number,
+                masked,
+                exc_info=outcome,
+            )
+            error_count += 1
+            results.append(
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="ERROR",
+                    message="Unexpected error creating invite",
                 )
-                error_count += 1
-                results.append(
-                    BulkInvitedUserRowResult(
-                        row_number=row.row_number,
-                        email=normalized_email,
-                        name=row_name,
-                        status="ERROR",
-                        message="Unexpected error creating invite",
-                    )
+            )
+        else:
+            created_count += 1
+            results.append(
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="CREATED",
+                    message="Invite created",
+                    invited_user=outcome,
                 )
-            else:
-                created_count += 1
-                results.append(
-                    BulkInvitedUserRowResult(
-                        row_number=row.row_number,
-                        email=normalized_email,
-                        name=row_name,
-                        status="CREATED",
-                        message="Invite created",
-                        invited_user=outcome,
-                    )
-                )
+            )
 
     results.sort(key=lambda r: r.row_number)
     return BulkInvitedUsersResult(
@@ -592,13 +622,65 @@ async def bulk_create_invited_users_from_file(
     )
 
 
-async def _compute_invited_user_tally_seed(invited_user_id: str) -> None:
-    async with _tally_semaphore:
-        await _compute_invited_user_tally_seed_inner(invited_user_id)
+async def _fetch_tally_submission_with_rate_limit(
+    email: str,
+    *,
+    require_api_key: bool = False,
+) -> Optional[tuple[dict, list]]:
+    async with _tally_lookup_semaphore:
+        result = await get_tally_submission_by_email(
+            email,
+            require_api_key=require_api_key,
+        )
         await asyncio.sleep(_TALLY_RATE_DELAY)
+        return result
 
 
-async def _compute_invited_user_tally_seed_inner(invited_user_id: str) -> None:
+async def _get_invited_user_tally_understanding(
+    email: str,
+    *,
+    tally_mode: TallyMode = "default",
+) -> Optional[BusinessUnderstandingInput]:
+    result = await _fetch_tally_submission_with_rate_limit(
+        email,
+        require_api_key=True,
+    )
+    if result is None:
+        return None
+
+    submission, questions = result
+    formatted = format_submission_for_llm(submission, questions)
+    if not formatted.strip():
+        logger.warning("Tally: formatted submission was empty, skipping")
+        return None
+
+    if tally_mode == "bulk":
+        async with _bulk_tally_extraction_semaphore:
+            return await extract_business_understanding_from_tally(
+                formatted,
+                timeout_seconds=_BULK_TALLY_LLM_TIMEOUT,
+                max_attempts=_BULK_TALLY_LLM_MAX_ATTEMPTS,
+            )
+
+    return await extract_business_understanding_from_tally(formatted)
+
+
+async def _compute_invited_user_tally_seed(
+    invited_user_id: str,
+    *,
+    tally_mode: TallyMode = "default",
+) -> None:
+    await _compute_invited_user_tally_seed_inner(
+        invited_user_id,
+        tally_mode=tally_mode,
+    )
+
+
+async def _compute_invited_user_tally_seed_inner(
+    invited_user_id: str,
+    *,
+    tally_mode: TallyMode = "default",
+) -> None:
     invited_user = await prisma.models.InvitedUser.prisma().find_unique(
         where={"id": invited_user_id}
     )
@@ -661,9 +743,9 @@ async def _compute_invited_user_tally_seed_inner(invited_user_id: str) -> None:
     )
 
     try:
-        input_data = await get_business_understanding_input_from_tally(
+        input_data = await _get_invited_user_tally_understanding(
             invited_user.email,
-            require_api_key=True,
+            tally_mode=tally_mode,
         )
         update_data: dict[str, object] = {
             "tallyStatus": prisma.enums.TallyComputationStatus.READY,
@@ -702,13 +784,22 @@ async def _compute_invited_user_tally_seed_inner(invited_user_id: str) -> None:
         )
 
 
-def schedule_invited_user_tally_precompute(invited_user_id: str) -> None:
+def schedule_invited_user_tally_precompute(
+    invited_user_id: str,
+    *,
+    tally_mode: TallyMode = "default",
+) -> None:
     existing = _tally_seed_tasks.get(invited_user_id)
     if existing is not None and not existing.done():
         logger.debug("Tally task already running for %s, skipping", invited_user_id)
         return
 
-    task = asyncio.create_task(_compute_invited_user_tally_seed(invited_user_id))
+    task = asyncio.create_task(
+        _compute_invited_user_tally_seed(
+            invited_user_id,
+            tally_mode=tally_mode,
+        )
+    )
     _tally_seed_tasks[invited_user_id] = task
 
     def _on_done(t: asyncio.Task, _id: str = invited_user_id) -> None:

@@ -360,6 +360,9 @@ _EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
 async def extract_business_understanding_from_tally(
     formatted_text: str,
+    *,
+    timeout_seconds: Optional[float] = None,
+    max_attempts: Optional[int] = None,
 ) -> BusinessUnderstandingInput:
     """
     Use an LLM to extract structured business understanding from form text.
@@ -369,9 +372,11 @@ async def extract_business_understanding_from_tally(
     """
     api_key = _settings.secrets.open_router_api_key
     client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
+    timeout_seconds = _LLM_TIMEOUT if timeout_seconds is None else timeout_seconds
+    max_attempts = _LLM_MAX_ATTEMPTS if max_attempts is None else max_attempts
 
     response = None
-    for attempt in range(1, _LLM_MAX_ATTEMPTS + 1):
+    for attempt in range(1, max_attempts + 1):
         try:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
@@ -385,25 +390,25 @@ async def extract_business_understanding_from_tally(
                     response_format={"type": "json_object"},
                     temperature=0.0,
                 ),
-                timeout=_LLM_TIMEOUT,
+                timeout=timeout_seconds,
             )
             break
         except asyncio.TimeoutError as exc:
-            if attempt == _LLM_MAX_ATTEMPTS:
+            if attempt == max_attempts:
                 logger.warning(
                     "Tally: LLM extraction timed out after %s attempts",
-                    _LLM_MAX_ATTEMPTS,
+                    max_attempts,
                 )
                 raise TallyExtractionTimeoutError(
-                    attempts=_LLM_MAX_ATTEMPTS,
-                    timeout_seconds=_LLM_TIMEOUT,
+                    attempts=max_attempts,
+                    timeout_seconds=timeout_seconds,
                 ) from exc
 
             delay = _get_llm_retry_delay(attempt)
             logger.warning(
                 "Tally: LLM extraction timed out on attempt %s/%s, retrying in %.1fs",
                 attempt,
-                _LLM_MAX_ATTEMPTS,
+                max_attempts,
                 delay,
             )
             await asyncio.sleep(delay)
@@ -443,11 +448,11 @@ async def extract_business_understanding_from_tally(
     return BusinessUnderstandingInput(**cleaned)
 
 
-async def get_business_understanding_input_from_tally(
+async def get_tally_submission_by_email(
     email: str,
     *,
     require_api_key: bool = False,
-) -> Optional[BusinessUnderstandingInput]:
+) -> Optional[tuple[dict, list]]:
     if not _settings.secrets.tally_api_key:
         if require_api_key:
             raise RuntimeError("Tally API key is not configured")
@@ -460,6 +465,26 @@ async def get_business_understanding_input_from_tally(
         logger.debug(f"Tally: no submission found for {masked}")
         return None
 
+    return result
+
+
+async def get_business_understanding_input_from_tally(
+    email: str,
+    *,
+    require_api_key: bool = False,
+    timeout_seconds: Optional[float] = None,
+    max_attempts: Optional[int] = None,
+) -> Optional[BusinessUnderstandingInput]:
+    timeout_seconds = _LLM_TIMEOUT if timeout_seconds is None else timeout_seconds
+    max_attempts = _LLM_MAX_ATTEMPTS if max_attempts is None else max_attempts
+    result = await get_tally_submission_by_email(
+        email,
+        require_api_key=require_api_key,
+    )
+    if result is None:
+        return None
+
+    masked = mask_email(email)
     submission, questions = result
     logger.info(f"Tally: found submission for {masked}, extracting understanding")
 
@@ -468,7 +493,11 @@ async def get_business_understanding_input_from_tally(
         logger.warning("Tally: formatted submission was empty, skipping")
         return None
 
-    return await extract_business_understanding_from_tally(formatted)
+    return await extract_business_understanding_from_tally(
+        formatted,
+        timeout_seconds=timeout_seconds,
+        max_attempts=max_attempts,
+    )
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
