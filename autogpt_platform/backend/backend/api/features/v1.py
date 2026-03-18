@@ -168,9 +168,15 @@ async def check_invite_route(
     rate_key = f"rate:check-invite:{client_ip}"
     try:
         redis = await get_redis_async()
-        count = await redis.incr(rate_key)
-        if count == 1:
-            await redis.expire(rate_key, _CHECK_INVITE_RATE_WINDOW)
+        # Use a pipeline so that incr + expire are sent atomically.
+        # This prevents the key from persisting indefinitely when expire fails
+        # after a successful incr (which would permanently block the IP once
+        # the count exceeds the limit).
+        pipe = redis.pipeline()
+        await pipe.incr(rate_key)
+        await pipe.expire(rate_key, _CHECK_INVITE_RATE_WINDOW)
+        results = await pipe.execute()
+        count = results[0]
         if count > _CHECK_INVITE_RATE_LIMIT:
             raise HTTPException(status_code=429, detail="Too many requests")
     except HTTPException:

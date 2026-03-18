@@ -41,10 +41,19 @@ _RATE_LIMIT_PATCH = "backend.api.features.v1.get_redis_async"
 
 
 def _make_redis_mock(count: int = 1) -> AsyncMock:
-    """Return a mock Redis client that reports `count` for the rate-limit key."""
+    """Return a mock Redis client that reports `count` for the rate-limit key.
+
+    The route now uses a pipeline (incr + expire sent atomically). The mock
+    returns a pipeline whose ``execute`` resolves to [count, True] so the
+    caller can read ``results[0]`` as the incremented counter.
+    """
+    mock_pipe = AsyncMock()
+    mock_pipe.incr = AsyncMock(return_value=mock_pipe)
+    mock_pipe.expire = AsyncMock(return_value=mock_pipe)
+    mock_pipe.execute = AsyncMock(return_value=[count, True])
+
     mock_redis = AsyncMock()
-    mock_redis.incr.return_value = count
-    mock_redis.expire.return_value = True
+    mock_redis.pipeline = Mock(return_value=mock_pipe)
     return mock_redis
 
 
