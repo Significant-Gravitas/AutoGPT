@@ -19,15 +19,17 @@ class TestNotificationErrorHandling:
         with patch("backend.notifications.notifications.AppService.__init__"):
             manager = NotificationManager()
             manager.email_sender = MagicMock()
+            # send_templated is async
+            manager.email_sender.send_templated = AsyncMock()
             # Mock the _get_template method used by _process_batch
             template_mock = Mock()
             template_mock.base_template = "base"
             template_mock.subject_template = "subject"
             template_mock.body_template = "body"
             manager.email_sender._get_template = Mock(return_value=template_mock)
-            # Mock the formatter
+            # Mock the formatter (format_email is async)
             manager.email_sender.formatter = Mock()
-            manager.email_sender.formatter.format_email = Mock(
+            manager.email_sender.formatter.format_email = AsyncMock(
                 return_value=("subject", "body content")
             )
             manager.email_sender.formatter.env = Mock()
@@ -331,7 +333,7 @@ class TestNotificationErrorHandling:
                         return ("subject", "x" * 5_000_000)  # Over 4.5MB limit
                 return ("subject", "normal sized content")
 
-            notification_manager.email_sender.formatter.format_email = Mock(
+            notification_manager.email_sender.formatter.format_email = AsyncMock(
                 side_effect=format_side_effect
             )
 
