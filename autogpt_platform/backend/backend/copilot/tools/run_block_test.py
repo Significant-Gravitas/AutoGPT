@@ -92,7 +92,7 @@ class TestRunBlockFiltering:
         input_block = make_mock_block("input-block-id", "Input Block", BlockType.INPUT)
 
         with patch(
-            "backend.copilot.tools.run_block.get_block",
+            "backend.copilot.tools.helpers.get_block",
             return_value=input_block,
         ):
             tool = RunBlockTool()
@@ -118,7 +118,7 @@ class TestRunBlockFiltering:
         )
 
         with patch(
-            "backend.copilot.tools.run_block.get_block",
+            "backend.copilot.tools.helpers.get_block",
             return_value=smart_block,
         ):
             tool = RunBlockTool()
@@ -143,7 +143,7 @@ class TestRunBlockFiltering:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=standard_block,
             ),
             patch(
@@ -200,7 +200,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -243,7 +243,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -289,7 +289,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -337,7 +337,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -381,7 +381,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -435,7 +435,7 @@ class TestRunBlockSensitiveAction:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -491,7 +491,7 @@ class TestRunBlockSensitiveAction:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -545,7 +545,7 @@ class TestRunBlockSensitiveAction:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
