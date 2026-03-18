@@ -3,6 +3,7 @@
 import type { ToolUIPart } from "ai";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { ToolAccordion } from "../../components/ToolAccordion/ToolAccordion";
+import { BlockDetailsCard } from "./components/BlockDetailsCard/BlockDetailsCard";
 import { BlockOutputCard } from "./components/BlockOutputCard/BlockOutputCard";
 import { ErrorCard } from "./components/ErrorCard/ErrorCard";
 import { SetupRequirementsCard } from "./components/SetupRequirementsCard/SetupRequirementsCard";
@@ -11,6 +12,7 @@ import {
   getAnimationText,
   getRunBlockToolOutput,
   isRunBlockBlockOutput,
+  isRunBlockDetailsOutput,
   isRunBlockErrorOutput,
   isRunBlockSetupRequirementsOutput,
   ToolIcon,
@@ -37,11 +39,19 @@ export function RunBlockTool({ part }: Props) {
   const isError =
     part.state === "output-error" ||
     (!!output && isRunBlockErrorOutput(output));
+  const setupRequirementsOutput =
+    part.state === "output-available" &&
+    output &&
+    isRunBlockSetupRequirementsOutput(output)
+      ? output
+      : null;
+
   const hasExpandableContent =
     part.state === "output-available" &&
     !!output &&
+    !setupRequirementsOutput &&
     (isRunBlockBlockOutput(output) ||
-      isRunBlockSetupRequirementsOutput(output) ||
+      isRunBlockDetailsOutput(output) ||
       isRunBlockErrorOutput(output));
 
   return (
@@ -54,12 +64,18 @@ export function RunBlockTool({ part }: Props) {
         />
       </div>
 
+      {setupRequirementsOutput && (
+        <div className="mt-2">
+          <SetupRequirementsCard output={setupRequirementsOutput} />
+        </div>
+      )}
+
       {hasExpandableContent && output && (
         <ToolAccordion {...getAccordionMeta(output)}>
           {isRunBlockBlockOutput(output) && <BlockOutputCard output={output} />}
 
-          {isRunBlockSetupRequirementsOutput(output) && (
-            <SetupRequirementsCard output={output} />
+          {isRunBlockDetailsOutput(output) && (
+            <BlockDetailsCard output={output} />
           )}
 
           {isRunBlockErrorOutput(output) && <ErrorCard output={output} />}

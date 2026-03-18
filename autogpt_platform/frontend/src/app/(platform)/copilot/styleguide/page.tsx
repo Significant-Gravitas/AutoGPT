@@ -11,9 +11,18 @@ import {
   MessageResponse,
 } from "@/components/ai-elements/message";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProviderData,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 import { CopilotChatActionsProvider } from "../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { CreateAgentTool } from "../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../tools/EditAgent/EditAgent";
+import {
+  CreateFeatureRequestTool,
+  SearchFeatureRequestsTool,
+} from "../tools/FeatureRequests/FeatureRequests";
 import { FindAgentsTool } from "../tools/FindAgents/FindAgents";
 import { FindBlocksTool } from "../tools/FindBlocks/FindBlocks";
 import { RunAgentTool } from "../tools/RunAgent/RunAgent";
@@ -45,6 +54,8 @@ const SECTIONS = [
   "Tool: Create Agent",
   "Tool: Edit Agent",
   "Tool: View Agent Output",
+  "Tool: Search Feature Requests",
+  "Tool: Create Feature Request",
   "Full Conversation Example",
 ] as const;
 
@@ -90,6 +101,65 @@ let _id = 0;
 function uid() {
   return `sg-${++_id}`;
 }
+
+// ---------------------------------------------------------------------------
+// Mock credential providers for setup-requirements demos
+// ---------------------------------------------------------------------------
+
+const noop = () => Promise.reject(new Error("Styleguide mock"));
+
+function makeMockProvider(
+  provider: string,
+  providerName: string,
+  savedCredentials: CredentialsProviderData["savedCredentials"] = [],
+): CredentialsProviderData {
+  return {
+    provider,
+    providerName,
+    savedCredentials,
+    isSystemProvider: false,
+    oAuthCallback: noop as CredentialsProviderData["oAuthCallback"],
+    mcpOAuthCallback: noop as CredentialsProviderData["mcpOAuthCallback"],
+    createAPIKeyCredentials:
+      noop as CredentialsProviderData["createAPIKeyCredentials"],
+    createUserPasswordCredentials:
+      noop as CredentialsProviderData["createUserPasswordCredentials"],
+    createHostScopedCredentials:
+      noop as CredentialsProviderData["createHostScopedCredentials"],
+    deleteCredentials: noop as CredentialsProviderData["deleteCredentials"],
+  };
+}
+
+/**
+ * Provider context where the user already has saved credentials
+ * so the credential picker shows a selection list.
+ */
+const MOCK_PROVIDERS_WITH_CREDENTIALS: CredentialsProvidersContextType = {
+  google: makeMockProvider("google", "Google", [
+    {
+      id: "cred-google-1",
+      provider: "google",
+      type: "oauth2",
+      title: "work@company.com",
+      scopes: ["email", "calendar"],
+    },
+    {
+      id: "cred-google-2",
+      provider: "google",
+      type: "oauth2",
+      title: "personal@gmail.com",
+      scopes: ["email", "calendar"],
+    },
+  ]),
+};
+
+/**
+ * Provider context where the user has NO saved credentials,
+ * so the credential picker shows an "add new" flow.
+ */
+const MOCK_PROVIDERS_WITHOUT_CREDENTIALS: CredentialsProvidersContextType = {
+  openweathermap: makeMockProvider("openweathermap", "OpenWeatherMap"),
+};
 
 // ---------------------------------------------------------------------------
 // Page
@@ -548,45 +618,80 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (setup requirements)">
-                <RunBlockTool
-                  part={{
-                    type: "tool-run_block",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    input: { block_id: "weather-block-123" },
-                    output: {
-                      type: ResponseType.setup_requirements,
-                      message:
-                        "This block requires API credentials to run. Please configure them below.",
-                      setup_info: {
-                        agent_name: "Weather Agent",
-                        requirements: {
-                          inputs: [
-                            {
-                              name: "city",
-                              title: "City",
-                              type: "string",
-                              required: true,
-                              description: "The city to get weather for",
-                            },
-                          ],
-                        },
-                        user_readiness: {
-                          missing_credentials: {
-                            openweathermap: {
-                              provider: "openweathermap",
-                              credentials_type: "api_key",
-                              title: "OpenWeatherMap API Key",
-                              description:
-                                "Required to access weather data. Get your key at openweathermap.org",
+              <SubSection label="Setup requirements — no credentials (add new)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITHOUT_CREDENTIALS}
+                >
+                  <RunBlockTool
+                    part={{
+                      type: "tool-run_block",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { block_id: "weather-block-123" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This block requires API credentials to run. Please configure them below.",
+                        setup_info: {
+                          agent_id: "agent-weather-1",
+                          agent_name: "Weather Agent",
+                          requirements: {
+                            inputs: [
+                              {
+                                name: "city",
+                                title: "City",
+                                type: "string",
+                                required: true,
+                                description: "The city to get weather for",
+                              },
+                            ],
+                          },
+                          user_readiness: {
+                            missing_credentials: {
+                              openweathermap_key: {
+                                provider: "openweathermap",
+                                types: ["api_key"],
+                              },
                             },
                           },
                         },
                       },
-                    },
-                  }}
-                />
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
+              </SubSection>
+
+              <SubSection label="Setup requirements — has credentials (pick from list)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITH_CREDENTIALS}
+                >
+                  <RunBlockTool
+                    part={{
+                      type: "tool-run_block",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { block_id: "calendar-block-456" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This block requires Google credentials. Pick an account below or connect a new one.",
+                        setup_info: {
+                          agent_id: "agent-calendar-1",
+                          agent_name: "Calendar Agent",
+                          user_readiness: {
+                            missing_credentials: {
+                              google_oauth: {
+                                provider: "google",
+                                types: ["oauth2"],
+                                scopes: ["email", "calendar"],
+                              },
+                            },
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
               </SubSection>
 
               <SubSection label="Output available (error)">
@@ -816,26 +921,29 @@ export default function StyleguidePage() {
                     output: {
                       type: ResponseType.agent_details,
                       agent: {
+                        id: "agent-yt-1",
                         name: "YouTube Summarizer",
                         description:
                           "Summarizes YouTube videos into key points.",
-                        inputs: [
-                          {
-                            name: "video_url",
-                            title: "Video URL",
-                            type: "string",
-                            required: true,
-                            description: "The YouTube video URL to summarize",
+                        inputs: {
+                          type: "object",
+                          properties: {
+                            video_url: {
+                              type: "string",
+                              title: "Video URL",
+                              description: "The YouTube video URL to summarize",
+                              default: "https://youtube.com/watch?v=example",
+                            },
+                            language: {
+                              type: "string",
+                              title: "Output Language",
+                              description:
+                                "Language for the summary (default: English)",
+                              default: "English",
+                            },
                           },
-                          {
-                            name: "language",
-                            title: "Output Language",
-                            type: "string",
-                            required: false,
-                            description:
-                              "Language for the summary (default: English)",
-                          },
-                        ],
+                          required: ["video_url"],
+                        },
                       },
                       message: "This agent requires inputs to run.",
                     },
@@ -843,34 +951,71 @@ export default function StyleguidePage() {
                 />
               </SubSection>
 
-              <SubSection label="Output available (setup requirements)">
-                <RunAgentTool
-                  part={{
-                    type: "tool-run_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    input: { username_agent_slug: "creator/my-agent" },
-                    output: {
-                      type: ResponseType.setup_requirements,
-                      message: "This agent requires additional setup.",
-                      setup_info: {
-                        agent_name: "YouTube Summarizer",
-                        requirements: {},
-                        user_readiness: {
-                          missing_credentials: {
-                            youtube_api: {
-                              provider: "youtube",
-                              credentials_type: "api_key",
-                              title: "YouTube Data API Key",
-                              description:
-                                "Required to access YouTube video data.",
+              <SubSection label="Setup requirements — no credentials (add new)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITHOUT_CREDENTIALS}
+                >
+                  <RunAgentTool
+                    part={{
+                      type: "tool-run_agent",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { username_agent_slug: "creator/weather-agent" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This agent requires an API key. Add your credentials below.",
+                        setup_info: {
+                          agent_id: "agent-weather-1",
+                          agent_name: "Weather Agent",
+                          requirements: {},
+                          user_readiness: {
+                            missing_credentials: {
+                              openweathermap_key: {
+                                provider: "openweathermap",
+                                types: ["api_key"],
+                              },
                             },
                           },
                         },
                       },
-                    },
-                  }}
-                />
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
+              </SubSection>
+
+              <SubSection label="Setup requirements — has credentials (pick from list)">
+                <CredentialsProvidersContext.Provider
+                  value={MOCK_PROVIDERS_WITH_CREDENTIALS}
+                >
+                  <RunAgentTool
+                    part={{
+                      type: "tool-run_agent",
+                      toolCallId: uid(),
+                      state: "output-available",
+                      input: { username_agent_slug: "creator/calendar-agent" },
+                      output: {
+                        type: ResponseType.setup_requirements,
+                        message:
+                          "This agent needs Google credentials. Pick an account or connect a new one.",
+                        setup_info: {
+                          agent_id: "agent-calendar-1",
+                          agent_name: "Google Calendar Agent",
+                          requirements: {},
+                          user_readiness: {
+                            missing_credentials: {
+                              google_oauth: {
+                                provider: "google",
+                                types: ["oauth2"],
+                                scopes: ["email", "calendar"],
+                              },
+                            },
+                          },
+                        },
+                      },
+                    }}
+                  />
+                </CredentialsProvidersContext.Provider>
               </SubSection>
 
               <SubSection label="Output available (need login)">
@@ -974,56 +1119,6 @@ export default function StyleguidePage() {
                     type: "tool-create_agent",
                     toolCallId: uid(),
                     state: "input-streaming",
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation started)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation has been started. This may take a moment.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation pending)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_pending,
-                      operation_id: "op-create-123",
-                      tool_name: "create_agent",
-                      message:
-                        "Agent creation is queued and will begin shortly.",
-                    },
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation in progress)">
-                <CreateAgentTool
-                  part={{
-                    type: "tool-create_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_in_progress,
-                      tool_call_id: "tc-456",
-                      message:
-                        "An agent creation operation is already in progress. Please wait for it to finish.",
-                    },
                   }}
                 />
               </SubSection>
@@ -1146,22 +1241,6 @@ export default function StyleguidePage() {
                     type: "tool-edit_agent",
                     toolCallId: uid(),
                     state: "input-streaming",
-                  }}
-                />
-              </SubSection>
-
-              <SubSection label="Output available (operation started)">
-                <EditAgentTool
-                  part={{
-                    type: "tool-edit_agent",
-                    toolCallId: uid(),
-                    state: "output-available",
-                    output: {
-                      type: ResponseType.operation_started,
-                      operation_id: "op-edit-456",
-                      tool_name: "edit_agent",
-                      message: "Agent editing has started.",
-                    },
                   }}
                 />
               </SubSection>
@@ -1416,6 +1495,235 @@ export default function StyleguidePage() {
                     toolCallId: uid(),
                     state: "output-error",
                     input: { agent_name: "YouTube Summarizer" },
+                  }}
+                />
+              </SubSection>
+            </Section>
+
+            {/* ============================================================= */}
+            {/* SEARCH FEATURE REQUESTS                                        */}
+            {/* ============================================================= */}
+
+            <Section title="Tool: Search Feature Requests">
+              <SubSection label="Input streaming">
+                <SearchFeatureRequestsTool
+                  part={{
+                    type: "tool-search_feature_requests",
+                    toolCallId: uid(),
+                    state: "input-streaming",
+                    input: { query: "dark mode" },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Input available">
+                <SearchFeatureRequestsTool
+                  part={{
+                    type: "tool-search_feature_requests",
+                    toolCallId: uid(),
+                    state: "input-available",
+                    input: { query: "dark mode" },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output available (with results)">
+                <SearchFeatureRequestsTool
+                  part={{
+                    type: "tool-search_feature_requests",
+                    toolCallId: uid(),
+                    state: "output-available",
+                    input: { query: "dark mode" },
+                    output: {
+                      type: "feature_request_search",
+                      message:
+                        'Found 2 feature request(s) matching "dark mode".',
+                      query: "dark mode",
+                      count: 2,
+                      results: [
+                        {
+                          id: "fr-001",
+                          identifier: "INT-42",
+                          title: "Add dark mode to the platform",
+                          description:
+                            "Users have requested a dark mode option for the builder and copilot interfaces to reduce eye strain during long sessions.",
+                        },
+                        {
+                          id: "fr-002",
+                          identifier: "INT-87",
+                          title: "Dark theme for agent output viewer",
+                          description:
+                            "Specifically requesting dark theme support for the agent output/execution viewer panel.",
+                        },
+                      ],
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output available (no results)">
+                <SearchFeatureRequestsTool
+                  part={{
+                    type: "tool-search_feature_requests",
+                    toolCallId: uid(),
+                    state: "output-available",
+                    input: { query: "teleportation" },
+                    output: {
+                      type: "no_results",
+                      message:
+                        "No feature requests found matching 'teleportation'.",
+                      suggestions: [
+                        "Try different keywords",
+                        "Use broader search terms",
+                        "You can create a new feature request if none exists",
+                      ],
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output available (error)">
+                <SearchFeatureRequestsTool
+                  part={{
+                    type: "tool-search_feature_requests",
+                    toolCallId: uid(),
+                    state: "output-available",
+                    input: { query: "dark mode" },
+                    output: {
+                      type: "error",
+                      message: "Failed to search feature requests.",
+                      error: "LINEAR_API_KEY environment variable is not set",
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output error">
+                <SearchFeatureRequestsTool
+                  part={{
+                    type: "tool-search_feature_requests",
+                    toolCallId: uid(),
+                    state: "output-error",
+                    input: { query: "dark mode" },
+                  }}
+                />
+              </SubSection>
+            </Section>
+
+            {/* ============================================================= */}
+            {/* CREATE FEATURE REQUEST                                         */}
+            {/* ============================================================= */}
+
+            <Section title="Tool: Create Feature Request">
+              <SubSection label="Input streaming">
+                <CreateFeatureRequestTool
+                  part={{
+                    type: "tool-create_feature_request",
+                    toolCallId: uid(),
+                    state: "input-streaming",
+                    input: {
+                      title: "Add dark mode",
+                      description: "I would love dark mode for the platform.",
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Input available">
+                <CreateFeatureRequestTool
+                  part={{
+                    type: "tool-create_feature_request",
+                    toolCallId: uid(),
+                    state: "input-available",
+                    input: {
+                      title: "Add dark mode",
+                      description: "I would love dark mode for the platform.",
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output available (new issue created)">
+                <CreateFeatureRequestTool
+                  part={{
+                    type: "tool-create_feature_request",
+                    toolCallId: uid(),
+                    state: "output-available",
+                    input: {
+                      title: "Add dark mode",
+                      description: "I would love dark mode for the platform.",
+                    },
+                    output: {
+                      type: "feature_request_created",
+                      message:
+                        "Created new feature request [INT-105] Add dark mode.",
+                      issue_id: "issue-new-123",
+                      issue_identifier: "INT-105",
+                      issue_title: "Add dark mode",
+                      issue_url:
+                        "https://linear.app/autogpt/issue/INT-105/add-dark-mode",
+                      is_new_issue: true,
+                      customer_name: "user-abc-123",
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output available (added to existing issue)">
+                <CreateFeatureRequestTool
+                  part={{
+                    type: "tool-create_feature_request",
+                    toolCallId: uid(),
+                    state: "output-available",
+                    input: {
+                      title: "Dark mode support",
+                      description:
+                        "Please add dark mode, it would help with long sessions.",
+                      existing_issue_id: "fr-001",
+                    },
+                    output: {
+                      type: "feature_request_created",
+                      message:
+                        "Added your request to existing feature request [INT-42] Add dark mode to the platform.",
+                      issue_id: "fr-001",
+                      issue_identifier: "INT-42",
+                      issue_title: "Add dark mode to the platform",
+                      issue_url:
+                        "https://linear.app/autogpt/issue/INT-42/add-dark-mode-to-the-platform",
+                      is_new_issue: false,
+                      customer_name: "user-xyz-789",
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output available (error)">
+                <CreateFeatureRequestTool
+                  part={{
+                    type: "tool-create_feature_request",
+                    toolCallId: uid(),
+                    state: "output-available",
+                    input: {
+                      title: "Add dark mode",
+                      description: "I would love dark mode.",
+                    },
+                    output: {
+                      type: "error",
+                      message:
+                        "Failed to attach customer need to the feature request.",
+                      error: "Linear API request failed (500): Internal error",
+                    },
+                  }}
+                />
+              </SubSection>
+
+              <SubSection label="Output error">
+                <CreateFeatureRequestTool
+                  part={{
+                    type: "tool-create_feature_request",
+                    toolCallId: uid(),
+                    state: "output-error",
+                    input: { title: "Add dark mode" },
                   }}
                 />
               </SubSection>

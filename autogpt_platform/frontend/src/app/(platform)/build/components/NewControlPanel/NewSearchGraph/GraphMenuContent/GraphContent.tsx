@@ -1,7 +1,7 @@
 import React from "react";
 import { Separator } from "@/components/__legacy__/ui/separator";
 import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
-import { beautifyString, getPrimaryCategoryColor } from "@/lib/utils";
+import { beautifyString, categoryColorMap } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 import { TextRenderer } from "@/components/__legacy__/ui/render";
 import {
@@ -73,14 +73,12 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
               }
 
               const nodeTitle =
-                node.data?.metadata?.customized_name ||
-                beautifyString(node.data?.blockType || "").replace(
-                  / Block$/,
-                  "",
-                );
-              const nodeType = beautifyString(
-                node.data?.blockType || "",
-              ).replace(/ Block$/, "");
+                (node.data?.metadata?.customized_name as string) ||
+                beautifyString(node.data?.title || "").replace(/ Block$/, "");
+              const nodeType = beautifyString(node.data?.title || "").replace(
+                / Block$/,
+                "",
+              );
 
               return (
                 <TooltipProvider key={node.id}>
@@ -100,7 +98,13 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                         onMouseLeave={() => onNodeHover?.(null)}
                       >
                         <div
-                          className={`h-full w-3 rounded-l-[7px] ${getPrimaryCategoryColor(node.data?.categories)}`}
+                          className={`h-full w-3 rounded-l-[7px] ${
+                            (node.data?.categories?.[0]?.category &&
+                              categoryColorMap[
+                                node.data.categories[0].category
+                              ]) ||
+                            "bg-gray-300 dark:bg-slate-700"
+                          }`}
                         />
                         <div className="mx-3 flex flex-1 items-center justify-between">
                           <div className="mr-2 min-w-0">
@@ -129,9 +133,10 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
                         <div className="font-semibold">
                           Node Type: {nodeType}
                         </div>
-                        {node.data?.metadata?.customized_name && (
+                        {!!node.data?.metadata?.customized_name && (
                           <div className="text-xs text-gray-500">
-                            Custom Name: {node.data.metadata.customized_name}
+                            Custom Name:{" "}
+                            {String(node.data.metadata.customized_name)}
                           </div>
                         )}
                       </div>

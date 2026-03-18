@@ -40,6 +40,48 @@ jobs:
           git checkout -b "$BRANCH_NAME"
           echo "branch_name=$BRANCH_NAME" >> $GITHUB_OUTPUT
 
+      # Backend Python/Poetry setup (so Claude can run linting/tests)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          cd autogpt_platform/backend
+          HEAD_POETRY_VERSION=$(python3 ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Python dependencies
+        working-directory: autogpt_platform/backend
+        run: poetry install
+
+      - name: Generate Prisma Client
+        working-directory: autogpt_platform/backend
+        run: poetry run prisma generate && poetry run gen-prisma-stub
+
+      # Frontend Node.js/pnpm setup (so Claude can run linting/tests)
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Install JavaScript dependencies
+        working-directory: autogpt_platform/frontend
+        run: pnpm install --frozen-lockfile
+
       - name: Get CI failure details
         id: failure_details
         uses: actions/github-script@v8

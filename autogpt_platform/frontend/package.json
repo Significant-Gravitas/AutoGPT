@@ -32,6 +32,7 @@
   "dependencies": {
     "@ai-sdk/react": "3.0.61",
     "@faker-js/faker": "10.0.0",
+    "@ferrucc-io/emoji-picker": "0.0.48",
     "@hookform/resolvers": "5.2.2",
     "@next/third-parties": "15.4.6",
     "@phosphor-icons/react": "2.1.10",
@@ -62,7 +63,6 @@
     "@rjsf/validator-ajv8": "6.1.2",
     "@sentry/nextjs": "10.27.0",
     "@streamdown/cjk": "1.0.1",
-    "@streamdown/code": "1.0.1",
     "@streamdown/math": "1.0.1",
     "@streamdown/mermaid": "1.0.1",
     "@supabase/ssr": "0.7.0",
@@ -116,6 +116,7 @@
     "remark-gfm": "4.0.1",
     "remark-math": "6.0.0",
     "shepherd.js": "14.5.1",
+    "shiki": "^3.21.0",
     "sonner": "2.0.7",
     "streamdown": "2.1.0",
     "tailwind-merge": "2.6.0",
