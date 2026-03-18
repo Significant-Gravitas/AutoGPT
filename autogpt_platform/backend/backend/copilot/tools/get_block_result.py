@@ -1,5 +1,6 @@
 """Tool for retrieving the result of a background block execution."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -88,6 +89,17 @@ class GetBlockResultTool(BaseTool):
 
         try:
             result = await task
+        except asyncio.CancelledError:
+            jobs.pop(job_id, None)
+            return BlockJobResultResponse(
+                message="Block execution was cancelled.",
+                session_id=session_id,
+                job_id=job_id,
+                block_id="",
+                block_name="",
+                success=False,
+                error="Task was cancelled.",
+            )
         except Exception as exc:
             logger.warning("Background block job %s failed: %s", job_id, exc)
             # Clean up the finished task
