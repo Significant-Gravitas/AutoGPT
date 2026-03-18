@@ -129,7 +129,10 @@ git pull {base-remote} {base-branch} --no-rebase
 
 3. Resolve conflicting files, then verify no conflict markers remain:
 ```bash
-grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' <conflicted-files>   # must return no output before proceeding
+if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' <conflicted-files>; then
+  echo "Unresolved conflict markers found — resolve before proceeding."
+  exit 1
+fi
 ```
 
 4. Stage and push:
