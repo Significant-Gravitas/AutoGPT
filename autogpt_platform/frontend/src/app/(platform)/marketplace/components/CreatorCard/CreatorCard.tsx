@@ -25,8 +25,9 @@ export function CreatorCard({
   index,
 }: Props) {
   return (
-    <div
-      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 shadow-md transition-all duration-300 hover:shadow-lg ${backgroundColor(index)}`}
+    <button
+      type="button"
+      className={`relative flex h-[16rem] w-full cursor-pointer flex-col items-start rounded-2xl border p-4 text-left shadow-md transition-all duration-300 hover:shadow-lg ${backgroundColor(index)}`}
       onClick={onClick}
       data-testid="creator-card"
     >
@@ -53,6 +54,6 @@ export function CreatorCard({
       <Text variant="body" className="absolute bottom-4 left-4 text-zinc-500">
         {agentsUploaded} {agentsUploaded === 1 ? "agent" : "agents"}
       </Text>
-    </div>
+    </button>
   );
 }

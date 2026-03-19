@@ -1,9 +1,8 @@
 "use client";
 
-import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
+import { Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
@@ -61,7 +60,7 @@ export function NavbarLink({ name, href }: Props) {
           </div>
         )}
         {href === "/monitor" && (
-          <IconLaptop
+          <Laptop
             className={cn(
               iconBaseClass,
               isActive && "text-white dark:text-black",

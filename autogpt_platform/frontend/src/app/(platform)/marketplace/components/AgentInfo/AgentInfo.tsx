@@ -245,15 +245,17 @@ export const AgentInfo = ({
             </Text>
             {categories.filter((c) => c.trim()).length > 0 ? (
               <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {categories.filter((c) => c.trim()).map((category, index) => (
-                  <Badge
-                    variant="info"
-                    key={index}
-                    className="border border-purple-100 bg-purple-50 text-purple-800"
-                  >
-                    {category}
-                  </Badge>
-                ))}
+                {categories
+                  .filter((c) => c.trim())
+                  .map((category, index) => (
+                    <Badge
+                      variant="info"
+                      key={index}
+                      className="border border-purple-100 bg-purple-50 text-purple-800"
+                    >
+                      {category}
+                    </Badge>
+                  ))}
               </div>
             ) : (
               <Text variant="body" className="text-neutral-400">

@@ -47,7 +47,11 @@ function UndoActions({
         className="border-none text-zinc-200 hover:bg-transparent hover:text-zinc-400"
         onClick={async () => {
           setIsUndoing(true);
-          await onUndo(libraryAgentID);
+          try {
+            await onUndo(libraryAgentID);
+          } finally {
+            setIsUndoing(false);
+          }
         }}
       >
         {isUndoing ? "Undoing..." : "Undo"}

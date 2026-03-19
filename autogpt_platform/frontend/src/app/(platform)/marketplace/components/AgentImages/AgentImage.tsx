@@ -2,7 +2,7 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AgentImageItem } from "../AgentImageItem/AgentImageItem";
 import { getYouTubeVideoId, isValidVideoUrl } from "../AgentImageItem/helpers";
 import { useAgentImage } from "./useAgentImage";
@@ -15,6 +15,10 @@ export function AgentImages({ images }: AgentImagesProps) {
   const { playingVideoIndex, handlePlay, handlePause } = useAgentImage();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loadedThumbs, setLoadedThumbs] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    setSelectedIndex((prev) => Math.max(0, Math.min(prev, images.length - 1)));
+  }, [images.length]);
 
   if (images.length === 0) return null;
 
@@ -48,7 +52,7 @@ export function AgentImages({ images }: AgentImagesProps) {
                     : "border-zinc-100 opacity-70 hover:opacity-100",
                 )}
               >
-                {!loadedThumbs.has(index) && (
+                {(!isVideo || youtubeId) && !loadedThumbs.has(index) && (
                   <Skeleton className="absolute inset-0 rounded-lg" />
                 )}
                 {youtubeId ? (

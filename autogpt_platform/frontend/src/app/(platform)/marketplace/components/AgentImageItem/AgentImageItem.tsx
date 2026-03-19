@@ -1,8 +1,8 @@
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { PlayIcon } from "@radix-ui/react-icons";
+import { Play } from "@phosphor-icons/react";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getYouTubeVideoId,
   isValidVideoFile,
@@ -18,16 +18,20 @@ interface AgentImageItemProps {
   handlePause: (index: number) => void;
 }
 
-export const AgentImageItem: React.FC<AgentImageItemProps> = ({
+export function AgentImageItem({
   image,
   index,
   playingVideoIndex,
   handlePlay,
   handlePause,
-}) => {
+}: AgentImageItemProps) {
   const { videoRef } = useAgentImageItem({ playingVideoIndex, index });
   const isVideoFile = isValidVideoFile(image);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [image]);
 
   return (
     <div className="relative">
@@ -73,6 +77,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               className="rounded-xl object-cover"
               onLoad={() => setImageLoaded(true)}
+              onError={() => setImageLoaded(true)}
             />
           </div>
         )}
@@ -80,20 +85,25 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = ({
       {isVideoFile && playingVideoIndex !== index && (
         <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-[1.25rem] lg:left-[1.25rem]">
           <Button
-            size="default"
+            variant="secondary"
+            size="large"
             onClick={() => {
               if (videoRef.current) {
                 videoRef.current.play();
               }
             }}
+            rightIcon={
+              <Play
+                size={20}
+                weight="fill"
+                className="text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7"
+              />
+            }
           >
-            <span className="pr-1 text-sm font-medium leading-6 tracking-tight text-[#272727] dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
-              Play demo
-            </span>
-            <PlayIcon className="h-5 w-5 text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />
+            Play demo
           </Button>
         </div>
       )}
     </div>
   );
-};
+}

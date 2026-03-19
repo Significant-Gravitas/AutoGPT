@@ -123,15 +123,17 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           ? "No runs"
           : `${(agent.runs ?? 0).toLocaleString()} runs`}
       </Text>
-      <div className="absolute bottom-2" style={{ right: "-4px" }}>
-        <AddToLibraryButton
-          creatorSlug={agent.creator}
-          agentSlug={agent.slug}
-          agentName={agent.agent_name}
-          agentGraphID={agent.agent_graph_id}
-          className={getAccentTextClass(backgroundColor)}
-        />
-      </div>
+      {agent.creator && agent.slug && agent.agent_graph_id && (
+        <div className="absolute bottom-2" style={{ right: "-4px" }}>
+          <AddToLibraryButton
+            creatorSlug={agent.creator}
+            agentSlug={agent.slug}
+            agentName={agent.agent_name}
+            agentGraphID={agent.agent_graph_id}
+            className={getAccentTextClass(backgroundColor)}
+          />
+        </div>
+      )}
     </div>
   );
 }

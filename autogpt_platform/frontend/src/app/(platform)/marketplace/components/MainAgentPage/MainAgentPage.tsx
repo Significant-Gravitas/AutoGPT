@@ -163,7 +163,6 @@ export function MainAgentPage({ params }: Props) {
         <Separator className="my-6 bg-transparent" />
         {otherAgents && (
           <AgentsSection
-            margin="32px"
             agents={otherAgents.agents}
             sectionTitle={`Other agents by ${agentData.creator ?? ""}`}
           />
@@ -171,7 +170,6 @@ export function MainAgentPage({ params }: Props) {
         <Separator className="mb-[25px] mt-[60px] bg-transparent" />
         {similarAgents && similarAgents.agents.length > 0 ? (
           <AgentsSection
-            margin="32px"
             agents={similarAgents.agents}
             sectionTitle="Similar agents"
           />

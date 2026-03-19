@@ -27,7 +27,6 @@ interface Props {
   sectionTitle?: string;
   agents: StoreAgent[];
   hideAvatars?: boolean;
-  margin?: string;
 }
 
 export function AgentsSection({
