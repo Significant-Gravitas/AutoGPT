@@ -213,6 +213,20 @@ class RunBlockTool(BaseTool):
                     session_id=session_id,
                 )
 
+        # Dry-run fast-path: skip credential/HITL checks — simulation never calls
+        # the real service so credentials and review gates are not needed.
+        if dry_run:
+            return await execute_block(
+                block=block,
+                block_id=block_id,
+                input_data=input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=f"{COPILOT_NODE_PREFIX}{block_id}:{uuid.uuid4().hex[:8]}",
+                matched_credentials=matched_credentials,
+                dry_run=True,
+            )
+
         if missing_credentials:
             # Return setup requirements response with missing credentials
             credentials_fields_info = block.input_schema.get_credentials_fields_info()
