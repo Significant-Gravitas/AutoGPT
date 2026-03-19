@@ -67,7 +67,7 @@ export function LibrarySubSection({
           ))}
         </TabsLineList>
       </TabsLine>
-      <div className="flex items-center gap-6">
+      <div className="hidden items-center gap-6 md:flex">
         <LibraryFolderCreationDialog />
         <LibrarySortMenu setLibrarySort={setLibrarySort} />
       </div>
