@@ -102,6 +102,19 @@ def set_execution_context(
     _tool_task_queues.set({})
 
 
+def reset_stash_event() -> None:
+    """Clear any stale stash signal left over from a previous stream attempt.
+
+    ``_stash_event`` is set once per session in ``set_execution_context`` and
+    reused across retry attempts.  A PostToolUse hook from a failed attempt may
+    leave the event set; calling this at the start of each retry prevents
+    ``wait_for_stash`` from returning prematurely on a stale signal.
+    """
+    event = _stash_event.get(None)
+    if event is not None:
+        event.clear()
+
+
 def cancel_pending_tool_tasks() -> None:
     """Cancel all queued pre-launched tasks for the current execution context.
 

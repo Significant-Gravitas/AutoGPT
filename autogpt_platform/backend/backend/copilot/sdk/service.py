@@ -82,6 +82,7 @@ from .tool_adapter import (
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
     pre_launch_tool_call,
+    reset_stash_event,
     set_execution_context,
     wait_for_stash,
 )
@@ -1742,6 +1743,9 @@ async def stream_chat_completion_sdk(
         )
 
         for attempt in range(_MAX_STREAM_ATTEMPTS):
+            # Clear any stale stash signal from the previous attempt so
+            # wait_for_stash() doesn't fire prematurely on a leftover event.
+            reset_stash_event()
             if attempt > 0:
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
