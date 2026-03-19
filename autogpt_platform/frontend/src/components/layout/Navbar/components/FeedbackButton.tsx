@@ -32,12 +32,13 @@ export function FeedbackButton() {
 
       {/* Animated spinning gradient (visible on hover) */}
       <motion.div
-        className="absolute inset-[-100%] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        className="absolute opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         animate={{ rotate: 360 }}
-        transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+        transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
         style={{
+          inset: "-50%",
           background:
-            "conic-gradient(from 0deg, #818cf8, #a5b4fc, #6366f1, #7c3aed, #818cf8, #a5b4fc, #6366f1, #818cf8)",
+            "conic-gradient(from 0deg, #6366f1, #818cf8, #a78bfa, #7c3aed, #6366f1)",
         }}
       />
 
