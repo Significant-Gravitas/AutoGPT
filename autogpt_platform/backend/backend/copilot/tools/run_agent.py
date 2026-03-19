@@ -71,6 +71,7 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
+    dry_run: bool = False
 
     @field_validator(
         "username_agent_slug",
@@ -149,6 +150,14 @@ class RunAgentTool(BaseTool):
                     "description": "Max seconds to wait for completion (0-300).",
                     "minimum": 0,
                     "maximum": 300,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, simulates the entire agent execution using an LLM "
+                        "for each block — no real API calls, no credentials needed, "
+                        "no credits charged. Useful for testing agent wiring end-to-end."
+                    ),
                 },
             },
             "required": [],
@@ -345,6 +354,7 @@ class RunAgentTool(BaseTool):
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
+                    dry_run=params.dry_run,
                 )
 
         except NotFoundError as e:
@@ -429,12 +439,16 @@ class RunAgentTool(BaseTool):
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
         wait_for_result: int = 0,
+        dry_run: bool = False,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
 
-        # Check rate limits
-        if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
+        # Check rate limits (dry runs don't count against the session limit)
+        if (
+            not dry_run
+            and session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs
+        ):
             return ErrorResponse(
                 message="Maximum agent runs reached for this session. Please try again later.",
                 session_id=session_id,
@@ -449,12 +463,14 @@ class RunAgentTool(BaseTool):
             user_id=user_id,
             inputs=inputs,
             graph_credentials_inputs=graph_credentials,
+            dry_run=dry_run,
         )
 
-        # Track successful run
-        session.successful_agent_runs[library_agent.graph_id] = (
-            session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
-        )
+        # Track successful run (dry runs don't count against the session limit)
+        if not dry_run:
+            session.successful_agent_runs[library_agent.graph_id] = (
+                session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
+            )
 
         # Track in PostHog
         track_agent_run_success(
