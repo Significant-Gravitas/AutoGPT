@@ -623,6 +623,8 @@ async def _create_bulk_invite_results(
             continue
 
         if isinstance(outcome, BaseException):
+            if not isinstance(outcome, Exception):
+                raise outcome
             masked = mask_email(normalized_email)
             logger.exception(
                 "Failed to create bulk invite for row %s (%s)",
