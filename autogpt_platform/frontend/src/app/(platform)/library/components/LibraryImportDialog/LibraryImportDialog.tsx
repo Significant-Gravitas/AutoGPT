@@ -64,14 +64,79 @@ export default function LibraryImportDialog() {
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <TabsLine defaultValue="agent">
+        <TabsLine defaultValue="platform">
           <TabsLineList>
-            <TabsLineTrigger value="agent">Upload agent</TabsLineTrigger>
-            <TabsLineTrigger value="url">From n8n URL</TabsLineTrigger>
-            <TabsLineTrigger value="workflow-file">
-              Upload workflow
+            <TabsLineTrigger value="platform">
+              Import from another platform
             </TabsLineTrigger>
+            <TabsLineTrigger value="agent">AutoGPT agent</TabsLineTrigger>
           </TabsLineList>
+
+          {/* Tab: Import from any platform (file upload + n8n URL) */}
+          <TabsLineContent value="platform">
+            <p className="mb-4 text-sm text-neutral-500">
+              Upload a workflow exported from n8n, Make.com, Zapier, or any
+              other platform. AutoPilot will convert it into an AutoGPT agent
+              for you.
+            </p>
+            <FileInput
+              mode="base64"
+              value={importWorkflow.fileValue}
+              onChange={importWorkflow.setFileValue}
+              accept=".json,application/json"
+              placeholder="Workflow file (n8n, Make.com, Zapier, …)"
+              maxFileSize={10 * 1024 * 1024}
+              showStorageNote={false}
+              className="mb-4 mt-2"
+            />
+            <Button
+              type="button"
+              variant="primary"
+              className="min-w-[18rem]"
+              disabled={!importWorkflow.fileValue}
+              onClick={() => importWorkflow.submitWithMode("file")}
+            >
+              Import to AutoPilot
+            </Button>
+
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-neutral-200" />
+              <span className="text-xs text-neutral-400">
+                or import from n8n marketplace
+              </span>
+              <div className="h-px flex-1 bg-neutral-200" />
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-2">
+              {N8N_EXAMPLES.map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => importWorkflow.setUrlValue(p.url)}
+                  className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <Input
+              id="template-url"
+              value={importWorkflow.urlValue}
+              onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
+              label="n8n workflow URL"
+              placeholder="https://n8n.io/workflows/1234"
+              className="mb-4 w-full rounded-[10px]"
+            />
+            <Button
+              type="button"
+              variant="primary"
+              className="min-w-[18rem]"
+              disabled={!importWorkflow.urlValue}
+              onClick={() => importWorkflow.submitWithMode("url")}
+            >
+              Import from n8n
+            </Button>
+          </TabsLineContent>
 
           {/* Tab: Upload AutoGPT agent JSON */}
           <TabsLineContent value="agent">
@@ -155,71 +220,6 @@ export default function LibraryImportDialog() {
                 )}
               </Button>
             </Form>
-          </TabsLineContent>
-
-          {/* Tab: Import from n8n template URL */}
-          <TabsLineContent value="url">
-            <p className="mb-3 text-sm text-neutral-500">
-              Paste an n8n template URL. AutoPilot will automatically convert it
-              to an AutoGPT agent. For Make.com or Zapier, use the{" "}
-              <strong>Upload workflow</strong> tab instead.
-            </p>
-            <div className="mb-4 flex flex-wrap gap-2">
-              {N8N_EXAMPLES.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => importWorkflow.setUrlValue(p.url)}
-                  className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <Input
-              id="template-url"
-              value={importWorkflow.urlValue}
-              onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
-              label="n8n workflow URL"
-              placeholder="https://n8n.io/workflows/1234"
-              className="mb-4 w-full rounded-[10px]"
-            />
-            <Button
-              type="button"
-              variant="primary"
-              className="min-w-[18rem]"
-              disabled={!importWorkflow.urlValue}
-              onClick={() => importWorkflow.submitWithMode("url")}
-            >
-              Import to AutoPilot
-            </Button>
-          </TabsLineContent>
-
-          {/* Tab: Upload competitor workflow file */}
-          <TabsLineContent value="workflow-file">
-            <p className="mb-4 text-sm text-neutral-500">
-              Upload a workflow file exported from n8n, Make.com, or Zapier.
-              AutoPilot will automatically convert it to an AutoGPT agent.
-            </p>
-            <FileInput
-              mode="base64"
-              value={importWorkflow.fileValue}
-              onChange={importWorkflow.setFileValue}
-              accept=".json,application/json"
-              placeholder="Workflow JSON file (n8n, Make.com, or Zapier export)"
-              maxFileSize={10 * 1024 * 1024}
-              showStorageNote={false}
-              className="mb-4 mt-2"
-            />
-            <Button
-              type="button"
-              variant="primary"
-              className="min-w-[18rem]"
-              disabled={!importWorkflow.fileValue}
-              onClick={() => importWorkflow.submitWithMode("file")}
-            >
-              Import to AutoPilot
-            </Button>
           </TabsLineContent>
         </TabsLine>
       </Dialog.Content>
