@@ -187,17 +187,37 @@ def describe_make_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
 
 
 def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
-    """Extract a structured description from a Zapier Zap JSON."""
+    """Extract a structured description from a Zapier Zap JSON.
+
+    Handles two export shapes:
+    - Old/community format: steps have `app` + `action` (human-readable) fields.
+    - Zapier API / Zapfile.json format: steps have `action` (opaque `core:…` /
+      `uag:…` ID), `title`, `inputs`, and `authentication` but no `app` field.
+      The wrapping {"data": [...]} envelope is already unwrapped by detect_format;
+      we receive the single Zap object here.
+    """
     zap_steps = json_data.get("steps", [])
     valid_steps = [s for s in zap_steps if isinstance(s, dict)]
     steps: list[StepDescription] = []
 
     for i, step in enumerate(valid_steps):
-        app = step.get("app", "Unknown")
-        action = step.get("action", "process")
-        action_desc = f"{str(action).replace('_', ' ').title()} via {app}"
+        # Prefer the human-readable `title` field (API format); fall back to
+        # `action` string (old format) or generic placeholder.
+        title = step.get("title") or step.get("action", "Unknown step")
 
-        params = step.get("params", step.get("inputFields", {}))
+        # Derive service name: old format has `app`; API format embeds it in
+        # `title` (e.g. "New Saved Message in Slack") or `action` prefix.
+        app = step.get("app")
+        if not app:
+            # Try to extract the last word(s) from the title as the service name,
+            # e.g. "New Saved Message in Slack" → "Slack"
+            words = str(title).split()
+            app = words[-1] if words else "Zapier"
+
+        action_desc = str(title)
+
+        # Old format uses `params`/`inputFields`; API format uses `inputs`.
+        params = step.get("inputs", step.get("params", step.get("inputFields", {})))
         clean_params = _clean_params(params) if isinstance(params, dict) else {}
 
         # Zapier zaps are linear: each step connects to next
@@ -218,8 +238,8 @@ def describe_zapier_workflow(json_data: dict[str, Any]) -> WorkflowDescription:
         )
 
     trigger_type = None
-    if valid_steps:
-        trigger_type = valid_steps[0].get("app")
+    if steps:
+        trigger_type = steps[0].service
 
     return WorkflowDescription(
         name=json_data.get("name", json_data.get("title", "Imported Zapier Zap")),

@@ -17,13 +17,25 @@ def detect_format(json_data: dict[str, Any]) -> SourcePlatform:
     Returns:
         The detected SourcePlatform.
     """
-    if _is_n8n(json_data):
+    # Zapier's "export all Zaps" (Zapfile.json) and "Powered by Zapier" API both
+    # wrap results in {"data": [...]}. Unwrap to the first Zap for detection.
+    candidate = _unwrap_zapier_envelope(json_data) or json_data
+
+    if _is_n8n(candidate):
         return SourcePlatform.N8N
-    if _is_make(json_data):
+    if _is_make(candidate):
         return SourcePlatform.MAKE
-    if _is_zapier(json_data):
+    if _is_zapier(candidate):
         return SourcePlatform.ZAPIER
     return SourcePlatform.UNKNOWN
+
+
+def _unwrap_zapier_envelope(data: dict[str, Any]) -> "dict[str, Any] | None":
+    """Return the first Zap from a Zapier {'data': [...]} envelope, or None."""
+    data_list = data.get("data")
+    if isinstance(data_list, list) and data_list and isinstance(data_list[0], dict):
+        return data_list[0]
+    return None
 
 
 def _is_n8n(data: dict[str, Any]) -> bool:
@@ -60,12 +72,30 @@ def _is_make(data: dict[str, Any]) -> bool:
     )
 
 
+_ZAPIER_ACTION_RE = re.compile(r"^(core:|uag:)")
+
+
 def _is_zapier(data: dict[str, Any]) -> bool:
-    """Zapier Zaps have a `steps` array with items containing `app` and
-    `action` fields."""
+    """Zapier Zaps have a `steps` array. Two export shapes are supported:
+
+    1. Old/community format: steps contain `app` + `action` string fields.
+    2. Zapier API / Zapfile.json format: steps contain an `action` field with a
+       `core:<id>` or `uag:<uuid>` prefix, plus optional `title`, `inputs`,
+       `authentication` fields (no `app` key).
+    """
     steps = data.get("steps")
     if not isinstance(steps, list) or not steps:
         return False
-    return any(
-        isinstance(step, dict) and "app" in step and "action" in step for step in steps
-    )
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        action = step.get("action")
+        if not isinstance(action, str):
+            continue
+        # Old format: app field present
+        if "app" in step:
+            return True
+        # API/export format: action prefixed with core: or uag:
+        if _ZAPIER_ACTION_RE.match(action):
+            return True
+    return False
