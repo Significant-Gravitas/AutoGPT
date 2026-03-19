@@ -75,6 +75,10 @@ async def execute_block(
         try:
             from backend.executor.simulator import simulate_block  # lazy import
 
+            # Coerce types to match the block's input schema, same as real execution.
+            # This ensures the simulated preview is consistent with real execution
+            # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
+            coerce_inputs_to_schema(input_data, block.input_schema)
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in simulate_block(block, input_data):
                 outputs[output_name].append(output_data)
