@@ -56,6 +56,16 @@ AutoGPT Platform is a monorepo containing:
 - Ensure the branch name is descriptive (e.g., `feature/add-new-block`)
 - Use conventional commit messages (see below)
 - Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description
+- Always use `--body-file` to pass PR body — avoids shell interpretation of backticks and special characters:
+  ```bash
+  PR_BODY=$(mktemp)
+  cat > "$PR_BODY" << 'PREOF'
+  ## Summary
+  - use `backticks` freely here
+  PREOF
+  gh pr create --title "..." --body-file "$PR_BODY" --base dev
+  rm "$PR_BODY"
+  ```
 - Run the github pre-commit hooks to ensure code quality.
 
 ### Reviewing/Revising Pull Requests
@@ -63,8 +73,8 @@ AutoGPT Platform is a monorepo containing:
 Use `/pr-review` to review a PR or `/pr-address` to address comments.
 
 When fetching comments manually:
-- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` — top-level reviews
-- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments` — inline review comments
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate` — top-level reviews
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate` — inline review comments (always paginate to avoid missing comments beyond page 1)
 - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` — PR conversation comments
 
 ### Conventional Commits
