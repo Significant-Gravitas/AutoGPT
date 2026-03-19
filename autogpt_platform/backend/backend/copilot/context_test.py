@@ -11,6 +11,7 @@ import pytest
 from backend.copilot.context import (
     SDK_PROJECTS_DIR,
     _current_project_dir,
+    get_current_permissions,
     get_current_sandbox,
     get_execution_context,
     get_sdk_cwd,
@@ -59,6 +60,21 @@ def test_get_current_sandbox_returns_set_value():
     mock_sandbox = MagicMock()
     set_execution_context("u1", _make_session(), sandbox=mock_sandbox)
     assert get_current_sandbox() is mock_sandbox
+
+
+def test_set_and_get_current_permissions():
+    """set_execution_context stores permissions; get_current_permissions returns it."""
+    from backend.copilot.permissions import CopilotPermissions
+
+    perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+    set_execution_context("u1", _make_session(), permissions=perms)
+    assert get_current_permissions() is perms
+
+
+def test_get_current_permissions_defaults_to_none():
+    """get_current_permissions returns None when no permissions have been set."""
+    set_execution_context("u1", _make_session())
+    assert get_current_permissions() is None
 
 
 def test_get_sdk_cwd_empty_when_not_set():
