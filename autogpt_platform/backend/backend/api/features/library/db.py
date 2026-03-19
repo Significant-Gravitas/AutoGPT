@@ -785,10 +785,6 @@ async def update_library_agent(
     if is_archived is not None:
         update_fields["isArchived"] = is_archived
     if is_deleted is not None:
-        if is_deleted is True:
-            raise RuntimeError(
-                "Use delete_library_agent() to (soft-)delete library agents"
-            )
         update_fields["isDeleted"] = is_deleted
     if settings is not None:
         existing_agent = await get_library_agent(id=library_agent_id, user_id=user_id)
