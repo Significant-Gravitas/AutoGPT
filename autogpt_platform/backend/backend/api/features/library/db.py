@@ -23,6 +23,7 @@ from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
     MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
+    MAX_LIBRARY_AGENTS_LAST_EXECUTED_FETCH,
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -128,12 +129,13 @@ async def list_library_agents(
     # For LAST_EXECUTED sorting, we need to fetch execution data and sort in Python
     # since Prisma doesn't support sorting by nested relations
     if sort_by == library_model.LibraryAgentSort.LAST_EXECUTED:
-        # TODO: This fetches all agents into memory for sorting, which may cause
-        # performance issues for users with many agents. Prisma doesn't support
-        # sorting by nested relations, so a dedicated lastExecutedAt column or
-        # raw SQL query would be needed for database-level pagination.
+        # TODO: This fetches up to MAX_LIBRARY_AGENTS_LAST_EXECUTED_FETCH agents
+        # into memory for sorting. Prisma doesn't support sorting by nested relations,
+        # so a dedicated lastExecutedAt column or raw SQL query would be needed for
+        # database-level pagination. The ceiling prevents worst-case memory blowup.
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
+            take=MAX_LIBRARY_AGENTS_LAST_EXECUTED_FETCH,
             include=library_agent_include(
                 user_id,
                 include_nodes=False,
