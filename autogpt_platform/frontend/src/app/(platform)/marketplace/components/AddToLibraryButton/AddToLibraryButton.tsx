@@ -80,16 +80,13 @@ export function AddToLibraryButton({
   const queryClient = useQueryClient();
   const [justAdded, setJustAdded] = useState(false);
 
-  const { data: libraryAgents } = useGetV2ListLibraryAgents(
-    undefined,
-    {
-      query: {
-        enabled: isLoggedIn,
-        select: (res) =>
-          res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
-      },
+  const { data: libraryAgents } = useGetV2ListLibraryAgents(undefined, {
+    query: {
+      enabled: isLoggedIn,
+      select: (res) =>
+        res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
     },
-  );
+  });
 
   const { mutateAsync: addToLibrary, isPending } =
     usePostV2AddMarketplaceAgent();

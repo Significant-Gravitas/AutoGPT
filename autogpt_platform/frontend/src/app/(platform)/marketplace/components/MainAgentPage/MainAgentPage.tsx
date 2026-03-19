@@ -29,15 +29,7 @@ export function MainAgentPage({ params }: Props) {
   } = useMainAgentPage({ params });
 
   if (isLoading) {
-    return (
-      <div className="mx-auto w-full max-w-[1360px]">
-        <main className="px-4">
-          <div className="flex h-[600px] items-center justify-center">
-            <AgentPageLoading />
-          </div>
-        </main>
-      </div>
-    );
+    return <AgentPageLoading />;
   }
 
   if (hasError) {
