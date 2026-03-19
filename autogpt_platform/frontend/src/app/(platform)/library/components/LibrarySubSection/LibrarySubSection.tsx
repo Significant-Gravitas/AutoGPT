@@ -39,11 +39,11 @@ export function LibrarySubSection({
 
   function getTabLabel(tab: LibraryTab) {
     if (tab.id === "all") {
-      return `${tab.title} (${allCount})`;
+      return `${tab.title} ${allCount}`;
     }
     if (tab.id === "favorites") {
       return favoritesCount > 0
-        ? `${tab.title} (${favoritesCount})`
+        ? `${tab.title} ${favoritesCount}`
         : tab.title;
     }
     return tab.title;
@@ -67,7 +67,7 @@ export function LibrarySubSection({
           ))}
         </TabsLineList>
       </TabsLine>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-4">
         <LibraryFolderCreationDialog />
         <LibrarySortMenu setLibrarySort={setLibrarySort} />
       </div>
