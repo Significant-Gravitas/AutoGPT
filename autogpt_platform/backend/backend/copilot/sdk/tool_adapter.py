@@ -50,11 +50,12 @@ _MCP_MAX_CHARS = 500_000
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 
-# Map from tool_name -> Queue of pre-launched asyncio.Tasks.
+# Map from tool_name -> Queue of pre-launched (task, args) pairs.
 # Initialised per-session in set_execution_context() so concurrent sessions
 # never share the same dict.
-_tool_task_queues: ContextVar[dict[str, asyncio.Queue] | None] = ContextVar(
-    "_tool_task_queues", default=None
+_TaskQueueItem = tuple["asyncio.Task[dict[str, Any]]", "dict[str, Any]"]
+_tool_task_queues: ContextVar[dict[str, asyncio.Queue[_TaskQueueItem]] | None] = (
+    ContextVar("_tool_task_queues", default=None)
 )
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
