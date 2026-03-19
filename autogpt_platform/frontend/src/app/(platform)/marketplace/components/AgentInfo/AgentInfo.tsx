@@ -15,7 +15,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { formatTimeAgo } from "@/lib/utils/time";
 import Link from "next/link";
-import { FileArrowDownIcon } from "@phosphor-icons/react";
+import { FileArrowDownIcon, PlusIcon } from "@phosphor-icons/react";
 import { User } from "@supabase/supabase-js";
 import { useAgentInfo } from "./useAgentInfo";
 
@@ -186,10 +186,15 @@ export const AgentInfo = ({
               {user && (
                 <Button
                   variant="primary"
-                  className="min-w-36 border-violet-600 bg-violet-600 hover:border-violet-500 hover:bg-violet-500"
+                  className="min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
                   data-testid="agent-add-library-button"
                   disabled={isAddingAgentToLibrary}
                   loading={isAddingAgentToLibrary}
+                  leftIcon={
+                    !isAddingAgentToLibrary && !isAgentAddedToLibrary ? (
+                      <PlusIcon size={16} weight="bold" />
+                    ) : undefined
+                  }
                   onClick={() =>
                     handleLibraryAction({
                       isAddingAgentFirstTime: !isAgentAddedToLibrary,
