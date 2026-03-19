@@ -457,6 +457,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
+    is_dry_run: bool = False
 
 
 class ReviewRequiredResponse(ToolResponseBase):

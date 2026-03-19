@@ -103,6 +103,7 @@ async def execute_block(
                 block_name=block.name,
                 outputs=dict(outputs),
                 success=True,
+                is_dry_run=True,
                 session_id=session_id,
             )
         except Exception as e:

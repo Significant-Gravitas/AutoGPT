@@ -7871,7 +7871,12 @@
             "type": "object",
             "title": "Outputs"
           },
-          "success": { "type": "boolean", "title": "Success", "default": true }
+          "success": { "type": "boolean", "title": "Success", "default": true },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["message", "block_id", "block_name", "outputs"],
