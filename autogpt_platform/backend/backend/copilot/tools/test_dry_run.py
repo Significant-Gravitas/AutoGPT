@@ -6,7 +6,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.tools.run_block import RunBlockTool
-from backend.executor.simulator import build_simulation_prompt, simulate_block
+
+
+# Lazy imports used inside tests to avoid Pyright "unresolved import" on the
+# simulator module, which lives in this worktree only.
+def _get_simulate_block():
+    from backend.executor.simulator import simulate_block  # noqa: PLC0415
+
+    return simulate_block
+
+
+def _get_build_simulation_prompt():
+    from backend.executor.simulator import build_simulation_prompt  # noqa: PLC0415
+
+    return build_simulation_prompt
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,6 +90,7 @@ async def test_simulate_block_basic():
         return_value=make_openai_response('{"result": "simulated output", "error": ""}')
     )
 
+    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -100,6 +115,7 @@ async def test_simulate_block_json_retry():
         ]
     )
 
+    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -120,6 +136,7 @@ async def test_simulate_block_all_retries_exhausted():
         return_value=make_openai_response("bad json !!!")
     )
 
+    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -149,6 +166,7 @@ async def test_simulate_block_missing_output_pins():
         return_value=make_openai_response('{"result": "hello"}')
     )
 
+    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -166,6 +184,7 @@ async def test_simulate_block_no_client():
     """When no OpenAI client is available, yields SIMULATOR ERROR."""
     mock_block = make_mock_block()
 
+    simulate_block = _get_simulate_block()
     with patch("backend.executor.simulator.get_openai_client", return_value=None):
         outputs = []
         async for name, data in simulate_block(mock_block, {}):
@@ -183,6 +202,7 @@ async def test_simulate_block_truncates_long_inputs():
     mock_block = make_mock_block(input_props={"text": {"type": "string"}})
     long_text = "x" * 30000  # 30k chars, above the 20k threshold
 
+    build_simulation_prompt = _get_build_simulation_prompt()
     system_prompt, user_prompt = build_simulation_prompt(
         mock_block, {"text": long_text}
     )
@@ -210,9 +230,7 @@ async def test_execute_block_dry_run_skips_real_execution():
     async def fake_simulate(block, input_data):
         yield "result", "simulated"
 
-    with patch(
-        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
-    ):
+    with patch("backend.executor.simulator.simulate_block", side_effect=fake_simulate):
         response = await execute_block(
             block=mock_block,
             block_id="test-block-id",
@@ -241,9 +259,7 @@ async def test_execute_block_dry_run_response_format():
     async def fake_simulate(block, input_data):
         yield "result", "simulated"
 
-    with patch(
-        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
-    ):
+    with patch("backend.executor.simulator.simulate_block", side_effect=fake_simulate):
         response = await execute_block(
             block=mock_block,
             block_id="test-block-id",
@@ -279,9 +295,7 @@ async def test_execute_block_real_execution_unchanged():
         simulate_called = True
         yield "result", "should not happen"
 
-    with patch(
-        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
-    ):
+    with patch("backend.executor.simulator.simulate_block", side_effect=fake_simulate):
         with patch(
             "backend.copilot.tools.helpers.workspace_db",
             side_effect=Exception("db not available"),

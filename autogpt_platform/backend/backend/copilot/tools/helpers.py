@@ -12,7 +12,6 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
-from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
@@ -73,6 +72,8 @@ async def execute_block(
     # Dry-run path: simulate the block with an LLM, no real execution
     if dry_run:
         try:
+            from backend.executor.simulator import simulate_block  # lazy import
+
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in simulate_block(block, input_data):
                 outputs[output_name].append(output_data)
