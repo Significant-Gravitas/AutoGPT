@@ -66,6 +66,7 @@ interface Props {
   agentName: string;
   agentGraphID: string;
   className?: string;
+  isInLibrary?: boolean;
 }
 
 export function AddToLibraryButton({
@@ -74,15 +75,17 @@ export function AddToLibraryButton({
   agentName,
   agentGraphID,
   className,
+  isInLibrary,
 }: Props) {
   const { isLoggedIn } = useSupabase();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [justAdded, setJustAdded] = useState(false);
 
+  // Only fetch library list if isInLibrary wasn't provided by parent
   const { data: libraryAgents } = useGetV2ListLibraryAgents(undefined, {
     query: {
-      enabled: isLoggedIn,
+      enabled: isLoggedIn && isInLibrary === undefined,
       select: (res) =>
         res.status === 200 ? (res.data as LibraryAgentResponse) : undefined,
     },
@@ -96,9 +99,11 @@ export function AddToLibraryButton({
   if (!isLoggedIn) return null;
   if (justAdded) return null;
 
-  const isAlreadyInLibrary = libraryAgents?.agents?.some(
-    (a: LibraryAgent) => a.graph_id === agentGraphID,
-  );
+  const isAlreadyInLibrary =
+    isInLibrary ??
+    libraryAgents?.agents?.some(
+      (a: LibraryAgent) => a.graph_id === agentGraphID,
+    );
 
   if (isAlreadyInLibrary) return null;
 

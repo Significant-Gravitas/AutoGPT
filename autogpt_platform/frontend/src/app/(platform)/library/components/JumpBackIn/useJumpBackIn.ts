@@ -14,7 +14,7 @@ function isActive(status: AgentExecutionStatus) {
   );
 }
 
-function formatDuration(startedAt: Date | string | null): string {
+function formatDuration(startedAt: Date | string | null | undefined): string {
   if (!startedAt) return "";
 
   const start = new Date(startedAt);
@@ -45,7 +45,7 @@ export function useJumpBackIn() {
       query: { select: okData },
     });
 
-  const { agentInfoMap, isLoading: agentsLoading } = useLibraryAgents();
+  const { agentInfoMap, isRefreshing: agentsLoading } = useLibraryAgents();
 
   const activeExecution = useMemo(() => {
     if (!executions) return null;
