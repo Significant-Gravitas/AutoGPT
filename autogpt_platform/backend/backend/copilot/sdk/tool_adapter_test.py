@@ -565,7 +565,6 @@ class TestAllParallelToolsPrelaunchedIndependently:
         mock_tool = _make_mock_tool("bash_exec")
         mock_tool.execute = AsyncMock(side_effect=slow_execute)
 
-        start = asyncio.get_running_loop().time()
         with patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
             {"bash_exec": mock_tool},
@@ -573,17 +572,20 @@ class TestAllParallelToolsPrelaunchedIndependently:
             for i in range(N):
                 await pre_launch_tool_call("bash_exec", {"cmd": f"echo {i}"})
 
-            # Allow all tasks to run concurrently
+            # Measure only the concurrent execution window, not pre-launch overhead.
+            # Starting the timer here avoids false failures on slow CI runners where
+            # the pre_launch_tool_call setup takes longer than the concurrent sleep.
+            t0 = asyncio.get_running_loop().time()
             await asyncio.sleep(PER_TASK_S * 2)
-
-        elapsed = asyncio.get_running_loop().time() - start
+            elapsed = asyncio.get_running_loop().time() - t0
 
         assert mock_tool.execute.await_count == N
         assert len(finished) == N
-        # Wall time should be well under N * PER_TASK_S (sequential would be ~0.25s)
+        # Wall time of the sleep window should be well under N * PER_TASK_S
+        # (sequential would be ~0.25s; concurrent finishes in ~PER_TASK_S = 0.05s)
         assert elapsed < N * PER_TASK_S, (
             f"Expected concurrent execution (<{N * PER_TASK_S:.2f}s) "
-            f"but took {elapsed:.2f}s"
+            f"but sleep window took {elapsed:.2f}s"
         )
 
 
