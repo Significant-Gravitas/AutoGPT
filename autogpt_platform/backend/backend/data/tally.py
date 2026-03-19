@@ -40,6 +40,9 @@ _MAX_PAGES = 100
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
 
+SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
+PROMPTS_PER_THEME = 5
+
 
 def mask_email(email: str) -> str:
     """Mask an email for safe logging: 'alice@example.com' -> 'a***e@example.com'."""
@@ -331,9 +334,11 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
-- suggested_prompts (list of 5 strings): short action prompts (each under 20 words) that would help \
-this person get started with automating their work. Should be specific to their industry, role, and \
-pain points; actionable and conversational in tone; focused on automation opportunities.
+- suggested_prompts (object with keys "Learn", "Create", "Automate", "Organize"): for each key, \
+provide a list of 5 short action prompts (each under 20 words) that would help this person. \
+"Learn" = questions about AutoGPT features; "Create" = content/document generation tasks; \
+"Automate" = recurring workflow automation ideas; "Organize" = structuring/prioritizing tasks. \
+Should be specific to their industry, role, and pain points; actionable and conversational in tone.
 
 Form data:
 """
@@ -381,23 +386,26 @@ async def extract_business_understanding_from_tally(
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
 
-    # Validate suggested_prompts: filter >20 words, keep top 3
-    raw_prompts = cleaned.get("suggested_prompts", [])
-    if isinstance(raw_prompts, list):
-        valid = [
-            p.strip()
-            for p in raw_prompts
-            if isinstance(p, str) and len(p.strip().split()) <= 20
-        ]
-        # This will keep up to 3 suggestions
-        short_prompts = valid[:3] if valid else None
-        if short_prompts:
-            cleaned["suggested_prompts"] = short_prompts
+    # Validate suggested_prompts: themed dict, filter >20 words, cap at 5 per theme
+    raw_prompts = cleaned.get("suggested_prompts", {})
+    if isinstance(raw_prompts, dict):
+        themed: dict[str, list[str]] = {}
+        for theme in SUGGESTION_THEMES:
+            theme_prompts = raw_prompts.get(theme, [])
+            if not isinstance(theme_prompts, list):
+                continue
+            valid = [
+                s
+                for p in theme_prompts
+                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
+            ]
+            if valid:
+                themed[theme] = valid[:PROMPTS_PER_THEME]
+        if themed:
+            cleaned["suggested_prompts"] = themed
         else:
-            # We dont want to add a None value suggested_prompts field
             cleaned.pop("suggested_prompts", None)
     else:
-        # suggested_prompts must be a list - removing it as its not here
         cleaned.pop("suggested_prompts", None)
 
     return BusinessUnderstandingInput(**cleaned)
