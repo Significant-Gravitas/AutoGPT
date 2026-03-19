@@ -21,9 +21,16 @@ gh pr view {N}
 
 ```bash
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate      # inline review comments
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
 ```
+
+**CRITICAL — load full thread context for inline comments:** The `pulls/{N}/comments` endpoint returns all comments including replies. Each reply has an `in_reply_to_id` pointing to the root comment. You MUST reconstruct each thread and read it root-to-last-reply before acting. The **last reply** reflects what the reviewer ultimately wants — acting only on the opening comment leads to wrong fixes.
+
+Thread reconstruction:
+- Root comments: `in_reply_to_id` is null
+- Replies: `in_reply_to_id` matches a root comment's `id`
+- Sort each thread by `created_at` ascending, then act on the final message
 
 **Bots to watch for:**
 - `autogpt-reviewer` — posts "Blockers", "Should Fix", "Nice to Have". Address ALL of them.
@@ -60,6 +67,17 @@ cd ../frontend && pnpm generate:api:force
 kill $REST_PID 2>/dev/null; trap - EXIT
 ```
 Never manually edit files in `src/app/api/__generated__/`.
+
+When updating the PR description, always write the body to a temp file first to avoid shell escaping of backticks and markdown:
+```bash
+cat > /tmp/pr_body.md << 'PREOF'
+## Summary
+- Change with `code references` that render correctly
+PREOF
+gh pr edit {N} --repo Significant-Gravitas/AutoGPT --body "$(cat /tmp/pr_body.md)"
+rm /tmp/pr_body.md
+```
+**Never** inline the PR body string directly in `gh pr create/edit` — backticks will be escaped and markdown won't render.
 
 Then commit and **push immediately** — never batch commits without pushing.
 
