@@ -463,6 +463,7 @@ async def test_bulk_create_invited_users_limits_create_concurrency(
         "backend.data.invited_user._fetch_existing_emails",
         AsyncMock(return_value=(set(), set())),
     )
+    mocker.patch("backend.data.invited_user._schedule_bulk_tally_enrichment")
 
     current_in_flight = 0
     peak_in_flight = 0
@@ -470,10 +471,15 @@ async def test_bulk_create_invited_users_limits_create_concurrency(
     fifty_started = asyncio.Event()
 
     async def create_invited_side_effect(
-        email: str, name: str | None, *, tally_mode: str
+        email: str,
+        name: str | None,
+        *,
+        tally_mode: str,
+        schedule_tally: bool = True,
     ):
         nonlocal current_in_flight, peak_in_flight
         assert tally_mode == "bulk"
+        assert schedule_tally is False
         current_in_flight += 1
         peak_in_flight = max(peak_in_flight, current_in_flight)
         if peak_in_flight >= 50:
