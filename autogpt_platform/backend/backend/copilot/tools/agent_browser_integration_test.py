@@ -15,6 +15,7 @@ Two test tiers:
     with user_id=None (skips workspace/DB interactions — no Postgres/RabbitMQ needed)
 """
 
+import concurrent.futures
 import os
 import shutil
 import subprocess
@@ -161,8 +162,6 @@ def test_fill_form_field():
 
 def test_concurrent_independent_sessions():
     """Two independent sessions can navigate in parallel without interference."""
-    import concurrent.futures
-
     session_a = "integration-concurrent-a"
     session_b = "integration-concurrent-b"
 
@@ -214,7 +213,7 @@ def test_close_session():
 # ---------------------------------------------------------------------------
 
 _TOOL_SESSION_ID = "integration-tool-test-session"
-_FAKE_SESSION = ChatSession(
+_TEST_SESSION = ChatSession(
     session_id=_TOOL_SESSION_ID,
     user_id="test-user",
     messages=[],
@@ -236,7 +235,7 @@ async def test_tool_navigate_returns_response(_close_tool_session):
     """BrowserNavigateTool._execute returns a BrowserNavigateResponse with real content."""
     tool = BrowserNavigateTool()
     resp = await tool._execute(
-        user_id=None, session=_FAKE_SESSION, url="https://example.com"
+        user_id=None, session=_TEST_SESSION, url="https://example.com"
     )
     assert isinstance(
         resp, BrowserNavigateResponse
@@ -260,7 +259,7 @@ async def test_tool_navigate_returns_response(_close_tool_session):
 async def test_tool_navigate_blocked_url(ssrf_url: str, _close_tool_session):
     """BrowserNavigateTool._execute rejects internal/private URLs (SSRF guard)."""
     tool = BrowserNavigateTool()
-    resp = await tool._execute(user_id=None, session=_FAKE_SESSION, url=ssrf_url)
+    resp = await tool._execute(user_id=None, session=_TEST_SESSION, url=ssrf_url)
     assert isinstance(
         resp, ErrorResponse
     ), f"Expected ErrorResponse for SSRF URL {ssrf_url!r}, got: {resp}"
@@ -271,7 +270,7 @@ async def test_tool_navigate_blocked_url(ssrf_url: str, _close_tool_session):
 async def test_tool_navigate_missing_url(_close_tool_session):
     """BrowserNavigateTool._execute returns an error when url is empty."""
     tool = BrowserNavigateTool()
-    resp = await tool._execute(user_id=None, session=_FAKE_SESSION, url="")
+    resp = await tool._execute(user_id=None, session=_TEST_SESSION, url="")
     assert isinstance(resp, ErrorResponse)
     assert resp.error == "missing_url"
 
@@ -281,13 +280,13 @@ async def test_tool_act_scroll(_close_tool_session):
     """BrowserActTool._execute can scroll after a navigate."""
     nav = BrowserNavigateTool()
     nav_resp = await nav._execute(
-        user_id=None, session=_FAKE_SESSION, url="https://example.com"
+        user_id=None, session=_TEST_SESSION, url="https://example.com"
     )
     assert isinstance(nav_resp, BrowserNavigateResponse)
 
     act = BrowserActTool()
     resp = await act._execute(
-        user_id=None, session=_FAKE_SESSION, action="scroll", direction="down"
+        user_id=None, session=_TEST_SESSION, action="scroll", direction="down"
     )
     assert isinstance(
         resp, BrowserActResponse
@@ -300,14 +299,14 @@ async def test_tool_act_fill_and_click(_close_tool_session):
     """BrowserActTool._execute can fill a form field."""
     nav = BrowserNavigateTool()
     nav_resp = await nav._execute(
-        user_id=None, session=_FAKE_SESSION, url="https://httpbin.org/forms/post"
+        user_id=None, session=_TEST_SESSION, url="https://httpbin.org/forms/post"
     )
     assert isinstance(nav_resp, BrowserNavigateResponse)
 
     act = BrowserActTool()
     resp = await act._execute(
         user_id=None,
-        session=_FAKE_SESSION,
+        session=_TEST_SESSION,
         action="fill",
         target="input[name=custname]",
         value="ToolIntegrationTest",
@@ -319,7 +318,7 @@ async def test_tool_act_fill_and_click(_close_tool_session):
 async def test_tool_act_missing_action(_close_tool_session):
     """BrowserActTool._execute returns an error when action is missing."""
     act = BrowserActTool()
-    resp = await act._execute(user_id=None, session=_FAKE_SESSION, action="")
+    resp = await act._execute(user_id=None, session=_TEST_SESSION, action="")
     assert isinstance(resp, ErrorResponse)
     assert resp.error == "missing_action"
 
@@ -329,7 +328,7 @@ async def test_tool_act_missing_target(_close_tool_session):
     """BrowserActTool._execute returns an error when click target is missing."""
     act = BrowserActTool()
     resp = await act._execute(
-        user_id=None, session=_FAKE_SESSION, action="click", target=""
+        user_id=None, session=_TEST_SESSION, action="click", target=""
     )
     assert isinstance(resp, ErrorResponse)
     assert resp.error == "missing_target"

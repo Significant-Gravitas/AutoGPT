@@ -125,6 +125,9 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 # Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
 # has no ARM64 builds, so we use the distro-packaged chromium instead — verified to
 # work with agent-browser via Docker tests on arm64; amd64 is validated in CI.
+# Note: system chromium tracks the Debian package schedule rather than a pinned
+# Chrome for Testing release. If agent-browser requires a specific Chrome version,
+# verify compatibility against the chromium package version in the base image.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \

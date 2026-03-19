@@ -132,7 +132,7 @@ services:
 
       GOTRUE_EXTERNAL_EMAIL_ENABLED: true
       GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: false
-      GOTRUE_MAILER_AUTOCONFIRM: true
+      GOTRUE_MAILER_AUTOCONFIRM: false
 
       # Uncomment to bypass nonce check in ID Token flow. Commonly set to true when using Google Sign In on mobile.
       # GOTRUE_EXTERNAL_SKIP_NONCE_CHECK: true
