@@ -3,7 +3,6 @@
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
@@ -96,7 +95,8 @@ export function LibraryAgentList({
   const {
     isFavoritesTab,
     agentLoading,
-    agentCount,
+    allAgentsCount,
+    favoritesCount,
     agents,
     hasNextPage,
     isFetchingNextPage,
@@ -120,15 +120,14 @@ export function LibraryAgentList({
 
   return (
     <>
-      <LibraryActionSubHeader
-        agentCount={agentCount}
-        setLibrarySort={setLibrarySort}
-      />
       {!selectedFolderId && (
         <LibrarySubSection
           tabs={tabs}
           activeTab={activeTab}
           onTabChange={onTabChange}
+          allCount={allAgentsCount}
+          favoritesCount={favoritesCount}
+          setLibrarySort={setLibrarySort}
         />
       )}
 
