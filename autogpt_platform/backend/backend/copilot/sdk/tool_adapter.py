@@ -114,7 +114,7 @@ def cancel_pending_tool_tasks() -> None:
     for tool_name, queue in list(queues.items()):
         cancelled = 0
         while not queue.empty():
-            task = queue.get_nowait()
+            task, _args = queue.get_nowait()
             if not task.done():
                 task.cancel()
                 cancelled += 1
@@ -287,7 +287,9 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
 
     if bare_name not in queues:
         queues[bare_name] = asyncio.Queue()
-    queues[bare_name].put_nowait(task)
+    # Store (task, args) so the handler can log a warning if the SDK dispatches
+    # calls in a different order than the ToolUseBlocks appeared in the message.
+    queues[bare_name].put_nowait((task, args))
 
 
 async def _execute_tool_sync(
@@ -347,7 +349,19 @@ def create_tool_handler(base_tool: BaseTool):
         if queues and base_tool.name in queues:
             queue = queues[base_tool.name]
             if not queue.empty():
-                task = queue.get_nowait()
+                task, launch_args = queue.get_nowait()
+                # Sanity-check: warn if the args don't match — this can happen
+                # if the SDK dispatches tool calls in a different order than the
+                # ToolUseBlocks appeared in the AssistantMessage (unlikely but
+                # could occur in future SDK versions or with SDK bugs).
+                if set(launch_args.keys()) != set(args.keys()):
+                    logger.warning(
+                        "Pre-launched task for %s: arg keys mismatch "
+                        "(launch=%s, call=%s) — may return incorrect result",
+                        base_tool.name,
+                        sorted(launch_args.keys()),
+                        sorted(args.keys()),
+                    )
                 try:
                     return await task
                 except asyncio.CancelledError:
