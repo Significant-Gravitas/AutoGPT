@@ -39,9 +39,12 @@ def _simulator_model() -> str:
         from backend.util.settings import Settings  # noqa: PLC0415
 
         secrets = Settings().secrets
-        if secrets.openai_internal_api_key and not secrets.open_router_api_key:
-            if "/" in model:
-                model = model.split("/", 1)[1]
+        # get_openai_client() uses the direct OpenAI client whenever
+        # openai_internal_api_key is set, regardless of open_router_api_key.
+        # Strip the provider prefix (e.g. "openai/gpt-4o-mini" → "gpt-4o-mini")
+        # so the model name is valid for the direct OpenAI API.
+        if secrets.openai_internal_api_key and "/" in model:
+            model = model.split("/", 1)[1]
     except Exception:
         pass
 
@@ -53,15 +56,24 @@ _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
 
 
+def _truncate_value(value: Any) -> Any:
+    """Recursively truncate long strings anywhere in a value."""
+    if isinstance(value, str):
+        return (
+            value[:_MAX_INPUT_VALUE_CHARS] + "... [TRUNCATED]"
+            if len(value) > _MAX_INPUT_VALUE_CHARS
+            else value
+        )
+    if isinstance(value, dict):
+        return {k: _truncate_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_truncate_value(item) for item in value]
+    return value
+
+
 def _truncate_input_values(input_data: dict[str, Any]) -> dict[str, Any]:
-    """Truncate long string values so the prompt doesn't blow up."""
-    result = {}
-    for k, v in input_data.items():
-        if isinstance(v, str) and len(v) > _MAX_INPUT_VALUE_CHARS:
-            result[k] = v[:_MAX_INPUT_VALUE_CHARS] + "... [TRUNCATED]"
-        else:
-            result[k] = v
-    return result
+    """Recursively truncate long string values so the prompt doesn't blow up."""
+    return {k: _truncate_value(v) for k, v in input_data.items()}
 
 
 def _describe_schema_pins(schema: dict[str, Any]) -> str:
