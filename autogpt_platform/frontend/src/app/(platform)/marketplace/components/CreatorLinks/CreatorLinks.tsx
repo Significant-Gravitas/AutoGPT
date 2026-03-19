@@ -34,7 +34,7 @@ function getHostnameFromURL(url: string): string {
 function getSocialIcon(url: string) {
   let host;
   try {
-    host = new URL(normalizeURL(url)).host;
+    host = new URL(normalizeURL(url)).hostname.toLowerCase();
   } catch {
     return <Globe className="h-4 w-4" />;
   }
@@ -69,9 +69,9 @@ export function CreatorLinks({ links }: CreatorLinksProps) {
     <div className="flex flex-col items-start gap-3">
       <Text variant="h5">Links</Text>
       <div className="flex flex-wrap gap-2">
-        {links.map((link, index) => (
+        {links.map((link) => (
           <Button
-            key={index}
+            key={link}
             variant="secondary"
             size="small"
             as="NextLink"

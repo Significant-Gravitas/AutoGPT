@@ -80,7 +80,7 @@ export function AddToLibraryButton({
   const queryClient = useQueryClient();
   const [justAdded, setJustAdded] = useState(false);
 
-  const { data: libraryAgents, isSuccess } = useGetV2ListLibraryAgents(
+  const { data: libraryAgents } = useGetV2ListLibraryAgents(
     undefined,
     {
       query: {
@@ -97,7 +97,6 @@ export function AddToLibraryButton({
   const { mutateAsync: removeFromLibrary } = useDeleteV2DeleteLibraryAgent();
 
   if (!isLoggedIn) return null;
-  if (!isSuccess) return null;
   if (justAdded) return null;
 
   const isAlreadyInLibrary = libraryAgents?.agents?.some(

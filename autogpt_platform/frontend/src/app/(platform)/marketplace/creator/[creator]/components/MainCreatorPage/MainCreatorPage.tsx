@@ -4,7 +4,7 @@ import { AgentsSection } from "@/app/(platform)/marketplace/components/AgentsSec
 import { CreatorLinks } from "@/app/(platform)/marketplace/components/CreatorLinks/CreatorLinks";
 import { CreatorPageLoading } from "@/app/(platform)/marketplace/components/CreatorPageLoading";
 import { MarketplaceCreatorPageParams } from "@/app/(platform)/marketplace/creator/[creator]/page";
-import { Separator } from "@/components/__legacy__/ui/separator";
+
 import Avatar, {
   AvatarFallback,
   AvatarImage,
@@ -143,7 +143,7 @@ export function MainCreatorPage({ params }: Props) {
           <div className="hidden lg:block lg:w-3/5" />
         </div>
 
-        <Separator className="my-6 bg-transparent" />
+        <div className="my-6" />
 
         {creatorAgents && (
           <AgentsSection

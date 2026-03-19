@@ -168,7 +168,7 @@ export const AgentInfo = ({
               by
             </Text>
             <Link
-              href={`/marketplace/creator/${encodeURIComponent(creator)}`}
+              href={`/marketplace/creator/${encodeURIComponent(creatorSlug ?? creator)}`}
               className="text-md font-medium hover:underline"
             >
               {creator}

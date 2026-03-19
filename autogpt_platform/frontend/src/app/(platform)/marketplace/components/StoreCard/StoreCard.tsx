@@ -169,7 +169,7 @@ export function StoreCard({
         </div>
       )}
       {creatorSlug && agentSlug && agentGraphID && (
-        <div className="absolute bottom-2" style={{ right: "-4px" }}>
+        <div className="absolute bottom-2 right-0">
           <AddToLibraryButton
             creatorSlug={creatorSlug}
             agentSlug={agentSlug}

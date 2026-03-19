@@ -124,7 +124,7 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
           : `${(agent.runs ?? 0).toLocaleString()} runs`}
       </Text>
       {agent.creator && agent.slug && agent.agent_graph_id && (
-        <div className="absolute bottom-2" style={{ right: "-4px" }}>
+        <div className="absolute bottom-2 right-0">
           <AddToLibraryButton
             creatorSlug={agent.creator}
             agentSlug={agent.slug}
