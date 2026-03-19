@@ -76,9 +76,6 @@ class ResponseType(str, Enum):
     # Web
     WEB_FETCH = "web_fetch"
 
-    # Workflow import
-    WORKFLOW_IMPORTED = "workflow_imported"
-
     # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
