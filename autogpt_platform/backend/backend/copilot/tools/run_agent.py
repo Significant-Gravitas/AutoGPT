@@ -243,7 +243,8 @@ class RunAgentTool(BaseTool):
                 user_id, graph
             )
 
-            if missing_creds:
+            # Dry runs don't need credentials — skip the missing-creds gate entirely
+            if missing_creds and not params.dry_run:
                 # Return credentials needed response with input data info
                 # The UI handles credential setup automatically, so the message
                 # focuses on asking about input data
@@ -299,8 +300,14 @@ class RunAgentTool(BaseTool):
                 )
 
             # If agent has inputs but none were provided AND use_defaults is not set,
-            # always show what's available first so user can decide
-            if input_properties and not provided_inputs and not params.use_defaults:
+            # always show what's available first so user can decide.
+            # Dry runs proceed with defaults without asking.
+            if (
+                input_properties
+                and not provided_inputs
+                and not params.use_defaults
+                and not params.dry_run
+            ):
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
                 )
@@ -316,7 +323,7 @@ class RunAgentTool(BaseTool):
             # Check if required inputs are missing (and not using defaults)
             missing_inputs = required_fields - provided_inputs
 
-            if missing_inputs and not params.use_defaults:
+            if missing_inputs and not params.use_defaults and not params.dry_run:
                 # Return agent details with missing inputs info
                 credentials = extract_credentials_from_schema(
                     graph.credentials_input_schema
