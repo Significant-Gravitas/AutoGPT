@@ -70,6 +70,8 @@ def test_total_schema_token_budget() -> None:
     description bloat from eroding the gains. Budget is set to 8000 tokens.
     Note: this measures tool JSON only (not the full system prompt); the actual
     baseline for tool schemas alone is ~6470 tokens, giving ~19% headroom.
+    Uses cl100k_base (GPT-4 tokenizer) as a proxy — actual Claude token counts
+    will differ slightly, but it's a stable regression gate.
     """
     schemas = [tool.as_openai_tool() for tool in TOOL_REGISTRY.values()]
     serialized = json.dumps(schemas)
