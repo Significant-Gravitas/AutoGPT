@@ -57,6 +57,7 @@ class TallyExtractionTimeoutError(Exception):
 def _get_llm_retry_delay(attempt: int) -> float:
     return min(_LLM_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _LLM_RETRY_MAX_DELAY)
 
+
 SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
 PROMPTS_PER_THEME = 5
 

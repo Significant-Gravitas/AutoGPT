@@ -281,7 +281,7 @@ async def test_populate_understanding_handles_errors():
 async def test_populate_understanding_full_flow():
     """Happy path: no existing understanding, finds submission, extracts, upserts."""
     mock_settings = MagicMock()
-    mock_settings.secrets.tally_api_key = "test-key"
+    mock_settings.secrets.tally_api_key = "test-key"  # pragma: allowlist secret
 
     submission = {
         "responses": [
@@ -326,7 +326,7 @@ async def test_populate_understanding_handles_llm_timeout():
     import asyncio
 
     mock_settings = MagicMock()
-    mock_settings.secrets.tally_api_key = "test-key"
+    mock_settings.secrets.tally_api_key = "test-key"  # pragma: allowlist secret
 
     submission = {
         "responses": [{"questionId": "q1", "value": "Alice"}],
@@ -634,7 +634,7 @@ async def test_get_business_understanding_input_from_tally_uses_default_kwargs()
 async def test_refresh_cache_full_fetch():
     """First fetch (no last_fetch in Redis) should do a full fetch and store in Redis."""
     mock_settings = MagicMock()
-    mock_settings.secrets.tally_api_key = "test-key"
+    mock_settings.secrets.tally_api_key = "test-key"  # pragma: allowlist secret
 
     mock_redis = AsyncMock()
     mock_redis.get.return_value = None  # No last_fetch, no cached index
@@ -669,7 +669,7 @@ async def test_refresh_cache_full_fetch():
 async def test_refresh_cache_incremental_fetch():
     """When last_fetch and index both exist, should do incremental fetch and merge."""
     mock_settings = MagicMock()
-    mock_settings.secrets.tally_api_key = "test-key"
+    mock_settings.secrets.tally_api_key = "test-key"  # pragma: allowlist secret
 
     existing_index = {
         "old@example.com": {"responses": [], "submitted_at": "2025-01-01"}
