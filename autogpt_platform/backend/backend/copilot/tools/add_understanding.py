@@ -25,7 +25,8 @@ class AddUnderstandingTool(BaseTool):
         return (
             "Store user's business context, workflows, pain points, and automation goals. "
             "Call whenever the user shares business info. Each call incrementally merges "
-            "with existing data — provide only the fields you have."
+            "with existing data — provide only the fields you have. "
+            "Builds a profile that helps recommend better agents for the user's needs."
         )
 
     @property
