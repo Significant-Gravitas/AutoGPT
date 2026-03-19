@@ -21,9 +21,11 @@ gh pr view {N}
 
 ```bash
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate      # inline review comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate      # inline review comments — ALL pages
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
 ```
+
+**CRITICAL — always use `--paginate` for inline comments.** The API returns at most 30 comments per page. Without `--paginate`, comments beyond the first page are silently dropped and those threads will never be resolved. `--paginate` automatically fetches every page until all comments are loaded — do not replace it with a single-page call.
 
 **CRITICAL — load full thread context for inline comments:** The `pulls/{N}/comments` endpoint returns all comments including replies. Each reply has an `in_reply_to_id` pointing to the root comment. You MUST reconstruct each thread and read it root-to-last-reply before acting. The **last reply** reflects what the reviewer ultimately wants — acting only on the opening comment leads to wrong fixes.
 
