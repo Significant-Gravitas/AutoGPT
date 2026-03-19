@@ -273,13 +273,11 @@ class AutoPilotBlock(Block):
         from backend.copilot.sdk.collect import collect_copilot_response
 
         tokens = _check_recursion(max_recursion_depth)
+        effective_permissions, perm_token = _merge_inherited_permissions(permissions)
         try:
             effective_prompt = prompt
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
-
-            # Merge with any inherited permissions from a parent AutoPilotBlock.
-            effective_permissions = _merge_inherited_permissions(permissions)
 
             result = await collect_copilot_response(
                 session_id=session_id,
@@ -332,6 +330,8 @@ class AutoPilotBlock(Block):
             )
         finally:
             _reset_recursion(tokens)
+            if perm_token is not None:
+                _inherited_permissions.reset(perm_token)
 
     async def run(
         self,
@@ -500,20 +500,24 @@ async def _build_and_validate_permissions(
 
 def _merge_inherited_permissions(
     permissions: "CopilotPermissions | None",
-) -> "CopilotPermissions | None":
+) -> "tuple[CopilotPermissions | None, contextvars.Token[CopilotPermissions | None] | None]":
     """Merge *permissions* with any inherited parent permissions.
 
     The merged result is stored back into the contextvar so that any nested
     AutoPilotBlock invocation (sub-agent) inherits the merged ceiling.
 
-    Returns the merged permissions (or *permissions* unchanged if no parent).
+    Returns a tuple of (merged_permissions, reset_token).  The caller MUST
+    reset the contextvar via ``_inherited_permissions.reset(token)`` in a
+    ``finally`` block when ``reset_token`` is not None — this prevents
+    permission leakage between sequential independent executions in the same
+    asyncio task.
     """
     from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 
     parent = _inherited_permissions.get()
 
     if permissions is None and parent is None:
-        return None
+        return None, None
 
     all_tools = all_known_tool_names()
 
@@ -527,5 +531,6 @@ def _merge_inherited_permissions(
     )
 
     # Store merged permissions as the new inherited ceiling for nested calls.
-    _inherited_permissions.set(merged)
-    return merged
+    # Return the token so the caller can restore the previous value in finally.
+    token = _inherited_permissions.set(merged)
+    return merged, token

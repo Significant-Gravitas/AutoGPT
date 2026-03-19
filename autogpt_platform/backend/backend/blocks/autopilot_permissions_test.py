@@ -119,13 +119,21 @@ class TestBuildAndValidatePermissions:
 
 class TestMergeInheritedPermissions:
     def test_no_permissions_no_parent_returns_none(self):
-        result = _merge_inherited_permissions(None)
-        assert result is None
+        merged, token = _merge_inherited_permissions(None)
+        assert merged is None
+        assert token is None
 
     def test_permissions_no_parent_returned_unchanged(self):
         perms = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
-        result = _merge_inherited_permissions(perms)
-        assert result is perms
+        merged, token = _merge_inherited_permissions(perms)
+        try:
+            assert merged is perms
+            assert token is not None
+        finally:
+            if token is not None:
+                from backend.blocks.autopilot import _inherited_permissions
+
+                _inherited_permissions.reset(token)
 
     def test_child_narrows_parent(self):
         from backend.blocks.autopilot import _inherited_permissions
@@ -133,52 +141,64 @@ class TestMergeInheritedPermissions:
 
         parent = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
         # Set parent as inherited
-        token = _inherited_permissions.set(parent)
+        outer_token = _inherited_permissions.set(parent)
         try:
             child = CopilotPermissions(tools=["web_fetch"], tools_exclude=True)
-            merged = _merge_inherited_permissions(child)
-            assert merged is not None
-            all_t = all_known_tool_names()
-            effective = merged.effective_allowed_tools(all_t)
-            assert "bash_exec" not in effective
-            assert "web_fetch" not in effective
+            merged, inner_token = _merge_inherited_permissions(child)
+            try:
+                assert merged is not None
+                all_t = all_known_tool_names()
+                effective = merged.effective_allowed_tools(all_t)
+                assert "bash_exec" not in effective
+                assert "web_fetch" not in effective
+            finally:
+                if inner_token is not None:
+                    _inherited_permissions.reset(inner_token)
         finally:
-            _inherited_permissions.reset(token)
+            _inherited_permissions.reset(outer_token)
 
     def test_none_permissions_with_parent_uses_parent(self):
         from backend.blocks.autopilot import _inherited_permissions
 
         parent = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
-        token = _inherited_permissions.set(parent)
+        outer_token = _inherited_permissions.set(parent)
         try:
-            merged = _merge_inherited_permissions(None)
-            assert merged is not None
-            # Merged should have parent's restrictions
-            from backend.copilot.permissions import all_known_tool_names
+            merged, inner_token = _merge_inherited_permissions(None)
+            try:
+                assert merged is not None
+                # Merged should have parent's restrictions
+                from backend.copilot.permissions import all_known_tool_names
 
-            effective = merged.effective_allowed_tools(all_known_tool_names())
-            assert "bash_exec" not in effective
+                effective = merged.effective_allowed_tools(all_known_tool_names())
+                assert "bash_exec" not in effective
+            finally:
+                if inner_token is not None:
+                    _inherited_permissions.reset(inner_token)
         finally:
-            _inherited_permissions.reset(token)
+            _inherited_permissions.reset(outer_token)
 
     def test_child_cannot_expand_parent_whitelist(self):
         from backend.blocks.autopilot import _inherited_permissions
         from backend.copilot.permissions import all_known_tool_names
 
         parent = CopilotPermissions(tools=["run_block"], tools_exclude=False)
-        token = _inherited_permissions.set(parent)
+        outer_token = _inherited_permissions.set(parent)
         try:
             # Child tries to allow more tools
             child = CopilotPermissions(
                 tools=["run_block", "bash_exec"], tools_exclude=False
             )
-            merged = _merge_inherited_permissions(child)
-            assert merged is not None
-            effective = merged.effective_allowed_tools(all_known_tool_names())
-            assert "bash_exec" not in effective
-            assert "run_block" in effective
+            merged, inner_token = _merge_inherited_permissions(child)
+            try:
+                assert merged is not None
+                effective = merged.effective_allowed_tools(all_known_tool_names())
+                assert "bash_exec" not in effective
+                assert "run_block" in effective
+            finally:
+                if inner_token is not None:
+                    _inherited_permissions.reset(inner_token)
         finally:
-            _inherited_permissions.reset(token)
+            _inherited_permissions.reset(outer_token)
 
 
 # ---------------------------------------------------------------------------

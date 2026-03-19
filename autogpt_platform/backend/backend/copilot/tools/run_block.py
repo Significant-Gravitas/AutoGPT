@@ -11,6 +11,7 @@ from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
 )
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.db_accessors import review_db
@@ -147,8 +148,6 @@ class RunBlockTool(BaseTool):
             )
 
         # Check block-level permissions before execution.
-        from backend.copilot.context import get_current_permissions
-
         perms = get_current_permissions()
         if perms is not None and not perms.is_block_allowed(block_id, block.name):
             available_hint = (

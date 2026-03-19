@@ -52,12 +52,8 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, PrivateAttr
-
-if TYPE_CHECKING:
-    pass
 
 # ---------------------------------------------------------------------------
 # Constants
