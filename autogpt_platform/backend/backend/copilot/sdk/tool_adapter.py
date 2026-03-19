@@ -53,7 +53,7 @@ MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 # Map from tool_name -> Queue of pre-launched (task, args) pairs.
 # Initialised per-session in set_execution_context() so concurrent sessions
 # never share the same dict.
-_TaskQueueItem = tuple["asyncio.Task[dict[str, Any]]", "dict[str, Any]"]
+_TaskQueueItem = tuple[asyncio.Task[dict[str, Any]], dict[str, Any]]
 _tool_task_queues: ContextVar[dict[str, asyncio.Queue[_TaskQueueItem]] | None] = (
     ContextVar("_tool_task_queues", default=None)
 )
@@ -282,7 +282,7 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     )
 
     if bare_name not in queues:
-        queues[bare_name] = asyncio.Queue()
+        queues[bare_name] = asyncio.Queue[_TaskQueueItem]()
     # Store (task, args) so the handler can log a warning if the SDK dispatches
     # calls in a different order than the ToolUseBlocks appeared in the message.
     queues[bare_name].put_nowait((task, args))
