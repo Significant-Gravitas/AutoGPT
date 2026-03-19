@@ -67,9 +67,7 @@ export default function LibraryImportDialog() {
         <TabsLine defaultValue="agent">
           <TabsLineList>
             <TabsLineTrigger value="agent">AutoGPT agent</TabsLineTrigger>
-            <TabsLineTrigger value="platform">
-              Import from another platform
-            </TabsLineTrigger>
+            <TabsLineTrigger value="platform">Another platform</TabsLineTrigger>
           </TabsLineList>
 
           {/* Tab: Import from any platform (file upload + n8n URL) */}
