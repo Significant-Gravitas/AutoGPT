@@ -249,20 +249,14 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     # The _truncating wrapper (which normally handles expansion) runs AFTER
     # pre_launch_tool_call — the pre-launched task would otherwise receive raw
     # @@agptfile: tokens and fail to resolve them inside _execute_tool_sync.
-    input_schema: dict[str, Any] | None = None
+    # Use _build_input_schema (same path as _truncating) for schema-aware expansion.
     try:
-        schema_method = getattr(
-            getattr(base_tool, "input_schema", None), "jsonschema", None
-        )
-        if callable(schema_method):
-            candidate = schema_method()
-            if isinstance(candidate, dict):
-                input_schema = candidate
+        input_schema: dict[str, Any] = _build_input_schema(base_tool)
     except Exception:
-        pass  # schema generation failed — proceed without schema-aware expansion
+        input_schema = {}  # schema unavailable — proceed without schema-aware expansion
     try:
         args = await expand_file_refs_in_args(
-            args, user_id, session, input_schema=input_schema
+            args, user_id, session, input_schema=input_schema or None
         )
     except FileRefExpansionError as exc:
         logger.warning(
