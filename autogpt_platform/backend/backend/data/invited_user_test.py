@@ -654,11 +654,12 @@ async def test_get_invited_user_tally_understanding_bulk_serializes_fetch_and_li
     await asyncio.wait_for(three_extractions_started.wait(), timeout=2)
     assert peak_fetches == 1
     assert peak_extractions == 3
-    assert fetch_sleep.await_count == 4
-    assert all(call.args == (0.6,) for call in fetch_sleep.await_args_list)
 
     release_extractions.set()
     await asyncio.gather(*tasks)
+
+    assert fetch_sleep.await_count == 4
+    assert all(call.args == (0.6,) for call in fetch_sleep.await_args_list)
 
 
 # ---------------------------------------------------------------------------
