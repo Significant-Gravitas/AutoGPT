@@ -7,6 +7,7 @@ import pytest
 
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.sdk.file_ref import FileRefExpansionError
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
@@ -277,6 +278,32 @@ class TestPreLaunchToolCall:
             await asyncio.sleep(0)
 
         assert mock_tool.execute.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_file_ref_expansion_failure_skips_pre_launch(self):
+        """When @@agptfile: expansion fails, pre_launch_tool_call skips the task.
+
+        The handler should then fall back to direct execution (which will also
+        fail with a proper MCP error via _truncating's own expansion).
+        """
+        mock_tool = _make_mock_tool("run_block", output="should-not-execute")
+
+        with (
+            patch(
+                "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+                {"run_block": mock_tool},
+            ),
+            patch(
+                "backend.copilot.sdk.tool_adapter.expand_file_refs_in_args",
+                AsyncMock(side_effect=FileRefExpansionError("@@agptfile:missing.txt")),
+            ),
+        ):
+            # Should not raise — expansion failure is handled gracefully
+            await pre_launch_tool_call("run_block", {"text": "@@agptfile:missing.txt"})
+            await asyncio.sleep(0)
+
+        # No task was pre-launched — execute was not called
+        mock_tool.execute.assert_not_awaited()
 
 
 class TestCreateToolHandlerParallel:
