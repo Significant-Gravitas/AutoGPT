@@ -976,7 +976,10 @@ class ExecutionProcessor:
         running_node_evaluation = self.running_node_evaluation
 
         try:
-            if db_client.get_credits(graph_exec.user_id) <= 0:
+            if (
+                not graph_exec.execution_context.dry_run
+                and db_client.get_credits(graph_exec.user_id) <= 0
+            ):
                 raise InsufficientBalanceError(
                     user_id=graph_exec.user_id,
                     message="You have no credits left to run an agent.",
@@ -1047,21 +1050,24 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) ------------------------------
+                # Charge usage (may raise) — skipped for dry runs
                 try:
-                    cost, remaining_balance = self._charge_usage(
-                        node_exec=queued_node_exec,
-                        execution_count=increment_execution_count(graph_exec.user_id),
-                    )
-                    with execution_stats_lock:
-                        execution_stats.cost += cost
-                    # Check if we crossed the low balance threshold
-                    self._handle_low_balance(
-                        db_client=db_client,
-                        user_id=graph_exec.user_id,
-                        current_balance=remaining_balance,
-                        transaction_cost=cost,
-                    )
+                    if not graph_exec.execution_context.dry_run:
+                        cost, remaining_balance = self._charge_usage(
+                            node_exec=queued_node_exec,
+                            execution_count=increment_execution_count(
+                                graph_exec.user_id
+                            ),
+                        )
+                        with execution_stats_lock:
+                            execution_stats.cost += cost
+                        # Check if we crossed the low balance threshold
+                        self._handle_low_balance(
+                            db_client=db_client,
+                            user_id=graph_exec.user_id,
+                            current_balance=remaining_balance,
+                            transaction_cost=cost,
+                        )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
