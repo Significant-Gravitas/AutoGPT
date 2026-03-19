@@ -40,19 +40,10 @@ pytestmark = pytest.mark.skipif(
 _SESSION = "integration-test-session"
 
 
-def _ab(*args: str, timeout: int = 30) -> tuple[int, str, str]:
-    """Run agent-browser for the shared test session, return (rc, stdout, stderr)."""
-    result = subprocess.run(
-        ["agent-browser", "--session", _SESSION, "--session-name", _SESSION, *args],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
-    return result.returncode, result.stdout, result.stderr
-
-
-def _ab_session(session: str, *args: str, timeout: int = 30) -> tuple[int, str, str]:
-    """Run agent-browser for an explicitly named session."""
+def _agent_browser(
+    *args: str, session: str = _SESSION, timeout: int = 30
+) -> tuple[int, str, str]:
+    """Run agent-browser for the given session, return (rc, stdout, stderr)."""
     result = subprocess.run(
         ["agent-browser", "--session", session, "--session-name", session, *args],
         capture_output=True,
@@ -96,49 +87,49 @@ def test_chromium_executable_env_is_set():
 
 def test_navigate_returns_success():
     """agent-browser can open a public URL using system chromium."""
-    rc, _, stderr = _ab("open", "https://example.com")
+    rc, _, stderr = _agent_browser("open", "https://example.com")
     assert rc == 0, f"open failed (rc={rc}): {stderr}"
 
 
 def test_get_title_after_navigate():
     """get title returns the page title after navigation."""
-    rc, _, _ = _ab("open", "https://example.com")
+    rc, _, _ = _agent_browser("open", "https://example.com")
     assert rc == 0
 
-    rc, stdout, stderr = _ab("get", "title", timeout=10)
+    rc, stdout, stderr = _agent_browser("get", "title", timeout=10)
     assert rc == 0, f"get title failed: {stderr}"
     assert "example" in stdout.lower()
 
 
 def test_get_url_after_navigate():
     """get url returns the navigated URL."""
-    rc, _, _ = _ab("open", "https://example.com")
+    rc, _, _ = _agent_browser("open", "https://example.com")
     assert rc == 0
 
-    rc, stdout, stderr = _ab("get", "url", timeout=10)
+    rc, stdout, stderr = _agent_browser("get", "url", timeout=10)
     assert rc == 0, f"get url failed: {stderr}"
     assert urlparse(stdout.strip()).netloc == "example.com"
 
 
 def test_snapshot_returns_interactive_elements():
     """snapshot -i -c lists interactive elements on the page."""
-    rc, _, _ = _ab("open", "https://example.com")
+    rc, _, _ = _agent_browser("open", "https://example.com")
     assert rc == 0
 
-    rc, stdout, stderr = _ab("snapshot", "-i", "-c", timeout=15)
+    rc, stdout, stderr = _agent_browser("snapshot", "-i", "-c", timeout=15)
     assert rc == 0, f"snapshot failed: {stderr}"
     assert len(stdout.strip()) > 0, "snapshot returned empty output"
 
 
 def test_screenshot_produces_valid_png():
     """screenshot saves a non-empty, valid PNG file."""
-    rc, _, _ = _ab("open", "https://example.com")
+    rc, _, _ = _agent_browser("open", "https://example.com")
     assert rc == 0
 
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         tmp = f.name
     try:
-        rc, _, stderr = _ab("screenshot", tmp, timeout=15)
+        rc, _, stderr = _agent_browser("screenshot", tmp, timeout=15)
         assert rc == 0, f"screenshot failed: {stderr}"
         size = os.path.getsize(tmp)
         assert size > 1000, f"PNG too small ({size} bytes) — likely blank or corrupt"
@@ -150,19 +141,19 @@ def test_screenshot_produces_valid_png():
 
 def test_scroll_down():
     """scroll down succeeds without error."""
-    rc, _, _ = _ab("open", "https://example.com")
+    rc, _, _ = _agent_browser("open", "https://example.com")
     assert rc == 0
 
-    rc, _, stderr = _ab("scroll", "down", timeout=10)
+    rc, _, stderr = _agent_browser("scroll", "down", timeout=10)
     assert rc == 0, f"scroll failed: {stderr}"
 
 
 def test_fill_form_field():
     """fill writes text into an input field."""
-    rc, _, _ = _ab("open", "https://httpbin.org/forms/post")
+    rc, _, _ = _agent_browser("open", "https://httpbin.org/forms/post")
     assert rc == 0
 
-    rc, _, stderr = _ab(
+    rc, _, stderr = _agent_browser(
         "fill", "input[name=custname]", "IntegrationTestUser", timeout=10
     )
     assert rc == 0, f"fill failed: {stderr}"
@@ -177,17 +168,23 @@ def test_concurrent_independent_sessions():
 
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            fut_a = pool.submit(_ab_session, session_a, "open", "https://example.com")
+            fut_a = pool.submit(
+                _agent_browser, "open", "https://example.com", session=session_a
+            )
             fut_b = pool.submit(
-                _ab_session, session_b, "open", "https://httpbin.org/html"
+                _agent_browser, "open", "https://httpbin.org/html", session=session_b
             )
             rc_a, _, err_a = fut_a.result(timeout=40)
             rc_b, _, err_b = fut_b.result(timeout=40)
         assert rc_a == 0, f"session_a open failed: {err_a}"
         assert rc_b == 0, f"session_b open failed: {err_b}"
 
-        rc_ua, url_a, err_ua = _ab_session(session_a, "get", "url", timeout=10)
-        rc_ub, url_b, err_ub = _ab_session(session_b, "get", "url", timeout=10)
+        rc_ua, url_a, err_ua = _agent_browser(
+            "get", "url", session=session_a, timeout=10
+        )
+        rc_ub, url_b, err_ub = _agent_browser(
+            "get", "url", session=session_b, timeout=10
+        )
         assert rc_ua == 0, f"session_a get url failed: {err_ua}"
         assert rc_ub == 0, f"session_b get url failed: {err_ub}"
         assert urlparse(url_a.strip()).netloc == "example.com"
@@ -199,10 +196,10 @@ def test_concurrent_independent_sessions():
 
 def test_close_session():
     """close shuts down the browser daemon cleanly."""
-    rc, _, _ = _ab("open", "https://example.com")
+    rc, _, _ = _agent_browser("open", "https://example.com")
     assert rc == 0
 
-    rc, _, stderr = _ab("close", timeout=10)
+    rc, _, stderr = _agent_browser("close", timeout=10)
     assert rc == 0, f"close failed: {stderr}"
 
 
