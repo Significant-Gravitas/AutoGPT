@@ -73,7 +73,7 @@ export function useLibraryImportWorkflowDialog() {
         }
         const fileInfo = await uploadJsonAsFile(
           jsonString,
-          `workflow-${Date.now()}.json`,
+          `workflow-${crypto.randomUUID()}.json`,
         );
         setUrlValue("");
         storeAndRedirect(fileInfo, router);
@@ -104,7 +104,7 @@ export function useLibraryImportWorkflowDialog() {
         }
         const fileInfo = await uploadJsonAsFile(
           jsonString,
-          `workflow-${Date.now()}.json`,
+          `workflow-${crypto.randomUUID()}.json`,
         );
         setFileValue("");
         storeAndRedirect(fileInfo, router);
