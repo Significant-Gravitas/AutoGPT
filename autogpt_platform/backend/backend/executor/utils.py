@@ -427,6 +427,7 @@ async def _construct_starting_node_execution_input(
     user_id: str,
     graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    dry_run: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -439,6 +440,7 @@ async def _construct_starting_node_execution_input(
         user_id (str): The ID of the user executing the graph.
         data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
+        dry_run: When True, skip credential validation errors (simulation needs no real creds).
 
     Returns:
         tuple[
@@ -451,6 +453,18 @@ async def _construct_starting_node_execution_input(
     validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
+    # Dry runs simulate every block — missing credentials are irrelevant.
+    # Strip credential-only errors so the graph can proceed.
+    if dry_run and validation_errors:
+        validation_errors = {
+            node_id: {
+                field: msg
+                for field, msg in errors.items()
+                if "credential" not in msg.lower()
+            }
+            for node_id, errors in validation_errors.items()
+            if any("credential" not in msg.lower() for msg in errors.values())
+        }
     n_error_nodes = len(validation_errors)
     n_errors = sum(len(errors) for errors in validation_errors.values())
     if validation_errors:
@@ -516,6 +530,7 @@ async def validate_and_construct_node_execution_input(
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     is_sub_graph: bool = False,
+    dry_run: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -581,6 +596,7 @@ async def validate_and_construct_node_execution_input(
             user_id=user_id,
             graph_inputs=graph_inputs,
             nodes_input_masks=nodes_input_masks,
+            dry_run=dry_run,
         )
     )
 
@@ -883,6 +899,7 @@ async def add_graph_execution(
                 graph_credentials_inputs=graph_credentials_inputs,
                 nodes_input_masks=nodes_input_masks,
                 is_sub_graph=parent_exec_id is not None,
+                dry_run=dry_run,
             )
         )
 
