@@ -288,6 +288,7 @@ def apply_tool_permissions(
         ``ClaudeAgentOptions.disallowed_tools``.
     """
     from backend.copilot.sdk.tool_adapter import (
+        _READ_TOOL_NAME,
         MCP_TOOL_PREFIX,
         get_copilot_tool_names,
         get_sdk_disallowed_tools,
@@ -312,8 +313,8 @@ def apply_tool_permissions(
 
     # short names permitted by permissions
     permitted_sdk = {to_sdk_name(s) for s in effective}
-    # Always include the internal read_file tool (used by SDK for large outputs)
-    permitted_sdk.add(f"{MCP_TOOL_PREFIX}read_file")
+    # Always include the internal Read tool (used by SDK for large/truncated outputs)
+    permitted_sdk.add(f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}")
 
     filtered_allowed = [t for t in base_allowed if t in permitted_sdk]
 
