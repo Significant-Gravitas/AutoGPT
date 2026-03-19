@@ -59,8 +59,6 @@ services:
     extends:
       file: ./docker-compose.platform.yml
       service: copilot_executor
-    volumes:
-      - ~/.claude:/root/.claude
 
   websocket_server:
     <<: *agpt-services

@@ -247,15 +247,23 @@ async def test_tool_navigate_returns_response(_close_tool_session):
 
 
 @pytest.mark.asyncio
-async def test_tool_navigate_blocked_url(_close_tool_session):
+@pytest.mark.parametrize(
+    "ssrf_url",
+    [
+        "http://169.254.169.254/",  # AWS/GCP/Azure metadata endpoint
+        "http://127.0.0.1/",  # IPv4 loopback
+        "http://10.0.0.1/",  # RFC-1918 private range
+        "http://[::1]/",  # IPv6 loopback
+        "http://0.0.0.0/",  # Wildcard / INADDR_ANY
+    ],
+)
+async def test_tool_navigate_blocked_url(ssrf_url: str, _close_tool_session):
     """BrowserNavigateTool._execute rejects internal/private URLs (SSRF guard)."""
     tool = BrowserNavigateTool()
-    resp = await tool._execute(
-        user_id=None, session=_FAKE_SESSION, url="http://169.254.169.254/"
-    )
+    resp = await tool._execute(user_id=None, session=_FAKE_SESSION, url=ssrf_url)
     assert isinstance(
         resp, ErrorResponse
-    ), f"Expected ErrorResponse for SSRF URL, got: {resp}"
+    ), f"Expected ErrorResponse for SSRF URL {ssrf_url!r}, got: {resp}"
     assert resp.error == "blocked_url"
 
 
