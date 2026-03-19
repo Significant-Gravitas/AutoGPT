@@ -30,6 +30,7 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
 MAX_LIBRARY_AGENT_EXECUTIONS_FETCH = 10
+MAX_LIBRARY_AGENTS_LAST_EXECUTED_FETCH = 1000
 
 # Default limits for potentially large result sets
 MAX_CREDIT_REFUND_REQUESTS_FETCH = 100
@@ -109,6 +110,8 @@ def library_agent_include(
     - Listing optimization (no nodes/executions): ~2s for 15 agents vs potential timeouts
     - Unlimited executions: varies by user (thousands of executions = timeouts)
     """
+    if not user_id:
+        raise ValueError("user_id is required")
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
         "Folder": True,  # Always needed for folder info
@@ -126,9 +129,7 @@ def library_agent_include(
         if include_executions:
             agent_graph_include["Executions"] = {
                 "where": {"userId": user_id},
-                "order_by": {
-                    "updatedAt": "desc"
-                },  # Uses updatedAt because it reflects when the execution completed or last progressed
+                "order_by": {"updatedAt": "desc"},
                 "take": execution_limit,
             }
 
