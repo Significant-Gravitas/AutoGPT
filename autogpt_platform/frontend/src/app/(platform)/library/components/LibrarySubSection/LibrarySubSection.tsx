@@ -49,6 +49,9 @@ export function LibrarySubSection({
 
   return (
     <div className="flex items-center justify-between gap-4">
+      <span data-testid="agents-count" className="sr-only">
+        {allCount}
+      </span>
       <TabsLine value={activeTab} onValueChange={onTabChange}>
         <TabsLineList>
           {tabs.map((tab) => (
