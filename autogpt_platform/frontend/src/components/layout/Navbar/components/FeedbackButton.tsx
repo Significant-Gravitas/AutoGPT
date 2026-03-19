@@ -27,8 +27,8 @@ export function FeedbackButton() {
       }
     >
       <div className="rounded-full bg-gradient-to-r from-indigo-100 to-indigo-300 to-zinc-400 p-[1px]">
-        <div className="flex items-center gap-1.5 rounded-full bg-[#FAFAFA]/80 px-3 py-1.5 text-sm font-medium text-neutral-700 backdrop-blur-xl transition-colors duration-150 ease-out group-hover:bg-zinc-100/90">
-          Give Feedback
+        <div className="flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[#FAFAFA]/80 px-3 py-1.5 text-sm font-medium text-neutral-700 backdrop-blur-xl transition-colors duration-150 ease-out group-hover:bg-zinc-100/90">
+          <span className="hidden xl:inline">Give Feedback</span>
           <ChatCircleDotsIcon size={16} />
         </div>
       </div>

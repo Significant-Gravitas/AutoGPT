@@ -98,7 +98,7 @@ export function NavbarLink({ name, href }: Props) {
         <Text
           variant="h5"
           className={cn(
-            "hidden !font-poppins leading-none lg:block",
+            "hidden !font-poppins leading-none xl:block",
             isActive ? "!text-white" : "!text-black",
           )}
         >
