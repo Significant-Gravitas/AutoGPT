@@ -2,7 +2,7 @@
 
 import { useTallyPopup } from "@/components/molecules/TallyPoup/useTallyPopup";
 import { ChatCircleDotsIcon } from "@phosphor-icons/react";
-import { motion } from "motion/react";
+import { motion } from "framer-motion";
 
 export function FeedbackButton() {
   const { state } = useTallyPopup();
