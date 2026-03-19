@@ -479,7 +479,7 @@ class TestCancelPendingToolTasks:
         """Queued tasks are cancelled and the queue is cleared."""
         ran = False
 
-        async def never_run():
+        async def never_run(*_args, **_kwargs):
             nonlocal ran
             await asyncio.sleep(10)  # long enough to still be pending
             ran = True
