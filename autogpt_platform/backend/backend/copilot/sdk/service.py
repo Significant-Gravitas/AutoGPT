@@ -12,7 +12,10 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
+
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -1332,6 +1335,7 @@ async def stream_chat_completion_sdk(
     user_id: str | None = None,
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
+    permissions: "CopilotPermissions | None" = None,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -1577,7 +1581,13 @@ async def stream_chat_completion_sdk(
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
+        set_execution_context(
+            user_id,
+            session,
+            sandbox=e2b_sandbox,
+            sdk_cwd=sdk_cwd,
+            permissions=permissions,
+        )
 
         # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
@@ -1603,8 +1613,13 @@ async def stream_chat_completion_sdk(
             on_compact=compaction.on_compact,
         )
 
-        allowed = get_copilot_tool_names(use_e2b=use_e2b)
-        disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+        if permissions is not None:
+            from backend.copilot.permissions import apply_tool_permissions
+
+            allowed, disallowed = apply_tool_permissions(permissions, use_e2b=use_e2b)
+        else:
+            allowed = get_copilot_tool_names(use_e2b=use_e2b)
+            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""

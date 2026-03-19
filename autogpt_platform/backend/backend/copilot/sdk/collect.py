@@ -7,7 +7,10 @@ without implementing their own event loop.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
 
 
 class CopilotResult:
@@ -39,6 +42,7 @@ async def collect_copilot_response(
     message: str,
     user_id: str,
     is_user_message: bool = True,
+    permissions: "CopilotPermissions | None" = None,
 ) -> CopilotResult:
     """Consume :func:`stream_chat_completion_sdk` and return aggregated results.
 
@@ -53,6 +57,8 @@ async def collect_copilot_response(
         message: The user message / prompt.
         user_id: Authenticated user ID.
         is_user_message: Whether this is a user-initiated message.
+        permissions: Optional capability filter.  When provided, restricts
+            which tools and blocks the copilot may use during this execution.
 
     Returns:
         A :class:`CopilotResult` with the aggregated response text,
@@ -80,6 +86,7 @@ async def collect_copilot_response(
         message=message,
         is_user_message=is_user_message,
         user_id=user_id,
+        permissions=permissions,
     ):
         if isinstance(event, StreamTextDelta):
             response_parts.append(event.delta)

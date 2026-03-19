@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from backend.copilot.context import (
+    _current_permissions,
     _current_project_dir,
     _current_sandbox,
     _current_sdk_cwd,
@@ -40,6 +41,8 @@ from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
+
+    from backend.copilot.permissions import CopilotPermissions
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,7 @@ def set_execution_context(
     session: ChatSession,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
+    permissions: "CopilotPermissions | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -83,12 +87,14 @@ def set_execution_context(
         session: Current chat session.
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
+        permissions: Optional capability filter restricting tools/blocks.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _current_sandbox.set(sandbox)
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
+    _current_permissions.set(permissions)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
 

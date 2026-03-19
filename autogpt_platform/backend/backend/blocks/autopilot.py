@@ -6,6 +6,9 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
+
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
 
 from backend.blocks._base import (
@@ -93,6 +96,58 @@ class AutoPilotBlock(Block):
             default=3,
             ge=1,
             le=10,
+            advanced=True,
+        )
+
+        tools: list[str] = SchemaField(
+            description=(
+                "Tool names to filter. Works with tools_exclude to form an "
+                "allow-list or deny-list. "
+                "Valid names: run_block, web_fetch, find_agent, bash_exec, "
+                "browser_act, browser_navigate, browser_screenshot, run_agent, "
+                "create_agent, customize_agent, edit_agent, find_block, "
+                "find_library_agent, run_mcp_tool, search_docs, validate_agent_graph, "
+                "fix_agent_graph, view_agent_output, connect_integration, "
+                "list_workspace_files, read_workspace_file, write_workspace_file, "
+                "delete_workspace_file, Read, Write, Edit, Glob, Grep, Task, "
+                "WebSearch, TodoWrite (and others). "
+                "Leave empty to apply no tool filter."
+            ),
+            default=[],
+            advanced=True,
+        )
+
+        tools_exclude: bool = SchemaField(
+            description=(
+                "Controls how the 'tools' list is interpreted. "
+                "True (default): 'tools' is a deny-list — listed tools are blocked, "
+                "all others are allowed. An empty 'tools' list means allow everything. "
+                "False: 'tools' is an allow-list — only listed tools are permitted."
+            ),
+            default=True,
+            advanced=True,
+        )
+
+        blocks: list[str] = SchemaField(
+            description=(
+                "Block identifiers to filter when the copilot uses run_block. "
+                "Each entry can be: a block name (e.g. 'HTTP Request'), "
+                "a full block UUID, or the first 8 hex characters of the UUID "
+                "(e.g. 'c069dc6b'). Works with blocks_exclude. "
+                "Leave empty to apply no block filter."
+            ),
+            default=[],
+            advanced=True,
+        )
+
+        blocks_exclude: bool = SchemaField(
+            description=(
+                "Controls how the 'blocks' list is interpreted. "
+                "True (default): 'blocks' is a deny-list — listed blocks are blocked, "
+                "all others are allowed. An empty 'blocks' list means allow everything. "
+                "False: 'blocks' is an allow-list — only listed blocks are permitted."
+            ),
+            default=True,
             advanced=True,
         )
 
@@ -196,6 +251,7 @@ class AutoPilotBlock(Block):
         session_id: str,
         max_recursion_depth: int,
         user_id: str,
+        permissions: "CopilotPermissions | None" = None,
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
         """Invoke the copilot and collect all stream results.
 
@@ -209,6 +265,7 @@ class AutoPilotBlock(Block):
             session_id: Chat session to use.
             max_recursion_depth: Maximum allowed recursion nesting.
             user_id: Authenticated user ID.
+            permissions: Optional capability filter restricting tools/blocks.
 
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
@@ -221,10 +278,14 @@ class AutoPilotBlock(Block):
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
 
+            # Merge with any inherited permissions from a parent AutoPilotBlock.
+            effective_permissions = _merge_inherited_permissions(permissions)
+
             result = await collect_copilot_response(
                 session_id=session_id,
                 message=effective_prompt,
                 user_id=user_id,
+                permissions=effective_permissions,
             )
 
             # Build a lightweight conversation summary from streamed data.
@@ -295,6 +356,13 @@ class AutoPilotBlock(Block):
             yield "error", "max_recursion_depth must be at least 1."
             return
 
+        # Validate and build permissions eagerly — fail before creating a session.
+        permissions = await _build_and_validate_permissions(input_data)
+        if isinstance(permissions, str):
+            # Validation error returned as a string message.
+            yield "error", permissions
+            return
+
         # Create session eagerly so the user always gets the session_id,
         # even if the downstream stream fails (avoids orphaned sessions).
         sid = input_data.session_id
@@ -312,6 +380,7 @@ class AutoPilotBlock(Block):
                 session_id=sid,
                 max_recursion_depth=input_data.max_recursion_depth,
                 user_id=execution_context.user_id,
+                permissions=permissions,
             )
 
             yield "response", response
@@ -374,3 +443,89 @@ def _reset_recursion(
     """Restore recursion depth and limit to their previous values."""
     _autopilot_recursion_depth.reset(tokens[0])
     _autopilot_recursion_limit.reset(tokens[1])
+
+
+# ---------------------------------------------------------------------------
+# Permission helpers
+# ---------------------------------------------------------------------------
+
+# Inherited permissions from a parent AutoPilotBlock execution.
+# This acts as a ceiling: child executions can only be more restrictive.
+_inherited_permissions: contextvars.ContextVar["CopilotPermissions | None"] = (
+    contextvars.ContextVar("_inherited_permissions", default=None)
+)
+
+
+async def _build_and_validate_permissions(
+    input_data: "AutoPilotBlock.Input",
+) -> "CopilotPermissions | str":
+    """Build a :class:`CopilotPermissions` from block input and validate it.
+
+    Returns a :class:`CopilotPermissions` on success or a human-readable
+    error string if validation fails.
+    """
+    from backend.copilot.permissions import (
+        CopilotPermissions,
+        all_known_tool_names,
+        validate_block_identifiers,
+        validate_tool_names,
+    )
+
+    # Validate tool names against known registry.
+    invalid_tools = validate_tool_names(input_data.tools)
+    if invalid_tools:
+        known = sorted(all_known_tool_names())
+        return (
+            f"Invalid tool name(s) in 'tools': {invalid_tools}. "
+            f"Valid names are: {known}."
+        )
+
+    # Validate block identifiers against live block registry.
+    if input_data.blocks:
+        invalid_blocks = await validate_block_identifiers(input_data.blocks)
+        if invalid_blocks:
+            return (
+                f"Unknown block identifier(s) in 'blocks': {invalid_blocks}. "
+                "Use find_block to discover valid block names and IDs. "
+                "You may also use the first 8 characters of a block UUID."
+            )
+
+    return CopilotPermissions(
+        tools=input_data.tools,
+        tools_exclude=input_data.tools_exclude,
+        blocks=input_data.blocks,
+        blocks_exclude=input_data.blocks_exclude,
+    )
+
+
+def _merge_inherited_permissions(
+    permissions: "CopilotPermissions | None",
+) -> "CopilotPermissions | None":
+    """Merge *permissions* with any inherited parent permissions.
+
+    The merged result is stored back into the contextvar so that any nested
+    AutoPilotBlock invocation (sub-agent) inherits the merged ceiling.
+
+    Returns the merged permissions (or *permissions* unchanged if no parent).
+    """
+    from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+
+    parent = _inherited_permissions.get()
+
+    if permissions is None and parent is None:
+        return None
+
+    all_tools = all_known_tool_names()
+
+    if permissions is None:
+        permissions = CopilotPermissions()  # allow-all; will be narrowed by parent
+
+    merged = (
+        permissions.merged_with_parent(parent, all_tools)
+        if parent is not None
+        else permissions
+    )
+
+    # Store merged permissions as the new inherited ceiling for nested calls.
+    _inherited_permissions.set(merged)
+    return merged

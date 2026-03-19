@@ -146,6 +146,29 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
+        # Check block-level permissions before execution.
+        from backend.copilot.context import get_current_permissions
+
+        perms = get_current_permissions()
+        if perms is not None and not perms.is_block_allowed(block_id, block.name):
+            available_hint = (
+                f"Allowed identifiers: {perms.blocks!r}. "
+                if not perms.blocks_exclude and perms.blocks
+                else (
+                    f"Blocked identifiers: {perms.blocks!r}. "
+                    if perms.blocks_exclude and perms.blocks
+                    else ""
+                )
+            )
+            return ErrorResponse(
+                message=(
+                    f"Block '{block.name}' ({block_id}) is not permitted "
+                    f"by the current execution permissions. {available_hint}"
+                    "Use find_block to discover blocks that are allowed."
+                ),
+                session_id=session_id,
+            )
+
         logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
 
         (
