@@ -213,38 +213,6 @@ class RunBlockTool(BaseTool):
                     session_id=session_id,
                 )
 
-        if missing_credentials:
-            # Return setup requirements response with missing credentials
-            credentials_fields_info = block.input_schema.get_credentials_fields_info()
-            missing_creds_dict = build_missing_credentials_from_field_info(
-                credentials_fields_info, set(matched_credentials.keys())
-            )
-            missing_creds_list = list(missing_creds_dict.values())
-
-            return SetupRequirementsResponse(
-                message=(
-                    f"Block '{block.name}' requires credentials that are not configured. "
-                    "Please set up the required credentials before running this block."
-                ),
-                session_id=session_id,
-                setup_info=SetupInfo(
-                    agent_id=block_id,
-                    agent_name=block.name,
-                    user_readiness=UserReadiness(
-                        has_all_credentials=False,
-                        missing_credentials=missing_creds_dict,
-                        ready_to_run=False,
-                    ),
-                    requirements={
-                        "credentials": missing_creds_list,
-                        "inputs": self._get_inputs_list(block),
-                        "execution_modes": ["immediate"],
-                    },
-                ),
-                graph_id=None,
-                graph_version=None,
-            )
-
         # Check if this is a first attempt (required inputs missing)
         # Return block details so user can see what inputs are needed
         credentials_fields = set(block.input_schema.get_credentials_fields().keys())
@@ -252,7 +220,7 @@ class RunBlockTool(BaseTool):
         required_non_credential_keys = required_keys - credentials_fields
         provided_input_keys = set(input_data.keys()) - credentials_fields
 
-        # Check for unknown input fields
+        # Check for unknown input fields (always validate, even for dry_run)
         valid_fields = (
             set(input_schema.get("properties", {}).keys()) - credentials_fields
         )
@@ -284,6 +252,38 @@ class RunBlockTool(BaseTool):
                 ),
                 matched_credentials=matched_credentials,
                 dry_run=True,
+            )
+
+        if missing_credentials:
+            # Return setup requirements response with missing credentials
+            credentials_fields_info = block.input_schema.get_credentials_fields_info()
+            missing_creds_dict = build_missing_credentials_from_field_info(
+                credentials_fields_info, set(matched_credentials.keys())
+            )
+            missing_creds_list = list(missing_creds_dict.values())
+
+            return SetupRequirementsResponse(
+                message=(
+                    f"Block '{block.name}' requires credentials that are not configured. "
+                    "Please set up the required credentials before running this block."
+                ),
+                session_id=session_id,
+                setup_info=SetupInfo(
+                    agent_id=block_id,
+                    agent_name=block.name,
+                    user_readiness=UserReadiness(
+                        has_all_credentials=False,
+                        missing_credentials=missing_creds_dict,
+                        ready_to_run=False,
+                    ),
+                    requirements={
+                        "credentials": missing_creds_list,
+                        "inputs": self._get_inputs_list(block),
+                        "execution_modes": ["immediate"],
+                    },
+                ),
+                graph_id=None,
+                graph_version=None,
             )
 
         # Show details when not all required non-credential inputs are provided
