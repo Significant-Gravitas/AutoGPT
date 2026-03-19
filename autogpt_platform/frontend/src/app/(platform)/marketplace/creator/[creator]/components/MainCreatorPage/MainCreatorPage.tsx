@@ -90,7 +90,11 @@ export function MainCreatorPage({ params }: Props) {
                   </Avatar>
 
                   {/* Name */}
-                  <Text variant="h2" className="mb-1">
+                  <Text
+                    variant="h2"
+                    className="mb-1"
+                    data-testid="creator-title"
+                  >
                     {creator.name}
                   </Text>
 

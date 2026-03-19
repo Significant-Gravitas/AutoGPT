@@ -154,7 +154,10 @@ export const AgentInfo = ({
           </Text>
 
           {/* Creator */}
-          <div className="mb-3 flex w-full items-center gap-2 lg:mb-12">
+          <div
+            className="mb-3 flex w-full items-center gap-2 lg:mb-12"
+            data-testid="agent-creator"
+          >
             <Avatar className="h-7 w-7 shrink-0">
               {creatorAvatar && (
                 <AvatarImage src={creatorAvatar} alt={`${creator} avatar`} />
@@ -178,9 +181,9 @@ export const AgentInfo = ({
           </div>
 
           {/* Buttons + Runs */}
-          {user && (
-            <div className="mt-6 flex w-full items-center justify-between lg:mt-8">
-              <div className="flex gap-3">
+          <div className="mt-6 flex w-full items-center justify-between lg:mt-8">
+            <div className="flex gap-3">
+              {user && (
                 <Button
                   variant="primary"
                   className="min-w-36 border-violet-600 bg-violet-600 hover:border-violet-500 hover:bg-violet-500"
@@ -199,26 +202,26 @@ export const AgentInfo = ({
                       ? "See runs"
                       : "Add to library"}
                 </Button>
-                <Button
-                  variant="ghost"
-                  loading={isDownloadingAgent}
-                  onClick={() => handleDownload(agentId, name)}
-                  data-testid="agent-download-button"
-                >
-                  {!isDownloadingAgent && <FileArrowDownIcon size={18} />}
-                  {isDownloadingAgent ? "Downloading..." : "Download"}
-                </Button>
-              </div>
-              <Text
-                variant="small"
-                className="mr-4 hidden whitespace-nowrap text-zinc-500 lg:block"
+              )}
+              <Button
+                variant="ghost"
+                loading={isDownloadingAgent}
+                onClick={() => handleDownload(agentId, name)}
+                data-testid="agent-download-button"
               >
-                {runs === 0
-                  ? "No runs"
-                  : `${runs.toLocaleString()} run${runs > 1 ? "s" : ""}`}
-              </Text>
+                {!isDownloadingAgent && <FileArrowDownIcon size={18} />}
+                {isDownloadingAgent ? "Downloading..." : "Download"}
+              </Button>
             </div>
-          )}
+            <Text
+              variant="small"
+              className="mr-4 hidden whitespace-nowrap text-zinc-500 lg:block"
+            >
+              {runs === 0
+                ? "No runs"
+                : `${runs.toLocaleString()} run${runs > 1 ? "s" : ""}`}
+            </Text>
+          </div>
         </div>
       </div>
       <div className="mb-8 flex flex-col gap-24">
