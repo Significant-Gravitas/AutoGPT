@@ -898,10 +898,17 @@ async def session_assign_user(
 # ========== Suggested Prompts ==========
 
 
-class SuggestedPromptsResponse(BaseModel):
-    """Response model for user-specific suggested prompts."""
+class SuggestedTheme(BaseModel):
+    """A themed group of suggested prompts."""
 
+    name: str
     prompts: list[str]
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts grouped by theme."""
+
+    themes: list[SuggestedTheme]
 
 
 @router.get(
@@ -912,17 +919,21 @@ async def get_suggested_prompts(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SuggestedPromptsResponse:
     """
-    Get LLM-generated suggested prompts for the authenticated user.
+    Get LLM-generated suggested prompts grouped by theme.
 
     Returns personalized quick-action prompts based on the user's
-    business understanding. Returns an empty list if no custom prompts
-    are available.
+    business understanding. Returns empty themes list if no custom
+    prompts are available.
     """
     understanding = await get_business_understanding(user_id)
-    if understanding is None:
-        return SuggestedPromptsResponse(prompts=[])
+    if understanding is None or not understanding.suggested_prompts:
+        return SuggestedPromptsResponse(themes=[])
 
-    return SuggestedPromptsResponse(prompts=understanding.suggested_prompts)
+    themes = [
+        SuggestedTheme(name=name, prompts=prompts)
+        for name, prompts in understanding.suggested_prompts.items()
+    ]
+    return SuggestedPromptsResponse(themes=themes)
 
 
 # ========== Configuration ==========

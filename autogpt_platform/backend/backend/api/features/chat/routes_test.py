@@ -418,44 +418,51 @@ def _mock_get_business_understanding(
     )
 
 
-def test_suggested_prompts_returns_prompts(
+def test_suggested_prompts_returns_themes(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """User with understanding and prompts gets them back."""
+    """User with themed prompts gets them back as themes list."""
     mock_understanding = MagicMock()
-    mock_understanding.suggested_prompts = ["Do X", "Do Y", "Do Z"]
+    mock_understanding.suggested_prompts = {
+        "Learn": ["L1", "L2"],
+        "Create": ["C1"],
+    }
     _mock_get_business_understanding(mocker, return_value=mock_understanding)
 
     response = client.get("/suggested-prompts")
 
     assert response.status_code == 200
-    assert response.json() == {"prompts": ["Do X", "Do Y", "Do Z"]}
+    data = response.json()
+    assert "themes" in data
+    themes_by_name = {t["name"]: t["prompts"] for t in data["themes"]}
+    assert themes_by_name["Learn"] == ["L1", "L2"]
+    assert themes_by_name["Create"] == ["C1"]
 
 
 def test_suggested_prompts_no_understanding(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """User with no understanding gets empty list."""
+    """User with no understanding gets empty themes list."""
     _mock_get_business_understanding(mocker, return_value=None)
 
     response = client.get("/suggested-prompts")
 
     assert response.status_code == 200
-    assert response.json() == {"prompts": []}
+    assert response.json() == {"themes": []}
 
 
 def test_suggested_prompts_empty_prompts(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """User with understanding but no prompts gets empty list."""
+    """User with understanding but empty prompts gets empty themes list."""
     mock_understanding = MagicMock()
-    mock_understanding.suggested_prompts = []
+    mock_understanding.suggested_prompts = {}
     _mock_get_business_understanding(mocker, return_value=mock_understanding)
 
     response = client.get("/suggested-prompts")
 
     assert response.status_code == 200
-    assert response.json() == {"prompts": []}
+    assert response.json() == {"themes": []}
