@@ -15,7 +15,7 @@ export function JumpBackIn() {
   }
 
   return (
-    <div className="rounded-large bg-gradient-to-r from-zinc-200 via-zinc-100 to-transparent p-[1px]">
+    <div className="rounded-large bg-gradient-to-r from-zinc-200 via-zinc-100 to-zinc-100/40 p-[1px]">
       <div className="flex items-center justify-between rounded-large bg-[#F6F7F8] px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-900">
