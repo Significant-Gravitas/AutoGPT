@@ -4,14 +4,12 @@ from difflib import SequenceMatcher
 from typing import Any, Sequence, get_args, get_origin
 
 import prisma
-from prisma.enums import ContentType
 from prisma.models import mv_suggested_blocks
 
 import backend.api.features.library.db as library_db
 import backend.api.features.library.model as library_model
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
-from backend.api.features.store.hybrid_search import unified_hybrid_search
 from backend.blocks import load_all_blocks
 from backend.blocks._base import (
     AnyBlockSchema,
@@ -24,6 +22,7 @@ from backend.blocks.llm import LlmModel
 from backend.integrations.providers import ProviderName
 from backend.util.cache import cached
 from backend.util.models import Pagination
+from backend.util.text import split_camelcase
 
 from .model import (
     BlockCategoryResponse,
@@ -271,7 +270,7 @@ async def _build_cached_search_results(
 
     # Use hybrid search when query is present, otherwise list all blocks
     if (include_blocks or include_integrations) and normalized_query:
-        block_results, block_total, integration_total = await _hybrid_search_blocks(
+        block_results, block_total, integration_total = await _text_search_blocks(
             query=search_query,
             include_blocks=include_blocks,
             include_integrations=include_integrations,
@@ -383,117 +382,75 @@ def _collect_block_results(
     return results, block_count, integration_count
 
 
-async def _hybrid_search_blocks(
+async def _text_search_blocks(
     *,
     query: str,
     include_blocks: bool,
     include_integrations: bool,
 ) -> tuple[list[_ScoredItem], int, int]:
     """
-    Search blocks using hybrid search with builder-specific filtering.
+    Search blocks using in-memory text matching over the block registry.
 
-    Uses unified_hybrid_search for semantic + lexical search, then applies
-    post-filtering for block/integration types and scoring adjustments.
+    All blocks are already loaded in memory, so this is fast and reliable
+    regardless of whether OpenAI embeddings are available.
 
     Scoring:
-        - Base: hybrid relevance score (0-1) scaled to 0-100, plus BLOCK_SCORE_BOOST
+        - Base: text relevance via _score_primary_fields, plus BLOCK_SCORE_BOOST
           to prioritize blocks over marketplace agents in combined results
-        - +30 for exact name match, +15 for prefix name match
         - +20 if the block has an LlmModel field and the query matches an LLM model name
-
-    Args:
-        query: The search query string
-        include_blocks: Whether to include regular blocks
-        include_integrations: Whether to include integration blocks
-
-    Returns:
-        Tuple of (scored_items, block_count, integration_count)
     """
     results: list[_ScoredItem] = []
-    block_count = 0
-    integration_count = 0
 
     if not include_blocks and not include_integrations:
-        return results, block_count, integration_count
+        return results, 0, 0
 
     normalized_query = query.strip().lower()
 
-    # Fetch more results to account for post-filtering
-    search_results, _ = await unified_hybrid_search(
-        query=query,
-        content_types=[ContentType.BLOCK],
-        page=1,
-        page_size=150,
-        min_score=0.10,
+    all_results, _, _ = _collect_block_results(
+        include_blocks=include_blocks,
+        include_integrations=include_integrations,
     )
 
-    # Load all blocks for getting BlockInfo
     all_blocks = load_all_blocks()
 
-    for result in search_results:
-        block_id = result["content_id"]
+    for item in all_results:
+        block_info = item.item
+        assert isinstance(block_info, BlockInfo)
+        name = split_camelcase(block_info.name).lower()
 
-        # Skip excluded blocks
-        if block_id in EXCLUDED_BLOCK_IDS:
-            continue
+        # Build rich description including input field descriptions,
+        # matching the searchable text that the embedding pipeline uses
+        desc_parts = [block_info.description or ""]
+        block_cls = all_blocks.get(block_info.id)
+        if block_cls is not None:
+            block: AnyBlockSchema = block_cls()
+            desc_parts += [
+                f"{f}: {info.description}"
+                for f, info in block.input_schema.model_fields.items()
+                if info.description
+            ]
+        description = " ".join(desc_parts).lower()
 
-        metadata = result.get("metadata", {})
-        hybrid_score = result.get("relevance", 0.0)
-
-        # Get the actual block class
-        if block_id not in all_blocks:
-            continue
-
-        block_cls = all_blocks[block_id]
-        block: AnyBlockSchema = block_cls()
-
-        if block.disabled:
-            continue
-
-        # Check block/integration filter using metadata
-        is_integration = metadata.get("is_integration", False)
-
-        if is_integration and not include_integrations:
-            continue
-        if not is_integration and not include_blocks:
-            continue
-
-        # Get block info
-        block_info = block.get_info()
-
-        # Calculate final score: scale hybrid score and add builder-specific bonuses
-        # Hybrid scores are 0-1, builder scores were 0-200+
-        # Add BLOCK_SCORE_BOOST to prioritize blocks over marketplace agents
-        final_score = hybrid_score * 100 + BLOCK_SCORE_BOOST
+        score = _score_primary_fields(name, description, normalized_query)
 
         # Add LLM model match bonus
-        has_llm_field = metadata.get("has_llm_model_field", False)
-        if has_llm_field and _matches_llm_model(block.input_schema, normalized_query):
-            final_score += 20
+        if block_cls is not None and _matches_llm_model(
+            block_cls().input_schema, normalized_query
+        ):
+            score += 20
 
-        # Add exact/prefix match bonus for deterministic tie-breaking
-        name = block_info.name.lower()
-        if name == normalized_query:
-            final_score += 30
-        elif name.startswith(normalized_query):
-            final_score += 15
-
-        # Track counts
-        filter_type: FilterType = "integrations" if is_integration else "blocks"
-        if is_integration:
-            integration_count += 1
-        else:
-            block_count += 1
-
-        results.append(
-            _ScoredItem(
-                item=block_info,
-                filter_type=filter_type,
-                score=final_score,
-                sort_key=name,
+        if score >= MIN_SCORE_FOR_FILTERED_RESULTS:
+            results.append(
+                _ScoredItem(
+                    item=block_info,
+                    filter_type=item.filter_type,
+                    score=score + BLOCK_SCORE_BOOST,
+                    sort_key=name,
+                )
             )
-        )
 
+    block_count = sum(1 for r in results if r.filter_type == "blocks")
+    integration_count = sum(1 for r in results if r.filter_type == "integrations")
     return results, block_count, integration_count
 
 
