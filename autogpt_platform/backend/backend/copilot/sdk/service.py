@@ -1149,7 +1149,7 @@ async def _run_stream_attempt(
             # calls, so each message is pre-launched independently.  The MCP
             # handlers will await the already-running task instead of executing
             # fresh, making all concurrent tool calls run in parallel.
-            if isinstance(sdk_msg, AssistantMessage):
+            if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
                 for block in sdk_msg.content:
                     if isinstance(block, ToolUseBlock):
                         await pre_launch_tool_call(block.name, block.input)
