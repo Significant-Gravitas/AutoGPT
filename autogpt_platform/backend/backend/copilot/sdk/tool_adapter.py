@@ -179,7 +179,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
         event.set()
 
 
-async def wait_for_stash(timeout: float = 10.0) -> bool:
+async def wait_for_stash(timeout: float = 2.0) -> bool:
     """Wait for a PostToolUse hook to stash tool output.
 
     The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
@@ -191,6 +191,10 @@ async def wait_for_stash(timeout: float = 10.0) -> bool:
     Uses ``asyncio.Event.wait()`` so it returns the instant the hook signals —
     the timeout is purely a safety net for the case where the hook never fires.
     Returns ``True`` if the stash signal was received, ``False`` on timeout.
+
+    The 2.0 s default was chosen to accommodate slower tool startup in cloud
+    sandboxes while still failing fast when the hook genuinely will not fire.
+    With the parallel pre-launch path, hooks typically fire well under 1 ms.
     """
     event = _stash_event.get(None)
     if event is None:
