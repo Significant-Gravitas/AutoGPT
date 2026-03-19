@@ -818,6 +818,7 @@ async def add_graph_execution(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -895,6 +896,7 @@ async def add_graph_execution(
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
             parent_graph_exec_id=parent_exec_id,
+            is_dry_run=dry_run,
         )
 
         logger.info(
@@ -917,6 +919,7 @@ async def add_graph_execution(
             # Safety settings
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            dry_run=dry_run,
             # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"

@@ -566,6 +566,9 @@ model AgentGraphExecution {
   shareToken String?   @unique
   sharedAt   DateTime?
 
+  // Simulation
+  isDryRun Boolean @default(false)
+
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])

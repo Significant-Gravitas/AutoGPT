@@ -179,6 +179,7 @@ class GraphExecutionMeta(BaseDbModel):
     )
     is_shared: bool = False
     share_token: Optional[str] = None
+    is_dry_run: bool = False
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -307,6 +308,7 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
+            is_dry_run=_graph_exec.isDryRun,
         )
 
 
@@ -724,6 +726,7 @@ async def create_graph_execution(
     credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
+    is_dry_run: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -761,6 +764,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            "isDryRun": is_dry_run,
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )

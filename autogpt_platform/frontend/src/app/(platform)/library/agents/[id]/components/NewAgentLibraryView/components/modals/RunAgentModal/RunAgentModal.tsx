@@ -78,6 +78,7 @@ export function RunAgentModal({
 
     // Actions
     handleRun,
+    handleSimulate,
   } = useAgentRunModal(agent, {
     onRun: onRunCreated,
     onSetupTrigger: onTriggerSetup,
@@ -281,6 +282,7 @@ export function RunAgentModal({
                 <RunActions
                   defaultRunType={defaultRunType}
                   onRun={handleRunWithSafetyCheck}
+                  onSimulate={handleSimulate}
                   isExecuting={isExecuting}
                   isSettingUpTrigger={isSettingUpTrigger}
                   isRunReady={allRequiredInputsAreSet}

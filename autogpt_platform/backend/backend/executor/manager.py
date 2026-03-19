@@ -372,9 +372,14 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        async for output_name, output_data in node_block.execute(
-            input_data, **extra_exec_kwargs
-        ):
+        if execution_context.dry_run:
+            from backend.executor.simulator import simulate_block  # noqa: PLC0415
+
+            block_iter = simulate_block(node_block, input_data)
+        else:
+            block_iter = node_block.execute(input_data, **extra_exec_kwargs)
+
+        async for output_name, output_data in block_iter:
             output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
