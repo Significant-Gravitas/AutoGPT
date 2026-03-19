@@ -1358,30 +1358,6 @@
         }
       }
     },
-    "/api/chat/suggested-prompts": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Get Suggested Prompts",
-        "description": "Get LLM-generated suggested prompts grouped by theme.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns empty themes list if no custom\nprompts are available.",
-        "operationId": "getV2GetSuggestedPrompts",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/chat/usage": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -13075,33 +13051,6 @@
         "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
-      },
-      "SuggestedPromptsResponse": {
-        "properties": {
-          "themes": {
-            "items": { "$ref": "#/components/schemas/SuggestedTheme" },
-            "type": "array",
-            "title": "Themes"
-          }
-        },
-        "type": "object",
-        "required": ["themes"],
-        "title": "SuggestedPromptsResponse",
-        "description": "Response model for user-specific suggested prompts grouped by theme."
-      },
-      "SuggestedTheme": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "prompts": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Prompts"
-          }
-        },
-        "type": "object",
-        "required": ["name", "prompts"],
-        "title": "SuggestedTheme",
-        "description": "A themed group of suggested prompts."
       },
       "SuggestionsResponse": {
         "properties": {

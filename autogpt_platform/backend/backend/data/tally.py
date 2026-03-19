@@ -40,9 +40,6 @@ _MAX_PAGES = 100
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
 
-SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
-PROMPTS_PER_THEME = 5
-
 
 def mask_email(email: str) -> str:
     """Mask an email for safe logging: 'alice@example.com' -> 'a***e@example.com'."""
@@ -334,11 +331,6 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
-- suggested_prompts (object with keys "Learn", "Create", "Automate", "Organize"): for each key, \
-provide a list of 5 short action prompts (each under 20 words) that would help this person. \
-"Learn" = questions about AutoGPT features; "Create" = content/document generation tasks; \
-"Automate" = recurring workflow automation ideas; "Organize" = structuring/prioritizing tasks. \
-Should be specific to their industry, role, and pain points; actionable and conversational in tone.
 
 Form data:
 """
@@ -346,11 +338,10 @@ Form data:
 _EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
 
-async def extract_business_understanding_from_tally(
+async def extract_business_understanding(
     formatted_text: str,
 ) -> BusinessUnderstandingInput:
-    """
-    Use an LLM to extract structured business understanding from form text.
+    """Use an LLM to extract structured business understanding from form text.
 
     Raises on timeout or unparseable response so the caller can handle it.
     """
@@ -360,7 +351,7 @@ async def extract_business_understanding_from_tally(
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model=_settings.config.tally_extraction_llm_model,
+                model="openai/gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
@@ -385,29 +376,6 @@ async def extract_business_understanding_from_tally(
 
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
-
-    # Validate suggested_prompts: themed dict, filter >20 words, cap at 5 per theme
-    raw_prompts = cleaned.get("suggested_prompts", {})
-    if isinstance(raw_prompts, dict):
-        themed: dict[str, list[str]] = {}
-        for theme in SUGGESTION_THEMES:
-            theme_prompts = raw_prompts.get(theme, [])
-            if not isinstance(theme_prompts, list):
-                continue
-            valid = [
-                s
-                for p in theme_prompts
-                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
-            ]
-            if valid:
-                themed[theme] = valid[:PROMPTS_PER_THEME]
-        if themed:
-            cleaned["suggested_prompts"] = themed
-        else:
-            cleaned.pop("suggested_prompts", None)
-    else:
-        cleaned.pop("suggested_prompts", None)
-
     return BusinessUnderstandingInput(**cleaned)
 
 
@@ -436,7 +404,7 @@ async def get_business_understanding_input_from_tally(
         logger.warning("Tally: formatted submission was empty, skipping")
         return None
 
-    return await extract_business_understanding_from_tally(formatted)
+    return await extract_business_understanding(formatted)
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
