@@ -8,6 +8,7 @@ Validates that every tool in TOOL_REGISTRY produces a well-formed schema:
 """
 
 import json
+from typing import Any, cast
 
 import pytest
 import tiktoken
@@ -61,6 +62,39 @@ class TestToolSchema:
             assert (
                 "description" in prop_def
             ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
+
+
+def test_browser_act_action_enum_complete() -> None:
+    """Assert browser_act action enum still contains all 14 supported actions.
+
+    This prevents future PRs from accidentally dropping actions during description
+    trimming. The enum is the authoritative list — this locks it at 14 values.
+    """
+    tool = TOOL_REGISTRY["browser_act"]
+    schema = tool.as_openai_tool()
+    fn_def = schema["function"]
+    params = cast(dict[str, Any], fn_def.get("parameters", {}))
+    actions = params["properties"]["action"]["enum"]
+    expected = {
+        "click",
+        "dblclick",
+        "fill",
+        "type",
+        "scroll",
+        "hover",
+        "press",
+        "check",
+        "uncheck",
+        "select",
+        "wait",
+        "back",
+        "forward",
+        "reload",
+    }
+    assert set(actions) == expected, (
+        f"browser_act action enum changed. Got {set(actions)}, expected {expected}. "
+        "If you added/removed an action, update this test intentionally."
+    )
 
 
 def test_total_schema_token_budget() -> None:
