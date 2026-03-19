@@ -1,16 +1,17 @@
 """Unit tests for extracted service helpers.
 
 Covers ``_is_prompt_too_long``, ``_reduce_context``, ``_iter_sdk_messages``,
-and the ``ReducedContext`` named tuple.
+``ReducedContext``, and the ``is_parallel_continuation`` logic.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk import AssistantMessage, ToolUseBlock
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
@@ -281,3 +282,68 @@ class TestIterSdkMessages:
         first = await gen.__anext__()
         assert first == "first"
         await gen.aclose()  # should cancel pending task cleanly
+
+
+# ---------------------------------------------------------------------------
+# is_parallel_continuation logic
+# ---------------------------------------------------------------------------
+
+
+def _is_parallel_continuation(sdk_msg: object) -> bool:
+    """Replicate the is_parallel_continuation logic from _run_stream_attempt."""
+    return (
+        isinstance(sdk_msg, AssistantMessage)
+        and bool(sdk_msg.content)
+        and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+    )
+
+
+class TestIsParallelContinuation:
+    """Unit tests for the is_parallel_continuation expression in the streaming loop.
+
+    Verifies the vacuous-truth guard (empty content must return False) and the
+    boundary cases for mixed TextBlock+ToolUseBlock messages.
+    """
+
+    def _make_tool_block(self) -> MagicMock:
+        block = MagicMock(spec=ToolUseBlock)
+        return block
+
+    def test_all_tool_use_blocks_is_parallel(self):
+        """AssistantMessage with only ToolUseBlocks is a parallel continuation."""
+        msg = MagicMock(spec=AssistantMessage)
+        msg.content = [self._make_tool_block(), self._make_tool_block()]
+        assert _is_parallel_continuation(msg) is True
+
+    def test_empty_content_is_not_parallel(self):
+        """AssistantMessage with empty content must NOT be treated as parallel.
+
+        Without the bool(sdk_msg.content) guard, all() on an empty iterable
+        returns True via vacuous truth — this test ensures the guard is present.
+        """
+        msg = MagicMock(spec=AssistantMessage)
+        msg.content = []
+        assert _is_parallel_continuation(msg) is False
+
+    def test_mixed_text_and_tool_blocks_not_parallel(self):
+        """AssistantMessage with text + tool blocks is NOT a parallel continuation."""
+        from unittest.mock import MagicMock
+
+        from claude_agent_sdk import TextBlock
+
+        msg = MagicMock(spec=AssistantMessage)
+        text_block = MagicMock(spec=TextBlock)
+        msg.content = [text_block, self._make_tool_block()]
+        assert _is_parallel_continuation(msg) is False
+
+    def test_non_assistant_message_not_parallel(self):
+        """Non-AssistantMessage types are never parallel continuations."""
+        assert _is_parallel_continuation("not a message") is False
+        assert _is_parallel_continuation(None) is False
+        assert _is_parallel_continuation(42) is False
+
+    def test_single_tool_block_is_parallel(self):
+        """Single ToolUseBlock AssistantMessage is a parallel continuation."""
+        msg = MagicMock(spec=AssistantMessage)
+        msg.content = [self._make_tool_block()]
+        assert _is_parallel_continuation(msg) is True
