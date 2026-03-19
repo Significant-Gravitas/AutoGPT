@@ -1,7 +1,11 @@
 "use server";
 
-import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
+import {
+  postV1CheckIfAnEmailIsAllowedToSignUp,
+  postV1GetOrCreateUser,
+} from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -26,6 +30,31 @@ export async function signup(
         success: false,
         error: "Invalid signup payload",
       };
+    }
+
+    // Pre-check invite eligibility before creating a Supabase auth user.
+    // This prevents orphaned auth accounts when the invite gate is enabled.
+    try {
+      const checkResult = await resolveResponse(
+        postV1CheckIfAnEmailIsAllowedToSignUp({ email: parsed.data.email }),
+      );
+      if (!checkResult.allowed) {
+        return { success: false, error: "not_allowed" };
+      }
+      // If the check fails (non-OK or backend unreachable), fall through to
+      // signup — the backend-level check in get_or_activate_user() catches it.
+    } catch (precheckError) {
+      if (precheckError instanceof ApiError) {
+        Sentry.captureMessage(
+          `Invite pre-check returned HTTP ${precheckError.status}`,
+          { level: "warning", tags: { flow: "signup_precheck" } },
+        );
+      } else {
+        Sentry.captureException(precheckError, {
+          tags: { flow: "signup_precheck" },
+        });
+      }
+      // Graceful fallback: don't block signup if the pre-check itself fails.
     }
 
     const supabase = await getServerSupabase();

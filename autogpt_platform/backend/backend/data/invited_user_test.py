@@ -14,6 +14,7 @@ from backend.util.exceptions import NotAuthorizedError, PreconditionFailed
 from .invited_user import (
     InvitedUserRecord,
     bulk_create_invited_users_from_file,
+    check_invite_eligibility,
     create_invited_user,
     get_or_activate_user,
     retry_invited_user_tally,
@@ -247,6 +248,10 @@ async def test_get_or_activate_user_creates_user_from_invite(
         "backend.data.invited_user._apply_tally_understanding",
         AsyncMock(),
     )
+    mocker.patch(
+        "backend.data.invited_user._settings.config.enable_invite_gate",
+        True,
+    )
     mocker.patch("backend.data.invited_user.transaction", fake_transaction)
     mocker.patch(
         "backend.data.invited_user.prisma.models.User.prisma", side_effect=user_prisma
@@ -333,3 +338,72 @@ async def test_bulk_create_invited_users_handles_csv_duplicates_and_invalid_rows
         "SKIPPED",
     ]
     assert create_invited.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# check_invite_eligibility tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_check_invite_eligibility_returns_true_for_invited(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    invited = _invited_user_db_record(status=prisma.enums.InvitedUserStatus.INVITED)
+    repo = Mock()
+    repo.find_unique = AsyncMock(return_value=invited)
+    mocker.patch(
+        "backend.data.invited_user.prisma.models.InvitedUser.prisma",
+        return_value=repo,
+    )
+
+    result = await check_invite_eligibility("invited@example.com")
+    assert result is True
+    repo.find_unique.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_check_invite_eligibility_returns_false_for_no_record(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    repo = Mock()
+    repo.find_unique = AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.data.invited_user.prisma.models.InvitedUser.prisma",
+        return_value=repo,
+    )
+
+    result = await check_invite_eligibility("unknown@example.com")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_check_invite_eligibility_returns_false_for_claimed(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    claimed = _invited_user_db_record(status=prisma.enums.InvitedUserStatus.CLAIMED)
+    repo = Mock()
+    repo.find_unique = AsyncMock(return_value=claimed)
+    mocker.patch(
+        "backend.data.invited_user.prisma.models.InvitedUser.prisma",
+        return_value=repo,
+    )
+
+    result = await check_invite_eligibility("claimed@example.com")
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_check_invite_eligibility_returns_false_for_revoked(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    revoked = _invited_user_db_record(status=prisma.enums.InvitedUserStatus.REVOKED)
+    repo = Mock()
+    repo.find_unique = AsyncMock(return_value=revoked)
+    mocker.patch(
+        "backend.data.invited_user.prisma.models.InvitedUser.prisma",
+        return_value=repo,
+    )
+
+    result = await check_invite_eligibility("revoked@example.com")
+    assert result is False

@@ -378,7 +378,7 @@ class NotificationManager(AppService):
                                 continue
                         logger.info(f"{events=}")
 
-                        self.email_sender.send_templated(
+                        await self.email_sender.send_templated(
                             notification=notification_type,
                             user_email=recipient_email,
                             data=events,
@@ -600,7 +600,7 @@ class NotificationManager(AppService):
                 return False
             logger.debug(f"Processing notification for admin: {event}")
             recipient_email = settings.config.refund_notification_email
-            self.email_sender.send_templated(event.type, recipient_email, event)
+            await self.email_sender.send_templated(event.type, recipient_email, event)
             return True
         except Exception as e:
             logger.exception(f"Error processing notification for admin queue: {e}")
@@ -632,7 +632,7 @@ class NotificationManager(AppService):
 
             unsub_link = generate_unsubscribe_link(event.user_id)
 
-            self.email_sender.send_templated(
+            await self.email_sender.send_templated(
                 notification=event.type,
                 user_email=recipient_email,
                 data=event,
@@ -715,12 +715,14 @@ class NotificationManager(AppService):
                     try:
                         # Try to render the email to check its size
                         template = self.email_sender._get_template(event.type)
-                        _, test_message = self.email_sender.formatter.format_email(
-                            base_template=template.base_template,
-                            subject_template=template.subject_template,
-                            content_template=template.body_template,
-                            data={"notifications": chunk},
-                            unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
+                        _, test_message = (
+                            await self.email_sender.formatter.format_email(
+                                base_template=template.base_template,
+                                subject_template=template.subject_template,
+                                content_template=template.body_template,
+                                data={"notifications": chunk},
+                                unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
+                            )
                         )
 
                         if len(test_message) < MAX_EMAIL_SIZE:
@@ -730,7 +732,7 @@ class NotificationManager(AppService):
                                 f"(size: {len(test_message):,} chars)"
                             )
 
-                            self.email_sender.send_templated(
+                            await self.email_sender.send_templated(
                                 notification=event.type,
                                 user_email=recipient_email,
                                 data=chunk,
@@ -975,7 +977,7 @@ class NotificationManager(AppService):
                 data=summary_data,
             )
 
-            self.email_sender.send_templated(
+            await self.email_sender.send_templated(
                 notification=event.type,
                 user_email=recipient_email,
                 data=data,

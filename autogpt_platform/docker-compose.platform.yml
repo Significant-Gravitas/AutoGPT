@@ -37,7 +37,7 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: migrate
-    command: ["sh", "-c", "prisma generate && python3 gen_prisma_types_stub.py && prisma migrate deploy"]
+    command: ["sh", "-c", "prisma generate && python3 scripts/gen_prisma_types_stub.py && prisma migrate deploy"]
     develop:
       watch:
         - path: ./
