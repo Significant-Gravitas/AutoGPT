@@ -212,15 +212,6 @@ export const AgentInfo = ({
                       : "Add to library"}
                 </Button>
               )}
-              <Button
-                variant="ghost"
-                loading={isDownloadingAgent}
-                onClick={() => handleDownload(agentId, name)}
-                data-testid="agent-download-button"
-              >
-                {!isDownloadingAgent && <FileArrowDownIcon size={18} />}
-                {isDownloadingAgent ? "Downloading..." : "Download"}
-              </Button>
             </div>
             <Text
               variant="small"
@@ -230,6 +221,28 @@ export const AgentInfo = ({
                 ? "No runs"
                 : `${runs.toLocaleString()} run${runs > 1 ? "s" : ""}`}
             </Text>
+          </div>
+
+          {/* Download */}
+          <div className="mt-3 flex items-center gap-1.5">
+            <Text variant="small" className="text-neutral-500">
+              Want to use this agent locally?
+            </Text>
+            <Button
+              variant="ghost"
+              size="small"
+              loading={isDownloadingAgent}
+              onClick={() => handleDownload(agentId, name)}
+              data-testid="agent-download-button"
+              className="text-violet-600 hover:text-violet-500"
+              leftIcon={
+                !isDownloadingAgent ? (
+                  <FileArrowDownIcon size={16} />
+                ) : undefined
+              }
+            >
+              {isDownloadingAgent ? "Downloading..." : "Download here"}
+            </Button>
           </div>
         </div>
       </div>
