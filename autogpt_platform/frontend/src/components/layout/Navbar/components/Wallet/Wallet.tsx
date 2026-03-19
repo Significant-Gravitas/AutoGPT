@@ -299,9 +299,9 @@ export function Wallet() {
             className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
             onClick={onWalletOpen}
           >
-            <WalletIcon size={20} className="inline-block md:hidden" />
+            <WalletIcon size={20} className="inline-block xl:hidden" />
             <div>
-              <span className="mr-1 hidden md:inline-block">Earn credits </span>
+              <span className="mr-1 hidden xl:inline-block">Earn credits </span>
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>
