@@ -12,6 +12,7 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
@@ -59,6 +60,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
+    dry_run: bool = False,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -68,6 +70,31 @@ async def execute_block(
     Returns:
         BlockOutputResponse on success, ErrorResponse on failure.
     """
+    # Dry-run path: simulate the block with an LLM, no real execution
+    if dry_run:
+        try:
+            outputs: dict[str, list[Any]] = defaultdict(list)
+            async for output_name, output_data in simulate_block(block, input_data):
+                outputs[output_name].append(output_data)
+            return BlockOutputResponse(
+                message=(
+                    f"[DRY RUN] Block '{block.name}' simulated successfully "
+                    "— no real execution occurred."
+                ),
+                block_id=block_id,
+                block_name=block.name,
+                outputs=dict(outputs),
+                success=True,
+                session_id=session_id,
+            )
+        except Exception as e:
+            logger.error("Dry-run simulation failed: %s", e, exc_info=True)
+            return ErrorResponse(
+                message=f"Dry-run simulation failed: {e}",
+                error=str(e),
+                session_id=session_id,
+            )
+
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
 

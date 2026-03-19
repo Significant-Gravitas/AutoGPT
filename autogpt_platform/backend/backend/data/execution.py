@@ -89,6 +89,7 @@ class ExecutionContext(BaseModel):
     # Safety settings
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
+    dry_run: bool = False  # When True, blocks are LLM-simulated, no real execution
 
     # User settings
     user_timezone: str = "UTC"
