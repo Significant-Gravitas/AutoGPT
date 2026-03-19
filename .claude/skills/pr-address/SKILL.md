@@ -70,17 +70,6 @@ kill $REST_PID 2>/dev/null; trap - EXIT
 ```
 Never manually edit files in `src/app/api/__generated__/`.
 
-When updating the PR description, always write the body to a temp file first to avoid shell escaping of backticks and markdown:
-```bash
-cat > /tmp/pr_body.md << 'PREOF'
-## Summary
-- Change with `code references` that render correctly
-PREOF
-gh pr edit {N} --repo Significant-Gravitas/AutoGPT --body "$(cat /tmp/pr_body.md)"
-rm /tmp/pr_body.md
-```
-**Never** inline the PR body string directly in `gh pr create/edit` — backticks will be escaped and markdown won't render.
-
 Then commit and **push immediately** — never batch commits without pushing.
 
 For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).

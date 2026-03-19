@@ -56,6 +56,15 @@ AutoGPT Platform is a monorepo containing:
 - Ensure the branch name is descriptive (e.g., `feature/add-new-block`)
 - Use conventional commit messages (see below)
 - Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description
+- Always write the PR body to a temp file to avoid shell-escaping of backticks and markdown:
+  ```bash
+  cat > /tmp/pr_body.md << 'PREOF'
+  ## Summary
+  - use `backticks` freely here
+  PREOF
+  gh pr create --title "..." --body "$(cat /tmp/pr_body.md)" --base dev
+  rm /tmp/pr_body.md
+  ```
 - Run the github pre-commit hooks to ensure code quality.
 
 ### Reviewing/Revising Pull Requests
