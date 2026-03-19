@@ -56,6 +56,10 @@ This block invokes the platform's copilot system directly via `stream_chat_compl
 | system_context | Optional additional context prepended to the prompt. Use this to constrain autopilot behavior, provide domain context, or set output format requirements. | str | No |
 | session_id | Session ID to continue an existing autopilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
 | max_recursion_depth | Maximum nesting depth when the autopilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
+| tools | Tool names to filter. Works with tools_exclude to form an allow-list or deny-list. Valid names: run_block, web_fetch, find_agent, bash_exec, browser_act, browser_navigate, browser_screenshot, run_agent, create_agent, customize_agent, edit_agent, find_block, find_library_agent, run_mcp_tool, search_docs, validate_agent_graph, fix_agent_graph, view_agent_output, connect_integration, list_workspace_files, read_workspace_file, write_workspace_file, delete_workspace_file, Read, Write, Edit, Glob, Grep, Task, WebSearch, TodoWrite (and others). Leave empty to apply no tool filter. | List[str] | No |
+| tools_exclude | Controls how the 'tools' list is interpreted. True (default): 'tools' is a deny-list — listed tools are blocked, all others are allowed. An empty 'tools' list means allow everything. False: 'tools' is an allow-list — only listed tools are permitted. | bool | No |
+| blocks | Block identifiers to filter when the copilot uses run_block. Each entry can be: a block name (e.g. 'HTTP Request'), a full block UUID, or the first 8 hex characters of the UUID (e.g. 'c069dc6b'). Works with blocks_exclude. Leave empty to apply no block filter. | List[str] | No |
+| blocks_exclude | Controls how the 'blocks' list is interpreted. True (default): 'blocks' is a deny-list — listed blocks are blocked, all others are allowed. An empty 'blocks' list means allow everything. False: 'blocks' is an allow-list — only listed blocks are permitted. | bool | No |
 
 ### Outputs
 
