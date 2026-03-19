@@ -46,6 +46,8 @@ Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent 
 ### How it works
 <!-- MANUAL: how_it_works -->
 This block invokes the platform's copilot system directly via `stream_chat_completion_sdk`. It creates (or resumes) a chat session, streams the autopilot's response collecting text deltas, tool call details, and token usage, then returns the aggregated results. A recursion depth guard prevents infinite loops when the autopilot calls this block as a sub-agent.
+
+Tool and block identifiers provided in `tools` and `blocks` are validated at run time before any execution begins — unknown names or UUIDs produce an error output immediately. When valid, the permissions object is passed into the SDK layer, which narrows the `allowed_tools` list sent to Claude; blocks are enforced at the `run_block` tool call site so the copilot cannot circumvent the filter by calling `run_block` directly. For sub-agent patterns (where an autopilot invokes another AutoPilot block), permissions are inherited: the child's effective allowed set is intersected with the parent's, so a sub-agent can only be *more* restrictive than its parent, never more permissive.
 <!-- END MANUAL -->
 
 ### Inputs

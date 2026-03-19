@@ -278,8 +278,11 @@ class AutoPilotBlock(Block):
         from backend.copilot.sdk.collect import collect_copilot_response
 
         tokens = _check_recursion(max_recursion_depth)
-        effective_permissions, perm_token = _merge_inherited_permissions(permissions)
+        perm_token = None
         try:
+            effective_permissions, perm_token = _merge_inherited_permissions(
+                permissions
+            )
             effective_prompt = prompt
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"

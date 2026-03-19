@@ -327,17 +327,9 @@ class TestValidateBlockIdentifiers:
 
 
 class TestApplyToolPermissions:
-    def setup_method(self):
-        # Patch get_copilot_tool_names and get_sdk_disallowed_tools
-        pass
-
     def test_empty_permissions_returns_base_unchanged(self, mocker):
         mocker.patch(
-            (
-                "backend.copilot.permissions.apply_tool_permissions.__wrapped__"
-                if hasattr(apply_tool_permissions, "__wrapped__")
-                else "backend.copilot.sdk.tool_adapter.get_copilot_tool_names"
-            ),
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
             return_value=["mcp__copilot__run_block", "mcp__copilot__web_fetch", "Task"],
         )
         mocker.patch(
