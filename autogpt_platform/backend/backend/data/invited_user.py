@@ -691,7 +691,8 @@ async def _fetch_tally_submission_with_rate_limit(
             email,
             require_api_key=require_api_key,
         )
-        await asyncio.sleep(_TALLY_RATE_DELAY)
+        if result is not None:
+            await asyncio.sleep(_TALLY_RATE_DELAY)
         return result
 
 
