@@ -250,13 +250,14 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     # pre_launch_tool_call — the pre-launched task would otherwise receive raw
     # @@agptfile: tokens and fail to resolve them inside _execute_tool_sync.
     # Use _build_input_schema (same path as _truncating) for schema-aware expansion.
+    input_schema: dict[str, Any] | None
     try:
-        input_schema: dict[str, Any] = _build_input_schema(base_tool)
+        input_schema = _build_input_schema(base_tool)
     except Exception:
-        input_schema = {}  # schema unavailable — proceed without schema-aware expansion
+        input_schema = None  # schema unavailable — skip schema-aware expansion
     try:
         args = await expand_file_refs_in_args(
-            args, user_id, session, input_schema=input_schema or None
+            args, user_id, session, input_schema=input_schema
         )
     except FileRefExpansionError as exc:
         logger.warning(
