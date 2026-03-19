@@ -1,51 +1,74 @@
 ---
 name: pr-review
-description: Address all open PR review comments systematically. Fetches comments, addresses each one, reacts +1/-1, and replies when clarification is needed. Keeps iterating until all comments are addressed and CI is green. TRIGGER when user shares a PR URL, asks to address review comments, fix PR feedback, or respond to reviewer comments.
+description: Review a PR for correctness, security, code quality, and testing issues. TRIGGER when user asks to review a PR, check PR quality, or give feedback on a PR.
 user-invocable: true
+args: "[PR number or URL] — if omitted, finds PR for current branch."
 metadata:
   author: autogpt-team
   version: "1.0.0"
 ---
 
-# PR Review Comment Workflow
+# PR Review
 
-## Steps
+## Find the PR
 
-1. **Find PR**: `gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT`
-2. **Fetch comments** (all three sources):
-   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` (top-level reviews)
-   - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments` (inline review comments)
-   - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` (PR conversation comments)
-3. **Skip** comments already reacted to by PR author
-4. **For each unreacted comment**:
-   - Read referenced code, make the fix (or reply if you disagree/need info)
-   - **Inline review comments** (`pulls/{N}/comments`):
-     - React: `gh api repos/.../pulls/comments/{ID}/reactions -f content="+1"` (or `-1`)
-     - Reply: `gh api repos/.../pulls/{N}/comments/{ID}/replies -f body="..."`
-   - **PR conversation comments** (`issues/{N}/comments`):
-     - React: `gh api repos/.../issues/comments/{ID}/reactions -f content="+1"` (or `-1`)
-     - No threaded replies — post a new issue comment if needed
-   - **Top-level reviews**: no reaction API — address in code, reply via issue comment if needed
-5. **Include autogpt-reviewer bot fixes** too
-6. **Format**: `cd autogpt_platform/backend && poetry run format`, `cd autogpt_platform/frontend && pnpm format`
-7. **Commit & push**
-8. **Re-fetch comments** immediately — address any new unreacted ones before waiting on CI
-9. **Stay productive while CI runs** — don't idle. In priority order:
-   - Run any pending local tests (`poetry run pytest`, e2e, etc.) and fix failures
-   - Address any remaining comments
-   - Only poll `gh pr checks {N}` as the last resort when there's truly nothing left to do
-10. **If CI fails** — fix, go back to step 6
-11. **Re-fetch comments again** after CI is green — address anything that appeared while CI was running
-12. **Done** only when: all comments reacted AND CI is green.
+```bash
+gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT
+gh pr view {N}
+```
 
-## CRITICAL: Do Not Stop
+## Read the diff
 
-**Loop is: address → format → commit → push → re-check comments → run local tests → wait CI → re-check comments → repeat.**
+```bash
+gh pr diff {N}
+```
 
-Never idle. If CI is running and you have nothing to address, run local tests. Waiting on CI is the last resort.
+## Fetch existing review comments
 
-## Rules
+Before posting anything, fetch existing inline comments to avoid duplicates:
 
-- One todo per comment
-- For inline review comments: reply on existing threads. For PR conversation comments: post a new issue comment (API doesn't support threaded replies)
-- React to every comment: +1 addressed, -1 disagreed (with explanation)
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
+```
+
+## What to check
+
+**Correctness:** logic errors, off-by-one, missing edge cases, race conditions (TOCTOU in file access, credit charging), error handling gaps, async correctness (missing `await`, unclosed resources).
+
+**Security:** input validation at boundaries, no injection (command, XSS, SQL), secrets not logged, file paths sanitized (`os.path.basename()` in error messages).
+
+**Code quality:** apply rules from backend/frontend CLAUDE.md files.
+
+**Architecture:** DRY, single responsibility, modular functions. `Security()` vs `Depends()` for FastAPI auth. `data:` for SSE events, `: comment` for heartbeats. `transaction=True` for Redis pipelines.
+
+**Testing:** edge cases covered, colocated `*_test.py` (backend) / `__tests__/` (frontend), mocks target where symbol is **used** not defined, `AsyncMock` for async.
+
+## Output format
+
+Every comment **must** be prefixed with `🤖` and a criticality badge:
+
+| Tier | Badge | Meaning |
+|---|---|---|
+| Blocker | `🔴 **Blocker**` | Must fix before merge |
+| Should Fix | `🟠 **Should Fix**` | Important improvement |
+| Nice to Have | `🟡 **Nice to Have**` | Minor suggestion |
+| Nit | `🔵 **Nit**` | Style / wording |
+
+Example: `🤖 🔴 **Blocker**: Missing error handling for X — suggest wrapping in try/except.`
+
+## Post inline comments
+
+For each finding, post an inline comment on the PR (do not just write a local report):
+
+```bash
+# Get the latest commit SHA for the PR
+COMMIT_SHA=$(gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.head.sha')
+
+# Post an inline comment on a specific file/line
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments \
+  -f body="🤖 🔴 **Blocker**: <description>" \
+  -f commit_id="$COMMIT_SHA" \
+  -f path="<file path>" \
+  -F line=<line number>
+```

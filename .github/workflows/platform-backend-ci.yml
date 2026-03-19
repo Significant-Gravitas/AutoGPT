@@ -5,12 +5,14 @@ on:
     branches: [master, dev, ci-test*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   pull_request:
     branches: [master, dev, release-*]
     paths:
       - ".github/workflows/platform-backend-ci.yml"
+      - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
   merge_group:
@@ -25,10 +27,91 @@ defaults:
     working-directory: autogpt_platform/backend
 
 jobs:
+  lint:
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Run Linters
+        run: poetry run lint --skip-pyright
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+
+  type-check:
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Python dependency cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+
+      - name: Install Poetry
+        run: |
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
+          echo "Using Poetry version ${HEAD_POETRY_VERSION}"
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$HEAD_POETRY_VERSION python3 -
+
+      - name: Install Python dependencies
+        run: poetry install
+
+      - name: Generate Prisma Client
+        run: poetry run prisma generate && poetry run gen-prisma-stub
+
+      - name: Run Pyright
+        run: poetry run pyright --pythonversion ${{ matrix.python-version }}
+
+    env:
+      CI: true
+      PLAIN_OUTPUT: True
+
   test:
     permissions:
       contents: read
-    timeout-minutes: 30
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -96,9 +179,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          key: poetry-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
-      - name: Install Poetry (Unix)
+      - name: Install Poetry
         run: |
           # Extract Poetry version from backend/poetry.lock
           HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
@@ -156,22 +239,22 @@ jobs:
           echo "Waiting for ClamAV daemon to start..."
           max_attempts=60
           attempt=0
-          
+
           until nc -z localhost 3310 || [ $attempt -eq $max_attempts ]; do
             echo "ClamAV is unavailable - sleeping (attempt $((attempt+1))/$max_attempts)"
             sleep 5
             attempt=$((attempt+1))
           done
-          
+
           if [ $attempt -eq $max_attempts ]; then
             echo "ClamAV failed to start after $((max_attempts*5)) seconds"
             echo "Checking ClamAV service logs..."
             docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
             exit 1
           fi
-          
+
           echo "ClamAV is ready!"
-          
+
           # Verify ClamAV is responsive
           echo "Testing ClamAV connection..."
           timeout 10 bash -c 'echo "PING" | nc localhost 3310' || {
@@ -186,18 +269,13 @@ jobs:
           DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
           DIRECT_URL: ${{ steps.supabase.outputs.DB_URL }}
 
-      - id: lint
-        name: Run Linter
-        run: poetry run lint
-
-      - name: Run pytest with coverage
+      - name: Run pytest
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
             poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG
           else
             poetry run pytest -s -vv
           fi
-        if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
           LOG_LEVEL: ${{ runner.debug && 'DEBUG' || 'INFO' }}
           DATABASE_URL: ${{ steps.supabase.outputs.DB_URL }}
@@ -208,6 +286,12 @@ jobs:
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
+
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v4
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     flags: backend,${{ runner.os }}
 
     env:
       CI: true
@@ -222,9 +306,3 @@ jobs:
       # the backend service, docker composes, and examples
       RABBITMQ_DEFAULT_USER: "rabbitmq_user_default"
       RABBITMQ_DEFAULT_PASS: "k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7"
-
-      # - name: Upload coverage reports to Codecov
-      #   uses: codecov/codecov-action@v4
-      #   with:
-      #     token: ${{ secrets.CODECOV_TOKEN }}
-      #     flags: backend,${{ runner.os }}

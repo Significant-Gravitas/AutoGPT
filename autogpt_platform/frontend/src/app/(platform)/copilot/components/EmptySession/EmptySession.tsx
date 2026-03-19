@@ -44,8 +44,7 @@ export function EmptySession({
   }, [window.innerWidth]);
 
   async function handleQuickActionClick(action: string) {
-    if (isCreatingSession || loadingAction) return;
-
+    if (isCreatingSession || loadingAction !== null) return;
     setLoadingAction(action);
     try {
       await onSend(action);

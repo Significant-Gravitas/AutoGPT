@@ -2,7 +2,7 @@
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
-import { ReactNode } from "react";
+import { useCallback } from "react";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -21,7 +21,6 @@ export interface ChatContainerProps {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
   isUploadingFiles?: boolean;
-  headerSlot?: ReactNode;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
@@ -40,7 +39,6 @@ export const ChatContainer = ({
   onSend,
   onStop,
   isUploadingFiles,
-  headerSlot,
   droppedFiles,
   onDroppedFilesConsumed,
 }: ChatContainerProps) => {
@@ -51,6 +49,20 @@ export const ChatContainer = ({
     isLoadingSession ||
     !!isSessionError;
   const inputLayoutId = "copilot-2-chat-input";
+
+  // Retry: re-send the last user message (used by ErrorCard on transient errors)
+  const handleRetry = useCallback(() => {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastText = lastUserMsg?.parts
+      .filter(
+        (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+      )
+      .map((p) => p.text)
+      .join("");
+    if (lastText) {
+      onSend(lastText);
+    }
+  }, [messages, onSend]);
 
   return (
     <CopilotChatActionsProvider onSend={onSend}>
@@ -63,8 +75,8 @@ export const ChatContainer = ({
                 status={status}
                 error={error}
                 isLoading={isLoadingSession}
-                headerSlot={headerSlot}
                 sessionID={sessionId}
+                onRetry={handleRetry}
               />
               <motion.div
                 initial={{ opacity: 0 }}

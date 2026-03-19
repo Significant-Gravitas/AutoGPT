@@ -38,6 +38,47 @@ Input and output schemas define the expected data structure for communication be
 
 ---
 
+## AutoPilot
+
+### What it is
+Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more). Enables sub-agent patterns and scheduled autopilot execution.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block invokes the platform's copilot system directly via `stream_chat_completion_sdk`. It creates (or resumes) a chat session, streams the autopilot's response collecting text deltas, tool call details, and token usage, then returns the aggregated results. A recursion depth guard prevents infinite loops when the autopilot calls this block as a sub-agent.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The task or instruction for the autopilot to execute. The autopilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | Yes |
+| system_context | Optional additional context prepended to the prompt. Use this to constrain autopilot behavior, provide domain context, or set output format requirements. | str | No |
+| session_id | Session ID to continue an existing autopilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
+| max_recursion_depth | Maximum nesting depth when the autopilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| response | The final text response from the autopilot. | str |
+| tool_calls | List of tools called during execution. Each entry has tool_call_id, tool_name, input, output, and success fields. | List[ToolCallEntry] |
+| conversation_history | Current turn messages (user prompt + assistant reply) as JSON. It can be used for logging or analysis. | str |
+| session_id | Session ID for this conversation. Pass this back to continue the conversation in a future run. | str |
+| token_usage | Token usage statistics: prompt_tokens, completion_tokens, total_tokens. | TokenUsage |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Scheduled Reports**: Schedule an autopilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report.
+
+**Multi-Step AI Workflows**: Chain autopilot blocks where one gathers data and another analyzes it, enabling complex AI pipelines within the graph editor.
+
+**Sub-Agent Delegation**: Delegate a research or formatting task to a sub-autopilot while the parent agent handles orchestration.
+<!-- END MANUAL -->
+
+---
+
 ## Create Reddit Post
 
 ### What it is

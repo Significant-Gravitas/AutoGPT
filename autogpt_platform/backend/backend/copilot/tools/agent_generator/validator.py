@@ -10,6 +10,7 @@ from .helpers import (
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    SMART_DECISION_MAKER_BLOCK_ID,
     AgentDict,
     are_types_compatible,
     get_defined_property_type,
@@ -181,15 +182,23 @@ class AgentValidator:
 
         return valid
 
+    def _build_node_lookup(self, agent: AgentDict) -> dict[str, dict[str, Any]]:
+        """Build a node-id → node dict from the agent's nodes."""
+        return {node.get("id", ""): node for node in agent.get("nodes", [])}
+
     def validate_data_type_compatibility(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """
         Validate that linked data types are compatible between source and sink.
         Returns True if all data types are compatible, False otherwise.
         """
         valid = True
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
         block_lookup = {block.get("id", ""): block for block in blocks}
 
         for link in agent.get("links", []):
@@ -209,8 +218,8 @@ class AgentValidator:
                 valid = False
                 continue
 
-            source_node = node_lookup.get(source_id, "")
-            sink_node = node_lookup.get(sink_id, "")
+            source_node = node_lookup.get(source_id)
+            sink_node = node_lookup.get(sink_id)
 
             if not source_node or not sink_node:
                 continue
@@ -248,7 +257,10 @@ class AgentValidator:
         return valid
 
     def validate_nested_sink_links(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """
         Validate nested sink links (links with _#_ notation).
@@ -262,7 +274,8 @@ class AgentValidator:
         block_names = {
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
 
         for link in agent.get("links", []):
             sink_name = link.get("sink_name", "")
@@ -388,7 +401,10 @@ class AgentValidator:
         return valid
 
     def validate_source_output_existence(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """
         Validate that all source_names in links exist in the corresponding
@@ -401,6 +417,7 @@ class AgentValidator:
         Args:
             agent: The agent dictionary to validate
             blocks: List of available blocks with their schemas
+            node_lookup: Optional pre-built node-id → node dict
 
         Returns:
             True if all source output fields exist, False otherwise
@@ -415,7 +432,8 @@ class AgentValidator:
         block_names = {
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
 
         for link in agent.get("links", []):
             source_id = link.get("source_id")
@@ -809,6 +827,96 @@ class AgentValidator:
 
         return valid
 
+    def validate_smart_decision_maker_blocks(
+        self,
+        agent: AgentDict,
+        node_lookup: dict[str, dict[str, Any]] | None = None,
+    ) -> bool:
+        """Validate that SmartDecisionMakerBlock nodes have downstream tools.
+
+        Checks that each SmartDecisionMakerBlock node has at least one link
+        with ``source_name == "tools"`` connecting to a downstream block.
+        Without tools, the block has nothing to call and will error at runtime.
+
+        Returns True if all SmartDecisionMakerBlock nodes are valid.
+        """
+        valid = True
+        nodes = agent.get("nodes", [])
+        links = agent.get("links", [])
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
+        non_tool_block_ids = {AGENT_INPUT_BLOCK_ID, AGENT_OUTPUT_BLOCK_ID}
+
+        for node in nodes:
+            if node.get("block_id") != SMART_DECISION_MAKER_BLOCK_ID:
+                continue
+
+            node_id = node.get("id", "unknown")
+            customized_name = (node.get("metadata") or {}).get(
+                "customized_name", node_id
+            )
+
+            # Warn if agent_mode_max_iterations is 0 (traditional mode) —
+            # requires complex external conversation-history loop wiring
+            # that the agent generator does not produce.
+            input_default = node.get("input_default", {})
+            max_iter = input_default.get("agent_mode_max_iterations")
+            if max_iter is not None and not isinstance(max_iter, int):
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has non-integer "
+                    f"agent_mode_max_iterations={max_iter!r}. "
+                    f"This field must be an integer."
+                )
+                valid = False
+            elif isinstance(max_iter, int) and max_iter < -1:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has invalid "
+                    f"agent_mode_max_iterations={max_iter}. "
+                    f"Use -1 for infinite or a positive number for "
+                    f"bounded iterations."
+                )
+                valid = False
+            elif isinstance(max_iter, int) and max_iter > 100:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has agent_mode_max_iterations="
+                    f"{max_iter} which is unusually high. Values above "
+                    f"100 risk excessive cost and long execution times. "
+                    f"Consider using a lower value (3-10) or -1 for "
+                    f"genuinely open-ended tasks."
+                )
+                valid = False
+            elif max_iter == 0:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has agent_mode_max_iterations=0 "
+                    f"(traditional mode). The agent generator only supports "
+                    f"agent mode (set to -1 for infinite or a positive "
+                    f"number for bounded iterations)."
+                )
+                valid = False
+
+            has_tools = any(
+                link.get("source_id") == node_id
+                and link.get("source_name") == "tools"
+                and node_lookup.get(link.get("sink_id", ""), {}).get("block_id")
+                not in non_tool_block_ids
+                for link in links
+            )
+
+            if not has_tools:
+                self.add_error(
+                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"({node_id}) has no downstream tool blocks connected. "
+                    f"Connect at least one block to its 'tools' output so "
+                    f"the AI has tools to call."
+                )
+                valid = False
+
+        return valid
+
     def validate_mcp_tool_blocks(self, agent: AgentDict) -> bool:
         """Validate that MCPToolBlock nodes have required fields.
 
@@ -870,6 +978,9 @@ class AgentValidator:
         logger.info("Validating agent...")
         self.errors = []
 
+        # Build node lookup once and share across validation methods
+        node_lookup = self._build_node_lookup(agent)
+
         checks = [
             (
                 "Block existence",
@@ -885,15 +996,15 @@ class AgentValidator:
             ),
             (
                 "Data type compatibility",
-                self.validate_data_type_compatibility(agent, blocks),
+                self.validate_data_type_compatibility(agent, blocks, node_lookup),
             ),
             (
                 "Nested sink links",
-                self.validate_nested_sink_links(agent, blocks),
+                self.validate_nested_sink_links(agent, blocks, node_lookup),
             ),
             (
                 "Source output existence",
-                self.validate_source_output_existence(agent, blocks),
+                self.validate_source_output_existence(agent, blocks, node_lookup),
             ),
             (
                 "Prompt double curly braces spaces",
@@ -912,6 +1023,10 @@ class AgentValidator:
             (
                 "MCP tool blocks",
                 self.validate_mcp_tool_blocks(agent),
+            ),
+            (
+                "SmartDecisionMaker blocks",
+                self.validate_smart_decision_maker_blocks(agent, node_lookup),
             ),
         ]
 
@@ -935,5 +1050,5 @@ class AgentValidator:
             for i, error in enumerate(self.errors, 1):
                 error_message += f"{i}. {error}\n"
 
-            logger.error(f"Agent validation failed: {error_message}")
+            logger.warning(f"Agent validation failed: {error_message}")
             return False, error_message

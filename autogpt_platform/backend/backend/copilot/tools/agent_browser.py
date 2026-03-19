@@ -20,7 +20,9 @@ SSRF protection:
 
 Requires:
   npm install -g agent-browser
-  agent-browser install   (downloads Chromium, one-time per machine)
+  agent-browser install   (downloads Chromium, one-time — skipped in Docker
+                           where system chromium is pre-installed and
+                           AGENT_BROWSER_EXECUTABLE_PATH is set)
 """
 
 import asyncio
@@ -32,6 +34,7 @@ import shutil
 import tempfile
 from typing import Any
 
+from backend.copilot.context import get_workspace_manager
 from backend.copilot.model import ChatSession
 from backend.util.request import validate_url_host
 
@@ -43,7 +46,6 @@ from .models import (
     ErrorResponse,
     ToolResponseBase,
 )
-from .workspace_files import get_manager
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +196,7 @@ async def _save_browser_state(
             ),
         }
 
-        manager = await get_manager(user_id, session.session_id)
+        manager = await get_workspace_manager(user_id, session.session_id)
         await manager.write_file(
             content=json.dumps(state).encode("utf-8"),
             filename=_STATE_FILENAME,
@@ -218,7 +220,7 @@ async def _restore_browser_state(
     Returns True on success (or no state to restore), False on failure.
     """
     try:
-        manager = await get_manager(user_id, session.session_id)
+        manager = await get_workspace_manager(user_id, session.session_id)
 
         file_info = await manager.get_file_info_by_path(_STATE_FILENAME)
         if file_info is None:
@@ -360,7 +362,7 @@ async def close_browser_session(session_name: str, user_id: str | None = None) -
     # Delete persisted browser state (cookies, localStorage) from workspace.
     if user_id:
         try:
-            manager = await get_manager(user_id, session_name)
+            manager = await get_workspace_manager(user_id, session_name)
             file_info = await manager.get_file_info_by_path(_STATE_FILENAME)
             if file_info is not None:
                 await manager.delete_file(file_info.id)

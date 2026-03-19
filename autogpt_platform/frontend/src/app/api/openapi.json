@@ -1267,7 +1267,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1356,6 +1356,28 @@
             }
           }
         }
+      }
+    },
+    "/api/chat/usage": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Copilot Usage",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.",
+        "operationId": "getV2GetCopilotUsage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CoPilotUsageStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits": {
@@ -8165,6 +8187,16 @@
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
       },
+      "CoPilotUsageStatus": {
+        "properties": {
+          "daily": { "$ref": "#/components/schemas/UsageWindow" },
+          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
+        },
+        "type": "object",
+        "required": ["daily", "weekly"],
+        "title": "CoPilotUsageStatus",
+        "description": "Current usage status for a user across all windows."
+      },
       "ContentType": {
         "type": "string",
         "enum": [
@@ -11814,6 +11846,16 @@
               { "$ref": "#/components/schemas/ActiveStreamInfo" },
               { "type": "null" }
             ]
+          },
+          "total_prompt_tokens": {
+            "type": "integer",
+            "title": "Total Prompt Tokens",
+            "default": 0
+          },
+          "total_completion_tokens": {
+            "type": "integer",
+            "title": "Total Completion Tokens",
+            "default": 0
           }
         },
         "type": "object",
@@ -14192,6 +14234,25 @@
         "type": "object",
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
+      },
+      "UsageWindow": {
+        "properties": {
+          "used": { "type": "integer", "title": "Used" },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Maximum tokens allowed in this window. 0 means unlimited."
+          },
+          "resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resets At"
+          }
+        },
+        "type": "object",
+        "required": ["used", "limit", "resets_at"],
+        "title": "UsageWindow",
+        "description": "Usage within a single time window."
       },
       "UserHistoryResponse": {
         "properties": {

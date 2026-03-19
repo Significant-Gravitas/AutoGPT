@@ -29,11 +29,7 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
     if (!provider) return;
 
     const types =
-      Array.isArray(cred.types) && cred.types.length > 0
-        ? cred.types
-        : typeof cred.type === "string"
-          ? [cred.type]
-          : [];
+      Array.isArray(cred.types) && cred.types.length > 0 ? cred.types : [];
 
     const credentialTypes = types
       .map((t) => (typeof t === "string" ? t.trim() : ""))
