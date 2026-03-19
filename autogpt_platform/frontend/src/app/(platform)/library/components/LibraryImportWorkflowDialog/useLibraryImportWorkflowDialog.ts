@@ -1,4 +1,5 @@
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { uploadFileDirect } from "@/lib/direct-upload";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -7,13 +8,18 @@ export function useLibraryImportWorkflowDialog() {
   const router = useRouter();
   const [fileValue, setFileValue] = useState("");
   const [urlValue, setUrlValue] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function submitWithMode(mode: "url" | "file") {
-    let prompt: string;
-
+  async function submitWithMode(mode: "url" | "file") {
     if (mode === "url" && urlValue) {
-      prompt = `Import this workflow and recreate it as an AutoGPT agent: ${urlValue}`;
-    } else if (mode === "file" && fileValue) {
+      const prompt = `Import this workflow and recreate it as an AutoGPT agent: ${urlValue}`;
+      setUrlValue("");
+      sessionStorage.setItem("importWorkflowPrompt", prompt);
+      router.push("/copilot?source=import&autosubmit=true");
+      return;
+    }
+
+    if (mode === "file" && fileValue) {
       const base64Match = fileValue.match(/^data:[^;]+;base64,(.+)$/);
       if (!base64Match) {
         toast({
@@ -23,10 +29,11 @@ export function useLibraryImportWorkflowDialog() {
         });
         return;
       }
+
+      let jsonString: string;
       try {
-        const jsonString = atob(base64Match[1]);
-        JSON.parse(jsonString);
-        prompt = `Import this workflow JSON and recreate it as an AutoGPT agent:\n\`\`\`json\n${jsonString}\n\`\`\``;
+        jsonString = atob(base64Match[1]);
+        JSON.parse(jsonString); // validate JSON before uploading
       } catch {
         toast({
           title: "Invalid JSON",
@@ -35,20 +42,40 @@ export function useLibraryImportWorkflowDialog() {
         });
         return;
       }
-    } else {
-      return;
+
+      setIsSubmitting(true);
+      try {
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const file = new File([blob], "workflow.json", {
+          type: "application/json",
+        });
+        const uploaded = await uploadFileDirect(file);
+
+        setFileValue("");
+        sessionStorage.setItem(
+          "importWorkflowPrompt",
+          "Import this workflow and recreate it as an AutoGPT agent",
+        );
+        sessionStorage.setItem(
+          "importWorkflowFile",
+          JSON.stringify({
+            fileId: uploaded.file_id,
+            fileName: uploaded.name,
+            mimeType: uploaded.mime_type,
+          }),
+        );
+        router.push("/copilot?source=import&autosubmit=true");
+      } catch (err) {
+        toast({
+          title: "Upload failed",
+          description:
+            err instanceof Error ? err.message : "Could not upload the file.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSubmitting(false);
+      }
     }
-
-    setFileValue("");
-    setUrlValue("");
-
-    toast({
-      title: "Redirecting to AutoPilot",
-      description: "AutoPilot will import and convert the workflow for you.",
-    });
-
-    sessionStorage.setItem("importWorkflowPrompt", prompt);
-    router.push("/copilot?source=import&autosubmit=true");
   }
 
   return {
@@ -57,5 +84,6 @@ export function useLibraryImportWorkflowDialog() {
     setFileValue,
     urlValue,
     setUrlValue,
+    isSubmitting,
   };
 }

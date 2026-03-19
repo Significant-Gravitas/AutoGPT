@@ -91,10 +91,19 @@ export default function LibraryImportDialog() {
               type="button"
               variant="primary"
               className="w-full"
-              disabled={!importWorkflow.fileValue}
+              disabled={
+                !importWorkflow.fileValue || importWorkflow.isSubmitting
+              }
               onClick={() => importWorkflow.submitWithMode("file")}
             >
-              Import to AutoPilot
+              {importWorkflow.isSubmitting ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="small" className="text-white" />
+                  <span>Uploading...</span>
+                </div>
+              ) : (
+                "Import to AutoPilot"
+              )}
             </Button>
 
             <div className="my-5 flex items-center gap-3">
