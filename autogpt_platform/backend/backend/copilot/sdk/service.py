@@ -165,6 +165,19 @@ def _is_prompt_too_long(err: BaseException) -> bool:
     return False
 
 
+def _is_parallel_continuation(sdk_msg: object) -> bool:
+    """Return True if *sdk_msg* is an AssistantMessage containing only ToolUseBlocks.
+
+    Such a message represents a parallel tool-call batch (no text output yet).
+    The ``bool(…content)`` guard prevents vacuous-truth evaluation on an empty list.
+    """
+    return (
+        isinstance(sdk_msg, AssistantMessage)
+        and bool(sdk_msg.content)
+        and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+    )
+
+
 class ReducedContext(NamedTuple):
     builder: TranscriptBuilder
     use_resume: bool
@@ -1154,15 +1167,10 @@ async def _run_stream_attempt(
                     if isinstance(block, ToolUseBlock):
                         await pre_launch_tool_call(block.name, block.input)
 
-            # is_parallel_continuation: an AssistantMessage consisting solely of
-            # ToolUseBlocks is a parallel tool call (not a text+tool mixed message).
-            # Used only to skip the wait_for_stash flush below — there is no
-            # completed tool output to stash yet when more tool calls are in flight.
-            is_parallel_continuation = (
-                isinstance(sdk_msg, AssistantMessage)
-                and bool(sdk_msg.content)
-                and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
-            )
+            # An AssistantMessage consisting solely of ToolUseBlocks is a parallel
+            # tool call batch (not a text+tool mixed message).  Skip wait_for_stash
+            # flush — there is no completed tool output to stash yet.
+            is_parallel_continuation = _is_parallel_continuation(sdk_msg)
 
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next

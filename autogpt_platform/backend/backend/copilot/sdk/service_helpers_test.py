@@ -16,6 +16,7 @@ from claude_agent_sdk import AssistantMessage, ToolUseBlock
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     ReducedContext,
+    _is_parallel_continuation,
     _is_prompt_too_long,
     _iter_sdk_messages,
     _reduce_context,
@@ -287,15 +288,6 @@ class TestIterSdkMessages:
 # ---------------------------------------------------------------------------
 # is_parallel_continuation logic
 # ---------------------------------------------------------------------------
-
-
-def _is_parallel_continuation(sdk_msg: object) -> bool:
-    """Replicate the is_parallel_continuation logic from _run_stream_attempt."""
-    return (
-        isinstance(sdk_msg, AssistantMessage)
-        and bool(sdk_msg.content)
-        and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
-    )
 
 
 class TestIsParallelContinuation:
