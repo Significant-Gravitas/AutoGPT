@@ -412,6 +412,63 @@ class TestApplyToolPermissions:
         assert "mcp__copilot__web_fetch" not in allowed
         assert "Task" not in allowed
 
+    def test_read_tool_always_included_even_when_blacklisted(self, mocker):
+        """mcp__copilot__Read must stay in allowed even if Read is explicitly blacklisted."""
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
+            return_value=[
+                "mcp__copilot__run_block",
+                "mcp__copilot__Read",
+                "Task",
+            ],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
+            return_value=[],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": object()},
+        )
+        mocker.patch(
+            "backend.copilot.permissions.all_known_tool_names",
+            return_value=frozenset(["run_block", "Read", "Task"]),
+        )
+        # Explicitly blacklist Read
+        perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
+        allowed, _ = apply_tool_permissions(perms, use_e2b=False)
+        assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
+        assert "mcp__copilot__run_block" in allowed
+        assert "Task" in allowed
+
+    def test_read_tool_always_included_with_narrow_whitelist(self, mocker):
+        """mcp__copilot__Read must stay in allowed even when not in a whitelist."""
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
+            return_value=[
+                "mcp__copilot__run_block",
+                "mcp__copilot__Read",
+                "Task",
+            ],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
+            return_value=[],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": object()},
+        )
+        mocker.patch(
+            "backend.copilot.permissions.all_known_tool_names",
+            return_value=frozenset(["run_block", "Read", "Task"]),
+        )
+        # Whitelist only run_block — Read not listed
+        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        allowed, _ = apply_tool_permissions(perms, use_e2b=False)
+        assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
+        assert "mcp__copilot__run_block" in allowed
+
 
 # ---------------------------------------------------------------------------
 # SDK_BUILTIN_TOOL_NAMES sanity check
