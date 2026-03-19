@@ -13,18 +13,17 @@ class TestLLMStatsTracking:
         """Test that llm_call returns proper token counts in LLMResponse."""
         import backend.blocks.llm as llm
 
-        # Mock the OpenAI client
+        # Mock the OpenAI Responses API response
         mock_response = MagicMock()
-        mock_response.choices = [
-            MagicMock(message=MagicMock(content="Test response", tool_calls=None))
-        ]
-        mock_response.usage = MagicMock(prompt_tokens=10, completion_tokens=20)
+        mock_response.output_text = "Test response"
+        mock_response.output = []
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=20)
 
         # Test with mocked OpenAI response
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_client.responses.create = AsyncMock(return_value=mock_response)
 
             response = await llm.llm_call(
                 credentials=llm.TEST_CREDENTIALS,
@@ -271,30 +270,17 @@ class TestLLMStatsTracking:
             mock_response = MagicMock()
             # Return different responses for chunk summary vs final summary
             if call_count == 1:
-                mock_response.choices = [
-                    MagicMock(
-                        message=MagicMock(
-                            content='<json_output id="test123456">{"summary": "Test chunk summary"}</json_output>',
-                            tool_calls=None,
-                        )
-                    )
-                ]
+                mock_response.output_text = '<json_output id="test123456">{"summary": "Test chunk summary"}</json_output>'
             else:
-                mock_response.choices = [
-                    MagicMock(
-                        message=MagicMock(
-                            content='<json_output id="test123456">{"final_summary": "Test final summary"}</json_output>',
-                            tool_calls=None,
-                        )
-                    )
-                ]
-            mock_response.usage = MagicMock(prompt_tokens=50, completion_tokens=30)
+                mock_response.output_text = '<json_output id="test123456">{"final_summary": "Test final summary"}</json_output>'
+            mock_response.output = []
+            mock_response.usage = MagicMock(input_tokens=50, output_tokens=30)
             return mock_response
 
         with patch("openai.AsyncOpenAI") as mock_openai:
             mock_client = AsyncMock()
             mock_openai.return_value = mock_client
-            mock_client.chat.completions.create = mock_create
+            mock_client.responses.create = mock_create
 
             # Test with very short text (should only need 1 chunk + 1 final summary)
             input_data = llm.AITextSummarizerBlock.Input(
