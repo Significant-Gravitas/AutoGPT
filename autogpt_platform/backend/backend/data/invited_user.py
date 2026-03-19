@@ -133,104 +133,122 @@ def is_internal_email(email: str) -> bool:
     return normalize_email(email).endswith("@agpt.co")
 
 
-def _normalize_name(name: Optional[str]) -> Optional[str]:
-    if name is None:
-        return None
-    normalized = name.strip()
-    return normalized or None
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 
-def _default_profile_name(email: str, preferred_name: Optional[str]) -> str:
-    if preferred_name:
-        return preferred_name
-    local_part = email.split("@", 1)[0].strip()
-    return local_part or "user"
+async def get_or_activate_user(user_data: dict) -> User:
+    auth_user_id = user_data.get("sub")
+    if not auth_user_id:
+        raise NotAuthorizedError("User ID not found in token")
 
+    auth_email = user_data.get("email")
+    if not auth_email:
+        raise NotAuthorizedError("Email not found in token")
 
-def _sanitize_username_base(email: str) -> str:
-    local_part = email.split("@", 1)[0].lower()
-    sanitized = re.sub(r"[^a-z0-9-]", "", local_part)
-    sanitized = sanitized.strip("-")
-    return sanitized[:40] or "user"
+    normalized_email = normalize_email(auth_email)
+    user_metadata = user_data.get("user_metadata")
+    metadata_name = (
+        user_metadata.get("name") if isinstance(user_metadata, dict) else None
+    )
 
+    existing_user = None
+    try:
+        existing_user = await get_user_by_id(auth_user_id)
+    except ValueError:
+        existing_user = None
+    except Exception:
+        logger.exception("Error on get user by id during tally enrichment process")
+        raise
 
-async def _generate_unique_profile_username(email: str, tx) -> str:
-    base = _sanitize_username_base(email)
+    if existing_user is not None:
+        return existing_user
 
-    for _ in range(2):
-        candidate = f"{base}-{uuid4().hex[:6]}"
-        existing = await prisma.models.Profile.prisma(tx).find_unique(
-            where={"username": candidate}
+    if not _settings.config.enable_invite_gate or is_internal_email(normalized_email):
+        return await _open_signup_create_user(
+            auth_user_id, normalized_email, metadata_name
         )
-        if existing is None:
-            return candidate
 
-    raise RuntimeError(f"Unable to generate unique username for {email}")
-
-
-async def _ensure_default_profile(
-    user_id: str,
-    email: str,
-    preferred_name: Optional[str],
-    tx,
-) -> None:
-    existing_profile = await prisma.models.Profile.prisma(tx).find_unique(
-        where={"userId": user_id}
+    invited_user = await prisma.models.InvitedUser.prisma().find_unique(
+        where={"email": normalized_email}
     )
-    if existing_profile is not None:
-        return
+    if invited_user is None:
+        raise NotAuthorizedError("Your email is not allowed to access the platform")
 
-    username = await _generate_unique_profile_username(email, tx)
-    await prisma.models.Profile.prisma(tx).create(
-        data=prisma.types.ProfileCreateInput(
-            userId=user_id,
-            name=_default_profile_name(email, preferred_name),
-            username=username,
-            description="I'm new here",
-            links=[],
-            avatarUrl="",
-        )
-    )
-
-
-async def _ensure_default_onboarding(user_id: str, tx) -> None:
-    await prisma.models.UserOnboarding.prisma(tx).upsert(
-        where={"userId": user_id},
-        data={
-            "create": prisma.types.UserOnboardingCreateInput(userId=user_id),
-            "update": {},
-        },
-    )
-
-
-async def _apply_tally_understanding(
-    user_id: str,
-    invited_user: "prisma.models.InvitedUser",
-    tx,
-) -> None:
-    if not isinstance(invited_user.tallyUnderstanding, dict):
-        return
+    if invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
+        raise NotAuthorizedError("Your invitation is no longer active")
 
     try:
-        input_data = BusinessUnderstandingInput.model_validate(
-            invited_user.tallyUnderstanding
-        )
-    except Exception:
-        logger.warning(
-            "Malformed tallyUnderstanding for invited user %s; skipping",
-            invited_user.id,
-            exc_info=True,
-        )
-        return
+        async with transaction() as tx:
+            current_user = await prisma.models.User.prisma(tx).find_unique(
+                where={"id": auth_user_id}
+            )
+            if current_user is not None:
+                return User.from_db(current_user)
 
-    payload = merge_business_understanding_data({}, input_data)
-    await prisma.models.CoPilotUnderstanding.prisma(tx).upsert(
-        where={"userId": user_id},
-        data={
-            "create": {"userId": user_id, "data": SafeJson(payload)},
-            "update": {"data": SafeJson(payload)},
-        },
+            current_invited_user = await prisma.models.InvitedUser.prisma(
+                tx
+            ).find_unique(where={"email": normalized_email})
+            if current_invited_user is None:
+                raise NotAuthorizedError(
+                    "Your email is not allowed to access the platform"
+                )
+
+            if current_invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
+                raise NotAuthorizedError("Your invitation is no longer active")
+
+            if current_invited_user.authUserId not in (None, auth_user_id):
+                raise NotAuthorizedError("Your invitation has already been claimed")
+
+            preferred_name = current_invited_user.name or _normalize_name(metadata_name)
+            await prisma.models.User.prisma(tx).create(
+                data=prisma.types.UserCreateInput(
+                    id=auth_user_id,
+                    email=normalized_email,
+                    name=preferred_name,
+                )
+            )
+
+            await prisma.models.InvitedUser.prisma(tx).update(
+                where={"id": current_invited_user.id},
+                data={
+                    "status": prisma.enums.InvitedUserStatus.CLAIMED,
+                    "authUserId": auth_user_id,
+                },
+            )
+
+            await _ensure_default_profile(
+                auth_user_id,
+                normalized_email,
+                preferred_name,
+                tx,
+            )
+            await _ensure_default_onboarding(auth_user_id, tx)
+            await _apply_tally_understanding(auth_user_id, current_invited_user, tx)
+    except UniqueViolationError:
+        logger.info("Concurrent activation for user %s; re-fetching", auth_user_id)
+        already_created = await prisma.models.User.prisma().find_unique(
+            where={"id": auth_user_id}
+        )
+        if already_created is not None:
+            return User.from_db(already_created)
+        raise RuntimeError(
+            f"UniqueViolationError during activation but user {auth_user_id} not found"
+        )
+
+    get_user_by_id.cache_delete(auth_user_id)
+    get_user_by_email.cache_delete(normalized_email)
+
+    activated_user = await prisma.models.User.prisma().find_unique(
+        where={"id": auth_user_id}
     )
+    if activated_user is None:
+        raise RuntimeError(
+            f"Activated user {auth_user_id} was not found after creation"
+        )
+
+    return User.from_db(activated_user)
 
 
 async def check_invite_eligibility(email: str) -> bool:
@@ -360,6 +378,244 @@ async def retry_invited_user_tally(invited_user_id: str) -> InvitedUserRecord:
     return InvitedUserRecord.from_db(refreshed_user)
 
 
+async def bulk_create_invited_users_from_file(
+    filename: Optional[str],
+    content: bytes,
+) -> BulkInvitedUsersResult:
+    parsed_rows = _parse_bulk_invite_file(filename, content)
+    (
+        email_validated_rows,
+        validation_results,
+        validation_skipped_count,
+        validation_error_count,
+    ) = _validate_bulk_invite_rows(parsed_rows)
+    (
+        precheck_passed_rows,
+        precheck_results,
+        precheck_skipped_count,
+    ) = await _filter_preexisting_bulk_invite_rows(email_validated_rows)
+    (
+        creation_results,
+        created_count,
+        creation_skipped_count,
+        creation_error_count,
+    ) = await _create_bulk_invite_results(precheck_passed_rows)
+
+    results = [
+        *validation_results,
+        *precheck_results,
+        *creation_results,
+    ]
+
+    results.sort(key=lambda r: r.row_number)
+
+    created_ids = [
+        r.invited_user.id
+        for r in creation_results
+        if r.status == "CREATED" and r.invited_user is not None
+    ]
+    if created_ids:
+        _schedule_bulk_tally_enrichment(created_ids)
+
+    return BulkInvitedUsersResult(
+        created_count=created_count,
+        skipped_count=(
+            validation_skipped_count + precheck_skipped_count + creation_skipped_count
+        ),
+        error_count=validation_error_count + creation_error_count,
+        results=results,
+    )
+
+
+def schedule_invited_user_tally_precompute(
+    invited_user_id: str,
+    *,
+    tally_mode: TallyMode = "default",
+) -> None:
+    existing = _tally_seed_tasks.get(invited_user_id)
+    if existing is not None and not existing.done():
+        logger.debug("Tally task already running for %s, skipping", invited_user_id)
+        return
+
+    task = asyncio.create_task(
+        _compute_invited_user_tally_seed(
+            invited_user_id,
+            tally_mode=tally_mode,
+        )
+    )
+    _tally_seed_tasks[invited_user_id] = task
+
+    def _on_done(t: asyncio.Task, _id: str = invited_user_id) -> None:
+        if _tally_seed_tasks.get(_id) is t:
+            del _tally_seed_tasks[_id]
+
+    task.add_done_callback(_on_done)
+
+
+# ---------------------------------------------------------------------------
+# User activation helpers
+# ---------------------------------------------------------------------------
+
+
+async def _open_signup_create_user(
+    auth_user_id: str,
+    normalized_email: str,
+    metadata_name: Optional[str],
+) -> User:
+    """Create a user without requiring an invite (open signup mode)."""
+    preferred_name = _normalize_name(metadata_name)
+    try:
+        async with transaction() as tx:
+            user = await prisma.models.User.prisma(tx).create(
+                data=prisma.types.UserCreateInput(
+                    id=auth_user_id,
+                    email=normalized_email,
+                    name=preferred_name,
+                )
+            )
+            await _ensure_default_profile(
+                auth_user_id, normalized_email, preferred_name, tx
+            )
+            await _ensure_default_onboarding(auth_user_id, tx)
+    except UniqueViolationError:
+        existing = await prisma.models.User.prisma().find_unique(
+            where={"id": auth_user_id}
+        )
+        if existing is not None:
+            return User.from_db(existing)
+        raise
+
+    return User.from_db(user)
+
+
+async def _ensure_default_profile(
+    user_id: str,
+    email: str,
+    preferred_name: Optional[str],
+    tx,
+) -> None:
+    existing_profile = await prisma.models.Profile.prisma(tx).find_unique(
+        where={"userId": user_id}
+    )
+    if existing_profile is not None:
+        return
+
+    username = await _generate_unique_profile_username(email, tx)
+    await prisma.models.Profile.prisma(tx).create(
+        data=prisma.types.ProfileCreateInput(
+            userId=user_id,
+            name=_default_profile_name(email, preferred_name),
+            username=username,
+            description="I'm new here",
+            links=[],
+            avatarUrl="",
+        )
+    )
+
+
+async def _ensure_default_onboarding(user_id: str, tx) -> None:
+    await prisma.models.UserOnboarding.prisma(tx).upsert(
+        where={"userId": user_id},
+        data={
+            "create": prisma.types.UserOnboardingCreateInput(userId=user_id),
+            "update": {},
+        },
+    )
+
+
+async def _apply_tally_understanding(
+    user_id: str,
+    invited_user: "prisma.models.InvitedUser",
+    tx,
+) -> None:
+    if not isinstance(invited_user.tallyUnderstanding, dict):
+        return
+
+    try:
+        input_data = BusinessUnderstandingInput.model_validate(
+            invited_user.tallyUnderstanding
+        )
+    except Exception:
+        logger.warning(
+            "Malformed tallyUnderstanding for invited user %s; skipping",
+            invited_user.id,
+            exc_info=True,
+        )
+        return
+
+    payload = merge_business_understanding_data({}, input_data)
+    await prisma.models.CoPilotUnderstanding.prisma(tx).upsert(
+        where={"userId": user_id},
+        data={
+            "create": {"userId": user_id, "data": SafeJson(payload)},
+            "update": {"data": SafeJson(payload)},
+        },
+    )
+
+
+async def _generate_unique_profile_username(email: str, tx) -> str:
+    base = _sanitize_username_base(email)
+
+    for _ in range(2):
+        candidate = f"{base}-{uuid4().hex[:6]}"
+        existing = await prisma.models.Profile.prisma(tx).find_unique(
+            where={"username": candidate}
+        )
+        if existing is None:
+            return candidate
+
+    raise RuntimeError(f"Unable to generate unique username for {email}")
+
+
+def _default_profile_name(email: str, preferred_name: Optional[str]) -> str:
+    if preferred_name:
+        return preferred_name
+    local_part = email.split("@", 1)[0].strip()
+    return local_part or "user"
+
+
+def _sanitize_username_base(email: str) -> str:
+    local_part = email.split("@", 1)[0].lower()
+    sanitized = re.sub(r"[^a-z0-9-]", "", local_part)
+    sanitized = sanitized.strip("-")
+    return sanitized[:40] or "user"
+
+
+def _normalize_name(name: Optional[str]) -> Optional[str]:
+    if name is None:
+        return None
+    normalized = name.strip()
+    return normalized or None
+
+
+# ---------------------------------------------------------------------------
+# Bulk invite helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_bulk_invite_file(
+    filename: Optional[str],
+    content: bytes,
+) -> list[_ParsedInviteRow]:
+    text = _decode_bulk_invite_file(content)
+    file_name = filename.lower() if filename else ""
+    parsed_rows = (
+        _parse_bulk_invite_csv(text)
+        if file_name.endswith(".csv")
+        else _parse_bulk_invite_text(text)
+    )
+
+    if not parsed_rows:
+        raise ValueError("Invite file did not contain any emails")
+
+    if len(parsed_rows) > MAX_BULK_INVITE_ROWS:
+        raise ValueError(
+            f"Invite file exceeds the maximum of {MAX_BULK_INVITE_ROWS} users"
+        )
+
+    return parsed_rows
+
+
 def _decode_bulk_invite_file(content: bytes) -> str:
     if len(content) > MAX_BULK_INVITE_FILE_BYTES:
         raise ValueError("Invite file exceeds the maximum size of 1 MB")
@@ -427,64 +683,6 @@ def _parse_bulk_invite_text(text: str) -> list[_ParsedInviteRow]:
         )
 
     return parsed_rows
-
-
-def _parse_bulk_invite_file(
-    filename: Optional[str],
-    content: bytes,
-) -> list[_ParsedInviteRow]:
-    text = _decode_bulk_invite_file(content)
-    file_name = filename.lower() if filename else ""
-    parsed_rows = (
-        _parse_bulk_invite_csv(text)
-        if file_name.endswith(".csv")
-        else _parse_bulk_invite_text(text)
-    )
-
-    if not parsed_rows:
-        raise ValueError("Invite file did not contain any emails")
-
-    if len(parsed_rows) > MAX_BULK_INVITE_ROWS:
-        raise ValueError(
-            f"Invite file exceeds the maximum of {MAX_BULK_INVITE_ROWS} users"
-        )
-
-    return parsed_rows
-
-
-async def _fetch_existing_emails(emails: list[str]) -> tuple[set[str], set[str]]:
-    """Batch-fetch emails that already exist as active users or invited users."""
-    if not emails:
-        return set(), set()
-
-    active_emails: set[str] = set()
-    invited_emails: set[str] = set()
-
-    for i in range(0, len(emails), _FETCH_EXISTING_EMAILS_CHUNK_SIZE):
-        email_chunk = emails[i : i + _FETCH_EXISTING_EMAILS_CHUNK_SIZE]
-        existing_users, existing_invited = await asyncio.gather(
-            prisma.models.User.prisma().find_many(
-                where={"email": {"in": email_chunk}},
-            ),
-            prisma.models.InvitedUser.prisma().find_many(
-                where={"email": {"in": email_chunk}},
-            ),
-        )
-        active_emails.update(u.email for u in existing_users)
-        invited_emails.update(iu.email for iu in existing_invited)
-
-    return active_emails, invited_emails
-
-
-async def _create_bulk_invited_user(
-    semaphore: asyncio.Semaphore,
-    email: str,
-    name: Optional[str],
-) -> InvitedUserRecord:
-    async with semaphore:
-        return await create_invited_user(
-            email, name, tally_mode="bulk", schedule_tally=False
-        )
 
 
 def _validate_bulk_invite_rows(
@@ -645,53 +843,39 @@ async def _create_bulk_invite_results(
     return results, created_count, skipped_count, error_count
 
 
-async def bulk_create_invited_users_from_file(
-    filename: Optional[str],
-    content: bytes,
-) -> BulkInvitedUsersResult:
-    parsed_rows = _parse_bulk_invite_file(filename, content)
-    (
-        email_validated_rows,
-        validation_results,
-        validation_skipped_count,
-        validation_error_count,
-    ) = _validate_bulk_invite_rows(parsed_rows)
-    (
-        precheck_passed_rows,
-        precheck_results,
-        precheck_skipped_count,
-    ) = await _filter_preexisting_bulk_invite_rows(email_validated_rows)
-    (
-        creation_results,
-        created_count,
-        creation_skipped_count,
-        creation_error_count,
-    ) = await _create_bulk_invite_results(precheck_passed_rows)
+async def _create_bulk_invited_user(
+    semaphore: asyncio.Semaphore,
+    email: str,
+    name: Optional[str],
+) -> InvitedUserRecord:
+    async with semaphore:
+        return await create_invited_user(
+            email, name, tally_mode="bulk", schedule_tally=False
+        )
 
-    results = [
-        *validation_results,
-        *precheck_results,
-        *creation_results,
-    ]
 
-    results.sort(key=lambda r: r.row_number)
+async def _fetch_existing_emails(emails: list[str]) -> tuple[set[str], set[str]]:
+    """Batch-fetch emails that already exist as active users or invited users."""
+    if not emails:
+        return set(), set()
 
-    created_ids = [
-        r.invited_user.id
-        for r in creation_results
-        if r.status == "CREATED" and r.invited_user is not None
-    ]
-    if created_ids:
-        _schedule_bulk_tally_enrichment(created_ids)
+    active_emails: set[str] = set()
+    invited_emails: set[str] = set()
 
-    return BulkInvitedUsersResult(
-        created_count=created_count,
-        skipped_count=(
-            validation_skipped_count + precheck_skipped_count + creation_skipped_count
-        ),
-        error_count=validation_error_count + creation_error_count,
-        results=results,
-    )
+    for i in range(0, len(emails), _FETCH_EXISTING_EMAILS_CHUNK_SIZE):
+        email_chunk = emails[i : i + _FETCH_EXISTING_EMAILS_CHUNK_SIZE]
+        existing_users, existing_invited = await asyncio.gather(
+            prisma.models.User.prisma().find_many(
+                where={"email": {"in": email_chunk}},
+            ),
+            prisma.models.InvitedUser.prisma().find_many(
+                where={"email": {"in": email_chunk}},
+            ),
+        )
+        active_emails.update(u.email for u in existing_users)
+        invited_emails.update(iu.email for iu in existing_invited)
+
+    return active_emails, invited_emails
 
 
 def _schedule_bulk_tally_enrichment(invited_user_ids: list[str]) -> None:
@@ -709,19 +893,52 @@ def _schedule_bulk_tally_enrichment(invited_user_ids: list[str]) -> None:
     asyncio.create_task(_run())
 
 
-async def _fetch_tally_submission_with_rate_limit(
-    email: str,
+# ---------------------------------------------------------------------------
+# Tally enrichment helpers
+# ---------------------------------------------------------------------------
+
+
+async def _compute_invited_user_tally_seed(
+    invited_user_id: str,
     *,
-    require_api_key: bool = False,
-) -> Optional[tuple[dict, list]]:
-    async with _tally_lookup_semaphore:
-        result = await get_tally_submission_by_email(
-            email,
-            require_api_key=require_api_key,
+    tally_mode: TallyMode = "default",
+) -> None:
+    invited_user = await prisma.models.InvitedUser.prisma().find_unique(
+        where={"id": invited_user_id}
+    )
+    if invited_user is None:
+        return
+
+    if invited_user.status == prisma.enums.InvitedUserStatus.REVOKED:
+        return
+
+    if await _should_skip_tally_seed_for_lock(invited_user_id):
+        return
+
+    if _should_skip_running_tally_seed(invited_user, invited_user_id):
+        return
+
+    await _mark_tally_seed_running(invited_user_id)
+
+    try:
+        input_data = await _get_invited_user_tally_understanding(
+            invited_user.email,
+            tally_mode=tally_mode,
         )
-        if result is not None:
-            await asyncio.sleep(_TALLY_RATE_DELAY)
-        return result
+        await _mark_tally_seed_ready(invited_user_id, input_data)
+    except TallyExtractionTimeoutError as exc:
+        logger.warning(
+            "Timed out computing Tally understanding for invited user %s after %s attempts",
+            invited_user_id,
+            exc.attempts,
+        )
+        await _fail_tally_seed(invited_user_id, exc)
+    except Exception as exc:
+        logger.exception(
+            "Failed to compute Tally understanding for invited user %s",
+            invited_user_id,
+        )
+        await _fail_tally_seed(invited_user_id, exc)
 
 
 async def _get_invited_user_tally_understanding(
@@ -751,6 +968,21 @@ async def _get_invited_user_tally_understanding(
             )
 
     return await extract_business_understanding_from_tally(formatted)
+
+
+async def _fetch_tally_submission_with_rate_limit(
+    email: str,
+    *,
+    require_api_key: bool = False,
+) -> Optional[tuple[dict, list]]:
+    async with _tally_lookup_semaphore:
+        result = await get_tally_submission_by_email(
+            email,
+            require_api_key=require_api_key,
+        )
+        if result is not None:
+            await asyncio.sleep(_TALLY_RATE_DELAY)
+        return result
 
 
 async def _fail_tally_seed(invited_user_id: str, exc: Exception) -> None:
@@ -853,215 +1085,3 @@ async def _mark_tally_seed_ready(
         where={"id": invited_user_id},
         data=update_data,
     )
-
-
-async def _compute_invited_user_tally_seed(
-    invited_user_id: str,
-    *,
-    tally_mode: TallyMode = "default",
-) -> None:
-    invited_user = await prisma.models.InvitedUser.prisma().find_unique(
-        where={"id": invited_user_id}
-    )
-    if invited_user is None:
-        return
-
-    if invited_user.status == prisma.enums.InvitedUserStatus.REVOKED:
-        return
-
-    if await _should_skip_tally_seed_for_lock(invited_user_id):
-        return
-
-    if _should_skip_running_tally_seed(invited_user, invited_user_id):
-        return
-
-    await _mark_tally_seed_running(invited_user_id)
-
-    try:
-        input_data = await _get_invited_user_tally_understanding(
-            invited_user.email,
-            tally_mode=tally_mode,
-        )
-        await _mark_tally_seed_ready(invited_user_id, input_data)
-    except TallyExtractionTimeoutError as exc:
-        logger.warning(
-            "Timed out computing Tally understanding for invited user %s after %s attempts",
-            invited_user_id,
-            exc.attempts,
-        )
-        await _fail_tally_seed(invited_user_id, exc)
-    except Exception as exc:
-        logger.exception(
-            "Failed to compute Tally understanding for invited user %s",
-            invited_user_id,
-        )
-        await _fail_tally_seed(invited_user_id, exc)
-
-
-def schedule_invited_user_tally_precompute(
-    invited_user_id: str,
-    *,
-    tally_mode: TallyMode = "default",
-) -> None:
-    existing = _tally_seed_tasks.get(invited_user_id)
-    if existing is not None and not existing.done():
-        logger.debug("Tally task already running for %s, skipping", invited_user_id)
-        return
-
-    task = asyncio.create_task(
-        _compute_invited_user_tally_seed(
-            invited_user_id,
-            tally_mode=tally_mode,
-        )
-    )
-    _tally_seed_tasks[invited_user_id] = task
-
-    def _on_done(t: asyncio.Task, _id: str = invited_user_id) -> None:
-        if _tally_seed_tasks.get(_id) is t:
-            del _tally_seed_tasks[_id]
-
-    task.add_done_callback(_on_done)
-
-
-async def _open_signup_create_user(
-    auth_user_id: str,
-    normalized_email: str,
-    metadata_name: Optional[str],
-) -> User:
-    """Create a user without requiring an invite (open signup mode)."""
-    preferred_name = _normalize_name(metadata_name)
-    try:
-        async with transaction() as tx:
-            user = await prisma.models.User.prisma(tx).create(
-                data=prisma.types.UserCreateInput(
-                    id=auth_user_id,
-                    email=normalized_email,
-                    name=preferred_name,
-                )
-            )
-            await _ensure_default_profile(
-                auth_user_id, normalized_email, preferred_name, tx
-            )
-            await _ensure_default_onboarding(auth_user_id, tx)
-    except UniqueViolationError:
-        existing = await prisma.models.User.prisma().find_unique(
-            where={"id": auth_user_id}
-        )
-        if existing is not None:
-            return User.from_db(existing)
-        raise
-
-    return User.from_db(user)
-
-
-async def get_or_activate_user(user_data: dict) -> User:
-    auth_user_id = user_data.get("sub")
-    if not auth_user_id:
-        raise NotAuthorizedError("User ID not found in token")
-
-    auth_email = user_data.get("email")
-    if not auth_email:
-        raise NotAuthorizedError("Email not found in token")
-
-    normalized_email = normalize_email(auth_email)
-    user_metadata = user_data.get("user_metadata")
-    metadata_name = (
-        user_metadata.get("name") if isinstance(user_metadata, dict) else None
-    )
-
-    existing_user = None
-    try:
-        existing_user = await get_user_by_id(auth_user_id)
-    except ValueError:
-        existing_user = None
-    except Exception:
-        logger.exception("Error on get user by id during tally enrichment process")
-        raise
-
-    if existing_user is not None:
-        return existing_user
-
-    if not _settings.config.enable_invite_gate or is_internal_email(normalized_email):
-        return await _open_signup_create_user(
-            auth_user_id, normalized_email, metadata_name
-        )
-
-    invited_user = await prisma.models.InvitedUser.prisma().find_unique(
-        where={"email": normalized_email}
-    )
-    if invited_user is None:
-        raise NotAuthorizedError("Your email is not allowed to access the platform")
-
-    if invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
-        raise NotAuthorizedError("Your invitation is no longer active")
-
-    try:
-        async with transaction() as tx:
-            current_user = await prisma.models.User.prisma(tx).find_unique(
-                where={"id": auth_user_id}
-            )
-            if current_user is not None:
-                return User.from_db(current_user)
-
-            current_invited_user = await prisma.models.InvitedUser.prisma(
-                tx
-            ).find_unique(where={"email": normalized_email})
-            if current_invited_user is None:
-                raise NotAuthorizedError(
-                    "Your email is not allowed to access the platform"
-                )
-
-            if current_invited_user.status != prisma.enums.InvitedUserStatus.INVITED:
-                raise NotAuthorizedError("Your invitation is no longer active")
-
-            if current_invited_user.authUserId not in (None, auth_user_id):
-                raise NotAuthorizedError("Your invitation has already been claimed")
-
-            preferred_name = current_invited_user.name or _normalize_name(metadata_name)
-            await prisma.models.User.prisma(tx).create(
-                data=prisma.types.UserCreateInput(
-                    id=auth_user_id,
-                    email=normalized_email,
-                    name=preferred_name,
-                )
-            )
-
-            await prisma.models.InvitedUser.prisma(tx).update(
-                where={"id": current_invited_user.id},
-                data={
-                    "status": prisma.enums.InvitedUserStatus.CLAIMED,
-                    "authUserId": auth_user_id,
-                },
-            )
-
-            await _ensure_default_profile(
-                auth_user_id,
-                normalized_email,
-                preferred_name,
-                tx,
-            )
-            await _ensure_default_onboarding(auth_user_id, tx)
-            await _apply_tally_understanding(auth_user_id, current_invited_user, tx)
-    except UniqueViolationError:
-        logger.info("Concurrent activation for user %s; re-fetching", auth_user_id)
-        already_created = await prisma.models.User.prisma().find_unique(
-            where={"id": auth_user_id}
-        )
-        if already_created is not None:
-            return User.from_db(already_created)
-        raise RuntimeError(
-            f"UniqueViolationError during activation but user {auth_user_id} not found"
-        )
-
-    get_user_by_id.cache_delete(auth_user_id)
-    get_user_by_email.cache_delete(normalized_email)
-
-    activated_user = await prisma.models.User.prisma().find_unique(
-        where={"id": auth_user_id}
-    )
-    if activated_user is None:
-        raise RuntimeError(
-            f"Activated user {auth_user_id} was not found after creation"
-        )
-
-    return User.from_db(activated_user)
