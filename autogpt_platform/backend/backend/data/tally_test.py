@@ -16,6 +16,7 @@ from backend.data.tally import (
     extract_business_understanding_from_tally,
     find_submission_by_email,
     format_submission_for_llm,
+    get_business_understanding_input_from_tally,
     mask_email,
     populate_understanding_from_tally,
 )
@@ -241,6 +242,30 @@ async def test_populate_understanding_skips_no_api_key():
     """If no Tally API key, skip gracefully."""
     mock_settings = MagicMock()
     mock_settings.secrets.tally_api_key = ""
+
+    with (
+        patch(
+            "backend.data.tally.get_business_understanding",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch("backend.data.tally._settings", mock_settings),
+        patch(
+            "backend.data.tally.find_submission_by_email",
+            new_callable=AsyncMock,
+        ) as mock_find,
+    ):
+        await populate_understanding_from_tally("user-1", "test@example.com")
+
+    mock_find.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_populate_understanding_skips_no_openrouter_api_key():
+    """If no OpenRouter API key, skip before Tally lookup."""
+    mock_settings = MagicMock()
+    mock_settings.secrets.tally_api_key = "test-key"
+    mock_settings.secrets.open_router_api_key = ""
 
     with (
         patch(
@@ -518,6 +543,29 @@ async def test_extract_business_understanding_from_tally_timeout():
         pytest.raises(asyncio.TimeoutError),
     ):
         await extract_business_understanding_from_tally("Q: Name?\nA: Alice")
+
+
+@pytest.mark.asyncio
+async def test_get_business_understanding_input_requires_openrouter_api_key():
+    """Explicit precompute path should fail fast when OpenRouter is unset."""
+    mock_settings = MagicMock()
+    mock_settings.secrets.tally_api_key = "test-key"
+    mock_settings.secrets.open_router_api_key = ""
+
+    with (
+        patch("backend.data.tally._settings", mock_settings),
+        patch(
+            "backend.data.tally.find_submission_by_email",
+            new_callable=AsyncMock,
+        ) as mock_find,
+        pytest.raises(RuntimeError, match="OpenRouter API key is not configured"),
+    ):
+        await get_business_understanding_input_from_tally(
+            "alice@example.com",
+            require_api_key=True,
+        )
+
+    mock_find.assert_not_awaited()
 
 
 # ── _refresh_cache ───────────────────────────────────────────────────────────

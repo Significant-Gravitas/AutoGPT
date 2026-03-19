@@ -422,6 +422,12 @@ async def get_business_understanding_input_from_tally(
         logger.debug("Tally: no API key configured, skipping")
         return None
 
+    if not _settings.secrets.open_router_api_key:
+        if require_api_key:
+            raise RuntimeError("OpenRouter API key is not configured")
+        logger.debug("Tally: no OpenRouter API key configured, skipping")
+        return None
+
     masked = mask_email(email)
     result = await find_submission_by_email(TALLY_FORM_ID, email)
     if result is None:
