@@ -42,9 +42,7 @@ export function LibrarySubSection({
       return `${tab.title} ${allCount}`;
     }
     if (tab.id === "favorites") {
-      return favoritesCount > 0
-        ? `${tab.title} ${favoritesCount}`
-        : tab.title;
+      return favoritesCount > 0 ? `${tab.title} ${favoritesCount}` : tab.title;
     }
     return tab.title;
   }
