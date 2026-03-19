@@ -122,7 +122,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="If authentication is enabled or not",
     )
     enable_invite_gate: bool = Field(
-        default=False,
+        default=True,
         description="If the invite-only signup gate is enforced",
     )
     enable_credit: bool = Field(
