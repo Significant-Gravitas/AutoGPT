@@ -105,11 +105,11 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 
 3. Check for new comments (all three sources):
 ```bash
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate      # inline review comments — ALL pages
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
 ```
-   Compare against previously seen comments to detect new ones.
+   Compare against previously seen comments to detect new ones. For inline comments, apply the same thread reconstruction logic (group by root `in_reply_to_id`, sort by `created_at`, act on the final message) — new replies to existing threads count as new comments too.
 
 4. **React in this precedence order (first match wins):**
 
