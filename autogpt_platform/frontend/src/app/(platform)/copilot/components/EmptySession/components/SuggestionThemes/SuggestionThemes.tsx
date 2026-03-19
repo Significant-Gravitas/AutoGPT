@@ -33,9 +33,9 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
   const [openTheme, setOpenTheme] = useState<string | null>(null);
   const [loadingPrompt, setLoadingPrompt] = useState<string | null>(null);
 
-  async function handlePromptClick(prompt: string) {
+  async function handlePromptClick(theme: string, prompt: string) {
     if (disabled || loadingPrompt) return;
-    setLoadingPrompt(prompt);
+    setLoadingPrompt(`${theme}:${prompt}`);
     try {
       await onSend(prompt);
     } finally {
@@ -73,10 +73,10 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                     <button
                       type="button"
                       disabled={loadingPrompt !== null}
-                      onClick={() => void handlePromptClick(prompt)}
+                      onClick={() => void handlePromptClick(theme.name, prompt)}
                       className="w-full rounded-md px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50"
                     >
-                      {loadingPrompt === prompt ? (
+                      {loadingPrompt === `${theme.name}:${prompt}` ? (
                         <span className="flex items-center gap-2">
                           <SpinnerGapIcon
                             className="h-4 w-4 animate-spin"
