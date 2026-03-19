@@ -298,8 +298,10 @@ async def _execute_tool_sync(
 ) -> dict[str, Any]:
     """Execute a tool synchronously and return MCP-formatted response.
 
-    Note: ``@@agptfile:`` expansion is handled upstream in the ``_truncating`` wrapper
-    so all registered handlers (BaseTool, E2B, Read) expand uniformly.
+    Note: ``@@agptfile:`` expansion should be performed by the caller before
+    invoking this function.  For the normal (non-parallel) path it is handled
+    by the ``_truncating`` wrapper; for the pre-launched parallel path it is
+    handled in :func:`pre_launch_tool_call` before the task is created.
     """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(

@@ -12,6 +12,7 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _text_from_mcp_result,
+    cancel_pending_tool_tasks,
     create_tool_handler,
     pop_pending_tool_output,
     pre_launch_tool_call,
@@ -321,8 +322,8 @@ class TestCreateToolHandlerParallel:
         mock_tool.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_handler_cancelled_error_returns_mcp_error(self):
-        """CancelledError from a pre-launched task is caught and returned as MCP error."""
+    async def test_handler_cancelled_error_propagates(self):
+        """CancelledError from a pre-launched task is re-raised to preserve cancellation semantics."""
         mock_tool = _make_mock_tool("run_block")
         mock_tool.execute = AsyncMock(side_effect=asyncio.CancelledError())
 
@@ -334,10 +335,8 @@ class TestCreateToolHandlerParallel:
             await asyncio.sleep(0)
 
             handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "b1"})
-
-        assert result["isError"] is True
-        assert "cancelled" in result["content"][0]["text"].lower()
+            with pytest.raises(asyncio.CancelledError):
+                await handler({"block_id": "b1"})
 
     @pytest.mark.asyncio
     async def test_handler_exception_returns_mcp_error(self):
@@ -400,3 +399,65 @@ class TestCreateToolHandlerParallel:
 
         assert result["isError"] is True
         assert "session" in result["content"][0]["text"].lower()
+
+
+# ---------------------------------------------------------------------------
+# cancel_pending_tool_tasks
+# ---------------------------------------------------------------------------
+
+
+class TestCancelPendingToolTasks:
+    """Tests for cancel_pending_tool_tasks — the stream-abort cleanup helper."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_cancels_queued_tasks(self):
+        """Queued tasks are cancelled and the queue is cleared."""
+        ran = False
+
+        async def never_run():
+            nonlocal ran
+            await asyncio.sleep(10)  # long enough to still be pending
+            ran = True
+
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=never_run)
+
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": mock_tool},
+        ):
+            await pre_launch_tool_call("run_block", {"block_id": "b1"})
+            await asyncio.sleep(0)  # let task start
+            cancel_pending_tool_tasks()
+            await asyncio.sleep(0)  # let cancellation propagate
+
+        assert not ran, "Task should have been cancelled before completing"
+
+    @pytest.mark.asyncio
+    async def test_noop_when_no_tasks_queued(self):
+        """cancel_pending_tool_tasks does not raise when queues are empty."""
+        cancel_pending_tool_tasks()  # should not raise
+
+    @pytest.mark.asyncio
+    async def test_handler_does_not_find_cancelled_task(self):
+        """After cancel, tool_handler falls back to direct execution."""
+        mock_tool = _make_mock_tool("run_block", output="direct-fallback")
+
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": mock_tool},
+        ):
+            await pre_launch_tool_call("run_block", {"block_id": "b1"})
+            await asyncio.sleep(0)
+            cancel_pending_tool_tasks()
+
+            # Queue is now empty — handler should execute directly
+            handler = create_tool_handler(mock_tool)
+            result = await handler({"block_id": "b1"})
+
+        assert result["isError"] is False
+        assert "direct-fallback" in result["content"][0]["text"]
