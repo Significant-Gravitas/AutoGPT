@@ -488,3 +488,157 @@ class TestCancelPendingToolTasks:
 
         assert result["isError"] is False
         assert "direct-fallback" in result["content"][0]["text"]
+
+
+# ---------------------------------------------------------------------------
+# Concurrent / parallel pre-launch scenarios
+# ---------------------------------------------------------------------------
+
+
+class TestAllParallelToolsPrelaunchedIndependently:
+    """Simulate SDK sending N separate AssistantMessages for the same tool concurrently."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_all_parallel_tools_prelaunched_independently(self):
+        """5 pre-launches for the same tool all enqueue independently and run concurrently.
+
+        Each task sleeps for PER_TASK_S seconds. If they ran sequentially the total
+        wall time would be ~5*PER_TASK_S. Running concurrently it should finish in
+        roughly PER_TASK_S (plus scheduling overhead).
+        """
+        PER_TASK_S = 0.05
+        N = 5
+        started: list[int] = []
+        finished: list[int] = []
+
+        async def slow_execute(*args, **kwargs):
+            idx = len(started)
+            started.append(idx)
+            await asyncio.sleep(PER_TASK_S)
+            finished.append(idx)
+            return StreamToolOutputAvailable(
+                toolCallId=f"id-{idx}",
+                output=f"result-{idx}",
+                toolName="bash_exec",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("bash_exec")
+        mock_tool.execute = AsyncMock(side_effect=slow_execute)
+
+        start = asyncio.get_event_loop().time()
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"bash_exec": mock_tool},
+        ):
+            for i in range(N):
+                await pre_launch_tool_call("bash_exec", {"cmd": f"echo {i}"})
+
+            # Allow all tasks to run concurrently
+            await asyncio.sleep(PER_TASK_S * 2)
+
+        elapsed = asyncio.get_event_loop().time() - start
+
+        assert mock_tool.execute.await_count == N
+        assert len(finished) == N
+        # Wall time should be well under N * PER_TASK_S (sequential would be ~0.25s)
+        assert elapsed < N * PER_TASK_S, (
+            f"Expected concurrent execution (<{N * PER_TASK_S:.2f}s) "
+            f"but took {elapsed:.2f}s"
+        )
+
+
+class TestHandlerReturnsResultFromCorrectPrelaunchedTask:
+    """Pop pre-launched tasks in order and verify each returns its own result."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_handler_returns_result_from_correct_prelaunched_task(self):
+        """Two pre-launches for the same tool: first handler gets first result, second gets second."""
+
+        async def execute_with_cmd(*args, **kwargs):
+            cmd = kwargs.get("cmd", args[0] if args else "?")
+            return StreamToolOutputAvailable(
+                toolCallId="id",
+                output=f"output-for-{cmd}",
+                toolName="bash_exec",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("bash_exec")
+        mock_tool.execute = AsyncMock(side_effect=execute_with_cmd)
+
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"bash_exec": mock_tool},
+        ):
+            await pre_launch_tool_call("bash_exec", {"cmd": "alpha"})
+            await pre_launch_tool_call("bash_exec", {"cmd": "beta"})
+            await asyncio.sleep(0)  # let both tasks start
+
+            handler = create_tool_handler(mock_tool)
+            r1 = await handler({"cmd": "alpha"})
+            r2 = await handler({"cmd": "beta"})
+
+        text1 = r1["content"][0]["text"]
+        text2 = r2["content"][0]["text"]
+        assert "output-for-alpha" in text1, f"Expected alpha result, got: {text1}"
+        assert "output-for-beta" in text2, f"Expected beta result, got: {text2}"
+        assert mock_tool.execute.await_count == 2
+
+
+class TestFiveConcurrentPrelaunchAllComplete:
+    """Pre-launch 5 tasks; consume all 5 via handlers; assert all succeed."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_five_concurrent_prelaunch_all_complete(self):
+        """All 5 pre-launched tasks complete and return successful results."""
+        N = 5
+        call_count = 0
+
+        async def counting_execute(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            n = call_count
+            return StreamToolOutputAvailable(
+                toolCallId=f"id-{n}",
+                output=f"done-{n}",
+                toolName="bash_exec",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("bash_exec")
+        mock_tool.execute = AsyncMock(side_effect=counting_execute)
+
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"bash_exec": mock_tool},
+        ):
+            for i in range(N):
+                await pre_launch_tool_call("bash_exec", {"cmd": f"task-{i}"})
+
+            await asyncio.sleep(0)  # let all tasks start
+
+            handler = create_tool_handler(mock_tool)
+            results = []
+            for i in range(N):
+                results.append(await handler({"cmd": f"task-{i}"}))
+
+        assert (
+            mock_tool.execute.await_count == N
+        ), f"Expected {N} execute calls, got {mock_tool.execute.await_count}"
+        for i, result in enumerate(results):
+            assert result["isError"] is False, f"Result {i} should not be an error"
+            text = result["content"][0]["text"]
+            assert "done-" in text, f"Result {i} missing expected output: {text}"
