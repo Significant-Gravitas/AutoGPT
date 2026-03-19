@@ -8,8 +8,8 @@ from backend.copilot.model import ChatSession
 from backend.copilot.workflow_import.describers import describe_workflow
 from backend.copilot.workflow_import.format_detector import (
     SourcePlatform,
-    _unwrap_zapier_envelope,
     detect_format,
+    unwrap_zapier_envelope,
 )
 from backend.copilot.workflow_import.url_fetcher import fetch_n8n_template
 
@@ -141,7 +141,7 @@ class ImportWorkflowTool(BaseTool):
 
         # Unwrap Zapier envelope so the describer receives the single Zap object.
         if fmt == SourcePlatform.ZAPIER:
-            workflow_json = _unwrap_zapier_envelope(workflow_json) or workflow_json
+            workflow_json = unwrap_zapier_envelope(workflow_json) or workflow_json
 
         # Step 3: Describe the workflow
         try:

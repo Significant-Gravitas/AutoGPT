@@ -19,7 +19,7 @@ def detect_format(json_data: dict[str, Any]) -> SourcePlatform:
     """
     # Zapier's "export all Zaps" (Zapfile.json) and "Powered by Zapier" API both
     # wrap results in {"data": [...]}. Unwrap to the first Zap for detection.
-    candidate = _unwrap_zapier_envelope(json_data) or json_data
+    candidate = unwrap_zapier_envelope(json_data) or json_data
 
     if _is_n8n(candidate):
         return SourcePlatform.N8N
@@ -30,7 +30,7 @@ def detect_format(json_data: dict[str, Any]) -> SourcePlatform:
     return SourcePlatform.UNKNOWN
 
 
-def _unwrap_zapier_envelope(data: dict[str, Any]) -> "dict[str, Any] | None":
+def unwrap_zapier_envelope(data: dict[str, Any]) -> "dict[str, Any] | None":
     """Return the first Zap from a Zapier {'data': [...]} envelope, or None."""
     data_list = data.get("data")
     if isinstance(data_list, list) and data_list and isinstance(data_list[0], dict):
