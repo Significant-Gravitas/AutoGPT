@@ -64,12 +64,12 @@ export default function LibraryImportDialog() {
         </Button>
       </Dialog.Trigger>
       <Dialog.Content>
-        <TabsLine defaultValue="platform">
+        <TabsLine defaultValue="agent">
           <TabsLineList>
+            <TabsLineTrigger value="agent">AutoGPT agent</TabsLineTrigger>
             <TabsLineTrigger value="platform">
               Import from another platform
             </TabsLineTrigger>
-            <TabsLineTrigger value="agent">AutoGPT agent</TabsLineTrigger>
           </TabsLineList>
 
           {/* Tab: Import from any platform (file upload + n8n URL) */}
@@ -92,7 +92,7 @@ export default function LibraryImportDialog() {
             <Button
               type="button"
               variant="primary"
-              className="min-w-[18rem]"
+              className="w-full"
               disabled={!importWorkflow.fileValue}
               onClick={() => importWorkflow.submitWithMode("file")}
             >
@@ -130,7 +130,7 @@ export default function LibraryImportDialog() {
             <Button
               type="button"
               variant="primary"
-              className="min-w-[18rem]"
+              className="w-full"
               disabled={!importWorkflow.urlValue}
               onClick={() => importWorkflow.submitWithMode("url")}
             >
@@ -207,7 +207,7 @@ export default function LibraryImportDialog() {
               <Button
                 type="submit"
                 variant="primary"
-                className="min-w-[18rem]"
+                className="w-full"
                 disabled={!upload.agentObject || upload.isUploading}
               >
                 {upload.isUploading ? (
