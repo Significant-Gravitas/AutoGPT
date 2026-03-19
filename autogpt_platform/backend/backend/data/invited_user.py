@@ -483,24 +483,6 @@ async def _create_bulk_invited_user(
         return await create_invited_user(email, name, tally_mode="bulk")
 
 
-def _build_bulk_invited_user_row_result(
-    row_number: int,
-    email: Optional[str],
-    name: Optional[str],
-    status: Literal["CREATED", "SKIPPED", "ERROR"],
-    message: str,
-    invited_user: Optional[InvitedUserRecord] = None,
-) -> BulkInvitedUserRowResult:
-    return BulkInvitedUserRowResult(
-        row_number=row_number,
-        email=email,
-        name=name,
-        status=status,
-        message=message,
-        invited_user=invited_user,
-    )
-
-
 def _validate_bulk_invite_rows(
     parsed_rows: list[_ParsedInviteRow],
 ) -> tuple[list[_EmailValidatedInviteRow], list[BulkInvitedUserRowResult], int, int]:
@@ -517,12 +499,12 @@ def _validate_bulk_invite_rows(
         except ValidationError:
             error_count += 1
             results.append(
-                _build_bulk_invited_user_row_result(
-                    row.row_number,
-                    row.email or None,
-                    row_name,
-                    "ERROR",
-                    "Invalid email address",
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=row.email or None,
+                    name=row_name,
+                    status="ERROR",
+                    message="Invalid email address",
                 )
             )
             continue
@@ -531,12 +513,12 @@ def _validate_bulk_invite_rows(
         if normalized_email in seen_emails:
             skipped_count += 1
             results.append(
-                _build_bulk_invited_user_row_result(
-                    row.row_number,
-                    normalized_email,
-                    row_name,
-                    "SKIPPED",
-                    "Duplicate email in upload file",
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message="Duplicate email in upload file",
                 )
             )
             continue
@@ -561,12 +543,12 @@ async def _filter_preexisting_bulk_invite_rows(
         if normalized_email in active_emails:
             skipped_count += 1
             results.append(
-                _build_bulk_invited_user_row_result(
-                    row.row_number,
-                    normalized_email,
-                    row_name,
-                    "SKIPPED",
-                    "An active user with this email already exists",
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message="An active user with this email already exists",
                 )
             )
             continue
@@ -574,12 +556,12 @@ async def _filter_preexisting_bulk_invite_rows(
         if normalized_email in invited_emails:
             skipped_count += 1
             results.append(
-                _build_bulk_invited_user_row_result(
-                    row.row_number,
-                    normalized_email,
-                    row_name,
-                    "SKIPPED",
-                    "An invited user with this email already exists",
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message="An invited user with this email already exists",
                 )
             )
             continue
@@ -612,12 +594,12 @@ async def _create_bulk_invite_results(
         if isinstance(outcome, PreconditionFailed):
             skipped_count += 1
             results.append(
-                _build_bulk_invited_user_row_result(
-                    row.row_number,
-                    normalized_email,
-                    row_name,
-                    "SKIPPED",
-                    str(outcome),
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="SKIPPED",
+                    message=str(outcome),
                 )
             )
             continue
@@ -634,24 +616,24 @@ async def _create_bulk_invite_results(
             )
             error_count += 1
             results.append(
-                _build_bulk_invited_user_row_result(
-                    row.row_number,
-                    normalized_email,
-                    row_name,
-                    "ERROR",
-                    "Unexpected error creating invite",
+                BulkInvitedUserRowResult(
+                    row_number=row.row_number,
+                    email=normalized_email,
+                    name=row_name,
+                    status="ERROR",
+                    message="Unexpected error creating invite",
                 )
             )
             continue
 
         created_count += 1
         results.append(
-            _build_bulk_invited_user_row_result(
-                row.row_number,
-                normalized_email,
-                row_name,
-                "CREATED",
-                "Invite created",
+            BulkInvitedUserRowResult(
+                row_number=row.row_number,
+                email=normalized_email,
+                name=row_name,
+                status="CREATED",
+                message="Invite created",
                 invited_user=outcome,
             )
         )
