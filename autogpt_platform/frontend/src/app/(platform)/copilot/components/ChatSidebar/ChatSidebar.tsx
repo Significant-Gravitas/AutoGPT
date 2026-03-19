@@ -231,16 +231,29 @@ export function ChatSidebar() {
             >
               <div className="flex flex-col items-center gap-2">
                 <SidebarTrigger />
-                {sessionId ? (
-                  <Button
-                    variant="ghost"
-                    onClick={handleNewChat}
-                    style={{ minWidth: "auto", width: "auto" }}
-                  >
-                    <PlusCircleIcon className="!size-5" />
-                    <span className="sr-only">New Chat</span>
-                  </Button>
-                ) : null}
+                <AnimatePresence>
+                  {sessionId ? (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{
+                        type: "spring",
+                        bounce: 0.3,
+                        duration: 0.4,
+                      }}
+                    >
+                      <Button
+                        variant="ghost"
+                        onClick={handleNewChat}
+                        style={{ minWidth: "auto", width: "auto" }}
+                      >
+                        <PlusCircleIcon className="!size-5" />
+                        <span className="sr-only">New Chat</span>
+                      </Button>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
             </motion.div>
           </SidebarHeader>
@@ -263,17 +276,26 @@ export function ChatSidebar() {
                   <SidebarTrigger />
                 </div>
               </div>
-              {sessionId ? (
-                <Button
-                  variant="primary"
-                  size="small"
-                  onClick={handleNewChat}
-                  className="w-full"
-                  leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
-                >
-                  New Chat
-                </Button>
-              ) : null}
+              <AnimatePresence>
+                {sessionId ? (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+                  >
+                    <Button
+                      variant="primary"
+                      size="small"
+                      onClick={handleNewChat}
+                      className="w-full"
+                      leftIcon={<PlusIcon className="h-4 w-4" weight="bold" />}
+                    >
+                      New Chat
+                    </Button>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </motion.div>
           </SidebarHeader>
         )}
