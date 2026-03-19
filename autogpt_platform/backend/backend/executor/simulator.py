@@ -27,9 +27,25 @@ def _simulator_model() -> str:
     try:
         from backend.copilot.config import ChatConfig  # noqa: PLC0415
 
-        return ChatConfig().title_model
+        model = ChatConfig().title_model
     except Exception:
-        return "openai/gpt-4o-mini"
+        model = "openai/gpt-4o-mini"
+
+    # get_openai_client() may return a direct OpenAI client (not OpenRouter).
+    # Direct OpenAI expects bare model names ("gpt-4o-mini"), not the
+    # OpenRouter-prefixed form ("openai/gpt-4o-mini").  Strip the prefix when
+    # the internal OpenAI key is configured (i.e. not going through OpenRouter).
+    try:
+        from backend.util.settings import Settings  # noqa: PLC0415
+
+        secrets = Settings().secrets
+        if secrets.openai_internal_api_key and not secrets.open_router_api_key:
+            if "/" in model:
+                model = model.split("/", 1)[1]
+    except Exception:
+        pass
+
+    return model
 
 
 _TEMPERATURE = 0.2

@@ -342,7 +342,7 @@ def test_run_block_tool_dry_run_calls_execute():
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
     # Verify dry_run is extracted from kwargs
     assert "dry_run" in source
-    assert 'kwargs.get("dry_run"' in source or 'kwargs.get("dry_run"' in source
+    assert 'kwargs.get("dry_run"' in source
 
     source_execute = inspect.getsource(run_block_module)
     # Verify dry_run is passed through to execute_block call
