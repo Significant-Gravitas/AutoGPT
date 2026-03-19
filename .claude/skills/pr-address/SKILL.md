@@ -47,31 +47,31 @@ If `pageInfo.hasNextPage` is true, fetch subsequent pages by adding `after: "<en
 
 **Filter to unresolved threads only** — skip any thread where `isResolved: true`. Within each unresolved thread, the comments are ordered oldest-first; act on the **last comment** (the reviewer's final ask).
 
-### 2. PR conversation comments — REST
+### 2. Top-level reviews — REST (MUST paginate)
 
-Scan for actionable human reviewer messages outside of inline threads:
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
+```
+
+**CRITICAL — always `--paginate`.** Reviews default to 30 per page. PRs can have 80–170+ reviews (mostly empty resolution events). Without pagination you miss reviews past position 30 — including `autogpt-reviewer`'s structured review which is typically posted after several CI runs and sits well beyond the first page.
+
+Two things to extract:
+- **Overall state**: look for `CHANGES_REQUESTED` or `APPROVED` reviews.
+- **Actionable feedback**: non-empty bodies only. Empty-body reviews are thread-resolution events — they indicate progress but have no feedback to act on.
+
+**Where each reviewer posts:**
+- `autogpt-reviewer` — posts detailed structured reviews ("Blockers", "Should Fix", "Nice to Have") as **top-level reviews**. Not present on every PR. Address ALL items.
+- `sentry[bot]` — posts bug predictions as **inline threads**. Fix real bugs, explain false positives.
+- `coderabbitai[bot]` — posts summaries as **top-level reviews** AND actionable items as **inline threads**. Address actionable items.
+- Human reviewers — can post in any source. Address ALL non-empty feedback.
+
+### 3. PR conversation comments — REST
 
 ```bash
 gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
 ```
 
-Filter out: empty bodies, bot authors (`coderabbitai[bot]`, `sentry[bot]`, `autogpt-reviewer`), and author status-update messages. What remains are human reviewer asks that need a response.
-
-### 3. Top-level reviews — REST
-
-```bash
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
-```
-
-Two things to extract:
-- **Overall state**: look for `CHANGES_REQUESTED` or `APPROVED` reviews.
-- **Actionable feedback**: read non-empty bodies. Both `autogpt-reviewer` bot (posts "Blockers", "Should Fix", "Nice to Have" here as top-level reviews) and human reviewers use this. Empty-body reviews are thread-resolution events (GitHub creates one when a thread is resolved) — they indicate progress but have no feedback to act on.
-
-**Reviewers to watch for:**
-- `autogpt-reviewer` — posts "Blockers", "Should Fix", "Nice to Have" as **top-level reviews**. Address ALL of them.
-- `sentry[bot]` — posts bug predictions as **inline comments**. Fix real bugs, explain false positives.
-- `coderabbitai[bot]` — posts as **inline threads** and **top-level reviews**. Address actionable items.
-- Human reviewers — can post in any of the three sources. Address ALL non-empty feedback.
+Mostly contains: bot summaries (`coderabbitai[bot]`), CI/conflict detection (`github-actions[bot]`), and author status updates. Scan for non-empty messages from non-bot human reviewers that aren't the PR author — those are the ones that need a response.
 
 ## For each unaddressed comment
 
@@ -149,9 +149,9 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 
    **Top-level reviews:**
    ```bash
-   gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
+   gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
    ```
-   Watch for new `CHANGES_REQUESTED` reviews with non-empty body.
+   Watch for new non-empty reviews (`CHANGES_REQUESTED` or `COMMENTED` with body). Compare total count and newest `id` against baseline.
 
 4. **React in this precedence order (first match wins):**
 
