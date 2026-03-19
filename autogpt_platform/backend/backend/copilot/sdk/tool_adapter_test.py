@@ -187,6 +187,7 @@ def _make_mock_tool(name: str, output: str = "result") -> MagicMock:
     """Return a BaseTool mock that returns a successful StreamToolOutputAvailable."""
     tool = MagicMock()
     tool.name = name
+    tool.parameters = {"properties": {}, "required": []}
     tool.execute = AsyncMock(
         return_value=StreamToolOutputAvailable(
             toolCallId="test-id",
