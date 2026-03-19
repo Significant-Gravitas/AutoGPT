@@ -28,7 +28,7 @@ gh pr diff {N}
 Before posting anything, fetch existing inline comments to avoid duplicates:
 
 ```bash
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 ```
 
