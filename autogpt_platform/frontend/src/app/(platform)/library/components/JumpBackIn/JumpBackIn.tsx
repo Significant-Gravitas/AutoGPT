@@ -15,7 +15,7 @@ export function JumpBackIn() {
   }
 
   return (
-    <div className="rounded-large bg-gradient-to-r from-zinc-200 via-zinc-100 to-zinc-100/40 p-[1px]">
+    <div className="rounded-large bg-gradient-to-r from-zinc-200 via-zinc-200/60 to-zinc-200/30 p-[1px]">
       <div className="flex items-center justify-between rounded-large bg-[#F6F7F8] px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-zinc-900">
@@ -31,7 +31,7 @@ export function JumpBackIn() {
           </div>
         </div>
         <NextLink href={`/library/agents/${agent.id}`}>
-          <Button variant="primary" size="small" className="gap-1.5">
+          <Button variant="secondary" size="small" className="gap-1.5">
             Jump Back In
             <ArrowRight size={16} />
           </Button>
