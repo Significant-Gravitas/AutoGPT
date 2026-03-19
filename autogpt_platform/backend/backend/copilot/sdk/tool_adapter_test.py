@@ -598,7 +598,7 @@ class TestHandlerReturnsResultFromCorrectPrelaunchedTask:
         """Two pre-launches for the same tool: first handler gets first result, second gets second."""
 
         async def execute_with_cmd(*args, **kwargs):
-            cmd = kwargs.get("cmd", args[0] if args else "?")
+            cmd = kwargs.get("cmd", "?")
             return StreamToolOutputAvailable(
                 toolCallId="id",
                 output=f"output-for-{cmd}",
