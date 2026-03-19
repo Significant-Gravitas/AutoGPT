@@ -72,8 +72,9 @@ BEGIN
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO "Profile"
-      ("userId", name, username, description, links, "avatarUrl", "updatedAt")
+      (id, "userId", name, username, description, links, "avatarUrl", "updatedAt")
     SELECT
+      gen_random_uuid()::text,
       au.id::text,
       COALESCE(NULLIF(split_part(au.email, '@', 1), ''), 'user'),
       generate_username(),
