@@ -1143,24 +1143,24 @@ async def _run_stream_attempt(
                     ended_with_stream_error = True
                     break
 
-            # Detect parallel continuation messages first: an AssistantMessage
-            # consisting solely of ToolUseBlocks marks a continuation of parallel
-            # calls already in flight.  Pre-launching must be skipped for these
-            # because the MCP handlers already hold their queued tasks from the
-            # initial pre-launch; enqueueing again would create unconsumed duplicates.
-            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
-                isinstance(b, ToolUseBlock) for b in sdk_msg.content
-            )
-
-            # Parallel tool execution: when the SDK sends an AssistantMessage
-            # containing ToolUseBlocks (but NOT a continuation message), pre-launch
-            # all tool executions as asyncio.Tasks immediately.  The MCP handlers
-            # will await the already-running tasks instead of executing fresh,
-            # making all tools in a single assistant turn run concurrently.
-            if isinstance(sdk_msg, AssistantMessage) and not is_parallel_continuation:
+            # Parallel tool execution: pre-launch every ToolUseBlock as an
+            # asyncio.Task the moment its AssistantMessage arrives.  The SDK
+            # sends one AssistantMessage per tool call when issuing parallel
+            # calls, so each message is pre-launched independently.  The MCP
+            # handlers will await the already-running task instead of executing
+            # fresh, making all concurrent tool calls run in parallel.
+            if isinstance(sdk_msg, AssistantMessage):
                 for block in sdk_msg.content:
                     if isinstance(block, ToolUseBlock):
                         await pre_launch_tool_call(block.name, block.input)
+
+            # is_parallel_continuation: an AssistantMessage consisting solely of
+            # ToolUseBlocks is a parallel tool call (not a text+tool mixed message).
+            # Used only to skip the wait_for_stash flush below — there is no
+            # completed tool output to stash yet when more tool calls are in flight.
+            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
+                isinstance(b, ToolUseBlock) for b in sdk_msg.content
+            )
 
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next
