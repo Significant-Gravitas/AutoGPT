@@ -2,14 +2,9 @@
 
 import { useTallyPopup } from "./useTallyPopup";
 import { Button } from "@/components/atoms/Button/Button";
-import { usePathname, useSearchParams } from "next/navigation";
 
 export function TallyPopupSimple() {
-  const { state, handlers } = useTallyPopup();
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const isNewBuilder =
-    pathname.includes("build") && searchParams.get("view") === "new";
+  const { state } = useTallyPopup();
 
   if (state.isFormVisible) {
     return null;

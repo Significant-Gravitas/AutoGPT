@@ -1520,7 +1520,7 @@ async def stream_chat_completion_sdk(
                     )
                 return None
             try:
-                return await get_or_create_sandbox(
+                sandbox = await get_or_create_sandbox(
                     session_id,
                     api_key=e2b_api_key,
                     template=config.e2b_sandbox_template,
@@ -1534,7 +1534,9 @@ async def stream_chat_completion_sdk(
                     e2b_err,
                     exc_info=True,
                 )
-            return None
+                return None
+
+            return sandbox
 
         async def _fetch_transcript():
             """Download transcript for --resume if applicable."""

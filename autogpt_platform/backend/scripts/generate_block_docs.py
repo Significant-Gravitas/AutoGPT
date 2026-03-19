@@ -114,13 +114,19 @@ CATEGORY_FILE_MAP = {
 
 def class_name_to_display_name(class_name: str) -> str:
     """Convert BlockClassName to 'Block Class Name'."""
+    from backend.util.text import _CAMELCASE_EXCEPTIONS
+
     # Remove 'Block' suffix (only at the end, not all occurrences)
     name = class_name.removesuffix("Block")
     # Insert space before capitals
     name = re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
     # Handle consecutive capitals (e.g., 'HTTPRequest' -> 'HTTP Request')
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", name)
-    return name.strip()
+    name = name.strip()
+    # Restore brand names that shouldn't be split
+    for split_form, brand in _CAMELCASE_EXCEPTIONS.items():
+        name = name.replace(split_form, brand)
+    return name
 
 
 def type_to_readable(type_schema: dict[str, Any] | Any) -> str:
