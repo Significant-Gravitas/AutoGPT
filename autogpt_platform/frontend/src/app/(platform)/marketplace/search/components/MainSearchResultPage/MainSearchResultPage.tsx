@@ -7,7 +7,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
 import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
 import { FeaturedCreators } from "../../../components/FeaturedCreators/FeaturedCreators";
-import { MainMarketplacePageLoading } from "../../../components/MainMarketplacePageLoading";
+import { MainSearchResultPageLoading } from "../../../components/MainSearchResultPageLoading";
 import { SearchBar } from "../../../components/SearchBar/SearchBar";
 import { useMainSearchResultPage } from "./useMainSearchResultPage";
 
@@ -40,7 +40,7 @@ export const MainSearchResultPage = ({
   const hasError = isAgentsError || isCreatorsError;
 
   if (isLoading) {
-    return <MainMarketplacePageLoading />;
+    return <MainSearchResultPageLoading />;
   }
 
   if (hasError) {
