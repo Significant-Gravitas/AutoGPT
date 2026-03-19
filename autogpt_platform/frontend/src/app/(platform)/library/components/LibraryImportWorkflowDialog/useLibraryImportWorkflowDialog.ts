@@ -71,7 +71,10 @@ export function useLibraryImportWorkflowDialog() {
           });
           return;
         }
-        const fileInfo = await uploadJsonAsFile(jsonString, "workflow.json");
+        const fileInfo = await uploadJsonAsFile(
+          jsonString,
+          `workflow-${Date.now()}.json`,
+        );
         setUrlValue("");
         storeAndRedirect(fileInfo, router);
         return;
@@ -99,7 +102,10 @@ export function useLibraryImportWorkflowDialog() {
           });
           return;
         }
-        const fileInfo = await uploadJsonAsFile(jsonString, "workflow.json");
+        const fileInfo = await uploadJsonAsFile(
+          jsonString,
+          `workflow-${Date.now()}.json`,
+        );
         setFileValue("");
         storeAndRedirect(fileInfo, router);
       }
