@@ -1,7 +1,11 @@
 "use server";
 
-import { postV1GetOrCreateUser } from "@/app/api/__generated__/endpoints/auth/auth";
+import {
+  postV1CheckIfAnEmailIsAllowedToSignUp,
+  postV1GetOrCreateUser,
+} from "@/app/api/__generated__/endpoints/auth/auth";
 import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -25,6 +29,30 @@ export async function signup(
       return {
         success: false,
         error: "Invalid signup payload",
+      };
+    }
+
+    try {
+      const checkResult = await resolveResponse(
+        postV1CheckIfAnEmailIsAllowedToSignUp({ email: parsed.data.email }),
+      );
+      if (!checkResult.allowed) {
+        return { success: false, error: "not_allowed" };
+      }
+    } catch (precheckError) {
+      if (precheckError instanceof ApiError) {
+        Sentry.captureMessage(
+          `Invite pre-check returned HTTP ${precheckError.status}`,
+          { level: "warning", tags: { flow: "signup_precheck" } },
+        );
+      } else {
+        Sentry.captureException(precheckError, {
+          tags: { flow: "signup_precheck" },
+        });
+      }
+      return {
+        success: false,
+        error: "Failed to verify invite eligibility. Please try again.",
       };
     }
 
@@ -59,8 +87,26 @@ export async function signup(
     }
 
     try {
-      await resolveResponse(postV1GetOrCreateUser());
+      await resolveResponse(
+        postV1GetOrCreateUser({
+          headers: { "X-Cleanup-Orphaned-Auth-User": "1" },
+        }),
+      );
     } catch (createUserError) {
+      if (data.session) {
+        await supabase.auth.signOut({ scope: "global" });
+      }
+
+      if (
+        createUserError instanceof ApiError &&
+        createUserError.status === 403
+      ) {
+        return {
+          success: false,
+          error: "not_allowed",
+        };
+      }
+
       console.error("Error creating user during signup:", createUserError);
       Sentry.captureException(createUserError);
       return {

@@ -1,6 +1,7 @@
 "use server";
 
 import BackendAPI from "@/lib/autogpt-server-api";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
@@ -33,8 +34,24 @@ export async function login(email: string, password: string) {
       };
     }
 
-    const api = new BackendAPI();
-    await api.createUser();
+    try {
+      const api = new BackendAPI();
+      await api.createUser();
+    } catch (createUserError) {
+      await supabase.auth.signOut({ scope: "global" });
+
+      if (
+        createUserError instanceof ApiError &&
+        createUserError.status === 403
+      ) {
+        return {
+          success: false,
+          error: "Your email is not allowed to access the platform",
+        };
+      }
+
+      throw createUserError;
+    }
 
     // Get onboarding status from backend (includes chat flag evaluated for this user)
     const { shouldShowOnboarding } = await getOnboardingStatus();

@@ -11,6 +11,7 @@ import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.auth import add_auth_responses_to_openapi
 from autogpt_libs.auth import verify_settings as verify_auth_settings
+from autogpt_libs.auth.jwt_utils import parse_jwt_token
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
@@ -19,6 +20,7 @@ from prisma.errors import PrismaError
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.store_admin_routes
+import backend.api.features.admin.user_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -65,6 +67,7 @@ from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
 from .middleware.security import SecurityHeadersMiddleware
+from .platform_user_guard import ensure_platform_user, should_enforce_platform_user
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
 
@@ -207,6 +210,32 @@ instrument_fastapi(
 )
 
 
+@app.middleware("http")
+async def platform_user_guard_middleware(
+    request: fastapi.Request,
+    call_next,
+):
+    if request.method != "OPTIONS" and should_enforce_platform_user(request.url.path):
+        authorization = request.headers.get("Authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization.removeprefix("Bearer ").strip()
+            if token:
+                try:
+                    jwt_payload = parse_jwt_token(token)
+                except ValueError:
+                    jwt_payload = None
+
+                if jwt_payload is not None:
+                    try:
+                        await ensure_platform_user(jwt_payload)
+                    except NotAuthorizedError as exc:
+                        return handle_internal_http_error(403, False)(request, exc)
+                    except Exception as exc:
+                        return handle_internal_http_error()(request, exc)
+
+    return await call_next(request)
+
+
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
@@ -310,6 +339,11 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.user_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/users",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,

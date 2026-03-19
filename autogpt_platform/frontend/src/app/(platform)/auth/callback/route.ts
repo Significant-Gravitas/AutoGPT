@@ -36,6 +36,7 @@ export async function GET(request: Request) {
         }
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);
+        await supabase.auth.signOut({ scope: "global" });
 
         // Handle ApiError from the backend API client
         if (
@@ -49,6 +50,15 @@ export async function GET(request: Request) {
             // Authentication issues - token missing/invalid
             return NextResponse.redirect(
               `${origin}/error?message=auth-token-invalid`,
+            );
+          } else if (apiError.status === 403) {
+            const hash = new URLSearchParams({
+              error: "access_denied",
+              error_code: "platform_access_denied",
+              error_description: "Platform access denied for this account",
+            }).toString();
+            return NextResponse.redirect(
+              `${origin}/auth/auth-code-error#${hash}`,
             );
           } else if (apiError.status >= 500) {
             // Server/database errors

@@ -24,7 +24,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -55,6 +55,12 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
+from backend.data.invited_user import (
+    check_invite_eligibility,
+    delete_auth_user,
+    get_or_activate_user,
+    is_internal_email,
+)
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -69,8 +75,8 @@ from backend.data.onboarding import (
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.redis_client import get_redis_async
 from backend.data.user import (
-    get_or_create_user,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
@@ -91,7 +97,11 @@ from backend.monitoring.instrumentation import (
 from backend.util.cache import cached
 from backend.util.clients import get_scheduler_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.exceptions import GraphValidationError, NotFoundError
+from backend.util.exceptions import (
+    GraphValidationError,
+    NotAuthorizedError,
+    NotFoundError,
+)
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.json import dumps
 from backend.util.settings import Settings
@@ -127,6 +137,70 @@ v1_router = APIRouter()
 
 
 _tally_background_tasks: set[asyncio.Task] = set()
+_CLEANUP_ORPHANED_AUTH_USER_HEADER = "X-Cleanup-Orphaned-Auth-User"
+
+
+class CheckInviteRequest(BaseModel):
+    email: EmailStr
+
+
+class CheckInviteResponse(BaseModel):
+    allowed: bool
+
+
+_CHECK_INVITE_RATE_LIMIT = 10  # requests
+_CHECK_INVITE_RATE_WINDOW = 60  # seconds
+
+
+@v1_router.post(
+    "/auth/check-invite",
+    summary="Check if an email is allowed to sign up",
+    tags=["auth"],
+)
+async def check_invite_route(
+    http_request: Request,
+    request: CheckInviteRequest,
+) -> CheckInviteResponse:
+    """Check if an email is allowed to sign up (no auth required).
+
+    Called by the frontend before creating a Supabase auth user to prevent
+    orphaned accounts when the invite gate is enabled.
+    """
+    client_ip = (
+        http_request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+        or http_request.headers.get("x-real-ip", "")
+        or (http_request.client.host if http_request.client else "unknown")
+    )
+    rate_key = f"rate:check-invite:{client_ip}"
+    try:
+        redis = await get_redis_async()
+        # Use a pipeline so that incr + expire are sent atomically.
+        # This prevents the key from persisting indefinitely when expire fails
+        # after a successful incr (which would permanently block the IP once
+        # the count exceeds the limit).
+        # NOTE: pipeline command methods (incr, expire) are NOT awaitable —
+        # they queue the command and return the pipeline. Only execute() is
+        # awaited, which flushes all queued commands in a single round-trip.
+        pipe = redis.pipeline()
+        pipe.incr(rate_key)
+        pipe.expire(rate_key, _CHECK_INVITE_RATE_WINDOW)
+        results = await pipe.execute()
+        count = results[0]
+        if count > _CHECK_INVITE_RATE_LIMIT:
+            raise HTTPException(status_code=429, detail="Too many requests")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.debug("Rate limit check failed for check-invite, failing open")
+
+    if not settings.config.enable_invite_gate:
+        return CheckInviteResponse(allowed=True)
+
+    if is_internal_email(request.email):
+        return CheckInviteResponse(allowed=True)
+
+    allowed = await check_invite_eligibility(request.email)
+    return CheckInviteResponse(allowed=allowed)
 
 
 @v1_router.post(
@@ -135,13 +209,27 @@ _tally_background_tasks: set[asyncio.Task] = set()
     tags=["auth"],
     dependencies=[Security(requires_user)],
 )
-async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_create_user(user_data)
+async def get_or_create_user_route(
+    request: Request,
+    user_data: dict = Security(get_jwt_payload),
+):
+    try:
+        user = await get_or_activate_user(user_data)
+    except NotAuthorizedError:
+        if request.headers.get(_CLEANUP_ORPHANED_AUTH_USER_HEADER) == "1":
+            auth_user_id = user_data.get("sub")
+            if auth_user_id:
+                try:
+                    await delete_auth_user(auth_user_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to delete denied auth user %s during activation cleanup",
+                        auth_user_id,
+                    )
+        raise
 
-    # Fire-and-forget: populate business understanding from Tally form.
-    # We use created_at proximity instead of an is_new flag because
-    # get_or_create_user is cached — a separate is_new return value would be
-    # unreliable on repeated calls within the cache TTL.
+    # Fire-and-forget: backfill Tally understanding when invite pre-seeding did
+    # not produce a stored result before first activation.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
     if age_seconds < 30:
         try:
@@ -165,7 +253,8 @@ async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     dependencies=[Security(requires_user)],
 )
 async def update_user_email_route(
-    user_id: Annotated[str, Security(get_user_id)], email: str = Body(...)
+    user_id: Annotated[str, Security(get_user_id)],
+    email: str = Body(...),
 ) -> dict[str, str]:
     await update_user_email(user_id, email)
 
@@ -179,10 +268,16 @@ async def update_user_email_route(
     dependencies=[Security(requires_user)],
 )
 async def get_user_timezone_route(
-    user_data: dict = Security(get_jwt_payload),
+    user_id: Annotated[str, Security(get_user_id)],
 ) -> TimezoneResponse:
     """Get user timezone setting."""
-    user = await get_or_create_user(user_data)
+    try:
+        user = await get_user_by_id(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="User not found. Please complete activation via /auth/user first.",
+        )
     return TimezoneResponse(timezone=user.timezone)
 
 
@@ -193,7 +288,8 @@ async def get_user_timezone_route(
     dependencies=[Security(requires_user)],
 )
 async def update_user_timezone_route(
-    user_id: Annotated[str, Security(get_user_id)], request: UpdateTimezoneRequest
+    user_id: Annotated[str, Security(get_user_id)],
+    request: UpdateTimezoneRequest,
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))

@@ -9,15 +9,26 @@ import pytest
 import pytest_mock
 import starlette.datastructures
 from fastapi import HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from pytest_snapshot.plugin import Snapshot
 
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.util.exceptions import NotAuthorizedError
 
 from .v1 import upload_file, v1_router
 
 app = fastapi.FastAPI()
 app.include_router(v1_router)
+
+
+@app.exception_handler(NotAuthorizedError)
+async def not_authorized_error_handler(
+    _request: fastapi.Request,
+    exc: NotAuthorizedError,
+):
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
 
 client = fastapi.testclient.TestClient(app)
 
@@ -33,6 +44,102 @@ def setup_app_auth(mock_jwt_user, setup_test_user):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
+
+
+# check_invite_route tests
+
+_RATE_LIMIT_PATCH = "backend.api.features.v1.get_redis_async"
+
+
+def _make_redis_mock(count: int = 1) -> AsyncMock:
+    """Return a mock Redis client that reports `count` for the rate-limit key.
+
+    The route uses a pipeline where incr/expire are synchronous (they queue
+    commands and return the pipeline) and only execute() is awaited.
+    """
+    mock_pipe = Mock()
+    mock_pipe.incr = Mock(return_value=mock_pipe)
+    mock_pipe.expire = Mock(return_value=mock_pipe)
+    mock_pipe.execute = AsyncMock(return_value=[count, True])
+
+    mock_redis = AsyncMock()
+    mock_redis.pipeline = Mock(return_value=mock_pipe)
+    return mock_redis
+
+
+def test_check_invite_gate_disabled(mocker: pytest_mock.MockFixture) -> None:
+    """When enable_invite_gate is False every email is allowed."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=False)),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "anyone@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True}
+
+
+def test_check_invite_internal_email_bypasses_gate(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """@agpt.co addresses bypass the gate even when it is enabled."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=True)),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "employee@agpt.co"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True}
+
+
+def test_check_invite_eligible_email(mocker: pytest_mock.MockFixture) -> None:
+    """An email with INVITED status is allowed when the gate is enabled."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=True)),
+    )
+    mocker.patch(
+        "backend.api.features.v1.check_invite_eligibility",
+        new=AsyncMock(return_value=True),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "invited@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": True}
+
+
+def test_check_invite_ineligible_email(mocker: pytest_mock.MockFixture) -> None:
+    """An email without an active invite is denied when the gate is enabled."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock())
+    mocker.patch(
+        "backend.api.features.v1.settings",
+        Mock(config=Mock(enable_invite_gate=True)),
+    )
+    mocker.patch(
+        "backend.api.features.v1.check_invite_eligibility",
+        new=AsyncMock(return_value=False),
+    )
+
+    response = client.post("/auth/check-invite", json={"email": "stranger@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"allowed": False}
+
+
+def test_check_invite_rate_limit_exceeded(mocker: pytest_mock.MockFixture) -> None:
+    """Requests beyond the per-IP rate limit receive HTTP 429."""
+    mocker.patch(_RATE_LIMIT_PATCH, return_value=_make_redis_mock(count=11))
+
+    response = client.post("/auth/check-invite", json={"email": "flood@example.com"})
+
+    assert response.status_code == 429
 
 
 # Auth endpoints tests
@@ -51,7 +158,7 @@ def test_get_or_create_user_route(
     }
 
     mocker.patch(
-        "backend.api.features.v1.get_or_create_user",
+        "backend.api.features.v1.get_or_activate_user",
         return_value=mock_user,
     )
 
@@ -64,6 +171,48 @@ def test_get_or_create_user_route(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_user",
     )
+
+
+def test_get_or_create_user_route_cleans_up_denied_auth_user(
+    mocker: pytest_mock.MockFixture,
+    test_user_id: str,
+) -> None:
+    mocker.patch(
+        "backend.api.features.v1.get_or_activate_user",
+        new=AsyncMock(side_effect=NotAuthorizedError("Access denied")),
+    )
+    delete_auth_user = mocker.patch(
+        "backend.api.features.v1.delete_auth_user",
+        new=AsyncMock(),
+    )
+
+    response = client.post(
+        "/auth/user",
+        headers={"X-Cleanup-Orphaned-Auth-User": "1"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Access denied"}
+    delete_auth_user.assert_awaited_once_with(test_user_id)
+
+
+def test_get_or_create_user_route_skips_cleanup_without_header(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.v1.get_or_activate_user",
+        new=AsyncMock(side_effect=NotAuthorizedError("Access denied")),
+    )
+    delete_auth_user = mocker.patch(
+        "backend.api.features.v1.delete_auth_user",
+        new=AsyncMock(),
+    )
+
+    response = client.post("/auth/user")
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Access denied"}
+    delete_auth_user.assert_not_awaited()
 
 
 def test_update_user_email_route(
