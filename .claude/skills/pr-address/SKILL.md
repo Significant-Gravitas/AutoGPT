@@ -31,9 +31,10 @@ gh api graphql -f query='
       reviewThreads(first: 100) {
         pageInfo { hasNextPage endCursor }
         nodes {
+          id
           isResolved
           path
-          comments(first: 50) {
+          comments(last: 1) {
             nodes { databaseId body author { login } createdAt }
           }
         }
@@ -45,7 +46,7 @@ gh api graphql -f query='
 
 If `pageInfo.hasNextPage` is true, fetch subsequent pages by adding `after: "<endCursor>"` to `reviewThreads(first: 100, after: "...")` and repeat until `hasNextPage` is false.
 
-**Filter to unresolved threads only** — skip any thread where `isResolved: true`. Within each unresolved thread, the comments are ordered oldest-first; act on the **last comment** (the reviewer's final ask).
+**Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
 
 ### 2. Top-level reviews — REST (MUST paginate)
 
@@ -139,7 +140,9 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 
 3. Check for new/changed comments (all three sources):
 
-   **Inline threads** — re-run the GraphQL query from "Fetch comments". Compare the set of unresolved thread IDs (`databaseId` of each thread's first comment) against your baseline. New unresolved threads or new replies on existing unresolved threads = action needed.
+   **Inline threads** — re-run the GraphQL query from "Fetch comments". For each unresolved thread, record `{thread_id, last_comment_databaseId}` as your baseline. On each poll, action is needed if:
+   - A new thread `id` appears that wasn't in the baseline (new thread), OR
+   - An existing thread's `last_comment_databaseId` has changed (new reply on existing thread)
 
    **Conversation comments:**
    ```bash
