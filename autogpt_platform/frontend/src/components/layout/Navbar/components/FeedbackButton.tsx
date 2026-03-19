@@ -11,7 +11,7 @@ export function FeedbackButton() {
   return (
     <button
       type="button"
-      className="group inline-flex backdrop-blur-md transition-[transform] duration-150 ease-out active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+      className="group inline-flex overflow-hidden rounded-full transition-[transform] duration-150 ease-out active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
       data-tally-open="3yx2L0"
       data-tally-emoji-text="👋"
       data-tally-emoji-animation="wave"
