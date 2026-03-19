@@ -65,16 +65,16 @@ BEGIN
     WHERE table_schema = 'auth' AND table_name = 'users'
   ) THEN
     INSERT INTO "User" (id, email, "updatedAt")
-    SELECT au.id, au.email, now()
+    SELECT au.id::text, au.email, now()
     FROM auth.users au
-    LEFT JOIN "User" pu ON pu.id = au.id
+    LEFT JOIN "User" pu ON pu.id = au.id::text
     WHERE pu.id IS NULL
     ON CONFLICT (id) DO NOTHING;
 
     INSERT INTO "Profile"
       ("userId", name, username, description, links, "avatarUrl", "updatedAt")
     SELECT
-      au.id,
+      au.id::text,
       COALESCE(NULLIF(split_part(au.email, '@', 1), ''), 'user'),
       generate_username(),
       'I''m new here',
@@ -82,7 +82,7 @@ BEGIN
       '',
       now()
     FROM auth.users au
-    LEFT JOIN "Profile" pp ON pp."userId" = au.id
+    LEFT JOIN "Profile" pp ON pp."userId" = au.id::text
     WHERE pp."userId" IS NULL
     ON CONFLICT ("userId") DO NOTHING;
   END IF;
