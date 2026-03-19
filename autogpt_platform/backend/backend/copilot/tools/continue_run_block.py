@@ -30,7 +30,7 @@ class ContinueRunBlockTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Resume block execution after human review approval. Pass the review_id."
+        return "Resume block execution after a run_block call returned review_required. Pass the review_id."
 
     @property
     def parameters(self) -> dict[str, Any]:
