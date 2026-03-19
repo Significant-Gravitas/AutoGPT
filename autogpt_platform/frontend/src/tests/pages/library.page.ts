@@ -118,8 +118,8 @@ export class LibraryPage extends BasePage {
       timeout: 5_000,
     });
 
-    // Click the "Upload agent" tab
-    await this.page.getByRole("tab", { name: "Upload agent" }).click();
+    // Click the "AutoGPT agent" tab
+    await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();
   }
 
   async closeUploadDialog(): Promise<void> {
