@@ -257,7 +257,7 @@ async def list_invited_users(
     page_size: int = 50,
     search: Optional[str] = None,
 ) -> tuple[list[InvitedUserRecord], int]:
-    where: dict = {}
+    where: prisma.types.InvitedUserWhereInput = {}
     if search:
         search = search.strip()
         where["OR"] = [
@@ -810,7 +810,7 @@ async def _mark_tally_seed_ready(
     invited_user_id: str,
     input_data: Optional[BusinessUnderstandingInput],
 ) -> None:
-    update_data: dict[str, object] = {
+    update_data: prisma.types.InvitedUserUpdateInput = {
         "tallyStatus": prisma.enums.TallyComputationStatus.READY,
         "tallyComputedAt": datetime.now(timezone.utc),
         "tallyError": None,
