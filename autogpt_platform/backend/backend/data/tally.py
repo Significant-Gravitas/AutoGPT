@@ -44,7 +44,7 @@ _LLM_RETRY_BASE_DELAY = 1.0
 _LLM_RETRY_MAX_DELAY = 10.0
 
 
-class TallyExtractionTimeoutError(asyncio.TimeoutError):
+class TallyExtractionTimeoutError(Exception):
     def __init__(self, *, attempts: int, timeout_seconds: float):
         self.attempts = attempts
         self.timeout_seconds = timeout_seconds
@@ -413,8 +413,7 @@ async def extract_business_understanding_from_tally(
             )
             await asyncio.sleep(delay)
 
-    if response is None:
-        raise RuntimeError("Tally extraction did not produce a response")
+    assert response is not None  # guaranteed: loop breaks on success or raises
 
     raw = response.choices[0].message.content or "{}"
     try:
