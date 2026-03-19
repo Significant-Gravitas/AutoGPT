@@ -327,8 +327,6 @@ class TestIsParallelContinuation:
 
     def test_mixed_text_and_tool_blocks_not_parallel(self):
         """AssistantMessage with text + tool blocks is NOT a parallel continuation."""
-        from unittest.mock import MagicMock
-
         from claude_agent_sdk import TextBlock
 
         msg = MagicMock(spec=AssistantMessage)
