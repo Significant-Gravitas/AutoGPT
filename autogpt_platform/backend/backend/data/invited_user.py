@@ -280,6 +280,7 @@ async def create_invited_user(
     name: Optional[str] = None,
     *,
     tally_mode: TallyMode = "default",
+    schedule_tally: bool = True,
 ) -> InvitedUserRecord:
     normalized_email = normalize_email(email)
     normalized_name = _normalize_name(name)
@@ -307,7 +308,8 @@ async def create_invited_user(
         )
     except UniqueViolationError:
         raise PreconditionFailed("An invited user with this email already exists")
-    schedule_invited_user_tally_precompute(invited_user.id, tally_mode=tally_mode)
+    if schedule_tally:
+        schedule_invited_user_tally_precompute(invited_user.id, tally_mode=tally_mode)
     return InvitedUserRecord.from_db(invited_user)
 
 
@@ -480,7 +482,9 @@ async def _create_bulk_invited_user(
     name: Optional[str],
 ) -> InvitedUserRecord:
     async with semaphore:
-        return await create_invited_user(email, name, tally_mode="bulk")
+        return await create_invited_user(
+            email, name, tally_mode="bulk", schedule_tally=False
+        )
 
 
 def _validate_bulk_invite_rows(
@@ -671,6 +675,15 @@ async def bulk_create_invited_users_from_file(
     ]
 
     results.sort(key=lambda r: r.row_number)
+
+    created_ids = [
+        r.invited_user.id
+        for r in creation_results
+        if r.status == "CREATED" and r.invited_user is not None
+    ]
+    if created_ids:
+        _schedule_bulk_tally_enrichment(created_ids)
+
     return BulkInvitedUsersResult(
         created_count=created_count,
         skipped_count=(
@@ -679,6 +692,21 @@ async def bulk_create_invited_users_from_file(
         error_count=validation_error_count + creation_error_count,
         results=results,
     )
+
+
+def _schedule_bulk_tally_enrichment(invited_user_ids: list[str]) -> None:
+    """Schedule a single background task that processes Tally enrichment serially."""
+
+    async def _run() -> None:
+        for invited_user_id in invited_user_ids:
+            try:
+                await _compute_invited_user_tally_seed(
+                    invited_user_id, tally_mode="bulk"
+                )
+            except Exception:
+                logger.exception("Bulk Tally enrichment failed for %s", invited_user_id)
+
+    asyncio.create_task(_run())
 
 
 async def _fetch_tally_submission_with_rate_limit(
