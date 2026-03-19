@@ -134,7 +134,7 @@ class RunAgentTool(BaseTool):
                 },
                 "schedule_name": {
                     "type": "string",
-                    "description": "Name for scheduled execution.",
+                    "description": "Name for scheduled execution. Providing this triggers scheduling mode (also requires cron).",
                 },
                 "cron": {
                     "type": "string",
