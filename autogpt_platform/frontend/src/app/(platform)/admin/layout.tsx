@@ -1,14 +1,7 @@
-"use client";
-
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import {
-  UsersIcon,
-  CurrencyDollarSimpleIcon,
-  UserPlusIcon,
-  MagnifyingGlassIcon,
-  FileTextIcon,
-  SlidersHorizontalIcon,
-} from "@phosphor-icons/react";
+import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+
+import { IconSliders } from "@/components/__legacy__/ui/icons";
 
 const sidebarLinkGroups = [
   {
@@ -16,32 +9,27 @@ const sidebarLinkGroups = [
       {
         text: "Marketplace Management",
         href: "/admin/marketplace",
-        icon: <UsersIcon size={24} />,
+        icon: <Users className="h-6 w-6" />,
       },
       {
         text: "User Spending",
         href: "/admin/spending",
-        icon: <CurrencyDollarSimpleIcon size={24} />,
-      },
-      {
-        text: "Beta Invites",
-        href: "/admin/users",
-        icon: <UserPlusIcon size={24} />,
+        icon: <DollarSign className="h-6 w-6" />,
       },
       {
         text: "User Impersonation",
         href: "/admin/impersonation",
-        icon: <MagnifyingGlassIcon size={24} />,
+        icon: <UserSearch className="h-6 w-6" />,
       },
       {
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
-        icon: <FileTextIcon size={24} />,
+        icon: <FileText className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",
         href: "/admin/settings",
-        icon: <SlidersHorizontalIcon size={24} />,
+        icon: <IconSliders className="h-6 w-6" />,
       },
     ],
   },
