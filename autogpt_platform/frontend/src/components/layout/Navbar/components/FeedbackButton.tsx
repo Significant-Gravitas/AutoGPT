@@ -37,7 +37,7 @@ export function FeedbackButton() {
         transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
         style={{
           background:
-            "conic-gradient(from 0deg, #818cf8, #c7d2fe, #a5b4fc, #6366f1, #c7d2fe, #818cf8)",
+            "conic-gradient(from 0deg, #818cf8, #a5b4fc, #6366f1, #7c3aed, #818cf8, #a5b4fc, #6366f1, #818cf8)",
         }}
       />
 

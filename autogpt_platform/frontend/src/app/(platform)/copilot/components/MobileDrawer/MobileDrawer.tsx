@@ -11,7 +11,6 @@ import {
   SpinnerGapIcon,
   X,
 } from "@phosphor-icons/react";
-import { AnimatePresence, motion } from "framer-motion";
 import { Drawer } from "vaul";
 import { useCopilotUIStore } from "../../store";
 import { PulseLoader } from "../PulseLoader/PulseLoader";
@@ -105,27 +104,19 @@ export function MobileDrawer({
                 </Button>
               </div>
             </div>
-            <AnimatePresence>
-              {currentSessionId ? (
-                <motion.div
-                  className="mt-2"
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+            {currentSessionId ? (
+              <div className="mt-2">
+                <Button
+                  variant="primary"
+                  size="small"
+                  onClick={onNewChat}
+                  className="w-full"
+                  leftIcon={<PlusIcon width="1rem" height="1rem" />}
                 >
-                  <Button
-                    variant="primary"
-                    size="small"
-                    onClick={onNewChat}
-                    className="w-full"
-                    leftIcon={<PlusIcon width="1rem" height="1rem" />}
-                  >
-                    New Chat
-                  </Button>
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
+                  New Chat
+                </Button>
+              </div>
+            ) : null}
           </div>
           <div
             className={cn(
