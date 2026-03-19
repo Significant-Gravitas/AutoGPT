@@ -170,7 +170,8 @@ class ListFoldersTool(BaseTool):
     def description(self) -> str:
         return (
             "List library folders. Omit parent_id for full tree. "
-            "Set include_agents=true when user asks about agents in folders."
+            "Set include_agents=true when user asks about agents, wants to see "
+            "what's in their folders, or mentions agents alongside folders."
         )
 
     @property
