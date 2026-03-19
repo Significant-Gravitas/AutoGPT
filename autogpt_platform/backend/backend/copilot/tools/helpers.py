@@ -356,13 +356,14 @@ async def prepare_block_for_execution(
                 session_id=session_id,
             )
 
+    credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+
     if missing_credentials:
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
         missing_creds_list = list(missing_creds_dict.values())
-        credentials_fields_tmp = set(block.input_schema.get_credentials_fields().keys())
         return SetupRequirementsResponse(
             message=(
                 f"Block '{block.name}' requires credentials that are not configured. "
@@ -380,7 +381,7 @@ async def prepare_block_for_execution(
                 requirements={
                     "credentials": missing_creds_list,
                     "inputs": get_inputs_from_schema(
-                        input_schema, exclude_fields=credentials_fields_tmp
+                        input_schema, exclude_fields=credentials_fields
                     ),
                     "execution_modes": ["immediate"],
                 },
@@ -388,8 +389,6 @@ async def prepare_block_for_execution(
             graph_id=None,
             graph_version=None,
         )
-
-    credentials_fields = set(block.input_schema.get_credentials_fields().keys())
     required_keys = set(input_schema.get("required", []))
     required_non_credential_keys = required_keys - credentials_fields
     provided_input_keys = set(input_data.keys()) - credentials_fields
