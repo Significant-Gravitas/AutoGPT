@@ -9,7 +9,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import graph_db, library_db, user_db
-from backend.data.execution import ExecutionContext, ExecutionStatus
+from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -71,7 +71,6 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
-    dry_run: bool = False
 
     @field_validator(
         "username_agent_slug",
@@ -150,14 +149,6 @@ class RunAgentTool(BaseTool):
                     "description": "Max seconds to wait for completion (0-300).",
                     "minimum": 0,
                     "maximum": 300,
-                },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": (
-                        "When true, simulates agent execution using an LLM without making any "
-                        "real API calls. Each block in the graph is LLM-simulated. "
-                        "Default: false."
-                    ),
                 },
             },
             "required": [],
@@ -354,7 +345,6 @@ class RunAgentTool(BaseTool):
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
-                    dry_run=params.dry_run,
                 )
 
         except NotFoundError as e:
@@ -439,7 +429,6 @@ class RunAgentTool(BaseTool):
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
         wait_for_result: int = 0,
-        dry_run: bool = False,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
@@ -455,13 +444,11 @@ class RunAgentTool(BaseTool):
         library_agent = await get_or_create_library_agent(graph, user_id)
 
         # Execute
-        execution_context = ExecutionContext(dry_run=dry_run) if dry_run else None
         execution = await execution_utils.add_graph_execution(
             graph_id=library_agent.graph_id,
             user_id=user_id,
             inputs=inputs,
             graph_credentials_inputs=graph_credentials,
-            execution_context=execution_context,
         )
 
         # Track successful run

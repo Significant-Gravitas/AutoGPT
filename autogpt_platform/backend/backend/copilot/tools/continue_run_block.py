@@ -132,6 +132,7 @@ class ContinueRunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
+        # dry_run=False: post-approval execution always runs for real.
         result = await execute_block(
             block=block,
             block_id=block_id,
@@ -140,6 +141,7 @@ class ContinueRunBlockTool(BaseTool):
             session_id=session_id,
             node_exec_id=review_id,
             matched_credentials=matched_creds,
+            dry_run=False,
         )
 
         # Delete review record after successful execution (one-time use)

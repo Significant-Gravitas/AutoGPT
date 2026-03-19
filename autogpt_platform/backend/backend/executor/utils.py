@@ -902,10 +902,8 @@ async def add_graph_execution(
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
-    # Generate execution context if it's not provided (or only partially provided)
-    # Preserve caller-supplied flags (e.g. dry_run) when building the full context.
-    _incoming_dry_run = execution_context.dry_run if execution_context else False
-    if execution_context is None or not execution_context.graph_exec_id:
+    # Generate execution context if it's not provided
+    if execution_context is None:
         user = await udb.get_user_by_id(user_id)
         settings = await gdb.get_graph_settings(user_id=user_id, graph_id=graph_id)
         workspace = await wdb.get_or_create_workspace(user_id)
@@ -919,7 +917,6 @@ async def add_graph_execution(
             # Safety settings
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-            dry_run=_incoming_dry_run,
             # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"

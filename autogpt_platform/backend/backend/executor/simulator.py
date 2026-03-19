@@ -13,13 +13,25 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 
 import json
 import logging
-from typing import Any, AsyncGenerator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "openai/gpt-4o-mini"
+
+# Use the same fast/cheap model the copilot uses for non-primary tasks.
+# Overridable via ChatConfig.title_model if ChatConfig is available.
+def _simulator_model() -> str:
+    try:
+        from backend.copilot.config import ChatConfig  # noqa: PLC0415
+
+        return ChatConfig().title_model
+    except Exception:
+        return "openai/gpt-4o-mini"
+
+
 _TEMPERATURE = 0.2
 _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
@@ -92,7 +104,7 @@ Output pin names you MUST include: {json.dumps(output_properties)}
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
-) -> AsyncGenerator[tuple[str, Any], None]:
+) -> AsyncIterator[tuple[str, Any]]:
     """Simulate block execution using an LLM.
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
@@ -116,7 +128,7 @@ async def simulate_block(
     for attempt in range(_MAX_JSON_RETRIES):
         try:
             response = await client.chat.completions.create(
-                model=_MODEL,
+                model=_simulator_model(),
                 temperature=_TEMPERATURE,
                 response_format={"type": "json_object"},
                 messages=[

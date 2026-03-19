@@ -69,7 +69,8 @@ async def execute_block(
     Returns:
         BlockOutputResponse on success, ErrorResponse on failure.
     """
-    # Dry-run path: simulate the block with an LLM, no real execution
+    # Dry-run path: simulate the block with an LLM, no real execution.
+    # HITL review is intentionally skipped — no real execution occurs.
     if dry_run:
         try:
             from backend.executor.simulator import simulate_block  # lazy import
