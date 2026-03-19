@@ -131,7 +131,7 @@ export function LibraryAgentList({
         />
       )}
 
-      <div>
+      <div className="pt-6">
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button
