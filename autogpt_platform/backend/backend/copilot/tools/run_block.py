@@ -95,7 +95,7 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-        logger.info(f"Executing block {block_id} for user {user_id}")
+        logger.info("Executing block %s for user %s", block_id, user_id)
 
         prep_or_err = await prepare_block_for_execution(
             block_id=block_id,

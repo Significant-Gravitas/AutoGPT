@@ -101,6 +101,30 @@ def set_execution_context(
     _tool_task_queues.set({})
 
 
+def cancel_pending_tool_tasks() -> None:
+    """Cancel all queued pre-launched tasks for the current execution context.
+
+    Call this when a stream attempt aborts (error, cancellation) to prevent
+    pre-launched tasks from continuing to execute against a rolled-back session.
+    Tasks that are already done are skipped; in-flight tasks are cancelled.
+    """
+    queues = _tool_task_queues.get()
+    if not queues:
+        return
+    for tool_name, queue in list(queues.items()):
+        cancelled = 0
+        while not queue.empty():
+            task = queue.get_nowait()
+            if not task.done():
+                task.cancel()
+                cancelled += 1
+        if cancelled:
+            logger.debug(
+                "Cancelled %d pre-launched task(s) for tool '%s'", cancelled, tool_name
+            )
+    queues.clear()
+
+
 def pop_pending_tool_output(tool_name: str) -> str | None:
     """Pop and return the oldest stashed output for *tool_name*.
 
@@ -207,8 +231,9 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     if queues is None:
         return
 
-    # Strip MCP prefix (mcp__<server>__<tool>) to get the bare tool name.
-    bare_name = tool_name.split("__")[-1] if "__" in tool_name else tool_name
+    # Strip the MCP server prefix (e.g. "mcp__copilot__") to get the bare tool name.
+    # Use removeprefix so tool names that themselves contain "__" are handled correctly.
+    bare_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
     base_tool = TOOL_REGISTRY.get(bare_name)
     if base_tool is None:
@@ -218,7 +243,47 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     if session is None:
         return
 
+    # Expand @@agptfile: references before launching the task.
+    # The _truncating wrapper (which normally handles expansion) runs AFTER
+    # pre_launch_tool_call — the pre-launched task would otherwise receive raw
+    # @@agptfile: tokens and fail to resolve them inside _execute_tool_sync.
+    input_schema: dict[str, Any] | None = None
+    try:
+        schema_method = getattr(
+            getattr(base_tool, "input_schema", None), "jsonschema", None
+        )
+        if callable(schema_method):
+            candidate = schema_method()
+            if isinstance(candidate, dict):
+                input_schema = candidate
+    except Exception:
+        pass  # schema generation failed — proceed without schema-aware expansion
+    try:
+        args = await expand_file_refs_in_args(
+            args, user_id, session, input_schema=input_schema
+        )
+    except FileRefExpansionError as exc:
+        logger.warning(
+            "pre_launch_tool_call: @@agptfile expansion failed for %s: %s — skipping pre-launch",
+            bare_name,
+            exc,
+        )
+        return
+
     task = asyncio.create_task(_execute_tool_sync(base_tool, user_id, session, args))
+    # Log unhandled exceptions so "Task exception was never retrieved" warnings
+    # do not pollute stderr when a task is pre-launched but never dequeued.
+    task.add_done_callback(
+        lambda t, name=bare_name: (
+            logger.warning(
+                "Pre-launched task for %s raised unhandled: %s",
+                name,
+                t.exception(),
+            )
+            if not t.cancelled() and t.exception()
+            else None
+        )
+    )
 
     if bare_name not in queues:
         queues[bare_name] = asyncio.Queue()
@@ -284,11 +349,19 @@ def create_tool_handler(base_tool: BaseTool):
                 try:
                     return await task
                 except asyncio.CancelledError:
-                    logger.warning("Pre-launched tool %s was cancelled", base_tool.name)
-                    return _mcp_error(f"{base_tool.name} task was cancelled")
+                    # Re-raise: CancelledError may be propagating from the outer
+                    # streaming loop being cancelled — swallowing it would mask
+                    # the cancellation and prevent proper cleanup.
+                    logger.warning(
+                        "Pre-launched tool %s was cancelled — re-raising",
+                        base_tool.name,
+                    )
+                    raise
                 except Exception as e:
                     logger.error(
-                        f"Pre-launched tool {base_tool.name} failed: {e}",
+                        "Pre-launched tool %s failed: %s",
+                        base_tool.name,
+                        e,
                         exc_info=True,
                     )
                     return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
@@ -302,7 +375,9 @@ def create_tool_handler(base_tool: BaseTool):
         try:
             return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:
-            logger.error(f"Error executing tool {base_tool.name}: {e}", exc_info=True)
+            logger.error(
+                "Error executing tool %s: %s", base_tool.name, e, exc_info=True
+            )
             return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
 
     return tool_handler

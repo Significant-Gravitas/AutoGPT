@@ -77,6 +77,7 @@ from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .subscription import validate_subscription as _validate_claude_code_subscription
 from .tool_adapter import (
+    cancel_pending_tool_tasks,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
@@ -1142,13 +1143,21 @@ async def _run_stream_attempt(
                     ended_with_stream_error = True
                     break
 
-            # Parallel tool execution: when the SDK sends an
-            # AssistantMessage containing ToolUseBlocks, pre-launch
-            # all tool executions as asyncio.Tasks immediately.
-            # The MCP handlers will await the already-running tasks
-            # instead of executing fresh, making all tools in a
-            # single assistant turn run concurrently.
-            if isinstance(sdk_msg, AssistantMessage):
+            # Detect parallel continuation messages first: an AssistantMessage
+            # consisting solely of ToolUseBlocks marks a continuation of parallel
+            # calls already in flight.  Pre-launching must be skipped for these
+            # because the MCP handlers already hold their queued tasks from the
+            # initial pre-launch; enqueueing again would create unconsumed duplicates.
+            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
+                isinstance(b, ToolUseBlock) for b in sdk_msg.content
+            )
+
+            # Parallel tool execution: when the SDK sends an AssistantMessage
+            # containing ToolUseBlocks (but NOT a continuation message), pre-launch
+            # all tool executions as asyncio.Tasks immediately.  The MCP handlers
+            # will await the already-running tasks instead of executing fresh,
+            # making all tools in a single assistant turn run concurrently.
+            if isinstance(sdk_msg, AssistantMessage) and not is_parallel_continuation:
                 for block in sdk_msg.content:
                     if isinstance(block, ToolUseBlock):
                         await pre_launch_tool_call(block.name, block.input)
@@ -1166,9 +1175,6 @@ async def _run_stream_attempt(
             # AssistantMessages (each containing only
             # ToolUseBlocks), we must NOT wait/flush — the prior
             # tools are still executing concurrently.
-            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
-                isinstance(b, ToolUseBlock) for b in sdk_msg.content
-            )
             if (
                 state.adapter.has_unresolved_tool_calls
                 and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
@@ -1789,6 +1795,9 @@ async def stream_chat_completion_sdk(
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
+                # Cancel any pre-launched tasks so they don't continue executing
+                # against a rolled-back or abandoned session.
+                cancel_pending_tool_tasks()
                 raise
             except _TransientErrorHandled:
                 # _run_stream_attempt already yielded a StreamError and
@@ -1809,6 +1818,8 @@ async def stream_chat_completion_sdk(
                 # and is persisted by the finally block (see #2947655365).
                 _append_error_marker(session, FRIENDLY_TRANSIENT_MSG, retryable=True)
                 ended_with_stream_error = True
+                # Cancel any pre-launched tasks from the failed attempt.
+                cancel_pending_tool_tasks()
                 break
             except Exception as e:
                 stream_err = e
@@ -1825,6 +1836,9 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # Cancel any pre-launched tasks from the failed attempt so they
+                # don't continue executing against the rolled-back session.
+                cancel_pending_tool_tasks()
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
