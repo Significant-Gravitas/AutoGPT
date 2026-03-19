@@ -1789,6 +1789,10 @@ async def stream_chat_completion_sdk(
                     if not isinstance(event, StreamHeartbeat):
                         events_yielded += 1
                     yield event
+                # Cancel any pre-launched tasks that were never dispatched
+                # by the SDK (e.g. edge-case SDK behaviour changes). Symmetric
+                # with the three error-path cancel_pending_tool_tasks() calls.
+                cancel_pending_tool_tasks()
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
                 logger.warning(
