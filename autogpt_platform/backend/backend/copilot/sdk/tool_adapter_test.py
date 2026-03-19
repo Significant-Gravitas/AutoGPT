@@ -555,7 +555,7 @@ class TestAllParallelToolsPrelaunchedIndependently:
         mock_tool = _make_mock_tool("bash_exec")
         mock_tool.execute = AsyncMock(side_effect=slow_execute)
 
-        start = asyncio.get_event_loop().time()
+        start = asyncio.get_running_loop().time()
         with patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
             {"bash_exec": mock_tool},
@@ -566,7 +566,7 @@ class TestAllParallelToolsPrelaunchedIndependently:
             # Allow all tasks to run concurrently
             await asyncio.sleep(PER_TASK_S * 2)
 
-        elapsed = asyncio.get_event_loop().time() - start
+        elapsed = asyncio.get_running_loop().time() - start
 
         assert mock_tool.execute.await_count == N
         assert len(finished) == N
