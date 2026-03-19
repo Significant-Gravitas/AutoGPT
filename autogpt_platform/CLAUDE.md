@@ -73,7 +73,7 @@ AutoGPT Platform is a monorepo containing:
 Use `/pr-review` to review a PR or `/pr-address` to address comments.
 
 When fetching comments manually:
-- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` — top-level reviews
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate` — top-level reviews
 - `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate` — inline review comments (always paginate to avoid missing comments beyond page 1)
 - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` — PR conversation comments
 
