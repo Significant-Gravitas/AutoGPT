@@ -381,16 +381,13 @@ def create_tool_handler(base_tool: BaseTool):
                     )
                     return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
 
-                # Stash the output so the response adapter can forward the
-                # middle-out truncated version to the frontend. Pre-launched
-                # tasks bypass the _truncating wrapper (which normally stashes),
-                # so we must stash here after the task result is retrieved.
-                truncated = truncate(result, _MCP_MAX_CHARS)
-                if not truncated.get("isError"):
-                    text = _text_from_mcp_result(truncated)
-                    if text:
-                        stash_pending_tool_output(base_tool.name, text)
-                return truncated
+                # Pre-truncate the result so the _truncating wrapper (which
+                # wraps this handler) receives an already-within-budget value.
+                # _truncating handles stashing — we must NOT stash here or the
+                # output will be appended twice to the FIFO queue and
+                # pop_pending_tool_output would return a duplicate entry on the
+                # second call for the same tool.
+                return truncate(result, _MCP_MAX_CHARS)
 
         # No pre-launched task — execute directly (fallback for non-parallel calls).
         user_id, session = get_execution_context()

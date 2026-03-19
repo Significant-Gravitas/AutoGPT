@@ -335,11 +335,16 @@ class TestCreateToolHandlerParallel:
         mock_tool.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_handler_stashes_output_for_prelaunched_task(self):
-        """Pre-launched task result is stashed so response adapter can forward it.
+    async def test_handler_does_not_double_stash_for_prelaunched_task(self):
+        """Pre-launched task result must NOT be stashed by tool_handler directly.
 
-        The _truncating wrapper is bypassed for pre-launched tasks, so the handler
-        must call stash_pending_tool_output itself after awaiting the task.
+        The _truncating wrapper wraps tool_handler and handles stashing after
+        tool_handler returns.  If tool_handler also stashed, the output would be
+        appended twice to the FIFO queue and pop_pending_tool_output would return
+        a duplicate on the second call.
+
+        This test calls tool_handler directly (without _truncating) and asserts
+        that nothing was stashed — confirming stashing is deferred to _truncating.
         """
         mock_tool = _make_mock_tool("run_block", output="stash-me")
 
@@ -354,10 +359,14 @@ class TestCreateToolHandlerParallel:
             result = await handler({"block_id": "b1"})
 
         assert result["isError"] is False
-        # Output must be stashed so pop_pending_tool_output returns it
-        stashed = pop_pending_tool_output("run_block")
-        assert stashed is not None, "Expected stashed output for pre-launched tool"
-        assert "stash-me" in stashed
+        assert "stash-me" in result["content"][0]["text"]
+        # tool_handler must NOT stash — _truncating (which wraps handler) does it.
+        # Calling pop here (without going through _truncating) should return None.
+        not_stashed = pop_pending_tool_output("run_block")
+        assert not_stashed is None, (
+            "tool_handler must not stash directly — _truncating handles stashing "
+            "to prevent double-stash in the FIFO queue"
+        )
 
     @pytest.mark.asyncio
     async def test_handler_falls_back_when_queue_empty(self):
