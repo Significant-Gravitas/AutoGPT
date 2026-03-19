@@ -1180,7 +1180,7 @@ async def _run_stream_attempt(
                 and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
                 and not is_parallel_continuation
             ):
-                if await wait_for_stash(timeout=2.0):
+                if await wait_for_stash():
                     await asyncio.sleep(0)
                 else:
                     logger.warning(

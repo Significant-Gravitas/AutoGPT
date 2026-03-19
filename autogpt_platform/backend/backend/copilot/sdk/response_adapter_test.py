@@ -533,7 +533,7 @@ async def test_wait_for_stash_signaled():
         _stash("WebSearch", "result data")
 
     asyncio.create_task(delayed_stash())
-    result = await wait_for_stash(timeout=1.0)
+    result = await wait_for_stash(interval=0.05, max_wait=1.0)
 
     assert result is True
     pto = _pto.get()
@@ -552,7 +552,7 @@ async def test_wait_for_stash_timeout():
     event = asyncio.Event()
     _stash_event.set(event)
 
-    result = await wait_for_stash(timeout=0.05)
+    result = await wait_for_stash(interval=0.02, max_wait=0.05)
     assert result is False
 
     # Cleanup
@@ -571,7 +571,7 @@ async def test_wait_for_stash_already_stashed():
     _stash("Read", "file contents")
     # Event is now set; wait_for_stash detects the fast path and returns
     # immediately without timing out.
-    result = await wait_for_stash(timeout=0.05)
+    result = await wait_for_stash(interval=0.02, max_wait=0.05)
     assert result is True
 
     # But the stash itself is populated

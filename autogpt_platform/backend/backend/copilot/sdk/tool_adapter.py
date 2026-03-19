@@ -179,7 +179,42 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
         event.set()
 
 
-async def wait_for_stash(timeout: float = 2.0) -> bool:
+async def _wait_event_with_retry(
+    event: asyncio.Event,
+    *,
+    interval: float = 0.2,
+    max_wait: float = 5.0,
+) -> bool:
+    """Wait for *event* to be set, retrying every *interval* seconds.
+
+    Returns ``True`` as soon as the event fires, ``False`` if *max_wait* is
+    exhausted without it being set.  Logs a debug line every retry so
+    production traces show exactly how long hooks are taking.
+    """
+    deadline = asyncio.get_event_loop().time() + max_wait
+    attempt = 0
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            return False
+        wait = min(interval, remaining)
+        try:
+            async with asyncio.timeout(wait):
+                await event.wait()
+            return True
+        except TimeoutError:
+            attempt += 1
+            logger.debug(
+                "wait_for_stash: hook not yet signalled after %.1fs (attempt %d)",
+                attempt * interval,
+                attempt,
+            )
+
+
+async def wait_for_stash(
+    interval: float = 0.2,
+    max_wait: float = 5.0,
+) -> bool:
     """Wait for a PostToolUse hook to stash tool output.
 
     The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
@@ -188,12 +223,9 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
     by waiting on the ``_stash_event``, which is signaled by
     :func:`stash_pending_tool_output`.
 
-    Returns ``True`` if a stash signal was received, ``False`` on timeout.
-
-    The 2.0 s default was chosen based on production metrics: the original
-    0.5 s caused frequent timeouts under load (parallel tool calls, large
-    outputs).  2.0 s gives a comfortable margin while still failing fast
-    when the hook genuinely will not fire.
+    Retries every *interval* seconds up to *max_wait* total, logging each
+    retry so slow hooks are visible in traces.  Returns ``True`` if the
+    stash signal was received, ``False`` if *max_wait* is exhausted.
     """
     event = _stash_event.get(None)
     if event is None:
@@ -202,14 +234,13 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
     if event.is_set():
         event.clear()
         return True
-    # Slow path: wait for the hook to signal.
-    try:
-        async with asyncio.timeout(timeout):
-            await event.wait()
+    # Slow path: retry until the hook signals or deadline is hit.
+    signalled = await _wait_event_with_retry(
+        event, interval=interval, max_wait=max_wait
+    )
+    if signalled:
         event.clear()
-        return True
-    except TimeoutError:
-        return False
+    return signalled
 
 
 async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
