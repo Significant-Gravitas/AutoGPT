@@ -140,7 +140,8 @@ def _build_storage_supplement(
 
 ### Shell & filesystem
 - Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
-- All file tools share the same filesystem. Use relative or absolute paths under this dir.
+- SDK file tools (Read/Write/Edit/Glob/Grep) and `bash_exec` share one filesystem — use relative or absolute paths under this dir.
+- `read_workspace_file`/`write_workspace_file` operate on **persistent cloud workspace storage** (separate from the working dir).
 
 ### Storage — important
 1. **{storage_system_1_name}** (`{working_dir}`):
