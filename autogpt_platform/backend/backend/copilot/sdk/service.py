@@ -1158,8 +1158,10 @@ async def _run_stream_attempt(
             # ToolUseBlocks is a parallel tool call (not a text+tool mixed message).
             # Used only to skip the wait_for_stash flush below — there is no
             # completed tool output to stash yet when more tool calls are in flight.
-            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
-                isinstance(b, ToolUseBlock) for b in sdk_msg.content
+            is_parallel_continuation = (
+                isinstance(sdk_msg, AssistantMessage)
+                and bool(sdk_msg.content)
+                and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
             )
 
             # Race-condition fix: SDK hooks (PostToolUse) are

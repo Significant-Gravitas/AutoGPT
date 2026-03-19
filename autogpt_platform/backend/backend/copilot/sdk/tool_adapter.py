@@ -352,16 +352,19 @@ def create_tool_handler(base_tool: BaseTool):
                 # if the SDK dispatches tool calls in a different order than the
                 # ToolUseBlocks appeared in the AssistantMessage (unlikely but
                 # could occur in future SDK versions or with SDK bugs).
-                if set(launch_args.keys()) != set(args.keys()):
+                # We compare full values (not just keys) so that two run_block
+                # calls with different block_id values are caught even though
+                # both have the same key set.
+                if launch_args != args:
                     logger.warning(
-                        "Pre-launched task for %s: arg keys mismatch "
+                        "Pre-launched task for %s: arg mismatch "
                         "(launch=%s, call=%s) — may return incorrect result",
                         base_tool.name,
-                        sorted(launch_args.keys()),
-                        sorted(args.keys()),
+                        launch_args,
+                        args,
                     )
                 try:
-                    return await task
+                    result = await task
                 except asyncio.CancelledError:
                     # Re-raise: CancelledError may be propagating from the outer
                     # streaming loop being cancelled — swallowing it would mask
@@ -379,6 +382,17 @@ def create_tool_handler(base_tool: BaseTool):
                         exc_info=True,
                     )
                     return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+
+                # Stash the output so the response adapter can forward the
+                # middle-out truncated version to the frontend. Pre-launched
+                # tasks bypass the _truncating wrapper (which normally stashes),
+                # so we must stash here after the task result is retrieved.
+                truncated = truncate(result, _MCP_MAX_CHARS)
+                if not truncated.get("isError"):
+                    text = _text_from_mcp_result(truncated)
+                    if text:
+                        stash_pending_tool_output(base_tool.name, text)
+                return truncated
 
         # No pre-launched task — execute directly (fallback for non-parallel calls).
         user_id, session = get_execution_context()

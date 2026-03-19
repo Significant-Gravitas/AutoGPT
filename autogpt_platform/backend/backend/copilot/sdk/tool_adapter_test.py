@@ -335,6 +335,31 @@ class TestCreateToolHandlerParallel:
         mock_tool.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_handler_stashes_output_for_prelaunched_task(self):
+        """Pre-launched task result is stashed so response adapter can forward it.
+
+        The _truncating wrapper is bypassed for pre-launched tasks, so the handler
+        must call stash_pending_tool_output itself after awaiting the task.
+        """
+        mock_tool = _make_mock_tool("run_block", output="stash-me")
+
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": mock_tool},
+        ):
+            await pre_launch_tool_call("run_block", {"block_id": "b1"})
+            await asyncio.sleep(0)
+
+            handler = create_tool_handler(mock_tool)
+            result = await handler({"block_id": "b1"})
+
+        assert result["isError"] is False
+        # Output must be stashed so pop_pending_tool_output returns it
+        stashed = pop_pending_tool_output("run_block")
+        assert stashed is not None, "Expected stashed output for pre-launched tool"
+        assert "stash-me" in stashed
+
+    @pytest.mark.asyncio
     async def test_handler_falls_back_when_queue_empty(self):
         """When no pre-launched task exists, handler executes directly."""
         mock_tool = _make_mock_tool("run_block", output="direct result")
