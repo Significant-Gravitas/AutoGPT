@@ -186,13 +186,17 @@ export const AgentInfo = ({
               {user && (
                 <Button
                   variant="primary"
-                  className="min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+                  className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
                   data-testid="agent-add-library-button"
                   disabled={isAddingAgentToLibrary}
                   loading={isAddingAgentToLibrary}
                   leftIcon={
                     !isAddingAgentToLibrary && !isAgentAddedToLibrary ? (
-                      <PlusIcon size={16} weight="bold" />
+                      <PlusIcon
+                        size={16}
+                        weight="bold"
+                        className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
+                      />
                     ) : undefined
                   }
                   onClick={() =>
