@@ -140,11 +140,12 @@ async def simulate_block(
 
     system_prompt, user_prompt = build_simulation_prompt(block, input_data)
 
+    model = _simulator_model()
     last_error: Exception | None = None
     for attempt in range(_MAX_JSON_RETRIES):
         try:
             response = await client.chat.completions.create(
-                model=_simulator_model(),
+                model=model,
                 temperature=_TEMPERATURE,
                 response_format={"type": "json_object"},
                 messages=[

@@ -78,6 +78,18 @@ async def execute_block(
             outputs: dict[str, list[Any]] = defaultdict(list)
             async for output_name, output_data in simulate_block(block, input_data):
                 outputs[output_name].append(output_data)
+            # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")
+            sim_error = outputs.get("error", [])
+            if (
+                sim_error
+                and isinstance(sim_error[0], str)
+                and sim_error[0].startswith("[SIMULATOR ERROR")
+            ):
+                return ErrorResponse(
+                    message=sim_error[0],
+                    error=sim_error[0],
+                    session_id=session_id,
+                )
             return BlockOutputResponse(
                 message=(
                     f"[DRY RUN] Block '{block.name}' simulated successfully "
