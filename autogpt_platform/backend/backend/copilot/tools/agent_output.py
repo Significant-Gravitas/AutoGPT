@@ -143,6 +143,8 @@ class AgentOutputTool(BaseTool):
                 "wait_if_running": {
                     "type": "integer",
                     "description": "Max seconds to wait if still running (0-300). Returns current state on timeout.",
+                    "minimum": 0,
+                    "maximum": 300,
                 },
             },
             "required": [],

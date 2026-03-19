@@ -147,6 +147,8 @@ class RunAgentTool(BaseTool):
                 "wait_for_result": {
                     "type": "integer",
                     "description": "Max seconds to wait for completion (0-300).",
+                    "minimum": 0,
+                    "maximum": 300,
                 },
             },
             "required": [],
