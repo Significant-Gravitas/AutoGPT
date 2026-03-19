@@ -22,12 +22,22 @@ async function fetchN8nWorkflowJson(url: string): Promise<string> {
   return JSON.stringify(workflow);
 }
 
+function decodeBase64Json(dataUrl: string): string {
+  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (!match) throw new Error("Could not read the uploaded file.");
+  const json = atob(match[1]);
+  JSON.parse(json); // validate — throws SyntaxError if invalid
+  return json;
+}
+
 async function uploadJsonAsFile(
   jsonString: string,
-  filename: string,
 ): Promise<{ fileId: string; fileName: string; mimeType: string }> {
-  const blob = new Blob([jsonString], { type: "application/json" });
-  const file = new File([blob], filename, { type: "application/json" });
+  const file = new File(
+    [new Blob([jsonString], { type: "application/json" })],
+    `workflow-${crypto.randomUUID()}.json`,
+    { type: "application/json" },
+  );
   const uploaded = await uploadFileDirect(file);
   return {
     fileId: uploaded.file_id,
@@ -58,57 +68,9 @@ export function useLibraryImportWorkflowDialog() {
   async function submitWithMode(mode: "url" | "file") {
     setIsSubmitting(true);
     try {
-      if (mode === "url" && urlValue) {
-        let jsonString: string;
-        try {
-          jsonString = await fetchN8nWorkflowJson(urlValue);
-        } catch (err) {
-          toast({
-            title: "Could not fetch workflow",
-            description:
-              err instanceof Error ? err.message : "Invalid n8n URL.",
-            variant: "destructive",
-          });
-          return;
-        }
-        const fileInfo = await uploadJsonAsFile(
-          jsonString,
-          `workflow-${crypto.randomUUID()}.json`,
-        );
-        setUrlValue("");
-        storeAndRedirect(fileInfo, router);
-        return;
-      }
-
-      if (mode === "file" && fileValue) {
-        const base64Match = fileValue.match(/^data:[^;]+;base64,(.+)$/);
-        if (!base64Match) {
-          toast({
-            title: "Invalid file",
-            description: "Could not read the uploaded file.",
-            variant: "destructive",
-          });
-          return;
-        }
-        let jsonString: string;
-        try {
-          jsonString = atob(base64Match[1]);
-          JSON.parse(jsonString);
-        } catch {
-          toast({
-            title: "Invalid JSON",
-            description: "The uploaded file is not valid JSON.",
-            variant: "destructive",
-          });
-          return;
-        }
-        const fileInfo = await uploadJsonAsFile(
-          jsonString,
-          `workflow-${crypto.randomUUID()}.json`,
-        );
-        setFileValue("");
-        storeAndRedirect(fileInfo, router);
-      }
+      const jsonString = await resolveJson(mode);
+      if (!jsonString) return;
+      storeAndRedirect(await uploadJsonAsFile(jsonString), router);
     } catch (err) {
       toast({
         title: "Upload failed",
@@ -118,6 +80,39 @@ export function useLibraryImportWorkflowDialog() {
       });
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function resolveJson(mode: "url" | "file"): Promise<string | null> {
+    if (mode === "url") {
+      try {
+        const json = await fetchN8nWorkflowJson(urlValue);
+        setUrlValue("");
+        return json;
+      } catch (err) {
+        toast({
+          title: "Could not fetch workflow",
+          description: err instanceof Error ? err.message : "Invalid n8n URL.",
+          variant: "destructive",
+        });
+        return null;
+      }
+    }
+
+    try {
+      const json = decodeBase64Json(fileValue);
+      setFileValue("");
+      return json;
+    } catch (err) {
+      const isParseError = err instanceof SyntaxError;
+      toast({
+        title: isParseError ? "Invalid JSON" : "Invalid file",
+        description: isParseError
+          ? "The uploaded file is not valid JSON."
+          : "Could not read the uploaded file.",
+        variant: "destructive",
+      });
+      return null;
     }
   }
 
