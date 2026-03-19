@@ -505,7 +505,7 @@ async def test_list_library_agents_sort_by_last_executed(mocker):
         return_value=mock_library_agents
     )
 
-    # Call function with LAST_EXECUTED sort
+    # Call function with LAST_EXECUTED sort (without include_executions)
     result = await db.list_library_agents(
         "test-user",
         sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
@@ -521,3 +521,154 @@ async def test_list_library_agents_sort_by_last_executed(mocker):
     assert result.agents[1].id == "lib2", "Agent with older execution should be second"
     assert result.agents[2].id == "lib3", "Agent without executions (newer) should be third"
     assert result.agents[3].id == "lib4", "Agent without executions (older) should be last"
+    assert (
+        result.agents[2].id == "lib3"
+    ), "Agent without executions (newer) should be third"
+    assert (
+        result.agents[3].id == "lib4"
+    ), "Agent without executions (older) should be last"
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_last_executed_metrics_accuracy(mocker):
+    """
+    Test that when LAST_EXECUTED sort is used with include_executions=True,
+    metrics (execution_count, success_rate) are computed from the full execution
+    history, not from the single execution used for sort-order determination.
+
+    Bug: execution_limit=1 was used for both sorting AND metric calculation,
+    causing execution_count to always be 0 or 1 and success_rate to be 0% or 100%.
+    Fix: after sorting/pagination, re-fetch the page agents with full execution data.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Agent with 1 execution (used for sort-key fetch, execution_limit=1)
+    sort_execution = prisma.models.AgentGraphExecution(
+        id="exec-sort",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=now - timedelta(hours=1),
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    sort_graph = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Many Executions",
+        description="Should show full execution count",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=5),
+        Executions=[sort_execution],  # Only 1 for sort
+    )
+    sort_library_agent = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=5),
+        updatedAt=now - timedelta(days=5),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=sort_graph,
+    )
+
+    # Agent with full execution history (used for metric calculation, full execution_limit)
+    full_exec1 = prisma.models.AgentGraphExecution(
+        id="exec1",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=now - timedelta(hours=1),
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    full_exec2 = prisma.models.AgentGraphExecution(
+        id="exec2",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=4),
+        updatedAt=now - timedelta(hours=3),
+        executionStatus=prisma.enums.AgentExecutionStatus.FAILED,
+        isDeleted=False,
+        isShared=False,
+    )
+    full_exec3 = prisma.models.AgentGraphExecution(
+        id="exec3",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=6),
+        updatedAt=now - timedelta(hours=5),
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    full_graph = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Many Executions",
+        description="Should show full execution count",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=5),
+        Executions=[full_exec1, full_exec2, full_exec3],  # All 3
+    )
+    full_library_agent = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=5),
+        updatedAt=now - timedelta(days=5),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=full_graph,
+    )
+
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    # First call: sort-key fetch (execution_limit=1) → returns sort_library_agent
+    # Second call: full metric fetch → returns full_library_agent
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        side_effect=[
+            [sort_library_agent],
+            [full_library_agent],
+        ]
+    )
+
+    result = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+        include_executions=True,
+    )
+
+    assert len(result.agents) == 1
+    agent = result.agents[0]
+    assert agent.id == "lib1"
+    # With the fix: metrics are computed from all 3 executions, not just 1
+    assert agent.execution_count == 3, (
+        "execution_count should reflect the full execution history, not the "
+        "sort-key fetch which used execution_limit=1"
+    )
+    # 2 out of 3 executions are COMPLETED → 66.67%
+    assert agent.success_rate is not None
+    assert (
+        abs(agent.success_rate - 200 / 3) < 0.01
+    ), "success_rate should be calculated from all executions"

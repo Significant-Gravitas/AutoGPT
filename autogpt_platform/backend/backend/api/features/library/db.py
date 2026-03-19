@@ -22,6 +22,7 @@ from backend.data.graph import GraphSettings
 from backend.data.includes import (
     AGENT_PRESET_INCLUDE,
     LIBRARY_FOLDER_INCLUDE,
+    MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
     library_agent_include,
 )
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -163,7 +164,30 @@ async def list_library_agents(
         agent_count = len(library_agents)
         start_idx = (page - 1) * page_size
         end_idx = start_idx + page_size
-        library_agents = library_agents[start_idx:end_idx]
+        page_agents = library_agents[start_idx:end_idx]
+
+        # Re-fetch the page agents with full execution data so that metrics
+        # (execution_count, success_rate, avg_correctness_score, status) are
+        # accurate. The sort-only fetch above used execution_limit=1 which
+        # would make all metrics derived from a single execution.
+        if include_executions and page_agents:
+            page_agent_ids = [a.id for a in page_agents]
+            full_exec_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where={"id": {"in": page_agent_ids}},
+                include=library_agent_include(
+                    user_id,
+                    include_nodes=False,
+                    include_executions=True,
+                    execution_limit=MAX_LIBRARY_AGENT_EXECUTIONS_FETCH,
+                ),
+            )
+            # Restore sort order (find_many with `in` does not guarantee order)
+            full_exec_map = {a.id: a for a in full_exec_agents}
+            library_agents = [
+                full_exec_map[a.id] for a in page_agents if a.id in full_exec_map
+            ]
+        else:
+            library_agents = page_agents
     else:
         # Standard sorting via database
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
