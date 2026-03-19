@@ -181,6 +181,7 @@ def validate_exec(
     node: Node,
     data: BlockInput,
     resolve_input: bool = True,
+    dry_run: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -189,6 +190,9 @@ def validate_exec(
         node: The node to execute.
         data: The input data for the node execution.
         resolve_input: Whether to resolve dynamic pins into dict/list/object.
+        dry_run: When True, credential fields are allowed to be missing — they
+            will be substituted with a sentinel so the node can be queued and
+            later executed via simulate_block.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -207,6 +211,14 @@ def validate_exec(
     if missing_links := schema.get_missing_links(data, node.input_links):
         return None, f"{error_prefix} unpopulated links {missing_links}"
 
+    # For dry runs, supply sentinel values for any missing credential fields so
+    # the node can be queued — simulate_block never calls the real API anyway.
+    if dry_run:
+        cred_field_names = set(schema.get_credentials_fields().keys())
+        for field_name in cred_field_names:
+            if field_name not in data:
+                data = {**data, field_name: None}
+
     # Merge input data with default values and resolve dynamic dict/list/object pins.
     input_default = schema.get_input_defaults(node.input_default)
     data = {**input_default, **data}
@@ -218,7 +230,15 @@ def validate_exec(
 
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
-        return None, f"{error_prefix} missing input {missing_input}"
+        if dry_run:
+            # In dry-run mode only credential-field gaps are tolerated; any
+            # remaining missing fields are real data gaps — still block queueing.
+            cred_field_names = set(schema.get_credentials_fields().keys())
+            non_cred_missing = missing_input - cred_field_names
+            if non_cred_missing:
+                return None, f"{error_prefix} missing input {non_cred_missing}"
+        else:
+            return None, f"{error_prefix} missing input {missing_input}"
 
     # Last validation: Validate the input values against the schema.
     if error := schema.get_mismatch_error(data):

@@ -222,7 +222,9 @@ async def execute_node(
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
     # Sanity check: validate the execution input.
-    input_data, error = validate_exec(node, data.inputs, resolve_input=False)
+    input_data, error = validate_exec(
+        node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
+    )
     if input_data is None:
         log_metadata.warning(f"Skip execution, input validation error: {error}")
         yield "error", error
@@ -511,7 +513,9 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            next_node_input, validation_msg = validate_exec(
+                next_node, next_node_input, dry_run=execution_context.dry_run
+            )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
             # Incomplete input data, skip queueing the execution.
@@ -556,7 +560,9 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg = validate_exec(next_node, idata)
+                idata, msg = validate_exec(
+                    next_node, idata, dry_run=execution_context.dry_run
+                )
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
