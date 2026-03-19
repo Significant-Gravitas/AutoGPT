@@ -28,15 +28,18 @@ export function FeedbackButton() {
       }
     >
       {/* Static gradient border (visible by default) */}
-      <div className="absolute inset-0 rounded-full bg-gradient-to-r from-indigo-100 to-indigo-300 to-zinc-400 transition-opacity duration-300 group-hover:opacity-0" />
+      <div className="absolute inset-0 bg-gradient-to-r from-indigo-100 to-indigo-300 to-zinc-400 transition-opacity duration-300 group-hover:opacity-0" />
 
-      {/* Animated spinning gradient (visible on hover) */}
+      {/* Animated spinning gradient (visible on hover) —
+          The square must be larger than the button diagonal so it
+          covers the entire pill at every rotation angle. We use
+          aspect-square + w-[200%] centered via left-[-50%] top-[-50%]
+          to guarantee full coverage on wide pills. */}
       <motion.div
-        className="absolute opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        className="pointer-events-none absolute left-1/2 top-1/2 aspect-square w-[300%] -translate-x-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
         animate={{ rotate: 360 }}
         transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
         style={{
-          inset: "-50%",
           background:
             "conic-gradient(from 0deg, #6366f1, #818cf8, #a78bfa, #7c3aed, #6366f1)",
         }}
