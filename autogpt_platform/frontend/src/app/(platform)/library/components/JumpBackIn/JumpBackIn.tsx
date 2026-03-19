@@ -8,11 +8,15 @@ import { Text } from "@/components/atoms/Text/Text";
 import { useJumpBackIn } from "./useJumpBackIn";
 
 export function JumpBackIn() {
-  const { agent, isLoading } = useJumpBackIn();
+  const { execution, isLoading } = useJumpBackIn();
 
-  if (isLoading || !agent) {
+  if (isLoading || !execution) {
     return null;
   }
+
+  const href = execution.libraryAgentId
+    ? `/library/agents/${execution.libraryAgentId}?activeTab=runs&activeItem=${execution.id}`
+    : "#";
 
   return (
     <div className="rounded-large bg-gradient-to-r from-zinc-200 via-zinc-200/60 to-indigo-200/50 p-[1px]">
@@ -23,14 +27,14 @@ export function JumpBackIn() {
           </div>
           <div className="flex flex-col">
             <Text variant="small" className="text-zinc-500">
-              Continue where you left off
+              {execution.statusLabel} · {execution.duration}
             </Text>
             <Text variant="body-medium" className="text-zinc-900">
-              {agent.name}
+              {execution.agentName}
             </Text>
           </div>
         </div>
-        <NextLink href={`/library/agents/${agent.id}`}>
+        <NextLink href={href}>
           <Button variant="secondary" size="small" className="gap-1.5">
             Jump Back In
             <ArrowRight size={16} />
