@@ -401,7 +401,21 @@ async def get_session(
                 last_message_id=last_message_id,
             )
 
-    # Sum token usage from session
+    # Skip session metadata on "load more" — frontend only needs messages
+    if before_sequence is not None:
+        return SessionDetailResponse(
+            id=page.session.session_id,
+            created_at=page.session.started_at.isoformat(),
+            updated_at=page.session.updated_at.isoformat(),
+            user_id=page.session.user_id or None,
+            messages=messages,
+            active_stream=None,
+            has_more_messages=page.has_more,
+            oldest_sequence=page.oldest_sequence,
+            total_prompt_tokens=0,
+            total_completion_tokens=0,
+        )
+
     total_prompt = sum(u.prompt_tokens for u in page.session.usage)
     total_completion = sum(u.completion_tokens for u in page.session.usage)
 
