@@ -1,18 +1,17 @@
 "use client";
 
-import { useGetV2GetSuggestedPrompts } from "@/app/api/__generated__/endpoints/chat/chat";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
-import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { SpinnerGapIcon } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
   getGreetingName,
   getInputPlaceholder,
-  getSuggestionThemes,
+  getQuickActions,
 } from "./helpers";
-import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
 
 interface Props {
   inputLayoutId: string;
@@ -34,35 +33,25 @@ export function EmptySession({
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
-
-  const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
-    useGetV2GetSuggestedPrompts({
-      query: { staleTime: Infinity },
-    });
-  const themes = getSuggestionThemes(
-    suggestedPromptsResponse?.status === 200
-      ? suggestedPromptsResponse.data.themes
-      : undefined,
-  );
-
+  const quickActions = getQuickActions();
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [inputPlaceholder, setInputPlaceholder] = useState(
     getInputPlaceholder(),
   );
 
   useEffect(() => {
-    function update() {
-      setInputPlaceholder(getInputPlaceholder(window.innerWidth));
+    setInputPlaceholder(getInputPlaceholder(window.innerWidth));
+  }, [window.innerWidth]);
+
+  async function handleQuickActionClick(action: string) {
+    if (isCreatingSession || loadingAction !== null) return;
+    setLoadingAction(action);
+    try {
+      await onSend(action);
+    } finally {
+      setLoadingAction(null);
     }
-    const mq500 = window.matchMedia("(min-width: 500px)");
-    const mq1081 = window.matchMedia("(min-width: 1081px)");
-    update();
-    mq500.addEventListener("change", update);
-    mq1081.addEventListener("change", update);
-    return () => {
-      mq500.removeEventListener("change", update);
-      mq1081.removeEventListener("change", update);
-    };
-  }, []);
+  }
 
   return (
     <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-0 py-5 md:px-6 md:py-10">
@@ -100,19 +89,30 @@ export function EmptySession({
           </div>
         </div>
 
-        {isLoadingPrompts ? (
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {Array.from({ length: 4 }, (_, i) => (
-              <Skeleton key={i} className="h-10 w-28 shrink-0 rounded-full" />
-            ))}
-          </div>
-        ) : (
-          <SuggestionThemes
-            themes={themes}
-            onSend={onSend}
-            disabled={isCreatingSession}
-          />
-        )}
+        <div className="flex flex-wrap items-center justify-center gap-3 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {quickActions.map((action) => (
+            <Button
+              key={action}
+              type="button"
+              variant="outline"
+              size="small"
+              onClick={() => void handleQuickActionClick(action)}
+              disabled={isCreatingSession || loadingAction !== null}
+              aria-busy={loadingAction === action}
+              leftIcon={
+                loadingAction === action ? (
+                  <SpinnerGapIcon
+                    className="h-4 w-4 animate-spin"
+                    weight="bold"
+                  />
+                ) : null
+              }
+              className="h-auto shrink-0 border-zinc-300 px-3 py-2 text-[.9rem] text-zinc-600"
+            >
+              {action}
+            </Button>
+          ))}
+        </div>
       </motion.div>
     </div>
   );

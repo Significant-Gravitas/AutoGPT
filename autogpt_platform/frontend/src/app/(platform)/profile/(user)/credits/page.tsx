@@ -39,12 +39,12 @@ function CoPilotUsageSection() {
 
   return (
     <div className="my-6 space-y-4">
-      <h3 className="text-lg font-medium">CoPilot Usage Limits</h3>
+      <h3 className="text-lg font-medium">AutoPilot Usage Limits</h3>
       <div className="rounded-lg border border-neutral-200 p-4">
         <UsagePanelContent usage={usage} showBillingLink={false} />
       </div>
       <Button className="w-full" onClick={() => router.push("/copilot")}>
-        Open CoPilot
+        Open AutoPilot
       </Button>
     </div>
   );
@@ -267,7 +267,7 @@ export default function CreditsPage() {
             )}
           </form>
 
-          {/* CoPilot Usage Limits */}
+          {/* AutoPilot Usage Limits */}
           <CoPilotUsageSection />
         </div>
 
