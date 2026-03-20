@@ -1133,7 +1133,9 @@ class SmartDecisionMakerBlock(Block):
             )
 
         if input_data.sys_prompt and not any(
-            p["role"] == "system" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            p.get("role") == "system"
+            and isinstance(p.get("content"), str)
+            and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
             for p in prompt
         ):
             prompt.append(
@@ -1144,7 +1146,9 @@ class SmartDecisionMakerBlock(Block):
             )
 
         if input_data.prompt and not any(
-            p["role"] == "user" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            p.get("role") == "user"
+            and isinstance(p.get("content"), str)
+            and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
             for p in prompt
         ):
             prompt.append(
@@ -1253,7 +1257,18 @@ class SmartDecisionMakerBlock(Block):
                 yield emit_key, arg_value
 
         converted = _convert_raw_response_to_dict(response.raw_response)
-        if response.reasoning:
+
+        # Check for tool calls to avoid inserting reasoning between tool pairs
+        if isinstance(converted, list):
+            has_tool_calls = any(
+                item.get("type") == "function_call" for item in converted
+            )
+        else:
+            has_tool_calls = isinstance(converted.get("content"), list) and any(
+                item.get("type") == "tool_use" for item in converted.get("content", [])
+            )
+
+        if response.reasoning and not has_tool_calls:
             prompt.append(
                 {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
             )

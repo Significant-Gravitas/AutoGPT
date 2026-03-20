@@ -5,13 +5,8 @@ The Responses API uses a different conversation format:
 - Tool results are items with ``type: "function_call_output"`` and ``call_id``
 - These items do NOT have ``role`` at the top level
 
-When SmartDecisionMakerBlock builds conversation history with these items and
-``conversation_compaction=True`` (the default), the conversation passes through
-``compress_context()`` — whose helper functions currently only recognise the
-Chat Completions (``role: "tool"``) and Anthropic (``tool_use`` / ``tool_result``)
-formats.
-
-Each xfail test documents a specific function that fails with Responses API items.
+These tests validate that prompt utilities correctly handle Responses API items
+alongside Chat Completions and Anthropic formats.
 """
 
 import pytest
@@ -53,14 +48,6 @@ FUNCTION_CALL_OUTPUT_ITEM = {
     "type": "function_call_output",
     "call_id": "call_abc",
     "output": '{"results": ["result1", "result2", "result3"]}',
-}
-
-MESSAGE_ITEM = {
-    "type": "message",
-    "id": "msg_abc",
-    "role": "assistant",
-    "status": "completed",
-    "content": [{"type": "output_text", "text": "Here are the results."}],
 }
 
 
@@ -408,17 +395,15 @@ class TestValidateOrphansResponsesApi:
         result = validate_and_remove_orphan_tool_responses(messages, log_warning=False)
         assert len(result) == 2
 
-    def test_responses_api_paired_trivially_kept(self):
-        """Matched Responses API pairs are kept — but only because the
-        validator doesn't see them at all (both are invisible).  The
-        result is correct by accident, not by design."""
+    def test_responses_api_paired_kept(self):
+        """Matched Responses API pairs are kept because the validator
+        properly recognizes function_call and function_call_output items."""
         messages = [
             {"role": "user", "content": "Do something."},
             FUNCTION_CALL_ITEM,
             FUNCTION_CALL_OUTPUT_ITEM,
         ]
         result = validate_and_remove_orphan_tool_responses(messages, log_warning=False)
-        # Kept, but only because neither item was recognised
         assert len(result) == 3
 
     def test_responses_api_orphan_output_removed(self):
