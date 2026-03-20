@@ -528,7 +528,7 @@ async def _construct_starting_node_execution_input(
                 "Please use the appropriate trigger to run this agent."
             )
 
-        input_data, error = validate_exec(node, input_data)
+        input_data, error = validate_exec(node, input_data, dry_run=dry_run)
         if input_data is None:
             raise ValueError(error)
         else:
