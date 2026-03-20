@@ -273,7 +273,12 @@ def _record_tool_failure(tool_name: str, args: dict[str, Any]) -> None:
 
 
 def _clear_tool_failures(tool_name: str) -> None:
-    """Clear failure tracking for a tool on success."""
+    """Clear failure tracking for a tool on success.
+
+    Clears ALL args variants for the tool, not just the successful call's args.
+    This gives the tool a "fresh start" on any success, which is appropriate for
+    the primary use case (detecting infinite loops with identical failing args).
+    """
     tracker = _consecutive_tool_failures.get(None)
     if tracker is None:
         return

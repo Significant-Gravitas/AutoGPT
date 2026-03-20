@@ -52,6 +52,16 @@ class TestCircuitBreaker:
         # args_b should NOT trip
         assert _check_circuit_breaker("write_file", args_b) is None
 
+    def test_different_tools_tracked_separately(self):
+        """Different tools should have separate failure counters."""
+        args = {"file_path": "/tmp/test.txt"}
+        for _ in range(_MAX_CONSECUTIVE_TOOL_FAILURES):
+            _record_tool_failure("tool_a", args)
+        # tool_a should trip
+        assert _check_circuit_breaker("tool_a", args) is not None
+        # tool_b with same args should NOT trip
+        assert _check_circuit_breaker("tool_b", args) is None
+
     def test_empty_args_tracked(self):
         """Empty args ({}) — the exact failure pattern from the bug — should be tracked."""
         args = {}
