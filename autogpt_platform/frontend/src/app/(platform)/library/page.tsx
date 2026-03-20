@@ -39,8 +39,8 @@ export default function LibraryPage() {
       onAnimationComplete={handleFavoriteAnimationComplete}
     >
       <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
-        <JumpBackIn />
         <LibraryActionHeader setSearchTerm={setSearchTerm} />
+        <JumpBackIn />
         <LibraryAgentList
           searchTerm={searchTerm}
           librarySort={librarySort}

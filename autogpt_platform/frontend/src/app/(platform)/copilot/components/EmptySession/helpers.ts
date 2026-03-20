@@ -12,17 +12,12 @@ export function getInputPlaceholder(width?: number) {
   return "What's your role and what eats up most of your day? e.g. 'I'm a recruiter and I hate...'";
 }
 
-const DEFAULT_QUICK_ACTIONS = [
-  "I don't know where to start, just ask me stuff",
-  "I do the same thing every week and it's killing me",
-  "Help me find where I'm wasting my time",
-];
-
-export function getQuickActions(customPrompts?: string[]) {
-  if (customPrompts && customPrompts.length > 0) {
-    return customPrompts;
-  }
-  return DEFAULT_QUICK_ACTIONS;
+export function getQuickActions() {
+  return [
+    "I don't know where to start, just ask me stuff",
+    "I do the same thing every week and it's killing me",
+    "Help me find where I'm wasting my time",
+  ];
 }
 
 export function getGreetingName(user?: User | null) {
