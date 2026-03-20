@@ -15,6 +15,7 @@ interface UseLoadMoreMessagesArgs {
 }
 
 const MAX_CONSECUTIVE_ERRORS = 3;
+const MAX_OLDER_MESSAGES = 2000;
 
 export function useLoadMoreMessages({
   sessionId,
@@ -128,9 +129,19 @@ export function useLoadMoreMessages({
       consecutiveErrorsRef.current = 0;
 
       const newRaw = (response.data.messages ?? []) as unknown[];
-      setOlderRawMessages((prev) => [...newRaw, ...prev]);
+      setOlderRawMessages((prev) => {
+        const merged = [...newRaw, ...prev];
+        if (merged.length > MAX_OLDER_MESSAGES) {
+          return merged.slice(merged.length - MAX_OLDER_MESSAGES);
+        }
+        return merged;
+      });
       setOldestSequence(response.data.oldest_sequence ?? null);
-      setHasMore(!!response.data.has_more_messages);
+      if (newRaw.length + olderRawMessages.length >= MAX_OLDER_MESSAGES) {
+        setHasMore(false);
+      } else {
+        setHasMore(!!response.data.has_more_messages);
+      }
     } catch (error) {
       if (epochRef.current !== requestEpoch) return;
       consecutiveErrorsRef.current += 1;

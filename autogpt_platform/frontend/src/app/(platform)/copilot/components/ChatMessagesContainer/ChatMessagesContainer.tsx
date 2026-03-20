@@ -104,18 +104,34 @@ function extractGraphExecId(
   return null;
 }
 
+/**
+ * Triggers `onLoadMore` when scrolled near the top, and preserves the
+ * user's scroll position after older messages are prepended to the DOM.
+ *
+ * Scroll preservation works by:
+ * 1. Capturing `scrollHeight` / `scrollTop` in the observer callback
+ *    (synchronous, before React re-renders).
+ * 2. Restoring `scrollTop` in a `useLayoutEffect` keyed on
+ *    `messageCount` so it only fires when messages actually change
+ *    (not on intermediate renders like the loading-spinner toggle).
+ */
 function LoadMoreSentinel({
   hasMore,
   isLoading,
+  messageCount,
   onLoadMore,
 }: {
   hasMore: boolean;
   isLoading: boolean;
+  messageCount: number;
   onLoadMore: () => void;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
   onLoadMoreRef.current = onLoadMore;
+  // Pre-mutation scroll snapshot, written synchronously before onLoadMore
+  const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
+  const { scrollRef } = useStickToBottomContext();
 
   // IntersectionObserver to trigger load when sentinel is near viewport.
   // Only fires when the container is actually scrollable to prevent
@@ -125,7 +141,6 @@ function LoadMoreSentinel({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
-        // Find the scroll container (role="log" is set by Conversation)
         const scrollParent =
           sentinelRef.current?.closest('[role="log"]') ??
           sentinelRef.current?.parentElement;
@@ -134,48 +149,44 @@ function LoadMoreSentinel({
           scrollParent.scrollHeight <= scrollParent.clientHeight
         )
           return;
+        // Capture scroll metrics *before* the state update
+        const el = scrollRef.current;
+        if (el) {
+          scrollSnapshotRef.current = {
+            scrollHeight: el.scrollHeight,
+            scrollTop: el.scrollTop,
+          };
+        }
         onLoadMoreRef.current();
       },
       { rootMargin: "200px 0px 0px 0px" },
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [hasMore, isLoading]);
+  }, [hasMore, isLoading, scrollRef]);
+
+  // After React commits new DOM nodes (prepended messages), adjust
+  // scrollTop so the user stays at the same visual position.
+  // Keyed on messageCount so it only fires when messages actually
+  // change — NOT on intermediate renders (loading spinner, etc.)
+  // that would consume the snapshot too early.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const { scrollHeight: prevHeight, scrollTop: prevTop } =
+      scrollSnapshotRef.current;
+    if (!el || prevHeight === 0) return;
+    const delta = el.scrollHeight - prevHeight;
+    if (delta > 0) {
+      el.scrollTop = prevTop + delta;
+    }
+    scrollSnapshotRef.current = { scrollHeight: 0, scrollTop: 0 };
+  }, [messageCount, scrollRef]);
 
   return (
     <div ref={sentinelRef} className="flex justify-center py-1">
       {isLoading && <LoadingSpinner className="h-5 w-5 text-neutral-400" />}
     </div>
   );
-}
-
-function ScrollPreserver({ messageCount }: { messageCount: number }) {
-  const { scrollRef } = useStickToBottomContext();
-  const prevRef = useRef({ scrollHeight: 0, scrollTop: 0, count: 0 });
-
-  // Capture before any render that might prepend
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (el) {
-      prevRef.current = {
-        scrollHeight: el.scrollHeight,
-        scrollTop: el.scrollTop,
-        count: messageCount,
-      };
-    }
-  });
-
-  // Restore scroll position after prepend
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el || prevRef.current.scrollHeight === 0) return;
-    const delta = el.scrollHeight - prevRef.current.scrollHeight;
-    if (delta > 0 && prevRef.current.scrollTop > 0) {
-      el.scrollTop = prevRef.current.scrollTop + delta;
-    }
-  }, [messageCount]);
-
-  return null;
 }
 
 export function ChatMessagesContainer({
@@ -244,11 +255,11 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
-        <ScrollPreserver messageCount={messages.length} />
         {hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
             isLoading={!!isLoadingMore}
+            messageCount={messages.length}
             onLoadMore={onLoadMore}
           />
         )}

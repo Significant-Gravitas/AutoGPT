@@ -402,41 +402,6 @@ async def get_chat_session(
     return session
 
 
-async def get_chat_session_metadata(
-    session_id: str,
-    user_id: str | None = None,
-) -> ChatSessionInfo | None:
-    """Get session metadata (without messages) for ownership validation.
-
-    Checks Redis cache first, falls back to a lightweight DB query.
-    """
-    # Try cache first (cache stores full session, but we only need metadata)
-    try:
-        session = await _get_session_from_cache(session_id)
-        if session:
-            if user_id is not None and session.user_id != user_id:
-                return None
-            return ChatSessionInfo(**session.model_dump(exclude={"messages"}))
-    except RedisError:
-        logger.warning("Redis error fetching session metadata for %s", session_id)
-    except Exception:
-        logger.warning(
-            "Unexpected error fetching session metadata for %s",
-            session_id,
-            exc_info=True,
-        )
-
-    # Fall back to lightweight DB query (no messages)
-    from backend.copilot.db import get_chat_session_metadata as _db_get_metadata
-
-    info = await _db_get_metadata(session_id)
-    if info is None:
-        return None
-    if user_id is not None and info.user_id != user_id:
-        return None
-    return info
-
-
 async def _get_session_from_cache(session_id: str) -> ChatSession | None:
     """Get a chat session from Redis cache."""
     redis_key = _get_session_cache_key(session_id)
