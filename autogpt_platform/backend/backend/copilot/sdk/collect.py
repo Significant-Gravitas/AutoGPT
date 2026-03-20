@@ -11,6 +11,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Identifiers used when registering AutoPilot-originated streams in the
+# stream registry.  Distinct from "chat_stream"/"chat" used by the HTTP SSE
+# endpoint, making it easy to filter AutoPilot streams in logs/observability.
+AUTOPILOT_TOOL_CALL_ID = "autopilot_stream"
+AUTOPILOT_TOOL_NAME = "autopilot"
+
 
 class CopilotResult:
     """Aggregated result from consuming a copilot stream.
@@ -80,6 +86,7 @@ async def collect_copilot_response(
     result = CopilotResult()
     response_parts: list[str] = []
     tool_calls_by_id: dict[str, dict[str, Any]] = {}
+    publish_failed_once = False
 
     # Register with the stream registry so the frontend sees active_stream
     # and can connect via the SSE reconnect endpoint for real-time updates.
@@ -89,8 +96,8 @@ async def collect_copilot_response(
         await stream_registry.create_session(
             session_id=session_id,
             user_id=user_id,
-            tool_call_id="autopilot_stream",
-            tool_name="autopilot",
+            tool_call_id=AUTOPILOT_TOOL_CALL_ID,
+            tool_name=AUTOPILOT_TOOL_NAME,
             turn_id=turn_id,
         )
     except Exception:
@@ -117,11 +124,23 @@ async def collect_copilot_response(
                 try:
                     await stream_registry.publish_chunk(turn_id, event)
                 except Exception:
-                    logger.debug(
-                        "[collect] Failed to publish chunk %s",
-                        type(event).__name__,
-                        exc_info=True,
-                    )
+                    # Log first failure at WARNING for visibility; subsequent
+                    # failures at DEBUG to avoid log spam during Redis outages.
+                    if not publish_failed_once:
+                        publish_failed_once = True
+                        logger.warning(
+                            "[collect] Failed to publish chunk %s for %s "
+                            "(further failures logged at DEBUG)",
+                            type(event).__name__,
+                            session_id[:12],
+                            exc_info=True,
+                        )
+                    else:
+                        logger.debug(
+                            "[collect] Failed to publish chunk %s",
+                            type(event).__name__,
+                            exc_info=True,
+                        )
 
             if isinstance(event, StreamTextDelta):
                 response_parts.append(event.delta)
