@@ -39,23 +39,23 @@ class TestResolveSandboxPath:
         assert resolve_sandbox_path("./README.md") == f"{E2B_WORKDIR}/README.md"
 
     def test_traversal_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("../../etc/passwd")
 
     def test_absolute_traversal_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path(f"{E2B_WORKDIR}/../../etc/passwd")
 
     def test_absolute_outside_sandbox_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/etc/passwd")
 
     def test_root_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/")
 
     def test_home_other_user_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/home/other/file.txt")
 
     def test_deep_nested_allowed(self):
@@ -67,6 +67,19 @@ class TestResolveSandboxPath:
     def test_double_dots_within_sandbox_ok(self):
         """Path that resolves back within E2B_WORKDIR is allowed."""
         assert resolve_sandbox_path("a/b/../c.txt") == f"{E2B_WORKDIR}/a/c.txt"
+
+    def test_tmp_absolute_allowed(self):
+        assert resolve_sandbox_path("/tmp/data.txt") == "/tmp/data.txt"
+
+    def test_tmp_nested_allowed(self):
+        assert resolve_sandbox_path("/tmp/a/b/c.txt") == "/tmp/a/b/c.txt"
+
+    def test_tmp_itself_allowed(self):
+        assert resolve_sandbox_path("/tmp") == "/tmp"
+
+    def test_tmp_escape_blocked(self):
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_sandbox_path("/tmp/../etc/passwd")
 
 
 # ---------------------------------------------------------------------------
@@ -227,3 +240,17 @@ class TestCheckSandboxSymlinkEscape:
         sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}/a/b/c/d\n", exit_code=0)
         result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/a/b/c/d")
         assert result == f"{E2B_WORKDIR}/a/b/c/d"
+
+    @pytest.mark.asyncio
+    async def test_tmp_path_allowed(self):
+        """Paths resolving to /tmp are allowed."""
+        sandbox = _make_sandbox(stdout="/tmp/workdir\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/tmp/workdir")
+        assert result == "/tmp/workdir"
+
+    @pytest.mark.asyncio
+    async def test_tmp_itself_allowed(self):
+        """The /tmp directory itself is allowed."""
+        sandbox = _make_sandbox(stdout="/tmp\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/tmp")
+        assert result == "/tmp"

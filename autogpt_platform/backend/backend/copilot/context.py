@@ -88,17 +88,29 @@ def get_sdk_cwd() -> str:
 
 
 E2B_WORKDIR = "/home/user"
+E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
+
+
+def is_within_allowed_dirs(path: str) -> bool:
+    """Return True if *path* is within one of the allowed sandbox directories."""
+    for allowed in E2B_ALLOWED_DIRS:
+        if path == allowed or path.startswith(allowed + "/"):
+            return True
+    return False
 
 
 def resolve_sandbox_path(path: str) -> str:
-    """Normalise *path* to an absolute sandbox path under ``/home/user``.
+    """Normalise *path* to an absolute sandbox path under an allowed directory.
+
+    Allowed directories: ``/home/user`` and ``/tmp``.
+    Relative paths are resolved against ``/home/user``.
 
     Raises :class:`ValueError` if the resolved path escapes the sandbox.
     """
     candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
-    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
-        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
+    if not is_within_allowed_dirs(normalized):
+        raise ValueError(f"Path must be within {' or '.join(E2B_ALLOWED_DIRS)}: {path}")
     return normalized
 
 

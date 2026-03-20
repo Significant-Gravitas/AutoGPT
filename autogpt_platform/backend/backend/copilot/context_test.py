@@ -183,10 +183,27 @@ def test_resolve_sandbox_path_normalizes_dots():
 
 
 def test_resolve_sandbox_path_escape_raises():
-    with pytest.raises(ValueError, match="/home/user"):
+    with pytest.raises(ValueError, match="must be within"):
         resolve_sandbox_path("/home/user/../../etc/passwd")
 
 
 def test_resolve_sandbox_path_absolute_outside_raises():
-    with pytest.raises(ValueError, match="/home/user"):
+    with pytest.raises(ValueError):
         resolve_sandbox_path("/etc/passwd")
+
+
+def test_resolve_sandbox_path_tmp_allowed():
+    assert resolve_sandbox_path("/tmp/data.txt") == "/tmp/data.txt"
+
+
+def test_resolve_sandbox_path_tmp_nested():
+    assert resolve_sandbox_path("/tmp/a/b/c.txt") == "/tmp/a/b/c.txt"
+
+
+def test_resolve_sandbox_path_tmp_itself():
+    assert resolve_sandbox_path("/tmp") == "/tmp"
+
+
+def test_resolve_sandbox_path_tmp_escape_raises():
+    with pytest.raises(ValueError):
+        resolve_sandbox_path("/tmp/../etc/passwd")
