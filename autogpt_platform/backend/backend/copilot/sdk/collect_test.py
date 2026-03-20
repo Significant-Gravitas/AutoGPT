@@ -101,6 +101,14 @@ async def test_stream_registry_error_on_stream_error(mock_registry, stream_fn_pa
     _, kwargs = mock_registry.mark_session_completed.call_args
     assert kwargs.get("error_message") == "something broke"
 
+    # StreamError should NOT be published via publish_chunk — mark_session_completed
+    # handles it to avoid double-publication.
+    published_types = [
+        type(call.args[1]).__name__
+        for call in mock_registry.publish_chunk.call_args_list
+    ]
+    assert "StreamError" not in published_types
+
 
 @pytest.mark.asyncio
 async def test_graceful_degradation_when_create_session_fails(

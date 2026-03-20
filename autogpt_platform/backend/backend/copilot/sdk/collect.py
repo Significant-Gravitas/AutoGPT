@@ -119,8 +119,9 @@ async def collect_copilot_response(
             user_id=user_id,
         ):
             # Publish to stream registry for frontend SSE consumption.
-            # Skip StreamFinish — mark_session_completed publishes it.
-            if turn_id and not isinstance(event, StreamFinish):
+            # Skip StreamFinish and StreamError — mark_session_completed
+            # publishes both (StreamError before StreamFinish when errored).
+            if turn_id and not isinstance(event, (StreamFinish, StreamError)):
                 try:
                     await stream_registry.publish_chunk(turn_id, event)
                 except Exception:
