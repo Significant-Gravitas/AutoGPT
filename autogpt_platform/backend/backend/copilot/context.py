@@ -89,6 +89,7 @@ def get_sdk_cwd() -> str:
 
 E2B_WORKDIR = "/home/user"
 E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
+E2B_ALLOWED_DIRS_STR: str = " or ".join(E2B_ALLOWED_DIRS)
 
 
 def is_within_allowed_dirs(path: str) -> bool:
@@ -110,7 +111,7 @@ def resolve_sandbox_path(path: str) -> str:
     candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
     if not is_within_allowed_dirs(normalized):
-        raise ValueError(f"Path must be within {' or '.join(E2B_ALLOWED_DIRS)}: {path}")
+        raise ValueError(f"Path must be within {E2B_ALLOWED_DIRS_STR}: {path}")
     return normalized
 
 
