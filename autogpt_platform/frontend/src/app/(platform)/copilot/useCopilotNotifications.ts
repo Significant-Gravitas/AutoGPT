@@ -1,6 +1,8 @@
+import { getGetV2ListSessionsQueryKey } from "@/app/api/__generated__/endpoints/chat/chat";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import { useCopilotUIStore } from "./store";
 
@@ -38,6 +40,7 @@ function showBrowserNotification(
  */
 export function useCopilotNotifications(activeSessionID: string | null) {
   const api = useBackendAPI();
+  const queryClient = useQueryClient();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeSessionRef = useRef(activeSessionID);
   activeSessionRef.current = activeSessionID;
@@ -165,8 +168,14 @@ export function useCopilotNotifications(activeSessionID: string | null) {
         count > 0
           ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
           : ORIGINAL_TITLE;
+
+      // Refetch the session list so the sidebar reflects the latest
+      // is_processing state (avoids stale spinner after cross-tab clear).
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey(),
+      });
     }
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, []);
+  }, [queryClient]);
 }
