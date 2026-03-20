@@ -19,9 +19,19 @@ least invasive way to break the cycle while keeping module-level constants
 intact.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+# Static imports for type checkers so they can resolve __all__ entries
+# without executing the lazy-import machinery at runtime.
+if TYPE_CHECKING:
+    from .collect import CopilotResult as CopilotResult
+    from .collect import collect_copilot_response as collect_copilot_response
+    from .service import stream_chat_completion_sdk as stream_chat_completion_sdk
+    from .tool_adapter import create_copilot_mcp_server as create_copilot_mcp_server
 
 __all__ = [
+    "CopilotResult",
+    "collect_copilot_response",
     "stream_chat_completion_sdk",
     "create_copilot_mcp_server",
 ]
@@ -29,6 +39,8 @@ __all__ = [
 # Dispatch table for PEP 562 lazy imports.  Each entry is a (module, attr)
 # pair so new exports can be added without touching __getattr__ itself.
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    "CopilotResult": (".collect", "CopilotResult"),
+    "collect_copilot_response": (".collect", "collect_copilot_response"),
     "stream_chat_completion_sdk": (".service", "stream_chat_completion_sdk"),
     "create_copilot_mcp_server": (".tool_adapter", "create_copilot_mcp_server"),
 }

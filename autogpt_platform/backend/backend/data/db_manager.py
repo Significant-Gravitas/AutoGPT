@@ -148,6 +148,11 @@ async def _get_credits(user_id: str) -> int:
     return await user_credit_model.get_credits(user_id)
 
 
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_credits = _get_credits
+spend_credits = _spend_credits
+
+
 class DatabaseManager(AppService):
     """Database connection pooling service.
 
@@ -511,6 +516,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_workspace_file_by_path = d.get_workspace_file_by_path
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
+
+    # ============ Credits ============ #
+    spend_credits = d.spend_credits
+    get_credits = d.get_credits
 
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding

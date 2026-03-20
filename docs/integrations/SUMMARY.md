@@ -9,6 +9,13 @@
 
 ## Block Integrations
 
+* [Agent Mail Attachments](block-integrations/agent_mail/attachments.md)
+* [Agent Mail Drafts](block-integrations/agent_mail/drafts.md)
+* [Agent Mail Inbox](block-integrations/agent_mail/inbox.md)
+* [Agent Mail Lists](block-integrations/agent_mail/lists.md)
+* [Agent Mail Messages](block-integrations/agent_mail/messages.md)
+* [Agent Mail Pods](block-integrations/agent_mail/pods.md)
+* [Agent Mail Threads](block-integrations/agent_mail/threads.md)
 * [Airtable Bases](block-integrations/airtable/bases.md)
 * [Airtable Records](block-integrations/airtable/records.md)
 * [Airtable Schema](block-integrations/airtable/schema.md)

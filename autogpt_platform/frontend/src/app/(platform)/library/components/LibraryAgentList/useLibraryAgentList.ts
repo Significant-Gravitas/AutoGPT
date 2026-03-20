@@ -209,6 +209,8 @@ export function useLibraryAgentList({
     isFavoritesTab,
     agentLoading,
     agentCount,
+    allAgentsCount,
+    favoritesCount: favoriteAgentsData.agentCount,
     agents,
     hasNextPage: agentsHasNextPage,
     isFetchingNextPage: agentsIsFetchingNextPage,

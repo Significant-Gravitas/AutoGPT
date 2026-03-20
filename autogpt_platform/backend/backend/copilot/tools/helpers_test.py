@@ -1,18 +1,197 @@
-"""Tests for execute_block type coercion in helpers.py.
+"""Tests for execute_block — credit charging and type coercion."""
 
-Verifies that execute_block() coerces string input values to match the block's
-expected input types, mirroring the executor's validate_exec() logic.
-This is critical for @@agptfile: expansion, where file content is always a string
-but the block may expect structured types (e.g. list[list[str]]).
-"""
-
+from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.blocks._base import BlockType
 from backend.copilot.tools.helpers import execute_block
-from backend.copilot.tools.models import BlockOutputResponse
+from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
+
+_USER = "test-user-helpers"
+_SESSION = "test-session-helpers"
+
+
+def _make_block(block_id: str = "block-1", name: str = "TestBlock"):
+    """Create a minimal mock block for execute_block()."""
+    mock = MagicMock()
+    mock.id = block_id
+    mock.name = name
+    mock.block_type = BlockType.STANDARD
+
+    mock.input_schema = MagicMock()
+    mock.input_schema.get_credentials_fields_info.return_value = {}
+
+    async def _execute(
+        input_data: dict, **kwargs: Any
+    ) -> AsyncIterator[tuple[str, Any]]:
+        yield "result", "ok"
+
+    mock.execute = _execute
+    return mock
+
+
+def _patch_workspace():
+    """Patch workspace_db to return a mock workspace."""
+    mock_workspace = MagicMock()
+    mock_workspace.id = "ws-1"
+    mock_ws_db = MagicMock()
+    mock_ws_db.get_or_create_workspace = AsyncMock(return_value=mock_workspace)
+    return patch("backend.copilot.tools.helpers.workspace_db", return_value=mock_ws_db)
+
+
+def _patch_credit_db(
+    get_credits_return: int = 100,
+    spend_credits_side_effect: Any = None,
+):
+    """Patch credit_db accessor to return a mock credit adapter."""
+    mock_credit = MagicMock()
+    mock_credit.get_credits = AsyncMock(return_value=get_credits_return)
+    if spend_credits_side_effect is not None:
+        mock_credit.spend_credits = AsyncMock(side_effect=spend_credits_side_effect)
+    else:
+        mock_credit.spend_credits = AsyncMock()
+    return (
+        patch(
+            "backend.copilot.tools.helpers.credit_db",
+            return_value=mock_credit,
+        ),
+        mock_credit,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Credit charging tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestExecuteBlockCreditCharging:
+    async def test_charges_credits_when_cost_is_positive(self):
+        """Block with cost > 0 should call spend_credits after execution."""
+        block = _make_block()
+        credit_patch, mock_credit = _patch_credit_db(get_credits_return=100)
+
+        with (
+            _patch_workspace(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {"key": "val"}),
+            ),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={"text": "hello"},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-1",
+                matched_credentials={},
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+        mock_credit.spend_credits.assert_awaited_once()
+        call_kwargs = mock_credit.spend_credits.call_args.kwargs
+        assert call_kwargs["cost"] == 10
+        assert call_kwargs["metadata"].reason == "copilot_block_execution"
+
+    async def test_returns_error_when_insufficient_credits_before_exec(self):
+        """Pre-execution check should return ErrorResponse when balance < cost."""
+        block = _make_block()
+        credit_patch, mock_credit = _patch_credit_db(get_credits_return=5)
+
+        with (
+            _patch_workspace(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-1",
+                matched_credentials={},
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Insufficient credits" in result.message
+
+    async def test_no_charge_when_cost_is_zero(self):
+        """Block with cost 0 should not call spend_credits."""
+        block = _make_block()
+        credit_patch, mock_credit = _patch_credit_db()
+
+        with (
+            _patch_workspace(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-1",
+                matched_credentials={},
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+        # Credit functions should not be called at all for zero-cost blocks
+        mock_credit.get_credits.assert_not_awaited()
+        mock_credit.spend_credits.assert_not_awaited()
+
+    async def test_returns_output_on_post_exec_insufficient_balance(self):
+        """If charging fails after execution, output is still returned (block already ran)."""
+        from backend.util.exceptions import InsufficientBalanceError
+
+        block = _make_block()
+        credit_patch, mock_credit = _patch_credit_db(
+            get_credits_return=15,
+            spend_credits_side_effect=InsufficientBalanceError(
+                "Low balance", _USER, 5, 10
+            ),
+        )
+
+        with (
+            _patch_workspace(),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="block-1",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-1",
+                matched_credentials={},
+            )
+
+        # Block already executed (with side effects), so output is returned
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+
+
+# ---------------------------------------------------------------------------
+# Type coercion tests
+# ---------------------------------------------------------------------------
 
 
 def _make_block_schema(annotations: dict[str, Any]) -> MagicMock:
@@ -28,7 +207,7 @@ def _make_block_schema(annotations: dict[str, Any]) -> MagicMock:
     return schema
 
 
-def _make_block(
+def _make_coerce_block(
     block_id: str,
     name: str,
     annotations: dict[str, Any],
@@ -60,7 +239,7 @@ _TEST_USER_ID = "test-user-coerce"
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_json_string_to_nested_list():
     """JSON string → list[list[str]] (Google Sheets CSV import case)."""
-    block = _make_block(
+    block = _make_coerce_block(
         "sheets-write",
         "Google Sheets Write",
         {"values": list[list[str]], "spreadsheet_id": str},
@@ -103,7 +282,7 @@ async def test_coerce_json_string_to_nested_list():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_json_string_to_list():
     """JSON string → list[str]."""
-    block = _make_block(
+    block = _make_coerce_block(
         "list-block",
         "List Block",
         {"items": list[str]},
@@ -135,7 +314,7 @@ async def test_coerce_json_string_to_list():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_json_string_to_dict():
     """JSON string → dict[str, str]."""
-    block = _make_block(
+    block = _make_coerce_block(
         "dict-block",
         "Dict Block",
         {"config": dict[str, str]},
@@ -167,7 +346,7 @@ async def test_coerce_json_string_to_dict():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_no_coercion_when_type_matches():
     """Already-correct types pass through without coercion."""
-    block = _make_block(
+    block = _make_coerce_block(
         "pass-through",
         "Pass Through",
         {"values": list[list[str]], "name": str},
@@ -201,7 +380,7 @@ async def test_no_coercion_when_type_matches():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_string_to_int():
     """String number → int."""
-    block = _make_block(
+    block = _make_coerce_block(
         "int-block",
         "Int Block",
         {"count": int},
@@ -234,7 +413,7 @@ async def test_coerce_string_to_int():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_skips_none_values():
     """None values are not coerced (they may be optional fields)."""
-    block = _make_block(
+    block = _make_coerce_block(
         "optional-block",
         "Optional Block",
         {"data": list[str], "label": str},
@@ -267,7 +446,7 @@ async def test_coerce_skips_none_values():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_union_type_preserves_valid_member():
     """Union-typed fields should not be coerced when the value matches a member."""
-    block = _make_block(
+    block = _make_coerce_block(
         "union-block",
         "Union Block",
         {"content": str | list[str]},
@@ -301,7 +480,7 @@ async def test_coerce_union_type_preserves_valid_member():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_coerce_inner_elements_of_generic():
     """Inner elements of generic containers are recursively coerced."""
-    block = _make_block(
+    block = _make_coerce_block(
         "inner-coerce",
         "Inner Coerce",
         {"values": list[str]},
