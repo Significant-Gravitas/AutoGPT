@@ -2,7 +2,7 @@
 name: pr-address
 description: Address PR review comments and loop until CI green and all comments resolved. TRIGGER when user asks to address comments, fix PR feedback, respond to reviewers, or babysit/monitor a PR.
 user-invocable: true
-args: "[PR number or URL] — if omitted, finds PR for current branch."
+argument-hint: "[PR number or URL] — if omitted, finds PR for current branch."
 metadata:
   author: autogpt-team
   version: "1.0.0"
@@ -19,16 +19,60 @@ gh pr view {N}
 
 ## Fetch comments (all sources)
 
+### 1. Inline review threads — GraphQL (primary source of actionable items)
+
+Use GraphQL to fetch inline threads. It natively exposes `isResolved`, returns threads already grouped with all replies, and paginates via cursor — no manual thread reconstruction needed.
+
 ```bash
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
-gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
+gh api graphql -f query='
+{
+  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
+    pullRequest(number: {N}) {
+      reviewThreads(first: 100) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          path
+          comments(last: 1) {
+            nodes { databaseId body author { login } createdAt }
+          }
+        }
+      }
+    }
+  }
+}'
 ```
 
-**Bots to watch for:**
-- `autogpt-reviewer` — posts "Blockers", "Should Fix", "Nice to Have". Address ALL of them.
-- `sentry[bot]` — bug predictions. Fix real bugs, explain false positives.
-- `coderabbitai[bot]` — automated review. Address actionable items.
+If `pageInfo.hasNextPage` is true, fetch subsequent pages by adding `after: "<endCursor>"` to `reviewThreads(first: 100, after: "...")` and repeat until `hasNextPage` is false.
+
+**Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
+
+### 2. Top-level reviews — REST (MUST paginate)
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
+```
+
+**CRITICAL — always `--paginate`.** Reviews default to 30 per page. PRs can have 80–170+ reviews (mostly empty resolution events). Without pagination you miss reviews past position 30 — including `autogpt-reviewer`'s structured review which is typically posted after several CI runs and sits well beyond the first page.
+
+Two things to extract:
+- **Overall state**: look for `CHANGES_REQUESTED` or `APPROVED` reviews.
+- **Actionable feedback**: non-empty bodies only. Empty-body reviews are thread-resolution events — they indicate progress but have no feedback to act on.
+
+**Where each reviewer posts:**
+- `autogpt-reviewer` — posts detailed structured reviews ("Blockers", "Should Fix", "Nice to Have") as **top-level reviews**. Not present on every PR. Address ALL items.
+- `sentry[bot]` — posts bug predictions as **inline threads**. Fix real bugs, explain false positives.
+- `coderabbitai[bot]` — posts summaries as **top-level reviews** AND actionable items as **inline threads**. Address actionable items.
+- Human reviewers — can post in any source. Address ALL non-empty feedback.
+
+### 3. PR conversation comments — REST
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
+```
+
+Mostly contains: bot summaries (`coderabbitai[bot]`), CI/conflict detection (`github-actions[bot]`), and author status updates. Scan for non-empty messages from non-bot human reviewers that aren't the PR author — those are the ones that need a response.
 
 ## For each unaddressed comment
 
@@ -40,8 +84,8 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 
 | Comment type | How to reply |
 |---|---|
-| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="Fixed in <commit-sha>: <description>"` |
-| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="Fixed in <commit-sha>: <description>"` |
+| Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in <commit-sha>: <description>"` |
+| Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in <commit-sha>: <description>"` |
 
 ## Format and commit
 
@@ -74,21 +118,83 @@ address comments → format → commit → push
 → repeat until: all comments addressed AND CI green AND no new comments arriving
 ```
 
-### Waiting for CI
+### Polling for CI + new comments
 
-Use `gh pr checks --watch --fail-fast` to efficiently wait for CI. This blocks until all checks finish (or one fails early):
+After pushing, poll for **both** CI status and new comments in a single loop. Do not use `gh pr checks --watch` — it blocks the tool and prevents reacting to new comments while CI is running.
 
+> **Note:** `gh pr checks --watch --fail-fast` is tempting but it blocks the entire Bash tool call, meaning the agent cannot check for or address new comments until CI fully completes. Always poll manually instead.
+
+**Polling loop — repeat every 30 seconds:**
+
+1. Check CI status:
 ```bash
-gh pr checks --watch --fail-fast
+gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,name,link
+```
+   Parse the results: if every check has `bucket` of `"pass"` or `"skipping"`, CI is green. If any has `"fail"`, CI has failed. Otherwise CI is still pending.
+
+2. Check for merge conflicts:
+```bash
+gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.mergeable'
+```
+   If the result is `"CONFLICTING"`, the PR has a merge conflict — see "Resolving merge conflicts" below. If `"UNKNOWN"`, GitHub is still computing mergeability — wait and re-check next poll.
+
+3. Check for new/changed comments (all three sources):
+
+   **Inline threads** — re-run the GraphQL query from "Fetch comments". For each unresolved thread, record `{thread_id, last_comment_databaseId}` as your baseline. On each poll, action is needed if:
+   - A new thread `id` appears that wasn't in the baseline (new thread), OR
+   - An existing thread's `last_comment_databaseId` has changed (new reply on existing thread)
+
+   **Conversation comments:**
+   ```bash
+   gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
+   ```
+   Compare total count and newest `id` against baseline. Filter to non-empty, non-bot, non-author-update messages.
+
+   **Top-level reviews:**
+   ```bash
+   gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
+   ```
+   Watch for new non-empty reviews (`CHANGES_REQUESTED` or `COMMENTED` with body). Compare total count and newest `id` against baseline.
+
+4. **React in this precedence order (first match wins):**
+
+| What happened | Action |
+|---|---|
+| Merge conflict detected | See "Resolving merge conflicts" below. |
+| Mergeability is `UNKNOWN` | GitHub is still computing mergeability. Sleep 30 seconds, then restart polling from the top. |
+| New comments detected | Address them (fix → commit → push → reply). After pushing, re-fetch all comments to update your baseline, then restart this polling loop from the top (new commits invalidate CI status). |
+| CI failed (bucket == "fail") | Get failed check links: `gh pr checks {N} --repo Significant-Gravitas/AutoGPT --json bucket,link --jq '.[] \| select(.bucket == "fail") \| .link'`. Extract run ID from link (format: `.../actions/runs/<run-id>/job/...`), read logs with `gh run view <run-id> --repo Significant-Gravitas/AutoGPT --log-failed`. Fix → commit → push → restart polling. |
+| CI green + no new comments | **Do not exit immediately.** Bots (coderabbitai, sentry) often post reviews shortly after CI settles. Continue polling for **2 more cycles (60s)** after CI goes green. Only exit after 2 consecutive green+quiet polls. |
+| CI pending + no new comments | Sleep 30 seconds, then poll again. |
+
+**The loop ends when:** CI fully green + all comments addressed + **2 consecutive polls with no new comments after CI settled.**
+
+### Resolving merge conflicts
+
+1. Identify the PR's target branch and remote:
+```bash
+gh pr view {N} --repo Significant-Gravitas/AutoGPT --json baseRefName --jq '.baseRefName'
+git remote -v   # find the remote pointing to Significant-Gravitas/AutoGPT (typically 'upstream' in forks, 'origin' for direct contributors)
 ```
 
-If a check fails:
-1. Get the failed run ID: `gh pr checks --json name,state,link --jq '.[] | select(.state == "FAILURE")'`
-2. Read logs: `gh run view <run-id> --log-failed`
-3. Fix → commit → push → wait again with `gh pr checks --watch --fail-fast`
+2. Pull the latest base branch with a 3-way merge:
+```bash
+git pull {base-remote} {base-branch} --no-rebase
+```
 
-### Between CI waits
+3. Resolve conflicting files, then verify no conflict markers remain:
+```bash
+if grep -R -n -E '^(<<<<<<<|=======|>>>>>>>)' <conflicted-files>; then
+  echo "Unresolved conflict markers found — resolve before proceeding."
+  exit 1
+fi
+```
 
-After each push and while waiting for CI, re-fetch comments — bots like `coderabbitai` and `sentry` often post new comments on fresh commits. Address those while CI is still running, then wait again.
+4. Stage and push:
+```bash
+git add <conflicted-files>
+git commit -m "Resolve merge conflicts with {base-branch}"
+git push
+```
 
-**The loop ends when:** CI fully green + all comments addressed + no new comments since CI settled.
+5. Restart the polling loop from the top — new commits reset CI status.

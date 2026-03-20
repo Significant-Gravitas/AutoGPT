@@ -3,7 +3,7 @@ import {
   useGetV2ListStoreAgents,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import { MarketplaceCreatorPageParams } from "../../creator/[creator]/page";
+import { MarketplaceCreatorPageParams } from "@/app/(platform)/marketplace/creator/[creator]/page";
 import { CreatorDetails } from "@/app/api/__generated__/models/creatorDetails";
 
 interface useMainCreatorPageProps {

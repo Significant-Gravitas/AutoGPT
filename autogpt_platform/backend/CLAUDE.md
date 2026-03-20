@@ -85,6 +85,30 @@ poetry run pytest path/to/test.py --snapshot-update
 - After refactoring, update mock targets to match new module paths
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
 
+### Test-Driven Development (TDD)
+
+When fixing a bug or adding a feature, write the test **before** the implementation:
+
+```python
+# 1. Write a failing test marked xfail
+@pytest.mark.xfail(reason="Bug #1234: widget crashes on empty input")
+def test_widget_handles_empty_input():
+    result = widget.process("")
+    assert result == Widget.EMPTY_RESULT
+
+# 2. Run it — confirm it fails (XFAIL)
+# poetry run pytest path/to/test.py::test_widget_handles_empty_input -xvs
+
+# 3. Implement the fix
+
+# 4. Remove xfail, run again — confirm it passes
+def test_widget_handles_empty_input():
+    result = widget.process("")
+    assert result == Widget.EMPTY_RESULT
+```
+
+This catches regressions and proves the fix actually works. **Every bug fix should include a test that would have caught it.**
+
 ## Database Schema
 
 Key models (defined in `schema.prisma`):

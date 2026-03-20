@@ -60,7 +60,6 @@ from backend.copilot.tools.models import (
 )
 from backend.copilot.tracking import track_user_message
 from backend.data.redis_client import get_redis_async
-from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
@@ -893,36 +892,6 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
-
-
-# ========== Suggested Prompts ==========
-
-
-class SuggestedPromptsResponse(BaseModel):
-    """Response model for user-specific suggested prompts."""
-
-    prompts: list[str]
-
-
-@router.get(
-    "/suggested-prompts",
-    dependencies=[Security(auth.requires_user)],
-)
-async def get_suggested_prompts(
-    user_id: Annotated[str, Security(auth.get_user_id)],
-) -> SuggestedPromptsResponse:
-    """
-    Get LLM-generated suggested prompts for the authenticated user.
-
-    Returns personalized quick-action prompts based on the user's
-    business understanding. Returns an empty list if no custom prompts
-    are available.
-    """
-    understanding = await get_business_understanding(user_id)
-    if understanding is None:
-        return SuggestedPromptsResponse(prompts=[])
-
-    return SuggestedPromptsResponse(prompts=understanding.suggested_prompts)
 
 
 # ========== Configuration ==========

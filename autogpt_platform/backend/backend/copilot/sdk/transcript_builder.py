@@ -68,7 +68,7 @@ class TranscriptBuilder:
             type=entry_type,
             uuid=data.get("uuid") or str(uuid4()),
             parentUuid=data.get("parentUuid"),
-            isCompactSummary=data.get("isCompactSummary") or None,
+            isCompactSummary=data.get("isCompactSummary"),
             message=data.get("message", {}),
         )
 
