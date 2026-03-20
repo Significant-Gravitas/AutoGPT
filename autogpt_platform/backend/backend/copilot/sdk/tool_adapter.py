@@ -228,6 +228,12 @@ def _mcp_error(message: str) -> dict[str, Any]:
     }
 
 
+def _failure_key(tool_name: str, args: dict[str, Any]) -> str:
+    """Compute a stable fingerprint for (tool_name, args) used by the circuit breaker."""
+    args_key = json.dumps(args, sort_keys=True, default=str)
+    return f"{tool_name}:{args_key}"
+
+
 def _check_circuit_breaker(tool_name: str, args: dict[str, Any]) -> str | None:
     """Check if a tool has hit the consecutive failure limit.
 
@@ -238,18 +244,15 @@ def _check_circuit_breaker(tool_name: str, args: dict[str, Any]) -> str | None:
     if tracker is None:
         return None
 
-    # Key on tool name + sorted args to detect identical retries
-    args_key = json.dumps(args, sort_keys=True, default=str)
-    failure_key = f"{tool_name}:{args_key}"
-
-    count = tracker.get(failure_key, 0)
+    key = _failure_key(tool_name, args)
+    count = tracker.get(key, 0)
     if count >= _MAX_CONSECUTIVE_TOOL_FAILURES:
         logger.warning(
             "Circuit breaker tripped for tool %s after %d consecutive "
             "identical failures (args=%s)",
             tool_name,
             count,
-            args_key[:200],
+            key[len(tool_name) + 1 :][:200],
         )
         return (
             f"STOP: Tool '{tool_name}' has failed {count} consecutive times with "
@@ -265,9 +268,8 @@ def _record_tool_failure(tool_name: str, args: dict[str, Any]) -> None:
     tracker = _consecutive_tool_failures.get(None)
     if tracker is None:
         return
-    args_key = json.dumps(args, sort_keys=True, default=str)
-    failure_key = f"{tool_name}:{args_key}"
-    tracker[failure_key] = tracker.get(failure_key, 0) + 1
+    key = _failure_key(tool_name, args)
+    tracker[key] = tracker.get(key, 0) + 1
 
 
 def _clear_tool_failures(tool_name: str) -> None:
@@ -290,26 +292,15 @@ def create_tool_handler(base_tool: BaseTool):
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
         """Execute the wrapped tool and return MCP-formatted response."""
-        # Circuit breaker: stop infinite retry loops
-        stop_msg = _check_circuit_breaker(base_tool.name, args)
-        if stop_msg:
-            return _mcp_error(stop_msg)
-
         user_id, session = get_execution_context()
 
         if session is None:
             return _mcp_error("No session context available")
 
         try:
-            result = await _execute_tool_sync(base_tool, user_id, session, args)
-            if result.get("isError"):
-                _record_tool_failure(base_tool.name, args)
-            else:
-                _clear_tool_failures(base_tool.name)
-            return result
+            return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:
             logger.error(f"Error executing tool {base_tool.name}: {e}", exc_info=True)
-            _record_tool_failure(base_tool.name, args)
             return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
 
     return tool_handler
