@@ -28,7 +28,10 @@ export function SelectWidget(props: WidgetProps) {
     id,
     formContext,
   } = props;
-  const enumOptions = options.enumOptions || [];
+  const rawEnumOptions = options.enumOptions || [];
+  const enumOptions = rawEnumOptions.filter(
+    (option: any) => option.value !== "",
+  );
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
   const selectedIndexes = enumOptionsIndexForValue(
