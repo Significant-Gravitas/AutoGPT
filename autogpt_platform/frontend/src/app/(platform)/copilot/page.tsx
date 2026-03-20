@@ -6,8 +6,8 @@ import { CopilotPage } from "./CopilotPage";
 
 export default function Page() {
   return (
-    <FeatureFlagPage flag={Flag.CHAT} whenDisabled="/library">
-      <CopilotPage />
-    </FeatureFlagPage>
+    // <FeatureFlagPage flag={Flag.CHAT} whenDisabled="/library">
+    <CopilotPage />
+    // </FeatureFlagPage>
   );
 }

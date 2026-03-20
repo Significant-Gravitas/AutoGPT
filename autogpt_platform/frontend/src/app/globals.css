@@ -79,7 +79,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-[#F6F7F8] font-sans text-foreground antialiased transition-colors;
+    @apply bg-[#FAFAFA] font-sans text-foreground antialiased transition-colors;
   }
 }
 

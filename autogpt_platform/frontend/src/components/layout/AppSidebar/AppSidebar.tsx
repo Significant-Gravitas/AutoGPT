@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
-  House,
+  Sparkle,
   TreeStructure,
   Compass,
   Wrench,
@@ -47,7 +47,7 @@ export function AppSidebar({ dynamicContent }: Props) {
   const homeHref = isChatEnabled === true ? "/copilot" : "/library";
 
   const navLinks = [
-    { name: "Home", href: homeHref, icon: House },
+    { name: "Copilot", href: homeHref, icon: Sparkle },
     ...(isChatEnabled === true
       ? [{ name: "Workflow", href: "/library", icon: TreeStructure }]
       : []),
@@ -71,7 +71,7 @@ export function AppSidebar({ dynamicContent }: Props) {
       collapsible="icon"
       className="border-r border-zinc-100"
     >
-      <SidebarHeader className="px-3 py-4">
+      <SidebarHeader className="border-b border-zinc-100 px-3 py-4">
         <div
           className={cn(
             "flex items-center",
@@ -84,12 +84,14 @@ export function AppSidebar({ dynamicContent }: Props) {
             />
           </Link>
           {!isCollapsed && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <SidebarTrigger />
-              </TooltipTrigger>
-              <TooltipContent side="right">Close sidebar</TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <SidebarTrigger />
+                </TooltipTrigger>
+                <TooltipContent side="right">Close sidebar</TooltipContent>
+              </Tooltip>
+            </div>
           )}
         </div>
         {isCollapsed && (
@@ -114,7 +116,7 @@ export function AppSidebar({ dynamicContent }: Props) {
                     asChild
                     isActive={isActive(link.href)}
                     tooltip={link.name}
-                    className="py-5"
+                    className="py-5 data-[active=true]:bg-violet-50 data-[active=true]:font-normal data-[active=true]:text-violet-700"
                   >
                     <Link href={link.href}>
                       <link.icon className="!size-5" weight="regular" />

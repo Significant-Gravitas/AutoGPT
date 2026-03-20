@@ -65,7 +65,7 @@ export default async function RootLayout({
           >
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
-              <TallyPopupSimple />
+              {/* TallyPopupSimple removed — feedback button is now in the Navbar */}
               <VercelAnalyticsWrapper />
 
               {/* React Query DevTools is only available in development */}
