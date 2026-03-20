@@ -81,6 +81,11 @@ class TestResolveSandboxPath:
         with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/tmp/../etc/passwd")
 
+    def test_tmp_prefix_collision_blocked(self):
+        """A path like /tmp_evil should be blocked (not a prefix match)."""
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_sandbox_path("/tmp_evil/malicious.txt")
+
 
 # ---------------------------------------------------------------------------
 # _read_local — host filesystem reads with allowlist enforcement

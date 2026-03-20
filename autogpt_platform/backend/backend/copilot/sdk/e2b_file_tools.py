@@ -16,6 +16,7 @@ import shlex
 from typing import Any, Callable
 
 from backend.copilot.context import (
+    E2B_ALLOWED_DIRS,
     E2B_WORKDIR,
     get_current_sandbox,
     get_sdk_cwd,
@@ -137,12 +138,12 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         parent = os.path.dirname(remote)
-        if parent and parent not in ("/tmp", E2B_WORKDIR):
+        if parent and parent not in E2B_ALLOWED_DIRS:
             await sandbox.files.make_dir(parent)
         canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
         if canonical_parent is None:
             return _mcp(
-                f"Path must be within {' or '.join((E2B_WORKDIR, '/tmp'))}: {parent}",
+                f"Path must be within {' or '.join(E2B_ALLOWED_DIRS)}: {parent}",
                 error=True,
             )
         remote = os.path.join(canonical_parent, os.path.basename(remote))

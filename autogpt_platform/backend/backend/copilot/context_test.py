@@ -207,3 +207,8 @@ def test_resolve_sandbox_path_tmp_itself():
 def test_resolve_sandbox_path_tmp_escape_raises():
     with pytest.raises(ValueError):
         resolve_sandbox_path("/tmp/../etc/passwd")
+
+
+def test_resolve_sandbox_path_tmp_prefix_collision_raises():
+    with pytest.raises(ValueError):
+        resolve_sandbox_path("/tmp_evil/malicious.txt")
