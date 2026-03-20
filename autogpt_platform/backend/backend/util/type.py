@@ -307,8 +307,8 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
         except TypeError:
             # TypedDict and some typing constructs don't support isinstance checks.
             # For TypedDict, check if value is a dict with the required keys.
-            if isinstance(value, dict) and hasattr(target, "__annotations__"):
-                return all(k in value for k in target.__annotations__)
+            if isinstance(value, dict) and hasattr(target, "__required_keys__"):
+                return all(k in value for k in target.__required_keys__)
             return False
 
     return False
