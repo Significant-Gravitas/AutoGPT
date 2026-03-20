@@ -36,8 +36,26 @@ def _msg_tokens(msg: dict, enc) -> int:
     OpenAI counts ≈3 wrapper tokens per chat message, plus 1 if "name"
     is present, plus the tokenised content length.
     For tool calls, we need to count tokens in tool_calls and content fields.
+    Supports Chat Completions, Anthropic, and Responses API formats.
     """
     WRAPPER = 3 + (1 if "name" in msg else 0)
+
+    # Responses API: function_call items have arguments + name
+    if msg.get("type") == "function_call":
+        return (
+            WRAPPER
+            + _tok_len(msg.get("name", ""), enc)
+            + _tok_len(msg.get("arguments", ""), enc)
+            + _tok_len(msg.get("call_id", ""), enc)
+        )
+
+    # Responses API: function_call_output items have output
+    if msg.get("type") == "function_call_output":
+        return (
+            WRAPPER
+            + _tok_len(msg.get("output", ""), enc)
+            + _tok_len(msg.get("call_id", ""), enc)
+        )
 
     # Count content tokens
     content_tokens = _tok_len(msg.get("content") or "", enc)
@@ -45,7 +63,7 @@ def _msg_tokens(msg: dict, enc) -> int:
     # Count tool call tokens for both OpenAI and Anthropic formats
     tool_call_tokens = 0
 
-    # OpenAI format: tool_calls array at message level
+    # OpenAI Chat Completions format: tool_calls array at message level
     if "tool_calls" in msg and isinstance(msg["tool_calls"], list):
         for tool_call in msg["tool_calls"]:
             # Count the tool call structure tokens
@@ -85,6 +103,10 @@ def _msg_tokens(msg: dict, enc) -> int:
 
 def _is_tool_message(msg: dict) -> bool:
     """Check if a message contains tool calls or results that should be protected."""
+    # Responses API: standalone function_call / function_call_output items
+    if msg.get("type") in ("function_call", "function_call_output"):
+        return True
+
     content = msg.get("content")
 
     # Check for Anthropic-style tool messages
@@ -94,7 +116,7 @@ def _is_tool_message(msg: dict) -> bool:
     ):
         return True
 
-    # Check for OpenAI-style tool calls in the message
+    # Check for OpenAI Chat Completions-style tool calls in the message
     if "tool_calls" in msg or msg.get("role") == "tool":
         return True
 
@@ -113,11 +135,18 @@ def _is_objective_message(msg: dict) -> bool:
 def _truncate_tool_message_content(msg: dict, enc, max_tokens: int) -> None:
     """
     Carefully truncate tool message content while preserving tool structure.
-    Handles both Anthropic-style (list content) and OpenAI-style (string content) tool messages.
+    Handles Anthropic, Chat Completions, and Responses API tool messages.
     """
+    # Responses API: function_call_output has "output" field
+    if msg.get("type") == "function_call_output":
+        output = msg.get("output", "")
+        if isinstance(output, str) and _tok_len(output, enc) > max_tokens:
+            msg["output"] = _truncate_middle_tokens(output, enc, max_tokens)
+        return
+
     content = msg.get("content")
 
-    # OpenAI-style tool message: role="tool" with string content
+    # OpenAI Chat Completions tool message: role="tool" with string content
     if msg.get("role") == "tool" and isinstance(content, str):
         if _tok_len(content, enc) > max_tokens:
             msg["content"] = _truncate_middle_tokens(content, enc, max_tokens)
@@ -251,18 +280,26 @@ def _extract_tool_call_ids_from_message(msg: dict) -> set[str]:
     """
     Extract tool_call IDs from an assistant message.
 
-    Supports both formats:
-    - OpenAI: {"role": "assistant", "tool_calls": [{"id": "..."}]}
+    Supports all formats:
+    - OpenAI Chat Completions: {"role": "assistant", "tool_calls": [{"id": "..."}]}
     - Anthropic: {"role": "assistant", "content": [{"type": "tool_use", "id": "..."}]}
+    - OpenAI Responses API: {"type": "function_call", "call_id": "..."}
 
     Returns:
         Set of tool_call IDs found in the message.
     """
     ids: set[str] = set()
+
+    # Responses API: standalone function_call item
+    if msg.get("type") == "function_call":
+        if call_id := msg.get("call_id"):
+            ids.add(call_id)
+        return ids
+
     if msg.get("role") != "assistant":
         return ids
 
-    # OpenAI format: tool_calls array
+    # OpenAI Chat Completions format: tool_calls array
     if msg.get("tool_calls"):
         for tc in msg["tool_calls"]:
             tc_id = tc.get("id")
@@ -285,16 +322,23 @@ def _extract_tool_response_ids_from_message(msg: dict) -> set[str]:
     """
     Extract tool_call IDs that this message is responding to.
 
-    Supports both formats:
-    - OpenAI: {"role": "tool", "tool_call_id": "..."}
+    Supports all formats:
+    - OpenAI Chat Completions: {"role": "tool", "tool_call_id": "..."}
     - Anthropic: {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "..."}]}
+    - OpenAI Responses API: {"type": "function_call_output", "call_id": "..."}
 
     Returns:
         Set of tool_call IDs this message responds to.
     """
     ids: set[str] = set()
 
-    # OpenAI format: role=tool with tool_call_id
+    # Responses API: standalone function_call_output item
+    if msg.get("type") == "function_call_output":
+        if call_id := msg.get("call_id"):
+            ids.add(call_id)
+        return ids
+
+    # OpenAI Chat Completions format: role=tool with tool_call_id
     if msg.get("role") == "tool":
         tc_id = msg.get("tool_call_id")
         if tc_id:
@@ -313,8 +357,11 @@ def _extract_tool_response_ids_from_message(msg: dict) -> set[str]:
 
 
 def _is_tool_response_message(msg: dict) -> bool:
-    """Check if message is a tool response (OpenAI or Anthropic format)."""
-    # OpenAI format
+    """Check if message is a tool response (Chat Completions, Anthropic, or Responses API)."""
+    # Responses API format
+    if msg.get("type") == "function_call_output":
+        return True
+    # OpenAI Chat Completions format
     if msg.get("role") == "tool":
         return True
     # Anthropic format
@@ -332,13 +379,20 @@ def _remove_orphan_tool_responses(
     """
     Remove tool response messages/blocks that reference orphan tool_call IDs.
 
-    Supports both OpenAI and Anthropic formats.
+    Supports OpenAI Chat Completions, Anthropic, and Responses API formats.
     For Anthropic messages with mixed valid/orphan tool_result blocks,
     filters out only the orphan blocks instead of dropping the entire message.
     """
     result = []
     for msg in messages:
-        # OpenAI format: role=tool - drop entire message if orphan
+        # Responses API: function_call_output - drop if orphan
+        if msg.get("type") == "function_call_output":
+            if msg.get("call_id") in orphan_ids:
+                continue
+            result.append(msg)
+            continue
+
+        # OpenAI Chat Completions: role=tool - drop entire message if orphan
         if msg.get("role") == "tool":
             tc_id = msg.get("tool_call_id")
             if tc_id and tc_id in orphan_ids:
@@ -524,6 +578,18 @@ async def _summarize_messages_llm(
     """Summarize messages using an LLM."""
     conversation = []
     for msg in messages:
+        # Responses API: function_call items
+        if msg.get("type") == "function_call":
+            name = msg.get("name", "unknown_tool")
+            args = msg.get("arguments", "")
+            conversation.append(f"TOOL CALL ({name}): {args}")
+            continue
+        # Responses API: function_call_output items
+        if msg.get("type") == "function_call_output":
+            output = msg.get("output", "")
+            conversation.append(f"TOOL OUTPUT: {output}")
+            continue
+
         role = msg.get("role", "")
         content = msg.get("content", "")
         if content and role in ("user", "assistant", "tool"):
