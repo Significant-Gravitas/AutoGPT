@@ -705,7 +705,13 @@ def get_service_client(
 
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
             if expected_return:
-                return expected_return.validate_python(result)
+                try:
+                    return expected_return.validate_python(result)
+                except Exception as e:
+                    logger.warning(
+                        "RPC return type validation failed, using raw result: %s", e
+                    )
+                    return result
             return result
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
