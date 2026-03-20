@@ -6,7 +6,12 @@ import {
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
 import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/endpoints/mcp/mcp";
-import { openOAuthPopup } from "@/lib/oauth-popup";
+import {
+  OAUTH_ERROR_FLOW_CANCELED,
+  OAUTH_ERROR_FLOW_TIMED_OUT,
+  OAUTH_ERROR_WINDOW_CLOSED,
+  openOAuthPopup,
+} from "@/lib/oauth-popup";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -246,12 +251,12 @@ export function useCredentialsInput({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (
-        message === "Sign-in window was closed" ||
-        message === "OAuth flow was canceled"
+        message === OAUTH_ERROR_WINDOW_CLOSED ||
+        message === OAUTH_ERROR_FLOW_CANCELED
       ) {
         // User closed the popup or clicked cancel — not an error
-      } else if (message === "OAuth flow timed out") {
-        setOAuthError("OAuth flow timed out");
+      } else if (message === OAUTH_ERROR_FLOW_TIMED_OUT) {
+        setOAuthError(OAUTH_ERROR_FLOW_TIMED_OUT);
       } else {
         setOAuthError(`OAuth error: ${message}`);
       }
