@@ -68,6 +68,16 @@ AutoGPT Platform is a monorepo containing:
   ```
 - Run the github pre-commit hooks to ensure code quality.
 
+### Test-Driven Development (TDD)
+
+When fixing a bug or adding a feature, follow a test-first approach:
+
+1. **Write a failing test first** — create a test that reproduces the bug or validates the new behavior, marked with `@pytest.mark.xfail` (backend) or `.fixme` (Playwright). Run it to confirm it fails for the right reason.
+2. **Implement the fix/feature** — write the minimal code to make the test pass.
+3. **Remove the xfail marker** — once the test passes, remove the `xfail`/`.fixme` annotation and run the full test suite to confirm nothing else broke.
+
+This ensures every change is covered by a test and that the test actually validates the intended behavior.
+
 ### Reviewing/Revising Pull Requests
 
 Use `/pr-review` to review a PR or `/pr-address` to address comments.
