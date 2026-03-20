@@ -1016,7 +1016,14 @@ class _TransientErrorHandled(Exception):
     This signals the outer retry loop that the attempt failed so it can
     perform session-message rollback and set the `ended_with_stream_error`
     flag, **without** yielding a duplicate `StreamError` to the client.
+
+    The ``error_msg`` attribute carries the specific error message so the
+    handler can re-append the correct marker after session rollback.
     """
+
+    def __init__(self, message: str, error_msg: str | None = None):
+        super().__init__(message)
+        self.error_msg = error_msg
 
 
 async def _run_stream_attempt(
@@ -1052,6 +1059,9 @@ async def _run_stream_attempt(
         accumulated_tool_calls=[],
     )
     ended_with_stream_error = False
+    # Stores the error message used by _append_error_marker so the outer
+    # retry loop can re-append the correct message after session rollback.
+    stream_error_msg: str | None = None
 
     consecutive_empty_tool_calls = 0
 
@@ -1144,13 +1154,14 @@ async def _run_stream_attempt(
                         "suppressing raw error text",
                         ctx.log_prefix,
                     )
+                    stream_error_msg = FRIENDLY_TRANSIENT_MSG
                     _append_error_marker(
                         ctx.session,
-                        FRIENDLY_TRANSIENT_MSG,
+                        stream_error_msg,
                         retryable=True,
                     )
                     yield StreamError(
-                        errorText=FRIENDLY_TRANSIENT_MSG,
+                        errorText=stream_error_msg,
                         code="transient_api_error",
                     )
                     ended_with_stream_error = True
@@ -1278,13 +1289,14 @@ async def _run_stream_attempt(
                             ctx.log_prefix,
                             consecutive_empty_tool_calls,
                         )
+                        stream_error_msg = _CIRCUIT_BREAKER_ERROR_MSG
                         _append_error_marker(
                             ctx.session,
-                            _CIRCUIT_BREAKER_ERROR_MSG,
+                            stream_error_msg,
                             retryable=True,
                         )
                         yield StreamError(
-                            errorText=_CIRCUIT_BREAKER_ERROR_MSG,
+                            errorText=stream_error_msg,
                             code="circuit_breaker_empty_tool_calls",
                         )
                         ended_with_stream_error = True
@@ -1375,7 +1387,8 @@ async def _run_stream_attempt(
     # loop can rollback session messages and set its error flags properly.
     if ended_with_stream_error:
         raise _TransientErrorHandled(
-            "Transient API error handled — StreamError already yielded"
+            "Stream error handled — StreamError already yielded",
+            error_msg=stream_error_msg,
         )
 
 
@@ -1832,7 +1845,7 @@ async def stream_chat_completion_sdk(
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
-            except _TransientErrorHandled:
+            except _TransientErrorHandled as exc:
                 # _run_stream_attempt already yielded a StreamError and
                 # appended an error marker.  We only need to rollback
                 # session messages and set the error flag — do NOT set
@@ -1849,7 +1862,13 @@ async def stream_chat_completion_sdk(
                 session.messages = session.messages[:pre_attempt_msg_count]
                 # Re-append the error marker so it survives the rollback
                 # and is persisted by the finally block (see #2947655365).
-                _append_error_marker(session, FRIENDLY_TRANSIENT_MSG, retryable=True)
+                # Use the specific error message from the attempt (e.g.
+                # circuit breaker msg) rather than always the generic one.
+                _append_error_marker(
+                    session,
+                    exc.error_msg or FRIENDLY_TRANSIENT_MSG,
+                    retryable=True,
+                )
                 ended_with_stream_error = True
                 break
             except Exception as e:
