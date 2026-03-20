@@ -66,6 +66,16 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
     "_stash_event", default=None
 )
 
+# Circuit breaker: tracks consecutive tool failures to detect infinite retry loops.
+# When a tool is called repeatedly with empty/identical args and keeps failing,
+# this counter is incremented.  After _MAX_CONSECUTIVE_TOOL_FAILURES identical
+# failures the tool handler returns a hard-stop message instead of the raw error.
+_MAX_CONSECUTIVE_TOOL_FAILURES = 3
+_consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
+    "_consecutive_tool_failures",
+    default=None,  # type: ignore[arg-type]
+)
+
 
 def set_execution_context(
     user_id: str | None,
@@ -91,6 +101,7 @@ def set_execution_context(
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
+    _consecutive_tool_failures.set({})
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -217,6 +228,59 @@ def _mcp_error(message: str) -> dict[str, Any]:
     }
 
 
+def _check_circuit_breaker(tool_name: str, args: dict[str, Any]) -> str | None:
+    """Check if a tool has hit the consecutive failure limit.
+
+    Tracks failures keyed by (tool_name, args_fingerprint). Returns an error
+    message if the circuit breaker has tripped, or None if the call should proceed.
+    """
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return None
+
+    # Key on tool name + sorted args to detect identical retries
+    args_key = json.dumps(args, sort_keys=True, default=str)
+    failure_key = f"{tool_name}:{args_key}"
+
+    count = tracker.get(failure_key, 0)
+    if count >= _MAX_CONSECUTIVE_TOOL_FAILURES:
+        logger.warning(
+            "Circuit breaker tripped for tool %s after %d consecutive "
+            "identical failures (args=%s)",
+            tool_name,
+            count,
+            args_key[:200],
+        )
+        return (
+            f"STOP: Tool '{tool_name}' has failed {count} consecutive times with "
+            f"the same arguments. Do NOT retry this tool call. "
+            f"If you were trying to write content to a file, instead respond with "
+            f"the content directly as a text message to the user."
+        )
+    return None
+
+
+def _record_tool_failure(tool_name: str, args: dict[str, Any]) -> None:
+    """Record a tool failure for circuit breaker tracking."""
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return
+    args_key = json.dumps(args, sort_keys=True, default=str)
+    failure_key = f"{tool_name}:{args_key}"
+    tracker[failure_key] = tracker.get(failure_key, 0) + 1
+
+
+def _clear_tool_failures(tool_name: str) -> None:
+    """Clear failure tracking for a tool on success."""
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return
+    # Clear all entries for this tool name
+    keys_to_remove = [k for k in tracker if k.startswith(f"{tool_name}:")]
+    for k in keys_to_remove:
+        del tracker[k]
+
+
 def create_tool_handler(base_tool: BaseTool):
     """Create an async handler function for a BaseTool.
 
@@ -226,15 +290,26 @@ def create_tool_handler(base_tool: BaseTool):
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
         """Execute the wrapped tool and return MCP-formatted response."""
+        # Circuit breaker: stop infinite retry loops
+        stop_msg = _check_circuit_breaker(base_tool.name, args)
+        if stop_msg:
+            return _mcp_error(stop_msg)
+
         user_id, session = get_execution_context()
 
         if session is None:
             return _mcp_error("No session context available")
 
         try:
-            return await _execute_tool_sync(base_tool, user_id, session, args)
+            result = await _execute_tool_sync(base_tool, user_id, session, args)
+            if result.get("isError"):
+                _record_tool_failure(base_tool.name, args)
+            else:
+                _clear_tool_failures(base_tool.name)
+            return result
         except Exception as e:
             logger.error(f"Error executing tool {base_tool.name}: {e}", exc_info=True)
+            _record_tool_failure(base_tool.name, args)
             return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
 
     return tool_handler
@@ -358,6 +433,11 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            # Circuit breaker: stop infinite retry loops with identical args
+            stop_msg = _check_circuit_breaker(tool_name, args)
+            if stop_msg:
+                return _mcp_error(stop_msg)
+
             user_id, session = get_execution_context()
             if session is not None:
                 try:
@@ -365,6 +445,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                         args, user_id, session, input_schema=input_schema
                     )
                 except FileRefExpansionError as exc:
+                    _record_tool_failure(tool_name, args)
                     return _mcp_error(
                         f"@@agptfile: reference could not be resolved: {exc}. "
                         "Ensure the file exists before referencing it. "
@@ -373,6 +454,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                     )
             result = await fn(args)
             truncated = truncate(result, _MCP_MAX_CHARS)
+
+            # Track consecutive failures for circuit breaker
+            if truncated.get("isError"):
+                _record_tool_failure(tool_name, args)
+            else:
+                _clear_tool_failures(tool_name)
 
             # Stash the text so the response adapter can forward our
             # middle-out truncated version to the frontend instead of the

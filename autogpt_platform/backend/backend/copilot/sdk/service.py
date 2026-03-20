@@ -1040,6 +1040,12 @@ async def _run_stream_attempt(
     )
     ended_with_stream_error = False
 
+    # Hard circuit breaker: abort the stream if the model sends too many
+    # consecutive tool calls with empty parameters (a sign of context
+    # saturation or serialization failure).
+    _EMPTY_TOOL_CALL_LIMIT = 6
+    consecutive_empty_tool_calls = 0
+
     async with ClaudeSDKClient(options=state.options) as client:
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
@@ -1239,6 +1245,54 @@ async def _run_stream_attempt(
                         compacted, log_prefix=ctx.log_prefix
                     )
                     entries_replaced = True
+
+            # --- Hard circuit breaker for empty tool calls ---
+            # Detect when the model repeatedly sends tool_use blocks with
+            # empty input ({}).  This happens when context saturation or
+            # output-token limits prevent the model from serializing args.
+            if isinstance(sdk_msg, AssistantMessage):
+                has_empty_tool_call = any(
+                    isinstance(b, ToolUseBlock) and not b.input for b in sdk_msg.content
+                )
+                if has_empty_tool_call:
+                    consecutive_empty_tool_calls += 1
+                    logger.warning(
+                        "%s Empty tool call detected (%d/%d)",
+                        ctx.log_prefix,
+                        consecutive_empty_tool_calls,
+                        _EMPTY_TOOL_CALL_LIMIT,
+                    )
+                    if consecutive_empty_tool_calls >= _EMPTY_TOOL_CALL_LIMIT:
+                        logger.error(
+                            "%s Circuit breaker: aborting stream after %d "
+                            "consecutive empty tool calls",
+                            ctx.log_prefix,
+                            consecutive_empty_tool_calls,
+                        )
+                        _append_error_marker(
+                            ctx.session,
+                            (
+                                "AutoPilot was unable to complete the tool call "
+                                "— this usually happens when the response is "
+                                "too large to fit in a single tool call. "
+                                "Try breaking your request into smaller parts."
+                            ),
+                            retryable=True,
+                        )
+                        yield StreamError(
+                            errorText=(
+                                "AutoPilot was unable to complete the tool "
+                                "call — this usually happens when the response "
+                                "is too large to fit in a single tool call. "
+                                "Try breaking your request into smaller parts."
+                            ),
+                            code="circuit_breaker_empty_tool_calls",
+                        )
+                        ended_with_stream_error = True
+                        break
+                else:
+                    # Reset counter on a normal (non-empty) tool call or text
+                    consecutive_empty_tool_calls = 0
 
             # --- Dispatch adapter responses ---
             for response in state.adapter.convert_message(sdk_msg):
