@@ -111,7 +111,9 @@ def resolve_sandbox_path(path: str) -> str:
     candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
     if not is_within_allowed_dirs(normalized):
-        raise ValueError(f"Path must be within {E2B_ALLOWED_DIRS_STR}: {path}")
+        raise ValueError(
+            f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(path)}"
+        )
     return normalized
 
 
