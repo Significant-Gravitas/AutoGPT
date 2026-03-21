@@ -175,7 +175,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     parent = os.path.dirname(remote)
     canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
     if canonical_parent is None:
-        return _mcp(f"Path must be within {E2B_WORKDIR}: {parent}", error=True)
+        return _mcp(f"Path must be within {E2B_ALLOWED_DIRS_STR}: {parent}", error=True)
     remote = os.path.join(canonical_parent, os.path.basename(remote))
 
     try:
