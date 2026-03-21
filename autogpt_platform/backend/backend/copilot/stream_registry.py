@@ -17,6 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -278,6 +279,61 @@ async def publish_chunk(
         )
 
     return message_id
+
+
+async def stream_and_publish(
+    session_id: str,
+    user_id: str | None,
+    turn_id: str,
+    stream: AsyncIterator[StreamBaseResponse],
+) -> AsyncIterator[StreamBaseResponse]:
+    """Wrap an async stream iterator with registry publishing.
+
+    Publishes each chunk to the stream registry for frontend SSE consumption,
+    skipping ``StreamFinish`` and ``StreamError`` (which are published by
+    :func:`mark_session_completed`).
+
+    This is a pass-through: every event from *stream* is yielded unchanged so
+    the caller can still consume and aggregate them.  The caller is responsible
+    for calling :func:`create_session` before and :func:`mark_session_completed`
+    after iterating.
+
+    Args:
+        session_id: Chat session ID (for logging only).
+        user_id: User ID (for logging only).
+        turn_id: Turn UUID that identifies the Redis stream to publish to.
+            If empty, publishing is silently skipped (graceful degradation).
+        stream: The underlying async iterator of stream events.
+
+    Yields:
+        Every event from *stream*, unchanged.
+    """
+    from .response_model import StreamError as _StreamError
+    from .response_model import StreamFinish as _StreamFinish
+
+    publish_failed_once = False
+
+    async for event in stream:
+        if turn_id and not isinstance(event, (_StreamFinish, _StreamError)):
+            try:
+                await publish_chunk(turn_id, event)
+            except Exception:
+                if not publish_failed_once:
+                    publish_failed_once = True
+                    logger.warning(
+                        "[stream_and_publish] Failed to publish chunk %s for %s "
+                        "(further failures logged at DEBUG)",
+                        type(event).__name__,
+                        session_id[:12],
+                        exc_info=True,
+                    )
+                else:
+                    logger.debug(
+                        "[stream_and_publish] Failed to publish chunk %s",
+                        type(event).__name__,
+                        exc_info=True,
+                    )
+        yield event
 
 
 async def subscribe_to_session(

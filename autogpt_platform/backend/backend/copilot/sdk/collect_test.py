@@ -32,6 +32,17 @@ def mock_registry():
         m.create_session = AsyncMock()
         m.publish_chunk = AsyncMock()
         m.mark_session_completed = AsyncMock()
+
+        # stream_and_publish: pass-through that also publishes (real logic)
+        # We re-implement the pass-through here so the event loop works,
+        # but still track publish_chunk calls via the mock.
+        async def _stream_and_publish(session_id, user_id, turn_id, stream):
+            async for event in stream:
+                if turn_id and not isinstance(event, (StreamFinish, StreamError)):
+                    await m.publish_chunk(turn_id, event)
+                yield event
+
+        m.stream_and_publish = _stream_and_publish
         yield m
 
 
@@ -130,6 +141,7 @@ async def test_graceful_degradation_when_create_session_fails(
 
     assert result.response_text == "works"
     # publish_chunk and mark_session_completed should NOT be called
+    # because turn_id was cleared on create_session failure
     mock_registry.publish_chunk.assert_not_awaited()
     mock_registry.mark_session_completed.assert_not_awaited()
 

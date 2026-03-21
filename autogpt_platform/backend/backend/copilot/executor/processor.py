@@ -14,7 +14,6 @@ import time
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
-from backend.copilot.response_model import StreamFinish
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.executor.cluster_lock import ClusterLock
@@ -268,13 +267,21 @@ class CoPilotProcessor:
                 log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             # Stream chat completion and publish chunks to Redis.
-            async for chunk in stream_fn(
+            # stream_and_publish wraps the raw stream with registry
+            # publishing (shared with collect_copilot_response).
+            raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
+            )
+            async for chunk in stream_registry.stream_and_publish(
+                session_id=entry.session_id,
+                user_id=entry.user_id,
+                turn_id=entry.turn_id,
+                stream=raw_stream,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")
@@ -284,18 +291,6 @@ class CoPilotProcessor:
                 if current_time - last_refresh >= refresh_interval:
                     cluster_lock.refresh()
                     last_refresh = current_time
-
-                # Skip StreamFinish — mark_session_completed publishes it.
-                if isinstance(chunk, StreamFinish):
-                    continue
-
-                try:
-                    await stream_registry.publish_chunk(entry.turn_id, chunk)
-                except Exception as e:
-                    log.error(
-                        f"Error publishing chunk {type(chunk).__name__}: {e}",
-                        exc_info=True,
-                    )
 
             # Stream loop completed
             if cancel.is_set():

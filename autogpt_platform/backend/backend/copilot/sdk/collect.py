@@ -75,7 +75,6 @@ async def collect_copilot_response(
     from .. import stream_registry
     from ..response_model import (
         StreamError,
-        StreamFinish,
         StreamTextDelta,
         StreamToolInputAvailable,
         StreamToolOutputAvailable,
@@ -86,7 +85,6 @@ async def collect_copilot_response(
     result = CopilotResult()
     response_parts: list[str] = []
     tool_calls_by_id: dict[str, dict[str, Any]] = {}
-    publish_failed_once = False
 
     # Register with the stream registry so the frontend sees active_stream
     # and can connect via the SSE reconnect endpoint for real-time updates.
@@ -112,37 +110,23 @@ async def collect_copilot_response(
         turn_id = ""
 
     try:
-        async for event in stream_chat_completion_sdk(
+        # Wrap the raw stream with stream_and_publish so each chunk is
+        # published to Redis for frontend SSE consumption.  The shared
+        # helper handles StreamFinish/StreamError skipping and logging.
+        raw_stream = stream_chat_completion_sdk(
             session_id=session_id,
             message=message,
             is_user_message=is_user_message,
             user_id=user_id,
-        ):
-            # Publish to stream registry for frontend SSE consumption.
-            # Skip StreamFinish and StreamError — mark_session_completed
-            # publishes both (StreamError before StreamFinish when errored).
-            if turn_id and not isinstance(event, (StreamFinish, StreamError)):
-                try:
-                    await stream_registry.publish_chunk(turn_id, event)
-                except Exception:
-                    # Log first failure at WARNING for visibility; subsequent
-                    # failures at DEBUG to avoid log spam during Redis outages.
-                    if not publish_failed_once:
-                        publish_failed_once = True
-                        logger.warning(
-                            "[collect] Failed to publish chunk %s for %s "
-                            "(further failures logged at DEBUG)",
-                            type(event).__name__,
-                            session_id[:12],
-                            exc_info=True,
-                        )
-                    else:
-                        logger.debug(
-                            "[collect] Failed to publish chunk %s",
-                            type(event).__name__,
-                            exc_info=True,
-                        )
+        )
+        published_stream = stream_registry.stream_and_publish(
+            session_id=session_id,
+            user_id=user_id,
+            turn_id=turn_id,
+            stream=raw_stream,
+        )
 
+        async for event in published_stream:
             if isinstance(event, StreamTextDelta):
                 response_parts.append(event.delta)
             elif isinstance(event, StreamToolInputAvailable):
