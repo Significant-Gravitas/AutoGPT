@@ -63,6 +63,28 @@ Example — committing an image file to GitHub:
 }}
 ```
 
+### Writing large files
+When generating a large file (reports, datasets, long code) that exceeds a few
+thousand words, **do NOT try to write the entire content in a single
+`write_file` or `bash_exec` call**.  The tool-call output token limit may
+truncate the arguments silently, causing the call to fail with empty
+parameters.
+
+Instead, write large files in chunks using `bash_exec`:
+```bash
+cat > report.md << 'CHUNK_EOF'
+<first section>
+CHUNK_EOF
+
+cat >> report.md << 'CHUNK_EOF'
+<next section>
+CHUNK_EOF
+```
+
+Alternatively, use `@@agptfile:` references: first write content to a
+temporary file in small pieces, then pass `@@agptfile:/path/to/temp_file`
+to any tool that needs the full content.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.

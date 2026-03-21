@@ -1203,13 +1203,17 @@ async def _run_stream_attempt(
             if isinstance(sdk_msg, ResultMessage):
                 logger.info(
                     "%s Received: ResultMessage %s "
-                    "(unresolved=%d, current=%d, resolved=%d)",
+                    "(unresolved=%d, current=%d, resolved=%d, "
+                    "num_turns=%d, cost_usd=%s, result=%s)",
                     ctx.log_prefix,
                     sdk_msg.subtype,
                     len(state.adapter.current_tool_calls)
                     - len(state.adapter.resolved_tool_calls),
                     len(state.adapter.current_tool_calls),
                     len(state.adapter.resolved_tool_calls),
+                    sdk_msg.num_turns,
+                    sdk_msg.total_cost_usd,
+                    (sdk_msg.result or "")[:200],
                 )
                 if sdk_msg.subtype in (
                     "error",
@@ -1268,24 +1272,43 @@ async def _run_stream_attempt(
 
             # --- Hard circuit breaker for empty tool calls ---
             # Detect when the model repeatedly sends tool_use blocks with
-            # empty input ({}).  This happens when context saturation or
-            # output-token limits prevent the model from serializing args.
+            # empty input ({}).  This typically happens when the CLI's
+            # output token limit is exceeded while serializing a large
+            # tool argument (e.g. writing a 100KB report in one call).
             if isinstance(sdk_msg, AssistantMessage):
-                has_empty_tool_call = any(
-                    isinstance(b, ToolUseBlock) and not b.input for b in sdk_msg.content
-                )
-                if has_empty_tool_call:
+                empty_tools = [
+                    b.name
+                    for b in sdk_msg.content
+                    if isinstance(b, ToolUseBlock) and not b.input
+                ]
+                if empty_tools:
                     consecutive_empty_tool_calls += 1
                     logger.warning(
-                        "%s Empty tool call detected (%d/%d)",
+                        "%s Empty tool call detected (%d/%d): "
+                        "tools=%s, model=%s, error=%s, "
+                        "block_types=%s, cumulative_usage=%s",
                         ctx.log_prefix,
                         consecutive_empty_tool_calls,
                         _EMPTY_TOOL_CALL_LIMIT,
+                        empty_tools,
+                        sdk_msg.model,
+                        sdk_msg.error,
+                        [type(b).__name__ for b in sdk_msg.content],
+                        {
+                            "prompt": state.usage.prompt_tokens,
+                            "completion": state.usage.completion_tokens,
+                            "cache_read": state.usage.cache_read_tokens,
+                        },
                     )
                     if consecutive_empty_tool_calls >= _EMPTY_TOOL_CALL_LIMIT:
                         logger.error(
                             "%s Circuit breaker: aborting stream after %d "
-                            "consecutive empty tool calls",
+                            "consecutive empty tool calls. "
+                            "This is likely caused by the model attempting "
+                            "to write content too large for a single tool "
+                            "call's output token limit. The model should "
+                            "write large files in chunks using bash_exec "
+                            "with cat >> (append).",
                             ctx.log_prefix,
                             consecutive_empty_tool_calls,
                         )
