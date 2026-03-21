@@ -429,8 +429,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
-            # Circuit breaker: stop infinite retry loops with identical args
-            stop_msg = _check_circuit_breaker(tool_name, args)
+            # Circuit breaker: stop infinite retry loops with identical args.
+            # Use the original (pre-expansion) args for fingerprinting so
+            # check and record always use the same key — @@agptfile:
+            # expansion mutates args, which would cause a key mismatch.
+            original_args = args
+            stop_msg = _check_circuit_breaker(tool_name, original_args)
             if stop_msg:
                 return _mcp_error(stop_msg)
 
@@ -441,7 +445,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                         args, user_id, session, input_schema=input_schema
                     )
                 except FileRefExpansionError as exc:
-                    _record_tool_failure(tool_name, args)
+                    _record_tool_failure(tool_name, original_args)
                     return _mcp_error(
                         f"@@agptfile: reference could not be resolved: {exc}. "
                         "Ensure the file exists before referencing it. "
@@ -453,7 +457,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
             # Track consecutive failures for circuit breaker
             if truncated.get("isError"):
-                _record_tool_failure(tool_name, args)
+                _record_tool_failure(tool_name, original_args)
             else:
                 _clear_tool_failures(tool_name)
 
