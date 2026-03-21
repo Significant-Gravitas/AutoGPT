@@ -14,6 +14,7 @@ import time
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
+from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.executor.cluster_lock import ClusterLock
@@ -285,6 +286,13 @@ class CoPilotProcessor:
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")
+                    break
+
+                # Capture StreamError so mark_session_completed receives
+                # the error message (stream_and_publish yields but does
+                # not publish StreamError — that's done by mark_session_completed).
+                if isinstance(chunk, StreamError):
+                    error_msg = chunk.errorText
                     break
 
                 current_time = time.monotonic()

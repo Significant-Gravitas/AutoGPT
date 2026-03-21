@@ -89,6 +89,8 @@ async def collect_copilot_response(
     # Register with the stream registry so the frontend sees active_stream
     # and can connect via the SSE reconnect endpoint for real-time updates.
     turn_id = str(uuid.uuid4())
+    registry_active = True  # Whether we should finalize the registry session
+    publish_turn_id = turn_id  # Empty string disables publishing only
     error_msg: str | None = None
     try:
         await stream_registry.create_session(
@@ -107,7 +109,8 @@ async def collect_copilot_response(
         )
         # Proceed without stream registry — AutoPilot still works,
         # just without real-time frontend updates.
-        turn_id = ""
+        publish_turn_id = ""
+        registry_active = False
 
     try:
         # Wrap the raw stream with stream_and_publish so each chunk is
@@ -122,7 +125,7 @@ async def collect_copilot_response(
         published_stream = stream_registry.stream_and_publish(
             session_id=session_id,
             user_id=user_id,
-            turn_id=turn_id,
+            turn_id=publish_turn_id,
             stream=raw_stream,
         )
 
@@ -157,7 +160,7 @@ async def collect_copilot_response(
     finally:
         # Mark session completed in the stream registry so the frontend
         # knows the stream has ended and stops reconnecting.
-        if turn_id:
+        if registry_active:
             try:
                 await stream_registry.mark_session_completed(
                     session_id, error_message=error_msg
