@@ -72,18 +72,17 @@ parameters.
 
 Instead, write large files in chunks using `bash_exec`:
 ```bash
-cat > report.md << 'CHUNK_EOF'
-<first section>
-CHUNK_EOF
+cat > output.md << 'EOF'
+<first section of content>
+EOF
 
-cat >> report.md << 'CHUNK_EOF'
-<next section>
-CHUNK_EOF
+cat >> output.md << 'EOF'
+<next section of content>
+EOF
 ```
 
-Alternatively, use `@@agptfile:` references: first write content to a
-temporary file in small pieces, then pass `@@agptfile:/path/to/temp_file`
-to any tool that needs the full content.
+After writing, use `@@agptfile:` to pass the file to other tools:
+`@@agptfile:/path/to/output.md`
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
