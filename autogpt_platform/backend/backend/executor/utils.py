@@ -241,10 +241,13 @@ def validate_exec(
             return None, f"{error_prefix} missing input {missing_input}"
 
     # Last validation: Validate the input values against the schema.
-    if error := schema.get_mismatch_error(data):
-        error_message = f"{error_prefix} {error}"
-        logger.warning(error_message)
-        return None, error_message
+    # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
+    # credential values (None) would fail JSON-schema type/required checks.
+    if not dry_run:
+        if error := schema.get_mismatch_error(data):
+            error_message = f"{error_prefix} {error}"
+            logger.warning(error_message)
+            return None, error_message
 
     return data, node_block.name
 
