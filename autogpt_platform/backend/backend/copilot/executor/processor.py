@@ -23,6 +23,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
+from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
@@ -153,8 +154,6 @@ class CoPilotProcessor:
         worker's event loop, ensuring ``aiohttp.ClientSession.close()``
         runs on the same loop that created the session.
         """
-        from backend.util.workspace_storage import shutdown_workspace_storage
-
         coro = shutdown_workspace_storage()
         try:
             future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)

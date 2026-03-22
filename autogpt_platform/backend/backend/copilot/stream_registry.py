@@ -35,12 +35,21 @@ from backend.data.redis_client import get_redis_async
 from .config import ChatConfig
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
 from .response_model import (
+    ResponseType,
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
+    StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
     StreamTextStart,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+    StreamUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -967,21 +976,6 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     Returns:
         Reconstructed response object, or None if unknown type
     """
-    from .response_model import (
-        ResponseType,
-        StreamError,
-        StreamFinish,
-        StreamFinishStep,
-        StreamHeartbeat,
-        StreamStart,
-        StreamStartStep,
-        StreamTextEnd,
-        StreamToolInputAvailable,
-        StreamToolInputStart,
-        StreamToolOutputAvailable,
-        StreamUsage,
-    )
-
     # Map response types to their corresponding classes
     type_to_class: dict[str, type[StreamBaseResponse]] = {
         ResponseType.START.value: StreamStart,
