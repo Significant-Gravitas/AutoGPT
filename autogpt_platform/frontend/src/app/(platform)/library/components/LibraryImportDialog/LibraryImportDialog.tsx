@@ -138,7 +138,7 @@ export default function LibraryImportDialog() {
               type="button"
               variant="primary"
               className="w-full"
-              disabled={!importWorkflow.urlValue}
+              disabled={!importWorkflow.urlValue || importWorkflow.isSubmitting}
               onClick={() => importWorkflow.submitWithMode("url")}
             >
               Import from n8n

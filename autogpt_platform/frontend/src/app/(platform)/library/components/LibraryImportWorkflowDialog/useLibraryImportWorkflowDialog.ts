@@ -25,7 +25,9 @@ async function fetchN8nWorkflowJson(url: string): Promise<string> {
 function decodeBase64Json(dataUrl: string): string {
   const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
   if (!match) throw new Error("Could not read the uploaded file.");
-  const json = atob(match[1]);
+  const binary = atob(match[1]);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  const json = new TextDecoder().decode(bytes);
   JSON.parse(json); // validate — throws SyntaxError if invalid
   return json;
 }
@@ -50,11 +52,23 @@ function storeAndRedirect(
   fileInfo: { fileId: string; fileName: string; mimeType: string },
   router: ReturnType<typeof useRouter>,
 ) {
-  sessionStorage.setItem(
-    "importWorkflowPrompt",
-    "Import this workflow and recreate it as an AutoGPT agent",
-  );
-  sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
+  try {
+    sessionStorage.setItem(
+      "importWorkflowPrompt",
+      "Import this workflow and recreate it as an AutoGPT agent",
+    );
+    sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
+  } catch {
+    // sessionStorage quota exceeded — unlikely since we only store metadata,
+    // but clear stale items and retry once.
+    sessionStorage.removeItem("importWorkflowPrompt");
+    sessionStorage.removeItem("importWorkflowFile");
+    sessionStorage.setItem(
+      "importWorkflowPrompt",
+      "Import this workflow and recreate it as an AutoGPT agent",
+    );
+    sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
+  }
   router.push("/copilot?source=import&autosubmit=true");
 }
 
