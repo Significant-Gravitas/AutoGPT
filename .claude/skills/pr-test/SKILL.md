@@ -150,6 +150,7 @@ CHAT_USE_CLAUDE_AGENT_SDK=true
 Use `sed` to update these values:
 ```bash
 ORKEY=$(grep "^OPEN_ROUTER_API_KEY=" $BACKEND_DIR/.env | cut -d= -f2)
+[ -n "$ORKEY" ] || { echo "ERROR: OPEN_ROUTER_API_KEY is missing in $BACKEND_DIR/.env"; exit 1; }
 perl -i -pe 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/' $BACKEND_DIR/.env
 # Add or update CHAT_API_KEY and CHAT_BASE_URL
 grep -q "^CHAT_API_KEY=" $BACKEND_DIR/.env && perl -i -pe "s|^CHAT_API_KEY=.*|CHAT_API_KEY=$ORKEY|" $BACKEND_DIR/.env || echo "CHAT_API_KEY=$ORKEY" >> $BACKEND_DIR/.env
@@ -351,7 +352,7 @@ curl -N -X POST "http://localhost:8006/api/chat/sessions/$SESSION_ID/stream" \
 
 Or test via browser (preferred for UI verification):
 ```bash
-agent-browser open 'http://localhost:3000/copilot' --timeout 10000
+agent-browser --session-name pr-test open 'http://localhost:3000/copilot' --timeout 10000
 # ... fill chat input and press Enter, wait 20-30s for response
 ```
 
