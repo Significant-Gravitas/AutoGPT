@@ -128,6 +128,13 @@ fi
 
 **Prerequisite:** You must have run `claude login` on the host machine at least once (which sets up the keychain entry).
 
+**Claude CLI in container:** Subscription mode requires the `claude` CLI inside the copilot executor container. After the container starts, install it at runtime:
+```bash
+docker exec autogpt_platform-copilot_executor-1 which claude 2>/dev/null || \
+  docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
+```
+This is lost on container rebuild — re-run after each `docker compose up --build`.
+
 #### Option 2: OpenRouter API key mode (fallback)
 
 If subscription mode doesn't work, switch to API key mode using OpenRouter:
@@ -149,18 +156,7 @@ grep -q "^CHAT_API_KEY=" $BACKEND_DIR/.env && perl -i -pe "s|^CHAT_API_KEY=.*|CH
 grep -q "^CHAT_BASE_URL=" $BACKEND_DIR/.env && perl -i -pe 's|^CHAT_BASE_URL=.*|CHAT_BASE_URL=https://openrouter.ai/api/v1|' $BACKEND_DIR/.env || echo "CHAT_BASE_URL=https://openrouter.ai/api/v1" >> $BACKEND_DIR/.env
 ```
 
-### 3c. Install claude-code CLI in copilot executor (if needed)
-
-If the copilot uses subscription mode (`CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`), the `claude` CLI must be available inside the container. Install it at runtime:
-
-```bash
-docker exec autogpt_platform-copilot_executor-1 which claude 2>/dev/null || \
-  docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
-```
-
-**Note:** This is lost on container rebuild. For persistent installs, add `@anthropic-ai/claude-code` to the Dockerfile's `npm install -g agent-browser` line. The ARM64 Docker build fix (chromium) is handled by PR #12473 and should already be in `dev`.
-
-### 3d. Stop conflicting containers
+### 3c. Stop conflicting containers
 
 ```bash
 # Stop any running app containers (keep infra: supabase, redis, rabbitmq, clamav)
@@ -176,9 +172,9 @@ cd $PLATFORM_DIR && docker compose build --no-cache 2>&1 | tail -20
 cd $PLATFORM_DIR && docker compose up -d 2>&1 | tail -20
 ```
 
-**CRITICAL: Always use `--no-cache` for the first build** of a PR branch. Docker caches layers from previous builds (e.g. from `dev`), so `--build` alone may use a cached `COPY` layer with old code — meaning the container runs the `dev` version of the code, not the PR's changes. This is a silent, hard-to-debug issue. `--no-cache` forces a full rebuild.
+**Note:** If the container appears to be running old code (e.g. missing PR changes), use `docker compose build --no-cache` to force a full rebuild. Docker BuildKit may sometimes reuse cached `COPY` layers from a previous build on a different branch.
 
-**Expected time: 5-10 minutes** for `--no-cache` build, ~30s for subsequent `--build` (after first no-cache build).
+**Expected time: 3-8 minutes** for build, 5-10 minutes with `--no-cache`.
 
 ### 3f. Wait for services to be ready
 
@@ -195,18 +191,11 @@ for i in $(seq 1 60); do
 done
 ```
 
-### 3g. Install claude-code in copilot executor (if not in Dockerfile)
-
-If the Dockerfile fix wasn't applied (e.g., you didn't want to modify the PR's files):
-```bash
-docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
-```
-**Note:** This is lost on container rebuild. The Dockerfile fix (step 3c) is preferred.
 
 ### 3h. Ensure test user exists
 
 ```bash
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
+ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | cut -d= -f2)
 
 # Try signup first
 RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
@@ -227,7 +216,7 @@ fi
 ### 3i. Get auth token
 
 ```bash
-ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
+ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | cut -d= -f2)
 
 TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
   -H "apikey: $ANON_KEY" \
