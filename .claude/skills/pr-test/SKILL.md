@@ -196,7 +196,7 @@ done
 ### 3h. Create test user and get auth token
 
 ```bash
-ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | cut -d= -f2)
+ANON_KEY=$(grep "NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | sed 's/.*NEXT_PUBLIC_SUPABASE_ANON_KEY=//' | tr -d '[:space:]')
 
 # Signup (idempotent — returns "User already registered" if exists)
 RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
@@ -340,7 +340,7 @@ The copilot uses SSE streaming. To test via API:
 SESSION_ID=$(curl -s -X POST 'http://localhost:8006/api/chat/sessions' \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{}' | jq -r '.session_id // ""')
+  -d '{}' | jq -r '.id // .session_id // ""')
 
 # Stream a message (SSE - will stream chunks)
 curl -N -X POST "http://localhost:8006/api/chat/sessions/$SESSION_ID/stream" \
