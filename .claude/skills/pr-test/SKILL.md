@@ -406,6 +406,73 @@ After all tests complete, output a summary to the user:
 3. Any bugs found with details
 4. Recommendations
 
+### Post test results as PR comment with screenshots
+
+Upload screenshots to the PR and post a comment with the results. GitHub PR comments support images via drag-and-drop upload URLs.
+
+```bash
+# Upload each screenshot and collect markdown image links
+IMAGES=""
+for img in $RESULTS_DIR/*.png; do
+  BASENAME=$(basename "$img")
+  # Upload to GitHub via the repo's issue attachment API
+  UPLOAD_URL=$(gh api repos/Significant-Gravitas/AutoGPT/issues/$PR_NUMBER/comments \
+    --method POST \
+    -f body="![${BASENAME}](https://github.com/user-attachments/placeholder)" 2>/dev/null | jq -r '.id' 2>/dev/null)
+  # Since GitHub doesn't have a direct image upload API, use gh CLI to attach
+  IMAGES="$IMAGES\n![${BASENAME}]($img)"
+done
+
+# Post the test report as a PR comment with embedded screenshots
+# Upload screenshots first by creating a temporary gist or using repo assets
+cd $WORKTREE_PATH
+
+# Copy screenshots into a branch and push, then reference them
+SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
+git checkout -b "$SCREENSHOTS_BRANCH" 2>/dev/null || git checkout "$SCREENSHOTS_BRANCH"
+mkdir -p "test-screenshots/PR-${PR_NUMBER}"
+cp $RESULTS_DIR/*.png "test-screenshots/PR-${PR_NUMBER}/"
+git add "test-screenshots/PR-${PR_NUMBER}/"
+git commit -m "test: add E2E test screenshots for PR #${PR_NUMBER}" --allow-empty
+git push origin "$SCREENSHOTS_BRANCH" --force
+git checkout -  # go back to original branch
+
+# Build image URLs from the pushed branch
+REPO_URL="https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/${SCREENSHOTS_BRANCH}"
+IMAGE_MARKDOWN=""
+for img in $RESULTS_DIR/*.png; do
+  BASENAME=$(basename "$img")
+  IMAGE_MARKDOWN="$IMAGE_MARKDOWN
+![${BASENAME}](${REPO_URL}/test-screenshots/PR-${PR_NUMBER}/${BASENAME})"
+done
+
+# Post the comment
+gh api repos/Significant-Gravitas/AutoGPT/issues/$PR_NUMBER/comments -f body="$(cat <<EOF
+## 🧪 E2E Test Report
+
+$(cat $RESULTS_DIR/test-report.md)
+
+### Screenshots
+${IMAGE_MARKDOWN}
+EOF
+)"
+```
+
+**Alternative (simpler):** If you don't want to push screenshots to a branch, just post the text report without images:
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/issues/$PR_NUMBER/comments -f body="$(cat <<EOF
+## 🧪 E2E Test Report
+
+$(cat $RESULTS_DIR/test-report.md)
+
+_Screenshots saved locally at: $RESULTS_DIR/_
+EOF
+)"
+```
+
+The first approach pushes screenshots to a temporary branch so they render inline in the PR comment. The second just references the local path. **Use the first approach when screenshots are important for review.**
+
 ## Fix mode (--fix flag)
 
 When `--fix` is present, after finding a bug:
