@@ -764,7 +764,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
-            "stats": Json({"is_dry_run": True}) if is_dry_run else None,
+            **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
