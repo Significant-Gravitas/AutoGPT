@@ -482,7 +482,7 @@ class TestCreateToolHandlerParallel:
             result = await handler({"block_id": "b1"})
 
         assert result["isError"] is True
-        assert "block exploded" in result["content"][0]["text"]
+        assert "Failed to execute run_block" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_two_same_tool_calls_dispatched_in_order(self):
