@@ -9,6 +9,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from backend.copilot.response_model import (
+    StreamError,
+    StreamTextDelta,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+    StreamUsage,
+)
+
+from .service import stream_chat_completion_sdk
+
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
 
@@ -67,16 +77,6 @@ async def collect_copilot_response(
     Raises:
         RuntimeError: If the stream yields a ``StreamError`` event.
     """
-    from backend.copilot.response_model import (
-        StreamError,
-        StreamTextDelta,
-        StreamToolInputAvailable,
-        StreamToolOutputAvailable,
-        StreamUsage,
-    )
-
-    from .service import stream_chat_completion_sdk
-
     result = CopilotResult()
     response_parts: list[str] = []
     tool_calls_by_id: dict[str, dict[str, Any]] = {}

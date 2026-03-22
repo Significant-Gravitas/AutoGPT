@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 from backend.copilot.permissions import (
+    ALL_TOOL_NAMES,
+    PLATFORM_TOOL_NAMES,
     SDK_BUILTIN_TOOL_NAMES,
     CopilotPermissions,
     _block_matches,
@@ -480,6 +482,25 @@ class TestSdkBuiltinToolNames:
             "TodoWrite",
         }
         assert expected.issubset(SDK_BUILTIN_TOOL_NAMES)
+
+    def test_platform_names_match_tool_registry(self):
+        """PLATFORM_TOOL_NAMES (derived from ToolName Literal) must match TOOL_REGISTRY keys."""
+        from backend.copilot.tools import TOOL_REGISTRY
+
+        registry_keys = frozenset(TOOL_REGISTRY.keys())
+        assert PLATFORM_TOOL_NAMES == registry_keys, (
+            f"ToolName Literal is out of sync with TOOL_REGISTRY. "
+            f"Missing: {registry_keys - PLATFORM_TOOL_NAMES}, "
+            f"Extra: {PLATFORM_TOOL_NAMES - registry_keys}"
+        )
+
+    def test_all_tool_names_is_union(self):
+        """ALL_TOOL_NAMES must equal PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES."""
+        assert ALL_TOOL_NAMES == PLATFORM_TOOL_NAMES | SDK_BUILTIN_TOOL_NAMES
+
+    def test_no_overlap_between_platform_and_sdk(self):
+        """Platform and SDK built-in names must not overlap."""
+        assert PLATFORM_TOOL_NAMES.isdisjoint(SDK_BUILTIN_TOOL_NAMES)
 
     def test_known_tools_includes_registry_and_builtins(self):
         known = all_known_tool_names()

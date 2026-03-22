@@ -6,9 +6,6 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from backend.copilot.permissions import CopilotPermissions
-
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
 
 from backend.blocks._base import (
@@ -18,7 +15,12 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.copilot.permissions import ToolName
+from backend.copilot.permissions import (
+    CopilotPermissions,
+    ToolName,
+    all_known_tool_names,
+    validate_block_identifiers,
+)
 from backend.data.model import SchemaField
 
 if TYPE_CHECKING:
@@ -232,7 +234,7 @@ class AutoPilotBlock(Block):
 
     async def create_session(self, user_id: str) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
-        from backend.copilot.model import create_chat_session
+        from backend.copilot.model import create_chat_session  # avoid circular import
 
         session = await create_chat_session(user_id)
         return session.session_id
@@ -263,7 +265,9 @@ class AutoPilotBlock(Block):
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
         """
-        from backend.copilot.sdk.collect import collect_copilot_response
+        from backend.copilot.sdk.collect import (
+            collect_copilot_response,  # avoid circular import
+        )
 
         tokens = _check_recursion(max_recursion_depth)
         perm_token = None
@@ -460,11 +464,6 @@ async def _build_and_validate_permissions(
     Returns a :class:`CopilotPermissions` on success or a human-readable
     error string if validation fails.
     """
-    from backend.copilot.permissions import (
-        CopilotPermissions,
-        validate_block_identifiers,
-    )
-
     # Tool names are validated by Pydantic via the ToolName Literal type
     # at model construction time — no runtime check needed here.
     # Validate block identifiers against live block registry.
@@ -499,8 +498,6 @@ def _merge_inherited_permissions(
     permission leakage between sequential independent executions in the same
     asyncio task.
     """
-    from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
-
     parent = _inherited_permissions.get()
 
     if permissions is None and parent is None:

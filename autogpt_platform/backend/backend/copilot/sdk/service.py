@@ -32,6 +32,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
+from backend.copilot.permissions import apply_tool_permissions
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -1614,8 +1615,6 @@ async def stream_chat_completion_sdk(
         )
 
         if permissions is not None:
-            from backend.copilot.permissions import apply_tool_permissions
-
             allowed, disallowed = apply_tool_permissions(permissions, use_e2b=use_e2b)
         else:
             allowed = get_copilot_tool_names(use_e2b=use_e2b)

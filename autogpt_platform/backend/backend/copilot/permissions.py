@@ -60,69 +60,11 @@ from pydantic import BaseModel, PrivateAttr
 # Constants — single source of truth for all accepted tool names
 # ---------------------------------------------------------------------------
 
-# Platform tool short names — must match keys in TOOL_REGISTRY
-# (copilot/tools/__init__.py).  Verified at runtime by
-# ``_assert_tool_names_consistent()``.
-# NOTE: Keep in sync with the ToolName Literal below.
-PLATFORM_TOOL_NAMES = (
-    "add_understanding",
-    "bash_exec",
-    "browser_act",
-    "browser_navigate",
-    "browser_screenshot",
-    "connect_integration",
-    "continue_run_block",
-    "create_agent",
-    "create_feature_request",
-    "create_folder",
-    "customize_agent",
-    "delete_folder",
-    "delete_workspace_file",
-    "edit_agent",
-    "find_agent",
-    "find_block",
-    "find_library_agent",
-    "fix_agent_graph",
-    "get_agent_building_guide",
-    "get_doc_page",
-    "get_mcp_guide",
-    "list_folders",
-    "list_workspace_files",
-    "move_agents_to_folder",
-    "move_folder",
-    "read_workspace_file",
-    "run_agent",
-    "run_block",
-    "run_mcp_tool",
-    "search_docs",
-    "search_feature_requests",
-    "update_folder",
-    "validate_agent_graph",
-    "view_agent_output",
-    "web_fetch",
-    "write_workspace_file",
-)
-
-# SDK built-in tool short names accepted in the *tools* field.
-SDK_BUILTIN_TOOL_NAMES_TUPLE = (
-    "Edit",
-    "Glob",
-    "Grep",
-    "Read",
-    "Task",
-    "TodoWrite",
-    "WebSearch",
-    "Write",
-)
-
-SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(SDK_BUILTIN_TOOL_NAMES_TUPLE)
-
 # Literal type combining all valid tool names — used by AutoPilotBlock.Input
 # so the frontend renders a multi-select dropdown.
-# NOTE: Keep in sync with PLATFORM_TOOL_NAMES and SDK_BUILTIN_TOOL_NAMES_TUPLE
-# above.  The module-level assert below catches drift at import time.
+# This is the SINGLE SOURCE OF TRUTH.  All other name sets are derived from it.
 ToolName = Literal[
-    # Platform tools
+    # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
     "bash_exec",
     "browser_act",
@@ -170,11 +112,16 @@ ToolName = Literal[
     "Write",
 ]
 
-# Frozen set of all valid tool names — derived from the Literal for consistency.
+# Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-# Sanity check: tuples must match the Literal members.
-assert frozenset(PLATFORM_TOOL_NAMES + SDK_BUILTIN_TOOL_NAMES_TUPLE) == ALL_TOOL_NAMES
+# SDK built-in tool names — uppercase-initial names are SDK built-ins.
+SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
+    n for n in ALL_TOOL_NAMES if n[0].isupper()
+)
+
+# Platform tool names — everything that isn't an SDK built-in.
+PLATFORM_TOOL_NAMES: frozenset[str] = ALL_TOOL_NAMES - SDK_BUILTIN_TOOL_NAMES
 
 # Compiled regex patterns for block identifier classification.
 _FULL_UUID_RE = re.compile(
@@ -357,7 +304,7 @@ def _assert_tool_names_consistent() -> None:
     from backend.copilot.tools import TOOL_REGISTRY
 
     registry_keys: frozenset[str] = frozenset(TOOL_REGISTRY.keys())
-    declared: frozenset[str] = frozenset(PLATFORM_TOOL_NAMES)
+    declared: frozenset[str] = PLATFORM_TOOL_NAMES
     if registry_keys != declared:
         missing = registry_keys - declared
         extra = declared - registry_keys
@@ -368,7 +315,7 @@ def _assert_tool_names_consistent() -> None:
             parts.append(f"  Missing from PLATFORM_TOOL_NAMES: {sorted(missing)}")
         if extra:
             parts.append(f"  Extra in PLATFORM_TOOL_NAMES: {sorted(extra)}")
-        parts.append("  Update PLATFORM_TOOL_NAMES and ToolName Literal to match.")
+        parts.append("  Update the ToolName Literal to match.")
         raise AssertionError("\n".join(parts))
 
 
