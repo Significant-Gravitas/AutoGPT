@@ -370,38 +370,44 @@ def create_tool_handler(base_tool: BaseTool):
                 if launch_args != args:
                     logger.warning(
                         "Pre-launched task for %s: arg mismatch "
-                        "(launch=%s, call=%s) — may return incorrect result",
+                        "(launch=%s, call=%s) — cancelling pre-launched task "
+                        "and falling back to direct execution",
                         base_tool.name,
                         launch_args,
                         args,
                     )
-                try:
-                    result = await task
-                except asyncio.CancelledError:
-                    # Re-raise: CancelledError may be propagating from the outer
-                    # streaming loop being cancelled — swallowing it would mask
-                    # the cancellation and prevent proper cleanup.
-                    logger.warning(
-                        "Pre-launched tool %s was cancelled — re-raising",
-                        base_tool.name,
-                    )
-                    raise
-                except Exception as e:
-                    logger.error(
-                        "Pre-launched tool %s failed: %s",
-                        base_tool.name,
-                        e,
-                        exc_info=True,
-                    )
-                    return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+                    if not task.done():
+                        task.cancel()
+                    # Fall through to the direct-execution path below.
+                else:
+                    # Args match — await the pre-launched task.
+                    try:
+                        result = await task
+                    except asyncio.CancelledError:
+                        # Re-raise: CancelledError may be propagating from the
+                        # outer streaming loop being cancelled — swallowing it
+                        # would mask the cancellation and prevent proper cleanup.
+                        logger.warning(
+                            "Pre-launched tool %s was cancelled — re-raising",
+                            base_tool.name,
+                        )
+                        raise
+                    except Exception as e:
+                        logger.error(
+                            "Pre-launched tool %s failed: %s",
+                            base_tool.name,
+                            e,
+                            exc_info=True,
+                        )
+                        return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
 
-                # Pre-truncate the result so the _truncating wrapper (which
-                # wraps this handler) receives an already-within-budget value.
-                # _truncating handles stashing — we must NOT stash here or the
-                # output will be appended twice to the FIFO queue and
-                # pop_pending_tool_output would return a duplicate entry on the
-                # second call for the same tool.
-                return truncate(result, _MCP_MAX_CHARS)
+                    # Pre-truncate the result so the _truncating wrapper (which
+                    # wraps this handler) receives an already-within-budget
+                    # value. _truncating handles stashing — we must NOT stash
+                    # here or the output will be appended twice to the FIFO
+                    # queue and pop_pending_tool_output would return a duplicate
+                    # entry on the second call for the same tool.
+                    return truncate(result, _MCP_MAX_CHARS)
 
         # No pre-launched task — execute directly (fallback for non-parallel calls).
         user_id, session = get_execution_context()

@@ -17,8 +17,10 @@ from .tool_adapter import (
     create_tool_handler,
     pop_pending_tool_output,
     pre_launch_tool_call,
+    reset_stash_event,
     set_execution_context,
     stash_pending_tool_output,
+    wait_for_stash,
 )
 
 # ---------------------------------------------------------------------------
@@ -126,6 +128,69 @@ class TestToolOutputStash:
         stash_pending_tool_output("b", "beta")
         assert pop_pending_tool_output("b") == "beta"
         assert pop_pending_tool_output("a") == "alpha"
+
+
+# ---------------------------------------------------------------------------
+# reset_stash_event / wait_for_stash
+# ---------------------------------------------------------------------------
+
+
+class TestResetStashEvent:
+    """Tests for reset_stash_event — the stale-signal fix for retry attempts."""
+
+    @pytest.fixture(autouse=True)
+    def _init_context(self):
+        set_execution_context(
+            user_id="test",
+            session=None,  # type: ignore[arg-type]
+            sandbox=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_reset_clears_stale_signal(self):
+        """After reset, wait_for_stash does NOT return immediately (blocks until timeout)."""
+        # Simulate a stale signal left by a failed attempt's PostToolUse hook.
+        stash_pending_tool_output("some_tool", "stale output")
+        # The stash_pending_tool_output call sets the event.
+        # Now reset it — simulating start of a new retry attempt.
+        reset_stash_event()
+        # wait_for_stash should block and time out since the event was cleared.
+        result = await wait_for_stash(timeout=0.05)
+        assert result is False, (
+            "wait_for_stash should have timed out after reset_stash_event, "
+            "but it returned True — stale signal was not cleared"
+        )
+
+    @pytest.mark.asyncio
+    async def test_wait_returns_true_when_signaled_after_reset(self):
+        """After reset, a new stash signal is correctly detected."""
+        reset_stash_event()
+
+        async def _signal_after_delay():
+            await asyncio.sleep(0.01)
+            stash_pending_tool_output("tool", "fresh output")
+
+        asyncio.create_task(_signal_after_delay())
+        result = await wait_for_stash(timeout=1.0)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_retry_scenario_stale_event_does_not_fire_prematurely(self):
+        """Simulates: attempt 1 leaves event set → reset → attempt 2 waits correctly."""
+        # Attempt 1: hook fires and sets the event
+        stash_pending_tool_output("t", "attempt-1-output")
+        # Pop it so the stash is empty (simulating normal consumption)
+        pop_pending_tool_output("t")
+
+        # Between attempts: reset (as service.py does before each retry)
+        reset_stash_event()
+
+        # Attempt 2: wait_for_stash should NOT return True immediately
+        result = await wait_for_stash(timeout=0.05)
+        assert result is False, (
+            "Stale event from attempt 1 caused wait_for_stash to return "
+            "prematurely in attempt 2"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +513,34 @@ class TestCreateToolHandlerParallel:
 
         assert "out-first" in r1["content"][0]["text"]
         assert "out-second" in r2["content"][0]["text"]
+        assert call_order == [
+            "first",
+            "second",
+        ], f"Expected FIFO dispatch order but got {call_order}"
+
+    @pytest.mark.asyncio
+    async def test_arg_mismatch_falls_back_to_direct_execution(self):
+        """When pre-launched args differ from SDK args, handler cancels pre-launched
+        task and falls back to direct execution with the correct args."""
+        mock_tool = _make_mock_tool("run_block", output="direct-result")
+
+        with patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": mock_tool},
+        ):
+            # Pre-launch with args {"block_id": "wrong"}
+            await pre_launch_tool_call("run_block", {"block_id": "wrong"})
+            await asyncio.sleep(0)
+
+            # SDK dispatches with different args
+            handler = create_tool_handler(mock_tool)
+            result = await handler({"block_id": "correct"})
+
+        assert result["isError"] is False
+        # The tool was called twice: once by pre-launch (wrong args), once by
+        # direct fallback (correct args). The result should come from the
+        # direct execution path.
+        assert mock_tool.execute.await_count == 2
 
     @pytest.mark.asyncio
     async def test_no_session_falls_back_gracefully(self):
