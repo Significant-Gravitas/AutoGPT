@@ -1010,21 +1010,121 @@ def _dispatch_response(
     return response
 
 
-class _TransientErrorHandled(Exception):
+class _HandledStreamError(Exception):
     """Raised by `_run_stream_attempt` after it has already yielded a
-    `StreamError` for a transient API error.
+    `StreamError` to the client (e.g. transient API error, circuit breaker).
 
     This signals the outer retry loop that the attempt failed so it can
     perform session-message rollback and set the `ended_with_stream_error`
     flag, **without** yielding a duplicate `StreamError` to the client.
 
-    The ``error_msg`` attribute carries the specific error message so the
-    handler can re-append the correct marker after session rollback.
+    Attributes:
+        error_msg: The user-facing error message to persist.
+        code: Machine-readable error code (e.g. ``circuit_breaker_empty_tool_calls``).
+        retryable: Whether the frontend should offer a retry button.
     """
 
-    def __init__(self, message: str, error_msg: str | None = None):
+    def __init__(
+        self,
+        message: str,
+        error_msg: str | None = None,
+        code: str | None = None,
+        retryable: bool = True,
+    ):
         super().__init__(message)
         self.error_msg = error_msg
+        self.code = code
+        self.retryable = retryable
+
+
+@dataclass
+class _EmptyToolBreakResult:
+    """Result of checking for empty tool calls in a single AssistantMessage."""
+
+    count: int  # Updated consecutive counter
+    tripped: bool  # Whether the circuit breaker fired
+    error: StreamError | None  # StreamError to yield (if tripped)
+    error_msg: str | None  # Error message (if tripped)
+    error_code: str | None  # Error code (if tripped)
+
+
+def _check_empty_tool_breaker(
+    sdk_msg: object,
+    consecutive: int,
+    ctx: _StreamContext,
+    state: _RetryState,
+) -> _EmptyToolBreakResult:
+    """Detect consecutive empty tool calls and trip the circuit breaker.
+
+    Returns an ``_EmptyToolBreakResult`` with the updated counter and, if the
+    breaker tripped, the ``StreamError`` to yield plus the error metadata.
+    """
+    if not isinstance(sdk_msg, AssistantMessage):
+        return _EmptyToolBreakResult(consecutive, False, None, None, None)
+
+    empty_tools = [
+        b.name for b in sdk_msg.content if isinstance(b, ToolUseBlock) and not b.input
+    ]
+    if not empty_tools:
+        # Reset on any non-empty-tool AssistantMessage (including text-only
+        # messages — any() over empty content is False).
+        return _EmptyToolBreakResult(0, False, None, None, None)
+
+    consecutive += 1
+
+    # Log full diagnostics on first occurrence only; subsequent hits just
+    # log the counter to reduce noise.
+    if consecutive == 1:
+        logger.warning(
+            "%s Empty tool call detected (%d/%d): "
+            "tools=%s, model=%s, error=%s, "
+            "block_types=%s, cumulative_usage=%s",
+            ctx.log_prefix,
+            consecutive,
+            _EMPTY_TOOL_CALL_LIMIT,
+            empty_tools,
+            sdk_msg.model,
+            sdk_msg.error,
+            [type(b).__name__ for b in sdk_msg.content],
+            {
+                "prompt": state.usage.prompt_tokens,
+                "completion": state.usage.completion_tokens,
+                "cache_read": state.usage.cache_read_tokens,
+            },
+        )
+    else:
+        logger.warning(
+            "%s Empty tool call detected (%d/%d): tools=%s",
+            ctx.log_prefix,
+            consecutive,
+            _EMPTY_TOOL_CALL_LIMIT,
+            empty_tools,
+        )
+
+    if consecutive < _EMPTY_TOOL_CALL_LIMIT:
+        return _EmptyToolBreakResult(consecutive, False, None, None, None)
+
+    logger.error(
+        "%s Circuit breaker: aborting stream after %d "
+        "consecutive empty tool calls. "
+        "This is likely caused by the model attempting "
+        "to write content too large for a single tool "
+        "call's output token limit. The model should "
+        "write large files in chunks using bash_exec "
+        "with cat >> (append).",
+        ctx.log_prefix,
+        consecutive,
+    )
+    error_msg = _CIRCUIT_BREAKER_ERROR_MSG
+    error_code = "circuit_breaker_empty_tool_calls"
+    _append_error_marker(ctx.session, error_msg, retryable=True)
+    return _EmptyToolBreakResult(
+        count=consecutive,
+        tripped=True,
+        error=StreamError(errorText=error_msg, code=error_code),
+        error_msg=error_msg,
+        error_code=error_code,
+    )
 
 
 async def _run_stream_attempt(
@@ -1063,6 +1163,7 @@ async def _run_stream_attempt(
     # Stores the error message used by _append_error_marker so the outer
     # retry loop can re-append the correct message after session rollback.
     stream_error_msg: str | None = None
+    stream_error_code: str | None = None
 
     consecutive_empty_tool_calls = 0
 
@@ -1156,6 +1257,7 @@ async def _run_stream_attempt(
                         ctx.log_prefix,
                     )
                     stream_error_msg = FRIENDLY_TRANSIENT_MSG
+                    stream_error_code = "transient_api_error"
                     _append_error_marker(
                         ctx.session,
                         stream_error_msg,
@@ -1163,7 +1265,7 @@ async def _run_stream_attempt(
                     )
                     yield StreamError(
                         errorText=stream_error_msg,
-                        code="transient_api_error",
+                        code=stream_error_code,
                     )
                     ended_with_stream_error = True
                     break
@@ -1272,74 +1374,16 @@ async def _run_stream_attempt(
                     entries_replaced = True
 
             # --- Hard circuit breaker for empty tool calls ---
-            # Detect when the model repeatedly sends tool_use blocks with
-            # empty input ({}).  This typically happens when the CLI's
-            # output token limit is exceeded while serializing a large
-            # tool argument (e.g. writing a 100KB report in one call).
-            if isinstance(sdk_msg, AssistantMessage):
-                empty_tools = [
-                    b.name
-                    for b in sdk_msg.content
-                    if isinstance(b, ToolUseBlock) and not b.input
-                ]
-                if empty_tools:
-                    consecutive_empty_tool_calls += 1
-                    # Log full diagnostics on first occurrence only;
-                    # subsequent hits just log the counter to reduce noise.
-                    if consecutive_empty_tool_calls == 1:
-                        logger.warning(
-                            "%s Empty tool call detected (%d/%d): "
-                            "tools=%s, model=%s, error=%s, "
-                            "block_types=%s, cumulative_usage=%s",
-                            ctx.log_prefix,
-                            consecutive_empty_tool_calls,
-                            _EMPTY_TOOL_CALL_LIMIT,
-                            empty_tools,
-                            sdk_msg.model,
-                            sdk_msg.error,
-                            [type(b).__name__ for b in sdk_msg.content],
-                            {
-                                "prompt": state.usage.prompt_tokens,
-                                "completion": state.usage.completion_tokens,
-                                "cache_read": state.usage.cache_read_tokens,
-                            },
-                        )
-                    else:
-                        logger.warning(
-                            "%s Empty tool call detected (%d/%d): tools=%s",
-                            ctx.log_prefix,
-                            consecutive_empty_tool_calls,
-                            _EMPTY_TOOL_CALL_LIMIT,
-                            empty_tools,
-                        )
-                    if consecutive_empty_tool_calls >= _EMPTY_TOOL_CALL_LIMIT:
-                        logger.error(
-                            "%s Circuit breaker: aborting stream after %d "
-                            "consecutive empty tool calls. "
-                            "This is likely caused by the model attempting "
-                            "to write content too large for a single tool "
-                            "call's output token limit. The model should "
-                            "write large files in chunks using bash_exec "
-                            "with cat >> (append).",
-                            ctx.log_prefix,
-                            consecutive_empty_tool_calls,
-                        )
-                        stream_error_msg = _CIRCUIT_BREAKER_ERROR_MSG
-                        _append_error_marker(
-                            ctx.session,
-                            stream_error_msg,
-                            retryable=True,
-                        )
-                        yield StreamError(
-                            errorText=stream_error_msg,
-                            code="circuit_breaker_empty_tool_calls",
-                        )
-                        ended_with_stream_error = True
-                        break
-                else:
-                    # Reset on any non-empty-tool AssistantMessage (including
-                    # text-only messages — any() over empty content is False).
-                    consecutive_empty_tool_calls = 0
+            breaker = _check_empty_tool_breaker(
+                sdk_msg, consecutive_empty_tool_calls, ctx, state
+            )
+            consecutive_empty_tool_calls = breaker.count
+            if breaker.tripped and breaker.error is not None:
+                stream_error_msg = breaker.error_msg
+                stream_error_code = breaker.error_code
+                yield breaker.error
+                ended_with_stream_error = True
+                break
 
             # --- Dispatch adapter responses ---
             for response in state.adapter.convert_message(sdk_msg):
@@ -1421,9 +1465,10 @@ async def _run_stream_attempt(
     # to the client (StreamError yielded above), raise so the outer retry
     # loop can rollback session messages and set its error flags properly.
     if ended_with_stream_error:
-        raise _TransientErrorHandled(
+        raise _HandledStreamError(
             "Stream error handled — StreamError already yielded",
             error_msg=stream_error_msg,
+            code=stream_error_code,
         )
 
 
@@ -1880,18 +1925,19 @@ async def stream_chat_completion_sdk(
                     _MAX_STREAM_ATTEMPTS,
                 )
                 raise
-            except _TransientErrorHandled as exc:
+            except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
                 # appended an error marker.  We only need to rollback
                 # session messages and set the error flag — do NOT set
                 # stream_err so the post-loop code won't emit a
                 # duplicate StreamError.
                 logger.warning(
-                    "%s Transient error handled in stream attempt "
-                    "(attempt %d/%d, events_yielded=%d)",
+                    "%s Stream error handled in attempt "
+                    "(attempt %d/%d, code=%s, events_yielded=%d)",
                     log_prefix,
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
+                    exc.code or "transient",
                     events_yielded,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
