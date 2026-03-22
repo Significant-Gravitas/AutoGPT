@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_agent_sdk import AssistantMessage, ToolUseBlock
+from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
@@ -319,8 +319,6 @@ class TestIsParallelContinuation:
 
     def test_mixed_text_and_tool_blocks_not_parallel(self):
         """AssistantMessage with text + tool blocks is NOT a parallel continuation."""
-        from claude_agent_sdk import TextBlock
-
         msg = MagicMock(spec=AssistantMessage)
         text_block = MagicMock(spec=TextBlock)
         msg.content = [text_block, self._make_tool_block()]
