@@ -1,0 +1,480 @@
+---
+name: pr-test
+description: "E2E manual testing of PRs/branches using docker compose, agent-browser, and API calls. TRIGGER when user asks to manually test a PR, test a feature end-to-end, or run integration tests against a running system."
+user-invocable: true
+argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
+metadata:
+  author: autogpt-team
+  version: "1.0.0"
+---
+
+# Manual E2E Test
+
+Test a PR/branch end-to-end by building the full platform, interacting via browser and API, capturing screenshots, and reporting results.
+
+## Arguments
+
+- `$ARGUMENTS` — worktree path (e.g. `/Users/majdyz/Code/AutoGPT4`) or PR number
+- If `--fix` flag is present, auto-fix bugs found and push fixes (like pr-address loop)
+
+## Step 0: Resolve the target
+
+```bash
+# If argument is a PR number, find its worktree
+gh pr view {N} --json headRefName --jq '.headRefName'
+# If argument is a path, use it directly
+```
+
+Determine:
+- `WORKTREE_PATH` — the worktree directory
+- `PLATFORM_DIR` — `$WORKTREE_PATH/autogpt_platform`
+- `BACKEND_DIR` — `$PLATFORM_DIR/backend`
+- `FRONTEND_DIR` — `$PLATFORM_DIR/frontend`
+- `PR_NUMBER` — the PR number (from `gh pr list --head $(git branch --show-current)`)
+- `PR_TITLE` — the PR title, slugified (e.g. "Add copilot permissions" → "add-copilot-permissions")
+- `RESULTS_DIR` — `/Users/majdyz/Code/AutoGPT/test-results/PR-{PR_NUMBER}-{slugified-title}`
+
+Create the results directory:
+```bash
+PR_NUMBER=$(cd $WORKTREE_PATH && gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT --json number --jq '.[0].number')
+PR_TITLE=$(cd $WORKTREE_PATH && gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT --json title --jq '.[0].title' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | head -c 50)
+RESULTS_DIR="/Users/majdyz/Code/AutoGPT/test-results/PR-${PR_NUMBER}-${PR_TITLE}"
+mkdir -p $RESULTS_DIR
+```
+
+**Test user credentials** (for logging into the UI or verifying results manually):
+- Email: `test@test.com`
+- Password: `testtest123`
+
+## Step 1: Understand the PR
+
+Before testing, understand what changed:
+
+```bash
+cd $WORKTREE_PATH
+git log --oneline dev..HEAD | head -20
+git diff dev --stat
+```
+
+Read the changed files to understand:
+1. What feature/fix does this PR implement?
+2. What components are affected? (backend, frontend, copilot, executor, etc.)
+3. What are the key user-facing behaviors to test?
+
+## Step 2: Write test scenarios
+
+Based on the PR analysis, write a test plan to `$RESULTS_DIR/test-plan.md`:
+
+```markdown
+# Test Plan: PR #{N} — {title}
+
+## Scenarios
+1. [Scenario name] — [what to verify]
+2. ...
+
+## API Tests (if applicable)
+1. [Endpoint] — [expected behavior]
+
+## UI Tests (if applicable)
+1. [Page/component] — [interaction to test]
+
+## Negative Tests
+1. [What should NOT happen]
+```
+
+**Be critical** — include edge cases, error paths, and security checks.
+
+## Step 3: Environment setup
+
+### 3a. Copy .env files from the root worktree
+
+The root worktree (`/Users/majdyz/Code/AutoGPT`) has the canonical `.env` files with all API keys. Copy them to the target worktree:
+
+```bash
+# CRITICAL: .env files are NOT checked into git. They must be copied manually.
+cp /Users/majdyz/Code/AutoGPT/autogpt_platform/.env $PLATFORM_DIR/.env
+cp /Users/majdyz/Code/AutoGPT/autogpt_platform/backend/.env $BACKEND_DIR/.env
+cp /Users/majdyz/Code/AutoGPT/autogpt_platform/frontend/.env $FRONTEND_DIR/.env
+```
+
+### 3b. Configure copilot for API key mode
+
+The copilot defaults to `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` which requires Claude Code CLI login inside the container. For testing, switch to API key mode using OpenRouter:
+
+```bash
+# In $BACKEND_DIR/.env, ensure these are set:
+CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false
+CHAT_API_KEY=<value of OPEN_ROUTER_API_KEY from the same .env>
+CHAT_BASE_URL=https://openrouter.ai/api/v1
+CHAT_USE_CLAUDE_AGENT_SDK=true
+```
+
+Use `sed` to update these values:
+```bash
+ORKEY=$(grep "^OPEN_ROUTER_API_KEY=" $BACKEND_DIR/.env | cut -d= -f2)
+sed -i '' 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/' $BACKEND_DIR/.env
+# Add or update CHAT_API_KEY and CHAT_BASE_URL
+grep -q "^CHAT_API_KEY=" $BACKEND_DIR/.env && sed -i '' "s|^CHAT_API_KEY=.*|CHAT_API_KEY=$ORKEY|" $BACKEND_DIR/.env || echo "CHAT_API_KEY=$ORKEY" >> $BACKEND_DIR/.env
+grep -q "^CHAT_BASE_URL=" $BACKEND_DIR/.env && sed -i '' 's|^CHAT_BASE_URL=.*|CHAT_BASE_URL=https://openrouter.ai/api/v1|' $BACKEND_DIR/.env || echo "CHAT_BASE_URL=https://openrouter.ai/api/v1" >> $BACKEND_DIR/.env
+```
+
+### 3c. Fix ARM64 Docker build (macOS Apple Silicon)
+
+The default Dockerfile fails on ARM64 because Chrome for Testing has no ARM64 binary. Also, the copilot executor needs `claude-code` CLI installed.
+
+Check if the Dockerfile already has the fix:
+```bash
+grep -q "TARGETARCH" $BACKEND_DIR/Dockerfile && echo "NEEDS_FIX" || echo "ALREADY_FIXED"
+```
+
+If it needs fixing, apply these changes to `$BACKEND_DIR/Dockerfile`:
+
+1. **Replace the arch-conditional chromium block** with:
+```dockerfile
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g agent-browser @anthropic-ai/claude-code \
+    && rm -rf /tmp/* /root/.npm
+
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+```
+
+2. **Remove the entrypoint script** — delete these lines if present:
+```dockerfile
+RUN printf '#!/bin/sh\n...' > /usr/local/bin/entrypoint.sh ...
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+```
+
+3. **Keep** `CMD ["rest"]` at the end.
+
+### 3d. Stop conflicting containers
+
+```bash
+# Stop any running app containers (keep infra: supabase, redis, rabbitmq, clamav)
+docker ps --format "{{.Names}}" | grep -E "rest_server|executor|copilot|websocket|database_manager|scheduler|notification|frontend|migrate" | while read name; do
+  docker stop "$name" 2>/dev/null
+done
+```
+
+### 3e. Build and start
+
+```bash
+cd $PLATFORM_DIR && docker compose build --no-cache 2>&1 | tail -20
+cd $PLATFORM_DIR && docker compose up -d 2>&1 | tail -20
+```
+
+**CRITICAL: Always use `--no-cache` for the first build** of a PR branch. Docker caches layers from previous builds (e.g. from `dev`), so `--build` alone may use a cached `COPY` layer with old code — meaning the container runs the `dev` version of the code, not the PR's changes. This is a silent, hard-to-debug issue. `--no-cache` forces a full rebuild.
+
+**Expected time: 5-10 minutes** for `--no-cache` build, ~30s for subsequent `--build` (after first no-cache build).
+
+### 3f. Wait for services to be ready
+
+```bash
+# Poll until backend and frontend respond
+for i in $(seq 1 60); do
+  BACKEND=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8006/docs 2>/dev/null)
+  FRONTEND=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000 2>/dev/null)
+  if [ "$BACKEND" = "200" ] && [ "$FRONTEND" = "200" ]; then
+    echo "Services ready"
+    break
+  fi
+  sleep 5
+done
+```
+
+### 3g. Install claude-code in copilot executor (if not in Dockerfile)
+
+If the Dockerfile fix wasn't applied (e.g., you didn't want to modify the PR's files):
+```bash
+docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
+```
+**Note:** This is lost on container rebuild. The Dockerfile fix (step 3c) is preferred.
+
+### 3h. Ensure test user exists
+
+```bash
+ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
+
+# Try signup first
+RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
+  -H "apikey: $ANON_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@test.com","password":"testtest123"}')
+
+# If "Database error finding user", restart supabase-auth and retry
+if echo "$RESULT" | grep -q "Database error"; then
+  docker restart supabase-auth && sleep 5
+  curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
+    -H "apikey: $ANON_KEY" \
+    -H 'Content-Type: application/json' \
+    -d '{"email":"test@test.com","password":"testtest123"}'
+fi
+```
+
+### 3i. Get auth token
+
+```bash
+ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE"
+
+TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
+  -H "apikey: $ANON_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@test.com","password":"testtest123"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+```
+
+**Use this token for ALL API calls:**
+```bash
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
+```
+
+## Step 4: Run tests
+
+### Service ports reference
+
+| Service | Port | URL |
+|---------|------|-----|
+| Frontend | 3000 | http://localhost:3000 |
+| Backend REST | 8006 | http://localhost:8006 |
+| Supabase Auth (via Kong) | 8000 | http://localhost:8000 |
+| Executor | 8002 | http://localhost:8002 |
+| Copilot Executor | 8008 | http://localhost:8008 |
+| WebSocket | 8001 | http://localhost:8001 |
+| Database Manager | 8005 | http://localhost:8005 |
+| Redis | 6379 | localhost:6379 |
+| RabbitMQ | 5672 | localhost:5672 |
+
+### API testing
+
+Use `curl` with the auth token for backend API tests:
+
+```bash
+# Example: List agents
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/graphs | python3 -m json.tool | head -20
+
+# Example: Create an agent
+curl -s -X POST http://localhost:8006/api/graphs \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{...}' | python3 -m json.tool
+
+# Example: Run an agent
+curl -s -X POST "http://localhost:8006/api/graphs/{graph_id}/execute" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"data": {...}}'
+
+# Example: Get execution results
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:8006/api/graphs/{graph_id}/executions/{exec_id}" | python3 -m json.tool
+```
+
+### Browser testing with agent-browser
+
+```bash
+# Close any existing session
+agent-browser close 2>/dev/null || true
+
+# Open login page
+agent-browser open 'http://localhost:3000/login' --timeout 15000
+
+# Get interactive elements
+agent-browser snapshot | grep "textbox\|button"
+
+# Login
+agent-browser fill {email_ref} "test@test.com"
+agent-browser fill {password_ref} "testtest123"
+agent-browser click {login_button_ref}
+sleep 5
+
+# Dismiss cookie banner if present
+agent-browser click 'text=Accept All' 2>/dev/null || true
+
+# Navigate
+agent-browser open 'http://localhost:3000/copilot' --timeout 10000
+
+# Take screenshot
+agent-browser screenshot $RESULTS_DIR/01-page.png
+
+# Interact with elements
+agent-browser fill {ref} "text"
+agent-browser press "Enter"
+agent-browser click {ref}
+agent-browser click 'text=Button Text'
+
+# Read page content
+agent-browser snapshot | grep "text:"
+```
+
+**Key pages:**
+- `/copilot` — CoPilot chat (for testing copilot features)
+- `/build` — Agent builder (for testing block/node features)
+- `/build?flowID={id}` — Specific agent in builder
+- `/library` — Agent library (for testing listing/import features)
+- `/library/agents/{id}` — Agent detail with run history
+- `/marketplace` — Marketplace
+
+### Checking logs
+
+```bash
+# Backend REST server
+docker logs autogpt_platform-rest_server-1 2>&1 | tail -30
+
+# Executor (runs agent graphs)
+docker logs autogpt_platform-executor-1 2>&1 | tail -30
+
+# Copilot executor (runs copilot chat sessions)
+docker logs autogpt_platform-copilot_executor-1 2>&1 | tail -30
+
+# Frontend
+docker logs autogpt_platform-frontend-1 2>&1 | tail -30
+
+# Filter for errors
+docker logs autogpt_platform-executor-1 2>&1 | grep -i "error\|exception\|traceback" | tail -20
+```
+
+### Copilot chat testing
+
+The copilot uses SSE streaming. To test via API:
+
+```bash
+# Create a session
+SESSION_ID=$(curl -s -X POST 'http://localhost:8006/api/chat/sessions' \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))")
+
+# Stream a message (SSE - will stream chunks)
+curl -N -X POST "http://localhost:8006/api/chat/sessions/$SESSION_ID/stream" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "Hello, what can you help me with?"}' \
+  --max-time 60 2>/dev/null | head -50
+```
+
+Or test via browser (preferred for UI verification):
+```bash
+agent-browser open 'http://localhost:3000/copilot' --timeout 10000
+# ... fill chat input and press Enter, wait 20-30s for response
+```
+
+## Step 5: Record results
+
+For each test scenario, record in `$RESULTS_DIR/test-report.md`:
+
+```markdown
+# E2E Test Report: PR #{N} — {title}
+Date: {date}
+Branch: {branch}
+Worktree: {path}
+
+## Environment
+- Docker services: [list running containers]
+- API keys: OpenRouter={present/missing}, E2B={present/missing}
+
+## Test Results
+
+### Scenario 1: {name}
+**Steps:**
+1. ...
+2. ...
+**Expected:** ...
+**Actual:** ...
+**Result:** PASS / FAIL
+**Screenshot:** {filename}.png
+**Logs:** (if relevant)
+
+### Scenario 2: {name}
+...
+
+## Summary
+- Total: X scenarios
+- Passed: Y
+- Failed: Z
+- Bugs found: [list]
+```
+
+Take screenshots at each significant step:
+```bash
+agent-browser screenshot $RESULTS_DIR/{NN}-{description}.png
+```
+
+## Step 6: Report results
+
+After all tests complete, output a summary to the user:
+
+1. Table of all scenarios with PASS/FAIL
+2. Screenshots of failures (read the PNG files to show them)
+3. Any bugs found with details
+4. Recommendations
+
+## Fix mode (--fix flag)
+
+When `--fix` is present, after finding a bug:
+
+1. Identify the root cause in the code
+2. Fix it in the worktree
+3. Rebuild the affected service: `cd $PLATFORM_DIR && docker compose up --build -d {service_name}`
+4. Re-test the scenario
+5. If fix works, commit and push:
+   ```bash
+   cd $WORKTREE_PATH
+   git add -A
+   git commit -m "fix: {description of fix}"
+   git push
+   ```
+6. Continue testing remaining scenarios
+7. After all fixes, run the full test suite again to ensure no regressions
+
+### Fix loop (like pr-address)
+
+```text
+test scenario → find bug → fix code → rebuild service → re-test
+→ repeat until all scenarios pass
+→ commit + push all fixes
+→ run full re-test to verify
+```
+
+## Known issues and workarounds
+
+### Problem: "Database error finding user" on signup
+**Cause:** Supabase auth service schema cache is stale after migration.
+**Fix:** `docker restart supabase-auth && sleep 5` then retry signup.
+
+### Problem: "Claude Code CLI not found" in copilot executor
+**Cause:** The Dockerfile doesn't include `@anthropic-ai/claude-code` in npm install.
+**Fix:** Either add it to the Dockerfile (`npm install -g agent-browser @anthropic-ai/claude-code`) or install it at runtime: `docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code`
+
+### Problem: Copilot returns 401 "invalid bearer token" from Anthropic
+**Cause:** `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` but no Claude Code login in container.
+**Fix:** Switch to API key mode (see step 3b). Use OpenRouter key as `CHAT_API_KEY` with `CHAT_BASE_URL=https://openrouter.ai/api/v1``.
+
+### Problem: Docker build fails on ARM64 with chromium errors
+**Cause:** `Chrome for Testing` has no ARM64 binary. Dockerfile uses `TARGETARCH` conditional that fails.
+**Fix:** Replace with unconditional `apt-get install chromium` + `ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` (see step 3c).
+
+### Problem: agent-browser selector matches multiple elements
+**Cause:** `text=X` matches all elements containing that text.
+**Fix:** Use `agent-browser snapshot` to get specific `ref=eNN` references, then use those: `agent-browser click eNN`.
+
+### Problem: Frontend shows cookie banner blocking interaction
+**Fix:** `agent-browser click 'text=Accept All'` before other interactions.
+
+### Problem: Container loses npm packages after rebuild
+**Cause:** `docker compose up --build` rebuilds the image, losing runtime installs.
+**Fix:** Add packages to the Dockerfile instead of installing at runtime.
+
+### Problem: Services not starting after `docker compose up`
+**Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If supabase-db isn't healthy: `docker restart supabase-db && sleep 10`.
+
+### Problem: Docker uses cached layers with old code (PR changes not visible)
+**Cause:** `docker compose up --build` reuses cached `COPY` layers from previous builds. If the PR branch changes Python files but the previous build already cached that layer from `dev`, the container runs `dev` code.
+**Fix:** Always use `docker compose build --no-cache` for the first build of a PR branch. Subsequent rebuilds within the same branch can use `--build`.
+
+### Problem: `agent-browser open` loses login session
+**Cause:** `agent-browser open` may open a new browser context, losing cookies.
+**Fix:** After logging in, use `agent-browser eval "window.location.href = '/build?flowID=...'"` to navigate within the same context instead of `agent-browser open`.
+
+### Problem: Supabase auth returns "Database error querying schema"
+**Cause:** The database schema changed (migration ran) but supabase-auth has a stale schema cache.
+**Fix:** `docker restart supabase-db && sleep 10 && docker restart supabase-auth && sleep 8`. If user data was lost, re-signup.
