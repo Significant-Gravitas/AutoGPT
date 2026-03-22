@@ -3,6 +3,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
+import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
 import {
@@ -69,9 +70,15 @@ interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
   messageID: string;
   partIndex: number;
+  onRetry?: () => void;
 }
 
-export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
+export function MessagePartRenderer({
+  part,
+  messageID,
+  partIndex,
+  onRetry,
+}: Props) {
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
@@ -80,7 +87,7 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
         part.text,
       );
 
-      if (markerType === "error") {
+      if (markerType === "error" || markerType === "retryable_error") {
         const lowerMarker = markerText.toLowerCase();
         const isCancellation =
           lowerMarker === "operation cancelled" ||
@@ -100,6 +107,7 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
             key={key}
             responseError={{ message: markerText }}
             context="execution"
+            onRetry={markerType === "retryable_error" ? onRetry : undefined}
           />
         );
       }
@@ -129,6 +137,8 @@ export function MessagePartRenderer({ part, messageID, partIndex }: Props) {
     case "tool-search_docs":
     case "tool-get_doc_page":
       return <SearchDocsTool key={key} part={part as ToolUIPart} />;
+    case "tool-connect_integration":
+      return <ConnectIntegrationTool key={key} part={part as ToolUIPart} />;
     case "tool-run_block":
     case "tool-continue_run_block":
       return <RunBlockTool key={key} part={part as ToolUIPart} />;

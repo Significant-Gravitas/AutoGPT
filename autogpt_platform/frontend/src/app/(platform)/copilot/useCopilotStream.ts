@@ -1,4 +1,5 @@
 import {
+  getGetV2GetCopilotUsageQueryKey,
   getGetV2GetSessionQueryKey,
   postV2CancelSessionTask,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -177,12 +178,41 @@ export function useCopilotStream({
     onError: (error) => {
       if (!sessionId) return;
 
+      // Detect rate limit (429) responses and show reset time to the user.
+      // The SDK throws a plain Error whose message is the raw response body
+      // (FastAPI returns {"detail": "...usage limit..."} for 429s).
+      let errorDetail: string = error.message;
+      try {
+        const parsed = JSON.parse(error.message) as unknown;
+        if (
+          typeof parsed === "object" &&
+          parsed !== null &&
+          "detail" in parsed &&
+          typeof (parsed as { detail: unknown }).detail === "string"
+        ) {
+          errorDetail = (parsed as { detail: string }).detail;
+        }
+      } catch {
+        // Not JSON — use message as-is
+      }
+      const isRateLimited = errorDetail.toLowerCase().includes("usage limit");
+      if (isRateLimited) {
+        toast({
+          title: "Usage limit reached",
+          description:
+            errorDetail ||
+            "You've reached your usage limit. Please try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Detect authentication failures (from getAuthHeaders or 401 responses)
       const isAuthError =
-        error.message.includes("Authentication failed") ||
-        error.message.includes("Unauthorized") ||
-        error.message.includes("Not authenticated") ||
-        error.message.toLowerCase().includes("401");
+        errorDetail.includes("Authentication failed") ||
+        errorDetail.includes("Unauthorized") ||
+        errorDetail.includes("Not authenticated") ||
+        errorDetail.toLowerCase().includes("401");
       if (isAuthError) {
         toast({
           title: "Authentication error",
@@ -192,12 +222,17 @@ export function useCopilotStream({
         return;
       }
 
-      // Only reconnect on network errors (not HTTP errors), and never
-      // reconnect when the user explicitly stopped the stream.
+      // Reconnect on network errors or transient API errors so the
+      // persisted retryable-error marker is loaded and the "Try Again"
+      // button appears.  Without this, transient errors only show in the
+      // onError callback (where StreamError strips the retryable prefix).
       if (isUserStoppingRef.current) return;
       const isNetworkError =
         error.name === "TypeError" || error.name === "AbortError";
-      if (isNetworkError) {
+      const isTransientApiError = errorDetail.includes(
+        "connection interrupted",
+      );
+      if (isNetworkError || isTransientApiError) {
         handleReconnect(sessionId);
       }
     },
@@ -306,6 +341,9 @@ export function useCopilotStream({
     if (wasActive && isIdle && sessionId && !isReconnectScheduled) {
       queryClient.invalidateQueries({
         queryKey: getGetV2GetSessionQueryKey(sessionId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetV2GetCopilotUsageQueryKey(),
       });
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;

@@ -19,12 +19,12 @@ export function Breadcrumbs({ items }: Props) {
           {item.link ? (
             <Link
               href={item.link}
-              className="text-[0.75rem] font-[400] text-zinc-600 transition-colors hover:text-zinc-900 hover:no-underline"
+              className="text-sm font-[400] text-zinc-600 transition-colors hover:text-zinc-900 hover:no-underline"
             >
               {item.name}
             </Link>
           ) : (
-            <span className="text-[0.75rem] font-[400] text-zinc-900">
+            <span className="text-sm font-[400] text-zinc-900">
               {item.name}
             </span>
           )}

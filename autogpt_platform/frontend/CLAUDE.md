@@ -84,7 +84,7 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
-5. **Testing**: Add Storybook stories for new components, Playwright for E2E
+5. **Testing**: Add Storybook stories for new components, Playwright for E2E. When fixing a bug, write a failing Playwright test first (use `.fixme` annotation), implement the fix, then remove the annotation.
 6. **Code conventions**:
    - Use function declarations (not arrow functions) for components/handlers
    - Do not use `useCallback` or `useMemo` unless asked to optimise a given function

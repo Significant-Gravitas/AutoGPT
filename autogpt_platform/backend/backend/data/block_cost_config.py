@@ -76,7 +76,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
-    LlmModel.GPT3_5_TURBO: 1,
     LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
@@ -423,7 +422,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=10,
             cost_filter={
-                "model": FluxKontextModelName.PRO.api_name,
+                "model": FluxKontextModelName.FLUX_KONTEXT_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -434,7 +433,29 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=20,
             cost_filter={
-                "model": FluxKontextModelName.MAX.api_name,
+                "model": FluxKontextModelName.FLUX_KONTEXT_MAX,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana Pro
+            cost_filter={
+                "model": FluxKontextModelName.NANO_BANANA_PRO,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana 2
+            cost_filter={
+                "model": FluxKontextModelName.NANO_BANANA_2,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -632,6 +653,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
+            cost_filter={
+                "model": ImageGenModel.NANO_BANANA_2,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
     ],
     AIImageCustomizerBlock: [
         BlockCost(
@@ -649,6 +681,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             cost_amount=14,  # Nano Banana Pro: $0.14 per image at 2K
             cost_filter={
                 "model": GeminiImageModel.NANO_BANANA_PRO,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
+            cost_filter={
+                "model": GeminiImageModel.NANO_BANANA_2,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,

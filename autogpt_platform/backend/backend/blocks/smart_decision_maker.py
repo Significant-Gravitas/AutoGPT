@@ -61,20 +61,27 @@ class ExecutionParams(BaseModel):
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
     """
     Return a list of tool_call_ids if the entry is a tool request.
-    Supports both OpenAI and Anthropics formats.
+    Supports OpenAI Chat Completions, Responses API, and Anthropic formats.
     """
     tool_call_ids = []
+
+    # OpenAI Responses API: function_call items have type="function_call"
+    if entry.get("type") == "function_call":
+        if call_id := entry.get("call_id"):
+            tool_call_ids.append(call_id)
+        return tool_call_ids
+
     if entry.get("role") != "assistant":
         return tool_call_ids
 
-    # OpenAI: check for tool_calls in the entry.
+    # OpenAI Chat Completions: check for tool_calls in the entry.
     calls = entry.get("tool_calls")
     if isinstance(calls, list):
         for call in calls:
             if tool_id := call.get("id"):
                 tool_call_ids.append(tool_id)
 
-    # Anthropics: check content items for tool_use type.
+    # Anthropic: check content items for tool_use type.
     content = entry.get("content")
     if isinstance(content, list):
         for item in content:
@@ -89,16 +96,22 @@ def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
 def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
     """
     Return a list of tool_call_ids if the entry is a tool response.
-    Supports both OpenAI and Anthropics formats.
+    Supports OpenAI Chat Completions, Responses API, and Anthropic formats.
     """
     tool_call_ids: list[str] = []
 
-    # OpenAI: a tool response message with role "tool" and key "tool_call_id".
+    # OpenAI Responses API: function_call_output items
+    if entry.get("type") == "function_call_output":
+        if call_id := entry.get("call_id"):
+            tool_call_ids.append(str(call_id))
+        return tool_call_ids
+
+    # OpenAI Chat Completions: a tool response message with role "tool".
     if entry.get("role") == "tool":
         if tool_call_id := entry.get("tool_call_id"):
             tool_call_ids.append(str(tool_call_id))
 
-    # Anthropics: check content items for tool_result type.
+    # Anthropic: check content items for tool_result type.
     if entry.get("role") == "user":
         content = entry.get("content")
         if isinstance(content, list):
@@ -111,14 +124,16 @@ def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
     return tool_call_ids
 
 
-def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
+def _create_tool_response(
+    call_id: str, output: Any, *, responses_api: bool = False
+) -> dict[str, Any]:
     """
-    Create a tool response message for either OpenAI or Anthropics,
-    based on the tool_id format.
+    Create a tool response message for OpenAI, Anthropic, or OpenAI Responses API,
+    based on the tool_id format and the responses_api flag.
     """
     content = output if isinstance(output, str) else json.dumps(output)
 
-    # Anthropics format: tool IDs typically start with "toolu_"
+    # Anthropic format: tool IDs typically start with "toolu_"
     if call_id.startswith("toolu_"):
         return {
             "role": "user",
@@ -128,8 +143,11 @@ def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
             ],
         }
 
-    # OpenAI format: tool IDs typically start with "call_".
-    # Or default fallback (if the tool_id doesn't match any known prefix)
+    # OpenAI Responses API format
+    if responses_api:
+        return {"type": "function_call_output", "call_id": call_id, "output": content}
+
+    # OpenAI Chat Completions format (default fallback)
     return {"role": "tool", "tool_call_id": call_id, "content": content}
 
 
@@ -177,10 +195,19 @@ def _combine_tool_responses(tool_outputs: list[dict[str, Any]]) -> list[dict[str
     return tool_outputs
 
 
-def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
+def _convert_raw_response_to_dict(
+    raw_response: Any,
+) -> dict[str, Any] | list[dict[str, Any]]:
     """
     Safely convert raw_response to dictionary format for conversation history.
     Handles different response types from different LLM providers.
+
+    For the OpenAI Responses API, the raw_response is the entire Response
+    object.  Its ``output`` items (messages, function_calls) are extracted
+    individually so they can be used as valid input items on the next call.
+    Returns a **list** of dicts in that case.
+
+    For Chat Completions / Anthropic / Ollama, returns a single dict.
     """
     if isinstance(raw_response, str):
         # Ollama returns a string, convert to dict format
@@ -188,9 +215,26 @@ def _convert_raw_response_to_dict(raw_response: Any) -> dict[str, Any]:
     elif isinstance(raw_response, dict):
         # Already a dict (from tests or some providers)
         return raw_response
+    elif _is_responses_api_object(raw_response):
+        # OpenAI Responses API: extract individual output items
+        items = [json.to_dict(item) for item in raw_response.output]
+        return items if items else [{"role": "assistant", "content": ""}]
     else:
-        # OpenAI/Anthropic return objects, convert with json.to_dict
+        # Chat Completions / Anthropic return message objects
         return json.to_dict(raw_response)
+
+
+def _is_responses_api_object(obj: Any) -> bool:
+    """Detect an OpenAI Responses API Response object.
+
+    These have ``object == "response"`` and an ``output`` list, but no
+    ``role`` attribute (unlike ChatCompletionMessage).
+    """
+    return (
+        getattr(obj, "object", None) == "response"
+        and hasattr(obj, "output")
+        and not hasattr(obj, "role")
+    )
 
 
 def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, int]:
@@ -754,19 +798,34 @@ class SmartDecisionMakerBlock(Block):
         self, prompt: list[dict], response, tool_outputs: list | None = None
     ):
         """Update conversation history with response and tool outputs."""
-        # Don't add separate reasoning message with tool calls (breaks Anthropic's tool_use->tool_result pairing)
-        assistant_message = _convert_raw_response_to_dict(response.raw_response)
-        has_tool_calls = isinstance(assistant_message.get("content"), list) and any(
-            item.get("type") == "tool_use"
-            for item in assistant_message.get("content", [])
-        )
+        converted = _convert_raw_response_to_dict(response.raw_response)
 
-        if response.reasoning and not has_tool_calls:
-            prompt.append(
-                {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
+        if isinstance(converted, list):
+            # Responses API: output items are already individual dicts
+            has_tool_calls = any(
+                item.get("type") == "function_call" for item in converted
             )
-
-        prompt.append(assistant_message)
+            if response.reasoning and not has_tool_calls:
+                prompt.append(
+                    {
+                        "role": "assistant",
+                        "content": f"[Reasoning]: {response.reasoning}",
+                    }
+                )
+            prompt.extend(converted)
+        else:
+            # Chat Completions / Anthropic: single assistant message dict
+            has_tool_calls = isinstance(converted.get("content"), list) and any(
+                item.get("type") == "tool_use" for item in converted.get("content", [])
+            )
+            if response.reasoning and not has_tool_calls:
+                prompt.append(
+                    {
+                        "role": "assistant",
+                        "content": f"[Reasoning]: {response.reasoning}",
+                    }
+                )
+            prompt.append(converted)
 
         if tool_outputs:
             prompt.extend(tool_outputs)
@@ -776,6 +835,8 @@ class SmartDecisionMakerBlock(Block):
         tool_info: ToolInfo,
         execution_params: ExecutionParams,
         execution_processor: "ExecutionProcessor",
+        *,
+        responses_api: bool = False,
     ) -> dict:
         """Execute a single tool using the execution manager for proper integration."""
         # Lazy imports to avoid circular dependencies
@@ -868,13 +929,17 @@ class SmartDecisionMakerBlock(Block):
                 if node_outputs
                 else "Tool executed successfully"
             )
-            return _create_tool_response(tool_call.id, tool_response_content)
+            return _create_tool_response(
+                tool_call.id, tool_response_content, responses_api=responses_api
+            )
 
         except Exception as e:
             logger.error(f"Tool execution with manager failed: {e}")
             # Return error response
             return _create_tool_response(
-                tool_call.id, f"Tool execution failed: {str(e)}"
+                tool_call.id,
+                f"Tool execution failed: {str(e)}",
+                responses_api=responses_api,
             )
 
     async def _execute_tools_agent_mode(
@@ -895,6 +960,7 @@ class SmartDecisionMakerBlock(Block):
         """Execute tools in agent mode with a loop until finished."""
         max_iterations = input_data.agent_mode_max_iterations
         iteration = 0
+        use_responses_api = input_data.model.metadata.provider == "openai"
 
         # Execution parameters for tool execution
         execution_params = ExecutionParams(
@@ -951,14 +1017,19 @@ class SmartDecisionMakerBlock(Block):
             for tool_info in processed_tools:
                 try:
                     tool_response = await self._execute_single_tool_with_manager(
-                        tool_info, execution_params, execution_processor
+                        tool_info,
+                        execution_params,
+                        execution_processor,
+                        responses_api=use_responses_api,
                     )
                     tool_outputs.append(tool_response)
                 except Exception as e:
                     logger.error(f"Tool execution failed: {e}")
                     # Create error response for the tool
                     error_response = _create_tool_response(
-                        tool_info.tool_call.id, f"Error: {str(e)}"
+                        tool_info.tool_call.id,
+                        f"Error: {str(e)}",
+                        responses_api=use_responses_api,
                     )
                     tool_outputs.append(error_response)
 
@@ -1020,11 +1091,17 @@ class SmartDecisionMakerBlock(Block):
         if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
+        use_responses_api = input_data.model.metadata.provider == "openai"
+
         tool_output = []
         if pending_tool_calls and input_data.last_tool_output is not None:
             first_call_id = next(iter(pending_tool_calls.keys()))
             tool_output.append(
-                _create_tool_response(first_call_id, input_data.last_tool_output)
+                _create_tool_response(
+                    first_call_id,
+                    input_data.last_tool_output,
+                    responses_api=use_responses_api,
+                )
             )
 
             prompt.extend(tool_output)
@@ -1050,11 +1127,15 @@ class SmartDecisionMakerBlock(Block):
 
         values = input_data.prompt_values
         if values:
-            input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
-            input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
+            input_data.prompt = await llm.fmt.format_string(input_data.prompt, values)
+            input_data.sys_prompt = await llm.fmt.format_string(
+                input_data.sys_prompt, values
+            )
 
         if input_data.sys_prompt and not any(
-            p["role"] == "system" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            p.get("role") == "system"
+            and isinstance(p.get("content"), str)
+            and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
             for p in prompt
         ):
             prompt.append(
@@ -1065,7 +1146,9 @@ class SmartDecisionMakerBlock(Block):
             )
 
         if input_data.prompt and not any(
-            p["role"] == "user" and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
+            p.get("role") == "user"
+            and isinstance(p.get("content"), str)
+            and p["content"].startswith(MAIN_OBJECTIVE_PREFIX)
             for p in prompt
         ):
             prompt.append(
@@ -1173,11 +1256,26 @@ class SmartDecisionMakerBlock(Block):
                 )
                 yield emit_key, arg_value
 
-        if response.reasoning:
+        converted = _convert_raw_response_to_dict(response.raw_response)
+
+        # Check for tool calls to avoid inserting reasoning between tool pairs
+        if isinstance(converted, list):
+            has_tool_calls = any(
+                item.get("type") == "function_call" for item in converted
+            )
+        else:
+            has_tool_calls = isinstance(converted.get("content"), list) and any(
+                item.get("type") == "tool_use" for item in converted.get("content", [])
+            )
+
+        if response.reasoning and not has_tool_calls:
             prompt.append(
                 {"role": "assistant", "content": f"[Reasoning]: {response.reasoning}"}
             )
 
-        prompt.append(_convert_raw_response_to_dict(response.raw_response))
+        if isinstance(converted, list):
+            prompt.extend(converted)
+        else:
+            prompt.append(converted)
 
         yield "conversations", prompt
