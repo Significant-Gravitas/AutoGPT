@@ -58,6 +58,8 @@ async def _registry_session(
     session_id: str, user_id: str, turn_id: str
 ) -> AsyncIterator[_RegistryHandle]:
     """Create a stream registry session and ensure it is finalized."""
+    # Deferred import: allows tests to patch backend.copilot.stream_registry
+    # rather than a module-level attribute that doesn't exist at import time.
     from .. import stream_registry
 
     handle = _RegistryHandle(publish_turn_id=turn_id)
@@ -137,6 +139,11 @@ def _process_event(event: object, acc: _EventAccumulator) -> str | None:
             if tc := acc.tool_calls_by_id.get(e.toolCallId):
                 tc["output"] = e.output
                 tc["success"] = e.success
+            else:
+                logger.debug(
+                    "Received tool output for unknown tool_call_id: %s",
+                    e.toolCallId,
+                )
         case StreamUsage() as e:
             acc.prompt_tokens += e.prompt_tokens
             acc.completion_tokens += e.completion_tokens
