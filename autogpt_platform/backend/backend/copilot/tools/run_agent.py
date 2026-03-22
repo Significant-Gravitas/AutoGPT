@@ -364,7 +364,25 @@ class RunAgentTool(BaseTool):
             user_id, graph
         )
 
-        # Dry runs bypass all prerequisite gates
+        # --- Reject unknown input fields (always, even for dry runs) ---
+        input_properties = graph.input_schema.get("properties", {})
+        provided_inputs = set(params.inputs.keys())
+        valid_fields = set(input_properties.keys())
+        unrecognized_fields = provided_inputs - valid_fields
+        if unrecognized_fields:
+            return graph_credentials, InputValidationErrorResponse(
+                message=(
+                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                    f"Agent was not executed. Please use the correct field names from the schema."
+                ),
+                session_id=session_id,
+                unrecognized_fields=sorted(unrecognized_fields),
+                inputs=graph.input_schema,
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+
+        # Dry runs bypass remaining prerequisite gates (credentials, missing inputs)
         if params.dry_run:
             return graph_credentials, None
 
@@ -396,25 +414,7 @@ class RunAgentTool(BaseTool):
             )
 
         # --- Input gates ---
-        input_properties = graph.input_schema.get("properties", {})
         required_fields = set(graph.input_schema.get("required", []))
-        provided_inputs = set(params.inputs.keys())
-        valid_fields = set(input_properties.keys())
-
-        # Reject unknown fields (always, even for dry runs — caught above)
-        unrecognized_fields = provided_inputs - valid_fields
-        if unrecognized_fields:
-            return graph_credentials, InputValidationErrorResponse(
-                message=(
-                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
-                    f"Agent was not executed. Please use the correct field names from the schema."
-                ),
-                session_id=session_id,
-                unrecognized_fields=sorted(unrecognized_fields),
-                inputs=graph.input_schema,
-                graph_id=graph.id,
-                graph_version=graph.version,
-            )
 
         # Prompt user when inputs exist but none were provided
         if input_properties and not provided_inputs and not params.use_defaults:
