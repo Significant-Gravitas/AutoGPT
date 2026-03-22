@@ -53,12 +53,13 @@ class TestBuildAndValidatePermissions:
         assert result.tools == ["run_block", "web_fetch"]
         assert result.tools_exclude is True
 
-    async def test_invalid_tool_returns_error_string(self):
-        inp = _make_input(tools=["not_a_real_tool"])
-        result = await _build_and_validate_permissions(inp)
-        assert isinstance(result, str)
-        assert "not_a_real_tool" in result
-        assert "Invalid tool name" in result
+    async def test_invalid_tool_rejected_by_pydantic(self):
+        """Invalid tool names are now caught at Pydantic validation time
+        (Literal type), before ``_build_and_validate_permissions`` is called."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="not_a_real_tool"):
+            _make_input(tools=["not_a_real_tool"])
 
     async def test_valid_block_name_accepted(self):
         mock_block_cls = MagicMock()
@@ -224,12 +225,12 @@ class TestAutoPilotBlockRunPermissions:
             outputs[key] = val
         return outputs
 
-    async def test_invalid_tool_yields_error(self):
-        block = AutoPilotBlock()
-        inp = _make_input(tools=["not_a_tool"])
-        outputs = await self._collect_outputs(block, inp)
-        assert "error" in outputs
-        assert "not_a_tool" in outputs["error"]
+    async def test_invalid_tool_rejected_by_pydantic(self):
+        """Invalid tool names are caught at Pydantic validation (Literal type)."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="not_a_tool"):
+            _make_input(tools=["not_a_tool"])
 
     async def test_invalid_block_yields_error(self):
         mock_block_cls = MagicMock()
@@ -246,7 +247,7 @@ class TestAutoPilotBlockRunPermissions:
 
     async def test_empty_prompt_yields_error_before_permission_check(self):
         block = AutoPilotBlock()
-        inp = _make_input(prompt="   ", tools=["not_a_tool"])
+        inp = _make_input(prompt="   ", tools=["run_block"])
         outputs = await self._collect_outputs(block, inp)
         assert "error" in outputs
         assert "Prompt cannot be empty" in outputs["error"]
