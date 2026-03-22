@@ -14,7 +14,7 @@ Test a PR/branch end-to-end by building the full platform, interacting via brows
 
 ## Arguments
 
-- `$ARGUMENTS` — worktree path (e.g. `/Users/majdyz/Code/AutoGPT4`) or PR number
+- `$ARGUMENTS` — worktree path (e.g. `$REPO_ROOT4`) or PR number
 - If `--fix` flag is present, auto-fix bugs found and push fixes (like pr-address loop)
 
 ## Step 0: Resolve the target
@@ -26,19 +26,20 @@ gh pr view {N} --json headRefName --jq '.headRefName'
 ```
 
 Determine:
+- `REPO_ROOT` — the root repo directory: `git -C "$WORKTREE_PATH" worktree list | head -1 | awk '{print $1}'` (or `git rev-parse --show-toplevel` if not a worktree)
 - `WORKTREE_PATH` — the worktree directory
 - `PLATFORM_DIR` — `$WORKTREE_PATH/autogpt_platform`
 - `BACKEND_DIR` — `$PLATFORM_DIR/backend`
 - `FRONTEND_DIR` — `$PLATFORM_DIR/frontend`
 - `PR_NUMBER` — the PR number (from `gh pr list --head $(git branch --show-current)`)
 - `PR_TITLE` — the PR title, slugified (e.g. "Add copilot permissions" → "add-copilot-permissions")
-- `RESULTS_DIR` — `/Users/majdyz/Code/AutoGPT/test-results/PR-{PR_NUMBER}-{slugified-title}`
+- `RESULTS_DIR` — `$REPO_ROOT/test-results/PR-{PR_NUMBER}-{slugified-title}`
 
 Create the results directory:
 ```bash
 PR_NUMBER=$(cd $WORKTREE_PATH && gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT --json number --jq '.[0].number')
 PR_TITLE=$(cd $WORKTREE_PATH && gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT --json title --jq '.[0].title' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//;s/-$//' | head -c 50)
-RESULTS_DIR="/Users/majdyz/Code/AutoGPT/test-results/PR-${PR_NUMBER}-${PR_TITLE}"
+RESULTS_DIR="$REPO_ROOT/test-results/PR-${PR_NUMBER}-${PR_TITLE}"
 mkdir -p $RESULTS_DIR
 ```
 
@@ -88,13 +89,13 @@ Based on the PR analysis, write a test plan to `$RESULTS_DIR/test-plan.md`:
 
 ### 3a. Copy .env files from the root worktree
 
-The root worktree (`/Users/majdyz/Code/AutoGPT`) has the canonical `.env` files with all API keys. Copy them to the target worktree:
+The root worktree (`$REPO_ROOT`) has the canonical `.env` files with all API keys. Copy them to the target worktree:
 
 ```bash
 # CRITICAL: .env files are NOT checked into git. They must be copied manually.
-cp /Users/majdyz/Code/AutoGPT/autogpt_platform/.env $PLATFORM_DIR/.env
-cp /Users/majdyz/Code/AutoGPT/autogpt_platform/backend/.env $BACKEND_DIR/.env
-cp /Users/majdyz/Code/AutoGPT/autogpt_platform/frontend/.env $FRONTEND_DIR/.env
+cp $REPO_ROOT/autogpt_platform/.env $PLATFORM_DIR/.env
+cp $REPO_ROOT/autogpt_platform/backend/.env $BACKEND_DIR/.env
+cp $REPO_ROOT/autogpt_platform/frontend/.env $FRONTEND_DIR/.env
 ```
 
 ### 3b. Configure copilot authentication
@@ -107,17 +108,17 @@ On macOS, Claude Code stores OAuth credentials in the **system keychain**. Extra
 
 ```bash
 # Extract OAuth access token from macOS keychain
-CLAUDE_OAUTH_TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('claudeAiOauth',{}).get('accessToken',''))" 2>/dev/null)
+CLAUDE_OAUTH_TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -r '.claudeAiOauth.accessToken // ""' 2>/dev/null)
 
 if [ -n "$CLAUDE_OAUTH_TOKEN" ]; then
   echo "Found Claude OAuth token from keychain"
   # Pass it as CLAUDE_CODE_OAUTH_TOKEN env var to copilot_executor
   # Add to docker-compose.override.yml or the backend .env
   grep -q "^CLAUDE_CODE_OAUTH_TOKEN=" $BACKEND_DIR/.env && \
-    sed -i '' "s|^CLAUDE_CODE_OAUTH_TOKEN=.*|CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN|" $BACKEND_DIR/.env || \
+    perl -i -pe "s|^CLAUDE_CODE_OAUTH_TOKEN=.*|CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN|" $BACKEND_DIR/.env || \
     echo "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN" >> $BACKEND_DIR/.env
   # Keep subscription mode enabled
-  sed -i '' 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/' $BACKEND_DIR/.env 2>/dev/null
+  perl -i -pe 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/' $BACKEND_DIR/.env 2>/dev/null
 else
   echo "No Claude OAuth token found — falling back to OpenRouter API key mode"
 fi
@@ -142,10 +143,10 @@ CHAT_USE_CLAUDE_AGENT_SDK=true
 Use `sed` to update these values:
 ```bash
 ORKEY=$(grep "^OPEN_ROUTER_API_KEY=" $BACKEND_DIR/.env | cut -d= -f2)
-sed -i '' 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/' $BACKEND_DIR/.env
+perl -i -pe 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/' $BACKEND_DIR/.env
 # Add or update CHAT_API_KEY and CHAT_BASE_URL
-grep -q "^CHAT_API_KEY=" $BACKEND_DIR/.env && sed -i '' "s|^CHAT_API_KEY=.*|CHAT_API_KEY=$ORKEY|" $BACKEND_DIR/.env || echo "CHAT_API_KEY=$ORKEY" >> $BACKEND_DIR/.env
-grep -q "^CHAT_BASE_URL=" $BACKEND_DIR/.env && sed -i '' 's|^CHAT_BASE_URL=.*|CHAT_BASE_URL=https://openrouter.ai/api/v1|' $BACKEND_DIR/.env || echo "CHAT_BASE_URL=https://openrouter.ai/api/v1" >> $BACKEND_DIR/.env
+grep -q "^CHAT_API_KEY=" $BACKEND_DIR/.env && perl -i -pe "s|^CHAT_API_KEY=.*|CHAT_API_KEY=$ORKEY|" $BACKEND_DIR/.env || echo "CHAT_API_KEY=$ORKEY" >> $BACKEND_DIR/.env
+grep -q "^CHAT_BASE_URL=" $BACKEND_DIR/.env && perl -i -pe 's|^CHAT_BASE_URL=.*|CHAT_BASE_URL=https://openrouter.ai/api/v1|' $BACKEND_DIR/.env || echo "CHAT_BASE_URL=https://openrouter.ai/api/v1" >> $BACKEND_DIR/.env
 ```
 
 ### 3c. Fix ARM64 Docker build (macOS Apple Silicon)
@@ -250,7 +251,7 @@ ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKI
 TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{"email":"test@test.com","password":"testtest123"}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))")
+  -d '{"email":"test@test.com","password":"testtest123"}' | jq -r '.access_token // ""')
 ```
 
 **Use this token for ALL API calls:**
@@ -280,13 +281,13 @@ Use `curl` with the auth token for backend API tests:
 
 ```bash
 # Example: List agents
-curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/graphs | python3 -m json.tool | head -20
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/graphs | jq . | head -20
 
 # Example: Create an agent
 curl -s -X POST http://localhost:8006/api/graphs \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{...}' | python3 -m json.tool
+  -d '{...}' | jq .
 
 # Example: Run an agent
 curl -s -X POST "http://localhost:8006/api/graphs/{graph_id}/execute" \
@@ -296,7 +297,7 @@ curl -s -X POST "http://localhost:8006/api/graphs/{graph_id}/execute" \
 
 # Example: Get execution results
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8006/api/graphs/{graph_id}/executions/{exec_id}" | python3 -m json.tool
+  "http://localhost:8006/api/graphs/{graph_id}/executions/{exec_id}" | jq .
 ```
 
 ### Browser testing with agent-browser
@@ -325,16 +326,16 @@ agent-browser --session-name pr-test click 'text=Accept All' 2>/dev/null || true
 agent-browser --session-name pr-test open 'http://localhost:3000/copilot' --timeout 10000
 
 # Take screenshot
-agent-browser screenshot $RESULTS_DIR/01-page.png
+agent-browser --session-name pr-test screenshot $RESULTS_DIR/01-page.png
 
 # Interact with elements
-agent-browser fill {ref} "text"
-agent-browser press "Enter"
-agent-browser click {ref}
-agent-browser click 'text=Button Text'
+agent-browser --session-name pr-test fill {ref} "text"
+agent-browser --session-name pr-test press "Enter"
+agent-browser --session-name pr-test click {ref}
+agent-browser --session-name pr-test click 'text=Button Text'
 
 # Read page content
-agent-browser snapshot | grep "text:"
+agent-browser --session-name pr-test snapshot | grep "text:"
 ```
 
 **Key pages:**
@@ -373,7 +374,7 @@ The copilot uses SSE streaming. To test via API:
 SESSION_ID=$(curl -s -X POST 'http://localhost:8006/api/chat/sessions' \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{}' | python3 -c "import sys,json; print(json.load(sys.stdin).get('session_id',''))")
+  -d '{}' | jq -r '.session_id // ""')
 
 # Stream a message (SSE - will stream chunks)
 curl -N -X POST "http://localhost:8006/api/chat/sessions/$SESSION_ID/stream" \
@@ -427,7 +428,7 @@ Worktree: {path}
 
 Take screenshots at each significant step:
 ```bash
-agent-browser screenshot $RESULTS_DIR/{NN}-{description}.png
+agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{description}.png
 ```
 
 ## Step 6: Report results
