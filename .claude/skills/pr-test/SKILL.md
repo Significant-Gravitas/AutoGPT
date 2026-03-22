@@ -275,23 +275,24 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 # Close any existing session
 agent-browser close 2>/dev/null || true
 
-# Open login page
-agent-browser open 'http://localhost:3000/login' --timeout 15000
+# Use --session-name to persist cookies across navigations
+# This means login only needs to happen once per test session
+agent-browser --session-name pr-test open 'http://localhost:3000/login' --timeout 15000
 
 # Get interactive elements
-agent-browser snapshot | grep "textbox\|button"
+agent-browser --session-name pr-test snapshot | grep "textbox\|button"
 
 # Login
-agent-browser fill {email_ref} "test@test.com"
-agent-browser fill {password_ref} "testtest123"
-agent-browser click {login_button_ref}
+agent-browser --session-name pr-test fill {email_ref} "test@test.com"
+agent-browser --session-name pr-test fill {password_ref} "testtest123"
+agent-browser --session-name pr-test click {login_button_ref}
 sleep 5
 
 # Dismiss cookie banner if present
-agent-browser click 'text=Accept All' 2>/dev/null || true
+agent-browser --session-name pr-test click 'text=Accept All' 2>/dev/null || true
 
-# Navigate
-agent-browser open 'http://localhost:3000/copilot' --timeout 10000
+# Navigate — cookies are preserved so login persists
+agent-browser --session-name pr-test open 'http://localhost:3000/copilot' --timeout 10000
 
 # Take screenshot
 agent-browser screenshot $RESULTS_DIR/01-page.png
@@ -472,8 +473,8 @@ test scenario → find bug → fix code → rebuild service → re-test
 **Fix:** Always use `docker compose build --no-cache` for the first build of a PR branch. Subsequent rebuilds within the same branch can use `--build`.
 
 ### Problem: `agent-browser open` loses login session
-**Cause:** `agent-browser open` may open a new browser context, losing cookies.
-**Fix:** After logging in, use `agent-browser eval "window.location.href = '/build?flowID=...'"` to navigate within the same context instead of `agent-browser open`.
+**Cause:** Without session persistence, `agent-browser open` starts fresh.
+**Fix:** Use `--session-name pr-test` on ALL agent-browser commands. This auto-saves/restores cookies and localStorage across navigations. Alternatively, use `agent-browser eval "window.location.href = '...'"` to navigate within the same context.
 
 ### Problem: Supabase auth returns "Database error querying schema"
 **Cause:** The database schema changed (migration ran) but supabase-auth has a stale schema cache.
