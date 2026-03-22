@@ -18,6 +18,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.copilot.permissions import ToolName
 from backend.data.model import SchemaField
 
 if TYPE_CHECKING:
@@ -99,23 +100,10 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
-        tools: list[str] = SchemaField(
+        tools: list[ToolName] = SchemaField(
             description=(
                 "Tool names to filter. Works with tools_exclude to form an "
                 "allow-list or deny-list. "
-                "Platform tools: add_understanding, bash_exec, browser_act, "
-                "browser_navigate, browser_screenshot, connect_integration, "
-                "continue_run_block, create_agent, create_feature_request, "
-                "create_folder, customize_agent, delete_folder, "
-                "delete_workspace_file, edit_agent, find_agent, find_block, "
-                "find_library_agent, fix_agent_graph, get_agent_building_guide, "
-                "get_doc_page, get_mcp_guide, list_folders, list_workspace_files, "
-                "move_agents_to_folder, move_folder, read_workspace_file, "
-                "run_agent, run_block, run_mcp_tool, search_docs, "
-                "search_feature_requests, update_folder, validate_agent_graph, "
-                "view_agent_output, web_fetch, write_workspace_file. "
-                "SDK built-ins: Edit, Glob, Grep, Read, Task, TodoWrite, "
-                "WebSearch, Write. "
                 "Leave empty to apply no tool filter."
             ),
             default=[],
@@ -474,20 +462,11 @@ async def _build_and_validate_permissions(
     """
     from backend.copilot.permissions import (
         CopilotPermissions,
-        all_known_tool_names,
         validate_block_identifiers,
-        validate_tool_names,
     )
 
-    # Validate tool names against known registry.
-    invalid_tools = validate_tool_names(input_data.tools)
-    if invalid_tools:
-        known = sorted(all_known_tool_names())
-        return (
-            f"Invalid tool name(s) in 'tools': {invalid_tools}. "
-            f"Valid names are: {known}."
-        )
-
+    # Tool names are validated by Pydantic via the ToolName Literal type
+    # at model construction time — no runtime check needed here.
     # Validate block identifiers against live block registry.
     if input_data.blocks:
         invalid_blocks = await validate_block_identifiers(input_data.blocks)
@@ -499,7 +478,7 @@ async def _build_and_validate_permissions(
             )
 
     return CopilotPermissions(
-        tools=input_data.tools,
+        tools=list(input_data.tools),
         tools_exclude=input_data.tools_exclude,
         blocks=input_data.blocks,
         blocks_exclude=input_data.blocks_exclude,

@@ -52,26 +52,129 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
+from typing import Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
 
 # ---------------------------------------------------------------------------
-# Constants
+# Constants — single source of truth for all accepted tool names
 # ---------------------------------------------------------------------------
 
-# SDK built-in tool short names accepted in the *tools* field.
-SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
-    [
-        "Read",
-        "Write",
-        "Edit",
-        "Glob",
-        "Grep",
-        "Task",
-        "WebSearch",
-        "TodoWrite",
-    ]
+# Platform tool short names — must match keys in TOOL_REGISTRY
+# (copilot/tools/__init__.py).  Verified at runtime by
+# ``_assert_tool_names_consistent()``.
+# NOTE: Keep in sync with the ToolName Literal below.
+PLATFORM_TOOL_NAMES = (
+    "add_understanding",
+    "bash_exec",
+    "browser_act",
+    "browser_navigate",
+    "browser_screenshot",
+    "connect_integration",
+    "continue_run_block",
+    "create_agent",
+    "create_feature_request",
+    "create_folder",
+    "customize_agent",
+    "delete_folder",
+    "delete_workspace_file",
+    "edit_agent",
+    "find_agent",
+    "find_block",
+    "find_library_agent",
+    "fix_agent_graph",
+    "get_agent_building_guide",
+    "get_doc_page",
+    "get_mcp_guide",
+    "list_folders",
+    "list_workspace_files",
+    "move_agents_to_folder",
+    "move_folder",
+    "read_workspace_file",
+    "run_agent",
+    "run_block",
+    "run_mcp_tool",
+    "search_docs",
+    "search_feature_requests",
+    "update_folder",
+    "validate_agent_graph",
+    "view_agent_output",
+    "web_fetch",
+    "write_workspace_file",
 )
+
+# SDK built-in tool short names accepted in the *tools* field.
+SDK_BUILTIN_TOOL_NAMES_TUPLE = (
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Task",
+    "TodoWrite",
+    "WebSearch",
+    "Write",
+)
+
+SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(SDK_BUILTIN_TOOL_NAMES_TUPLE)
+
+# Literal type combining all valid tool names — used by AutoPilotBlock.Input
+# so the frontend renders a multi-select dropdown.
+# NOTE: Keep in sync with PLATFORM_TOOL_NAMES and SDK_BUILTIN_TOOL_NAMES_TUPLE
+# above.  The module-level assert below catches drift at import time.
+ToolName = Literal[
+    # Platform tools
+    "add_understanding",
+    "bash_exec",
+    "browser_act",
+    "browser_navigate",
+    "browser_screenshot",
+    "connect_integration",
+    "continue_run_block",
+    "create_agent",
+    "create_feature_request",
+    "create_folder",
+    "customize_agent",
+    "delete_folder",
+    "delete_workspace_file",
+    "edit_agent",
+    "find_agent",
+    "find_block",
+    "find_library_agent",
+    "fix_agent_graph",
+    "get_agent_building_guide",
+    "get_doc_page",
+    "get_mcp_guide",
+    "list_folders",
+    "list_workspace_files",
+    "move_agents_to_folder",
+    "move_folder",
+    "read_workspace_file",
+    "run_agent",
+    "run_block",
+    "run_mcp_tool",
+    "search_docs",
+    "search_feature_requests",
+    "update_folder",
+    "validate_agent_graph",
+    "view_agent_output",
+    "web_fetch",
+    "write_workspace_file",
+    # SDK built-ins
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Task",
+    "TodoWrite",
+    "WebSearch",
+    "Write",
+]
+
+# Frozen set of all valid tool names — derived from the Literal for consistency.
+ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
+
+# Sanity check: tuples must match the Literal members.
+assert frozenset(PLATFORM_TOOL_NAMES + SDK_BUILTIN_TOOL_NAMES_TUPLE) == ALL_TOOL_NAMES
 
 # Compiled regex patterns for block identifier classification.
 _FULL_UUID_RE = re.compile(
@@ -217,12 +320,12 @@ class CopilotPermissions(BaseModel):
 def all_known_tool_names() -> frozenset[str]:
     """Return all short tool names accepted in *tools*.
 
-    Combines ``TOOL_REGISTRY`` keys with the SDK built-in names.
-    Imported lazily to avoid circular imports at module load time.
+    Returns the pre-computed ``ALL_TOOL_NAMES`` set (derived from the
+    ``ToolName`` Literal).  On first call, also verifies consistency with
+    the live ``TOOL_REGISTRY``.
     """
-    from backend.copilot.tools import TOOL_REGISTRY
-
-    return frozenset(TOOL_REGISTRY.keys()) | SDK_BUILTIN_TOOL_NAMES
+    _assert_tool_names_consistent()
+    return ALL_TOOL_NAMES
 
 
 def validate_tool_names(tools: list[str]) -> list[str]:
@@ -234,8 +337,39 @@ def validate_tool_names(tools: list[str]) -> list[str]:
     Returns:
         List of invalid names (empty if all are valid).
     """
-    known = all_known_tool_names()
-    return [t for t in tools if t not in known]
+    return [t for t in tools if t not in ALL_TOOL_NAMES]
+
+
+_tool_names_checked = False
+
+
+def _assert_tool_names_consistent() -> None:
+    """Verify that ``PLATFORM_TOOL_NAMES`` matches ``TOOL_REGISTRY`` keys.
+
+    Called once lazily (TOOL_REGISTRY has heavy imports).  Raises
+    ``AssertionError`` with a helpful diff if they diverge.
+    """
+    global _tool_names_checked
+    if _tool_names_checked:
+        return
+    _tool_names_checked = True
+
+    from backend.copilot.tools import TOOL_REGISTRY
+
+    registry_keys: frozenset[str] = frozenset(TOOL_REGISTRY.keys())
+    declared: frozenset[str] = frozenset(PLATFORM_TOOL_NAMES)
+    if registry_keys != declared:
+        missing = registry_keys - declared
+        extra = declared - registry_keys
+        parts: list[str] = [
+            "PLATFORM_TOOL_NAMES in permissions.py is out of sync with TOOL_REGISTRY."
+        ]
+        if missing:
+            parts.append(f"  Missing from PLATFORM_TOOL_NAMES: {sorted(missing)}")
+        if extra:
+            parts.append(f"  Extra in PLATFORM_TOOL_NAMES: {sorted(extra)}")
+        parts.append("  Update PLATFORM_TOOL_NAMES and ToolName Literal to match.")
+        raise AssertionError("\n".join(parts))
 
 
 async def validate_block_identifiers(
@@ -251,13 +385,13 @@ async def validate_block_identifiers(
     """
     from backend.blocks import get_blocks
 
-    # get_blocks() returns dict[block_id_str, BlockClass]; instantiate to get id/name.
+    # get_blocks() returns dict[block_id_str, BlockClass]; instantiate once to get names.
     block_registry = get_blocks()
+    block_info = {bid: cls().name for bid, cls in block_registry.items()}
     invalid: list[str] = []
     for ident in identifiers:
         matched = any(
-            _block_matches(ident, block_id, block_cls().name)
-            for block_id, block_cls in block_registry.items()
+            _block_matches(ident, bid, bname) for bid, bname in block_info.items()
         )
         if not matched:
             invalid.append(ident)
