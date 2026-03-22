@@ -52,7 +52,7 @@ def stream_fn_patch():
 
     def _patch(events):
         return patch(
-            "backend.copilot.sdk.service.stream_chat_completion_sdk",
+            "backend.copilot.sdk.collect.stream_chat_completion_sdk",
             new=_mock_stream_fn(*events),
         )
 
