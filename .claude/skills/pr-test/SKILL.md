@@ -149,35 +149,16 @@ grep -q "^CHAT_API_KEY=" $BACKEND_DIR/.env && perl -i -pe "s|^CHAT_API_KEY=.*|CH
 grep -q "^CHAT_BASE_URL=" $BACKEND_DIR/.env && perl -i -pe 's|^CHAT_BASE_URL=.*|CHAT_BASE_URL=https://openrouter.ai/api/v1|' $BACKEND_DIR/.env || echo "CHAT_BASE_URL=https://openrouter.ai/api/v1" >> $BACKEND_DIR/.env
 ```
 
-### 3c. Fix ARM64 Docker build (macOS Apple Silicon)
+### 3c. Install claude-code CLI in copilot executor (if needed)
 
-The default Dockerfile fails on ARM64 because Chrome for Testing has no ARM64 binary. Also, the copilot executor needs `claude-code` CLI installed.
+If the copilot uses subscription mode (`CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`), the `claude` CLI must be available inside the container. Install it at runtime:
 
-Check if the Dockerfile already has the fix:
 ```bash
-grep -q "TARGETARCH" $BACKEND_DIR/Dockerfile && echo "NEEDS_FIX" || echo "ALREADY_FIXED"
+docker exec autogpt_platform-copilot_executor-1 which claude 2>/dev/null || \
+  docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
 ```
 
-If it needs fixing, apply these changes to `$BACKEND_DIR/Dockerfile`:
-
-1. **Replace the arch-conditional chromium block** with:
-```dockerfile
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium fonts-liberation \
-    && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser @anthropic-ai/claude-code \
-    && rm -rf /tmp/* /root/.npm
-
-ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
-```
-
-2. **Remove the entrypoint script** — delete these lines if present:
-```dockerfile
-RUN printf '#!/bin/sh\n...' > /usr/local/bin/entrypoint.sh ...
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-```
-
-3. **Keep** `CMD ["rest"]` at the end.
+**Note:** This is lost on container rebuild. For persistent installs, add `@anthropic-ai/claude-code` to the Dockerfile's `npm install -g agent-browser` line. The ARM64 Docker build fix (chromium) is handled by PR #12473 and should already be in `dev`.
 
 ### 3d. Stop conflicting containers
 
@@ -483,7 +464,7 @@ test scenario → find bug → fix code → rebuild service → re-test
 
 ### Problem: Docker build fails on ARM64 with chromium errors
 **Cause:** `Chrome for Testing` has no ARM64 binary. Dockerfile uses `TARGETARCH` conditional that fails.
-**Fix:** Replace with unconditional `apt-get install chromium` + `ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` (see step 3c).
+**Fix:** This is fixed by PR #12473 (merged to `dev`). If your branch is behind `dev`, merge `dev` into it. If still unfixed, replace with unconditional `apt-get install chromium` + `ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium`.
 
 ### Problem: agent-browser selector matches multiple elements
 **Cause:** `text=X` matches all elements containing that text.
