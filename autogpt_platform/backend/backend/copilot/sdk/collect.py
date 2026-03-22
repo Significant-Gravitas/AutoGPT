@@ -14,6 +14,15 @@ from typing import Any
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
+from .. import stream_registry
+from ..response_model import (
+    StreamError,
+    StreamTextDelta,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+    StreamUsage,
+)
+
 logger = logging.getLogger(__name__)
 
 # Identifiers used when registering AutoPilot-originated streams in the
@@ -58,10 +67,6 @@ async def _registry_session(
     session_id: str, user_id: str, turn_id: str
 ) -> AsyncIterator[_RegistryHandle]:
     """Create a stream registry session and ensure it is finalized."""
-    # Deferred import: allows tests to patch backend.copilot.stream_registry
-    # rather than a module-level attribute that doesn't exist at import time.
-    from .. import stream_registry
-
     handle = _RegistryHandle(publish_turn_id=turn_id)
     try:
         await stream_registry.create_session(
@@ -123,14 +128,6 @@ def _process_event(event: object, acc: _EventAccumulator) -> str | None:
 
     Uses structural pattern matching for dispatch per project guidelines.
     """
-    from ..response_model import (
-        StreamError,
-        StreamTextDelta,
-        StreamToolInputAvailable,
-        StreamToolOutputAvailable,
-        StreamUsage,
-    )
-
     match event:
         case StreamTextDelta(delta=delta):
             acc.response_parts.append(delta)
@@ -185,7 +182,6 @@ async def collect_copilot_response(
     Raises:
         RuntimeError: If the stream yields a ``StreamError`` event.
     """
-    from .. import stream_registry
     from .service import stream_chat_completion_sdk
 
     turn_id = str(uuid.uuid4())
