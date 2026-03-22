@@ -840,9 +840,12 @@ class ExecutionProcessor:
             return
 
         if exec_meta.stats is None:
-            exec_stats = GraphExecutionStats()
+            exec_stats = GraphExecutionStats(
+                is_dry_run=graph_exec.execution_context.dry_run,
+            )
         else:
             exec_stats = exec_meta.stats.to_db()
+            exec_stats.is_dry_run = graph_exec.execution_context.dry_run
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
