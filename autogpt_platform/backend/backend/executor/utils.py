@@ -231,12 +231,9 @@ def validate_exec(
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
         if dry_run:
-            # In dry-run mode only credential-field gaps are tolerated; any
-            # remaining missing fields are real data gaps — still block queueing.
-            cred_field_names = set(schema.get_credentials_fields().keys())
-            non_cred_missing = missing_input - cred_field_names
-            if non_cred_missing:
-                return None, f"{error_prefix} missing input {non_cred_missing}"
+            # In dry-run mode all missing inputs are tolerated — simulate_block()
+            # generates synthetic outputs without needing real input values.
+            pass
         else:
             return None, f"{error_prefix} missing input {missing_input}"
 
