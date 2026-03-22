@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 import orjson
+from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
 from backend.data.notification_bus import (
@@ -308,16 +309,13 @@ async def stream_and_publish(
     Yields:
         Every event from *stream*, unchanged.
     """
-    from .response_model import StreamError as _StreamError
-    from .response_model import StreamFinish as _StreamFinish
-
     publish_failed_once = False
 
     async for event in stream:
-        if turn_id and not isinstance(event, (_StreamFinish, _StreamError)):
+        if turn_id and not isinstance(event, (StreamFinish, StreamError)):
             try:
                 await publish_chunk(turn_id, event)
-            except Exception:
+            except (RedisError, ConnectionError, OSError):
                 if not publish_failed_once:
                     publish_failed_once = True
                     logger.warning(

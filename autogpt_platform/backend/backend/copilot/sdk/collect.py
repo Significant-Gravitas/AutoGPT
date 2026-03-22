@@ -22,6 +22,7 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from .service import stream_chat_completion_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +183,6 @@ async def collect_copilot_response(
     Raises:
         RuntimeError: If the stream yields a ``StreamError`` event.
     """
-    from .service import stream_chat_completion_sdk
-
     turn_id = str(uuid.uuid4())
     async with _registry_session(session_id, user_id, turn_id) as handle:
         try:
