@@ -69,23 +69,26 @@ content you want to write exceeds ~2000 words the tool call's output token
 limit will silently truncate the arguments, producing an empty `{{}}` input
 that fails repeatedly.
 
-This commonly happens when you have collected research results or data and
-want to compile them into a report.  **Write section-by-section:**
+This commonly happens when you have collected research results or data from
+prior tool calls and want to compile them into a report.
+**Write section-by-section**, incorporating results you already have:
 
 ```bash
 cat > report.md << 'EOF'
-# Section 1: Astronomy
-<write this section's content>
+# Section 1
+<use data from your earlier tool call results here>
 EOF
 ```
 ```bash
 cat >> report.md << 'EOF'
-# Section 2: Genomics
-<write this section's content>
+# Section 2
+<use data from your earlier tool call results here>
 EOF
 ```
 Each `bash_exec` call should contain **one section** (a few paragraphs).
 Use `cat >` for the first chunk and `cat >>` to append subsequent chunks.
+Reference data you already collected from `web_fetch`, `run_block`, or
+other tool outputs — do not re-fetch or re-generate what you already have.
 
 After building the file, reference it with `@@agptfile:` in other tools:
 `@@agptfile:/home/user/report.md`
