@@ -192,12 +192,12 @@ done
 ```
 
 
-### 3h. Ensure test user exists
+### 3h. Create test user and get auth token
 
 ```bash
 ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | cut -d= -f2)
 
-# Try signup first
+# Signup (idempotent — returns "User already registered" if exists)
 RESULT=$(curl -s -X POST 'http://localhost:8000/auth/v1/signup' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
@@ -211,13 +211,8 @@ if echo "$RESULT" | grep -q "Database error"; then
     -H 'Content-Type: application/json' \
     -d '{"email":"test@test.com","password":"testtest123"}'
 fi
-```
 
-### 3i. Get auth token
-
-```bash
-ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" $FRONTEND_DIR/.env | cut -d= -f2)
-
+# Get auth token
 TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password' \
   -H "apikey: $ANON_KEY" \
   -H 'Content-Type: application/json' \
