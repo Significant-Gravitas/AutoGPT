@@ -464,6 +464,77 @@ class TestApplyToolPermissions:
         assert "mcp__copilot__Read" in allowed  # always preserved for SDK internals
         assert "mcp__copilot__run_block" in allowed
 
+    def test_e2b_file_tools_included_when_sdk_builtin_whitelisted(self, mocker):
+        """In E2B mode, whitelisting 'Read' must include mcp__copilot__read_file."""
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
+            return_value=[
+                "mcp__copilot__run_block",
+                "mcp__copilot__Read",
+                "mcp__copilot__read_file",
+                "mcp__copilot__write_file",
+                "Task",
+            ],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
+            return_value=["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": object()},
+        )
+        mocker.patch(
+            "backend.copilot.permissions.all_known_tool_names",
+            return_value=frozenset(["run_block", "Read", "Write", "Task"]),
+        )
+        mocker.patch(
+            "backend.copilot.sdk.e2b_file_tools.E2B_FILE_TOOL_NAMES",
+            ["read_file", "write_file", "edit_file", "glob", "grep"],
+        )
+        # Whitelist Read and run_block — E2B read_file should be included
+        perms = CopilotPermissions(tools=["Read", "run_block"], tools_exclude=False)
+        allowed, _ = apply_tool_permissions(perms, use_e2b=True)
+        assert "mcp__copilot__read_file" in allowed
+        assert "mcp__copilot__run_block" in allowed
+        # Write not whitelisted — write_file should NOT be included
+        assert "mcp__copilot__write_file" not in allowed
+
+    def test_e2b_file_tools_excluded_when_sdk_builtin_blacklisted(self, mocker):
+        """In E2B mode, blacklisting 'Read' must also remove mcp__copilot__read_file."""
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_copilot_tool_names",
+            return_value=[
+                "mcp__copilot__run_block",
+                "mcp__copilot__Read",
+                "mcp__copilot__read_file",
+                "Task",
+            ],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools",
+            return_value=["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+        )
+        mocker.patch(
+            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
+            {"run_block": object()},
+        )
+        mocker.patch(
+            "backend.copilot.permissions.all_known_tool_names",
+            return_value=frozenset(["run_block", "Read", "Task"]),
+        )
+        mocker.patch(
+            "backend.copilot.sdk.e2b_file_tools.E2B_FILE_TOOL_NAMES",
+            ["read_file", "write_file", "edit_file", "glob", "grep"],
+        )
+        # Blacklist Read — E2B read_file should also be removed
+        perms = CopilotPermissions(tools=["Read"], tools_exclude=True)
+        allowed, _ = apply_tool_permissions(perms, use_e2b=True)
+        assert "mcp__copilot__read_file" not in allowed
+        assert "mcp__copilot__run_block" in allowed
+        # mcp__copilot__Read is always preserved for SDK internals
+        assert "mcp__copilot__Read" in allowed
+
 
 # ---------------------------------------------------------------------------
 # SDK_BUILTIN_TOOL_NAMES sanity check

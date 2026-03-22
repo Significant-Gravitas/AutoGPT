@@ -385,15 +385,39 @@ def apply_tool_permissions(
     all_tools = all_known_tool_names()
     effective = permissions.effective_allowed_tools(all_tools)
 
+    # In E2B mode, SDK built-in file tools (Read, Write, Edit, Glob, Grep)
+    # are replaced by MCP equivalents (read_file, write_file, ...).
+    # Map each SDK built-in name to its E2B MCP name so users can use the
+    # familiar names in their permissions and the E2B tools are included.
+    _SDK_TO_E2B: dict[str, str] = {}
+    if use_e2b:
+        from backend.copilot.sdk.e2b_file_tools import E2B_FILE_TOOL_NAMES
+
+        _SDK_TO_E2B = dict(
+            zip(
+                ["Read", "Write", "Edit", "Glob", "Grep"],
+                E2B_FILE_TOOL_NAMES,
+                strict=False,
+            )
+        )
+
     # Build an updated allowed list by mapping short names → SDK names and
     # keeping only those present in the original base_allowed list.
-    def to_sdk_name(short: str) -> str:
+    def to_sdk_names(short: str) -> list[str]:
+        names: list[str] = []
         if short in TOOL_REGISTRY:
-            return f"{MCP_TOOL_PREFIX}{short}"
-        return short  # SDK built-in — used as-is
+            names.append(f"{MCP_TOOL_PREFIX}{short}")
+        elif short in _SDK_TO_E2B:
+            # E2B mode: map SDK built-in file tool to its MCP equivalent.
+            names.append(f"{MCP_TOOL_PREFIX}{_SDK_TO_E2B[short]}")
+        else:
+            names.append(short)  # SDK built-in — used as-is
+        return names
 
     # short names permitted by permissions
-    permitted_sdk = {to_sdk_name(s) for s in effective}
+    permitted_sdk: set[str] = set()
+    for s in effective:
+        permitted_sdk.update(to_sdk_names(s))
     # Always include the internal Read tool (used by SDK for large/truncated outputs)
     permitted_sdk.add(f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}")
 
