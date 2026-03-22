@@ -39,7 +39,7 @@ async def _check_sandbox_symlink_escape(
     ``readlink -f`` follows actual symlinks on the sandbox filesystem.
 
     Returns the canonical parent path, or ``None`` if the path escapes
-    ``E2B_WORKDIR``.
+    the allowed sandbox directories.
 
     Note: There is an inherent TOCTOU window between this check and the
     subsequent ``sandbox.files.write()``.  A symlink could theoretically be
