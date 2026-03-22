@@ -15,6 +15,7 @@ from backend.copilot.permissions import (
     validate_block_identifiers,
     validate_tool_names,
 )
+from backend.copilot.tools import TOOL_REGISTRY
 
 # ---------------------------------------------------------------------------
 # _block_matches
@@ -485,8 +486,6 @@ class TestSdkBuiltinToolNames:
 
     def test_platform_names_match_tool_registry(self):
         """PLATFORM_TOOL_NAMES (derived from ToolName Literal) must match TOOL_REGISTRY keys."""
-        from backend.copilot.tools import TOOL_REGISTRY
-
         registry_keys = frozenset(TOOL_REGISTRY.keys())
         assert PLATFORM_TOOL_NAMES == registry_keys, (
             f"ToolName Literal is out of sync with TOOL_REGISTRY. "

@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.copilot.context import _current_permissions
+from backend.copilot.permissions import CopilotPermissions
 
 from ._test_data import make_session
 from .models import (
@@ -135,9 +137,6 @@ class TestRunBlockFiltering:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_block_denied_by_permissions_returns_error(self):
         """A block denied by CopilotPermissions returns an ErrorResponse."""
-        from backend.copilot.context import _current_permissions
-        from backend.copilot.permissions import CopilotPermissions
-
         session = make_session(user_id=_TEST_USER_ID)
         block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
         standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
@@ -165,9 +164,6 @@ class TestRunBlockFiltering:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_allowed_by_permissions_passes_guard(self):
         """A block explicitly allowed by a whitelist CopilotPermissions passes the guard."""
-        from backend.copilot.context import _current_permissions
-        from backend.copilot.permissions import CopilotPermissions
-
         session = make_session(user_id=_TEST_USER_ID)
         block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
         standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)

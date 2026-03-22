@@ -19,6 +19,7 @@ from backend.copilot.context import (
     resolve_sandbox_path,
     set_execution_context,
 )
+from backend.copilot.permissions import CopilotPermissions
 
 
 def _make_session() -> MagicMock:
@@ -64,8 +65,6 @@ def test_get_current_sandbox_returns_set_value():
 
 def test_set_and_get_current_permissions():
     """set_execution_context stores permissions; get_current_permissions returns it."""
-    from backend.copilot.permissions import CopilotPermissions
-
     perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
     set_execution_context("u1", _make_session(), permissions=perms)
     assert get_current_permissions() is perms

@@ -5,13 +5,16 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from backend.blocks.autopilot import (
     AutoPilotBlock,
     _build_and_validate_permissions,
+    _inherited_permissions,
     _merge_inherited_permissions,
 )
-from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.data.execution import ExecutionContext
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -56,8 +59,6 @@ class TestBuildAndValidatePermissions:
     async def test_invalid_tool_rejected_by_pydantic(self):
         """Invalid tool names are now caught at Pydantic validation time
         (Literal type), before ``_build_and_validate_permissions`` is called."""
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError, match="not_a_real_tool"):
             _make_input(tools=["not_a_real_tool"])
 
@@ -132,14 +133,9 @@ class TestMergeInheritedPermissions:
             assert token is not None
         finally:
             if token is not None:
-                from backend.blocks.autopilot import _inherited_permissions
-
                 _inherited_permissions.reset(token)
 
     def test_child_narrows_parent(self):
-        from backend.blocks.autopilot import _inherited_permissions
-        from backend.copilot.permissions import all_known_tool_names
-
         parent = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
         # Set parent as inherited
         outer_token = _inherited_permissions.set(parent)
@@ -159,8 +155,6 @@ class TestMergeInheritedPermissions:
             _inherited_permissions.reset(outer_token)
 
     def test_none_permissions_with_parent_uses_parent(self):
-        from backend.blocks.autopilot import _inherited_permissions
-
         parent = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
         outer_token = _inherited_permissions.set(parent)
         try:
@@ -168,8 +162,6 @@ class TestMergeInheritedPermissions:
             try:
                 assert merged is not None
                 # Merged should have parent's restrictions
-                from backend.copilot.permissions import all_known_tool_names
-
                 effective = merged.effective_allowed_tools(all_known_tool_names())
                 assert "bash_exec" not in effective
             finally:
@@ -179,9 +171,6 @@ class TestMergeInheritedPermissions:
             _inherited_permissions.reset(outer_token)
 
     def test_child_cannot_expand_parent_whitelist(self):
-        from backend.blocks.autopilot import _inherited_permissions
-        from backend.copilot.permissions import all_known_tool_names
-
         parent = CopilotPermissions(tools=["run_block"], tools_exclude=False)
         outer_token = _inherited_permissions.set(parent)
         try:
@@ -211,8 +200,6 @@ class TestMergeInheritedPermissions:
 class TestAutoPilotBlockRunPermissions:
     async def _collect_outputs(self, block, input_data, user_id="test-user"):
         """Helper to collect all yields from block.run()."""
-        from backend.data.execution import ExecutionContext
-
         ctx = ExecutionContext(
             user_id=user_id,
             graph_id="g1",
@@ -227,8 +214,6 @@ class TestAutoPilotBlockRunPermissions:
 
     async def test_invalid_tool_rejected_by_pydantic(self):
         """Invalid tool names are caught at Pydantic validation (Literal type)."""
-        from pydantic import ValidationError
-
         with pytest.raises(ValidationError, match="not_a_tool"):
             _make_input(tools=["not_a_tool"])
 
