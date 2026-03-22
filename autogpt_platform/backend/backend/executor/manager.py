@@ -81,6 +81,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .simulator import simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -375,8 +376,6 @@ async def execute_node(
 
     try:
         if execution_context.dry_run:
-            from backend.executor.simulator import simulate_block  # noqa: PLC0415
-
             block_iter = simulate_block(node_block, input_data)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)

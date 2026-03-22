@@ -155,7 +155,9 @@ class RunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-        logger.info(f"Executing block {block.name} ({block_id}) for user {user_id}")
+        logger.info(
+            "Executing block %s (%s) for user %s", block.name, block_id, user_id
+        )
 
         (
             matched_credentials,
@@ -289,9 +291,7 @@ class RunBlockTool(BaseTool):
         # Show details when not all required non-credential inputs are provided
         if not (required_non_credential_keys <= provided_input_keys):
             # Get credentials info for the response
-            credentials_meta = []
-            for field_name, cred_meta in matched_credentials.items():
-                credentials_meta.append(cred_meta)
+            credentials_meta = list(matched_credentials.values())
 
             return BlockDetailsResponse(
                 message=(

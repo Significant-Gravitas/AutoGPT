@@ -278,14 +278,14 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
         except DatabaseError as e:
-            logger.error(f"Database error: {e}", exc_info=True)
+            logger.error("Database error: %s", e, exc_info=True)
             return ErrorResponse(
                 message=f"Failed to process request: {e!s}",
                 error=str(e),
                 session_id=session_id,
             )
         except Exception as e:
-            logger.error(f"Error processing agent request: {e}", exc_info=True)
+            logger.error("Error processing agent request: %s", e, exc_info=True)
             return ErrorResponse(
                 message=f"Failed to process request: {e!s}",
                 error=str(e),

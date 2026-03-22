@@ -119,8 +119,11 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         logger.info(
-            f"Continuing block {block.name} ({block_id}) for user {user_id} "
-            f"with review_id={review_id}"
+            "Continuing block %s (%s) for user %s with review_id=%s",
+            block.name,
+            block_id,
+            user_id,
+            review_id,
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(

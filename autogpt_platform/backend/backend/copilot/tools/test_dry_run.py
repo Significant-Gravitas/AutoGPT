@@ -1,26 +1,16 @@
 """Tests for dry-run execution mode."""
 
+import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import backend.copilot.tools.run_block as run_block_module
+from backend.copilot.tools.helpers import execute_block
+from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
-
-
-# Lazy imports used inside tests to avoid Pyright "unresolved import" on the
-# simulator module, which lives in this worktree only.
-def _get_simulate_block():
-    from backend.executor.simulator import simulate_block  # noqa: PLC0415
-
-    return simulate_block
-
-
-def _get_build_simulation_prompt():
-    from backend.executor.simulator import build_simulation_prompt  # noqa: PLC0415
-
-    return build_simulation_prompt
-
+from backend.executor.simulator import build_simulation_prompt, simulate_block
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -90,7 +80,6 @@ async def test_simulate_block_basic():
         return_value=make_openai_response('{"result": "simulated output", "error": ""}')
     )
 
-    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -115,7 +104,6 @@ async def test_simulate_block_json_retry():
         ]
     )
 
-    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -136,7 +124,6 @@ async def test_simulate_block_all_retries_exhausted():
         return_value=make_openai_response("bad json !!!")
     )
 
-    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
@@ -166,11 +153,10 @@ async def test_simulate_block_missing_output_pins():
         return_value=make_openai_response('{"result": "hello"}')
     )
 
-    simulate_block = _get_simulate_block()
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
     ):
-        outputs = dict()
+        outputs = {}
         async for name, data in simulate_block(mock_block, {"query": "hi"}):
             outputs[name] = data
 
@@ -184,7 +170,6 @@ async def test_simulate_block_no_client():
     """When no OpenAI client is available, yields SIMULATOR ERROR."""
     mock_block = make_mock_block()
 
-    simulate_block = _get_simulate_block()
     with patch("backend.executor.simulator.get_openai_client", return_value=None):
         outputs = []
         async for name, data in simulate_block(mock_block, {}):
@@ -202,7 +187,6 @@ async def test_simulate_block_truncates_long_inputs():
     mock_block = make_mock_block(input_props={"text": {"type": "string"}})
     long_text = "x" * 30000  # 30k chars, above the 20k threshold
 
-    build_simulation_prompt = _get_build_simulation_prompt()
     system_prompt, user_prompt = build_simulation_prompt(
         mock_block, {"text": long_text}
     )
@@ -222,15 +206,15 @@ async def test_simulate_block_truncates_long_inputs():
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_skips_real_execution():
     """execute_block(dry_run=True) calls simulate_block, NOT block.execute."""
-    from backend.copilot.tools.helpers import execute_block
-
     mock_block = make_mock_block()
     mock_block.execute = AsyncMock()  # should NOT be called
 
     async def fake_simulate(block, input_data):
         yield "result", "simulated"
 
-    with patch("backend.executor.simulator.simulate_block", side_effect=fake_simulate):
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
         response = await execute_block(
             block=mock_block,
             block_id="test-block-id",
@@ -243,8 +227,6 @@ async def test_execute_block_dry_run_skips_real_execution():
         )
 
     mock_block.execute.assert_not_called()
-    from backend.copilot.tools.models import BlockOutputResponse
-
     assert isinstance(response, BlockOutputResponse)
     assert response.success is True
 
@@ -252,14 +234,14 @@ async def test_execute_block_dry_run_skips_real_execution():
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
     """Dry-run response should contain [DRY RUN] in message and success=True."""
-    from backend.copilot.tools.helpers import execute_block
-
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
         yield "result", "simulated"
 
-    with patch("backend.executor.simulator.simulate_block", side_effect=fake_simulate):
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
         response = await execute_block(
             block=mock_block,
             block_id="test-block-id",
@@ -271,8 +253,6 @@ async def test_execute_block_dry_run_response_format():
             dry_run=True,
         )
 
-    from backend.copilot.tools.models import BlockOutputResponse
-
     assert isinstance(response, BlockOutputResponse)
     assert "[DRY RUN]" in response.message
     assert response.success is True
@@ -282,8 +262,6 @@ async def test_execute_block_dry_run_response_format():
 @pytest.mark.asyncio
 async def test_execute_block_real_execution_unchanged():
     """dry_run=False should still go through the real execution path."""
-    from backend.copilot.tools.helpers import execute_block
-
     mock_block = make_mock_block()
 
     # We expect it to hit the real path, which will fail on workspace_db() call.
@@ -295,7 +273,9 @@ async def test_execute_block_real_execution_unchanged():
         simulate_called = True
         yield "result", "should not happen"
 
-    with patch("backend.executor.simulator.simulate_block", side_effect=fake_simulate):
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
         with patch(
             "backend.copilot.tools.helpers.workspace_db",
             side_effect=Exception("db not available"),
@@ -335,10 +315,6 @@ def test_run_block_tool_dry_run_calls_execute():
     We verify the extraction logic directly by inspecting the source, then confirm
     the kwarg is forwarded in the execute_block call site.
     """
-    import inspect
-
-    import backend.copilot.tools.run_block as run_block_module
-
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
     # Verify dry_run is extracted from kwargs
     assert "dry_run" in source
@@ -352,16 +328,13 @@ def test_run_block_tool_dry_run_calls_execute():
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_simulator_error_returns_error_response():
     """When simulate_block yields a SIMULATOR ERROR tuple, execute_block returns ErrorResponse."""
-    from backend.copilot.tools.helpers import execute_block
-    from backend.copilot.tools.models import ErrorResponse
-
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
         yield "error", "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key)."
 
     with patch(
-        "backend.executor.simulator.simulate_block", side_effect=fake_simulate_error
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error
     ):
         response = await execute_block(
             block=mock_block,

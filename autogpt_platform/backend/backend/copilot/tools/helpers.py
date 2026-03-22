@@ -12,6 +12,7 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
@@ -73,8 +74,6 @@ async def execute_block(
     # HITL review is intentionally skipped — no real execution occurs.
     if dry_run:
         try:
-            from backend.executor.simulator import simulate_block  # lazy import
-
             # Coerce types to match the block's input schema, same as real execution.
             # This ensures the simulated preview is consistent with real execution
             # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
@@ -305,8 +304,10 @@ def _resolve_discriminated_credentials(
                 effective_field_info = field_info.discriminate(discriminator_value)
                 effective_field_info.discriminator_values.add(discriminator_value)
                 logger.debug(
-                    f"Discriminated provider for {field_name}: "
-                    f"{discriminator_value} -> {effective_field_info.provider}"
+                    "Discriminated provider for %s: %s -> %s",
+                    field_name,
+                    discriminator_value,
+                    effective_field_info.provider,
                 )
 
         resolved[field_name] = effective_field_info
