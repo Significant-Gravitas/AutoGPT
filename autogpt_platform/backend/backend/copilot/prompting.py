@@ -63,26 +63,32 @@ Example — committing an image file to GitHub:
 }}
 ```
 
-### Writing large files
-When generating a large file (reports, datasets, long code) that exceeds a few
-thousand words, **do NOT try to write the entire content in a single
-`write_file` or `bash_exec` call**.  The tool-call output token limit may
-truncate the arguments silently, causing the call to fail with empty
-parameters.
+### Writing large files — CRITICAL
+**Never write an entire large document in a single tool call.**  When the
+content you want to write exceeds ~2000 words the tool call's output token
+limit will silently truncate the arguments, producing an empty `{{}}` input
+that fails repeatedly.
 
-Instead, write large files in chunks using `bash_exec`:
+This commonly happens when you have collected research results or data and
+want to compile them into a report.  **Write section-by-section:**
+
 ```bash
-cat > output.md << 'EOF'
-<first section of content>
-EOF
-
-cat >> output.md << 'EOF'
-<next section of content>
+cat > report.md << 'EOF'
+# Section 1: Astronomy
+<write this section's content>
 EOF
 ```
+```bash
+cat >> report.md << 'EOF'
+# Section 2: Genomics
+<write this section's content>
+EOF
+```
+Each `bash_exec` call should contain **one section** (a few paragraphs).
+Use `cat >` for the first chunk and `cat >>` to append subsequent chunks.
 
-After writing, use `@@agptfile:` to pass the file to other tools:
-`@@agptfile:/path/to/output.md`
+After building the file, reference it with `@@agptfile:` in other tools:
+`@@agptfile:/home/user/report.md`
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
