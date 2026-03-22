@@ -140,10 +140,10 @@ async def test_graceful_degradation_when_create_session_fails(
         )
 
     assert result.response_text == "works"
-    # publish_chunk and mark_session_completed should NOT be called
-    # because turn_id was cleared on create_session failure
+    # publish_chunk should NOT be called because turn_id was cleared
     mock_registry.publish_chunk.assert_not_awaited()
-    mock_registry.mark_session_completed.assert_not_awaited()
+    # mark_session_completed IS still called to clean up any partial state
+    mock_registry.mark_session_completed.assert_awaited_once()
 
 
 @pytest.mark.asyncio

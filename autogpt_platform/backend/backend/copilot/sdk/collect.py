@@ -9,8 +9,10 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, Field
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +46,9 @@ class CopilotResult:
         self.total_tokens: int = 0
 
 
-@dataclass
-class _RegistryHandle:
+class _RegistryHandle(BaseModel):
     """Tracks stream registry session state for cleanup."""
 
-    active: bool = True
     publish_turn_id: str = ""
     error_msg: str | None = None
 
@@ -71,39 +71,48 @@ async def _registry_session(
             tool_name=AUTOPILOT_TOOL_NAME,
             turn_id=turn_id,
         )
-    except Exception:
+    except (RedisError, ConnectionError, OSError):
         logger.warning(
             "[collect] Failed to create stream registry session for %s, "
             "frontend will not receive real-time updates",
             session_id[:12],
             exc_info=True,
         )
+        # Disable chunk publishing but keep finalization enabled so
+        # mark_session_completed can clean up any partial registry state.
         handle.publish_turn_id = ""
-        handle.active = False
 
     try:
         yield handle
     finally:
-        if handle.active:
-            try:
-                await stream_registry.mark_session_completed(
-                    session_id, error_message=handle.error_msg
-                )
-            except Exception:
-                logger.warning(
-                    "[collect] Failed to mark stream completed for %s",
-                    session_id[:12],
-                    exc_info=True,
-                )
+        try:
+            await stream_registry.mark_session_completed(
+                session_id, error_message=handle.error_msg
+            )
+        except (RedisError, ConnectionError, OSError):
+            logger.warning(
+                "[collect] Failed to mark stream completed for %s",
+                session_id[:12],
+                exc_info=True,
+            )
 
 
-@dataclass
-class _EventAccumulator:
+class _ToolCallEntry(BaseModel):
+    """A single tool call observed during stream consumption."""
+
+    tool_call_id: str
+    tool_name: str
+    input: Any
+    output: Any = None
+    success: bool | None = None
+
+
+class _EventAccumulator(BaseModel):
     """Mutable accumulator for stream events."""
 
-    response_parts: list[str] = field(default_factory=list)
-    tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    tool_calls_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    response_parts: list[str] = Field(default_factory=list)
+    tool_calls: list[_ToolCallEntry] = Field(default_factory=list)
+    tool_calls_by_id: dict[str, _ToolCallEntry] = Field(default_factory=dict)
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -126,19 +135,17 @@ def _process_event(event: object, acc: _EventAccumulator) -> str | None:
         case StreamTextDelta(delta=delta):
             acc.response_parts.append(delta)
         case StreamToolInputAvailable() as e:
-            entry: dict[str, Any] = {
-                "tool_call_id": e.toolCallId,
-                "tool_name": e.toolName,
-                "input": e.input,
-                "output": None,
-                "success": None,
-            }
+            entry = _ToolCallEntry(
+                tool_call_id=e.toolCallId,
+                tool_name=e.toolName,
+                input=e.input,
+            )
             acc.tool_calls.append(entry)
             acc.tool_calls_by_id[e.toolCallId] = entry
         case StreamToolOutputAvailable() as e:
             if tc := acc.tool_calls_by_id.get(e.toolCallId):
-                tc["output"] = e.output
-                tc["success"] = e.success
+                tc.output = e.output
+                tc.success = e.success
             else:
                 logger.debug(
                     "Received tool output for unknown tool_call_id: %s",
@@ -209,7 +216,7 @@ async def collect_copilot_response(
 
     result = CopilotResult()
     result.response_text = "".join(acc.response_parts)
-    result.tool_calls = acc.tool_calls
+    result.tool_calls = [tc.model_dump() for tc in acc.tool_calls]
     result.prompt_tokens = acc.prompt_tokens
     result.completion_tokens = acc.completion_tokens
     result.total_tokens = acc.total_tokens
