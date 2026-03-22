@@ -28,7 +28,7 @@ def _mock_stream_fn(*events):
 @pytest.fixture
 def mock_registry():
     """Patch stream_registry module used by collect."""
-    with patch("backend.copilot.stream_registry") as m:
+    with patch("backend.copilot.sdk.collect.stream_registry") as m:
         m.create_session = AsyncMock()
         m.publish_chunk = AsyncMock()
         m.mark_session_completed = AsyncMock()
