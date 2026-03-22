@@ -7,6 +7,9 @@ without implementing their own event loop.
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -41,6 +44,108 @@ class CopilotResult:
         self.total_tokens: int = 0
 
 
+@dataclass
+class _RegistryHandle:
+    """Tracks stream registry session state for cleanup."""
+
+    active: bool = True
+    publish_turn_id: str = ""
+    error_msg: str | None = None
+
+
+@asynccontextmanager
+async def _registry_session(
+    session_id: str, user_id: str, turn_id: str
+) -> AsyncIterator[_RegistryHandle]:
+    """Create a stream registry session and ensure it is finalized."""
+    from .. import stream_registry
+
+    handle = _RegistryHandle(publish_turn_id=turn_id)
+    try:
+        await stream_registry.create_session(
+            session_id=session_id,
+            user_id=user_id,
+            tool_call_id=AUTOPILOT_TOOL_CALL_ID,
+            tool_name=AUTOPILOT_TOOL_NAME,
+            turn_id=turn_id,
+        )
+    except Exception:
+        logger.warning(
+            "[collect] Failed to create stream registry session for %s, "
+            "frontend will not receive real-time updates",
+            session_id[:12],
+            exc_info=True,
+        )
+        handle.publish_turn_id = ""
+        handle.active = False
+
+    try:
+        yield handle
+    finally:
+        if handle.active:
+            try:
+                await stream_registry.mark_session_completed(
+                    session_id, error_message=handle.error_msg
+                )
+            except Exception:
+                logger.warning(
+                    "[collect] Failed to mark stream completed for %s",
+                    session_id[:12],
+                    exc_info=True,
+                )
+
+
+@dataclass
+class _EventAccumulator:
+    """Mutable accumulator for stream events."""
+
+    response_parts: list[str] = field(default_factory=list)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_calls_by_id: dict[str, dict[str, Any]] = field(default_factory=dict)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+
+def _process_event(event: object, acc: _EventAccumulator) -> str | None:
+    """Process a single stream event and return error_msg if StreamError.
+
+    Uses structural pattern matching for dispatch per project guidelines.
+    """
+    from ..response_model import (
+        StreamError,
+        StreamTextDelta,
+        StreamToolInputAvailable,
+        StreamToolOutputAvailable,
+        StreamUsage,
+    )
+
+    match event:
+        case StreamTextDelta(delta=delta):
+            acc.response_parts.append(delta)
+        case StreamToolInputAvailable() as e:
+            entry: dict[str, Any] = {
+                "tool_call_id": e.toolCallId,
+                "tool_name": e.toolName,
+                "input": e.input,
+                "output": None,
+                "success": None,
+            }
+            acc.tool_calls.append(entry)
+            acc.tool_calls_by_id[e.toolCallId] = entry
+        case StreamToolOutputAvailable() as e:
+            if tc := acc.tool_calls_by_id.get(e.toolCallId):
+                tc["output"] = e.output
+                tc["success"] = e.success
+        case StreamUsage() as e:
+            acc.prompt_tokens += e.prompt_tokens
+            acc.completion_tokens += e.completion_tokens
+            acc.total_tokens += e.total_tokens
+        case StreamError(errorText=err):
+            return err
+    return None
+
+
 async def collect_copilot_response(
     *,
     session_id: str,
@@ -49,12 +154,6 @@ async def collect_copilot_response(
     is_user_message: bool = True,
 ) -> CopilotResult:
     """Consume :func:`stream_chat_completion_sdk` and return aggregated results.
-
-    This is the recommended entry-point for callers that need a simple
-    request-response interface (e.g. the AutoPilot block) rather than
-    streaming individual events.  It avoids duplicating the event-collection
-    logic and does NOT wrap the stream in ``asyncio.timeout`` — the SDK
-    manages its own heartbeat-based timeouts internally.
 
     Registers with the stream registry so the frontend can connect via SSE
     and receive real-time updates while the AutoPilot block is executing.
@@ -73,104 +172,38 @@ async def collect_copilot_response(
         RuntimeError: If the stream yields a ``StreamError`` event.
     """
     from .. import stream_registry
-    from ..response_model import (
-        StreamError,
-        StreamTextDelta,
-        StreamToolInputAvailable,
-        StreamToolOutputAvailable,
-        StreamUsage,
-    )
     from .service import stream_chat_completion_sdk
 
-    result = CopilotResult()
-    response_parts: list[str] = []
-    tool_calls_by_id: dict[str, dict[str, Any]] = {}
-
-    # Register with the stream registry so the frontend sees active_stream
-    # and can connect via the SSE reconnect endpoint for real-time updates.
     turn_id = str(uuid.uuid4())
-    registry_active = True  # Whether we should finalize the registry session
-    publish_turn_id = turn_id  # Empty string disables publishing only
-    error_msg: str | None = None
-    try:
-        await stream_registry.create_session(
-            session_id=session_id,
-            user_id=user_id,
-            tool_call_id=AUTOPILOT_TOOL_CALL_ID,
-            tool_name=AUTOPILOT_TOOL_NAME,
-            turn_id=turn_id,
-        )
-    except Exception:
-        logger.warning(
-            "[collect] Failed to create stream registry session for %s, "
-            "frontend will not receive real-time updates",
-            session_id[:12],
-            exc_info=True,
-        )
-        # Proceed without stream registry — AutoPilot still works,
-        # just without real-time frontend updates.
-        publish_turn_id = ""
-        registry_active = False
+    async with _registry_session(session_id, user_id, turn_id) as handle:
+        try:
+            raw_stream = stream_chat_completion_sdk(
+                session_id=session_id,
+                message=message,
+                is_user_message=is_user_message,
+                user_id=user_id,
+            )
+            published_stream = stream_registry.stream_and_publish(
+                session_id=session_id,
+                user_id=user_id,
+                turn_id=handle.publish_turn_id,
+                stream=raw_stream,
+            )
 
-    try:
-        # Wrap the raw stream with stream_and_publish so each chunk is
-        # published to Redis for frontend SSE consumption.  The shared
-        # helper handles StreamFinish/StreamError skipping and logging.
-        raw_stream = stream_chat_completion_sdk(
-            session_id=session_id,
-            message=message,
-            is_user_message=is_user_message,
-            user_id=user_id,
-        )
-        published_stream = stream_registry.stream_and_publish(
-            session_id=session_id,
-            user_id=user_id,
-            turn_id=publish_turn_id,
-            stream=raw_stream,
-        )
+            acc = _EventAccumulator()
+            async for event in published_stream:
+                if err := _process_event(event, acc):
+                    handle.error_msg = err
+                    raise RuntimeError(f"Copilot error: {err}")
+        except Exception:
+            if handle.error_msg is None:
+                handle.error_msg = "AutoPilot execution failed"
+            raise
 
-        async for event in published_stream:
-            if isinstance(event, StreamTextDelta):
-                response_parts.append(event.delta)
-            elif isinstance(event, StreamToolInputAvailable):
-                entry: dict[str, Any] = {
-                    "tool_call_id": event.toolCallId,
-                    "tool_name": event.toolName,
-                    "input": event.input,
-                    "output": None,
-                    "success": None,
-                }
-                result.tool_calls.append(entry)
-                tool_calls_by_id[event.toolCallId] = entry
-            elif isinstance(event, StreamToolOutputAvailable):
-                if tc := tool_calls_by_id.get(event.toolCallId):
-                    tc["output"] = event.output
-                    tc["success"] = event.success
-            elif isinstance(event, StreamUsage):
-                result.prompt_tokens += event.prompt_tokens
-                result.completion_tokens += event.completion_tokens
-                result.total_tokens += event.total_tokens
-            elif isinstance(event, StreamError):
-                error_msg = event.errorText
-                raise RuntimeError(f"Copilot error: {event.errorText}")
-    except Exception:
-        if error_msg is None:
-            error_msg = "AutoPilot execution failed"
-        raise
-    finally:
-        # Mark session completed in the stream registry so the frontend
-        # knows the stream has ended and stops reconnecting.
-        if registry_active:
-            try:
-                await stream_registry.mark_session_completed(
-                    session_id, error_message=error_msg
-                )
-            except Exception:
-                logger.warning(
-                    "[collect] Failed to mark stream completed for %s",
-                    session_id[:12],
-                    exc_info=True,
-                )
-
-    result.response_text = "".join(response_parts)
+    result = CopilotResult()
+    result.response_text = "".join(acc.response_parts)
+    result.tool_calls = acc.tool_calls
+    result.prompt_tokens = acc.prompt_tokens
+    result.completion_tokens = acc.completion_tokens
+    result.total_tokens = acc.total_tokens
     return result
