@@ -117,7 +117,7 @@ export function useLibraryUploadAgentDialog(options?: {
     }
   }, [agentFileValue, form, toast]);
 
-  const onSubmit = async (values: z.infer<typeof uploadAgentFormSchema>) => {
+  async function onSubmit(values: z.infer<typeof uploadAgentFormSchema>) {
     if (!agentObject) {
       form.setError("root", { message: "No Agent object to save" });
       return;
@@ -136,7 +136,7 @@ export function useLibraryUploadAgentDialog(options?: {
         source: "upload",
       },
     });
-  };
+  }
 
   return {
     onSubmit,

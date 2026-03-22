@@ -171,7 +171,6 @@ test.describe("Library", () => {
       expect(matchingPaginatedResults.length).toEqual(
         allPaginatedResults.length,
       );
-    } else {
     }
 
     await libraryPage.scrollAndWaitForNewAgents();
