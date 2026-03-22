@@ -1894,6 +1894,10 @@ async def stream_chat_completion_sdk(
                     events_yielded,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # transcript_builder still contains entries from the aborted
+                # attempt that no longer match session.messages.  Skip upload
+                # so a future --resume doesn't replay rolled-back content.
+                skip_transcript_upload = True
                 # Re-append the error marker so it survives the rollback
                 # and is persisted by the finally block (see #2947655365).
                 # Use the specific error message from the attempt (e.g.
@@ -1929,11 +1933,13 @@ async def stream_chat_completion_sdk(
                         log_prefix,
                         events_yielded,
                     )
+                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
                 if not is_context_error:
                     # Non-context errors (network, auth, rate-limit) should
                     # not trigger compaction — surface the error immediately.
+                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
                 continue
