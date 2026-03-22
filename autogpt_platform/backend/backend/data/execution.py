@@ -308,7 +308,7 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
-            is_dry_run=_graph_exec.isDryRun,
+            is_dry_run=stats.is_dry_run if stats else False,
         )
 
 
@@ -764,7 +764,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
-            "isDryRun": is_dry_run,
+            "stats": Json({"is_dry_run": True}) if is_dry_run else None,
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )

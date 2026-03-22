@@ -889,6 +889,10 @@ class GraphExecutionStats(BaseModel):
         default=None,
         description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
     )
+    is_dry_run: bool = Field(
+        default=False,
+        description="Whether this execution was a dry-run simulation",
+    )
 
 
 class UserExecutionSummaryStats(BaseModel):
