@@ -80,6 +80,7 @@ from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    reset_tool_failure_counters,
     set_execution_context,
     wait_for_stash,
 )
@@ -1861,6 +1862,10 @@ async def stream_chat_completion_sdk(
         )
 
         for attempt in range(_MAX_STREAM_ATTEMPTS):
+            # Reset tool-level circuit breaker so failures from a previous
+            # (rolled-back) attempt don't carry over to the fresh attempt.
+            reset_tool_failure_counters()
+
             if attempt > 0:
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",

@@ -104,6 +104,16 @@ def set_execution_context(
     _consecutive_tool_failures.set({})
 
 
+def reset_tool_failure_counters() -> None:
+    """Reset all tool-level circuit breaker counters.
+
+    Called at the start of each SDK retry attempt so that failure counts
+    from a previous (rolled-back) attempt do not carry over and prematurely
+    trip the breaker on a fresh attempt with different context.
+    """
+    _consecutive_tool_failures.set({})
+
+
 def pop_pending_tool_output(tool_name: str) -> str | None:
     """Pop and return the oldest stashed output for *tool_name*.
 
