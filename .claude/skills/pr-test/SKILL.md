@@ -431,19 +431,25 @@ Then post the comment with **inline images AND explanations for each screenshot*
 ```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 
-# Build image markdown — each screenshot gets a heading and explanation.
-# IMPORTANT: You must replace SCREENSHOT_EXPLANATION below with a real 1-2 sentence
-# explanation based on what you observed during testing in Step 6. Do NOT leave placeholders.
-# Use the same explanations you showed the user in Step 6.
+# Build image markdown — each screenshot gets a heading, image, and explanation.
+# This loop is a TEMPLATE. Before running it, you must define a SCREENSHOT_EXPLANATIONS
+# associative array mapping each basename to a 1-2 sentence explanation from Step 6.
+# Example: declare -A SCREENSHOT_EXPLANATIONS=(
+#   ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
+#   ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
+# )
+declare -A SCREENSHOT_EXPLANATIONS
+# ^^^ Populate this with real explanations from Step 6 before running the loop
+
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
-  # Convert filename to readable title: "03-copilot-response.png" → "Copilot Response"
   TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+  EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
   IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
 ### ${TITLE}
 ![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
-SCREENSHOT_EXPLANATION
+${EXPLANATION}
 "
 done
 
