@@ -229,7 +229,6 @@ export function useCopilotPage() {
       }
       setPendingMessage(urlPrompt.prompt);
       void createSession().catch(() => {
-        pendingFilePartsRef.current = [];
         setPendingMessage(null);
         setInitialPrompt(urlPrompt.prompt);
       });
