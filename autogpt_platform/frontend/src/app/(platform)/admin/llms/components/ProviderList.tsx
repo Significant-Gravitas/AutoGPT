@@ -7,7 +7,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/__legacy__/ui/table";
+} from "@/components/atoms/Table/Table";
 import type { LlmProvider } from "../types";
 import { DeleteProviderModal } from "./DeleteProviderModal";
 import { EditProviderModal } from "./EditProviderModal";
