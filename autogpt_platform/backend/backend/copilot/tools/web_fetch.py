@@ -59,13 +59,7 @@ class WebFetchTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Fetch the content of a public web page by URL. "
-            "Returns readable text extracted from HTML by default. "
-            "Useful for reading documentation, articles, and API responses. "
-            "Only supports HTTP/HTTPS GET requests to public URLs "
-            "(private/internal network addresses are blocked)."
-        )
+        return "Fetch a public web page. Public URLs only — internal addresses blocked. Returns readable text from HTML by default."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -74,14 +68,11 @@ class WebFetchTool(BaseTool):
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The public HTTP/HTTPS URL to fetch.",
+                    "description": "Public HTTP/HTTPS URL.",
                 },
                 "extract_text": {
                     "type": "boolean",
-                    "description": (
-                        "If true (default), extract readable text from HTML. "
-                        "If false, return raw content."
-                    ),
+                    "description": "Extract text from HTML (default: true).",
                     "default": True,
                 },
             },

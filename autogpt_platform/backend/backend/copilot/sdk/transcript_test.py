@@ -1,7 +1,8 @@
 """Unit tests for JSONL transcript management utilities."""
 
+import asyncio
 import os
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -9,9 +10,7 @@ from backend.util import json
 
 from .transcript import (
     STRIPPABLE_TYPES,
-    _cli_project_dir,
     delete_transcript,
-    read_cli_session_file,
     read_compacted_entries,
     strip_progress_entries,
     validate_transcript,
@@ -292,85 +291,6 @@ class TestStripProgressEntries:
         assert asst_entry["parentUuid"] == "u1"  # reparented
 
 
-# --- read_cli_session_file ---
-
-
-class TestReadCliSessionFile:
-    def test_no_matching_files_returns_none(self, tmp_path, monkeypatch):
-        """read_cli_session_file returns None when no .jsonl files exist."""
-        # Create a project dir with no jsonl files
-        project_dir = tmp_path / "projects" / "encoded-cwd"
-        project_dir.mkdir(parents=True)
-        monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._cli_project_dir",
-            lambda sdk_cwd: str(project_dir),
-        )
-        assert read_cli_session_file("/fake/cwd") is None
-
-    def test_one_jsonl_file_returns_content(self, tmp_path, monkeypatch):
-        """read_cli_session_file returns the content of a single .jsonl file."""
-        project_dir = tmp_path / "projects" / "encoded-cwd"
-        project_dir.mkdir(parents=True)
-        jsonl_file = project_dir / "session.jsonl"
-        jsonl_file.write_text("line1\nline2\n")
-        monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._cli_project_dir",
-            lambda sdk_cwd: str(project_dir),
-        )
-        result = read_cli_session_file("/fake/cwd")
-        assert result == "line1\nline2\n"
-
-    def test_symlink_escaping_project_dir_is_skipped(self, tmp_path, monkeypatch):
-        """read_cli_session_file skips symlinks that escape the project dir."""
-        project_dir = tmp_path / "projects" / "encoded-cwd"
-        project_dir.mkdir(parents=True)
-
-        # Create a file outside the project dir
-        outside = tmp_path / "outside"
-        outside.mkdir()
-        outside_file = outside / "evil.jsonl"
-        outside_file.write_text("should not be read\n")
-
-        # Symlink from inside project_dir to outside file
-        symlink = project_dir / "evil.jsonl"
-        symlink.symlink_to(outside_file)
-
-        monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._cli_project_dir",
-            lambda sdk_cwd: str(project_dir),
-        )
-        # The symlink target resolves outside project_dir, so it should be skipped
-        result = read_cli_session_file("/fake/cwd")
-        assert result is None
-
-
-# --- _cli_project_dir ---
-
-
-class TestCliProjectDir:
-    def test_returns_none_for_path_traversal(self, tmp_path, monkeypatch):
-        """_cli_project_dir returns None when the project dir symlink escapes projects base."""
-        config_dir = tmp_path / "config"
-        config_dir.mkdir()
-        projects_dir = config_dir / "projects"
-        projects_dir.mkdir()
-
-        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
-
-        # Create a symlink inside projects/ that points outside of it.
-        # _cli_project_dir encodes the cwd as all-alnum-hyphens, so use a
-        # cwd whose encoded form matches the symlink name we create.
-        evil_target = tmp_path / "escaped"
-        evil_target.mkdir()
-
-        # The encoded form of "/evil/cwd" is "-evil-cwd"
-        symlink_path = projects_dir / "-evil-cwd"
-        symlink_path.symlink_to(evil_target)
-
-        result = _cli_project_dir("/evil/cwd")
-        assert result is None
-
-
 # --- delete_transcript ---
 
 
@@ -382,7 +302,7 @@ class TestDeleteTranscript:
         mock_storage.delete = AsyncMock()
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -402,7 +322,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -420,7 +340,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.util.workspace_storage.get_workspace_storage",
+            "backend.copilot.sdk.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -897,3 +817,386 @@ class TestCompactionFlowIntegration:
         output2 = builder2.to_jsonl()
         lines2 = [json.loads(line) for line in output2.strip().split("\n")]
         assert lines2[-1]["parentUuid"] == "a2"
+
+
+# ---------------------------------------------------------------------------
+# _run_compression (direct tests for the 3 code paths)
+# ---------------------------------------------------------------------------
+
+
+class TestRunCompression:
+    """Direct tests for ``_run_compression`` covering all 3 code paths.
+
+    Paths:
+    (a) No OpenAI client configured → truncation fallback immediately.
+    (b) LLM success → returns LLM-compressed result.
+    (c) LLM call raises → truncation fallback.
+    """
+
+    def _make_compress_result(self, was_compacted: bool, msgs=None):
+        """Build a minimal CompressResult-like object."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            was_compacted=was_compacted,
+            messages=msgs or [{"role": "user", "content": "summary"}],
+            original_token_count=500,
+            token_count=100 if was_compacted else 500,
+            messages_summarized=2 if was_compacted else 0,
+            messages_dropped=0,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_client_uses_truncation(self):
+        """Path (a): ``get_openai_client()`` returns None → truncation only."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated"}]
+        )
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                new_callable=AsyncMock,
+                return_value=truncation_result,
+            ) as mock_compress,
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "hello"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called with client=None (truncation mode)
+        call_kwargs = mock_compress.call_args
+        assert (
+            call_kwargs.kwargs.get("client") is None
+            or (call_kwargs.args and call_kwargs.args[2] is None)
+            or mock_compress.call_args[1].get("client") is None
+        )
+        assert result is truncation_result
+
+    @pytest.mark.asyncio
+    async def test_llm_success_returns_llm_result(self):
+        """Path (b): ``get_openai_client()`` returns a client → LLM compresses."""
+        from .transcript import _run_compression
+
+        llm_result = self._make_compress_result(
+            True, [{"role": "user", "content": "LLM summary"}]
+        )
+        mock_client = MagicMock()
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                new_callable=AsyncMock,
+                return_value=llm_result,
+            ) as mock_compress,
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called with the real client
+        assert mock_compress.called
+        assert result is llm_result
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_falls_back_to_truncation(self):
+        """Path (c): LLM call raises → truncation fallback used instead."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated fallback"}]
+        )
+        mock_client = MagicMock()
+        call_count = [0]
+
+        async def _compress_side_effect(**kwargs):
+            call_count[0] += 1
+            if kwargs.get("client") is not None:
+                raise RuntimeError("LLM timeout")
+            return truncation_result
+
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                side_effect=_compress_side_effect,
+            ),
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called twice: once for LLM (raises), once for truncation
+        assert call_count[0] == 2
+        assert result is truncation_result
+
+    @pytest.mark.asyncio
+    async def test_llm_timeout_falls_back_to_truncation(self):
+        """Path (d): LLM call exceeds timeout → truncation fallback used."""
+        from .transcript import _run_compression
+
+        truncation_result = self._make_compress_result(
+            True, [{"role": "user", "content": "truncated after timeout"}]
+        )
+        call_count = [0]
+
+        async def _compress_side_effect(*, messages, model, client):
+            call_count[0] += 1
+            if client is not None:
+                # Simulate a hang that exceeds the timeout
+                await asyncio.sleep(9999)
+            return truncation_result
+
+        fake_client = MagicMock()
+        with (
+            patch(
+                "backend.copilot.sdk.transcript.get_openai_client",
+                return_value=fake_client,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript.compress_context",
+                side_effect=_compress_side_effect,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._COMPACTION_TIMEOUT_SECONDS",
+                0.05,
+            ),
+            patch(
+                "backend.copilot.sdk.transcript._TRUNCATION_TIMEOUT_SECONDS",
+                5,
+            ),
+        ):
+            result = await _run_compression(
+                [{"role": "user", "content": "long conversation"}],
+                model="test-model",
+                log_prefix="[test]",
+            )
+
+        # compress_context called twice: once for LLM (times out), once truncation
+        assert call_count[0] == 2
+        assert result is truncation_result
+
+
+# ---------------------------------------------------------------------------
+# cleanup_stale_project_dirs
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupStaleProjectDirs:
+    """Tests for cleanup_stale_project_dirs (disk leak prevention)."""
+
+    def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
+        """Directories matching copilot pattern older than threshold are removed."""
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        # Create a stale dir
+        stale = projects_dir / "-tmp-copilot-old-session"
+        stale.mkdir()
+        # Set mtime to past the threshold
+        import time
+
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+        os.utime(stale, (old_time, old_time))
+
+        # Create a fresh dir
+        fresh = projects_dir / "-tmp-copilot-new-session"
+        fresh.mkdir()
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 1
+        assert not stale.exists()
+        assert fresh.exists()
+
+    def test_ignores_non_copilot_dirs(self, tmp_path, monkeypatch):
+        """Directories not matching copilot pattern are left alone."""
+        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        # Non-copilot dir that's old
+        import time
+
+        other = projects_dir / "some-other-project"
+        other.mkdir()
+        old_time = time.time() - 999999
+        os.utime(other, (old_time, old_time))
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0
+        assert other.exists()
+
+    def test_ttl_boundary_not_removed(self, tmp_path, monkeypatch):
+        """A directory exactly at the TTL boundary should NOT be removed."""
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        import time
+
+        # Dir that's exactly at the TTL (age == threshold, not >) — should survive
+        boundary = projects_dir / "-tmp-copilot-boundary"
+        boundary.mkdir()
+        boundary_time = time.time() - _STALE_PROJECT_DIR_SECONDS + 1
+        os.utime(boundary, (boundary_time, boundary_time))
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0
+        assert boundary.exists()
+
+    def test_skips_non_directory_entries(self, tmp_path, monkeypatch):
+        """Regular files matching the copilot pattern are not removed."""
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        import time
+
+        # Create a regular FILE (not a dir) with the copilot pattern name
+        stale_file = projects_dir / "-tmp-copilot-stale-file"
+        stale_file.write_text("not a dir")
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+        os.utime(stale_file, (old_time, old_time))
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0
+        assert stale_file.exists()
+
+    def test_missing_base_dir_returns_zero(self, tmp_path, monkeypatch):
+        """If the projects base directory doesn't exist, return 0 gracefully."""
+        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+
+        nonexistent = str(tmp_path / "does-not-exist" / "projects")
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: nonexistent,
+        )
+
+        removed = cleanup_stale_project_dirs()
+        assert removed == 0
+
+    def test_scoped_removes_only_target_dir(self, tmp_path, monkeypatch):
+        """When encoded_cwd is supplied only that directory is swept."""
+        import time
+
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+
+        # Two stale copilot dirs
+        target = projects_dir / "-tmp-copilot-session-abc"
+        target.mkdir()
+        os.utime(target, (old_time, old_time))
+
+        other = projects_dir / "-tmp-copilot-session-xyz"
+        other.mkdir()
+        os.utime(other, (old_time, old_time))
+
+        # Only the target dir should be removed
+        removed = cleanup_stale_project_dirs(encoded_cwd="-tmp-copilot-session-abc")
+        assert removed == 1
+        assert not target.exists()
+        assert other.exists()  # untouched — not the current session
+
+    def test_scoped_fresh_dir_not_removed(self, tmp_path, monkeypatch):
+        """Scoped sweep leaves a fresh directory alone."""
+        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        fresh = projects_dir / "-tmp-copilot-session-new"
+        fresh.mkdir()
+        # mtime is now — well within TTL
+
+        removed = cleanup_stale_project_dirs(encoded_cwd="-tmp-copilot-session-new")
+        assert removed == 0
+        assert fresh.exists()
+
+    def test_scoped_non_copilot_dir_not_removed(self, tmp_path, monkeypatch):
+        """Scoped sweep refuses to remove a non-copilot directory."""
+        import time
+
+        from backend.copilot.sdk.transcript import (
+            _STALE_PROJECT_DIR_SECONDS,
+            cleanup_stale_project_dirs,
+        )
+
+        projects_dir = tmp_path / "projects"
+        projects_dir.mkdir()
+        monkeypatch.setattr(
+            "backend.copilot.sdk.transcript._projects_base",
+            lambda: str(projects_dir),
+        )
+
+        old_time = time.time() - _STALE_PROJECT_DIR_SECONDS - 100
+        non_copilot = projects_dir / "some-other-project"
+        non_copilot.mkdir()
+        os.utime(non_copilot, (old_time, old_time))
+
+        removed = cleanup_stale_project_dirs(encoded_cwd="some-other-project")
+        assert removed == 0
+        assert non_copilot.exists()

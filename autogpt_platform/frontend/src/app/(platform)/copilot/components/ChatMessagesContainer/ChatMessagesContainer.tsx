@@ -31,11 +31,13 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   sessionID?: string | null;
+  onRetry?: () => void;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
+  onRetry?: () => void,
 ): React.ReactNode[] {
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
@@ -47,6 +49,7 @@ function renderSegments(
         part={seg.part}
         messageID={messageID}
         partIndex={seg.index}
+        onRetry={onRetry}
       />
     );
   });
@@ -102,6 +105,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   sessionID,
+  onRetry,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
@@ -161,9 +165,12 @@ export function ChatMessagesContainer({
             (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
           );
           const lastTextPart = textParts[textParts.length - 1];
+          const markerType =
+            lastTextPart !== undefined
+              ? parseSpecialMarkers(lastTextPart.text).markerType
+              : null;
           const hasErrorMarker =
-            lastTextPart !== undefined &&
-            parseSpecialMarkers(lastTextPart.text).markerType === "error";
+            markerType === "error" || markerType === "retryable_error";
           const showActions =
             isLastInTurn &&
             !isCurrentlyStreaming &&
@@ -200,6 +207,7 @@ export function ChatMessagesContainer({
                 className={
                   "text-[1rem] leading-relaxed " +
                   "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
@@ -209,13 +217,18 @@ export function ChatMessagesContainer({
                   </ReasoningCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(responseSegments, message.id)
+                  ? renderSegments(
+                      responseSegments,
+                      message.id,
+                      isLastAssistant ? onRetry : undefined,
+                    )
                   : message.parts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
                         part={part}
                         messageID={message.id}
                         partIndex={i}
+                        onRetry={isLastAssistant ? onRetry : undefined}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (

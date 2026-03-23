@@ -877,12 +877,12 @@ async def get_execution_outputs_by_node_exec_id(
         where={"referencedByOutputExecId": node_exec_id}
     )
 
-    result = {}
+    result: CompletedBlockOutput = defaultdict(list)
     for output in outputs:
         if output.data is not None:
-            result[output.name] = type_utils.convert(output.data, JsonValue)
+            result[output.name].append(type_utils.convert(output.data, JsonValue))
 
-    return result
+    return dict(result)
 
 
 async def update_graph_execution_start_time(
