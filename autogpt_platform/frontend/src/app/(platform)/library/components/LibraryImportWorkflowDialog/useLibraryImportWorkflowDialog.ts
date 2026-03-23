@@ -47,10 +47,13 @@ export function useLibraryImportWorkflowDialog() {
   const router = useRouter();
   const [fileValue, setFileValue] = useState("");
   const [urlValue, setUrlValue] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingMode, setSubmittingMode] = useState<"url" | "file" | null>(
+    null,
+  );
+  const isSubmitting = submittingMode !== null;
 
   async function submitWithMode(mode: "url" | "file") {
-    setIsSubmitting(true);
+    setSubmittingMode(mode);
     try {
       const jsonString = await resolveJson(mode);
       if (!jsonString) return;
@@ -63,7 +66,7 @@ export function useLibraryImportWorkflowDialog() {
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setSubmittingMode(null);
     }
   }
 
@@ -106,5 +109,6 @@ export function useLibraryImportWorkflowDialog() {
     urlValue,
     setUrlValue,
     isSubmitting,
+    submittingMode,
   };
 }

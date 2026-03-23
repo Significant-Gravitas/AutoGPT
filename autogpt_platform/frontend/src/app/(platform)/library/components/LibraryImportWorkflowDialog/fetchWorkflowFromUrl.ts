@@ -26,12 +26,18 @@ export type FetchWorkflowResult =
 export async function fetchWorkflowFromUrl(
   url: string,
 ): Promise<FetchWorkflowResult> {
-  let hostname: string;
+  let parsed: URL;
   try {
-    hostname = new URL(url).hostname;
+    parsed = new URL(url);
   } catch {
     return { ok: false, error: "Invalid URL." };
   }
+
+  if (parsed.protocol !== "https:") {
+    return { ok: false, error: "Only HTTPS URLs are accepted." };
+  }
+
+  const hostname = parsed.hostname;
 
   if (
     !ALLOWED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))

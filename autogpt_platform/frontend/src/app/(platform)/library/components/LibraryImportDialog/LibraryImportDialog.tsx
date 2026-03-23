@@ -88,10 +88,10 @@ export default function LibraryImportDialog() {
               }
               onClick={() => importWorkflow.submitWithMode("file")}
             >
-              {importWorkflow.isSubmitting ? (
+              {importWorkflow.submittingMode === "file" ? (
                 <div className="flex items-center gap-2">
                   <LoadingSpinner size="small" className="text-white" />
-                  <span>Uploading...</span>
+                  <span>Importing...</span>
                 </div>
               ) : (
                 "Import to AutoPilot"
@@ -133,7 +133,14 @@ export default function LibraryImportDialog() {
               disabled={!importWorkflow.urlValue || importWorkflow.isSubmitting}
               onClick={() => importWorkflow.submitWithMode("url")}
             >
-              Import from URL
+              {importWorkflow.submittingMode === "url" ? (
+                <div className="flex items-center gap-2">
+                  <LoadingSpinner size="small" className="text-white" />
+                  <span>Importing...</span>
+                </div>
+              ) : (
+                "Import from URL"
+              )}
             </Button>
           </TabsLineContent>
 
