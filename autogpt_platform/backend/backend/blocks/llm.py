@@ -796,6 +796,19 @@ async def llm_call(
             )
         prompt = result.messages
 
+    # Sanitize unpaired surrogates in message content to prevent
+    # UnicodeEncodeError when httpx encodes the JSON request body.
+    for msg in prompt:
+        content = msg.get("content")
+        if isinstance(content, str):
+            try:
+                content.encode("utf-8")
+            except UnicodeEncodeError:
+                logger.warning("Sanitized unpaired surrogates in LLM prompt content")
+                msg["content"] = content.encode("utf-8", errors="surrogatepass").decode(
+                    "utf-8", errors="replace"
+                )
+
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
     model_max_output = llm_model.max_output_tokens or int(2**15)
