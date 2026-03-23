@@ -143,11 +143,11 @@ To use an MCP (Model Context Protocol) tool as a node in the agent:
    tool_arguments.
 6. Output: `result` (the tool's return value) and `error` (error message)
 
-### Using SmartDecisionMakerBlock (AI Orchestrator with Agent Mode)
+### Using ToolOrchestratorBlock (AI Orchestrator with Agent Mode)
 
 To create an agent where AI autonomously decides which tools or sub-agents to
 call in a loop until the task is complete:
-1. Create a `SmartDecisionMakerBlock` node
+1. Create a `ToolOrchestratorBlock` node
    (ID: `3b191d9f-356f-482d-8238-ba04b6d18381`)
 2. Set `input_default`:
    - `agent_mode_max_iterations`: Choose based on task complexity:
@@ -169,8 +169,8 @@ call in a loop until the task is complete:
 3. Wire the `prompt` input from an `AgentInputBlock` (the user's task)
 4. Create downstream tool blocks — regular blocks **or** `AgentExecutorBlock`
    nodes that call sub-agents
-5. Link each tool to the SmartDecisionMaker: set `source_name: "tools"` on
-   the SmartDecisionMaker side and `sink_name: <input_field>` on each tool
+5. Link each tool to the ToolOrchestrator: set `source_name: "tools"` on
+   the ToolOrchestrator side and `sink_name: <input_field>` on each tool
    block's input. Create one link per input field the tool needs.
 6. Wire the `finished` output to an `AgentOutputBlock` for the final result
 7. Credentials (LLM API key) are configured by the user in the platform UI
@@ -178,7 +178,7 @@ call in a loop until the task is complete:
 
 **Example — Orchestrator calling two sub-agents:**
 - Node 1: `AgentInputBlock` (input_default: `{"name": "task"}`)
-- Node 2: `SmartDecisionMakerBlock` (input_default:
+- Node 2: `ToolOrchestratorBlock` (input_default:
   `{"agent_mode_max_iterations": 10, "conversation_compaction": true}`)
 - Node 3: `AgentExecutorBlock` (sub-agent A — set `graph_id`, `graph_version`,
   `input_schema`, `output_schema` from library agent)
@@ -194,7 +194,7 @@ call in a loop until the task is complete:
 
 **Example — Orchestrator calling regular blocks as tools:**
 - Node 1: `AgentInputBlock` (input_default: `{"name": "task"}`)
-- Node 2: `SmartDecisionMakerBlock` (input_default:
+- Node 2: `ToolOrchestratorBlock` (input_default:
   `{"agent_mode_max_iterations": 5, "conversation_compaction": true}`)
 - Node 3: `GetWebpageBlock` (regular block — the AI calls it as a tool)
 - Node 4: `AITextGeneratorBlock` (another regular block as a tool)
@@ -206,7 +206,7 @@ call in a loop until the task is complete:
   - SDM→Output: `source_name: "finished"`, `sink_name: "value"`
 
 Regular blocks work exactly like sub-agents as tools — wire each input
-field from `source_name: "tools"` on the SmartDecisionMaker side.
+field from `source_name: "tools"` on the ToolOrchestrator side.
 
 ### Example: Simple AI Text Processor
 

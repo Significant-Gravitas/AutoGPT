@@ -34,9 +34,9 @@ from backend.blocks.llm import (
 )
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
-from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
+from backend.blocks.tool_orchestrator import ToolOrchestratorBlock
 from backend.blocks.video.narration import VideoNarrationBlock
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
@@ -548,7 +548,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    SmartDecisionMakerBlock: LLM_COST,
+    ToolOrchestratorBlock: LLM_COST,
     SearchOrganizationsBlock: [
         BlockCost(
             cost_amount=2,

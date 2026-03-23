@@ -1,10 +1,10 @@
 """
-Tests for SmartDecisionMakerBlock support in agent generator.
+Tests for ToolOrchestratorBlock support in agent generator.
 
 Covers:
-- AgentFixer.fix_smart_decision_maker_blocks()
-- AgentValidator.validate_smart_decision_maker_blocks()
-- End-to-end fix → validate → pipeline for SmartDecisionMaker agents
+- AgentFixer.fix_tool_orchestrator_blocks()
+- AgentValidator.validate_tool_orchestrator_blocks()
+- End-to-end fix → validate → pipeline for ToolOrchestrator agents
 """
 
 import uuid
@@ -14,7 +14,7 @@ from backend.copilot.tools.agent_generator.helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
-    SMART_DECISION_MAKER_BLOCK_ID,
+    TOOL_ORCHESTRATOR_BLOCK_ID,
 )
 from backend.copilot.tools.agent_generator.validator import AgentValidator
 
@@ -28,10 +28,10 @@ def _make_sdm_node(
     input_default: dict | None = None,
     metadata: dict | None = None,
 ) -> dict:
-    """Create a SmartDecisionMakerBlock node dict."""
+    """Create a ToolOrchestratorBlock node dict."""
     return {
         "id": node_id or _uid(),
-        "block_id": SMART_DECISION_MAKER_BLOCK_ID,
+        "block_id": TOOL_ORCHESTRATOR_BLOCK_ID,
         "input_default": input_default or {},
         "metadata": metadata or {"position": {"x": 0, "y": 0}},
     }
@@ -125,15 +125,15 @@ def _make_orchestrator_agent() -> dict:
 # ---------------------------------------------------------------------------
 
 
-class TestFixSmartDecisionMakerBlocks:
-    """Tests for AgentFixer.fix_smart_decision_maker_blocks()."""
+class TestFixToolOrchestratorBlocks:
+    """Tests for AgentFixer.fix_tool_orchestrator_blocks()."""
 
     def test_fills_defaults_when_missing(self):
         """All agent-mode defaults are populated for a bare SDM node."""
         fixer = AgentFixer()
         agent = {"nodes": [_make_sdm_node()], "links": []}
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10
@@ -159,7 +159,7 @@ class TestFixSmartDecisionMakerBlocks:
             "links": [],
         }
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 5
@@ -182,7 +182,7 @@ class TestFixSmartDecisionMakerBlocks:
             "links": [],
         }
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10  # kept
@@ -192,7 +192,7 @@ class TestFixSmartDecisionMakerBlocks:
         assert len(fixer.fixes_applied) == 3
 
     def test_skips_non_sdm_nodes(self):
-        """Non-SmartDecisionMaker nodes are untouched."""
+        """Non-ToolOrchestrator nodes are untouched."""
         fixer = AgentFixer()
         other_node = {
             "id": _uid(),
@@ -202,7 +202,7 @@ class TestFixSmartDecisionMakerBlocks:
         }
         agent = {"nodes": [other_node], "links": []}
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         assert "agent_mode_max_iterations" not in result["nodes"][0]["input_default"]
         assert len(fixer.fixes_applied) == 0
@@ -212,12 +212,12 @@ class TestFixSmartDecisionMakerBlocks:
         fixer = AgentFixer()
         node = {
             "id": _uid(),
-            "block_id": SMART_DECISION_MAKER_BLOCK_ID,
+            "block_id": TOOL_ORCHESTRATOR_BLOCK_ID,
             "metadata": {},
         }
         agent = {"nodes": [node], "links": []}
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         assert "input_default" in result["nodes"][0]
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 10
@@ -227,13 +227,13 @@ class TestFixSmartDecisionMakerBlocks:
         fixer = AgentFixer()
         node = {
             "id": _uid(),
-            "block_id": SMART_DECISION_MAKER_BLOCK_ID,
+            "block_id": TOOL_ORCHESTRATOR_BLOCK_ID,
             "input_default": None,
             "metadata": {},
         }
         agent = {"nodes": [node], "links": []}
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         assert isinstance(result["nodes"][0]["input_default"], dict)
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 10
@@ -255,7 +255,7 @@ class TestFixSmartDecisionMakerBlocks:
             "links": [],
         }
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10  # None → default
@@ -275,7 +275,7 @@ class TestFixSmartDecisionMakerBlocks:
             "links": [],
         }
 
-        result = fixer.fix_smart_decision_maker_blocks(agent)
+        result = fixer.fix_tool_orchestrator_blocks(agent)
 
         # First node: 3 defaults filled (agent_mode was already set)
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 3
@@ -284,7 +284,7 @@ class TestFixSmartDecisionMakerBlocks:
         assert len(fixer.fixes_applied) == 7  # 3 + 4
 
     def test_registered_in_apply_all_fixes(self):
-        """fix_smart_decision_maker_blocks runs as part of apply_all_fixes."""
+        """fix_tool_orchestrator_blocks runs as part of apply_all_fixes."""
         fixer = AgentFixer()
         agent = {
             "nodes": [_make_sdm_node()],
@@ -295,7 +295,7 @@ class TestFixSmartDecisionMakerBlocks:
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10
-        assert any("SmartDecisionMakerBlock" in fix for fix in fixer.fixes_applied)
+        assert any("ToolOrchestratorBlock" in fix for fix in fixer.fixes_applied)
 
 
 # ---------------------------------------------------------------------------
@@ -303,15 +303,15 @@ class TestFixSmartDecisionMakerBlocks:
 # ---------------------------------------------------------------------------
 
 
-class TestValidateSmartDecisionMakerBlocks:
-    """Tests for AgentValidator.validate_smart_decision_maker_blocks()."""
+class TestValidateToolOrchestratorBlocks:
+    """Tests for AgentValidator.validate_tool_orchestrator_blocks()."""
 
     def test_valid_sdm_with_tools(self):
         """SDM with downstream tool links passes validation."""
         validator = AgentValidator()
         agent = _make_orchestrator_agent()
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is True
         assert len(validator.errors) == 0
@@ -325,7 +325,7 @@ class TestValidateSmartDecisionMakerBlocks:
             "links": [],  # no tool links
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
@@ -344,20 +344,20 @@ class TestValidateSmartDecisionMakerBlocks:
             ],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
 
     def test_no_sdm_nodes_passes(self):
-        """Agent without SmartDecisionMaker nodes passes trivially."""
+        """Agent without ToolOrchestrator nodes passes trivially."""
         validator = AgentValidator()
         agent = {
             "nodes": [_make_input_node(), _make_output_node()],
             "links": [],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is True
         assert len(validator.errors) == 0
@@ -373,7 +373,7 @@ class TestValidateSmartDecisionMakerBlocks:
         )
         agent = {"nodes": [sdm], "links": []}
 
-        validator.validate_smart_decision_maker_blocks(agent)
+        validator.validate_tool_orchestrator_blocks(agent)
 
         assert "My Orchestrator" in validator.errors[0]
 
@@ -392,7 +392,7 @@ class TestValidateSmartDecisionMakerBlocks:
             ],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
@@ -408,7 +408,7 @@ class TestValidateSmartDecisionMakerBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert any("agent_mode_max_iterations=0" in e for e in validator.errors)
@@ -423,7 +423,7 @@ class TestValidateSmartDecisionMakerBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is True
         assert len(validator.errors) == 0
@@ -438,7 +438,7 @@ class TestValidateSmartDecisionMakerBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert any("unusually high" in e for e in validator.errors)
@@ -453,7 +453,7 @@ class TestValidateSmartDecisionMakerBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert any("non-integer" in e for e in validator.errors)
@@ -468,7 +468,7 @@ class TestValidateSmartDecisionMakerBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert any("invalid" in e and "-5" in e for e in validator.errors)
@@ -488,14 +488,14 @@ class TestValidateSmartDecisionMakerBlocks:
             ],
         }
 
-        result = validator.validate_smart_decision_maker_blocks(agent)
+        result = validator.validate_tool_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
         assert "no downstream tool blocks" in validator.errors[0]
 
     def test_registered_in_validate(self):
-        """validate_smart_decision_maker_blocks runs as part of validate()."""
+        """validate_tool_orchestrator_blocks runs as part of validate()."""
         validator = AgentValidator()
         sdm = _make_sdm_node()
         agent = {
@@ -511,8 +511,8 @@ class TestValidateSmartDecisionMakerBlocks:
         # Build a minimal blocks list with the SDM block info
         blocks = [
             {
-                "id": SMART_DECISION_MAKER_BLOCK_ID,
-                "name": "SmartDecisionMakerBlock",
+                "id": TOOL_ORCHESTRATOR_BLOCK_ID,
+                "name": "ToolOrchestratorBlock",
                 "inputSchema": {"properties": {"prompt": {"type": "string"}}},
                 "outputSchema": {
                     "properties": {
@@ -557,7 +557,7 @@ class TestValidateSmartDecisionMakerBlocks:
 # ---------------------------------------------------------------------------
 
 
-class TestSmartDecisionMakerE2EPipeline:
+class TestToolOrchestratorE2EPipeline:
     """End-to-end tests: build agent JSON → fix → validate."""
 
     def test_orchestrator_agent_fix_then_validate(self):
@@ -570,7 +570,7 @@ class TestSmartDecisionMakerE2EPipeline:
 
         # Verify defaults were applied
         sdm_nodes = [
-            n for n in fixed["nodes"] if n["block_id"] == SMART_DECISION_MAKER_BLOCK_ID
+            n for n in fixed["nodes"] if n["block_id"] == TOOL_ORCHESTRATOR_BLOCK_ID
         ]
         assert len(sdm_nodes) == 1
         assert sdm_nodes[0]["input_default"]["agent_mode_max_iterations"] == 10
@@ -578,7 +578,7 @@ class TestSmartDecisionMakerE2EPipeline:
 
         # Validate (standalone SDM check)
         validator = AgentValidator()
-        assert validator.validate_smart_decision_maker_blocks(fixed) is True
+        assert validator.validate_tool_orchestrator_blocks(fixed) is True
 
     def test_bare_sdm_no_tools_fix_then_validate(self):
         """SDM without tools: fixer fills defaults, validator catches error."""
@@ -606,7 +606,7 @@ class TestSmartDecisionMakerE2EPipeline:
 
         # Validate catches missing tools
         validator = AgentValidator()
-        assert validator.validate_smart_decision_maker_blocks(fixed) is False
+        assert validator.validate_tool_orchestrator_blocks(fixed) is False
         assert any("no downstream tool blocks" in e for e in validator.errors)
 
     def test_sdm_with_user_set_bounded_iterations(self):
@@ -614,7 +614,7 @@ class TestSmartDecisionMakerE2EPipeline:
         agent = _make_orchestrator_agent()
         # Simulate user setting bounded iterations
         for node in agent["nodes"]:
-            if node["block_id"] == SMART_DECISION_MAKER_BLOCK_ID:
+            if node["block_id"] == TOOL_ORCHESTRATOR_BLOCK_ID:
                 node["input_default"]["agent_mode_max_iterations"] = 5
                 node["input_default"]["sys_prompt"] = "You are a helpful orchestrator"
 
@@ -622,7 +622,7 @@ class TestSmartDecisionMakerE2EPipeline:
         fixed = fixer.apply_all_fixes(agent)
 
         sdm = next(
-            n for n in fixed["nodes"] if n["block_id"] == SMART_DECISION_MAKER_BLOCK_ID
+            n for n in fixed["nodes"] if n["block_id"] == TOOL_ORCHESTRATOR_BLOCK_ID
         )
         assert sdm["input_default"]["agent_mode_max_iterations"] == 5
         assert sdm["input_default"]["sys_prompt"] == "You are a helpful orchestrator"
@@ -638,8 +638,8 @@ class TestSmartDecisionMakerE2EPipeline:
 
         blocks = [
             {
-                "id": SMART_DECISION_MAKER_BLOCK_ID,
-                "name": "SmartDecisionMakerBlock",
+                "id": TOOL_ORCHESTRATOR_BLOCK_ID,
+                "name": "ToolOrchestratorBlock",
                 "inputSchema": {
                     "properties": {
                         "prompt": {"type": "string"},
@@ -709,5 +709,5 @@ class TestSmartDecisionMakerE2EPipeline:
         assert is_valid, f"Validation failed: {error_msg}"
 
         # SDM-specific validation should pass (has tool links)
-        sdm_errors = [e for e in validator.errors if "SmartDecisionMakerBlock" in e]
+        sdm_errors = [e for e in validator.errors if "ToolOrchestratorBlock" in e]
         assert len(sdm_errors) == 0, f"Unexpected SDM errors: {sdm_errors}"
