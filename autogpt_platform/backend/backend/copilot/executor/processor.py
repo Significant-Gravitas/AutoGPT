@@ -279,7 +279,6 @@ class CoPilotProcessor:
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,
-                user_id=entry.user_id,
                 turn_id=entry.turn_id,
                 stream=raw_stream,
             ):

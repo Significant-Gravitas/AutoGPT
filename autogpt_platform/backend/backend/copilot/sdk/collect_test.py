@@ -36,7 +36,7 @@ def mock_registry():
         # stream_and_publish: pass-through that also publishes (real logic)
         # We re-implement the pass-through here so the event loop works,
         # but still track publish_chunk calls via the mock.
-        async def _stream_and_publish(session_id, user_id, turn_id, stream):
+        async def _stream_and_publish(session_id, turn_id, stream):
             async for event in stream:
                 if turn_id and not isinstance(event, (StreamFinish, StreamError)):
                     await m.publish_chunk(turn_id, event)

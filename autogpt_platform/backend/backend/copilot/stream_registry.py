@@ -293,7 +293,6 @@ async def publish_chunk(
 
 async def stream_and_publish(
     session_id: str,
-    user_id: str | None,
     turn_id: str,
     stream: AsyncIterator[StreamBaseResponse],
 ) -> AsyncIterator[StreamBaseResponse]:
@@ -310,7 +309,6 @@ async def stream_and_publish(
 
     Args:
         session_id: Chat session ID (for logging only).
-        user_id: User ID (for logging only).
         turn_id: Turn UUID that identifies the Redis stream to publish to.
             If empty, publishing is silently skipped (graceful degradation).
         stream: The underlying async iterator of stream events.

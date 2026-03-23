@@ -197,7 +197,6 @@ async def collect_copilot_response(
             )
             published_stream = stream_registry.stream_and_publish(
                 session_id=session_id,
-                user_id=user_id,
                 turn_id=handle.publish_turn_id,
                 stream=raw_stream,
             )
