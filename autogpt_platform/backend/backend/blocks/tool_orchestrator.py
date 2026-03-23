@@ -6,6 +6,7 @@ import uuid as uuid_mod
 from collections import Counter
 from collections.abc import Sequence
 from concurrent.futures import Future
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import (
@@ -1006,6 +1007,123 @@ class ToolOrchestratorBlock(Block):
                 responses_api=responses_api,
             )
 
+    async def _agent_mode_llm_caller(
+        self,
+        messages: list[dict[str, Any]],
+        tools: Sequence[Any],
+        *,
+        credentials: llm.APIKeyCredentials,
+        input_data: "ToolOrchestratorBlock.Input",
+    ) -> LLMLoopResponse:
+        """LLM caller callback for agent mode: wraps _attempt_llm_call_with_validation."""
+        resp = await self._attempt_llm_call_with_validation(
+            credentials, input_data, messages, list(tools)
+        )
+        tool_calls = [
+            LLMToolCall(
+                id=tc.id,
+                name=tc.function.name,
+                arguments=tc.function.arguments,
+            )
+            for tc in (resp.tool_calls or [])
+        ]
+        return LLMLoopResponse(
+            response_text=resp.response,
+            tool_calls=tool_calls,
+            raw_response=resp,
+            prompt_tokens=resp.prompt_tokens,
+            completion_tokens=resp.completion_tokens,
+            reasoning=resp.reasoning,
+        )
+
+    async def _agent_mode_tool_executor(
+        self,
+        tool_call: LLMToolCall,
+        tools: Sequence[Any],
+        *,
+        execution_params: ExecutionParams,
+        execution_processor: "ExecutionProcessor",
+        use_responses_api: bool,
+    ) -> ToolCallResult:
+        """Tool executor callback for agent mode: wraps _execute_single_tool_with_manager."""
+        # Find tool definition
+        tool_def = next(
+            (t for t in tools if t["function"]["name"] == tool_call.name),
+            None,
+        )
+        if not tool_def and len(tools) == 1:
+            tool_def = tools[0]
+        if not tool_def:
+            return ToolCallResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                content=f"Unknown tool: {tool_call.name}",
+                is_error=True,
+            )
+
+        try:
+            tool_args = json.loads(tool_call.arguments)
+        except (ValueError, TypeError) as e:
+            return ToolCallResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                content=f"Invalid JSON arguments: {e}",
+                is_error=True,
+            )
+        tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
+            tool_call_id=tool_call.id,
+            tool_name=tool_call.name,
+            tool_args=tool_args,
+            tool_def=tool_def,
+        )
+
+        try:
+            result = await self._execute_single_tool_with_manager(
+                tool_info,
+                execution_params,
+                execution_processor,
+                responses_api=use_responses_api,
+            )
+            content = result.get("content", "Tool executed successfully")
+            return ToolCallResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                content=(content if isinstance(content, str) else json.dumps(content)),
+            )
+        except Exception as e:
+            logger.error("Tool execution failed: %s", e)
+            return ToolCallResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.name,
+                content=f"Error: {e}",
+                is_error=True,
+            )
+
+    def _agent_mode_conversation_updater(
+        self,
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+        *,
+        use_responses_api: bool = False,
+    ) -> None:
+        """Conversation updater callback for agent mode."""
+        tool_outputs = None
+        if tool_results:
+            tool_outputs = [
+                _create_tool_response(
+                    tr.tool_call_id,
+                    tr.content,
+                    responses_api=use_responses_api,
+                )
+                for tr in tool_results
+            ]
+            tool_outputs = _combine_tool_responses(tool_outputs)
+        # Pass the raw LLM response (not the LLMLoopResponse wrapper) —
+        # _update_conversation expects the provider response object that
+        # has .raw_response and .reasoning attributes.
+        self._update_conversation(messages, response.raw_response, tool_outputs)
+
     async def _execute_tools_agent_mode(
         self,
         input_data,
@@ -1025,7 +1143,6 @@ class ToolOrchestratorBlock(Block):
         max_iterations = input_data.agent_mode_max_iterations
         use_responses_api = input_data.model.metadata.provider == "openai"
 
-        # Execution parameters for tool execution
         execution_params = ExecutionParams(
             user_id=user_id,
             graph_id=graph_id,
@@ -1036,117 +1153,22 @@ class ToolOrchestratorBlock(Block):
             execution_context=execution_context,
         )
 
-        # LLM caller callback: wraps _attempt_llm_call_with_validation
-        async def llm_caller(
-            messages: list[dict[str, Any]],
-            tools: Sequence[Any],
-        ) -> LLMLoopResponse:
-            resp = await self._attempt_llm_call_with_validation(
-                credentials, input_data, messages, list(tools)
-            )
-            # Convert to shared format
-            tool_calls = []
-            if resp.tool_calls:
-                for tc in resp.tool_calls:
-                    tool_calls.append(
-                        LLMToolCall(
-                            id=tc.id,
-                            name=tc.function.name,
-                            arguments=tc.function.arguments,
-                        )
-                    )
-            return LLMLoopResponse(
-                response_text=resp.response,
-                tool_calls=tool_calls,
-                raw_response=resp,
-                prompt_tokens=resp.prompt_tokens,
-                completion_tokens=resp.completion_tokens,
-                reasoning=resp.reasoning,
-            )
-
-        # Tool executor callback: wraps _execute_single_tool_with_manager
-        async def tool_executor(
-            tool_call: LLMToolCall,
-            tools: Sequence[Any],
-        ) -> ToolCallResult:
-            # Find tool definition
-            tool_def = next(
-                (t for t in tools if t["function"]["name"] == tool_call.name),
-                None,
-            )
-            if not tool_def and len(tools) == 1:
-                tool_def = tools[0]
-            if not tool_def:
-                return ToolCallResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    content=f"Unknown tool: {tool_call.name}",
-                    is_error=True,
-                )
-
-            # Build ToolInfo using shared helper
-            try:
-                tool_args = json.loads(tool_call.arguments)
-            except (ValueError, TypeError) as e:
-                return ToolCallResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    content=f"Invalid JSON arguments: {e}",
-                    is_error=True,
-                )
-            tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
-                tool_call_id=tool_call.id,
-                tool_name=tool_call.name,
-                tool_args=tool_args,
-                tool_def=tool_def,
-            )
-
-            try:
-                result = await self._execute_single_tool_with_manager(
-                    tool_info,
-                    execution_params,
-                    execution_processor,
-                    responses_api=use_responses_api,
-                )
-                content = result.get("content", "Tool executed successfully")
-                return ToolCallResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    content=(
-                        content if isinstance(content, str) else json.dumps(content)
-                    ),
-                )
-            except Exception as e:
-                logger.error(f"Tool execution failed: {e}")
-                return ToolCallResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
-                    content=f"Error: {e}",
-                    is_error=True,
-                )
-
-        # Conversation updater callback: wraps _update_conversation + tool response formatting
-        def conversation_updater(
-            messages: list[dict[str, Any]],
-            response: LLMLoopResponse,
-            tool_results: list[ToolCallResult] | None = None,
-        ) -> None:
-            tool_outputs = None
-            if tool_results:
-                tool_outputs = []
-                for tr in tool_results:
-                    tool_outputs.append(
-                        _create_tool_response(
-                            tr.tool_call_id,
-                            tr.content,
-                            responses_api=use_responses_api,
-                        )
-                    )
-                tool_outputs = _combine_tool_responses(tool_outputs)
-            # Pass the raw LLM response (not the LLMLoopResponse wrapper) —
-            # _update_conversation expects the provider response object that
-            # has .raw_response and .reasoning attributes.
-            self._update_conversation(messages, response.raw_response, tool_outputs)
+        # Bind callbacks using functools.partial
+        bound_llm_caller = partial(
+            self._agent_mode_llm_caller,
+            credentials=credentials,
+            input_data=input_data,
+        )
+        bound_tool_executor = partial(
+            self._agent_mode_tool_executor,
+            execution_params=execution_params,
+            execution_processor=execution_processor,
+            use_responses_api=use_responses_api,
+        )
+        bound_conversation_updater = partial(
+            self._agent_mode_conversation_updater,
+            use_responses_api=use_responses_api,
+        )
 
         current_prompt = list(prompt)
 
@@ -1166,9 +1188,9 @@ class ToolOrchestratorBlock(Block):
             async for loop_result in tool_call_loop(
                 messages=current_prompt,
                 tools=tool_functions,
-                llm_call=llm_caller,
-                execute_tool=tool_executor,
-                update_conversation=conversation_updater,
+                llm_call=bound_llm_caller,
+                execute_tool=bound_tool_executor,
+                update_conversation=bound_conversation_updater,
                 max_iterations=max_iterations,
                 last_iteration_message=last_iter_msg,
             ):
