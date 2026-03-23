@@ -58,8 +58,14 @@ export async function fetchWorkflowFromUrl(
 }
 
 async function fetchN8nWorkflow(templateId: string): Promise<string> {
-  // Only ever fetch from the hardcoded API base + numeric ID
-  const res = await fetch(`${N8N_TEMPLATES_API}/${templateId}`);
+  // Only ever fetch from the hardcoded API base + numeric ID.
+  // parseInt + toString round-trips to guarantee the value is purely numeric,
+  // preventing any path-traversal or SSRF via the interpolated segment.
+  const safeId = parseInt(templateId, 10);
+  if (!Number.isFinite(safeId) || safeId <= 0) {
+    throw new Error("Invalid template ID");
+  }
+  const res = await fetch(`${N8N_TEMPLATES_API}/${safeId.toString()}`);
   if (!res.ok) throw new Error(`n8n template not found (${res.status})`);
 
   const contentLength = res.headers.get("content-length");
