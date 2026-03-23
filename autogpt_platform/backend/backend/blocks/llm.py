@@ -804,6 +804,7 @@ async def llm_call(
             try:
                 content.encode("utf-8")
             except UnicodeEncodeError:
+                logger.warning("Sanitized unpaired surrogates in LLM prompt content")
                 msg["content"] = content.encode("utf-8", errors="surrogatepass").decode(
                     "utf-8", errors="replace"
                 )
