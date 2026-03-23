@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: abn-coaching-api
+    runtime: docker
+    dockerfilePath: Dockerfile.coaching
+    healthCheckPath: /health
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set manually in Render dashboard
+      - key: COACHING_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: COACHING_LLM_MODEL
+        value: claude-haiku-4-5-20251001
+      - key: COACHING_LLM_TEMPERATURE
+        value: "0.7"
+      - key: PORT
+        value: "8000"

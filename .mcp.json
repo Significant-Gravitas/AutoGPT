@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "wix": {
+      "type": "http",
+      "url": "https://mcp.wix.com/mcp"
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=aakbytofflrctepuedyh",
+      "headers": {
+        "Authorization": "Bearer ${SUPABASE_PAT}"
+      }
+    }
+  }
+}

@@ -1,0 +1,95 @@
+/**
+ * ABN Consulting AI Co-Navigator — Wix Backend Web Module
+ *
+ * File location in Wix Editor: backend/coaching-backend.jsw
+ *
+ * SETUP:
+ * 1. In Wix Editor → Settings → Secrets Manager, add:
+ *    Secret name: COACHING_API_KEY   Value: <your COACHING_API_KEY>
+ * 2. Replace API_BASE below with your deployed FastAPI server URL.
+ *    Example: 'https://abn-coaching.railway.app'
+ */
+
+import { getSecret } from 'wix-secrets-backend';
+import { fetch } from 'wix-fetch';
+
+const API_BASE = 'https://auto-gpt-production.up.railway.app';
+
+async function getApiKey() {
+  return await getSecret('COACHING_API_KEY');
+}
+
+/**
+ * Start a new coaching session for the given client.
+ * Returns { session_id, message }
+ */
+export async function startCoachingSession(clientId, clientName) {
+  const apiKey = await getApiKey();
+  const res = await fetch(`${API_BASE}/coaching/session/start`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    },
+    body: JSON.stringify({ client_id: clientId, client_name: clientName }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`startCoachingSession failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Send a message in an existing session.
+ * Returns { session_id, reply }
+ */
+export async function sendCoachingMessage(sessionId, message) {
+  const apiKey = await getApiKey();
+  const res = await fetch(`${API_BASE}/coaching/session/${sessionId}/message`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    },
+    body: JSON.stringify({ message }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`sendCoachingMessage failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * End a session — extracts summary, saves to Supabase.
+ * Returns SessionSummary object.
+ */
+export async function endCoachingSession(sessionId) {
+  const apiKey = await getApiKey();
+  const res = await fetch(`${API_BASE}/coaching/session/${sessionId}/end`, {
+    method: 'POST',
+    headers: { 'X-API-Key': apiKey },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`endCoachingSession failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
+/**
+ * Get the coach dashboard — all clients' latest status.
+ * Returns CoachDashboard object.
+ */
+export async function getCoachDashboard() {
+  const apiKey = await getApiKey();
+  const res = await fetch(`${API_BASE}/coaching/dashboard`, {
+    headers: { 'X-API-Key': apiKey },
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`getCoachDashboard failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
