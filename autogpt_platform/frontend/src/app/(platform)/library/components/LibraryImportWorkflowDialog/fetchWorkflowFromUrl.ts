@@ -1,10 +1,15 @@
 "use server";
 
-const N8N_URL_RE = /n8n\.io\/workflows\/(\d+)/i;
-const N8N_TEMPLATES_API = "https://api.n8n.io/api/templates/workflows";
+/**
+ * Regex to extract the numeric template ID from various n8n URL formats:
+ *   - https://n8n.io/workflows/1234
+ *   - https://n8n.io/workflows/1234-some-slug
+ *   - https://api.n8n.io/api/templates/workflows/1234
+ */
+const N8N_TEMPLATE_ID_RE = /n8n\.io\/(?:api\/templates\/)?workflows\/(\d+)/i;
 
-/** Hostnames allowed for URL-based workflow import (SSRF prevention). */
-const ALLOWED_HOSTS = ["n8n.io", "api.n8n.io"];
+/** Hardcoded n8n templates API base — the only URL we ever fetch. */
+const N8N_TEMPLATES_API = "https://api.n8n.io/api/templates/workflows";
 
 /** Max response body size (10 MB) to prevent memory exhaustion. */
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
@@ -14,36 +19,35 @@ export type FetchWorkflowResult =
   | { ok: false; error: string };
 
 /**
- * Server action that fetches a workflow JSON from a URL.
+ * Server action that fetches a workflow JSON from an n8n template URL.
  * Runs server-side so there are no CORS restrictions.
  *
  * Returns a result object instead of throwing because Next.js
  * server actions do not propagate error messages to the client.
  *
- * Only URLs from known workflow platform hosts are accepted
- * to prevent SSRF. Currently supports n8n.io workflows.
+ * Only n8n.io workflow URLs are accepted. The template ID is extracted
+ * and used to call the hardcoded n8n API — the user-supplied URL is
+ * never passed to fetch() directly (SSRF prevention).
  */
 export async function fetchWorkflowFromUrl(
   url: string,
 ): Promise<FetchWorkflowResult> {
-  let parsed: URL;
-  try {
-    parsed = validateUrl(url);
-  } catch {
+  const match = url.match(N8N_TEMPLATE_ID_RE);
+  if (!match) {
     return {
       ok: false,
       error:
         "Invalid or unsupported URL. " +
-        "URL import is supported for n8n.io workflows (HTTPS only). " +
+        "URL import is supported for n8n.io workflow templates " +
+        "(e.g. https://n8n.io/workflows/1234). " +
         "For other platforms, use file upload.",
     };
   }
 
+  const templateId = match[1]; // purely numeric, safe to interpolate
+
   try {
-    const n8nMatch = url.match(N8N_URL_RE);
-    const json = n8nMatch
-      ? await fetchN8nWorkflow(n8nMatch[1])
-      : await fetchGenericJson(parsed);
+    const json = await fetchN8nWorkflow(templateId);
     return { ok: true, json };
   } catch (err) {
     return {
@@ -53,69 +57,19 @@ export async function fetchWorkflowFromUrl(
   }
 }
 
-/**
- * Build a validated URL object, ensuring it is HTTPS and on an allowed host.
- * Throws if validation fails. This is the single point where we convert
- * user-supplied strings into trusted URL objects.
- */
-function validateUrl(raw: string): URL {
-  const parsed = new URL(raw);
-  if (parsed.protocol !== "https:") {
-    throw new Error("Only HTTPS URLs are accepted.");
-  }
-  const host = parsed.hostname;
-  if (!ALLOWED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
-    throw new Error("Unsupported host.");
-  }
-  return parsed;
-}
+async function fetchN8nWorkflow(templateId: string): Promise<string> {
+  // Only ever fetch from the hardcoded API base + numeric ID
+  const res = await fetch(`${N8N_TEMPLATES_API}/${templateId}`);
+  if (!res.ok) throw new Error(`n8n template not found (${res.status})`);
 
-/**
- * Fetch a validated URL, rejecting redirects to non-allowed hosts
- * and enforcing a response size limit.
- *
- * Accepts a URL object (already validated) to ensure the fetch sink
- * is never called with a raw user-supplied string.
- */
-async function safeFetch(validatedUrl: URL): Promise<Response> {
-  const res = await fetch(validatedUrl.href, { redirect: "follow" });
-
-  // After following redirects, verify the final URL is still on an allowed host
-  if (res.url) {
-    const finalHost = new URL(res.url).hostname;
-    if (
-      !ALLOWED_HOSTS.some((h) => finalHost === h || finalHost.endsWith(`.${h}`))
-    ) {
-      throw new Error("URL redirected to a disallowed host.");
-    }
-  }
-
-  // Reject responses that are too large
   const contentLength = res.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
     throw new Error("Response too large.");
   }
 
-  return res;
-}
-
-async function fetchGenericJson(url: URL): Promise<string> {
-  const res = await safeFetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch workflow (${res.status})`);
   const text = await res.text();
   if (text.length > MAX_RESPONSE_BYTES) throw new Error("Response too large.");
-  JSON.parse(text); // validate
-  return text;
-}
 
-async function fetchN8nWorkflow(templateId: string): Promise<string> {
-  const res = await safeFetch(
-    validateUrl(`${N8N_TEMPLATES_API}/${templateId}`),
-  );
-  if (!res.ok) throw new Error(`n8n template not found (${res.status})`);
-
-  const text = await res.text();
-  if (text.length > MAX_RESPONSE_BYTES) throw new Error("Response too large.");
   const data = JSON.parse(text);
   const template = data?.workflow ?? data;
   const workflow = template?.workflow ?? template;
