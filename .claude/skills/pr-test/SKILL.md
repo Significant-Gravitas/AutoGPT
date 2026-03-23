@@ -368,7 +368,7 @@ agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{description}.
 
 For each screenshot:
 1. Use the `Read` tool to display the PNG file (Claude can read images)
-2. Write a 2-3 sentence explanation below it describing:
+2. Write a 1-2 sentence explanation below it describing:
    - What page/state is being shown
    - What the screenshot proves (which test scenario it validates)
    - Any notable details visible in the UI
@@ -379,7 +379,7 @@ Format the output like this:
 ### Screenshot 1: {descriptive title}
 [Read the PNG file here]
 
-**What it shows:** {2-3 sentence explanation of what this screenshot proves}
+**What it shows:** {1-2 sentence explanation of what this screenshot proves}
 
 ---
 ```
