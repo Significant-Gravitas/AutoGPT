@@ -617,7 +617,10 @@ async def configure_user_auto_top_up(
         else:
             await user_credit_model.top_up_credits(user_id, 0)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        known_messages = ("must not be negative", "already exists for user")
+        if any(msg in str(e) for msg in known_messages):
+            raise HTTPException(status_code=422, detail=str(e))
+        raise
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)

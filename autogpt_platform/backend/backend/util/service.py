@@ -713,7 +713,8 @@ def get_service_client(
                     return expected_return.validate_python(result)
                 except Exception as e:
                     logger.warning(
-                        "RPC return type validation failed, using raw result: %s", e
+                        "RPC return type validation failed, using raw result: %s",
+                        type(e).__name__,
                     )
                     return result
             return result
