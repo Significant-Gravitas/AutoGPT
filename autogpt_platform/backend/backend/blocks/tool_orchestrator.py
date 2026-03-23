@@ -1327,21 +1327,15 @@ class ToolOrchestratorBlock(Block):
             }
 
         # Build SDK options
-        sdk_options: dict[str, Any] = {
-            "system_prompt": input_data.sys_prompt or "",
-            "mcp_servers": {"graph_tools": mcp_server},
-            "allowed_tools": allowed_tools,
-            "disallowed_tools": disallowed_tools,
-            "cwd": "/tmp",
-            "env": sdk_env,
-        }
-
-        # Resolve model name for SDK
-        model_value = input_data.model.value
-        if model_value:
-            sdk_options["model"] = model_value
-
-        options = ClaudeAgentOptions(**sdk_options)  # type: ignore[arg-type]
+        options = ClaudeAgentOptions(
+            system_prompt=input_data.sys_prompt or "",
+            mcp_servers={"graph_tools": mcp_server},
+            allowed_tools=allowed_tools,
+            disallowed_tools=disallowed_tools,
+            cwd="/tmp",
+            env=sdk_env,
+            model=input_data.model.value or None,
+        )
 
         # Build user message from prompt
         user_parts = []
