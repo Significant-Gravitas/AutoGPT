@@ -5,7 +5,7 @@ CREATE TYPE "TallyComputationStatus" AS ENUM ('PENDING', 'RUNNING', 'READY', 'FA
 CREATE TABLE "UserInvite" (
     "email" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT,
     "tallyUnderstanding" JSONB,
     "tallyStatus" "TallyComputationStatus" NOT NULL DEFAULT 'PENDING',

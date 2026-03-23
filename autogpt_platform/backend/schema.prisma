@@ -84,7 +84,7 @@ enum TallyComputationStatus {
 model UserInvite {
   email              String                 @id
   createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
+  updatedAt          DateTime               @default(now()) @updatedAt
   userId             String?                @unique
   User               User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   tallyUnderstanding Json?
