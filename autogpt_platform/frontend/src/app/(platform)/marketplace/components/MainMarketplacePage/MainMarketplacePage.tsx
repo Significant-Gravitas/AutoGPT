@@ -13,8 +13,14 @@ function PageSeparator({ className }: { className?: string }) {
 }
 
 export function MainMarketplacePage() {
-  const { featuredAgents, topAgents, featuredCreators, isLoading, hasError, refetchAll } =
-    useMainMarketplacePage();
+  const {
+    featuredAgents,
+    topAgents,
+    featuredCreators,
+    isLoading,
+    hasError,
+    refetchAll,
+  } = useMainMarketplacePage();
 
   if (isLoading) {
     return <MainMarketplacePageLoading />;
