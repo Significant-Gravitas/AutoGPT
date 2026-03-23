@@ -170,7 +170,10 @@ done
 
 ```bash
 cd $PLATFORM_DIR && docker compose build --no-cache 2>&1 | tail -20
+if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "ERROR: Docker build failed"; exit 1; fi
+
 cd $PLATFORM_DIR && docker compose up -d 2>&1 | tail -20
+if [ ${PIPESTATUS[0]} -ne 0 ]; then echo "ERROR: Docker compose up failed"; exit 1; fi
 ```
 
 **Note:** If the container appears to be running old code (e.g. missing PR changes), use `docker compose build --no-cache` to force a full rebuild. Docker BuildKit may sometimes reuse cached `COPY` layers from a previous build on a different branch.
