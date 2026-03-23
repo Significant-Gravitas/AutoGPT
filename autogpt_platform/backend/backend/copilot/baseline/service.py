@@ -49,6 +49,12 @@ from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import compress_context
+from backend.util.tool_call_loop import (
+    LLMLoopResponse,
+    LLMToolCall,
+    ToolCallResult,
+    tool_call_loop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -222,188 +228,230 @@ async def stream_chat_completion_baseline(
     assistant_text = ""
     text_block_id = str(uuid.uuid4())
     text_started = False
-    step_open = False
     # Token usage accumulators — populated from streaming chunks
     turn_prompt_tokens = 0
     turn_completion_tokens = 0
     _stream_error = False  # Track whether an error occurred during streaming
-    try:
-        for _round in range(_MAX_TOOL_ROUNDS):
-            # Open a new step for each LLM round
-            yield StreamStartStep()
-            step_open = True
 
-            # Stream a response from the model
-            create_kwargs: dict[str, Any] = dict(
-                model=config.model,
-                messages=openai_messages,
-                stream=True,
-                stream_options={"include_usage": True},
-            )
-            if tools:
-                create_kwargs["tools"] = tools
-            response = await _get_openai_client().chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
+    # Event queue for streaming — the shared loop callbacks append events
+    # here, and the outer generator drains them after each loop step.
+    pending_events: list[StreamBaseResponse] = []
 
-            # Accumulate streamed response (text + tool calls)
-            round_text = ""
-            tool_calls_by_index: dict[int, dict[str, str]] = {}
+    # -- Callbacks for the shared tool_call_loop --
 
-            async for chunk in response:
-                # Capture token usage from the streaming chunk.
-                # OpenRouter normalises all providers into OpenAI format
-                # where prompt_tokens already includes cached tokens
-                # (unlike Anthropic's native API). Use += to sum all
-                # tool-call rounds since each API call is independent.
-                # NOTE: stream_options={"include_usage": True} is not
-                # universally supported — some providers (Mistral, Llama
-                # via OpenRouter) always return chunk.usage=None. When
-                # that happens, tokens stay 0 and the tiktoken fallback
-                # below activates. Fail-open: one round is estimated.
-                if chunk.usage:
-                    turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                    turn_completion_tokens += chunk.usage.completion_tokens or 0
+    async def _llm_caller(
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMLoopResponse:
+        """Stream an OpenAI-compatible response and collect results."""
+        nonlocal turn_prompt_tokens, turn_completion_tokens
+        nonlocal text_started, text_block_id, assistant_text
 
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if not delta:
-                    continue
+        pending_events.append(StreamStartStep())
 
-                # Text content
-                if delta.content:
-                    if not text_started:
-                        yield StreamTextStart(id=text_block_id)
-                        text_started = True
-                    round_text += delta.content
-                    yield StreamTextDelta(id=text_block_id, delta=delta.content)
+        create_kwargs: dict[str, Any] = dict(
+            model=config.model,
+            messages=messages,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        if tools:
+            create_kwargs["tools"] = tools
+        response = await _get_openai_client().chat.completions.create(**create_kwargs)  # type: ignore[arg-type]
 
-                # Tool call fragments (streamed incrementally)
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index
-                        if idx not in tool_calls_by_index:
-                            tool_calls_by_index[idx] = {
-                                "id": "",
-                                "name": "",
-                                "arguments": "",
-                            }
-                        entry = tool_calls_by_index[idx]
-                        if tc.id:
-                            entry["id"] = tc.id
-                        if tc.function and tc.function.name:
-                            entry["name"] = tc.function.name
-                        if tc.function and tc.function.arguments:
-                            entry["arguments"] += tc.function.arguments
+        round_text = ""
+        tool_calls_by_index: dict[int, dict[str, str]] = {}
 
-            # Close text block if we had one this round
-            if text_started:
-                yield StreamTextEnd(id=text_block_id)
-                text_started = False
-                text_block_id = str(uuid.uuid4())
+        async for chunk in response:
+            if chunk.usage:
+                turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                turn_completion_tokens += chunk.usage.completion_tokens or 0
 
-            # Accumulate text for session persistence
-            assistant_text += round_text
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if not delta:
+                continue
 
-            # No tool calls -> model is done
-            if not tool_calls_by_index:
-                yield StreamFinishStep()
-                step_open = False
-                break
+            if delta.content:
+                if not text_started:
+                    pending_events.append(StreamTextStart(id=text_block_id))
+                    text_started = True
+                round_text += delta.content
+                pending_events.append(
+                    StreamTextDelta(id=text_block_id, delta=delta.content)
+                )
 
-            # Close step before tool execution
-            yield StreamFinishStep()
-            step_open = False
-
-            # Append the assistant message with tool_calls to context.
-            assistant_msg: dict[str, Any] = {"role": "assistant"}
-            if round_text:
-                assistant_msg["content"] = round_text
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": tc["arguments"] or "{}",
-                    },
-                }
-                for tc in tool_calls_by_index.values()
-            ]
-            openai_messages.append(assistant_msg)
-
-            # Execute each tool call and stream events
-            for tc in tool_calls_by_index.values():
-                tool_call_id = tc["id"]
-                tool_name = tc["name"]
-                raw_args = tc["arguments"] or "{}"
-                try:
-                    tool_args = orjson.loads(raw_args)
-                except orjson.JSONDecodeError as parse_err:
-                    parse_error = (
-                        f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
-                    )
-                    logger.warning("[Baseline] %s", parse_error)
-                    yield StreamToolOutputAvailable(
-                        toolCallId=tool_call_id,
-                        toolName=tool_name,
-                        output=parse_error,
-                        success=False,
-                    )
-                    openai_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "content": parse_error,
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_by_index:
+                        tool_calls_by_index[idx] = {
+                            "id": "",
+                            "name": "",
+                            "arguments": "",
                         }
-                    )
-                    continue
+                    entry = tool_calls_by_index[idx]
+                    if tc.id:
+                        entry["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        entry["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        entry["arguments"] += tc.function.arguments
 
-                yield StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
-                yield StreamToolInputAvailable(
+        # Close text block
+        if text_started:
+            pending_events.append(StreamTextEnd(id=text_block_id))
+            text_started = False
+            text_block_id = str(uuid.uuid4())
+
+        assistant_text += round_text
+        pending_events.append(StreamFinishStep())
+
+        # Convert to shared format
+        llm_tool_calls = []
+        for tc in tool_calls_by_index.values():
+            llm_tool_calls.append(
+                LLMToolCall(
+                    id=tc["id"],
+                    name=tc["name"],
+                    arguments=tc["arguments"] or "{}",
+                )
+            )
+
+        return LLMLoopResponse(
+            response_text=round_text or None,
+            tool_calls=llm_tool_calls,
+            raw_response=None,  # Not needed for baseline conversation updater
+            prompt_tokens=0,  # Tracked via nonlocal accumulators
+            completion_tokens=0,
+        )
+
+    async def _tool_executor(
+        tool_call: LLMToolCall,
+        tools: list[dict[str, Any]],
+    ) -> ToolCallResult:
+        """Execute a tool via the copilot tool registry."""
+        tool_call_id = tool_call.id
+        tool_name = tool_call.name
+        raw_args = tool_call.arguments or "{}"
+
+        try:
+            tool_args = orjson.loads(raw_args)
+        except orjson.JSONDecodeError as parse_err:
+            parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
+            logger.warning("[Baseline] %s", parse_error)
+            pending_events.append(
+                StreamToolOutputAvailable(
                     toolCallId=tool_call_id,
                     toolName=tool_name,
-                    input=tool_args,
+                    output=parse_error,
+                    success=False,
                 )
+            )
+            return ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=parse_error,
+                is_error=True,
+            )
 
-                # Execute via shared tool registry
-                try:
-                    result: StreamToolOutputAvailable = await execute_tool(
-                        tool_name=tool_name,
-                        parameters=tool_args,
-                        user_id=user_id,
-                        session=session,
-                        tool_call_id=tool_call_id,
-                    )
-                    yield result
-                    tool_output = (
-                        result.output
-                        if isinstance(result.output, str)
-                        else str(result.output)
-                    )
-                except Exception as e:
-                    error_output = f"Tool execution error: {e}"
-                    logger.error(
-                        "[Baseline] Tool %s failed: %s",
-                        tool_name,
-                        error_output,
-                        exc_info=True,
-                    )
-                    yield StreamToolOutputAvailable(
-                        toolCallId=tool_call_id,
-                        toolName=tool_name,
-                        output=error_output,
-                        success=False,
-                    )
-                    tool_output = error_output
+        pending_events.append(
+            StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
+        )
+        pending_events.append(
+            StreamToolInputAvailable(
+                toolCallId=tool_call_id,
+                toolName=tool_name,
+                input=tool_args,
+            )
+        )
 
-                # Append tool result to context for next round
-                openai_messages.append(
+        try:
+            result: StreamToolOutputAvailable = await execute_tool(
+                tool_name=tool_name,
+                parameters=tool_args,
+                user_id=user_id,
+                session=session,
+                tool_call_id=tool_call_id,
+            )
+            pending_events.append(result)
+            tool_output = (
+                result.output if isinstance(result.output, str) else str(result.output)
+            )
+            return ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=tool_output,
+            )
+        except Exception as e:
+            error_output = f"Tool execution error: {e}"
+            logger.error(
+                "[Baseline] Tool %s failed: %s",
+                tool_name,
+                error_output,
+                exc_info=True,
+            )
+            pending_events.append(
+                StreamToolOutputAvailable(
+                    toolCallId=tool_call_id,
+                    toolName=tool_name,
+                    output=error_output,
+                    success=False,
+                )
+            )
+            return ToolCallResult(
+                tool_call_id=tool_call_id,
+                tool_name=tool_name,
+                content=error_output,
+                is_error=True,
+            )
+
+    def _conversation_updater(
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+    ) -> None:
+        """Update OpenAI message list with assistant response + tool results."""
+        if tool_results:
+            # Build assistant message with tool_calls
+            assistant_msg: dict[str, Any] = {"role": "assistant"}
+            if response.response_text:
+                assistant_msg["content"] = response.response_text
+            assistant_msg["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in response.tool_calls
+            ]
+            messages.append(assistant_msg)
+            for tr in tool_results:
+                messages.append(
                     {
                         "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": tool_output,
+                        "tool_call_id": tr.tool_call_id,
+                        "content": tr.content,
                     }
                 )
-        else:
-            # for-loop exhausted without break -> tool-round limit hit
+        # If no tool results, just a text response — nothing to append
+        # (the text is tracked via assistant_text nonlocal)
+
+    try:
+        loop_result = await tool_call_loop(
+            messages=openai_messages,
+            tools=tools,  # type: ignore[arg-type]  # ChatCompletionToolParam is a TypedDict
+            llm_call=_llm_caller,
+            execute_tool=_tool_executor,
+            update_conversation=_conversation_updater,
+            max_iterations=_MAX_TOOL_ROUNDS,
+        )
+
+        # Drain any remaining pending events
+        for evt in pending_events:
+            yield evt
+        pending_events.clear()
+
+        if not loop_result.finished_naturally:
             limit_msg = (
                 f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
                 "without a final response."
@@ -418,11 +466,13 @@ async def stream_chat_completion_baseline(
         _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # Close any open text/step before emitting error
+        # Close any open text before emitting error
         if text_started:
             yield StreamTextEnd(id=text_block_id)
-        if step_open:
-            yield StreamFinishStep()
+        # Drain pending events (e.g. StreamFinishStep from the LLM caller)
+        for evt in pending_events:
+            yield evt
+        pending_events.clear()
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:

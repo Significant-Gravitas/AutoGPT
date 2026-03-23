@@ -9,9 +9,9 @@ the ToolOrchestratorBlock and copilot baseline can use. The loop:
 4. Appends results to the conversation
 5. Repeats until no more tool calls or max iterations reached
 
-Callers provide:
-- ``llm_call``: async function to call the LLM (any provider)
-- ``execute_tool``: async function to execute a tool call
+Callers provide callbacks for LLM calling, tool execution, and
+conversation updating. The loop is an async generator that yields
+``ToolCallLoopEvent`` objects for streaming-capable callers.
 """
 
 from __future__ import annotations
@@ -112,12 +112,16 @@ async def tool_call_loop(
     Args:
         messages: Initial conversation messages (modified in-place).
         tools: Tool function definitions (OpenAI format).
-        llm_call: Async function to call the LLM.
+        llm_call: Async function to call the LLM. The callback can
+            perform streaming internally (e.g. accumulate text deltas
+            and collect events) — it just needs to return the final
+            ``LLMLoopResponse`` with extracted tool calls.
         execute_tool: Async function to execute a tool call.
-        update_conversation: Function to update messages with LLM response + tool results.
+        update_conversation: Function to update messages with LLM
+            response and tool results.
         max_iterations: Max iterations. -1 = infinite, 0 would not loop.
-        last_iteration_message: Optional message to append on the last iteration
-            to encourage the model to finish.
+        last_iteration_message: Optional message to append on the last
+            iteration to encourage the model to finish.
 
     Returns:
         ToolCallLoopResult with the final response and conversation state.
