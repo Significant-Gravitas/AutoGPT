@@ -28,24 +28,13 @@ export async function fetchWorkflowFromUrl(
 ): Promise<FetchWorkflowResult> {
   let parsed: URL;
   try {
-    parsed = new URL(url);
+    parsed = validateUrl(url);
   } catch {
-    return { ok: false, error: "Invalid URL." };
-  }
-
-  if (parsed.protocol !== "https:") {
-    return { ok: false, error: "Only HTTPS URLs are accepted." };
-  }
-
-  const hostname = parsed.hostname;
-
-  if (
-    !ALLOWED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))
-  ) {
     return {
       ok: false,
       error:
-        "Unsupported host. URL import is supported for n8n.io workflows. " +
+        "Invalid or unsupported URL. " +
+        "URL import is supported for n8n.io workflows (HTTPS only). " +
         "For other platforms, use file upload.",
     };
   }
@@ -54,7 +43,7 @@ export async function fetchWorkflowFromUrl(
     const n8nMatch = url.match(N8N_URL_RE);
     const json = n8nMatch
       ? await fetchN8nWorkflow(n8nMatch[1])
-      : await fetchGenericJson(url);
+      : await fetchGenericJson(parsed);
     return { ok: true, json };
   } catch (err) {
     return {
@@ -65,25 +54,31 @@ export async function fetchWorkflowFromUrl(
 }
 
 /**
- * Fetch a URL and return the response text, rejecting redirects to
- * non-allowed hosts and enforcing a response size limit.
+ * Build a validated URL object, ensuring it is HTTPS and on an allowed host.
+ * Throws if validation fails. This is the single point where we convert
+ * user-supplied strings into trusted URL objects.
  */
-async function safeFetch(url: string): Promise<Response> {
-  // Defensive validation at the fetch sink (SSRF prevention)
-  const parsed = new URL(url); // caller already validated; throws on malformed
+function validateUrl(raw: string): URL {
+  const parsed = new URL(raw);
   if (parsed.protocol !== "https:") {
     throw new Error("Only HTTPS URLs are accepted.");
   }
-  const initialHost = parsed.hostname;
-  if (
-    !ALLOWED_HOSTS.some(
-      (h) => initialHost === h || initialHost.endsWith(`.${h}`),
-    )
-  ) {
+  const host = parsed.hostname;
+  if (!ALLOWED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
     throw new Error("Unsupported host.");
   }
+  return parsed;
+}
 
-  const res = await fetch(parsed.toString(), { redirect: "follow" });
+/**
+ * Fetch a validated URL, rejecting redirects to non-allowed hosts
+ * and enforcing a response size limit.
+ *
+ * Accepts a URL object (already validated) to ensure the fetch sink
+ * is never called with a raw user-supplied string.
+ */
+async function safeFetch(validatedUrl: URL): Promise<Response> {
+  const res = await fetch(validatedUrl.href, { redirect: "follow" });
 
   // After following redirects, verify the final URL is still on an allowed host
   if (res.url) {
@@ -104,7 +99,7 @@ async function safeFetch(url: string): Promise<Response> {
   return res;
 }
 
-async function fetchGenericJson(url: string): Promise<string> {
+async function fetchGenericJson(url: URL): Promise<string> {
   const res = await safeFetch(url);
   if (!res.ok) throw new Error(`Failed to fetch workflow (${res.status})`);
   const text = await res.text();
@@ -114,7 +109,9 @@ async function fetchGenericJson(url: string): Promise<string> {
 }
 
 async function fetchN8nWorkflow(templateId: string): Promise<string> {
-  const res = await safeFetch(`${N8N_TEMPLATES_API}/${templateId}`);
+  const res = await safeFetch(
+    validateUrl(`${N8N_TEMPLATES_API}/${templateId}`),
+  );
   if (!res.ok) throw new Error(`n8n template not found (${res.status})`);
 
   const text = await res.text();
