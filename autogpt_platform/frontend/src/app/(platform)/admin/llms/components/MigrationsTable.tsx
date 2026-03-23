@@ -10,7 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/atoms/Table/Table";
+} from "@/components/__legacy__/ui/table";
 import { revertLlmMigrationAction } from "../actions";
 
 export function MigrationsTable({
