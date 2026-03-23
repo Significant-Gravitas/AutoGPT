@@ -157,10 +157,11 @@ SELECT
     m."id"
 FROM (VALUES
     -- OpenAI costs
-    ('o3', 4),
+    ('o3-2025-04-16', 4),
     ('o3-mini', 2),
     ('o1', 16),
     ('o1-mini', 4),
+    ('gpt-5.2-2025-12-11', 5),
     ('gpt-5-2025-08-07', 2),
     ('gpt-5.1-2025-11-13', 5),
     ('gpt-5-mini-2025-08-07', 1),
@@ -172,6 +173,8 @@ FROM (VALUES
     ('gpt-4o', 3),
     ('gpt-4-turbo', 10),
     -- Anthropic costs
+    ('claude-opus-4-6', 21),
+    ('claude-sonnet-4-6', 5),
     ('claude-opus-4-1-20250805', 21),
     ('claude-opus-4-20250514', 21),
     ('claude-sonnet-4-20250514', 5),
@@ -196,7 +199,15 @@ FROM (VALUES
     ('dolphin-mistral:latest', 1),
     -- OpenRouter costs
     ('google/gemini-2.5-pro-preview-03-25', 4),
+    ('google/gemini-2.5-pro', 4),
+    ('google/gemini-3.1-pro-preview', 5),
+    ('google/gemini-3-flash-preview', 3),
+    ('google/gemini-3.1-flash-lite-preview', 1),
     ('mistralai/mistral-nemo', 1),
+    ('mistralai/mistral-large-2512', 3),
+    ('mistralai/mistral-medium-3.1', 2),
+    ('mistralai/mistral-small-3.2-24b-instruct', 1),
+    ('mistralai/codestral-2508', 2),
     ('cohere/command-r-08-2024', 1),
     ('cohere/command-r-plus-08-2024', 3),
     ('cohere/command-a-03-2025', 2),
@@ -245,5 +256,5 @@ FROM (VALUES
 ) AS costs(model_slug, cost)
 JOIN model_ids m ON m."slug" = costs.model_slug
 JOIN provider_ids p ON p."id" = m."providerId"
-ON CONFLICT ("llmModelId", "credentialProvider", "unit") DO NOTHING;
+ON CONFLICT ("llmModelId", "credentialProvider", "unit") WHERE "credentialId" IS NULL DO NOTHING;
 
