@@ -111,8 +111,9 @@ export default function LibraryImportDialog() {
                 <button
                   key={p.label}
                   type="button"
+                  disabled={importWorkflow.isSubmitting}
                   onClick={() => importWorkflow.setUrlValue(p.url)}
-                  className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600"
+                  className="rounded-full border border-neutral-200 px-3 py-1 text-xs text-neutral-600 hover:border-purple-400 hover:text-purple-600 disabled:opacity-50"
                 >
                   {p.label}
                 </button>
