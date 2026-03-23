@@ -1,5 +1,7 @@
 import logging
 import re
+import types
+import uuid as uuid_mod
 from collections import Counter
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any
@@ -326,6 +328,13 @@ class ToolOrchestratorBlock(Block):
             description="Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit.",
             advanced=True,
             default=0,
+        )
+        use_sdk_mode: bool = SchemaField(
+            title="Use Claude Agent SDK",
+            default=False,
+            description="Use Claude Agent SDK for tool orchestration (Claude models only). "
+            "The SDK manages the conversation loop and tool calling natively.",
+            advanced=True,
         )
         conversation_compaction: bool = SchemaField(
             default=True,
@@ -1048,6 +1057,210 @@ class ToolOrchestratorBlock(Block):
             yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
         yield "conversations", current_prompt
 
+    def _create_graph_mcp_server(
+        self,
+        tool_functions: list[dict[str, Any]],
+        execution_params: ExecutionParams,
+        execution_processor: "ExecutionProcessor",
+    ):
+        """Create an MCP server from graph-connected tool functions.
+
+        Converts the OpenAI-format tool signatures (from _create_tool_node_signatures)
+        into MCP tools that execute downstream blocks via _execute_single_tool_with_manager.
+        """
+        from claude_agent_sdk import create_sdk_mcp_server
+        from claude_agent_sdk import tool as sdk_tool
+
+        sdk_tools = []
+        for tf in tool_functions:
+            func_def = tf["function"]
+            tool_name = func_def["name"]
+            tool_desc = func_def.get("description", "")
+            tool_params = func_def.get(
+                "parameters", {"type": "object", "properties": {}}
+            )
+
+            # Build input schema for MCP (same as tool_adapter.py pattern)
+            input_schema = {
+                "type": "object",
+                "properties": tool_params.get("properties", {}),
+                "required": tool_params.get("required", []),
+            }
+
+            # Capture variables for closure
+            _tf = tf
+            _block = self
+
+            def _make_handler(_tool_func=_tf, _self=_block):
+                async def handler(args: dict[str, Any]) -> dict[str, Any]:
+                    func = _tool_func["function"]
+                    field_mapping = func.get("_field_mapping", {})
+
+                    # Build input_data with original field names
+                    input_data = {}
+                    for clean_name, value in args.items():
+                        original_name = field_mapping.get(clean_name, clean_name)
+                        input_data[original_name] = value
+
+                    # Create mock tool_call object for _execute_single_tool_with_manager
+                    mock_tool_call = types.SimpleNamespace(
+                        id=f"sdk-{uuid_mod.uuid4().hex[:12]}",
+                        function=types.SimpleNamespace(
+                            name=func["name"],
+                            arguments=json.dumps(args),
+                        ),
+                    )
+
+                    tool_info = ToolInfo(
+                        tool_call=mock_tool_call,
+                        tool_name=func["name"],
+                        tool_def=_tool_func,
+                        input_data=input_data,
+                        field_mapping=field_mapping,
+                    )
+
+                    try:
+                        result = await _self._execute_single_tool_with_manager(
+                            tool_info, execution_params, execution_processor
+                        )
+                        # result is a tool response dict with "content" key
+                        content = result.get("content", "Tool executed successfully")
+                        if isinstance(content, str):
+                            text = content
+                        else:
+                            text = json.dumps(content)
+                        return {
+                            "content": [{"type": "text", "text": text}],
+                            "isError": False,
+                        }
+                    except Exception as e:
+                        logger.error("SDK tool execution failed: %s", e)
+                        return {
+                            "content": [{"type": "text", "text": f"Error: {e}"}],
+                            "isError": True,
+                        }
+
+                return handler
+
+            decorated = sdk_tool(tool_name, tool_desc, input_schema)(_make_handler())
+            sdk_tools.append(decorated)
+
+        return create_sdk_mcp_server(
+            name="graph_tools",
+            version="1.0.0",
+            tools=sdk_tools,
+        )
+
+    async def _execute_tools_sdk_mode(
+        self,
+        input_data: "ToolOrchestratorBlock.Input",
+        credentials: llm.APIKeyCredentials,
+        tool_functions: list[dict[str, Any]],
+        prompt: list[dict],
+        execution_params: ExecutionParams,
+        execution_processor: "ExecutionProcessor",
+    ):
+        """Execute tools using the Claude Agent SDK.
+
+        The SDK manages the conversation loop and tool calling natively.
+        Graph-connected blocks are exposed as MCP tools.
+        """
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            ClaudeSDKClient,
+            ResultMessage,
+            TextBlock,
+        )
+
+        # Build MCP server from graph-connected tools
+        mcp_server = self._create_graph_mcp_server(
+            tool_functions, execution_params, execution_processor
+        )
+
+        # Build allowed tools list (MCP-prefixed names)
+        MCP_PREFIX = "mcp__graph_tools__"
+        allowed_tools = [
+            f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
+        ]
+
+        # Disable ALL SDK built-in tools — only graph tools available
+        disallowed_tools = [
+            "Bash",
+            "WebFetch",
+            "AskUserQuestion",
+            "Read",
+            "Write",
+            "Edit",
+            "Glob",
+            "Grep",
+            "Task",
+            "WebSearch",
+            "TodoWrite",
+        ]
+
+        # Build SDK options
+        sdk_options: dict[str, Any] = {
+            "system_prompt": input_data.sys_prompt or "",
+            "mcp_servers": {"graph_tools": mcp_server},
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": disallowed_tools,
+            "cwd": "/tmp",
+            "env": {
+                "ANTHROPIC_API_KEY": credentials.api_key.get_secret_value(),
+            },
+        }
+
+        # Resolve model name for SDK
+        model_value = input_data.model.value
+        if model_value:
+            sdk_options["model"] = model_value
+
+        options = ClaudeAgentOptions(**sdk_options)  # type: ignore[arg-type]
+
+        # Build user message from prompt
+        user_parts = []
+        for p in prompt:
+            if p.get("role") == "user" and p.get("content"):
+                user_parts.append(str(p["content"]))
+            elif p.get("role") == "system" and p.get("content"):
+                user_parts.append(str(p["content"]))
+        user_message = "\n\n".join(user_parts) if user_parts else input_data.prompt
+
+        # Run SDK client
+        response_parts: list[str] = []
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+
+        async with ClaudeSDKClient(options=options) as client:
+            await client.query(user_message)
+
+            async for sdk_msg in client.receive_response():
+                if isinstance(sdk_msg, AssistantMessage):
+                    for block in sdk_msg.content:
+                        if isinstance(block, TextBlock):
+                            response_parts.append(block.text)
+                elif isinstance(sdk_msg, ResultMessage):
+                    if sdk_msg.usage:
+                        total_prompt_tokens += getattr(sdk_msg.usage, "input_tokens", 0)
+                        total_completion_tokens += getattr(
+                            sdk_msg.usage, "output_tokens", 0
+                        )
+
+        response_text = "".join(response_parts)
+
+        # Track usage
+        self.merge_stats(
+            NodeExecutionStats(
+                input_token_count=total_prompt_tokens,
+                output_token_count=total_completion_tokens,
+                llm_call_count=1,
+            )
+        )
+
+        yield "finished", response_text
+        yield "conversations", prompt
+
     async def run(
         self,
         input_data: Input,
@@ -1157,6 +1370,28 @@ class ToolOrchestratorBlock(Block):
             )
 
         # Execute tools based on the selected mode
+        if input_data.use_sdk_mode:
+            # SDK mode: Claude Agent SDK manages conversation + tool calling
+            execution_params = ExecutionParams(
+                user_id=user_id,
+                graph_id=graph_id,
+                node_id=node_id,
+                graph_version=graph_version,
+                graph_exec_id=graph_exec_id,
+                node_exec_id=node_exec_id,
+                execution_context=execution_context,
+            )
+            async for result in self._execute_tools_sdk_mode(
+                input_data=input_data,
+                credentials=credentials,
+                tool_functions=tool_functions,
+                prompt=prompt,
+                execution_params=execution_params,
+                execution_processor=execution_processor,
+            ):
+                yield result
+            return
+
         if input_data.agent_mode_max_iterations != 0:
             # In agent mode, execute tools directly in a loop until finished
             async for result in self._execute_tools_agent_mode(
