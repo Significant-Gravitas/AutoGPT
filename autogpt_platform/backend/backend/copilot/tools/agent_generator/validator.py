@@ -554,7 +554,10 @@ class AgentValidator:
         return valid
 
     def validate_sink_input_existence(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """
         Validate that all sink_names in links and input_default keys in nodes
@@ -566,9 +569,13 @@ class AgentValidator:
         nested inputs with _#_ notation and dynamic schemas for
         AgentExecutorBlock.
 
+        This method supersedes validate_nested_sink_links — it covers nested
+        link validation with correct AgentExecutorBlock dynamic-schema support.
+
         Args:
             agent: The agent dictionary to validate
             blocks: List of available blocks with their schemas
+            node_lookup: Optional pre-built node-id → node dict
 
         Returns:
             True if all sink input fields exist, False otherwise
@@ -582,7 +589,8 @@ class AgentValidator:
         block_names = {
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
 
         def get_input_props(node: dict[str, Any]) -> dict[str, Any]:
             block_id = node.get("block_id", "")
@@ -616,6 +624,10 @@ class AgentValidator:
                 return False
 
             allows_additional = parent_schema.get("additionalProperties", False)
+            # Only anyOf is checked here because Pydantic's JSON schema
+            # emits optional/union fields via anyOf. allOf and oneOf are
+            # not currently used by any block's dict-typed inputs, so
+            # false positives from them are not a concern in practice.
             if not allows_additional and "anyOf" in parent_schema:
                 for schema_option in parent_schema.get("anyOf", []):
                     if not isinstance(schema_option, dict):
@@ -1184,16 +1196,12 @@ class AgentValidator:
                 self.validate_data_type_compatibility(agent, blocks, node_lookup),
             ),
             (
-                "Nested sink links",
-                self.validate_nested_sink_links(agent, blocks, node_lookup),
-            ),
-            (
                 "Source output existence",
                 self.validate_source_output_existence(agent, blocks, node_lookup),
             ),
             (
                 "Sink input existence",
-                self.validate_sink_input_existence(agent, blocks),
+                self.validate_sink_input_existence(agent, blocks, node_lookup),
             ),
             (
                 "Prompt double curly braces spaces",
