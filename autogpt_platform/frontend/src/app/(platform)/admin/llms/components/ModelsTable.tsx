@@ -11,7 +11,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/atoms/Table/Table";
+} from "@/components/__legacy__/ui/table";
 import { Button } from "@/components/atoms/Button/Button";
 import { toggleLlmModelAction, fetchLlmModels } from "../actions";
 import { DeleteModelModal } from "./DeleteModelModal";

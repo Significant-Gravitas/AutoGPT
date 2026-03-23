@@ -9,7 +9,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/atoms/Table/Table";
+} from "@/components/__legacy__/ui/table";
 import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { updateLlmCreatorAction } from "../actions";
