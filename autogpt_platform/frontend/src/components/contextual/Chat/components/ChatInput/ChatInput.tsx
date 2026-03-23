@@ -85,6 +85,8 @@ export function ChatInput({
           <textarea
             id={inputId}
             aria-label="Chat message input"
+            aria-describedby="chat-input-hint"
+            placeholder={isTranscribing ? "Transcribing..." : placeholder}
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}

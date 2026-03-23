@@ -59,9 +59,13 @@ from backend.util.feature_flag import initialize_launchdarkly, shutdown_launchda
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
 from .external.fastapi_app import external_api
 from .features.analytics import router as analytics_router
 from .features.integrations.router import router as integrations_router
+from .middleware.rate_limit import limiter
 from .middleware.security import SecurityHeadersMiddleware
 from .utils.cors import build_cors_params
 from .utils.openapi import sort_openapi
@@ -197,6 +201,11 @@ app = fastapi.FastAPI(
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Attach rate-limiter state so slowapi can find it via request.app.state
+app.state.limiter = limiter
+# SlowAPIMiddleware intercepts RateLimitExceeded before it reaches route handlers
+app.add_middleware(SlowAPIMiddleware)
+
 # Add GZip compression middleware for large responses (like /api/blocks)
 app.add_middleware(GZipMiddleware, minimum_size=50_000)  # 50KB threshold
 
@@ -278,6 +287,7 @@ async def validation_error_handler(
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
 app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
 app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
+app.add_exception_handler(RateLimitExceeded, handle_internal_http_error(429, False))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
@@ -370,8 +380,11 @@ class AgentServer(backend.util.service.AppProcess):
             app=app,
             **cors_params,
             allow_credentials=True,
-            allow_methods=["*"],  # Allows all methods
-            allow_headers=["*"],  # Allows all headers
+            # Enumerate only the HTTP methods the API actually uses rather than
+            # allowing every verb.  OPTIONS is required for CORS pre-flight.
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            # Enumerate only the headers the API reads from cross-origin requests.
+            allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
         )
 
         # Only add debug in local environment (not supported in all uvicorn versions)

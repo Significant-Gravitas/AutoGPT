@@ -91,6 +91,18 @@ class SecurityHeadersMiddleware:
                 headers[b"X-Frame-Options"] = b"DENY"
                 headers[b"X-XSS-Protection"] = b"1; mode=block"
                 headers[b"Referrer-Policy"] = b"strict-origin-when-cross-origin"
+                # Enforce HTTPS for 1 year; includeSubDomains covers all sub-services
+                headers[b"Strict-Transport-Security"] = (
+                    b"max-age=31536000; includeSubDomains"
+                )
+                # Restrict access to powerful browser features
+                headers[b"Permissions-Policy"] = (
+                    b"camera=(), microphone=(), geolocation=(), "
+                    b"payment=(), usb=(), interest-cohort=()"
+                )
+                # Content-Security-Policy: API responses are JSON, not HTML, so a
+                # strict policy is safe here. The frontend CSP lives in next.config.mjs.
+                headers[b"Content-Security-Policy"] = b"default-src 'none'"
 
                 # Add noindex header for shared execution pages
                 if "/public/shared" in path:

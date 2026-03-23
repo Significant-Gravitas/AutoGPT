@@ -1,5 +1,61 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
+/**
+ * Security headers applied to every response from the Next.js server.
+ * These complement the backend's SecurityHeadersMiddleware.
+ */
+const securityHeaders = [
+  // Enforce HTTPS for 1 year
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=31536000; includeSubDomains",
+  },
+  // Prevent MIME-type sniffing
+  {
+    key: "X-Content-Type-Options",
+    value: "nosniff",
+  },
+  // Disallow embedding in iframes (clickjacking protection)
+  {
+    key: "X-Frame-Options",
+    value: "DENY",
+  },
+  // Control what data is sent in the Referer header
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
+  // Restrict access to powerful browser features
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  },
+  // Content-Security-Policy: allow same-origin scripts/styles, trusted CDNs,
+  // Sentry, PostHog analytics, and Supabase auth.
+  // Adjust the connect-src list when new external services are added.
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      // Scripts: self + inline eval needed by Next.js HMR and some third-party libs
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://*.posthog.com https://*.launchdarkly.com",
+      // Styles: self + inline styles used by Tailwind/shadcn
+      "style-src 'self' 'unsafe-inline'",
+      // Images: self + remote patterns already whitelisted in next.config images
+      "img-src 'self' data: blob: https:",
+      // Fonts: self + data URIs
+      "font-src 'self' data:",
+      // API connections: self + Supabase, Sentry, PostHog, LaunchDarkly, backend
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://*.posthog.com https://*.launchdarkly.com https://*.agpt.co",
+      // Frames: deny embedding of this app and block all iframes
+      "frame-src 'none'",
+      "frame-ancestors 'none'",
+      // Workers: self only
+      "worker-src 'self' blob:",
+    ].join("; "),
+  },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   productionBrowserSourceMaps: true,
@@ -52,6 +108,15 @@ const nextConfig = {
   // Vercel has its own deployment mechanism and doesn't need standalone mode
   ...(process.env.VERCEL ? {} : { output: "standalone" }),
   transpilePackages: ["geist"],
+  async headers() {
+    return [
+      {
+        // Apply security headers to all routes
+        source: "/:path*",
+        headers: securityHeaders,
+      },
+    ];
+  },
 };
 
 const isDevelopmentBuild = process.env.NODE_ENV !== "production";

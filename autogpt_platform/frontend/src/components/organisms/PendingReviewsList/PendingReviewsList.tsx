@@ -158,7 +158,7 @@ export function PendingReviewsList({
       const reviewData = reviewDataMap[review.node_exec_id];
       const autoApproveThisNode = autoApproveFutureMap[review.node_id || ""];
 
-      let parsedData: any = undefined;
+      let parsedData: unknown = undefined;
 
       if (!autoApproveThisNode) {
         if (review.editable && reviewData) {

@@ -43,7 +43,7 @@ export function CopilotShell({ children }: Props) {
 
   return (
     <div
-      className="flex overflow-hidden bg-[#EFEFF0]"
+      className="flex overflow-hidden bg-[var(--surface-sidebar)]"
       style={{ height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
     >
       {!isMobile && (
@@ -64,7 +64,7 @@ export function CopilotShell({ children }: Props) {
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
         <div className="flex min-h-0 flex-1 flex-col">
           {isCreatingSession ? (
-            <div className="flex h-full flex-1 flex-col items-center justify-center bg-[#f8f8f9]">
+            <div className="flex h-full flex-1 flex-col items-center justify-center bg-[var(--surface-chat)]">
               <div className="flex flex-col items-center gap-4">
                 <ChatLoader />
                 <Text variant="body" className="text-zinc-500">

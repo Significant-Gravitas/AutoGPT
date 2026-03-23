@@ -12,12 +12,13 @@ const queryConfig = {
   refetchOnMount: false, // Use cached data from server
 };
 
-export const useMainMarketplacePage = () => {
+export function useMainMarketplacePage() {
   // Data is prefetched on server and hydrated, these queries will use cached data
   const {
     data: featuredAgents,
     isLoading: isFeaturedAgentsLoading,
     isError: isFeaturedAgentsError,
+    refetch: refetchFeaturedAgents,
   } = useGetV2ListStoreAgents(
     { featured: true },
     {
@@ -34,6 +35,7 @@ export const useMainMarketplacePage = () => {
     data: topAgents,
     isLoading: isTopAgentsLoading,
     isError: isTopAgentsError,
+    refetch: refetchTopAgents,
   } = useGetV2ListStoreAgents(
     {
       sorted_by: "runs",
@@ -53,6 +55,7 @@ export const useMainMarketplacePage = () => {
     data: featuredCreators,
     isLoading: isFeaturedCreatorsLoading,
     isError: isFeaturedCreatorsError,
+    refetch: refetchFeaturedCreators,
   } = useGetV2ListStoreCreators(
     { featured: true, sorted_by: "num_agents" },
     {
@@ -70,11 +73,18 @@ export const useMainMarketplacePage = () => {
   const hasError =
     isFeaturedAgentsError || isTopAgentsError || isFeaturedCreatorsError;
 
+  function refetchAll() {
+    refetchFeaturedAgents();
+    refetchTopAgents();
+    refetchFeaturedCreators();
+  }
+
   return {
     featuredAgents,
     topAgents,
     featuredCreators,
     isLoading,
     hasError,
+    refetchAll,
   };
-};
+}

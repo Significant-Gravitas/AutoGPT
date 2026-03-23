@@ -34,7 +34,7 @@ export function MessageList({
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {/* Top fade shadow */}
-      <div className="pointer-events-none absolute top-0 z-10 h-8 w-full bg-gradient-to-b from-[#f8f8f9] to-transparent" />
+      <div className="pointer-events-none absolute top-0 z-10 h-8 w-full bg-gradient-to-b from-[var(--surface-chat)] to-transparent" />
 
       <div
         ref={messagesContainerRef}
@@ -108,7 +108,7 @@ export function MessageList({
       </div>
 
       {/* Bottom fade shadow */}
-      <div className="pointer-events-none absolute bottom-0 z-10 h-8 w-full bg-gradient-to-t from-[#f8f8f9] to-transparent" />
+      <div className="pointer-events-none absolute bottom-0 z-10 h-8 w-full bg-gradient-to-t from-[var(--surface-chat)] to-transparent" />
     </div>
   );
 }

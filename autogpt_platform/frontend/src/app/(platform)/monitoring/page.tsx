@@ -1,6 +1,7 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 
+import { useQuery } from "@tanstack/react-query";
 import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import {
@@ -8,19 +9,19 @@ import {
   useDeleteV1DeleteExecutionSchedule,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { okData } from "@/app/api/helpers";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import { Card } from "@/components/__legacy__/ui/card";
 import { SchedulesTable } from "@/app/(platform)/monitoring/components/SchedulesTable";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import AgentFlowList from "./components/AgentFlowList";
 import FlowRunsList from "./components/FlowRunsList";
 import FlowRunInfo from "./components/FlowRunInfo";
 import FlowInfo from "./components/FlowInfo";
 import FlowRunsStatus from "./components/FlowRunsStatus";
 
-const Monitor = () => {
-  const [flows, setFlows] = useState<LibraryAgent[]>([]);
-  const [executions, setExecutions] = useState<GraphExecutionMeta[]>([]);
+const POLL_INTERVAL_MS = 5_000;
+
+export default function Monitor() {
   const [selectedFlow, setSelectedFlow] = useState<LibraryAgent | null>(null);
   const [selectedRun, setSelectedRun] = useState<GraphExecutionMeta | null>(
     null,
@@ -29,6 +30,34 @@ const Monitor = () => {
     useState<keyof GraphExecutionJobInfo>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const api = useBackendAPI();
+
+  // Agents — polled every 5 s via React Query's built-in refetchInterval.
+  // React Query deduplicates concurrent requests, pauses on window blur, and
+  // handles errors without crashing the component.
+  const {
+    data: agentsData,
+    isLoading: agentsLoading,
+    error: agentsError,
+  } = useQuery({
+    queryKey: ["monitoring", "agents"],
+    queryFn: () => api.listLibraryAgents(),
+    refetchInterval: POLL_INTERVAL_MS,
+    retry: 2,
+  });
+
+  const {
+    data: executionsData,
+    isLoading: executionsLoading,
+    error: executionsError,
+  } = useQuery({
+    queryKey: ["monitoring", "executions"],
+    queryFn: () => api.getExecutions(),
+    refetchInterval: POLL_INTERVAL_MS,
+    retry: 2,
+  });
+
+  const flows: LibraryAgent[] = agentsData?.agents ?? [];
+  const executions: GraphExecutionMeta[] = executionsData ?? [];
 
   // Use generated API hooks for schedules
   const { data: schedulesResponse, refetch: refetchSchedules } =
@@ -45,36 +74,21 @@ const Monitor = () => {
     [deleteScheduleMutation, refetchSchedules],
   );
 
-  const fetchAgents = useCallback(() => {
-    api.listLibraryAgents().then((response) => {
-      setFlows(response.agents);
-    });
-    api.getExecutions().then((executions) => {
-      setExecutions(executions);
-    });
-  }, [api]);
-
-  useEffect(() => {
-    fetchAgents();
-  }, [fetchAgents]);
-
-  useEffect(() => {
-    const intervalId = setInterval(() => fetchAgents(), 5000);
-    return () => clearInterval(intervalId);
-  }, [fetchAgents, flows]);
-
   const column1 = "md:col-span-2 xl:col-span-3 xxl:col-span-2";
   const column2 = "md:col-span-3 lg:col-span-2 xl:col-span-3";
   const column3 = "col-span-full xl:col-span-4 xxl:col-span-5";
 
-  const handleSort = (column: keyof GraphExecutionJobInfo) => {
+  function handleSort(column: keyof GraphExecutionJobInfo) {
     if (sortColumn === column) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortColumn(column);
       setSortDirection("asc");
     }
-  };
+  }
+
+  const isLoading = agentsLoading || executionsLoading;
+  const fetchError = agentsError ?? executionsError;
 
   return (
     <div
@@ -90,6 +104,8 @@ const Monitor = () => {
           setSelectedRun(null);
           setSelectedFlow(f.id == selectedFlow?.id ? null : f);
         }}
+        isLoading={isLoading}
+        error={fetchError}
       />
       <FlowRunsList
         className={column2}
@@ -105,6 +121,7 @@ const Monitor = () => {
         })}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
+        isLoading={isLoading}
       />
       {(selectedRun && (
         <FlowRunInfo
@@ -124,7 +141,6 @@ const Monitor = () => {
             )}
             className={column3}
             refresh={() => {
-              fetchAgents();
               setSelectedFlow(null);
               setSelectedRun(null);
             }}
@@ -136,8 +152,8 @@ const Monitor = () => {
         )}
       <div className="col-span-full xl:col-span-6">
         <SchedulesTable
-          schedules={schedules} // all schedules
-          agents={flows} // for filtering purpose
+          schedules={schedules}
+          agents={flows}
           onRemoveSchedule={removeSchedule}
           sortColumn={sortColumn}
           sortDirection={sortDirection}
@@ -146,6 +162,4 @@ const Monitor = () => {
       </div>
     </div>
   );
-};
-
-export default Monitor;
+}

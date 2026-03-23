@@ -9,7 +9,9 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       <NetworkStatusMonitor />
       <Navbar />
       <AdminImpersonationBanner />
-      <section className="flex-1">{children}</section>
+      <section className="flex min-h-0 flex-1 overflow-hidden">
+        {children}
+      </section>
     </main>
   );
 }

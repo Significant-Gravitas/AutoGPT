@@ -26,7 +26,7 @@ const faviconPath = isDev
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
-  description: "Your one stop shop to creating AI Agents",
+  description: "Your one-stop shop for creating AI Agents",
   icons: {
     icon: faviconPath,
   },
