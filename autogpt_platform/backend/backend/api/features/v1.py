@@ -592,6 +592,11 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
+    """Configure auto top-up settings and perform an immediate top-up if needed.
+
+    Raises HTTPException(422) if the request parameters are invalid or if
+    the credit top-up fails.
+    """
     if request.threshold < 0:
         raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
