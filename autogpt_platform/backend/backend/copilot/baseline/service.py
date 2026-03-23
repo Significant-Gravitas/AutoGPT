@@ -48,7 +48,11 @@ from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import compress_context
+from backend.util.prompt import (
+    compress_context,
+    estimate_token_count,
+    estimate_token_count_str,
+)
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
     LLMToolCall,
@@ -502,11 +506,6 @@ async def stream_chat_completion_baseline(
             and turn_completion_tokens == 0
             and not (_stream_error and not assistant_text)
         ):
-            from backend.util.prompt import (
-                estimate_token_count,
-                estimate_token_count_str,
-            )
-
             turn_prompt_tokens = max(
                 estimate_token_count(openai_messages, model=config.model), 1
             )
