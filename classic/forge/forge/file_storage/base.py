@@ -252,11 +252,14 @@ class FileSyncHandler(FileSystemEventHandler):
 
         file_path = Path(event.src_path).relative_to(self.path)
         content = file_path.read_bytes()
-        # Must execute write_file synchronously because the hook is synchronous
-        # TODO: Schedule write operation using asyncio.create_task (non-blocking)
-        asyncio.get_event_loop().run_until_complete(
-            self.storage.write_file(file_path, content)
-        )
+
+        try:
+            # Fire-and-forget the async write (non-blocking for the watchdog observer thread)
+            asyncio.create_task(self.storage.write_file(file_path, content))
+        except RuntimeError: # Backward Compaitability safeguard
+            asyncio.get_event_loop().run_until_complete(
+                self.storage.write_file(file_path, content)
+            )
 
     def on_created(self, event: FileSystemEvent):
         if event.is_directory:
@@ -265,11 +268,13 @@ class FileSyncHandler(FileSystemEventHandler):
 
         file_path = Path(event.src_path).relative_to(self.path)
         content = file_path.read_bytes()
-        # Must execute write_file synchronously because the hook is synchronous
-        # TODO: Schedule write operation using asyncio.create_task (non-blocking)
-        asyncio.get_event_loop().run_until_complete(
-            self.storage.write_file(file_path, content)
-        )
+        try:
+            # Fire-and-forget the async write (non-blocking for the watchdog observer thread)
+            asyncio.create_task(self.storage.write_file(file_path, content))
+        except RuntimeError: # Backward compatibility safeguards
+            asyncio.get_event_loop().run_until_complete(
+                self.storage.write_file(file_path, content)
+            )
 
     def on_deleted(self, event: FileSystemEvent):
         if event.is_directory:
