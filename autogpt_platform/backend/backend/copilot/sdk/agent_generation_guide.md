@@ -185,12 +185,12 @@ call in a loop until the task is complete:
 - Node 4: `AgentExecutorBlock` (sub-agent B — same pattern)
 - Node 5: `AgentOutputBlock` (input_default: `{"name": "result"}`)
 - Links:
-  - Input→SDM: `source_name: "result"`, `sink_name: "prompt"`
-  - SDM→Agent A (per input field): `source_name: "tools"`,
+  - Input→ToolOrchestrator: `source_name: "result"`, `sink_name: "prompt"`
+  - ToolOrchestrator→Agent A (per input field): `source_name: "tools"`,
     `sink_name: "<agent_a_input_field>"`
-  - SDM→Agent B (per input field): `source_name: "tools"`,
+  - ToolOrchestrator→Agent B (per input field): `source_name: "tools"`,
     `sink_name: "<agent_b_input_field>"`
-  - SDM→Output: `source_name: "finished"`, `sink_name: "value"`
+  - ToolOrchestrator→Output: `source_name: "finished"`, `sink_name: "value"`
 
 **Example — Orchestrator calling regular blocks as tools:**
 - Node 1: `AgentInputBlock` (input_default: `{"name": "task"}`)
@@ -200,10 +200,10 @@ call in a loop until the task is complete:
 - Node 4: `AITextGeneratorBlock` (another regular block as a tool)
 - Node 5: `AgentOutputBlock` (input_default: `{"name": "result"}`)
 - Links:
-  - Input→SDM: `source_name: "result"`, `sink_name: "prompt"`
-  - SDM→GetWebpage: `source_name: "tools"`, `sink_name: "url"`
-  - SDM→AITextGenerator: `source_name: "tools"`, `sink_name: "prompt"`
-  - SDM→Output: `source_name: "finished"`, `sink_name: "value"`
+  - Input→ToolOrchestrator: `source_name: "result"`, `sink_name: "prompt"`
+  - ToolOrchestrator→GetWebpage: `source_name: "tools"`, `sink_name: "url"`
+  - ToolOrchestrator→AITextGenerator: `source_name: "tools"`, `sink_name: "prompt"`
+  - ToolOrchestrator→Output: `source_name: "finished"`, `sink_name: "value"`
 
 Regular blocks work exactly like sub-agents as tools — wire each input
 field from `source_name: "tools"` on the ToolOrchestrator side.
