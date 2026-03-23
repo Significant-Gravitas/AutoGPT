@@ -22,7 +22,9 @@ class FixAgentGraphTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Auto-fix common agent JSON issues (UUIDs, types, credentials, spacing, etc.). "
+            "Auto-fix common agent JSON issues: missing/invalid UUIDs, StoreValueBlock prerequisites, "
+            "double curly brace escaping, AddToList/AddToDictionary prerequisites, credentials, "
+            "node spacing, AI model defaults, link static properties, and type mismatches. "
             "Returns fixed JSON and list of fixes applied."
         )
 

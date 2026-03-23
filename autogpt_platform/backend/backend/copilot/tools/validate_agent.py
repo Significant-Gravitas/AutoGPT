@@ -21,7 +21,11 @@ class ValidateAgentGraphTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Validate agent JSON for correctness (block_ids, links, types, schemas). On failure, use fix_agent_graph to auto-fix."
+        return (
+            "Validate agent JSON for correctness: block_ids, links, required fields, "
+            "type compatibility, nested sink notation, prompt brace escaping, "
+            "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix."
+        )
 
     @property
     def requires_auth(self) -> bool:

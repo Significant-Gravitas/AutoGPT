@@ -34,7 +34,7 @@ Examples:
 @@agptfile:/home/user/script.py
 ```
 
-**Structured data**: When the entire argument is a single file reference, the platform auto-parses by extension/MIME. Supported: JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel (.xlsx only). Unrecognised formats return plain string.
+**Structured data**: When the entire argument is a single file reference, the platform auto-parses by extension/MIME. Supported: JSON, JSONL, CSV, TSV, YAML, TOML, Parquet, Excel (.xlsx only; legacy `.xls` is NOT supported). Unrecognised formats return plain string.
 
 **Type coercion**: The platform auto-coerces expanded string values to match block input types (e.g. JSON string → `list[list[str]]`).
 
@@ -139,11 +139,11 @@ def _build_storage_supplement(
 ## Tool notes
 
 ### Shell & filesystem
-- Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
+- The SDK built-in Bash tool is NOT available. Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
 - SDK file tools (Read/Write/Edit/Glob/Grep) and `bash_exec` share one filesystem — use relative or absolute paths under this dir.
 - `read_workspace_file`/`write_workspace_file` operate on **persistent cloud workspace storage** (separate from the working dir).
 
-### Storage — important
+### Two storage systems — CRITICAL to understand
 1. **{storage_system_1_name}** (`{working_dir}`):
 {characteristics}
 {persistence}
