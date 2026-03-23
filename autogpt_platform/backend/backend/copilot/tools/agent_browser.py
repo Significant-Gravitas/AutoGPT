@@ -414,7 +414,7 @@ class BrowserNavigateTool(BaseTool):
             "for browser_act. Session persists (cookies/auth carry over). "
             "For static pages, prefer web_fetch. "
             "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify. "
-            "For auth: navigate to login, fill creds with browser_act, then navigate to target."
+            "For auth: navigate to login, fill creds and submit with browser_act, then navigate to target."
         )
 
     @property

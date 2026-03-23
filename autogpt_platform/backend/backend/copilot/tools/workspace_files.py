@@ -522,7 +522,8 @@ class ReadWorkspaceFileTool(BaseTool):
             "Read a file from persistent workspace. Specify file_id or path. "
             "Small text/image files return inline; large/binary return metadata+URL. "
             "Use save_to_path to copy to working dir for processing. "
-            "Use offset/length for paginated reads."
+            "Use offset/length for paginated reads. "
+            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
         )
 
     @property
@@ -720,7 +721,8 @@ class WriteWorkspaceFileTool(BaseTool):
         return (
             "Write a file to persistent workspace (survives across sessions). "
             "Provide exactly one of: content (text), content_base64 (binary), "
-            f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB."
+            f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
+            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
         )
 
     @property
@@ -881,7 +883,7 @@ class DeleteWorkspaceFileTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Delete a file from persistent workspace. Specify file_id or path."
+        return "Delete a file from persistent workspace. Specify file_id or path. Paths scoped to current session; use /sessions/<id>/... for cross-session access."
 
     @property
     def parameters(self) -> dict[str, Any]:

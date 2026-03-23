@@ -242,11 +242,11 @@ class CreateFeatureRequestTool(BaseTool):
             "properties": {
                 "title": {
                     "type": "string",
-                    "description": "Feature request title. No PII.",
+                    "description": "Feature request title. No names, emails, or company info.",
                 },
                 "description": {
                     "type": "string",
-                    "description": "What the user wants and why. No PII.",
+                    "description": "What the user wants and why. No names, emails, or company info.",
                 },
                 "existing_issue_id": {
                     "type": "string",
