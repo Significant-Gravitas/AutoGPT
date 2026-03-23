@@ -61,6 +61,7 @@ class _RegistryHandle(BaseModel):
 
     publish_turn_id: str = ""
     error_msg: str | None = None
+    error_already_published: bool = False
 
 
 @asynccontextmanager
@@ -93,7 +94,9 @@ async def _registry_session(
     finally:
         try:
             await stream_registry.mark_session_completed(
-                session_id, error_message=handle.error_msg
+                session_id,
+                error_message=handle.error_msg,
+                skip_error_publish=handle.error_already_published,
             )
         except (RedisError, ConnectionError, OSError):
             logger.warning(
@@ -203,6 +206,10 @@ async def collect_copilot_response(
             async for event in published_stream:
                 if err := _process_event(event, acc):
                     handle.error_msg = err
+                    # StreamError was already published to Redis by
+                    # stream_and_publish, so mark_session_completed should
+                    # not re-publish it.
+                    handle.error_already_published = True
                     raise RuntimeError(f"Copilot error: {err}")
         except Exception:
             if handle.error_msg is None:

@@ -756,6 +756,8 @@ async def _stream_listener(
 async def mark_session_completed(
     session_id: str,
     error_message: str | None = None,
+    *,
+    skip_error_publish: bool = False,
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -771,6 +773,10 @@ async def mark_session_completed(
         session_id: Session ID to mark as completed
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
+        skip_error_publish: If True, still marks the session as "failed" but
+            does NOT publish a StreamError event. Use this when the error has
+            already been published to the stream (e.g. via stream_and_publish)
+            to avoid duplicate error delivery to the frontend.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -790,7 +796,7 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
-    if error_message:
+    if error_message and not skip_error_publish:
         try:
             await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
