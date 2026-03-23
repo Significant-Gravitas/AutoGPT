@@ -131,6 +131,8 @@ async def test_simulate_block_all_retries_exhausted():
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
 
+    # All retry attempts should have been consumed
+    assert mock_client.chat.completions.create.call_count == 5  # _MAX_JSON_RETRIES
     assert len(outputs) == 1
     name, data = outputs[0]
     assert name == "error"
@@ -212,6 +214,9 @@ async def test_execute_block_dry_run_skips_real_execution():
     async def fake_simulate(block, input_data):
         yield "result", "simulated"
 
+    # Patching at helpers.simulate_block works because helpers.py imports
+    # simulate_block at the top of the module. If the import were lazy
+    # (inside the function), we'd need to patch the source module instead.
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
     ):
@@ -320,7 +325,9 @@ def test_run_block_tool_dry_run_calls_execute():
     assert "dry_run" in source
     assert 'kwargs.get("dry_run"' in source
 
-    source_execute = inspect.getsource(run_block_module)
+    # Scope to _execute method source only — module-wide search is brittle
+    # and can match unrelated text/comments.
+    source_execute = inspect.getsource(run_block_module.RunBlockTool._execute)
     # Verify dry_run is passed through to execute_block call
     assert "dry_run=dry_run" in source_execute
 

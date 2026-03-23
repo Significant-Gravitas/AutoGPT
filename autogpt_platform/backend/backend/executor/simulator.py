@@ -165,6 +165,8 @@ async def simulate_block(
                     {"role": "user", "content": user_prompt},
                 ],
             )
+            if not response.choices:
+                raise ValueError("LLM returned empty choices array")
             raw = response.choices[0].message.content or ""
             parsed = json.loads(raw)
             if not isinstance(parsed, dict):
