@@ -14,7 +14,7 @@ Test a PR/branch end-to-end by building the full platform, interacting via brows
 
 ## Arguments
 
-- `$ARGUMENTS` — worktree path (e.g. `$REPO_ROOT4`) or PR number
+- `$ARGUMENTS` — worktree path (e.g. `$REPO_ROOT`) or PR number
 - If `--fix` flag is present, auto-fix bugs found and push fixes (like pr-address loop)
 
 ## Step 0: Resolve the target
