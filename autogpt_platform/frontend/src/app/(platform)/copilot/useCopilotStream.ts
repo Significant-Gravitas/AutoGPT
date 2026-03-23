@@ -10,11 +10,14 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { deduplicateMessages, resolveInProgressTools } from "./helpers";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
+
+/** Minimum time the page must have been hidden to trigger a wake re-sync. */
+const WAKE_RESYNC_THRESHOLD_MS = 30_000;
 
 /** Fetch a fresh JWT for direct backend requests (same pattern as WebSocket). */
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -98,6 +101,10 @@ export function useCopilotStream({
   // Must be state (not ref) so that setting it triggers a re-render and
   // recomputes `isReconnecting`.
   const [reconnectExhausted, setReconnectExhausted] = useState(false);
+  // True while performing a wake re-sync (blocks chat input).
+  const [isSyncing, setIsSyncing] = useState(false);
+  // Tracks the last time the page was visible — used to detect sleep/wake gaps.
+  const lastVisibleAtRef = useRef(Date.now());
 
   function handleReconnect(sid: string) {
     if (isReconnectScheduledRef.current || !sid) return;
@@ -298,6 +305,69 @@ export function useCopilotStream({
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Wake detection: when the page becomes visible after being hidden for >30s
+  // (device sleep, tab backgrounded for a long time), refetch the session to
+  // pick up any messages the backend produced while the SSE was dead.
+  // ---------------------------------------------------------------------------
+  const handleWakeResync = useCallback(async () => {
+    if (!sessionId) return;
+
+    const elapsed = Date.now() - lastVisibleAtRef.current;
+    lastVisibleAtRef.current = Date.now();
+
+    if (document.visibilityState !== "visible") return;
+    if (elapsed < WAKE_RESYNC_THRESHOLD_MS) return;
+
+    setIsSyncing(true);
+    try {
+      const result = await refetchSession();
+      const d = result.data;
+      const backendActive =
+        d != null &&
+        typeof d === "object" &&
+        "status" in d &&
+        d.status === 200 &&
+        "data" in d &&
+        d.data != null &&
+        typeof d.data === "object" &&
+        "active_stream" in d.data &&
+        !!d.data.active_stream;
+
+      if (backendActive) {
+        // Stream is still running — resume SSE to pick up live chunks.
+        // Remove stale in-progress assistant message first (backend replays
+        // from "0-0").
+        setMessages((prev) => {
+          if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
+            return prev.slice(0, -1);
+          }
+          return prev;
+        });
+        resumeStream();
+      }
+      // If !backendActive, the refetch will update hydratedMessages via
+      // React Query, and the hydration effect below will merge them in.
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [sessionId, refetchSession, setMessages, resumeStream]);
+
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        lastVisibleAtRef.current = Date.now();
+      } else {
+        handleWakeResync();
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [handleWakeResync]);
+
   // Hydrate messages from REST API when not actively streaming
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
@@ -424,6 +494,7 @@ export function useCopilotStream({
     status,
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
+    isSyncing,
     isUserStoppingRef,
   };
 }
