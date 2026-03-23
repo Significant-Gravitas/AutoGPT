@@ -411,46 +411,62 @@ After all tests complete, output a summary to the user:
 
 ### Post test results as PR comment with screenshots
 
-Upload screenshots to the PR and post a comment with the results. GitHub PR comments support images via drag-and-drop upload URLs.
+Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees).
 
 ```bash
-# Upload each screenshot and collect markdown image links
-IMAGES=""
+# Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
+REPO="Significant-Gravitas/AutoGPT"
+SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
+SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
+
+# Step 1: Create blobs for each screenshot
+declare -a TREE_ENTRIES
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
-  # Upload to GitHub via the repo's issue attachment API
-  UPLOAD_URL=$(gh api repos/Significant-Gravitas/AutoGPT/issues/$PR_NUMBER/comments \
-    --method POST \
-    -f body="![${BASENAME}](https://github.com/user-attachments/placeholder)" 2>/dev/null | jq -r '.id' 2>/dev/null)
-  # Since GitHub doesn't have a direct image upload API, use gh CLI to attach
-  IMAGES="$IMAGES\n![${BASENAME}]($img)"
+  B64=$(base64 < "$img")
+  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
+  TREE_ENTRIES+=("-f" "tree[][path]=${SCREENSHOTS_DIR}/${BASENAME}" "-f" "tree[][mode]=100644" "-f" "tree[][type]=blob" "-f" "tree[][sha]=${BLOB_SHA}")
 done
 
-# Post the test report as a PR comment with embedded screenshots
-# Upload screenshots first by creating a temporary gist or using repo assets
-cd $WORKTREE_PATH
+# Step 2: Create a tree with all screenshot blobs
+# Build the tree JSON manually since gh api doesn't handle arrays well
+TREE_JSON='['
+FIRST=true
+for img in $RESULTS_DIR/*.png; do
+  BASENAME=$(basename "$img")
+  B64=$(base64 < "$img")
+  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
+  if [ "$FIRST" = true ]; then FIRST=false; else TREE_JSON+=','; fi
+  TREE_JSON+="{\"path\":\"${SCREENSHOTS_DIR}/${BASENAME}\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"${BLOB_SHA}\"}"
+done
+TREE_JSON+=']'
 
-# Copy screenshots into a branch and push, then reference them
-SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
-git checkout -b "$SCREENSHOTS_BRANCH" 2>/dev/null || git checkout "$SCREENSHOTS_BRANCH"
-mkdir -p "test-screenshots/PR-${PR_NUMBER}"
-cp $RESULTS_DIR/*.png "test-screenshots/PR-${PR_NUMBER}/"
-git add "test-screenshots/PR-${PR_NUMBER}/"
-git commit -m "test: add E2E test screenshots for PR #${PR_NUMBER}" --allow-empty
-git push origin "$SCREENSHOTS_BRANCH" --force
-git checkout -  # go back to original branch
+TREE_SHA=$(echo "$TREE_JSON" | gh api "repos/${REPO}/git/trees" --input - -f base_tree="" --jq '.sha' 2>/dev/null \
+  || echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
 
-# Build image URLs from the pushed branch
-REPO_URL="https://raw.githubusercontent.com/Significant-Gravitas/AutoGPT/${SCREENSHOTS_BRANCH}"
+# Step 3: Create a commit pointing to that tree
+COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+  -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+  -f tree="$TREE_SHA" \
+  --jq '.sha')
+
+# Step 4: Create or update the ref (branch) — no local checkout needed
+gh api "repos/${REPO}/git/refs" \
+  -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
+  -f sha="$COMMIT_SHA" 2>/dev/null \
+  || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
+    -X PATCH -f sha="$COMMIT_SHA" -f force=true
+
+# Step 5: Build image markdown and post the comment
+REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
   IMAGE_MARKDOWN="$IMAGE_MARKDOWN
-![${BASENAME}](${REPO_URL}/test-screenshots/PR-${PR_NUMBER}/${BASENAME})"
+![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})"
 done
 
-# Post the comment
-gh api repos/Significant-Gravitas/AutoGPT/issues/$PR_NUMBER/comments -f body="$(cat <<EOF
+gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -f body="$(cat <<EOF
 ## 🧪 E2E Test Report
 
 $(cat $RESULTS_DIR/test-report.md)
@@ -461,20 +477,7 @@ EOF
 )"
 ```
 
-**Alternative (simpler):** If you don't want to push screenshots to a branch, just post the text report without images:
-
-```bash
-gh api repos/Significant-Gravitas/AutoGPT/issues/$PR_NUMBER/comments -f body="$(cat <<EOF
-## 🧪 E2E Test Report
-
-$(cat $RESULTS_DIR/test-report.md)
-
-_Screenshots saved locally at: $RESULTS_DIR/_
-EOF
-)"
-```
-
-The first approach pushes screenshots to a temporary branch so they render inline in the PR comment. The second just references the local path. **Use the first approach when screenshots are important for review.**
+This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
 
 ## Fix mode (--fix flag)
 
