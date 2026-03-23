@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import types
@@ -6,6 +7,15 @@ from collections import Counter
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any
 
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    ResultMessage,
+    TextBlock,
+    create_sdk_mcp_server,
+)
+from claude_agent_sdk import tool as sdk_tool
 from pydantic import BaseModel
 
 import backend.blocks.llm as llm
@@ -30,6 +40,13 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
+from backend.util.tool_call_loop import (
+    LLMLoopResponse,
+    LLMToolCall,
+    ToolCallLoopResult,
+    ToolCallResult,
+    tool_call_loop,
+)
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
@@ -1003,14 +1020,6 @@ class ToolOrchestratorBlock(Block):
         execution_processor: "ExecutionProcessor",
     ):
         """Execute tools in agent mode using the shared tool-calling loop."""
-        from backend.util.tool_call_loop import (
-            LLMLoopResponse,
-            LLMToolCall,
-            ToolCallLoopResult,
-            ToolCallResult,
-            tool_call_loop,
-        )
-
         max_iterations = input_data.agent_mode_max_iterations
         use_responses_api = input_data.model.metadata.provider == "openai"
 
@@ -1173,9 +1182,6 @@ class ToolOrchestratorBlock(Block):
         Converts the OpenAI-format tool signatures (from _create_tool_node_signatures)
         into MCP tools that execute downstream blocks via _execute_single_tool_with_manager.
         """
-        from claude_agent_sdk import create_sdk_mcp_server
-        from claude_agent_sdk import tool as sdk_tool
-
         sdk_tools = []
         for tf in tool_functions:
             func_def = tf["function"]
@@ -1254,14 +1260,6 @@ class ToolOrchestratorBlock(Block):
         The SDK manages the conversation loop and tool calling natively.
         Graph-connected blocks are exposed as MCP tools.
         """
-        from claude_agent_sdk import (
-            AssistantMessage,
-            ClaudeAgentOptions,
-            ClaudeSDKClient,
-            ResultMessage,
-            TextBlock,
-        )
-
         # Build MCP server from graph-connected tools
         mcp_server = self._create_graph_mcp_server(
             tool_functions, execution_params, execution_processor
@@ -1320,7 +1318,6 @@ class ToolOrchestratorBlock(Block):
         # We must NOT cancel __anext__() mid-flight — doing so corrupts
         # the SDK's internal anyio memory stream (same pattern as
         # copilot/sdk/service.py:_iter_sdk_messages).
-        import asyncio
 
         _HEARTBEAT_INTERVAL = 10.0  # seconds
 
