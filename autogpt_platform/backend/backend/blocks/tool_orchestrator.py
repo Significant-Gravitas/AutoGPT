@@ -967,9 +967,16 @@ class ToolOrchestratorBlock(Block):
         execution_context: ExecutionContext,
         execution_processor: "ExecutionProcessor",
     ):
-        """Execute tools in agent mode with a loop until finished."""
+        """Execute tools in agent mode using the shared tool-calling loop."""
+        from backend.util.tool_call_loop import (
+            LLMLoopResponse,
+            LLMToolCall,
+            ToolCallLoopResult,
+            ToolCallResult,
+            tool_call_loop,
+        )
+
         max_iterations = input_data.agent_mode_max_iterations
-        iteration = 0
         use_responses_api = input_data.model.metadata.provider == "openai"
 
         # Execution parameters for tool execution
@@ -983,79 +990,154 @@ class ToolOrchestratorBlock(Block):
             execution_context=execution_context,
         )
 
-        current_prompt = list(prompt)
+        # LLM caller callback: wraps _attempt_llm_call_with_validation
+        async def llm_caller(
+            messages: list[dict[str, Any]],
+            tools: list[dict[str, Any]],
+        ) -> LLMLoopResponse:
+            resp = await self._attempt_llm_call_with_validation(
+                credentials, input_data, messages, tools
+            )
+            # Convert to shared format
+            tool_calls = []
+            if resp.tool_calls:
+                for tc in resp.tool_calls:
+                    tool_calls.append(
+                        LLMToolCall(
+                            id=tc.id,
+                            name=tc.function.name,
+                            arguments=tc.function.arguments,
+                        )
+                    )
+            return LLMLoopResponse(
+                response_text=resp.response,
+                tool_calls=tool_calls,
+                raw_response=resp,
+                prompt_tokens=resp.prompt_tokens,
+                completion_tokens=resp.completion_tokens,
+                reasoning=resp.reasoning,
+            )
 
-        while max_iterations < 0 or iteration < max_iterations:
-            iteration += 1
-            logger.debug(f"Agent mode iteration {iteration}")
+        # Tool executor callback: wraps _execute_single_tool_with_manager
+        async def tool_executor(
+            tool_call: LLMToolCall,
+            tools: list[dict[str, Any]],
+        ) -> ToolCallResult:
+            # Find tool definition
+            tool_def = next(
+                (t for t in tools if t["function"]["name"] == tool_call.name),
+                None,
+            )
+            if not tool_def and len(tools) == 1:
+                tool_def = tools[0]
+            if not tool_def:
+                return ToolCallResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    content=f"Unknown tool: {tool_call.name}",
+                    is_error=True,
+                )
 
-            # Prepare prompt for this iteration
-            iteration_prompt = list(current_prompt)
+            # Build ToolInfo
+            tool_args = json.loads(tool_call.arguments)
+            field_mapping = tool_def["function"].get("_field_mapping", {})
+            input_data_map = {}
+            if "function" in tool_def and "parameters" in tool_def["function"]:
+                expected_args = tool_def["function"]["parameters"].get("properties", {})
+                for clean_name in expected_args:
+                    original = field_mapping.get(clean_name, clean_name)
+                    input_data_map[original] = tool_args.get(clean_name)
 
-            # On the last iteration, add a special system message to encourage completion
-            if max_iterations > 0 and iteration == max_iterations:
-                last_iteration_message = {
-                    "role": "system",
-                    "content": f"{MAIN_OBJECTIVE_PREFIX}This is your last iteration ({iteration}/{max_iterations}). "
-                    "Try to complete the task with the information you have. If you cannot fully complete it, "
-                    "provide a summary of what you've accomplished and what remains to be done. "
-                    "Prefer finishing with a clear response rather than making additional tool calls.",
-                }
-                iteration_prompt.append(last_iteration_message)
+            # Create a mock tool_call object for _execute_single_tool_with_manager
+            mock_tc = types.SimpleNamespace(
+                id=tool_call.id,
+                function=types.SimpleNamespace(
+                    name=tool_call.name,
+                    arguments=tool_call.arguments,
+                ),
+            )
+            tool_info = ToolInfo(
+                tool_call=mock_tc,
+                tool_name=tool_call.name,
+                tool_def=tool_def,
+                input_data=input_data_map,
+                field_mapping=field_mapping,
+            )
 
-            # Get LLM response
             try:
-                response = await self._attempt_llm_call_with_validation(
-                    credentials, input_data, iteration_prompt, tool_functions
+                result = await self._execute_single_tool_with_manager(
+                    tool_info,
+                    execution_params,
+                    execution_processor,
+                    responses_api=use_responses_api,
+                )
+                content = result.get("content", "Tool executed successfully")
+                return ToolCallResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    content=(
+                        content if isinstance(content, str) else json.dumps(content)
+                    ),
                 )
             except Exception as e:
-                yield "error", f"LLM call failed in agent mode iteration {iteration}: {str(e)}"
-                return
+                logger.error(f"Tool execution failed: {e}")
+                return ToolCallResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    content=f"Error: {e}",
+                    is_error=True,
+                )
 
-            # Process tool calls
-            processed_tools = self._process_tool_calls(response, tool_functions)
-
-            # If no tool calls, we're done
-            if not processed_tools:
-                yield "finished", response.response
-                self._update_conversation(current_prompt, response)
-                yield "conversations", current_prompt
-                return
-
-            # Execute tools and collect responses
-            tool_outputs = []
-            for tool_info in processed_tools:
-                try:
-                    tool_response = await self._execute_single_tool_with_manager(
-                        tool_info,
-                        execution_params,
-                        execution_processor,
-                        responses_api=use_responses_api,
+        # Conversation updater callback: wraps _update_conversation + tool response formatting
+        def conversation_updater(
+            messages: list[dict[str, Any]],
+            response: LLMLoopResponse,
+            tool_results: list[ToolCallResult] | None = None,
+        ) -> None:
+            raw_resp = response.raw_response
+            tool_outputs = None
+            if tool_results:
+                tool_outputs = []
+                for tr in tool_results:
+                    tool_outputs.append(
+                        _create_tool_response(
+                            tr.tool_call_id,
+                            tr.content,
+                            responses_api=use_responses_api,
+                        )
                     )
-                    tool_outputs.append(tool_response)
-                except Exception as e:
-                    logger.error(f"Tool execution failed: {e}")
-                    # Create error response for the tool
-                    error_response = _create_tool_response(
-                        tool_info.tool_call.id,
-                        f"Error: {str(e)}",
-                        responses_api=use_responses_api,
-                    )
-                    tool_outputs.append(error_response)
+                tool_outputs = _combine_tool_responses(tool_outputs)
+            self._update_conversation(messages, raw_resp, tool_outputs)
 
-            tool_outputs = _combine_tool_responses(tool_outputs)
+        current_prompt = list(prompt)
 
-            self._update_conversation(current_prompt, response, tool_outputs)
+        last_iter_msg = None
+        if max_iterations > 0:
+            last_iter_msg = (
+                f"{MAIN_OBJECTIVE_PREFIX}This is your last iteration. "
+                "Try to complete the task with the information you have. "
+                "If you cannot fully complete it, provide a summary of what "
+                "you've accomplished and what remains to be done. "
+                "Prefer finishing with a clear response rather than making "
+                "additional tool calls."
+            )
 
-            # Yield intermediate conversation state
-            yield "conversations", current_prompt
+        try:
+            loop_result: ToolCallLoopResult = await tool_call_loop(
+                messages=current_prompt,
+                tools=tool_functions,
+                llm_call=llm_caller,
+                execute_tool=tool_executor,
+                update_conversation=conversation_updater,
+                max_iterations=max_iterations,
+                last_iteration_message=last_iter_msg,
+            )
+        except Exception as e:
+            yield "error", f"LLM call failed in agent mode: {e}"
+            return
 
-        # If we reach max iterations, yield the current state
-        if max_iterations < 0:
-            yield "finished", f"Agent mode completed after {iteration} iterations"
-        else:
-            yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
-        yield "conversations", current_prompt
+        yield "finished", loop_result.response_text
+        yield "conversations", loop_result.messages
 
     def _create_graph_mcp_server(
         self,
