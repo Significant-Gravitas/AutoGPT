@@ -93,11 +93,17 @@ class LLMToolCall:
 
 @dataclass
 class LLMLoopResponse:
-    """Response from a single LLM call in the loop."""
+    """Response from a single LLM call in the loop.
+
+    ``raw_response`` is typed as ``Any`` intentionally: the loop itself
+    never inspects it — it is an opaque pass-through that the caller's
+    ``ConversationUpdater`` uses to rebuild provider-specific message
+    history (OpenAI ChatCompletion, Anthropic Message, Ollama str, etc.).
+    """
 
     response_text: str | None
     tool_calls: list[LLMToolCall]
-    raw_response: Any  # Provider-specific raw response for conversation history
+    raw_response: Any
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reasoning: str | None = None
