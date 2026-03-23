@@ -104,36 +104,40 @@ The copilot needs an LLM API to function. Two approaches (try subscription first
 
 #### Option 1: Subscription mode (preferred — uses your Claude Max/Pro subscription)
 
-On macOS, Claude Code stores OAuth credentials in the **system keychain**. Extract the token and pass it to Docker:
+The `claude_agent_sdk` Python package **bundles its own Claude CLI binary** — no need to install `@anthropic-ai/claude-code` via npm. The backend auto-provisions credentials from environment variables on startup.
+
+On macOS, extract the OAuth token from the system keychain and add it to `.env`:
 
 ```bash
-# Extract OAuth access token from macOS keychain
+# Extract OAuth tokens from macOS keychain
 CLAUDE_OAUTH_TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -r '.claudeAiOauth.accessToken // ""' 2>/dev/null)
+CLAUDE_REFRESH_TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -r '.claudeAiOauth.refreshToken // ""' 2>/dev/null)
 
 if [ -n "$CLAUDE_OAUTH_TOKEN" ]; then
   echo "Found Claude OAuth token from keychain"
-  # Pass it as CLAUDE_CODE_OAUTH_TOKEN env var to copilot_executor
-  # Add to docker-compose.override.yml or the backend .env
+  # Set env vars in backend .env
   grep -q "^CLAUDE_CODE_OAUTH_TOKEN=" $BACKEND_DIR/.env && \
     perl -i -pe "s|^CLAUDE_CODE_OAUTH_TOKEN=.*|CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN|" $BACKEND_DIR/.env || \
     echo "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN" >> $BACKEND_DIR/.env
-  # Keep subscription mode enabled
+  grep -q "^CLAUDE_CODE_REFRESH_TOKEN=" $BACKEND_DIR/.env && \
+    perl -i -pe "s|^CLAUDE_CODE_REFRESH_TOKEN=.*|CLAUDE_CODE_REFRESH_TOKEN=$CLAUDE_REFRESH_TOKEN|" $BACKEND_DIR/.env || \
+    echo "CLAUDE_CODE_REFRESH_TOKEN=$CLAUDE_REFRESH_TOKEN" >> $BACKEND_DIR/.env
+  # Enable subscription mode
   perl -i -pe 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/' $BACKEND_DIR/.env 2>/dev/null
 else
   echo "No Claude OAuth token found — falling back to OpenRouter API key mode"
 fi
 ```
 
-**Note:** The OAuth token expires (~24h). If copilot returns auth errors, re-extract from keychain. On Linux, credentials are stored in `~/.claude/.credentials.json` (plaintext fallback) — read the `claudeAiOauth.accessToken` from there instead.
-
-**Prerequisite:** You must have run `claude login` on the host machine at least once (which sets up the keychain entry).
-
-**Claude CLI in container:** Subscription mode requires the `claude` CLI inside the copilot executor container. After the container starts, install it at runtime:
+On Linux, read from `~/.claude/.credentials.json` instead:
 ```bash
-docker exec autogpt_platform-copilot_executor-1 which claude 2>/dev/null || \
-  docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
+CLAUDE_OAUTH_TOKEN=$(jq -r '.claudeAiOauth.accessToken // ""' ~/.claude/.credentials.json 2>/dev/null)
+CLAUDE_REFRESH_TOKEN=$(jq -r '.claudeAiOauth.refreshToken // ""' ~/.claude/.credentials.json 2>/dev/null)
 ```
-This is lost on container rebuild — re-run after each `docker compose up --build`.
+
+**How it works:** On startup, the backend reads `CLAUDE_CODE_OAUTH_TOKEN` (and optional `CLAUDE_CODE_REFRESH_TOKEN`) and auto-writes `~/.claude/.credentials.json` inside the container. The SDK's bundled CLI then authenticates using that file. No `claude login`, no npm install needed.
+
+**Note:** The OAuth token expires (~24h). If copilot returns auth errors, re-extract from keychain and restart the container.
 
 #### Option 2: OpenRouter API key mode (fallback)
 
@@ -512,13 +516,9 @@ test scenario → find bug → fix code → rebuild service → re-test
 **Cause:** Supabase auth service schema cache is stale after migration.
 **Fix:** `docker restart supabase-auth && sleep 5` then retry signup.
 
-### Problem: "Claude Code CLI not found" in copilot executor
-**Cause:** The Dockerfile doesn't include `@anthropic-ai/claude-code` in npm install.
-**Fix:** Either add it to the Dockerfile (`npm install -g agent-browser @anthropic-ai/claude-code`) or install it at runtime: `docker exec autogpt_platform-copilot_executor-1 npm install -g @anthropic-ai/claude-code`
-
-### Problem: Copilot returns 401 "invalid bearer token" from Anthropic
-**Cause:** `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` but the container has no OAuth token.
-**Fix:** Extract the OAuth token from macOS keychain and pass as `CLAUDE_CODE_OAUTH_TOKEN` env var (see step 3b, Option 1). Or switch to OpenRouter API key mode (Option 2).
+### Problem: Copilot returns auth errors in subscription mode
+**Cause:** `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` but `CLAUDE_CODE_OAUTH_TOKEN` is not set or expired.
+**Fix:** Re-extract the OAuth token from macOS keychain (see step 3b, Option 1) and recreate the container (`docker compose up -d copilot_executor`). The backend auto-provisions `~/.claude/.credentials.json` from the env var on startup. No `npm install` or `claude login` needed — the SDK bundles its own CLI binary.
 
 ### Problem: Docker build fails on ARM64 with chromium errors
 **Cause:** `Chrome for Testing` has no ARM64 binary. Dockerfile uses `TARGETARCH` conditional that fails.
