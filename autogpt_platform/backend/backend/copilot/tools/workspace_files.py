@@ -27,6 +27,8 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+_MAX_FILE_SIZE_MB = Config().max_file_size_mb
+
 # Sentinel file_id used when a tool-result file is read directly from the local
 # host filesystem (rather than from workspace storage).
 _LOCAL_TOOL_RESULT_FILE_ID = "local"
@@ -718,7 +720,7 @@ class WriteWorkspaceFileTool(BaseTool):
         return (
             "Write a file to persistent workspace (survives across sessions). "
             "Provide exactly one of: content (text), content_base64 (binary), "
-            f"or source_path (copy from working dir). Max {Config().max_file_size_mb}MB."
+            f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB."
         )
 
     @property
@@ -794,10 +796,10 @@ class WriteWorkspaceFileTool(BaseTool):
             return resolved
         content: bytes = resolved
 
-        max_size = Config().max_file_size_mb * 1024 * 1024
+        max_size = _MAX_FILE_SIZE_MB * 1024 * 1024
         if len(content) > max_size:
             return ErrorResponse(
-                message=f"File too large. Maximum size is {Config().max_file_size_mb}MB",
+                message=f"File too large. Maximum size is {_MAX_FILE_SIZE_MB}MB",
                 session_id=session_id,
             )
 
