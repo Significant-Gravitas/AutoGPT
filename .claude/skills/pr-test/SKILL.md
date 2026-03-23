@@ -453,14 +453,19 @@ ${EXPLANATION}
 "
 done
 
-# Write comment body to file to avoid shell interpretation issues with special characters
+# Write comment body to file to avoid shell interpretation issues with special characters.
+# IMPORTANT: Before running this, you must replace TEST_RESULTS_TABLE below with actual
+# markdown table rows from your test results, e.g.:
+# TEST_RESULTS_TABLE="| 1 | Login flow | PASS |
+# | 2 | Copilot chat | PASS |
+# | 3 | Agent execution | FAIL |"
 COMMENT_FILE=$(mktemp)
 cat > "$COMMENT_FILE" <<INNEREOF
 ## 🧪 E2E Test Report
 
 | # | Scenario | Result |
 |---|----------|--------|
-<!-- Fill in the test results table -->
+${TEST_RESULTS_TABLE}
 
 ${IMAGE_MARKDOWN}
 INNEREOF
