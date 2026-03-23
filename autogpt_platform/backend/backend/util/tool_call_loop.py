@@ -16,11 +16,60 @@ conversation updating.
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Typed dict definitions for tool definitions and conversation messages.
+# These document the expected shapes and allow callers to pass TypedDict
+# subclasses (e.g. ``ChatCompletionToolParam``) without ``type: ignore``.
+# ---------------------------------------------------------------------------
+
+
+class FunctionParameters(TypedDict, total=False):
+    """JSON Schema object describing a tool function's parameters."""
+
+    type: str
+    properties: dict[str, Any]
+    required: list[str]
+    additionalProperties: bool
+
+
+class FunctionDefinition(TypedDict, total=False):
+    """Function definition within a tool definition."""
+
+    name: str
+    description: str
+    parameters: FunctionParameters
+
+
+class ToolDefinition(TypedDict):
+    """OpenAI-compatible tool definition (function-calling format).
+
+    Compatible with ``openai.types.chat.ChatCompletionToolParam`` and the
+    dict-based tool definitions built by ``ToolOrchestratorBlock``.
+    """
+
+    type: str
+    function: FunctionDefinition
+
+
+class ConversationMessage(TypedDict, total=False):
+    """A single message in the conversation (OpenAI chat format).
+
+    Primarily for documentation; at runtime plain dicts are used because
+    messages from different providers carry varying keys.
+    """
+
+    role: str
+    content: str | list[Any] | None
+    tool_calls: list[dict[str, Any]]
+    tool_call_id: str
+    name: str
 
 
 @dataclass
@@ -60,7 +109,7 @@ class LLMCaller(Protocol):
     async def __call__(
         self,
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
+        tools: Sequence[Any],
     ) -> LLMLoopResponse: ...
 
 
@@ -70,7 +119,7 @@ class ToolExecutor(Protocol):
     async def __call__(
         self,
         tool_call: LLMToolCall,
-        tools: list[dict[str, Any]],
+        tools: Sequence[Any],
     ) -> ToolCallResult: ...
 
 
@@ -100,7 +149,7 @@ class ToolCallLoopResult:
 async def tool_call_loop(
     *,
     messages: list[dict[str, Any]],
-    tools: list[dict[str, Any]],
+    tools: Sequence[Any],
     llm_call: LLMCaller,
     execute_tool: ToolExecutor,
     update_conversation: ConversationUpdater,
@@ -116,7 +165,8 @@ async def tool_call_loop(
 
     Args:
         messages: Initial conversation messages (modified in-place).
-        tools: Tool function definitions (OpenAI format).
+        tools: Tool function definitions (OpenAI format).  Accepts any
+            sequence of tool dicts, including ``ChatCompletionToolParam``.
         llm_call: Async function to call the LLM. The callback can
             perform streaming internally (e.g. accumulate text deltas
             and collect events) — it just needs to return the final

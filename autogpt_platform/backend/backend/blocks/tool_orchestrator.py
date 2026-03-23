@@ -4,6 +4,7 @@ import re
 import types
 import uuid as uuid_mod
 from collections import Counter
+from collections.abc import Sequence
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any
 
@@ -1038,10 +1039,10 @@ class ToolOrchestratorBlock(Block):
         # LLM caller callback: wraps _attempt_llm_call_with_validation
         async def llm_caller(
             messages: list[dict[str, Any]],
-            tools: list[dict[str, Any]],
+            tools: Sequence[Any],
         ) -> LLMLoopResponse:
             resp = await self._attempt_llm_call_with_validation(
-                credentials, input_data, messages, tools
+                credentials, input_data, messages, list(tools)
             )
             # Convert to shared format
             tool_calls = []
@@ -1066,7 +1067,7 @@ class ToolOrchestratorBlock(Block):
         # Tool executor callback: wraps _execute_single_tool_with_manager
         async def tool_executor(
             tool_call: LLMToolCall,
-            tools: list[dict[str, Any]],
+            tools: Sequence[Any],
         ) -> ToolCallResult:
             # Find tool definition
             tool_def = next(

@@ -9,7 +9,7 @@ shared tool registry as the SDK path.
 import asyncio
 import logging
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from typing import Any
 
 import orjson
@@ -241,7 +241,7 @@ async def stream_chat_completion_baseline(
 
     async def _llm_caller(
         messages: list[dict[str, Any]],
-        tools: list[dict[str, Any]],
+        tools: Sequence[Any],
     ) -> LLMLoopResponse:
         """Stream an OpenAI-compatible response and collect results."""
         nonlocal turn_prompt_tokens, turn_completion_tokens
@@ -327,7 +327,7 @@ async def stream_chat_completion_baseline(
 
     async def _tool_executor(
         tool_call: LLMToolCall,
-        tools: list[dict[str, Any]],
+        tools: Sequence[Any],
     ) -> ToolCallResult:
         """Execute a tool via the copilot tool registry."""
         tool_call_id = tool_call.id
@@ -446,7 +446,7 @@ async def stream_chat_completion_baseline(
         loop_result = None
         async for loop_result in tool_call_loop(
             messages=openai_messages,
-            tools=tools,  # type: ignore[arg-type]  # ChatCompletionToolParam is a TypedDict
+            tools=tools,
             llm_call=_llm_caller,
             execute_tool=_tool_executor,
             update_conversation=_conversation_updater,
