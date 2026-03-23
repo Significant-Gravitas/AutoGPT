@@ -617,7 +617,11 @@ async def configure_user_auto_top_up(
         else:
             await user_credit_model.top_up_credits(user_id, 0)
     except ValueError as e:
-        known_messages = ("must not be negative", "already exists for user")
+        known_messages = (
+            "must not be negative",
+            "already exists for user",
+            "No payment method found",
+        )
         if any(msg in str(e) for msg in known_messages):
             raise HTTPException(status_code=422, detail=str(e))
         raise
