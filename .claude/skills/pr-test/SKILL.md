@@ -106,38 +106,20 @@ The copilot needs an LLM API to function. Two approaches (try subscription first
 
 The `claude_agent_sdk` Python package **bundles its own Claude CLI binary** — no need to install `@anthropic-ai/claude-code` via npm. The backend auto-provisions credentials from environment variables on startup.
 
-On macOS, extract the OAuth token from the system keychain and add it to `.env`:
+Use the helper script to extract tokens and update `.env` (works on macOS, Linux, and Windows/WSL):
 
 ```bash
-# Extract OAuth tokens from macOS keychain
-CLAUDE_OAUTH_TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -r '.claudeAiOauth.accessToken // ""' 2>/dev/null)
-CLAUDE_REFRESH_TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | jq -r '.claudeAiOauth.refreshToken // ""' 2>/dev/null)
-
-if [ -n "$CLAUDE_OAUTH_TOKEN" ]; then
-  echo "Found Claude OAuth token from keychain"
-  # Set env vars in backend .env
-  grep -q "^CLAUDE_CODE_OAUTH_TOKEN=" $BACKEND_DIR/.env && \
-    perl -i -pe "s|^CLAUDE_CODE_OAUTH_TOKEN=.*|CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN|" $BACKEND_DIR/.env || \
-    echo "CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_OAUTH_TOKEN" >> $BACKEND_DIR/.env
-  grep -q "^CLAUDE_CODE_REFRESH_TOKEN=" $BACKEND_DIR/.env && \
-    perl -i -pe "s|^CLAUDE_CODE_REFRESH_TOKEN=.*|CLAUDE_CODE_REFRESH_TOKEN=$CLAUDE_REFRESH_TOKEN|" $BACKEND_DIR/.env || \
-    echo "CLAUDE_CODE_REFRESH_TOKEN=$CLAUDE_REFRESH_TOKEN" >> $BACKEND_DIR/.env
-  # Enable subscription mode
-  perl -i -pe 's/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=false/CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true/' $BACKEND_DIR/.env 2>/dev/null
-else
-  echo "No Claude OAuth token found — falling back to OpenRouter API key mode"
-fi
+$BACKEND_DIR/scripts/refresh_claude_token.sh --env-file $BACKEND_DIR/.env
 ```
 
-On Linux, read from `~/.claude/.credentials.json` instead:
-```bash
-CLAUDE_OAUTH_TOKEN=$(jq -r '.claudeAiOauth.accessToken // ""' ~/.claude/.credentials.json 2>/dev/null)
-CLAUDE_REFRESH_TOKEN=$(jq -r '.claudeAiOauth.refreshToken // ""' ~/.claude/.credentials.json 2>/dev/null)
-```
+**How it works:** The script extracts the OAuth token from:
+- **macOS**: system keychain (`"Claude Code-credentials"`)
+- **Linux/WSL**: `~/.claude/.credentials.json`
+- **Windows**: `%APPDATA%/claude/.credentials.json`
 
-**How it works:** On startup, the backend reads `CLAUDE_CODE_OAUTH_TOKEN` (and optional `CLAUDE_CODE_REFRESH_TOKEN`) and auto-writes `~/.claude/.credentials.json` inside the container. The SDK's bundled CLI then authenticates using that file. No `claude login`, no npm install needed.
+It sets `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_REFRESH_TOKEN`, and `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` in the `.env` file. On container startup, the backend auto-provisions `~/.claude/.credentials.json` inside the container from these env vars. The SDK's bundled CLI then authenticates using that file. No `claude login`, no npm install needed.
 
-**Note:** The OAuth token expires (~24h). If copilot returns auth errors, re-extract from keychain and restart the container.
+**Note:** The OAuth token expires (~24h). If copilot returns auth errors, re-run the script and restart: `$BACKEND_DIR/scripts/refresh_claude_token.sh --env-file $BACKEND_DIR/.env && docker compose up -d copilot_executor`
 
 #### Option 2: OpenRouter API key mode (fallback)
 
