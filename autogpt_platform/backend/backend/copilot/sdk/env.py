@@ -11,6 +11,9 @@ from __future__ import annotations
 from backend.copilot.config import ChatConfig
 from backend.copilot.sdk.subscription import validate_subscription
 
+# ChatConfig is stateless (reads env vars) — a separate instance is fine.
+# A singleton would require importing service.py which causes the circular dep
+# this module was created to avoid.
 config = ChatConfig()
 
 

@@ -1084,7 +1084,15 @@ class ToolOrchestratorBlock(Block):
                 )
 
             # Build ToolInfo using shared helper
-            tool_args = json.loads(tool_call.arguments)
+            try:
+                tool_args = json.loads(tool_call.arguments)
+            except (ValueError, TypeError) as e:
+                return ToolCallResult(
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    content=f"Invalid JSON arguments: {e}",
+                    is_error=True,
+                )
             tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
@@ -1122,7 +1130,6 @@ class ToolOrchestratorBlock(Block):
             response: LLMLoopResponse,
             tool_results: list[ToolCallResult] | None = None,
         ) -> None:
-            raw_resp = response.raw_response
             tool_outputs = None
             if tool_results:
                 tool_outputs = []
@@ -1135,7 +1142,10 @@ class ToolOrchestratorBlock(Block):
                         )
                     )
                 tool_outputs = _combine_tool_responses(tool_outputs)
-            self._update_conversation(messages, raw_resp, tool_outputs)
+            # Pass the raw LLM response (not the LLMLoopResponse wrapper) —
+            # _update_conversation expects the provider response object that
+            # has .raw_response and .reasoning attributes.
+            self._update_conversation(messages, response.raw_response, tool_outputs)
 
         current_prompt = list(prompt)
 
@@ -1161,16 +1171,13 @@ class ToolOrchestratorBlock(Block):
                 max_iterations=max_iterations,
                 last_iteration_message=last_iter_msg,
             ):
-                # Yield intermediate conversation state each iteration
-                if not loop_result.finished_naturally:
-                    yield "conversations", loop_result.messages
+                pass  # Drain the generator; final result is in loop_result
         except Exception as e:
             yield "error", f"LLM call failed in agent mode: {e}"
             return
 
-        if loop_result:
-            yield "finished", loop_result.response_text
-            yield "conversations", loop_result.messages
+        yield "finished", loop_result.response_text
+        yield "conversations", loop_result.messages
 
     def _create_graph_mcp_server(
         self,
@@ -1330,6 +1337,7 @@ class ToolOrchestratorBlock(Block):
         _HEARTBEAT_INTERVAL = 10.0  # seconds
 
         response_parts: list[str] = []
+        conversation: list[dict[str, Any]] = list(prompt)  # Start with input prompt
         total_prompt_tokens = 0
         total_completion_tokens = 0
 
@@ -1362,9 +1370,15 @@ class ToolOrchestratorBlock(Block):
                         break
 
                     if isinstance(sdk_msg, AssistantMessage):
+                        text_parts = []
                         for content_block in sdk_msg.content:
                             if isinstance(content_block, TextBlock):
+                                text_parts.append(content_block.text)
                                 response_parts.append(content_block.text)
+                        if text_parts:
+                            conversation.append(
+                                {"role": "assistant", "content": "".join(text_parts)}
+                            )
                     elif isinstance(sdk_msg, ResultMessage):
                         if sdk_msg.usage:
                             total_prompt_tokens += getattr(
@@ -1383,7 +1397,8 @@ class ToolOrchestratorBlock(Block):
 
         response_text = "".join(response_parts)
 
-        # Track usage
+        # Track usage — llm_call_count=1 is approximate; the SDK manages
+        # its own multi-turn loop internally and only exposes aggregate usage.
         self.merge_stats(
             NodeExecutionStats(
                 input_token_count=total_prompt_tokens,
@@ -1393,7 +1408,7 @@ class ToolOrchestratorBlock(Block):
         )
 
         yield "finished", response_text
-        yield "conversations", prompt
+        yield "conversations", conversation
 
     async def run(
         self,
