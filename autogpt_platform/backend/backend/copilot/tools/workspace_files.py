@@ -27,6 +27,8 @@ from .models import ErrorResponse, ResponseType, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
+_MAX_FILE_SIZE_MB = Config().max_file_size_mb
+
 # Sentinel file_id used when a tool-result file is read directly from the local
 # host filesystem (rather than from workspace storage).
 _LOCAL_TOOL_RESULT_FILE_ID = "local"
@@ -415,13 +417,7 @@ class ListWorkspaceFilesTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "List files in the user's persistent workspace (cloud storage). "
-            "These files survive across sessions. "
-            "For ephemeral session files, use the SDK Read/Glob tools instead. "
-            "Returns file names, paths, sizes, and metadata. "
-            "Optionally filter by path prefix."
-        )
+        return "List persistent workspace files. For ephemeral session files, use SDK Glob/Read instead. Optionally filter by path prefix."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -430,24 +426,17 @@ class ListWorkspaceFilesTool(BaseTool):
             "properties": {
                 "path_prefix": {
                     "type": "string",
-                    "description": (
-                        "Optional path prefix to filter files "
-                        "(e.g., '/documents/' to list only files in documents folder). "
-                        "By default, only files from the current session are listed."
-                    ),
+                    "description": "Filter by path prefix (e.g. '/documents/').",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Maximum number of files to return (default 50, max 100)",
+                    "description": "Max files to return (default 50, max 100).",
                     "minimum": 1,
                     "maximum": 100,
                 },
                 "include_all_sessions": {
                     "type": "boolean",
-                    "description": (
-                        "If true, list files from all sessions. "
-                        "Default is false (only current session's files)."
-                    ),
+                    "description": "Include files from all sessions (default: false).",
                 },
             },
             "required": [],
@@ -530,18 +519,11 @@ class ReadWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Read a file from the user's persistent workspace (cloud storage). "
-            "These files survive across sessions. "
-            "For ephemeral session files, use the SDK Read tool instead. "
-            "Specify either file_id or path to identify the file. "
-            "For small text files, returns content directly. "
-            "For large or binary files, returns metadata and a download URL. "
-            "Use 'save_to_path' to copy the file to the working directory "
-            "(sandbox or ephemeral) for processing with bash_exec or file tools. "
-            "Use 'offset' and 'length' for paginated reads of large files "
-            "(e.g., persisted tool outputs). "
-            "Paths are scoped to the current session by default. "
-            "Use /sessions/<session_id>/... for cross-session access."
+            "Read a file from persistent workspace. Specify file_id or path. "
+            "Small text/image files return inline; large/binary return metadata+URL. "
+            "Use save_to_path to copy to working dir for processing. "
+            "Use offset/length for paginated reads. "
+            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
         )
 
     @property
@@ -551,48 +533,30 @@ class ReadWorkspaceFileTool(BaseTool):
             "properties": {
                 "file_id": {
                     "type": "string",
-                    "description": "The file's unique ID (from list_workspace_files)",
+                    "description": "File ID from list_workspace_files.",
                 },
                 "path": {
                     "type": "string",
-                    "description": (
-                        "The virtual file path (e.g., '/documents/report.pdf'). "
-                        "Scoped to current session by default."
-                    ),
+                    "description": "Virtual file path (e.g. '/documents/report.pdf').",
                 },
                 "save_to_path": {
                     "type": "string",
-                    "description": (
-                        "If provided, save the file to this path in the working "
-                        "directory (cloud sandbox when E2B is active, or "
-                        "ephemeral dir otherwise) so it can be processed with "
-                        "bash_exec or file tools. "
-                        "The file content is still returned in the response."
-                    ),
+                    "description": "Copy file to this working directory path for processing.",
                 },
                 "force_download_url": {
                     "type": "boolean",
-                    "description": (
-                        "If true, always return metadata+URL instead of inline content. "
-                        "Default is false (auto-selects based on file size/type)."
-                    ),
+                    "description": "Always return metadata+URL instead of inline content.",
                 },
                 "offset": {
                     "type": "integer",
-                    "description": (
-                        "Character offset to start reading from (0-based). "
-                        "Use with 'length' for paginated reads of large files."
-                    ),
+                    "description": "Character offset for paginated reads (0-based).",
                 },
                 "length": {
                     "type": "integer",
-                    "description": (
-                        "Maximum number of characters to return. "
-                        "Defaults to full file. Use with 'offset' for paginated reads."
-                    ),
+                    "description": "Max characters to return for paginated reads.",
                 },
             },
-            "required": [],  # At least one must be provided
+            "required": [],  # At least one of file_id or path must be provided
         }
 
     @property
@@ -755,15 +719,10 @@ class WriteWorkspaceFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Write or create a file in the user's persistent workspace (cloud storage). "
-            "These files survive across sessions. "
-            "For ephemeral session files, use the SDK Write tool instead. "
-            "Provide content as plain text via 'content', OR base64-encoded via "
-            "'content_base64', OR copy a file from the ephemeral working directory "
-            "via 'source_path'. Exactly one of these three is required. "
-            f"Maximum file size is {Config().max_file_size_mb}MB. "
-            "Files are saved to the current session's folder by default. "
-            "Use /sessions/<session_id>/... for cross-session access."
+            "Write a file to persistent workspace (survives across sessions). "
+            "Provide exactly one of: content (text), content_base64 (binary), "
+            f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
+            "Paths scoped to current session; use /sessions/<id>/... for cross-session access."
         )
 
     @property
@@ -773,51 +732,31 @@ class WriteWorkspaceFileTool(BaseTool):
             "properties": {
                 "filename": {
                     "type": "string",
-                    "description": "Name for the file (e.g., 'report.pdf')",
+                    "description": "Filename (e.g. 'report.pdf').",
                 },
                 "content": {
                     "type": "string",
-                    "description": (
-                        "Plain text content to write. Use this for text files "
-                        "(code, configs, documents, etc.). "
-                        "Mutually exclusive with content_base64 and source_path."
-                    ),
+                    "description": "Plain text content. Mutually exclusive with content_base64/source_path.",
                 },
                 "content_base64": {
                     "type": "string",
-                    "description": (
-                        "Base64-encoded file content. Use this for binary files "
-                        "(images, PDFs, etc.). "
-                        "Mutually exclusive with content and source_path."
-                    ),
+                    "description": "Base64-encoded binary content. Mutually exclusive with content/source_path.",
                 },
                 "source_path": {
                     "type": "string",
-                    "description": (
-                        "Path to a file in the ephemeral working directory to "
-                        "copy to workspace (e.g., '/tmp/copilot-.../output.csv'). "
-                        "Use this to persist files created by bash_exec or SDK Write. "
-                        "Mutually exclusive with content and content_base64."
-                    ),
+                    "description": "Working directory path to copy to workspace. Mutually exclusive with content/content_base64.",
                 },
                 "path": {
                     "type": "string",
-                    "description": (
-                        "Optional virtual path where to save the file "
-                        "(e.g., '/documents/report.pdf'). "
-                        "Defaults to '/{filename}'. Scoped to current session."
-                    ),
+                    "description": "Virtual path (e.g. '/documents/report.pdf'). Defaults to '/{filename}'.",
                 },
                 "mime_type": {
                     "type": "string",
-                    "description": (
-                        "Optional MIME type of the file. "
-                        "Auto-detected from filename if not provided."
-                    ),
+                    "description": "MIME type. Auto-detected from filename if omitted.",
                 },
                 "overwrite": {
                     "type": "boolean",
-                    "description": "Whether to overwrite if file exists at path (default: false)",
+                    "description": "Overwrite if file exists (default: false).",
                 },
             },
             "required": ["filename"],
@@ -859,10 +798,10 @@ class WriteWorkspaceFileTool(BaseTool):
             return resolved
         content: bytes = resolved
 
-        max_size = Config().max_file_size_mb * 1024 * 1024
+        max_size = _MAX_FILE_SIZE_MB * 1024 * 1024
         if len(content) > max_size:
             return ErrorResponse(
-                message=f"File too large. Maximum size is {Config().max_file_size_mb}MB",
+                message=f"File too large. Maximum size is {_MAX_FILE_SIZE_MB}MB",
                 session_id=session_id,
             )
 
@@ -944,12 +883,7 @@ class DeleteWorkspaceFileTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Delete a file from the user's persistent workspace (cloud storage). "
-            "Specify either file_id or path to identify the file. "
-            "Paths are scoped to the current session by default. "
-            "Use /sessions/<session_id>/... for cross-session access."
-        )
+        return "Delete a file from persistent workspace. Specify file_id or path. Paths scoped to current session; use /sessions/<id>/... for cross-session access."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -958,17 +892,14 @@ class DeleteWorkspaceFileTool(BaseTool):
             "properties": {
                 "file_id": {
                     "type": "string",
-                    "description": "The file's unique ID (from list_workspace_files)",
+                    "description": "File ID from list_workspace_files.",
                 },
                 "path": {
                     "type": "string",
-                    "description": (
-                        "The virtual file path (e.g., '/documents/report.pdf'). "
-                        "Scoped to current session by default."
-                    ),
+                    "description": "Virtual file path.",
                 },
             },
-            "required": [],  # At least one must be provided
+            "required": [],  # At least one of file_id or path must be provided
         }
 
     @property

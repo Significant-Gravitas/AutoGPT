@@ -45,13 +45,10 @@ class RunBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a specific block with the provided input data. "
-            "IMPORTANT: You MUST call find_block first to get the block's 'id' - "
-            "do NOT guess or make up block IDs. "
-            "On first attempt (without input_data), returns detailed schema showing "
-            "required inputs and outputs. Then call again with proper input_data to execute. "
-            "If a block requires human review, use continue_run_block with the "
-            "review_id after the user approves."
+            "Execute a block. IMPORTANT: Always get block_id from find_block first "
+            "— do NOT guess or fabricate IDs. "
+            "Call with empty input_data to see schema, then with data to execute. "
+            "If review_required, use continue_run_block."
         )
 
     @property
@@ -61,28 +58,14 @@ class RunBlockTool(BaseTool):
             "properties": {
                 "block_id": {
                     "type": "string",
-                    "description": (
-                        "The block's 'id' field from find_block results. "
-                        "NEVER guess this - always get it from find_block first."
-                    ),
-                },
-                "block_name": {
-                    "type": "string",
-                    "description": (
-                        "The block's human-readable name from find_block results. "
-                        "Used for display purposes in the UI."
-                    ),
+                    "description": "Block ID from find_block results.",
                 },
                 "input_data": {
                     "type": "object",
-                    "description": (
-                        "Input values for the block. "
-                        "First call with empty {} to see the block's schema, "
-                        "then call again with proper values to execute."
-                    ),
+                    "description": "Input values. Use {} first to see schema.",
                 },
             },
-            "required": ["block_id", "block_name", "input_data"],
+            "required": ["block_id", "input_data"],
         }
 
     @property

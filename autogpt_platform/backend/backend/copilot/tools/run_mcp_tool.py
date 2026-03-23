@@ -57,10 +57,9 @@ class RunMCPToolTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Connect to an MCP (Model Context Protocol) server to discover and execute its tools. "
-            "Two-step: (1) call with server_url to list available tools, "
-            "(2) call again with server_url + tool_name + tool_arguments to execute. "
-            "Call get_mcp_guide for known server URLs and auth details."
+            "Discover and execute MCP server tools. "
+            "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
+            "Call get_mcp_guide first for server URLs and auth."
         )
 
     @property
@@ -70,24 +69,15 @@ class RunMCPToolTool(BaseTool):
             "properties": {
                 "server_url": {
                     "type": "string",
-                    "description": (
-                        "URL of the MCP server (Streamable HTTP endpoint), "
-                        "e.g. https://mcp.example.com/mcp"
-                    ),
+                    "description": "MCP server URL (Streamable HTTP endpoint).",
                 },
                 "tool_name": {
                     "type": "string",
-                    "description": (
-                        "Name of the MCP tool to execute. "
-                        "Omit on first call to discover available tools."
-                    ),
+                    "description": "Tool to execute. Omit to discover available tools.",
                 },
                 "tool_arguments": {
                     "type": "object",
-                    "description": (
-                        "Arguments to pass to the selected tool. "
-                        "Must match the tool's input schema returned during discovery."
-                    ),
+                    "description": "Arguments matching the tool's input schema.",
                 },
             },
             "required": ["server_url"],
