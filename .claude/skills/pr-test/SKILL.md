@@ -106,13 +106,14 @@ The copilot needs an LLM API to function. Two approaches (try subscription first
 
 The `claude_agent_sdk` Python package **bundles its own Claude CLI binary** — no need to install `@anthropic-ai/claude-code` via npm. The backend auto-provisions credentials from environment variables on startup.
 
-Use the helper script to extract tokens and update `.env` (works on macOS, Linux, and Windows/WSL):
+Run the helper script to extract tokens from your host and auto-update `backend/.env` (works on macOS, Linux, and Windows/WSL):
 
 ```bash
-$BACKEND_DIR/scripts/refresh_claude_token.sh --env-file $BACKEND_DIR/.env
+# Extracts OAuth tokens and writes CLAUDE_CODE_OAUTH_TOKEN + CLAUDE_CODE_REFRESH_TOKEN into .env
+bash $BACKEND_DIR/scripts/refresh_claude_token.sh --env-file $BACKEND_DIR/.env
 ```
 
-**How it works:** The script extracts the OAuth token from:
+**How it works:** The script reads the OAuth token from:
 - **macOS**: system keychain (`"Claude Code-credentials"`)
 - **Linux/WSL**: `~/.claude/.credentials.json`
 - **Windows**: `%APPDATA%/claude/.credentials.json`
