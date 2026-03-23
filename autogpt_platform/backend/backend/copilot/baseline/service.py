@@ -12,10 +12,11 @@ import uuid
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any
+from typing import Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from backend.copilot.model import (
     ChatMessage,
@@ -99,15 +100,24 @@ async def _baseline_llm_caller(
     """
     state.pending_events.append(StreamStartStep())
 
-    create_kwargs: dict[str, Any] = dict(
-        model=config.model,
-        messages=messages,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
+    client = _get_openai_client()
+    typed_messages = cast(list[ChatCompletionMessageParam], messages)
     if tools:
-        create_kwargs["tools"] = tools
-    response = await _get_openai_client().chat.completions.create(**create_kwargs)  # type: ignore[arg-type]
+        typed_tools = cast(list[ChatCompletionToolParam], tools)
+        response = await client.chat.completions.create(
+            model=config.model,
+            messages=typed_messages,
+            tools=typed_tools,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+    else:
+        response = await client.chat.completions.create(
+            model=config.model,
+            messages=typed_messages,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
 
     round_text = ""
     tool_calls_by_index: dict[int, dict[str, str]] = {}
