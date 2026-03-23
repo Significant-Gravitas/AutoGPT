@@ -42,7 +42,7 @@ function storeAndRedirect(
   router.push("/copilot?source=import&autosubmit=true");
 }
 
-export function useLibraryImportWorkflowDialog() {
+export function useExternalWorkflowTab() {
   const { toast } = useToast();
   const router = useRouter();
   const [fileValue, setFileValue] = useState("");

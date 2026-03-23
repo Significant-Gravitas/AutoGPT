@@ -11,15 +11,13 @@ import {
   FormMessage,
 } from "@/components/molecules/Form/Form";
 import { TabsLineContent } from "@/components/molecules/TabsLine/TabsLine";
-import { useLibraryUploadAgentDialog } from "../LibraryUploadAgentDialog/useLibraryUploadAgentDialog";
+import { useLibraryUploadAgentDialog } from "../../../LibraryUploadAgentDialog/useLibraryUploadAgentDialog";
 
-type AgentUploadTabContentProps = {
+type AgentUploadTabProps = {
   upload: ReturnType<typeof useLibraryUploadAgentDialog>;
 };
 
-export default function AgentUploadTabContent({
-  upload,
-}: AgentUploadTabContentProps) {
+export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
       <p className="mb-4 text-sm text-neutral-500">

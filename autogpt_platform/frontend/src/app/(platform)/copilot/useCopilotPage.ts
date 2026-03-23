@@ -15,87 +15,10 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
 const TITLE_POLL_MAX_ATTEMPTS = 5;
-
-/**
- * Extract a prompt from the URL hash fragment.
- * Supports: /copilot#prompt=URL-encoded-text
- * Optionally auto-submits if ?autosubmit=true is in the query string.
- * Returns null if no prompt is present.
- */
-function extractPromptFromUrl(): {
-  prompt: string;
-  autosubmit: boolean;
-  filePart?: FileUIPart;
-} | null {
-  if (typeof window === "undefined") return null;
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const autosubmit = searchParams.get("autosubmit") === "true";
-
-  // Check sessionStorage first (used by workflow import for large prompts)
-  const storedPrompt = sessionStorage.getItem("importWorkflowPrompt");
-  if (storedPrompt) {
-    sessionStorage.removeItem("importWorkflowPrompt");
-
-    // Check for a pre-uploaded workflow file attached to this import
-    let filePart: FileUIPart | undefined;
-    const storedFile = sessionStorage.getItem("importWorkflowFile");
-    if (storedFile) {
-      sessionStorage.removeItem("importWorkflowFile");
-      try {
-        const { fileId, fileName, mimeType } = JSON.parse(storedFile);
-        // Validate fileId is a UUID to prevent path traversal
-        const UUID_RE =
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (typeof fileId === "string" && UUID_RE.test(fileId)) {
-          filePart = {
-            type: "file",
-            mediaType: mimeType ?? "application/json",
-            filename: fileName ?? "workflow.json",
-            url: `/api/proxy/api/workspace/files/${fileId}/download`,
-          };
-        }
-      } catch {
-        // ignore malformed stored data
-      }
-    }
-
-    // Clean up query params
-    const cleanURL = new URL(window.location.href);
-    cleanURL.searchParams.delete("autosubmit");
-    cleanURL.searchParams.delete("source");
-    window.history.replaceState(
-      null,
-      "",
-      `${cleanURL.pathname}${cleanURL.search}`,
-    );
-    return { prompt: storedPrompt.trim(), autosubmit, filePart };
-  }
-
-  // Fall back to URL hash (e.g. /copilot#prompt=...)
-  const hash = window.location.hash;
-  if (!hash) return null;
-
-  const hashParams = new URLSearchParams(hash.slice(1));
-  const prompt = hashParams.get("prompt");
-
-  if (!prompt || !prompt.trim()) return null;
-
-  // Clean up hash + autosubmit param only (preserve other query params)
-  const cleanURL = new URL(window.location.href);
-  cleanURL.hash = "";
-  cleanURL.searchParams.delete("autosubmit");
-  window.history.replaceState(
-    null,
-    "",
-    `${cleanURL.pathname}${cleanURL.search}`,
-  );
-
-  return { prompt: prompt.trim(), autosubmit };
-}
 
 interface UploadedFile {
   file_id: string;
@@ -213,29 +136,11 @@ export function useCopilotPage() {
   }, [sessionId, pendingMessage, sendMessage]);
 
   // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
-  const { setInitialPrompt } = useCopilotUIStore();
-  const hasProcessedUrlPrompt = useRef(false);
-  useEffect(() => {
-    if (hasProcessedUrlPrompt.current) return;
-
-    const urlPrompt = extractPromptFromUrl();
-    if (!urlPrompt) return;
-
-    hasProcessedUrlPrompt.current = true;
-
-    if (urlPrompt.autosubmit) {
-      if (urlPrompt.filePart) {
-        pendingFilePartsRef.current = [urlPrompt.filePart];
-      }
-      setPendingMessage(urlPrompt.prompt);
-      void createSession().catch(() => {
-        setPendingMessage(null);
-        setInitialPrompt(urlPrompt.prompt);
-      });
-    } else {
-      setInitialPrompt(urlPrompt.prompt);
-    }
-  }, [createSession, setInitialPrompt]);
+  useWorkflowImportAutoSubmit({
+    createSession,
+    setPendingMessage,
+    pendingFilePartsRef,
+  });
 
   async function uploadFiles(
     files: File[],
