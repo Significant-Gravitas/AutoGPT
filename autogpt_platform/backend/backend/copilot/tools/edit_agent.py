@@ -23,12 +23,8 @@ class EditAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Edit an existing agent. Pass `agent_json` with the complete "
-            "updated agent JSON you generated. The tool validates, auto-fixes, "
-            "and saves.\n\n"
-            "IMPORTANT: Before calling this tool, if the changes involve adding new "
-            "functionality, search for relevant existing agents using find_library_agent "
-            "that could be used as building blocks."
+            "Edit an existing agent. Validates, auto-fixes, and saves. "
+            "Before calling, search for existing agents with find_library_agent."
         )
 
     @property
@@ -42,33 +38,20 @@ class EditAgentTool(BaseTool):
             "properties": {
                 "agent_id": {
                     "type": "string",
-                    "description": (
-                        "The ID of the agent to edit. "
-                        "Can be a graph ID or library agent ID."
-                    ),
+                    "description": "Graph ID or library agent ID to edit.",
                 },
                 "agent_json": {
                     "type": "object",
-                    "description": (
-                        "Complete updated agent JSON to validate and save. "
-                        "Must contain 'nodes' and 'links'. "
-                        "Include 'name' and/or 'description' if they need "
-                        "to be updated."
-                    ),
+                    "description": "Updated agent JSON with nodes and links.",
                 },
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "List of library agent IDs to use as building blocks for the changes."
-                    ),
+                    "description": "Library agent IDs as building blocks.",
                 },
                 "save": {
                     "type": "boolean",
-                    "description": (
-                        "Whether to save the changes. "
-                        "Default is true. Set to false for preview only."
-                    ),
+                    "description": "Save changes (default: true). False for preview.",
                     "default": True,
                 },
             },

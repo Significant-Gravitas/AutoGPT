@@ -30,12 +30,7 @@ class ContinueRunBlockTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Continue executing a block after human review approval. "
-            "Use this after a run_block call returned review_required. "
-            "Pass the review_id from the review_required response. "
-            "The block will execute with the original pre-approved input data."
-        )
+        return "Resume block execution after a run_block call returned review_required. Pass the review_id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -44,10 +39,7 @@ class ContinueRunBlockTool(BaseTool):
             "properties": {
                 "review_id": {
                     "type": "string",
-                    "description": (
-                        "The review_id from a previous review_required response. "
-                        "This resumes execution with the pre-approved input data."
-                    ),
+                    "description": "review_id from the review_required response.",
                 },
             },
             "required": ["review_id"],

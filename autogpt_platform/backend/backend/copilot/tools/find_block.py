@@ -54,13 +54,9 @@ class FindBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for available blocks by name or description, or look up a "
-            "specific block by its ID. "
-            "Blocks are reusable components that perform specific tasks like "
-            "sending emails, making API calls, processing text, etc. "
-            "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
-            "The response includes each block's id, name, and description. "
-            "Call run_block with the block's id **with no inputs** to see detailed inputs/outputs and execute it."
+            "Search blocks by name or description. Returns block IDs for run_block. "
+            "Always call this FIRST to get block IDs before using run_block. "
+            "Then call run_block with the block's id and empty input_data to see its detailed schema."
         )
 
     @property
@@ -70,19 +66,11 @@ class FindBlockTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": (
-                        "Search query to find blocks by name or description, "
-                        "or a block ID (UUID) for direct lookup. "
-                        "Use keywords like 'email', 'http', 'text', 'ai', etc."
-                    ),
+                    "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
                 "include_schemas": {
                     "type": "boolean",
-                    "description": (
-                        "If true, include full input_schema and output_schema "
-                        "for each block. Use when generating agent JSON that "
-                        "needs block schemas. Default is false."
-                    ),
+                    "description": "Include full input/output schemas (for agent JSON generation).",
                     "default": False,
                 },
             },
