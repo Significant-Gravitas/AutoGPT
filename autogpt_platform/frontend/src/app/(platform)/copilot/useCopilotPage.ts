@@ -47,12 +47,17 @@ function extractPromptFromUrl(): {
       sessionStorage.removeItem("importWorkflowFile");
       try {
         const { fileId, fileName, mimeType } = JSON.parse(storedFile);
-        filePart = {
-          type: "file",
-          mediaType: mimeType ?? "application/json",
-          filename: fileName ?? "workflow.json",
-          url: `/api/proxy/api/workspace/files/${fileId}/download`,
-        };
+        // Validate fileId is a UUID to prevent path traversal
+        const UUID_RE =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (typeof fileId === "string" && UUID_RE.test(fileId)) {
+          filePart = {
+            type: "file",
+            mediaType: mimeType ?? "application/json",
+            filename: fileName ?? "workflow.json",
+            url: `/api/proxy/api/workspace/files/${fileId}/download`,
+          };
+        }
       } catch {
         // ignore malformed stored data
       }
