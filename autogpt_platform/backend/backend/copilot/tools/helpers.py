@@ -254,7 +254,25 @@ async def resolve_block_credentials(
 
 @dataclass
 class BlockPreparation:
-    """Result of successful block validation, ready for execution or task creation."""
+    """Result of successful block validation, ready for execution or task creation.
+
+    Attributes:
+        block: The resolved block instance (schema definition + execute method).
+        block_id: UUID of the block being prepared.
+        input_data: User-supplied input values after file-ref expansion.
+        matched_credentials: Credential field name -> resolved credential metadata.
+        input_schema: JSON Schema for the block's input, with credential
+            discriminators resolved for the user's available providers.
+        credentials_fields: Set of field names in the schema that are credential
+            inputs (e.g. ``{"credentials", "api_key"}``).
+        required_non_credential_keys: Schema-required fields minus credential
+            fields — the fields the user must supply directly.
+        provided_input_keys: Keys the user actually provided in ``input_data``.
+        synthetic_graph_id: Auto-generated graph UUID used for CoPilot
+            single-block executions (no real graph exists in the DB).
+        synthetic_node_id: Auto-generated node UUID paired with
+            ``synthetic_graph_id`` to form the execution context for the block.
+    """
 
     block: AnyBlockSchema
     block_id: str
@@ -295,7 +313,10 @@ async def prepare_block_for_execution(
     Returns:
         BlockPreparation on success, or a ToolResponseBase error/setup response.
     """
-    # Lazy import to avoid circular dependency: helpers ← find_block ← helpers
+    # Lazy import: find_block imports from .base and .models (siblings), not
+    # from helpers — no actual circular dependency exists today.  Kept lazy as a
+    # precaution since find_block is the block-registry module and future changes
+    # could introduce a cycle.
     from .find_block import COPILOT_EXCLUDED_BLOCK_IDS, COPILOT_EXCLUDED_BLOCK_TYPES
 
     block = get_block(block_id)

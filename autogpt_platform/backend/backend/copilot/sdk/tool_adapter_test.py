@@ -587,7 +587,7 @@ class TestCancelPendingToolTasks:
         ):
             await pre_launch_tool_call("run_block", {"block_id": "b1"})
             await asyncio.sleep(0)  # let task start
-            cancel_pending_tool_tasks()
+            await cancel_pending_tool_tasks()
             await asyncio.sleep(0)  # let cancellation propagate
 
         assert not ran, "Task should have been cancelled before completing"
@@ -595,7 +595,7 @@ class TestCancelPendingToolTasks:
     @pytest.mark.asyncio
     async def test_noop_when_no_tasks_queued(self):
         """cancel_pending_tool_tasks does not raise when queues are empty."""
-        cancel_pending_tool_tasks()  # should not raise
+        await cancel_pending_tool_tasks()  # should not raise
 
     @pytest.mark.asyncio
     async def test_handler_does_not_find_cancelled_task(self):
@@ -608,7 +608,7 @@ class TestCancelPendingToolTasks:
         ):
             await pre_launch_tool_call("run_block", {"block_id": "b1"})
             await asyncio.sleep(0)
-            cancel_pending_tool_tasks()
+            await cancel_pending_tool_tasks()
 
             # Queue is now empty — handler should execute directly
             handler = create_tool_handler(mock_tool)

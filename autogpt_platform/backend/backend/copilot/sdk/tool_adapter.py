@@ -115,28 +115,36 @@ def reset_stash_event() -> None:
         event.clear()
 
 
-def cancel_pending_tool_tasks() -> None:
+async def cancel_pending_tool_tasks() -> None:
     """Cancel all queued pre-launched tasks for the current execution context.
 
     Call this when a stream attempt aborts (error, cancellation) to prevent
     pre-launched tasks from continuing to execute against a rolled-back session.
-    Tasks that are already done are skipped; in-flight tasks are cancelled.
+    Tasks that are already done are skipped; in-flight tasks are cancelled and
+    awaited so that any cleanup (``finally`` blocks, DB rollbacks) completes
+    before the next retry starts.
     """
     queues = _tool_task_queues.get()
     if not queues:
         return
+    cancelled_tasks: list[asyncio.Task] = []
     for tool_name, queue in list(queues.items()):
         cancelled = 0
         while not queue.empty():
             task, _args = queue.get_nowait()
             if not task.done():
                 task.cancel()
+                cancelled_tasks.append(task)
                 cancelled += 1
         if cancelled:
             logger.debug(
                 "Cancelled %d pre-launched task(s) for tool '%s'", cancelled, tool_name
             )
     queues.clear()
+    # Await all cancelled tasks so their cleanup (finally blocks, DB rollbacks)
+    # completes before the next retry attempt starts new pre-launches.
+    if cancelled_tasks:
+        await asyncio.gather(*cancelled_tasks, return_exceptions=True)
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -370,11 +378,19 @@ def create_tool_handler(base_tool: BaseTool):
                 if launch_args != args:
                     logger.warning(
                         "Pre-launched task for %s: arg mismatch "
-                        "(launch=%s, call=%s) — cancelling pre-launched task "
-                        "and falling back to direct execution",
+                        "(launch_keys=%s, call_keys=%s) — cancelling "
+                        "pre-launched task and falling back to direct execution",
                         base_tool.name,
-                        launch_args,
-                        args,
+                        (
+                            sorted(launch_args.keys())
+                            if isinstance(launch_args, dict)
+                            else type(launch_args).__name__
+                        ),
+                        (
+                            sorted(args.keys())
+                            if isinstance(args, dict)
+                            else type(args).__name__
+                        ),
                     )
                     if not task.done():
                         task.cancel()

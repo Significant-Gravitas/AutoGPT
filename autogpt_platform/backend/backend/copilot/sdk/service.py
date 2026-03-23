@@ -166,7 +166,7 @@ def _is_prompt_too_long(err: BaseException) -> bool:
     return False
 
 
-def _is_parallel_continuation(sdk_msg: object) -> bool:
+def _is_tool_only_message(sdk_msg: object) -> bool:
     """Return True if *sdk_msg* is an AssistantMessage containing only ToolUseBlocks.
 
     Such a message represents a parallel tool-call batch (no text output yet).
@@ -1163,15 +1163,18 @@ async def _run_stream_attempt(
             # calls, so each message is pre-launched independently.  The MCP
             # handlers will await the already-running task instead of executing
             # fresh, making all concurrent tool calls run in parallel.
+            #
+            # Also determine if the message is a tool-only batch (all content
+            # items are ToolUseBlocks) — such messages have no text output yet,
+            # so we skip the wait_for_stash flush below.
+            is_tool_only = False
             if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
-                for block in sdk_msg.content:
-                    if isinstance(block, ToolUseBlock):
-                        await pre_launch_tool_call(block.name, block.input)
-
-            # An AssistantMessage consisting solely of ToolUseBlocks is a parallel
-            # tool call batch (not a text+tool mixed message).  Skip wait_for_stash
-            # flush — there is no completed tool output to stash yet.
-            is_parallel_continuation = _is_parallel_continuation(sdk_msg)
+                is_tool_only = True
+                for tool_use in sdk_msg.content:
+                    if isinstance(tool_use, ToolUseBlock):
+                        await pre_launch_tool_call(tool_use.name, tool_use.input)
+                    else:
+                        is_tool_only = False
 
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next
@@ -1189,7 +1192,7 @@ async def _run_stream_attempt(
             if (
                 state.adapter.has_unresolved_tool_calls
                 and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
-                and not is_parallel_continuation
+                and not is_tool_only
             ):
                 if await wait_for_stash():
                     await asyncio.sleep(0)
@@ -1803,8 +1806,8 @@ async def stream_chat_completion_sdk(
                     yield event
                 # Cancel any pre-launched tasks that were never dispatched
                 # by the SDK (e.g. edge-case SDK behaviour changes). Symmetric
-                # with the three error-path cancel_pending_tool_tasks() calls.
-                cancel_pending_tool_tasks()
+                # with the three error-path await cancel_pending_tool_tasks() calls.
+                await cancel_pending_tool_tasks()
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
                 logger.warning(
@@ -1815,7 +1818,7 @@ async def stream_chat_completion_sdk(
                 )
                 # Cancel any pre-launched tasks so they don't continue executing
                 # against a rolled-back or abandoned session.
-                cancel_pending_tool_tasks()
+                await cancel_pending_tool_tasks()
                 raise
             except _TransientErrorHandled:
                 # _run_stream_attempt already yielded a StreamError and
@@ -1837,7 +1840,7 @@ async def stream_chat_completion_sdk(
                 _append_error_marker(session, FRIENDLY_TRANSIENT_MSG, retryable=True)
                 ended_with_stream_error = True
                 # Cancel any pre-launched tasks from the failed attempt.
-                cancel_pending_tool_tasks()
+                await cancel_pending_tool_tasks()
                 break
             except Exception as e:
                 stream_err = e
@@ -1856,7 +1859,7 @@ async def stream_chat_completion_sdk(
                 session.messages = session.messages[:pre_attempt_msg_count]
                 # Cancel any pre-launched tasks from the failed attempt so they
                 # don't continue executing against the rolled-back session.
-                cancel_pending_tool_tasks()
+                await cancel_pending_tool_tasks()
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent

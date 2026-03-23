@@ -16,8 +16,8 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     ReducedContext,
-    _is_parallel_continuation,
     _is_prompt_too_long,
+    _is_tool_only_message,
     _iter_sdk_messages,
     _reduce_context,
 )
@@ -305,7 +305,7 @@ class TestIsParallelContinuation:
         """AssistantMessage with only ToolUseBlocks is a parallel continuation."""
         msg = MagicMock(spec=AssistantMessage)
         msg.content = [self._make_tool_block(), self._make_tool_block()]
-        assert _is_parallel_continuation(msg) is True
+        assert _is_tool_only_message(msg) is True
 
     def test_empty_content_is_not_parallel(self):
         """AssistantMessage with empty content must NOT be treated as parallel.
@@ -315,23 +315,23 @@ class TestIsParallelContinuation:
         """
         msg = MagicMock(spec=AssistantMessage)
         msg.content = []
-        assert _is_parallel_continuation(msg) is False
+        assert _is_tool_only_message(msg) is False
 
     def test_mixed_text_and_tool_blocks_not_parallel(self):
         """AssistantMessage with text + tool blocks is NOT a parallel continuation."""
         msg = MagicMock(spec=AssistantMessage)
         text_block = MagicMock(spec=TextBlock)
         msg.content = [text_block, self._make_tool_block()]
-        assert _is_parallel_continuation(msg) is False
+        assert _is_tool_only_message(msg) is False
 
     def test_non_assistant_message_not_parallel(self):
         """Non-AssistantMessage types are never parallel continuations."""
-        assert _is_parallel_continuation("not a message") is False
-        assert _is_parallel_continuation(None) is False
-        assert _is_parallel_continuation(42) is False
+        assert _is_tool_only_message("not a message") is False
+        assert _is_tool_only_message(None) is False
+        assert _is_tool_only_message(42) is False
 
     def test_single_tool_block_is_parallel(self):
         """Single ToolUseBlock AssistantMessage is a parallel continuation."""
         msg = MagicMock(spec=AssistantMessage)
         msg.content = [self._make_tool_block()]
-        assert _is_parallel_continuation(msg) is True
+        assert _is_tool_only_message(msg) is True
