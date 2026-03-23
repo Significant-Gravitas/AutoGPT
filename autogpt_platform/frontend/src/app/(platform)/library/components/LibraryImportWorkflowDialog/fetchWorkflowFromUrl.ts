@@ -69,7 +69,21 @@ export async function fetchWorkflowFromUrl(
  * non-allowed hosts and enforcing a response size limit.
  */
 async function safeFetch(url: string): Promise<Response> {
-  const res = await fetch(url, { redirect: "follow" });
+  // Defensive validation at the fetch sink (SSRF prevention)
+  const parsed = new URL(url); // caller already validated; throws on malformed
+  if (parsed.protocol !== "https:") {
+    throw new Error("Only HTTPS URLs are accepted.");
+  }
+  const initialHost = parsed.hostname;
+  if (
+    !ALLOWED_HOSTS.some(
+      (h) => initialHost === h || initialHost.endsWith(`.${h}`),
+    )
+  ) {
+    throw new Error("Unsupported host.");
+  }
+
+  const res = await fetch(parsed.toString(), { redirect: "follow" });
 
   // After following redirects, verify the final URL is still on an allowed host
   if (res.url) {
