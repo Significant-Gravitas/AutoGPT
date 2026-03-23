@@ -111,6 +111,9 @@ async def test_stream_registry_error_on_stream_error(mock_registry, stream_fn_pa
 
     _, kwargs = mock_registry.mark_session_completed.call_args
     assert kwargs.get("error_message") == "something broke"
+    # stream_and_publish skips StreamError, so mark_session_completed must
+    # publish it (skip_error_publish=False).
+    assert kwargs.get("skip_error_publish") is False
 
     # StreamError should NOT be published via publish_chunk — mark_session_completed
     # handles it to avoid double-publication.

@@ -205,10 +205,9 @@ async def collect_copilot_response(
             async for event in published_stream:
                 if err := _process_event(event, acc):
                     handle.error_msg = err
-                    # StreamError was already published to Redis by
-                    # stream_and_publish, so mark_session_completed should
-                    # not re-publish it.
-                    handle.error_already_published = True
+                    # stream_and_publish skips StreamError events, so
+                    # mark_session_completed must publish the error to Redis.
+                    handle.error_already_published = False
                     raise RuntimeError(f"Copilot error: {err}")
         except Exception:
             if handle.error_msg is None:
