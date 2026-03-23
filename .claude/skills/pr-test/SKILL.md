@@ -503,9 +503,9 @@ test scenario → find bug → fix code → rebuild service → re-test
 **Cause:** `CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true` but `CLAUDE_CODE_OAUTH_TOKEN` is not set or expired.
 **Fix:** Re-extract the OAuth token from macOS keychain (see step 3b, Option 1) and recreate the container (`docker compose up -d copilot_executor`). The backend auto-provisions `~/.claude/.credentials.json` from the env var on startup. No `npm install` or `claude login` needed — the SDK bundles its own CLI binary.
 
-### Problem: Docker build fails on ARM64 with chromium errors
-**Cause:** `Chrome for Testing` has no ARM64 binary. Dockerfile uses `TARGETARCH` conditional that fails.
-**Fix:** This is fixed by PR #12473 (merged to `dev`). If your branch is behind `dev`, merge `dev` into it. If still unfixed, replace with unconditional `apt-get install chromium` + `ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium`.
+### Problem: agent-browser can't find chromium
+**Cause:** The Dockerfile auto-provisions system chromium on all architectures (including ARM64). If your branch is behind `dev`, this may not be present yet.
+**Fix:** Check if chromium exists: `which chromium || which chromium-browser`. If missing, install it: `apt-get install -y chromium` and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in the container environment.
 
 ### Problem: agent-browser selector matches multiple elements
 **Cause:** `text=X` matches all elements containing that text.
