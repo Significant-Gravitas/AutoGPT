@@ -703,9 +703,9 @@ class ToolOrchestratorBlock(Block):
         self,
         credentials: llm.APIKeyCredentials,
         input_data: Input,
-        current_prompt: list[dict],
+        current_prompt: list[dict[str, Any]],
         tool_functions: list[dict[str, Any]],
-    ):
+    ) -> Any:
         """
         Attempt a single LLM call with tool validation.
 
@@ -801,7 +801,7 @@ class ToolOrchestratorBlock(Block):
         return resp
 
     def _process_tool_calls(
-        self, response, tool_functions: list[dict[str, Any]]
+        self, response: Any, tool_functions: list[dict[str, Any]]
     ) -> list[ToolInfo]:
         """Process tool calls and extract tool definitions, arguments, and input data.
 
@@ -860,7 +860,10 @@ class ToolOrchestratorBlock(Block):
         return processed_tools
 
     def _update_conversation(
-        self, prompt: list[dict], response, tool_outputs: list | None = None
+        self,
+        prompt: list[dict[str, Any]],
+        response: Any,
+        tool_outputs: list[dict[str, Any]] | None = None,
     ):
         """Update conversation history with response and tool outputs."""
         converted = _convert_raw_response_to_dict(response.raw_response)
@@ -999,11 +1002,11 @@ class ToolOrchestratorBlock(Block):
             )
 
         except Exception as e:
-            logger.warning(f"Tool execution with manager failed: {e}")
+            logger.warning("Tool execution with manager failed: %s", e)
             # Return error response
             return _create_tool_response(
                 tool_call.id,
-                f"Tool execution failed: {str(e)}",
+                f"Tool execution failed: {e}",
                 responses_api=responses_api,
             )
 
@@ -1126,10 +1129,10 @@ class ToolOrchestratorBlock(Block):
 
     async def _execute_tools_agent_mode(
         self,
-        input_data,
-        credentials,
+        input_data: "ToolOrchestratorBlock.Input",
+        credentials: llm.APIKeyCredentials,
         tool_functions: list[dict[str, Any]],
-        prompt: list[dict],
+        prompt: list[dict[str, Any]],
         graph_exec_id: str,
         node_id: str,
         node_exec_id: str,
