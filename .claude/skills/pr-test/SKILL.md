@@ -391,6 +391,22 @@ After showing all screenshots, output a summary table:
 | 1 | {name} | PASS/FAIL |
 | 2 | ... | ... |
 
+**IMPORTANT:** As you show each screenshot and record test results, persist them in shell variables for Step 7:
+
+```bash
+# Build these variables during Step 6 — they are required by Step 7's script
+declare -A SCREENSHOT_EXPLANATIONS=(
+  ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
+  ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
+  # ... one entry per screenshot, using the same explanations you showed the user above
+)
+
+TEST_RESULTS_TABLE="| 1 | Login flow | PASS |
+| 2 | Builder block addition | PASS |
+| 3 | Copilot chat | FAIL |"
+# ... one row per test scenario with actual results
+```
+
 ## Step 7: Post test report as PR comment with screenshots
 
 Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees), then post a comment with inline images and per-screenshot explanations.
@@ -431,15 +447,7 @@ Then post the comment with **inline images AND explanations for each screenshot*
 ```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 
-# Build image markdown — each screenshot gets a heading, image, and explanation.
-# This loop is a TEMPLATE. Before running it, you must define a SCREENSHOT_EXPLANATIONS
-# associative array mapping each basename to a 1-2 sentence explanation from Step 6.
-# Example: declare -A SCREENSHOT_EXPLANATIONS=(
-#   ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
-#   ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
-# )
-declare -A SCREENSHOT_EXPLANATIONS
-# ^^^ Populate this with real explanations from Step 6 before running the loop
+# Build image markdown using SCREENSHOT_EXPLANATIONS and TEST_RESULTS_TABLE from Step 6
 
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
@@ -453,12 +461,7 @@ ${EXPLANATION}
 "
 done
 
-# Write comment body to file to avoid shell interpretation issues with special characters.
-# IMPORTANT: Before running this, you must replace TEST_RESULTS_TABLE below with actual
-# markdown table rows from your test results, e.g.:
-# TEST_RESULTS_TABLE="| 1 | Login flow | PASS |
-# | 2 | Copilot chat | PASS |
-# | 3 | Agent execution | FAIL |"
+# Write comment body to file to avoid shell interpretation issues with special characters
 COMMENT_FILE=$(mktemp)
 cat > "$COMMENT_FILE" <<INNEREOF
 ## 🧪 E2E Test Report
