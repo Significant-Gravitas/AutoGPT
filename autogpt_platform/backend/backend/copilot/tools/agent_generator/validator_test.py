@@ -595,11 +595,28 @@ class TestValidate:
         input_block = _make_block(
             block_id=AGENT_INPUT_BLOCK_ID,
             name="AgentInputBlock",
+            input_schema={
+                "properties": {
+                    "name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "value": {},
+                    "description": {"type": "string"},
+                },
+                "required": ["name"],
+            },
             output_schema={"properties": {"result": {}}},
         )
         output_block = _make_block(
             block_id=AGENT_OUTPUT_BLOCK_ID,
             name="AgentOutputBlock",
+            input_schema={
+                "properties": {
+                    "name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "value": {},
+                },
+                "required": ["name"],
+            },
         )
         input_node = _make_node(
             node_id="n-in",
