@@ -375,7 +375,7 @@ For each screenshot:
 
 Format the output like this:
 
-```
+```markdown
 ### Screenshot 1: {descriptive title}
 [Read the PNG file here]
 
@@ -386,10 +386,10 @@ Format the output like this:
 
 After showing all screenshots, output a summary table:
 
-| # | Scenario | Result | Screenshot |
-|---|----------|--------|------------|
-| 1 | {name} | PASS/FAIL | {NN}-{description}.png |
-| 2 | ... | ... | ... |
+| # | Scenario | Result |
+|---|----------|--------|
+| 1 | {name} | PASS/FAIL |
+| 2 | ... | ... |
 
 ## Step 7: Post test report as PR comment with screenshots
 
@@ -431,8 +431,10 @@ Then post the comment with **inline images AND explanations for each screenshot*
 ```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 
-# Build image markdown — each screenshot gets a heading and explanation
-# You must write the explanation for each screenshot based on what you observed during testing
+# Build image markdown — each screenshot gets a heading and explanation.
+# IMPORTANT: You must replace SCREENSHOT_EXPLANATION below with a real 1-2 sentence
+# explanation based on what you observed during testing in Step 6. Do NOT leave placeholders.
+# Use the same explanations you showed the user in Step 6.
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
@@ -441,11 +443,13 @@ for img in $RESULTS_DIR/*.png; do
   IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
 ### ${TITLE}
 ![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
-<!-- Add a 1-2 sentence explanation of what this screenshot shows -->
+SCREENSHOT_EXPLANATION
 "
 done
 
-gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -f body="$(cat <<EOF
+# Write comment body to file to avoid shell interpretation issues with special characters
+COMMENT_FILE=$(mktemp)
+cat > "$COMMENT_FILE" <<INNEREOF
 ## 🧪 E2E Test Report
 
 | # | Scenario | Result |
@@ -453,8 +457,10 @@ gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -f body="$(cat <<EOF
 <!-- Fill in the test results table -->
 
 ${IMAGE_MARKDOWN}
-EOF
-)"
+INNEREOF
+
+gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
+rm -f "$COMMENT_FILE"
 ```
 
 **The PR comment MUST include:**
