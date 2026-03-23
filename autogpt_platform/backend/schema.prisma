@@ -65,12 +65,34 @@ model User {
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
+  Invite                UserInvite?
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+}
+
+enum TallyComputationStatus {
+  PENDING
+  RUNNING
+  READY
+  FAILED
+}
+
+model UserInvite {
+  email              String                 @id
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  userId             String?                @unique
+  User               User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tallyUnderstanding Json?
+  tallyStatus        TallyComputationStatus @default(PENDING)
+  tallyComputedAt    DateTime?
+  tallyError         String?
+
+  @@index([createdAt])
 }
 
 enum OnboardingStep {
@@ -992,7 +1014,7 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId String       @unique
+  agentGraphId String @unique
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])
