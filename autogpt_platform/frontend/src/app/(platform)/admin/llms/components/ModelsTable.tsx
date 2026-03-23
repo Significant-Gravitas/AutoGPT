@@ -13,12 +13,11 @@ import {
   TableRow,
 } from "@/components/atoms/Table/Table";
 import { Button } from "@/components/atoms/Button/Button";
-import { toggleLlmModelAction } from "../actions";
+import { toggleLlmModelAction, fetchLlmModels } from "../actions";
 import { DeleteModelModal } from "./DeleteModelModal";
 import { DisableModelModal } from "./DisableModelModal";
 import { EditModelModal } from "./EditModelModal";
 import { Star, Spinner } from "@phosphor-icons/react";
-import { getV2ListLlmModels } from "@/app/api/__generated__/endpoints/admin/admin";
 
 const PAGE_SIZE = 50;
 
@@ -56,14 +55,9 @@ export function ModelsTable({
 
       for (let page = 2; page <= pagesToLoad; page++) {
         try {
-          const response = await getV2ListLlmModels({
-            page,
-            page_size: PAGE_SIZE,
-          });
-          if (response.status === 200) {
-            allModels.push(...response.data.models);
-            lastPageHadFullResults = response.data.models.length === PAGE_SIZE;
-          }
+          const response = await fetchLlmModels(page, PAGE_SIZE);
+          allModels.push(...response.models);
+          lastPageHadFullResults = response.models.length === PAGE_SIZE;
         } catch (err) {
           console.error(`Error refetching page ${page}:`, err);
           break;
@@ -83,17 +77,12 @@ export function ModelsTable({
 
     try {
       const nextPage = currentPage + 1;
-      const response = await getV2ListLlmModels({
-        page: nextPage,
-        page_size: PAGE_SIZE,
-      });
+      const response = await fetchLlmModels(nextPage, PAGE_SIZE);
 
-      if (response.status === 200) {
-        setModels((prev) => [...prev, ...response.data.models]);
-        setCurrentPage(nextPage);
-        loadedPagesRef.current = nextPage;
-        setHasMore(response.data.models.length === PAGE_SIZE);
-      }
+      setModels((prev) => [...prev, ...response.models]);
+      setCurrentPage(nextPage);
+      loadedPagesRef.current = nextPage;
+      setHasMore(response.models.length === PAGE_SIZE);
     } catch (err) {
       console.error("Error loading more models:", err);
     } finally {

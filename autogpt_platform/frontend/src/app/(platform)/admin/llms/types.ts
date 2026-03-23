@@ -13,6 +13,18 @@ export interface LlmProvider {
   created_at: string | null;
   updated_at: string | null;
   models?: LlmModel[];
+  supports_tools?: boolean;
+  supports_json_output?: boolean;
+  supports_reasoning?: boolean;
+  supports_parallel_tool?: boolean;
+}
+
+export interface LlmModelCost {
+  unit: string;
+  credit_cost: number;
+  credential_provider: string;
+  credential_type?: string;
+  metadata: Record<string, any>;
 }
 
 export interface LlmModel {
@@ -22,6 +34,7 @@ export interface LlmModel {
   description: string | null;
   provider_id: string;
   creator_id: string | null;
+  creator?: LlmModelCreator;
   context_window: number;
   max_output_tokens: number | null;
   price_tier: number;
@@ -33,6 +46,7 @@ export interface LlmModel {
   supports_parallel_tool_calls: boolean;
   capabilities: Record<string, any>;
   metadata: Record<string, any>;
+  costs?: LlmModelCost[];
   created_at: string | null;
   updated_at: string | null;
 }

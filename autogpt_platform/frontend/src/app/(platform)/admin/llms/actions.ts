@@ -19,11 +19,18 @@ async function adminFetch(
 ): Promise<{ status: number; data: any }> {
   const baseUrl = environment.getAGPTServerBaseUrl();
   const token = await getServerAuthToken();
-  const headers = createRequestHeaders(token, !!options.body, "application/json");
+  const headers = createRequestHeaders(
+    token,
+    !!options.body,
+    "application/json",
+  );
 
   const response = await fetch(`${baseUrl}${endpoint}`, {
     ...options,
-    headers: { ...headers, ...(options.headers as Record<string, string> || {}) },
+    headers: {
+      ...headers,
+      ...((options.headers as Record<string, string>) || {}),
+    },
   });
 
   let data: any = null;
@@ -35,7 +42,8 @@ async function adminFetch(
   }
 
   if (!response.ok) {
-    const errorMessage = data?.detail || data?.message || `HTTP ${response.status}`;
+    const errorMessage =
+      data?.detail || data?.message || `HTTP ${response.status}`;
     throw new Error(errorMessage);
   }
 
@@ -120,14 +128,24 @@ export async function createLlmProviderAction(formData: FormData) {
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function deleteLlmProviderAction(formData: FormData): Promise<void> {
-  const providerName = getRequiredFormField(formData, "provider_id", "Provider");
+export async function deleteLlmProviderAction(
+  formData: FormData,
+): Promise<void> {
+  const providerName = getRequiredFormField(
+    formData,
+    "provider_id",
+    "Provider",
+  );
   await adminFetch(`/api/llm/providers/${providerName}`, { method: "DELETE" });
   revalidatePath(ADMIN_LLM_PATH);
 }
 
 export async function updateLlmProviderAction(formData: FormData) {
-  const providerName = getRequiredFormField(formData, "provider_id", "Provider");
+  const providerName = getRequiredFormField(
+    formData,
+    "provider_id",
+    "Provider",
+  );
 
   const payload = {
     display_name: String(formData.get("display_name") || "").trim(),
@@ -157,8 +175,12 @@ export async function updateLlmProviderAction(formData: FormData) {
 // Model Actions
 // =============================================================================
 
-export async function fetchLlmModels() {
-  const { data } = await adminFetch("/api/llm/models");
+export async function fetchLlmModels(page?: number, pageSize?: number) {
+  const params = new URLSearchParams();
+  if (page) params.set("page", String(page));
+  if (pageSize) params.set("page_size", String(pageSize));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { data } = await adminFetch(`/api/llm/models${query}`);
   return data;
 }
 
@@ -175,7 +197,11 @@ export async function createLlmModelAction(formData: FormData) {
     creator_id: formData.get("creator_id")
       ? String(formData.get("creator_id"))
       : undefined,
-    context_window: getRequiredPositiveNumber(formData, "context_window", "Context window"),
+    context_window: getRequiredPositiveNumber(
+      formData,
+      "context_window",
+      "Context window",
+    ),
     max_output_tokens: formData.get("max_output_tokens")
       ? Number(formData.get("max_output_tokens"))
       : undefined,
@@ -243,7 +269,7 @@ export async function deleteLlmModelAction(formData: FormData): Promise<void> {
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function fetchLlmModelUsage(modelId: string) {
+export async function fetchLlmModelUsage(_modelId: string) {
   // Not yet implemented in backend - return 0
   return { usage_count: 0 };
 }
@@ -252,11 +278,13 @@ export async function fetchLlmModelUsage(modelId: string) {
 // Migration Actions (not yet implemented in backend)
 // =============================================================================
 
-export async function fetchLlmMigrations(includeReverted: boolean = false) {
+export async function fetchLlmMigrations(_includeReverted: boolean = false) {
   return { migrations: [] };
 }
 
-export async function revertLlmMigrationAction(formData: FormData): Promise<void> {
+export async function revertLlmMigrationAction(
+  _formData: FormData,
+): Promise<void> {
   throw new Error("Migrations not yet implemented");
 }
 
@@ -268,15 +296,21 @@ export async function fetchLlmCreators() {
   return { creators: [] };
 }
 
-export async function createLlmCreatorAction(formData: FormData): Promise<void> {
+export async function createLlmCreatorAction(
+  _formData: FormData,
+): Promise<void> {
   throw new Error("Creators not yet implemented");
 }
 
-export async function updateLlmCreatorAction(formData: FormData): Promise<void> {
+export async function updateLlmCreatorAction(
+  _formData: FormData,
+): Promise<void> {
   throw new Error("Creators not yet implemented");
 }
 
-export async function deleteLlmCreatorAction(formData: FormData): Promise<void> {
+export async function deleteLlmCreatorAction(
+  _formData: FormData,
+): Promise<void> {
   throw new Error("Creators not yet implemented");
 }
 
@@ -284,7 +318,9 @@ export async function deleteLlmCreatorAction(formData: FormData): Promise<void> 
 // Recommended Model Actions
 // =============================================================================
 
-export async function setRecommendedModelAction(formData: FormData): Promise<void> {
+export async function setRecommendedModelAction(
+  formData: FormData,
+): Promise<void> {
   const modelSlug = getRequiredFormField(formData, "model_id", "Model");
 
   // Set recommended by updating the model

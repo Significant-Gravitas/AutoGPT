@@ -36,7 +36,7 @@ export function DeleteModelModal({
     setUsageError(null);
     try {
       const usage = await fetchLlmModelUsage(model.id);
-      setUsageCount(usage.node_count);
+      setUsageCount(usage.usage_count);
     } catch (err) {
       console.error("Failed to fetch model usage:", err);
       setUsageError("Failed to load usage count");
