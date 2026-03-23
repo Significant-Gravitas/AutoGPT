@@ -12,13 +12,11 @@ interface StructuredReviewPayload {
 function isStructuredReviewPayload(
   payload: unknown,
 ): payload is StructuredReviewPayload {
-  return (
-    payload !== null &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    (typeof (payload as any).instructions === "string" ||
-      (payload as any).instructions === undefined)
-  );
+  if (payload === null || typeof payload !== "object" || !("data" in payload)) {
+    return false;
+  }
+  const instructions = (payload as Record<string, unknown>).instructions;
+  return instructions === undefined || typeof instructions === "string";
 }
 
 function extractReviewData(payload: unknown): {

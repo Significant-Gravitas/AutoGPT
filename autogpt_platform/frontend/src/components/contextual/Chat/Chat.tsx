@@ -69,7 +69,7 @@ export function Chat({
   return (
     <div className={cn("flex h-full flex-col", className)}>
       {/* Main Content */}
-      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-[#f8f8f9]">
+      <main className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-[var(--surface-chat)]">
         {/* Loading State */}
         {shouldShowLoader && (
           <div className="flex flex-1 items-center justify-center">

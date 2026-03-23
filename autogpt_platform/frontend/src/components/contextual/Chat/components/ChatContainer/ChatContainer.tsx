@@ -58,7 +58,7 @@ export function ChatContainer({
   return (
     <div
       className={cn(
-        "mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[#f8f8f9]",
+        "mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col bg-[var(--surface-chat)]",
         className,
       )}
     >
@@ -116,7 +116,7 @@ export function ChatContainer({
 
       {/* Input - Fixed at bottom */}
       <div className="relative px-3 pb-6 pt-2">
-        <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[#f8f8f9]" />
+        <div className="pointer-events-none absolute top-[-18px] z-10 h-6 w-full bg-gradient-to-b from-transparent to-[var(--surface-chat)]" />
         <ChatInput
           onSend={sendMessageWithContext}
           disabled={isStreaming || !sessionId}

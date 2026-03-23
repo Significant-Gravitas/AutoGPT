@@ -92,7 +92,7 @@ export default function CopilotPage() {
   }
 
   return (
-    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[#f8f8f9] px-3 py-5 md:px-6 md:py-10">
+    <div className="flex h-full flex-1 items-center justify-center overflow-y-auto bg-[var(--surface-chat)] px-3 py-5 md:px-6 md:py-10">
       <div className="w-full text-center">
         {isLoading ? (
           <div className="mx-auto max-w-2xl">

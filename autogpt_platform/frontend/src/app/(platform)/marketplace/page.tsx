@@ -6,7 +6,7 @@ import { getQueryClient } from "@/lib/react-query/queryClient";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { Metadata } from "next";
 import { Suspense } from "react";
-import { MainMarkeplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
+import { MainMarketplacePage } from "./components/MainMarketplacePage/MainMarketplacePage";
 import { MainMarketplacePageLoading } from "./components/MainMarketplacePageLoading";
 
 export const dynamic = "force-dynamic";
@@ -90,7 +90,7 @@ export default async function MarketplacePage(): Promise<React.ReactElement> {
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <Suspense fallback={<MainMarketplacePageLoading />}>
-        <MainMarkeplacePage />
+        <MainMarketplacePage />
       </Suspense>
     </HydrationBoundary>
   );

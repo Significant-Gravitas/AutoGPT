@@ -1,5 +1,4 @@
 "use client";
-import { Separator } from "@/components/__legacy__/ui/separator";
 import { FeaturedSection } from "../FeaturedSection/FeaturedSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { HeroSection } from "../HeroSection/HeroSection";
@@ -9,8 +8,12 @@ import { FeaturedCreators } from "../FeaturedCreators/FeaturedCreators";
 import { MainMarketplacePageLoading } from "../MainMarketplacePageLoading";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
-export const MainMarkeplacePage = () => {
-  const { featuredAgents, topAgents, featuredCreators, isLoading, hasError } =
+function PageSeparator({ className }: { className?: string }) {
+  return <hr className={`border-t border-neutral-200 ${className ?? ""}`} />;
+}
+
+export function MainMarketplacePage() {
+  const { featuredAgents, topAgents, featuredCreators, isLoading, hasError, refetchAll } =
     useMainMarketplacePage();
 
   if (isLoading) {
@@ -26,7 +29,7 @@ export const MainMarkeplacePage = () => {
               isSuccess={false}
               responseError={{ message: "Failed to load marketplace data" }}
               context="marketplace page"
-              onRetry={() => window.location.reload()}
+              onRetry={refetchAll}
               className="w-full max-w-md"
             />
           </div>
@@ -36,7 +39,6 @@ export const MainMarkeplacePage = () => {
   }
 
   return (
-    // FRONTEND-TODO : Need better state location, need to fetch creators and agents in their respective file, Can't do it right now because these files are used in some other pages of marketplace, will fix it when encounter with those pages
     <div className="mx-auto w-full max-w-[1360px]">
       <main className="px-4">
         <HeroSection />
@@ -44,16 +46,16 @@ export const MainMarkeplacePage = () => {
           <FeaturedSection featuredAgents={featuredAgents.agents} />
         )}
         {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24" />
+        <PageSeparator className="mb-6 mt-24" />
 
         {topAgents && (
           <AgentsSection sectionTitle="Top Agents" agents={topAgents.agents} />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
+        <PageSeparator className="mb-[25px] mt-[60px]" />
         {featuredCreators && (
           <FeaturedCreators featuredCreators={featuredCreators.creators} />
         )}
-        <Separator className="mb-[25px] mt-[60px]" />
+        <PageSeparator className="mb-[25px] mt-[60px]" />
         <BecomeACreator
           title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"
@@ -62,4 +64,4 @@ export const MainMarkeplacePage = () => {
       </main>
     </div>
   );
-};
+}

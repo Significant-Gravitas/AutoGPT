@@ -128,15 +128,21 @@ export function FloatingReviewsPanel({
       )}
 
       {isOpen && (
-        <div className="relative flex max-h-[80vh] max-w-2xl flex-col overflow-hidden rounded-lg shadow-2xl">
-          <Button
-            onClick={() => setIsOpen(false)}
-            variant="icon"
-            size="icon"
-            className="absolute right-4 top-4 z-10"
-          >
-            <XIcon size={16} />
-          </Button>
+        <div className="relative flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+            <Text variant="body" className="font-semibold text-zinc-900">
+              Pending Reviews
+            </Text>
+            <Button
+              onClick={() => setIsOpen(false)}
+              variant="icon"
+              size="icon"
+              aria-label="Close reviews panel"
+              className="h-8 w-8"
+            >
+              <XIcon size={16} />
+            </Button>
+          </div>
 
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (

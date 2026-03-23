@@ -24,6 +24,10 @@
     --input: 240 5.9% 85%;
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
+
+    /* Surface tokens — use these instead of hardcoded hex values */
+    --surface-chat: #f8f8f9;   /* Chat / copilot content area background */
+    --surface-sidebar: #efeff0; /* Sidebar / shell background */
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
