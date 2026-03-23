@@ -16,8 +16,6 @@ import { useLibraryUploadAgentDialog } from "../LibraryUploadAgentDialog/useLibr
 import { useState } from "react";
 import AgentUploadTabContent from "./AgentUploadTabContent";
 
-// Only n8n template URLs are supported for direct URL fetching.
-// Make.com and Zapier don't expose public JSON endpoints — use file upload instead.
 const N8N_EXAMPLES = [
   { label: "Build Your First AI Agent", url: "https://n8n.io/workflows/6270" },
   { label: "Interactive AI Chat Agent", url: "https://n8n.io/workflows/5819" },
@@ -103,7 +101,7 @@ export default function LibraryImportDialog() {
             <div className="my-5 flex items-center gap-3">
               <div className="h-px flex-1 bg-neutral-200" />
               <span className="text-xs text-neutral-400">
-                or import from n8n marketplace
+                or import from URL
               </span>
               <div className="h-px flex-1 bg-neutral-200" />
             </div>
@@ -124,7 +122,7 @@ export default function LibraryImportDialog() {
               id="template-url"
               value={importWorkflow.urlValue}
               onChange={(e) => importWorkflow.setUrlValue(e.target.value)}
-              label="n8n workflow URL"
+              label="Workflow URL"
               placeholder="https://n8n.io/workflows/1234"
               className="mb-4 w-full rounded-[10px]"
             />
@@ -135,7 +133,7 @@ export default function LibraryImportDialog() {
               disabled={!importWorkflow.urlValue || importWorkflow.isSubmitting}
               onClick={() => importWorkflow.submitWithMode("url")}
             >
-              Import from n8n
+              Import from URL
             </Button>
           </TabsLineContent>
 

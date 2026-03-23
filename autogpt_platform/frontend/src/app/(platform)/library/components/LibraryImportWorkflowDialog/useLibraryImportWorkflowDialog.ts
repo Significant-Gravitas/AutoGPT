@@ -2,25 +2,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-const N8N_URL_RE = /n8n\.io\/workflows\/(\d+)/i;
-const N8N_TEMPLATES_API = "https://api.n8n.io/api/templates/workflows";
-
-async function fetchN8nWorkflowJson(url: string): Promise<string> {
-  const match = url.match(N8N_URL_RE);
-  if (!match) throw new Error("Not a valid n8n workflow URL");
-
-  const res = await fetch(`${N8N_TEMPLATES_API}/${match[1]}`);
-  if (!res.ok) throw new Error(`n8n template not found (${res.status})`);
-
-  const data = await res.json();
-  // n8n API: { workflow: { workflow: { nodes, connections, ... }, name, ... } }
-  const template = data?.workflow ?? data;
-  const workflow = template?.workflow ?? template;
-  if (!workflow?.nodes) throw new Error("Unexpected n8n API response format");
-  if (!workflow.name) workflow.name = template?.name ?? data?.name ?? "";
-  return JSON.stringify(workflow);
-}
+import { fetchWorkflowFromUrl } from "./fetchWorkflowFromUrl";
 
 function decodeBase64Json(dataUrl: string): string {
   const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
@@ -100,13 +82,13 @@ export function useLibraryImportWorkflowDialog() {
   async function resolveJson(mode: "url" | "file"): Promise<string | null> {
     if (mode === "url") {
       try {
-        const json = await fetchN8nWorkflowJson(urlValue);
+        const json = await fetchWorkflowFromUrl(urlValue);
         setUrlValue("");
         return json;
       } catch (err) {
         toast({
           title: "Could not fetch workflow",
-          description: err instanceof Error ? err.message : "Invalid n8n URL.",
+          description: err instanceof Error ? err.message : "Invalid URL.",
           variant: "destructive",
         });
         return null;
