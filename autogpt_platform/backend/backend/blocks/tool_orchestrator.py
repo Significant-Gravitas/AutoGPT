@@ -427,6 +427,41 @@ class ToolOrchestratorBlock(Block):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
 
     @staticmethod
+    def _build_tool_info_from_args(
+        tool_call_id: str,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        tool_def: dict[str, Any],
+    ) -> ToolInfo:
+        """Build a ToolInfo from parsed tool call arguments and a tool definition.
+
+        Shared between the agent mode tool executor and the SDK MCP handler
+        to avoid duplicating the field-mapping + ToolInfo construction logic.
+        """
+        field_mapping = tool_def["function"].get("_field_mapping", {})
+        input_data: dict[str, Any] = {}
+        if "function" in tool_def and "parameters" in tool_def["function"]:
+            expected_args = tool_def["function"]["parameters"].get("properties", {})
+            for clean_name in expected_args:
+                original = field_mapping.get(clean_name, clean_name)
+                input_data[original] = tool_args.get(clean_name)
+
+        mock_tc = types.SimpleNamespace(
+            id=tool_call_id,
+            function=types.SimpleNamespace(
+                name=tool_name,
+                arguments=json.dumps(tool_args),
+            ),
+        )
+        return ToolInfo(
+            tool_call=mock_tc,
+            tool_name=tool_name,
+            tool_def=tool_def,
+            input_data=input_data,
+            field_mapping=field_mapping,
+        )
+
+    @staticmethod
     async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -1038,30 +1073,13 @@ class ToolOrchestratorBlock(Block):
                     is_error=True,
                 )
 
-            # Build ToolInfo
+            # Build ToolInfo using shared helper
             tool_args = json.loads(tool_call.arguments)
-            field_mapping = tool_def["function"].get("_field_mapping", {})
-            input_data_map = {}
-            if "function" in tool_def and "parameters" in tool_def["function"]:
-                expected_args = tool_def["function"]["parameters"].get("properties", {})
-                for clean_name in expected_args:
-                    original = field_mapping.get(clean_name, clean_name)
-                    input_data_map[original] = tool_args.get(clean_name)
-
-            # Create a mock tool_call object for _execute_single_tool_with_manager
-            mock_tc = types.SimpleNamespace(
-                id=tool_call.id,
-                function=types.SimpleNamespace(
-                    name=tool_call.name,
-                    arguments=tool_call.arguments,
-                ),
-            )
-            tool_info = ToolInfo(
-                tool_call=mock_tc,
+            tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
+                tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
+                tool_args=tool_args,
                 tool_def=tool_def,
-                input_data=input_data_map,
-                field_mapping=field_mapping,
             )
 
             try:
@@ -1123,7 +1141,8 @@ class ToolOrchestratorBlock(Block):
             )
 
         try:
-            loop_result: ToolCallLoopResult = await tool_call_loop(
+            loop_result = ToolCallLoopResult(response_text="", messages=current_prompt)
+            async for loop_result in tool_call_loop(
                 messages=current_prompt,
                 tools=tool_functions,
                 llm_call=llm_caller,
@@ -1131,13 +1150,17 @@ class ToolOrchestratorBlock(Block):
                 update_conversation=conversation_updater,
                 max_iterations=max_iterations,
                 last_iteration_message=last_iter_msg,
-            )
+            ):
+                # Yield intermediate conversation state each iteration
+                if not loop_result.finished_naturally:
+                    yield "conversations", loop_result.messages
         except Exception as e:
             yield "error", f"LLM call failed in agent mode: {e}"
             return
 
-        yield "finished", loop_result.response_text
-        yield "conversations", loop_result.messages
+        if loop_result:
+            yield "finished", loop_result.response_text
+            yield "conversations", loop_result.messages
 
     def _create_graph_mcp_server(
         self,
@@ -1176,29 +1199,13 @@ class ToolOrchestratorBlock(Block):
             def _make_handler(_tool_func=_tf, _self=_block):
                 async def handler(args: dict[str, Any]) -> dict[str, Any]:
                     func = _tool_func["function"]
-                    field_mapping = func.get("_field_mapping", {})
 
-                    # Build input_data with original field names
-                    input_data = {}
-                    for clean_name, value in args.items():
-                        original_name = field_mapping.get(clean_name, clean_name)
-                        input_data[original_name] = value
-
-                    # Create mock tool_call object for _execute_single_tool_with_manager
-                    mock_tool_call = types.SimpleNamespace(
-                        id=f"sdk-{uuid_mod.uuid4().hex[:12]}",
-                        function=types.SimpleNamespace(
-                            name=func["name"],
-                            arguments=json.dumps(args),
-                        ),
-                    )
-
-                    tool_info = ToolInfo(
-                        tool_call=mock_tool_call,
+                    # Build ToolInfo using shared helper
+                    tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
+                        tool_call_id=f"sdk-{uuid_mod.uuid4().hex[:12]}",
                         tool_name=func["name"],
+                        tool_args=args,
                         tool_def=_tool_func,
-                        input_data=input_data,
-                        field_mapping=field_mapping,
                     )
 
                     try:
@@ -1309,7 +1316,14 @@ class ToolOrchestratorBlock(Block):
                 user_parts.append(str(p["content"]))
         user_message = "\n\n".join(user_parts) if user_parts else input_data.prompt
 
-        # Run SDK client
+        # Run SDK client with heartbeat-safe message iteration.
+        # We must NOT cancel __anext__() mid-flight — doing so corrupts
+        # the SDK's internal anyio memory stream (same pattern as
+        # copilot/sdk/service.py:_iter_sdk_messages).
+        import asyncio
+
+        _HEARTBEAT_INTERVAL = 10.0  # seconds
+
         response_parts: list[str] = []
         total_prompt_tokens = 0
         total_completion_tokens = 0
@@ -1317,17 +1331,50 @@ class ToolOrchestratorBlock(Block):
         async with ClaudeSDKClient(options=options) as client:
             await client.query(user_message)
 
-            async for sdk_msg in client.receive_response():
-                if isinstance(sdk_msg, AssistantMessage):
-                    for block in sdk_msg.content:
-                        if isinstance(block, TextBlock):
-                            response_parts.append(block.text)
-                elif isinstance(sdk_msg, ResultMessage):
-                    if sdk_msg.usage:
-                        total_prompt_tokens += getattr(sdk_msg.usage, "input_tokens", 0)
-                        total_completion_tokens += getattr(
-                            sdk_msg.usage, "output_tokens", 0
-                        )
+            msg_iter = client.receive_response().__aiter__()
+            pending_task: asyncio.Task[Any] | None = None
+
+            async def _next_msg() -> Any:
+                return await msg_iter.__anext__()
+
+            try:
+                while True:
+                    if pending_task is None:
+                        pending_task = asyncio.create_task(_next_msg())
+
+                    done, _ = await asyncio.wait(
+                        {pending_task}, timeout=_HEARTBEAT_INTERVAL
+                    )
+
+                    if not done:
+                        # Heartbeat — SDK is still processing, keep waiting
+                        continue
+
+                    pending_task = None
+                    try:
+                        sdk_msg = done.pop().result()
+                    except StopAsyncIteration:
+                        break
+
+                    if isinstance(sdk_msg, AssistantMessage):
+                        for content_block in sdk_msg.content:
+                            if isinstance(content_block, TextBlock):
+                                response_parts.append(content_block.text)
+                    elif isinstance(sdk_msg, ResultMessage):
+                        if sdk_msg.usage:
+                            total_prompt_tokens += getattr(
+                                sdk_msg.usage, "input_tokens", 0
+                            )
+                            total_completion_tokens += getattr(
+                                sdk_msg.usage, "output_tokens", 0
+                            )
+            finally:
+                if pending_task is not None and not pending_task.done():
+                    pending_task.cancel()
+                    try:
+                        await pending_task
+                    except (asyncio.CancelledError, StopAsyncIteration):
+                        pass
 
         response_text = "".join(response_parts)
 
@@ -1453,6 +1500,13 @@ class ToolOrchestratorBlock(Block):
 
         # Execute tools based on the selected mode
         if input_data.use_sdk_mode:
+            # Validate provider — SDK mode only works with Anthropic-compatible models
+            provider = input_data.model.metadata.provider
+            if provider not in ("anthropic", "open_router"):
+                raise ValueError(
+                    f"SDK mode requires an Anthropic-compatible model (got provider={provider}). "
+                    "Please select an Anthropic or OpenRouter model, or disable SDK mode."
+                )
             # SDK mode: Claude Agent SDK manages conversation + tool calling
             execution_params = ExecutionParams(
                 user_id=user_id,

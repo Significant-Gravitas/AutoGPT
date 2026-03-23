@@ -433,25 +433,31 @@ async def stream_chat_completion_baseline(
                         "content": tr.content,
                     }
                 )
-        # If no tool results, just a text response — nothing to append
-        # (the text is tracked via assistant_text nonlocal)
+        else:
+            # Final text-only response — assistant_text is tracked via
+            # nonlocal accumulator, but we still need to append to messages
+            # so the persisted session history is complete.
+            if response.response_text:
+                messages.append(
+                    {"role": "assistant", "content": response.response_text}
+                )
 
     try:
-        loop_result = await tool_call_loop(
+        loop_result = None
+        async for loop_result in tool_call_loop(
             messages=openai_messages,
             tools=tools,  # type: ignore[arg-type]  # ChatCompletionToolParam is a TypedDict
             llm_call=_llm_caller,
             execute_tool=_tool_executor,
             update_conversation=_conversation_updater,
             max_iterations=_MAX_TOOL_ROUNDS,
-        )
+        ):
+            # Drain buffered events after each iteration (real-time streaming)
+            for evt in pending_events:
+                yield evt
+            pending_events.clear()
 
-        # Drain any remaining pending events
-        for evt in pending_events:
-            yield evt
-        pending_events.clear()
-
-        if not loop_result.finished_naturally:
+        if loop_result and not loop_result.finished_naturally:
             limit_msg = (
                 f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
                 "without a final response."

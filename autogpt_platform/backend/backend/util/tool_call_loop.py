@@ -10,13 +10,13 @@ the ToolOrchestratorBlock and copilot baseline can use. The loop:
 5. Repeats until no more tool calls or max iterations reached
 
 Callers provide callbacks for LLM calling, tool execution, and
-conversation updating. The loop is an async generator that yields
-``ToolCallLoopEvent`` objects for streaming-capable callers.
+conversation updating.
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -106,8 +106,13 @@ async def tool_call_loop(
     update_conversation: ConversationUpdater,
     max_iterations: int = -1,
     last_iteration_message: str | None = None,
-) -> ToolCallLoopResult:
-    """Run a tool-calling conversation loop.
+) -> AsyncGenerator[ToolCallLoopResult, None]:
+    """Run a tool-calling conversation loop as an async generator.
+
+    Yields a ``ToolCallLoopResult`` after each iteration so callers can
+    drain buffered events (e.g. streaming text deltas) between iterations.
+    The **final** yielded result has ``finished_naturally`` set and contains
+    the complete response text.
 
     Args:
         messages: Initial conversation messages (modified in-place).
@@ -123,8 +128,9 @@ async def tool_call_loop(
         last_iteration_message: Optional message to append on the last
             iteration to encourage the model to finish.
 
-    Returns:
-        ToolCallLoopResult with the final response and conversation state.
+    Yields:
+        ToolCallLoopResult after each iteration. Check ``finished_naturally``
+        to determine if the loop completed or is still running.
     """
     result = ToolCallLoopResult(
         response_text="",
@@ -157,7 +163,8 @@ async def tool_call_loop(
             result.response_text = response.response_text or ""
             update_conversation(messages, response)
             result.finished_naturally = True
-            return result
+            yield result
+            return
 
         # Execute tools
         tool_results: list[ToolCallResult] = []
@@ -168,9 +175,13 @@ async def tool_call_loop(
         # Update conversation with response + tool results
         update_conversation(messages, response, tool_results)
 
+        # Yield intermediate result so callers can drain buffered events
+        result.finished_naturally = False
+        yield result
+
     # Hit max iterations
     result.response_text = (
         f"Completed after {max_iterations} iterations (limit reached)"
     )
     result.finished_naturally = False
-    return result
+    yield result
