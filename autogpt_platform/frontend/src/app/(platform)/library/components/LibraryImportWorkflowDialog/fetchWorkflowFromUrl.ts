@@ -3,15 +3,34 @@
 const N8N_URL_RE = /n8n\.io\/workflows\/(\d+)/i;
 const N8N_TEMPLATES_API = "https://api.n8n.io/api/templates/workflows";
 
+/** Hostnames allowed for URL-based workflow import (SSRF prevention). */
+const ALLOWED_HOSTS = ["n8n.io", "api.n8n.io"];
+
 /**
  * Server action that fetches a workflow JSON from a URL.
  * Runs server-side so there are no CORS restrictions.
  *
- * Currently has special handling for n8n template URLs
- * (extracts the workflow object from the n8n API response).
- * For all other URLs it fetches the raw JSON as-is.
+ * Only URLs from known workflow platform hosts are accepted
+ * to prevent SSRF. Currently supports n8n.io workflows.
  */
 export async function fetchWorkflowFromUrl(url: string): Promise<string> {
+  // Validate host against allowlist to prevent SSRF
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    throw new Error("Invalid URL");
+  }
+
+  if (
+    !ALLOWED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))
+  ) {
+    throw new Error(
+      "Unsupported host. URL import is supported for n8n.io workflows. " +
+        "For other platforms, use file upload.",
+    );
+  }
+
   const n8nMatch = url.match(N8N_URL_RE);
   if (n8nMatch) {
     return fetchN8nWorkflow(n8nMatch[1]);
