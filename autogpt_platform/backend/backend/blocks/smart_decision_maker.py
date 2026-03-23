@@ -934,7 +934,7 @@ class SmartDecisionMakerBlock(Block):
             )
 
         except Exception as e:
-            logger.error(f"Tool execution with manager failed: {e}")
+            logger.warning(f"Tool execution with manager failed: {e}")
             # Return error response
             return _create_tool_response(
                 tool_call.id,
