@@ -233,7 +233,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
 | [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
 | [Replicate Model](block-integrations/replicate/replicate_block.md#replicate-model) | Run Replicate models synchronously |
-| [Smart Decision Maker](block-integrations/llm.md#smart-decision-maker) | Uses AI to intelligently decide what tool to use |
+| [Tool Orchestrator](block-integrations/llm.md#tool-orchestrator) | Uses AI to intelligently decide what tool to use |
 | [Stagehand Act](block-integrations/stagehand/blocks.md#stagehand-act) | Interact with a web page by performing actions on a web page |
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |

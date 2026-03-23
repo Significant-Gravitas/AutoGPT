@@ -746,7 +746,7 @@ Choose from different sonar model variants including deep-research for comprehen
 
 ---
 
-## Smart Decision Maker
+## Tool Orchestrator
 
 ### What it is
 Uses AI to intelligently decide what tool to use.

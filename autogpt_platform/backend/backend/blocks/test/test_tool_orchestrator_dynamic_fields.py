@@ -1,4 +1,4 @@
-"""Comprehensive tests for SmartDecisionMakerBlock dynamic field handling."""
+"""Comprehensive tests for ToolOrchestratorBlock dynamic field handling."""
 
 import json
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock, patch
 import pytest
 
 from backend.blocks.data_manipulation import AddToListBlock, CreateDictionaryBlock
-from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.text import MatchTextPatternBlock
+from backend.blocks.tool_orchestrator import ToolOrchestratorBlock
 from backend.data.dynamic_fields import get_dynamic_field_description
 
 
@@ -37,7 +37,7 @@ async def test_dynamic_field_description_generation():
 @pytest.mark.asyncio
 async def test_create_block_function_signature_with_dict_fields():
     """Test that function signatures are created correctly for dictionary dynamic fields."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # Create a mock node for CreateDictionaryBlock
     mock_node = Mock()
@@ -52,19 +52,19 @@ async def test_create_block_function_signature_with_dict_fields():
             source_name="tools_^_create_dict_~_values___name",  # Sanitized source
             sink_name="values_#_name",  # Original sink
             sink_id="dict_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_create_dict_~_values___age",  # Sanitized source
             sink_name="values_#_age",  # Original sink
             sink_id="dict_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_create_dict_~_values___email",  # Sanitized source
             sink_name="values_#_email",  # Original sink
             sink_id="dict_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
     ]
 
@@ -100,7 +100,7 @@ async def test_create_block_function_signature_with_dict_fields():
 @pytest.mark.asyncio
 async def test_create_block_function_signature_with_list_fields():
     """Test that function signatures are created correctly for list dynamic fields."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # Create a mock node for AddToListBlock
     mock_node = Mock()
@@ -115,19 +115,19 @@ async def test_create_block_function_signature_with_list_fields():
             source_name="tools_^_add_list_~_0",
             sink_name="entries_$_0",  # Dynamic list field
             sink_id="list_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_add_list_~_1",
             sink_name="entries_$_1",  # Dynamic list field
             sink_id="list_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_add_list_~_2",
             sink_name="entries_$_2",  # Dynamic list field
             sink_id="list_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
     ]
 
@@ -154,7 +154,7 @@ async def test_create_block_function_signature_with_list_fields():
 @pytest.mark.asyncio
 async def test_create_block_function_signature_with_object_fields():
     """Test that function signatures are created correctly for object dynamic fields."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # Create a mock node for MatchTextPatternBlock (simulating object fields)
     mock_node = Mock()
@@ -169,13 +169,13 @@ async def test_create_block_function_signature_with_object_fields():
             source_name="tools_^_extract_~_user_name",
             sink_name="data_@_user_name",  # Dynamic object field
             sink_id="extract_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_extract_~_user_email",
             sink_name="data_@_user_email",  # Dynamic object field
             sink_id="extract_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
     ]
 
@@ -197,11 +197,11 @@ async def test_create_block_function_signature_with_object_fields():
 @pytest.mark.asyncio
 async def test_create_tool_node_signatures():
     """Test that the mapping between sanitized and original field names is built correctly."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # Mock the database client and connected nodes
     with patch(
-        "backend.blocks.smart_decision_maker.get_database_manager_async_client"
+        "backend.blocks.tool_orchestrator.get_database_manager_async_client"
     ) as mock_db:
         mock_client = AsyncMock()
         mock_db.return_value = mock_client
@@ -281,7 +281,7 @@ async def test_create_tool_node_signatures():
 @pytest.mark.asyncio
 async def test_output_yielding_with_dynamic_fields():
     """Test that outputs are yielded correctly with dynamic field names mapped back."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # No more sanitized mapping needed since we removed sanitization
 
@@ -309,13 +309,13 @@ async def test_output_yielding_with_dynamic_fields():
 
     # Mock the LLM call
     with patch(
-        "backend.blocks.smart_decision_maker.llm.llm_call", new_callable=AsyncMock
+        "backend.blocks.tool_orchestrator.llm.llm_call", new_callable=AsyncMock
     ) as mock_llm:
         mock_llm.return_value = mock_response
 
         # Mock the database manager to avoid HTTP calls during tool execution
         with patch(
-            "backend.blocks.smart_decision_maker.get_database_manager_async_client"
+            "backend.blocks.tool_orchestrator.get_database_manager_async_client"
         ) as mock_db_manager, patch.object(
             block, "_create_tool_node_signatures", new_callable=AsyncMock
         ) as mock_sig:
@@ -420,7 +420,7 @@ async def test_output_yielding_with_dynamic_fields():
 @pytest.mark.asyncio
 async def test_mixed_regular_and_dynamic_fields():
     """Test handling of blocks with both regular and dynamic fields."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # Create a mock node
     mock_node = Mock()
@@ -450,19 +450,19 @@ async def test_mixed_regular_and_dynamic_fields():
             source_name="tools_^_test_~_regular",
             sink_name="regular_field",  # Regular field
             sink_id="test_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_test_~_dict_key",
             sink_name="values_#_key1",  # Dynamic dict field
             sink_id="test_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_test_~_dict_key2",
             sink_name="values_#_key2",  # Dynamic dict field
             sink_id="test_node_id",
-            source_id="smart_decision_node_id",
+            source_id="tool_orchestrator_node_id",
         ),
     ]
 
@@ -488,7 +488,7 @@ async def test_mixed_regular_and_dynamic_fields():
 @pytest.mark.asyncio
 async def test_validation_errors_dont_pollute_conversation():
     """Test that validation errors are only used during retries and don't pollute the conversation."""
-    block = SmartDecisionMakerBlock()
+    block = ToolOrchestratorBlock()
 
     # Track conversation history changes
     conversation_snapshots = []
@@ -535,7 +535,7 @@ async def test_validation_errors_dont_pollute_conversation():
 
     # Mock the LLM call
     with patch(
-        "backend.blocks.smart_decision_maker.llm.llm_call", new_callable=AsyncMock
+        "backend.blocks.tool_orchestrator.llm.llm_call", new_callable=AsyncMock
     ) as mock_llm:
         mock_llm.side_effect = mock_llm_call
 
@@ -565,7 +565,7 @@ async def test_validation_errors_dont_pollute_conversation():
 
             # Mock the database manager to avoid HTTP calls during tool execution
             with patch(
-                "backend.blocks.smart_decision_maker.get_database_manager_async_client"
+                "backend.blocks.tool_orchestrator.get_database_manager_async_client"
             ) as mock_db_manager:
                 # Set up the mock database manager for agent mode
                 mock_db_client = AsyncMock()

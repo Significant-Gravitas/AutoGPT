@@ -38,7 +38,7 @@ COPILOT_EXCLUDED_BLOCK_TYPES = {
 
 # Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
 COPILOT_EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology;
+    # ToolOrchestratorBlock - dynamically discovers downstream blocks via graph topology;
     # usable in agent graphs (guide hardcodes its ID) but cannot run standalone.
     "3b191d9f-356f-482d-8238-ba04b6d18381",
 }

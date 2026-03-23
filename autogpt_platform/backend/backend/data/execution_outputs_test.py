@@ -7,7 +7,7 @@ the function returns plain values instead of lists, it causes:
     1 validation error for dict[str,list[any]] response
     Input should be a valid list [type=list_type, input_value='', input_type=str]
 
-This breaks SmartDecisionMakerBlock agent mode tool execution.
+This breaks ToolOrchestratorBlock agent mode tool execution.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
