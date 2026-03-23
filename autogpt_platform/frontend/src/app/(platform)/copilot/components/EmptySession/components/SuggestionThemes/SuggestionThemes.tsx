@@ -72,7 +72,7 @@ export function SuggestionThemes({ themes, onSend, disabled }: Props) {
                   <li key={prompt}>
                     <button
                       type="button"
-                      disabled={loadingPrompt !== null}
+                      disabled={disabled || loadingPrompt !== null}
                       onClick={() => void handlePromptClick(theme.name, prompt)}
                       className="w-full rounded-md px-3 py-2 text-left text-sm text-zinc-700 transition-colors hover:bg-zinc-100 disabled:opacity-50"
                     >
