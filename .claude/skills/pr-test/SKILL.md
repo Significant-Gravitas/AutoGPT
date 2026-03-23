@@ -346,59 +346,70 @@ agent-browser --session-name pr-test open 'http://localhost:3000/copilot' --time
 # ... fill chat input and press Enter, wait 20-30s for response
 ```
 
-## Step 5: Record results
+## Step 5: Record results and take screenshots
 
-For each test scenario, record in `$RESULTS_DIR/test-report.md`:
+**Take a screenshot at every significant test step** — before and after interactions, on success, and on failure. Name them sequentially with descriptive names:
 
-```markdown
-# E2E Test Report: PR #{N} — {title}
-Date: {date}
-Branch: {branch}
-Worktree: {path}
-
-## Environment
-- Docker services: [list running containers]
-- API keys: OpenRouter={present/missing}, E2B={present/missing}
-
-## Test Results
-
-### Scenario 1: {name}
-**Steps:**
-1. ...
-2. ...
-**Expected:** ...
-**Actual:** ...
-**Result:** PASS / FAIL
-**Screenshot:** {filename}.png
-**Logs:** (if relevant)
-
-### Scenario 2: {name}
-...
-
-## Summary
-- Total: X scenarios
-- Passed: Y
-- Failed: Z
-- Bugs found: [list]
-```
-
-Take screenshots at each significant step:
 ```bash
 agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{description}.png
+# Examples:
+# $RESULTS_DIR/01-login-page.png
+# $RESULTS_DIR/02-builder-with-block.png
+# $RESULTS_DIR/03-copilot-response.png
+# $RESULTS_DIR/04-agent-execution-result.png
+# $RESULTS_DIR/05-error-state.png
 ```
 
-## Step 6: Report results
+**Aim for at least one screenshot per test scenario.** More is better — screenshots are the primary evidence that tests were actually run.
 
-After all tests complete, output a summary to the user:
+## Step 6: Show results to user with screenshots
 
-1. Table of all scenarios with PASS/FAIL
-2. Screenshots of failures (read the PNG files to show them)
-3. Any bugs found with details
-4. Recommendations
+**CRITICAL: After all tests complete, you MUST show every screenshot to the user using the Read tool, with an explanation of what each screenshot shows.** This is the most important part of the test report — the user needs to visually verify the results.
 
-### Post test results as PR comment with screenshots
+For each screenshot:
+1. Use the `Read` tool to display the PNG file (Claude can read images)
+2. Write a 1-2 sentence explanation below it describing:
+   - What page/state is being shown
+   - What the screenshot proves (which test scenario it validates)
+   - Any notable details visible in the UI
 
-Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees).
+Format the output like this:
+
+```markdown
+### Screenshot 1: {descriptive title}
+[Read the PNG file here]
+
+**What it shows:** {1-2 sentence explanation of what this screenshot proves}
+
+---
+```
+
+After showing all screenshots, output a summary table:
+
+| # | Scenario | Result |
+|---|----------|--------|
+| 1 | {name} | PASS/FAIL |
+| 2 | ... | ... |
+
+**IMPORTANT:** As you show each screenshot and record test results, persist them in shell variables for Step 7:
+
+```bash
+# Build these variables during Step 6 — they are required by Step 7's script
+declare -A SCREENSHOT_EXPLANATIONS=(
+  ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
+  ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
+  # ... one entry per screenshot, using the same explanations you showed the user above
+)
+
+TEST_RESULTS_TABLE="| 1 | Login flow | PASS |
+| 2 | Builder block addition | PASS |
+| 3 | Copilot chat | FAIL |"
+# ... one row per test scenario with actual results
+```
+
+## Step 7: Post test report as PR comment with screenshots
+
+Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees), then post a comment with inline images and per-screenshot explanations.
 
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
@@ -406,17 +417,7 @@ REPO="Significant-Gravitas/AutoGPT"
 SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
 SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
 
-# Step 1: Create blobs for each screenshot
-declare -a TREE_ENTRIES
-for img in $RESULTS_DIR/*.png; do
-  BASENAME=$(basename "$img")
-  B64=$(base64 < "$img")
-  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
-  TREE_ENTRIES+=("-f" "tree[][path]=${SCREENSHOTS_DIR}/${BASENAME}" "-f" "tree[][mode]=100644" "-f" "tree[][type]=blob" "-f" "tree[][sha]=${BLOB_SHA}")
-done
-
-# Step 2: Create a tree with all screenshot blobs
-# Build the tree JSON manually since gh api doesn't handle arrays well
+# Step 1: Create blobs for each screenshot and build tree JSON
 TREE_JSON='['
 FIRST=true
 for img in $RESULTS_DIR/*.png; do
@@ -428,41 +429,58 @@ for img in $RESULTS_DIR/*.png; do
 done
 TREE_JSON+=']'
 
-TREE_SHA=$(echo "$TREE_JSON" | gh api "repos/${REPO}/git/trees" --input - -f base_tree="" --jq '.sha' 2>/dev/null \
-  || echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
-
-# Step 3: Create a commit pointing to that tree
+# Step 2: Create tree, commit, and branch ref
+TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
 COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
   -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
   -f tree="$TREE_SHA" \
   --jq '.sha')
-
-# Step 4: Create or update the ref (branch) — no local checkout needed
 gh api "repos/${REPO}/git/refs" \
   -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
   -f sha="$COMMIT_SHA" 2>/dev/null \
   || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
     -X PATCH -f sha="$COMMIT_SHA" -f force=true
+```
 
-# Step 5: Build image markdown and post the comment
+Then post the comment with **inline images AND explanations for each screenshot**:
+
+```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
+
+# Build image markdown using SCREENSHOT_EXPLANATIONS and TEST_RESULTS_TABLE from Step 6
+
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
-  IMAGE_MARKDOWN="$IMAGE_MARKDOWN
-![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})"
+  TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+  EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
+  IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
+### ${TITLE}
+![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
+${EXPLANATION}
+"
 done
 
-gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -f body="$(cat <<EOF
+# Write comment body to file to avoid shell interpretation issues with special characters
+COMMENT_FILE=$(mktemp)
+cat > "$COMMENT_FILE" <<INNEREOF
 ## 🧪 E2E Test Report
 
-$(cat $RESULTS_DIR/test-report.md)
+| # | Scenario | Result |
+|---|----------|--------|
+${TEST_RESULTS_TABLE}
 
-### Screenshots
 ${IMAGE_MARKDOWN}
-EOF
-)"
+INNEREOF
+
+gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
+rm -f "$COMMENT_FILE"
 ```
+
+**The PR comment MUST include:**
+1. A summary table of all scenarios with PASS/FAIL
+2. Every screenshot rendered inline (not just linked)
+3. A 1-2 sentence explanation below each screenshot describing what it proves
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
 
