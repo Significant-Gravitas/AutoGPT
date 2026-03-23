@@ -1,4 +1,6 @@
 import logging
+import os
+import resource
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Callable, Concatenate, ParamSpec, TypeVar, cast
 
@@ -172,6 +174,42 @@ class DatabaseManager(AppService):
 
             logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
             await db.disconnect()
+
+    def _get_memory_usage_bytes(self) -> int:
+        """Get current process memory usage in bytes (RSS).
+
+        Tries cgroup v2 first (GKE with containerd), then cgroup v1,
+        then falls back to getrusage.
+        """
+        for path in (
+            "/sys/fs/cgroup/memory.current",  # cgroup v2
+            "/sys/fs/cgroup/memory/memory.usage_in_bytes",  # cgroup v1
+        ):
+            try:
+                with open(path) as f:
+                    return int(f.read().strip())
+            except (FileNotFoundError, PermissionError):
+                continue
+        # Fallback: RSS from getrusage (macOS returns bytes, Linux returns KB)
+        rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return rss if os.uname().sysname == "Darwin" else rss * 1024
+
+    async def readiness_check(self) -> str:
+        """Readiness probe: fails when memory exceeds threshold.
+
+        When memory is too high, Kubernetes removes the pod from Service
+        endpoints (no new traffic), letting in-flight requests drain before
+        the liveness probe eventually kills and restarts the pod.
+        """
+        # Default 1.5GB; configurable via env var
+        max_memory = int(os.environ.get("READINESS_MEMORY_LIMIT", 1_610_612_736))
+        current = self._get_memory_usage_bytes()
+        if current > max_memory:
+            raise UnhealthyServiceError(
+                f"Memory {current / 1024**2:.0f}Mi exceeds readiness limit "
+                f"{max_memory / 1024**2:.0f}Mi"
+            )
+        return await self.health_check()
 
     async def health_check(self) -> str:
         if not db.is_connected():

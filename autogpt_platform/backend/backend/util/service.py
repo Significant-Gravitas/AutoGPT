@@ -372,6 +372,10 @@ class AppService(BaseAppService, ABC):
         """A method to check the health of the process."""
         return "OK"
 
+    async def readiness_check(self) -> str:
+        """Readiness probe. Override to add memory/resource checks."""
+        return await self.health_check()
+
     def run(self):
         sentry_init()
         super().run()
@@ -411,6 +415,7 @@ class AppService(BaseAppService, ABC):
         self.fastapi_app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
+        self.fastapi_app.add_api_route("/ready", self.readiness_check, methods=["GET"])
         self.fastapi_app.add_exception_handler(
             ValueError, self._handle_internal_http_error(400)
         )
