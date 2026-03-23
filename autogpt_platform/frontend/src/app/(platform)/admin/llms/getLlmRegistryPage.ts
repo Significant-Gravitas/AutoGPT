@@ -1,18 +1,18 @@
 import {
-  fetchProviders,
-  fetchModels,
-  fetchCreators,
-  fetchMigrations,
+  fetchLlmProviders,
+  fetchLlmModels,
+  fetchLlmCreators,
+  fetchLlmMigrations,
 } from "./actions";
 
 export async function getLlmRegistryPageData() {
   // Fetch all data in parallel
   const [providersData, modelsData, creatorsData, migrationsData] =
     await Promise.all([
-      fetchProviders(),
-      fetchModels(),
-      fetchCreators(),
-      fetchMigrations(),
+      fetchLlmProviders(),
+      fetchLlmModels(),
+      fetchLlmCreators(),
+      fetchLlmMigrations(),
     ]);
 
   return {
