@@ -29,6 +29,7 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
+from backend.copilot.sdk.env import build_sdk_env
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -1286,6 +1287,15 @@ class ToolOrchestratorBlock(Block):
             "TodoWrite",
         ]
 
+        # Build SDK env — supports subscription mode (no API key needed),
+        # direct Anthropic, or OpenRouter proxy, same as copilot SDK service.
+        sdk_env = build_sdk_env()
+        if not sdk_env:
+            # Direct Anthropic mode — pass the user-provided API key
+            sdk_env = {
+                "ANTHROPIC_API_KEY": credentials.api_key.get_secret_value(),
+            }
+
         # Build SDK options
         sdk_options: dict[str, Any] = {
             "system_prompt": input_data.sys_prompt or "",
@@ -1293,9 +1303,7 @@ class ToolOrchestratorBlock(Block):
             "allowed_tools": allowed_tools,
             "disallowed_tools": disallowed_tools,
             "cwd": "/tmp",
-            "env": {
-                "ANTHROPIC_API_KEY": credentials.api_key.get_secret_value(),
-            },
+            "env": sdk_env,
         }
 
         # Resolve model name for SDK
