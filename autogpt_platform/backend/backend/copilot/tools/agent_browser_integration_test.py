@@ -5,9 +5,14 @@ These tests actually invoke the agent-browser binary via subprocess and require:
   - AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium (set in Docker)
 
 Run with:
-    poetry run test backend/copilot/tools/agent_browser_integration_test.py -v
+    poetry run test
+
+Or to run only this file:
+    poetry run pytest backend/copilot/tools/agent_browser_integration_test.py -v -p no:autogpt_platform
 
 Skipped automatically when agent-browser binary is not found.
+Tests that hit external sites are marked ``integration`` and skipped by default
+in CI (use ``-m integration`` to include them).
 
 Two test tiers:
   - CLI tests: call agent-browser subprocess directly (no backend imports needed)
@@ -86,12 +91,14 @@ def test_chromium_executable_env_is_set():
     assert os.access(exe, os.X_OK), f"Chromium binary at {exe} is not executable"
 
 
+@pytest.mark.integration
 def test_navigate_returns_success():
     """agent-browser can open a public URL using system chromium."""
     rc, _, stderr = _agent_browser("open", "https://example.com")
     assert rc == 0, f"open failed (rc={rc}): {stderr}"
 
 
+@pytest.mark.integration
 def test_get_title_after_navigate():
     """get title returns the page title after navigation."""
     rc, _, _ = _agent_browser("open", "https://example.com")
@@ -102,6 +109,7 @@ def test_get_title_after_navigate():
     assert "example" in stdout.lower()
 
 
+@pytest.mark.integration
 def test_get_url_after_navigate():
     """get url returns the navigated URL."""
     rc, _, _ = _agent_browser("open", "https://example.com")
@@ -112,6 +120,7 @@ def test_get_url_after_navigate():
     assert urlparse(stdout.strip()).netloc == "example.com"
 
 
+@pytest.mark.integration
 def test_snapshot_returns_interactive_elements():
     """snapshot -i -c lists interactive elements on the page."""
     rc, _, _ = _agent_browser("open", "https://example.com")
@@ -122,6 +131,7 @@ def test_snapshot_returns_interactive_elements():
     assert len(stdout.strip()) > 0, "snapshot returned empty output"
 
 
+@pytest.mark.integration
 def test_screenshot_produces_valid_png():
     """screenshot saves a non-empty, valid PNG file."""
     rc, _, _ = _agent_browser("open", "https://example.com")
@@ -140,6 +150,7 @@ def test_screenshot_produces_valid_png():
         os.unlink(tmp)
 
 
+@pytest.mark.integration
 def test_scroll_down():
     """scroll down succeeds without error."""
     rc, _, _ = _agent_browser("open", "https://example.com")
@@ -149,6 +160,7 @@ def test_scroll_down():
     assert rc == 0, f"scroll failed: {stderr}"
 
 
+@pytest.mark.integration
 def test_fill_form_field():
     """fill writes text into an input field."""
     rc, _, _ = _agent_browser("open", "https://httpbin.org/forms/post")
@@ -160,6 +172,7 @@ def test_fill_form_field():
     assert rc == 0, f"fill failed: {stderr}"
 
 
+@pytest.mark.integration
 def test_concurrent_independent_sessions():
     """Two independent sessions can navigate in parallel without interference."""
     session_a = "integration-concurrent-a"
@@ -193,6 +206,7 @@ def test_concurrent_independent_sessions():
         _close_session(session_b)
 
 
+@pytest.mark.integration
 def test_close_session():
     """close shuts down the browser daemon cleanly."""
     rc, _, _ = _agent_browser("open", "https://example.com")
@@ -230,6 +244,7 @@ def _close_tool_session():
     _close_session(_TOOL_SESSION_ID)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_tool_navigate_returns_response(_close_tool_session):
     """BrowserNavigateTool._execute returns a BrowserNavigateResponse with real content."""
@@ -275,6 +290,7 @@ async def test_tool_navigate_missing_url(_close_tool_session):
     assert resp.error == "missing_url"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_tool_act_scroll(_close_tool_session):
     """BrowserActTool._execute can scroll after a navigate."""
@@ -294,6 +310,7 @@ async def test_tool_act_scroll(_close_tool_session):
     assert resp.action == "scroll"
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_tool_act_fill_and_click(_close_tool_session):
     """BrowserActTool._execute can fill a form field."""
