@@ -37,7 +37,7 @@ export function EmptySession({
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
-      query: { staleTime: Infinity },
+      query: { staleTime: Infinity, gcTime: Infinity, refetchOnMount: false },
     });
   const themes = getSuggestionThemes(
     suggestedPromptsResponse?.status === 200
