@@ -3,6 +3,7 @@
 import logging
 import re
 import secrets
+import time
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
@@ -91,11 +92,18 @@ class LlmModelMeta(EnumMeta):
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
+    O4_MINI = "o4-mini"
+    O3_PRO = "o3-pro"
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
+    O3_DEEP_RESEARCH = "o3-deep-research"
+    O4_MINI_DEEP_RESEARCH = "o4-mini-deep-research"
     O1 = "o1"
     O1_MINI = "o1-mini"
     # GPT-5 models
+    GPT5_4 = "gpt-5.4"
+    GPT5_4_MINI = "gpt-5.4-mini"
+    GPT5_4_NANO = "gpt-5.4-nano"
     GPT5_2 = "gpt-5.2-2025-12-11"
     GPT5_1 = "gpt-5.1-2025-11-13"
     GPT5 = "gpt-5-2025-08-07"
@@ -104,6 +112,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT5_CHAT = "gpt-5-chat-latest"
     GPT41 = "gpt-4.1-2025-04-14"
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
+    GPT41_NANO = "gpt-4.1-nano"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
@@ -213,10 +222,22 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
+    LlmModel.O4_MINI: ModelMetadata(
+        "openai", 200000, 100000, "O4 Mini", "OpenAI", "OpenAI", 1
+    ),
+    LlmModel.O3_PRO: ModelMetadata(
+        "openai", 200000, 100000, "O3 Pro", "OpenAI", "OpenAI", 3
+    ),
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
     LlmModel.O3_MINI: ModelMetadata(
         "openai", 200000, 100000, "O3 Mini", "OpenAI", "OpenAI", 1
     ),  # o3-mini-2025-01-31
+    LlmModel.O3_DEEP_RESEARCH: ModelMetadata(
+        "openai", 200000, 100000, "O3 Deep Research", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.O4_MINI_DEEP_RESEARCH: ModelMetadata(
+        "openai", 200000, 100000, "O4 Mini Deep Research", "OpenAI", "OpenAI", 1
+    ),
     LlmModel.O1: ModelMetadata(
         "openai", 200000, 100000, "O1", "OpenAI", "OpenAI", 3
     ),  # o1-2024-12-17
@@ -224,6 +245,15 @@ MODEL_METADATA = {
         "openai", 128000, 65536, "O1 Mini", "OpenAI", "OpenAI", 2
     ),  # o1-mini-2024-09-12
     # GPT-5 models
+    LlmModel.GPT5_4: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.4", "OpenAI", "OpenAI", 3
+    ),
+    LlmModel.GPT5_4_MINI: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.4 Mini", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.GPT5_4_NANO: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.4 Nano", "OpenAI", "OpenAI", 1
+    ),
     LlmModel.GPT5_2: ModelMetadata(
         "openai", 400000, 128000, "GPT-5.2", "OpenAI", "OpenAI", 3
     ),
@@ -247,6 +277,9 @@ MODEL_METADATA = {
     ),
     LlmModel.GPT41_MINI: ModelMetadata(
         "openai", 1047576, 32768, "GPT-4.1 Mini", "OpenAI", "OpenAI", 1
+    ),
+    LlmModel.GPT41_NANO: ModelMetadata(
+        "openai", 1047576, 32768, "GPT-4.1 Nano", "OpenAI", "OpenAI", 1
     ),
     LlmModel.GPT4O_MINI: ModelMetadata(
         "openai", 128000, 16384, "GPT-4o Mini", "OpenAI", "OpenAI", 1
@@ -497,7 +530,7 @@ MODEL_METADATA = {
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
 }
 
-DEFAULT_LLM_MODEL = LlmModel.GPT5_2
+DEFAULT_LLM_MODEL = LlmModel.GPT5_4
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
@@ -632,6 +665,7 @@ async def llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
+    _start = time.perf_counter()
 
     if compress_prompt_to_fit:
         result = await compress_context(
@@ -678,7 +712,7 @@ async def llm_call(
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
 
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
             response=response.choices[0].message.content or "",
@@ -754,7 +788,7 @@ async def llm_call(
                     reasoning = content_block.thinking
                     break
 
-            return LLMResponse(
+            _r = LLMResponse(
                 raw_response=resp,
                 prompt=prompt,
                 response=(
@@ -783,7 +817,7 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
         )
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
             response=response.choices[0].message.content or "",
@@ -805,7 +839,7 @@ async def llm_call(
             stream=False,
             options={"num_ctx": max_tokens},
         )
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=response.get("response") or "",
             prompt=prompt,
             response=response.get("response") or "",
@@ -847,7 +881,7 @@ async def llm_call(
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
 
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
             response=response.choices[0].message.content or "",
@@ -889,7 +923,7 @@ async def llm_call(
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
 
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
             response=response.choices[0].message.content or "",
@@ -915,7 +949,7 @@ async def llm_call(
             max_tokens=max_tokens,
         )
 
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=completion.choices[0].message,
             prompt=prompt,
             response=completion.choices[0].message.content or "",
@@ -953,7 +987,7 @@ async def llm_call(
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
 
-        return LLMResponse(
+        _r = LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
             response=response.choices[0].message.content or "",
@@ -964,6 +998,15 @@ async def llm_call(
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
+
+    logger.info(
+        "llm_call",
+        model=llm_model.value,
+        prompt_tokens=_r.prompt_tokens,
+        completion_tokens=_r.completion_tokens,
+        latency_ms=int((time.perf_counter() - _start) * 1000),
+    )
+    return _r
 
 
 class AIBlockBase(Block, ABC):
@@ -1277,9 +1320,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     return
             except Exception as e:
                 logger.exception(f"Error calling LLM: {e}")
+                _err_lower = str(e).lower()
                 if (
-                    "maximum context length" in str(e).lower()
-                    or "token limit" in str(e).lower()
+                    "maximum context length" in _err_lower
+                    or "token limit" in _err_lower
                 ):
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
@@ -1289,6 +1333,19 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     )
                     # Don't add retry prompt for token limit errors,
                     # just retry with lower maximum output tokens
+                elif (
+                    retry_count == 0
+                    and llm_model != LlmModel.GPT4O
+                    and any(
+                        code in _err_lower
+                        for code in ("503", "429", "overload", "rate_limit", "service_unavailable")
+                    )
+                ):
+                    logger.warning(
+                        f"Transient provider error on {llm_model.value!r}; "
+                        "falling back to gpt-4o for remaining retries."
+                    )
+                    llm_model = LlmModel.GPT4O
 
                 error_feedback_message = f"Error calling LLM: {e}"
 

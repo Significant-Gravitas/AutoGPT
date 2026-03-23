@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 # Message prefixes for important system messages that should be protected during compression
 MAIN_OBJECTIVE_PREFIX = "[Main Objective Prompt]: "
 
+# Sentinel used for tiktoken model selection.  gpt-4o's o200k_base tokenizer
+# covers GPT-4.x and GPT-5 model families until tiktoken gains explicit
+# entries for newer model IDs.  This constant avoids raw string duplication.
+_TOKENIZER_MODEL = "gpt-4o"
+
 # ---------------------------------------------------------------------------#
 #  INTERNAL UTILITIES                                                         #
 # ---------------------------------------------------------------------------#
@@ -160,7 +165,7 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
 def estimate_token_count(
     messages: list[dict],
     *,
-    model: str = "gpt-4o",
+    model: str = _TOKENIZER_MODEL,
 ) -> int:
     """
     Return the true token count of *messages* when encoded for *model*.
@@ -183,7 +188,7 @@ def estimate_token_count(
 def estimate_token_count_str(
     text: Any,
     *,
-    model: str = "gpt-4o",
+    model: str = _TOKENIZER_MODEL,
 ) -> int:
     """
     Return the true token count of *text* when encoded for *model*.
@@ -233,6 +238,9 @@ def _normalize_model_for_tokenizer(model: str) -> str:
     if "claude" in model.lower() or not any(
         known in model.lower() for known in ["gpt", "o1", "chatgpt", "text-"]
     ):
+        # Intentional sentinel: gpt-4o (o200k_base) is the widest tokenizer
+        # tiktoken supports today and is a safe approximation for all
+        # Anthropic, Llama, and future OpenAI model families.
         return "gpt-4o"
     return model
 
@@ -540,7 +548,7 @@ async def compress_context(
     messages: list[dict],
     target_tokens: int = DEFAULT_TOKEN_THRESHOLD,
     *,
-    model: str = "gpt-4o",
+    model: str = _TOKENIZER_MODEL,
     client: AsyncOpenAI | None = None,
     keep_recent: int = DEFAULT_KEEP_RECENT,
     reserve: int = 2_048,

@@ -186,7 +186,7 @@ async def generate_activity_status_for_execution(
     db_client: "DatabaseManagerAsyncClient",
     user_id: str,
     execution_status: ExecutionStatus | None = None,
-    model_name: str = "gpt-4o-mini",
+    model_name: str = LlmModel.GPT41_MINI.value,
     skip_feature_flag: bool = False,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     user_prompt: str = DEFAULT_USER_PROMPT,

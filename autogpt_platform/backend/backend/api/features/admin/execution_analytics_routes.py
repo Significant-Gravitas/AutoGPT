@@ -38,7 +38,7 @@ class ExecutionAnalyticsRequest(BaseModel):
     created_after: Optional[datetime] = Field(
         None, description="Optional created date lower bound"
     )
-    model_name: str = Field("gpt-4o-mini", description="Model to use for generation")
+    model_name: str = Field(LlmModel.GPT41_MINI.value, description="Model to use for generation")
     batch_size: int = Field(
         10, description="Batch size for concurrent processing", le=25, ge=1
     )

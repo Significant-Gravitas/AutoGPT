@@ -415,7 +415,17 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
+        from starlette.requests import Request as _Request
+
+        _scope = {
+            "type": "http",
+            "method": "POST",
+            "path": f"/api/v1/graphs/{graph_id}/execute/1",
+            "query_string": b"",
+            "headers": [],
+        }
         return await backend.api.features.v1.execute_graph(
+            request=_Request(_scope),
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,

@@ -168,3 +168,56 @@ yield "image_url", result_url
 - Prevents sensitive data (auth tokens, API keys, user data) from being cached by browsers/proxies
 - To allow caching for a new endpoint, add it to `CACHEABLE_PATHS` in the middleware
 - Applied to both main API server and external API applications
+
+### Rate Limiting
+
+- Located in `backend/api/middleware/rate_limit.py`
+- Uses [slowapi](https://slowapi.readthedocs.io/) backed by Redis (falls back to in-memory for local dev)
+- Default limit: **200 requests/minute per IP** applied to every decorated endpoint
+- **Per-user limiting**: High-cost endpoints (e.g. graph execution) additionally apply a
+  **10 requests/minute per authenticated user** limit via
+  `@limiter.limit("10/minute", key_func=get_user_id_from_request)`
+- `get_user_id_from_request()` extracts the JWT `sub` claim from the `Authorization: Bearer` header
+  without re-verifying the signature (auth middleware handles verification separately).
+  Falls back to remote IP when the header is absent or malformed.
+- To add per-user limiting to a new endpoint:
+  1. Import `limiter` and `get_user_id_from_request` from `backend.api.middleware.rate_limit`
+  2. Add `request: Request` as the **first** parameter of the route handler
+  3. Decorate with `@limiter.limit("N/minute", key_func=get_user_id_from_request)` **below** the `@router.post(...)` decorator
+- When testing route functions directly (bypassing HTTP), construct a stub `Request` from a minimal
+  Starlette scope dict (see `AgentServer.test_execute_graph` in `rest_api.py` for an example)
+
+## LLM Block Development
+
+### Model constants
+
+- `DEFAULT_LLM_MODEL` and `LlmModel` enum live in `backend/blocks/llm.py`
+- **Always** reference these constants rather than hardcoding raw model name strings (e.g. `"gpt-4o"`)
+- For utility/service code outside `blocks/`, note that `blocks/llm.py` imports from `backend/util/prompt.py`,
+  so importing `LlmModel` back into `prompt.py` would create a circular import.
+  In that case define a module-level constant (e.g. `_TOKENIZER_MODEL = "gpt-4o"`) instead.
+- The tokenizer fallback in `util/prompt.py:_normalize_model_for_tokenizer` intentionally returns
+  `"gpt-4o"` as a sentinel for all non-OpenAI and future model IDs — this is correct behaviour,
+  not a stale default (tiktoken does not yet have explicit entries for GPT-5 or Anthropic models).
+
+### LLM observability
+
+Every call through `llm_call()` now emits a structured `INFO` log entry via `TruncatedLogger` with:
+
+| Field | Description |
+|-------|-------------|
+| `model` | `LlmModel.value` used for the call |
+| `prompt_tokens` | Input token count |
+| `completion_tokens` | Output token count |
+| `latency_ms` | Wall-clock time in milliseconds |
+
+In cloud (structured logging) environments these appear as JSON fields in Cloud Logging / Datadog.
+Locally they are visible as a DEBUG-level string log.
+
+### Transient provider fallback
+
+`AIStructuredResponseGeneratorBlock` automatically falls back to `LlmModel.GPT4O` on the **first**
+retry when a transient provider error is detected (HTTP 503, 429, `overload`, `rate_limit`, or
+`service_unavailable` anywhere in the exception message). Subsequent retries use the fallback model.
+This only fires once per execution and only when the requested model is not already `GPT4O`.
+

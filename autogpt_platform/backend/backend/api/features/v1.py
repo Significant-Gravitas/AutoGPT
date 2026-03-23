@@ -100,6 +100,7 @@ from backend.util.timezone_utils import (
 )
 from backend.util.virus_scanner import scan_content_safe
 
+from ..middleware.rate_limit import get_user_id_from_request, limiter
 from .library import db as library_db
 from .library import model as library_model
 from .store.model import StoreAgentDetails
@@ -960,7 +961,9 @@ async def update_graph_settings(
     tags=["graphs"],
     dependencies=[Security(requires_user)],
 )
+@limiter.limit("10/minute", key_func=get_user_id_from_request)
 async def execute_graph(
+    request: Request,
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
     inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],

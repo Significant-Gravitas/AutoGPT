@@ -11,16 +11,40 @@ Limit string format examples:
   "1000/hour"   – 1 000 requests per hour
 """
 
+import base64
+import json
 import logging
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from starlette.requests import Request
 
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 _settings = Settings()
+
+
+def get_user_id_from_request(request: Request) -> str:
+    """
+    Extract the JWT ``sub`` claim from the Bearer token for per-user rate
+    limiting.  No cryptographic verification is performed here — the existing
+    auth middleware handles that.  Falls back to the remote IP address when
+    the header is absent or the token is malformed.
+    """
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            payload_b64 = auth[7:].split(".")[1]
+            # Pad to a multiple of 4 for urlsafe_b64decode
+            payload_b64 += "=" * (-len(payload_b64) % 4)
+            sub = json.loads(base64.urlsafe_b64decode(payload_b64)).get("sub")
+            if sub:
+                return str(sub)
+        except Exception:
+            pass
+    return get_remote_address(request)
 
 
 def _build_storage_uri() -> str:
