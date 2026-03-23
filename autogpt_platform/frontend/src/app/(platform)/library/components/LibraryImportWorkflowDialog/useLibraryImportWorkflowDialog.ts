@@ -34,23 +34,11 @@ function storeAndRedirect(
   fileInfo: { fileId: string; fileName: string; mimeType: string },
   router: ReturnType<typeof useRouter>,
 ) {
-  try {
-    sessionStorage.setItem(
-      "importWorkflowPrompt",
-      "Import this workflow and recreate it as an AutoGPT agent",
-    );
-    sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
-  } catch {
-    // sessionStorage quota exceeded — unlikely since we only store metadata,
-    // but clear stale items and retry once.
-    sessionStorage.removeItem("importWorkflowPrompt");
-    sessionStorage.removeItem("importWorkflowFile");
-    sessionStorage.setItem(
-      "importWorkflowPrompt",
-      "Import this workflow and recreate it as an AutoGPT agent",
-    );
-    sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
-  }
+  sessionStorage.setItem(
+    "importWorkflowPrompt",
+    "Import this workflow and recreate it as an AutoGPT agent",
+  );
+  sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
   router.push("/copilot?source=import&autosubmit=true");
 }
 
@@ -81,18 +69,17 @@ export function useLibraryImportWorkflowDialog() {
 
   async function resolveJson(mode: "url" | "file"): Promise<string | null> {
     if (mode === "url") {
-      try {
-        const json = await fetchWorkflowFromUrl(urlValue);
-        setUrlValue("");
-        return json;
-      } catch (err) {
+      const result = await fetchWorkflowFromUrl(urlValue);
+      if (!result.ok) {
         toast({
           title: "Could not fetch workflow",
-          description: err instanceof Error ? err.message : "Invalid URL.",
+          description: result.error,
           variant: "destructive",
         });
         return null;
       }
+      setUrlValue("");
+      return result.json;
     }
 
     try {

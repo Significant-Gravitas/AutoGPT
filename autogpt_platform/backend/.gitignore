@@ -22,4 +22,3 @@ migrations/*/rollback*.sql
 
 # Workspace files
 workspaces/
-.application.log*
