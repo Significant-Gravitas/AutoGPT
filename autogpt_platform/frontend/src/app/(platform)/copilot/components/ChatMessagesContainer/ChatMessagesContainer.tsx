@@ -19,6 +19,7 @@ import {
   splitReasoningAndResponse,
 } from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { CollapsedCustomToolGroup } from "./components/CollapsedCustomToolGroup";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
@@ -42,6 +43,16 @@ function renderSegments(
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
       return <CollapsedToolGroup key={`group-${segIdx}`} parts={seg.parts} />;
+    }
+    if (seg.kind === "collapsed-custom-group") {
+      return (
+        <CollapsedCustomToolGroup
+          key={`custom-group-${segIdx}`}
+          toolType={seg.toolType}
+          parts={seg.parts}
+          messageID={messageID}
+        />
+      );
     }
     return (
       <MessagePartRenderer

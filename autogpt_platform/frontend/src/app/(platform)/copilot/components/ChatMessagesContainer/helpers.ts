@@ -10,7 +10,8 @@ export type MessagePart = UIMessage<
 
 export type RenderSegment =
   | { kind: "part"; part: MessagePart; index: number }
-  | { kind: "collapsed-group"; parts: ToolUIPart[] };
+  | { kind: "collapsed-group"; parts: ToolUIPart[] }
+  | { kind: "collapsed-custom-group"; toolType: string; parts: ToolUIPart[] };
 
 const CUSTOM_TOOL_TYPES = new Set([
   "tool-find_block",
@@ -81,6 +82,11 @@ export function buildRenderSegments(
 ): RenderSegment[] {
   const segments: RenderSegment[] = [];
   let pendingGroup: Array<{ part: ToolUIPart; index: number }> | null = null;
+  // Track consecutive same-type custom tools for compacting.
+  let pendingCustomGroup: {
+    toolType: string;
+    entries: Array<{ part: ToolUIPart; index: number }>;
+  } | null = null;
 
   function flushGroup() {
     if (!pendingGroup) return;
@@ -97,21 +103,57 @@ export function buildRenderSegments(
     pendingGroup = null;
   }
 
+  function flushCustomGroup() {
+    if (!pendingCustomGroup) return;
+    if (pendingCustomGroup.entries.length >= 2) {
+      segments.push({
+        kind: "collapsed-custom-group",
+        toolType: pendingCustomGroup.toolType,
+        parts: pendingCustomGroup.entries.map((e) => e.part),
+      });
+    } else {
+      for (const e of pendingCustomGroup.entries) {
+        segments.push({ kind: "part", part: e.part, index: e.index });
+      }
+    }
+    pendingCustomGroup = null;
+  }
+
   parts.forEach((part, i) => {
     const absoluteIndex = baseIndex + i;
     const isGenericCompletedTool =
       isCompletedToolPart(part) && !CUSTOM_TOOL_TYPES.has(part.type);
+    const isCustomCompletedTool =
+      isCompletedToolPart(part) && CUSTOM_TOOL_TYPES.has(part.type);
 
     if (isGenericCompletedTool) {
+      flushCustomGroup();
       if (!pendingGroup) pendingGroup = [];
       pendingGroup.push({ part: part as ToolUIPart, index: absoluteIndex });
+    } else if (isCustomCompletedTool) {
+      flushGroup();
+      const toolPart = part as ToolUIPart;
+      if (pendingCustomGroup && pendingCustomGroup.toolType === toolPart.type) {
+        pendingCustomGroup.entries.push({
+          part: toolPart,
+          index: absoluteIndex,
+        });
+      } else {
+        flushCustomGroup();
+        pendingCustomGroup = {
+          toolType: toolPart.type,
+          entries: [{ part: toolPart, index: absoluteIndex }],
+        };
+      }
     } else {
       flushGroup();
+      flushCustomGroup();
       segments.push({ kind: "part", part, index: absoluteIndex });
     }
   });
 
   flushGroup();
+  flushCustomGroup();
   return segments;
 }
 
