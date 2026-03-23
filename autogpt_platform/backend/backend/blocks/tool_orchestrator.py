@@ -1285,7 +1285,7 @@ class ToolOrchestratorBlock(Block):
         input_data: "ToolOrchestratorBlock.Input",
         credentials: llm.APIKeyCredentials,
         tool_functions: list[dict[str, Any]],
-        prompt: list[dict],
+        prompt: list[dict[str, Any]],
         execution_params: ExecutionParams,
         execution_processor: "ExecutionProcessor",
     ):
