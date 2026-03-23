@@ -299,40 +299,6 @@
         }
       }
     },
-    "/api/auth/check-invite": {
-      "post": {
-        "tags": ["v1", "auth"],
-        "summary": "Check if an email is allowed to sign up",
-        "description": "Check if an email is allowed to sign up (no auth required).\n\nCalled by the frontend before creating a Supabase auth user to prevent\norphaned accounts when the invite gate is enabled.",
-        "operationId": "postV1Check if an email is allowed to sign up",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/CheckInviteRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/CheckInviteResponse" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
@@ -1392,30 +1358,6 @@
         }
       }
     },
-    "/api/chat/suggested-prompts": {
-      "get": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Get Suggested Prompts",
-        "description": "Get LLM-generated suggested prompts grouped by theme.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns empty themes list if no custom\nprompts are available.",
-        "operationId": "getV2GetSuggestedPrompts",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/chat/usage": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -1637,6 +1579,7 @@
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
+        "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
         "requestBody": {
           "content": {
@@ -6726,214 +6669,6 @@
         }
       }
     },
-    "/api/users/admin/invited-users": {
-      "get": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "List Invited Users",
-        "operationId": "getV2List invited users",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Page Size"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvitedUsersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Create Invited User",
-        "operationId": "postV2Create invited user",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateInvitedUserRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/users/admin/invited-users/bulk": {
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Bulk Create Invited Users",
-        "operationId": "postV2BulkCreateInvitedUsers",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postV2BulkCreateInvitedUsers"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkInvitedUsersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/users/admin/invited-users/{invited_user_id}/retry-tally": {
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Retry Invited User Tally",
-        "operationId": "postV2Retry invited user tally",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "invited_user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Invited User Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/users/admin/invited-users/{invited_user_id}/revoke": {
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Revoke Invited User",
-        "operationId": "postV2Revoke invited user",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "invited_user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Invited User Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
@@ -6949,6 +6684,16 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "overwrite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Overwrite"
             }
           }
         ],
@@ -8320,14 +8065,6 @@
         "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
       },
-      "Body_postV2BulkCreateInvitedUsers": {
-        "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
-        },
-        "type": "object",
-        "required": ["file"],
-        "title": "Body_postV2BulkCreateInvitedUsers"
-      },
       "Body_postV2Execute_a_preset": {
         "properties": {
           "inputs": {
@@ -8361,56 +8098,6 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postWorkspaceUpload file to workspace"
-      },
-      "BulkInvitedUserRowResponse": {
-        "properties": {
-          "row_number": { "type": "integer", "title": "Row Number" },
-          "email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Email"
-          },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["CREATED", "SKIPPED", "ERROR"],
-            "title": "Status"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "invited_user": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/InvitedUserResponse" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": ["row_number", "status", "message"],
-        "title": "BulkInvitedUserRowResponse"
-      },
-      "BulkInvitedUsersResponse": {
-        "properties": {
-          "created_count": { "type": "integer", "title": "Created Count" },
-          "skipped_count": { "type": "integer", "title": "Skipped Count" },
-          "error_count": { "type": "integer", "title": "Error Count" },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/BulkInvitedUserRowResponse"
-            },
-            "type": "array",
-            "title": "Results"
-          }
-        },
-        "type": "object",
-        "required": [
-          "created_count",
-          "skipped_count",
-          "error_count",
-          "results"
-        ],
-        "title": "BulkInvitedUsersResponse"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -8474,20 +8161,6 @@
         "type": "object",
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
-      },
-      "CheckInviteRequest": {
-        "properties": {
-          "email": { "type": "string", "format": "email", "title": "Email" }
-        },
-        "type": "object",
-        "required": ["email"],
-        "title": "CheckInviteRequest"
-      },
-      "CheckInviteResponse": {
-        "properties": { "allowed": { "type": "boolean", "title": "Allowed" } },
-        "type": "object",
-        "required": ["allowed"],
-        "title": "CheckInviteResponse"
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -8611,18 +8284,6 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
-      },
-      "CreateInvitedUserRequest": {
-        "properties": {
-          "email": { "type": "string", "format": "email", "title": "Email" },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          }
-        },
-        "type": "object",
-        "required": ["email"],
-        "title": "CreateInvitedUserRequest"
       },
       "CreateSessionResponse": {
         "properties": {
@@ -10087,80 +9748,6 @@
         "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
-      },
-      "InvitedUserResponse": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "email": { "type": "string", "title": "Email" },
-          "status": { "$ref": "#/components/schemas/InvitedUserStatus" },
-          "auth_user_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Auth User Id"
-          },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "tally_understanding": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Tally Understanding"
-          },
-          "tally_status": {
-            "$ref": "#/components/schemas/TallyComputationStatus"
-          },
-          "tally_computed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Tally Computed At"
-          },
-          "tally_error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Tally Error"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "email",
-          "status",
-          "tally_status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "InvitedUserResponse"
-      },
-      "InvitedUserStatus": {
-        "type": "string",
-        "enum": ["INVITED", "CLAIMED", "REVOKED"],
-        "title": "InvitedUserStatus"
-      },
-      "InvitedUsersResponse": {
-        "properties": {
-          "invited_users": {
-            "items": { "$ref": "#/components/schemas/InvitedUserResponse" },
-            "type": "array",
-            "title": "Invited Users"
-          },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
-        },
-        "type": "object",
-        "required": ["invited_users", "pagination"],
-        "title": "InvitedUsersResponse"
       },
       "LibraryAgent": {
         "properties": {
@@ -13124,33 +12711,6 @@
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
       },
-      "SuggestedPromptsResponse": {
-        "properties": {
-          "themes": {
-            "items": { "$ref": "#/components/schemas/SuggestedTheme" },
-            "type": "array",
-            "title": "Themes"
-          }
-        },
-        "type": "object",
-        "required": ["themes"],
-        "title": "SuggestedPromptsResponse",
-        "description": "Response model for user-specific suggested prompts grouped by theme."
-      },
-      "SuggestedTheme": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "prompts": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Prompts"
-          }
-        },
-        "type": "object",
-        "required": ["name", "prompts"],
-        "title": "SuggestedTheme",
-        "description": "A themed group of suggested prompts."
-      },
       "SuggestionsResponse": {
         "properties": {
           "recent_searches": {
@@ -13175,11 +12735,6 @@
         "type": "object",
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
-      },
-      "TallyComputationStatus": {
-        "type": "string",
-        "enum": ["PENDING", "RUNNING", "READY", "FAILED"],
-        "title": "TallyComputationStatus"
       },
       "TimezoneResponse": {
         "properties": {

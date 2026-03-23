@@ -109,19 +109,23 @@ export class LibraryPage extends BasePage {
 
   async openUploadDialog(): Promise<void> {
     console.log(`opening upload dialog`);
-    await this.page.getByRole("button", { name: "Upload agent" }).click();
+    // Open the unified Import dialog first
+    await this.page.getByRole("button", { name: "Import" }).click();
 
     // Wait for dialog to appear
-    await this.page.getByRole("dialog", { name: "Upload Agent" }).waitFor({
+    await this.page.getByRole("dialog", { name: "Import" }).waitFor({
       state: "visible",
       timeout: 5_000,
     });
+
+    // Click the "AutoGPT agent" tab
+    await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();
   }
 
   async closeUploadDialog(): Promise<void> {
     await this.page.getByRole("button", { name: "Close" }).click();
 
-    await this.page.getByRole("dialog", { name: "Upload Agent" }).waitFor({
+    await this.page.getByRole("dialog", { name: "Import" }).waitFor({
       state: "hidden",
       timeout: 5_000,
     });
@@ -130,7 +134,7 @@ export class LibraryPage extends BasePage {
   async isUploadDialogVisible(): Promise<boolean> {
     console.log(`checking if upload dialog is visible`);
     try {
-      const dialog = this.page.getByRole("dialog", { name: "Upload Agent" });
+      const dialog = this.page.getByRole("dialog", { name: "Import" });
       return await dialog.isVisible();
     } catch {
       return false;

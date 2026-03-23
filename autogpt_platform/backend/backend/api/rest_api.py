@@ -19,7 +19,6 @@ from prisma.errors import PrismaError
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.store_admin_routes
-import backend.api.features.admin.user_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
 import backend.api.features.chat.routes as chat_routes
@@ -211,13 +210,22 @@ instrument_fastapi(
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
-            logger.exception(
-                "%s %s failed. Investigate and resolve the underlying issue: %s",
-                request.method,
-                request.url.path,
-                exc,
-                exc_info=exc,
-            )
+            if status_code >= 500:
+                logger.exception(
+                    "%s %s failed. Investigate and resolve the underlying issue: %s",
+                    request.method,
+                    request.url.path,
+                    exc,
+                    exc_info=exc,
+                )
+            else:
+                logger.warning(
+                    "%s %s failed with %d: %s",
+                    request.method,
+                    request.url.path,
+                    status_code,
+                    exc,
+                )
 
         hint = (
             "Adjust the request and retry."
@@ -267,12 +275,10 @@ async def validation_error_handler(
 
 
 app.add_exception_handler(PrismaError, handle_internal_http_error(500))
-app.add_exception_handler(
-    FolderAlreadyExistsError, handle_internal_http_error(409, False)
-)
-app.add_exception_handler(FolderValidationError, handle_internal_http_error(400, False))
-app.add_exception_handler(NotFoundError, handle_internal_http_error(404, False))
-app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403, False))
+app.add_exception_handler(FolderAlreadyExistsError, handle_internal_http_error(409))
+app.add_exception_handler(FolderValidationError, handle_internal_http_error(400))
+app.add_exception_handler(NotFoundError, handle_internal_http_error(404))
+app.add_exception_handler(NotAuthorizedError, handle_internal_http_error(403))
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(MissingConfigError, handle_internal_http_error(503))
@@ -311,11 +317,6 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
-)
-app.include_router(
-    backend.api.features.admin.user_admin_routes.router,
-    tags=["v2", "admin"],
-    prefix="/api/users",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,

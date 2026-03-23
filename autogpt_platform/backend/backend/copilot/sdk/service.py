@@ -2,13 +2,11 @@
 
 import asyncio
 import base64
-import functools
 import json
 import logging
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 import uuid
@@ -77,6 +75,7 @@ from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
+from .subscription import validate_subscription as _validate_claude_code_subscription
 from .tool_adapter import (
     create_copilot_mcp_server,
     get_copilot_tool_names,
@@ -456,37 +455,6 @@ def _resolve_sdk_model() -> str | None:
     if not config.openrouter_active:
         model = model.replace(".", "-")
     return model
-
-
-@functools.cache
-def _validate_claude_code_subscription() -> None:
-    """Validate Claude CLI is installed and responds to `--version`.
-
-    Cached so the blocking subprocess check runs at most once per process
-    lifetime.  A failure (CLI not installed) is a config error that requires
-    a process restart anyway.
-    """
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        raise RuntimeError(
-            "Claude Code CLI not found. Install it with: "
-            "npm install -g @anthropic-ai/claude-code"
-        )
-    result = subprocess.run(
-        [claude_path, "--version"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Claude CLI check failed (exit {result.returncode}): "
-            f"{result.stderr.strip()}"
-        )
-    logger.info(
-        "Claude Code subscription mode: CLI version %s",
-        result.stdout.strip(),
-    )
 
 
 def _build_sdk_env(
