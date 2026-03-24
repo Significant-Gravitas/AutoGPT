@@ -95,7 +95,7 @@ class ChatConfig(BaseSettings):
     # When a user hits their daily limit, they can spend this amount to reset
     # the daily counter and keep working.  Set to 0 to disable the feature.
     rate_limit_reset_cost: int = Field(
-        default=200,
+        default=500,
         ge=0,
         description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
     )

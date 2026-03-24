@@ -13,7 +13,7 @@ from backend.util.exceptions import InsufficientBalanceError
 
 # Minimal config mock matching ChatConfig fields used by the endpoint.
 def _make_config(
-    rate_limit_reset_cost: int = 200,
+    rate_limit_reset_cost: int = 500,
     daily_token_limit: int = 2_500_000,
     weekly_token_limit: int = 12_500_000,
     max_daily_resets: int = 5,
@@ -108,7 +108,7 @@ class TestResetCopilotUsage:
         """Successful reset: charges credits, resets usage, returns response."""
 
         mock_credit_model = AsyncMock()
-        mock_credit_model.spend_credits.return_value = 1800  # remaining balance
+        mock_credit_model.spend_credits.return_value = 1500  # remaining balance
 
         cfg = _make_config()
         updated_usage = _usage(daily_used=0)
@@ -131,8 +131,8 @@ class TestResetCopilotUsage:
         ):
             result = await reset_copilot_usage(user_id="user-1")
             assert result.success is True
-            assert result.credits_charged == 200
-            assert result.remaining_balance == 1800
+            assert result.credits_charged == 500
+            assert result.remaining_balance == 1500
 
     async def test_max_daily_resets_exceeded(self):
         """When user has exhausted daily resets, returns 429."""
