@@ -5,6 +5,7 @@ from prisma.enums import ContentType
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
@@ -38,7 +39,7 @@ COPILOT_EXCLUDED_BLOCK_TYPES = {
 
 # Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
 COPILOT_EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology;
+    # OrchestratorBlock - dynamically discovers downstream blocks via graph topology;
     # usable in agent graphs (guide hardcodes its ID) but cannot run standalone.
     "3b191d9f-356f-482d-8238-ba04b6d18381",
 }
@@ -149,6 +150,19 @@ class FindBlockTool(BaseTool):
                             session_id=session_id,
                         )
 
+                    # Check block-level permissions — hide denied blocks entirely
+                    perms = get_current_permissions()
+                    if perms is not None and not perms.is_block_allowed(
+                        block.id, block.name
+                    ):
+                        return NoResultsResponse(
+                            message=f"No blocks found for '{query}'",
+                            suggestions=[
+                                "Search for an alternative block by name",
+                            ],
+                            session_id=session_id,
+                        )
+
                     summary = BlockInfoSummary(
                         id=block.id,
                         name=block.name,
@@ -195,6 +209,7 @@ class FindBlockTool(BaseTool):
                 )
 
             # Enrich results with block information
+            perms = get_current_permissions()
             blocks: list[BlockInfoSummary] = []
             for result in results:
                 block_id = result["content_id"]
@@ -208,6 +223,12 @@ class FindBlockTool(BaseTool):
                 if (
                     block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
                     or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+                ):
+                    continue
+
+                # Skip blocks denied by execution permissions
+                if perms is not None and not perms.is_block_allowed(
+                    block.id, block.name
                 ):
                     continue
 

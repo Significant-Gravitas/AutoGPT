@@ -5,12 +5,95 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "1.0.0"
+  version: "2.0.0"
 ---
 
 # Manual E2E Test
 
 Test a PR/branch end-to-end by building the full platform, interacting via browser and API, capturing screenshots, and reporting results.
+
+## Critical Requirements
+
+These are NON-NEGOTIABLE. Every test run MUST satisfy ALL the following:
+
+### 1. Screenshots at Every Step
+- Take a screenshot at EVERY significant test step — not just at the end
+- Every test scenario MUST have at least one BEFORE and one AFTER screenshot
+- Name screenshots sequentially: `{NN}-{action}-{state}.png` (e.g., `01-credits-before.png`, `02-credits-after.png`)
+- If a screenshot is missing for a scenario, the test is INCOMPLETE — go back and take it
+
+### 2. Screenshots MUST Be Posted to PR
+- Push ALL screenshots to a temp branch `test-screenshots/pr-{N}`
+- Post a PR comment with ALL screenshots embedded inline using GitHub raw URLs
+- This is NOT optional — every test run MUST end with a PR comment containing screenshots
+- If screenshot upload fails, retry. If it still fails, list failed files and require manual drag-and-drop/paste attachment in the PR comment
+
+### 3. State Verification with Before/After Evidence
+- For EVERY state-changing operation (API call, user action), capture the state BEFORE and AFTER
+- Log the actual API response values (e.g., `credits_before=100, credits_after=95`)
+- Screenshot MUST show the relevant UI state change
+- Compare expected vs actual values explicitly — do not just eyeball it
+
+### 4. Negative Test Cases Are Mandatory
+- Test at least ONE negative case per feature (e.g., insufficient credits, invalid input, unauthorized access)
+- Verify error messages are user-friendly and accurate
+- Verify the system state did NOT change after a rejected operation
+
+### 5. Test Report Must Include Full Evidence
+Each test scenario in the report MUST have:
+- **Steps**: What was done (exact commands or UI actions)
+- **Expected**: What should happen
+- **Actual**: What actually happened
+- **API Evidence**: Before/after API response values for state-changing operations
+- **Screenshot Evidence**: Before/after screenshots with explanations
+
+## State Manipulation for Realistic Testing
+
+When testing features that depend on specific states (rate limits, credits, quotas):
+
+1. **Use Redis CLI to set counters directly:**
+   ```bash
+   # Find the Redis container
+   REDIS_CONTAINER=$(docker ps --format '{{.Names}}' | grep redis | head -1)
+   # Set a key with expiry
+   docker exec $REDIS_CONTAINER redis-cli SET key value EX ttl
+   # Example: Set rate limit counter to near-limit
+   docker exec $REDIS_CONTAINER redis-cli SET "rate_limit:user:test@test.com" 99 EX 3600
+   # Example: Check current value
+   docker exec $REDIS_CONTAINER redis-cli GET "rate_limit:user:test@test.com"
+   ```
+
+2. **Use API calls to check before/after state:**
+   ```bash
+   # BEFORE: Record current state
+   BEFORE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/credits | jq '.credits')
+   echo "Credits BEFORE: $BEFORE"
+
+   # Perform the action...
+
+   # AFTER: Record new state and compare
+   AFTER=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/credits | jq '.credits')
+   echo "Credits AFTER: $AFTER"
+   echo "Delta: $(( BEFORE - AFTER ))"
+   ```
+
+3. **Take screenshots BEFORE and AFTER state changes** — the UI must reflect the backend state change
+
+4. **Never rely on mocked/injected browser state** — always use real backend state. Do NOT use `agent-browser eval` to fake UI state. The backend must be the source of truth.
+
+5. **Use direct DB queries when needed:**
+   ```bash
+   # Query via Supabase's PostgREST or docker exec into the DB
+   docker exec supabase-db psql -U supabase_admin -d postgres -c "SELECT credits FROM user_credits WHERE user_id = '...';"
+   ```
+
+6. **After every API test, verify the state change actually persisted:**
+   ```bash
+   # Example: After a credits purchase, verify DB matches API
+   API_CREDITS=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/credits | jq '.credits')
+   DB_CREDITS=$(docker exec supabase-db psql -U supabase_admin -d postgres -t -c "SELECT credits FROM user_credits WHERE user_id = '...';" | tr -d ' ')
+   [ "$API_CREDITS" = "$DB_CREDITS" ] && echo "CONSISTENT" || echo "MISMATCH: API=$API_CREDITS DB=$DB_CREDITS"
+   ```
 
 ## Arguments
 
@@ -81,15 +164,21 @@ Based on the PR analysis, write a test plan to `$RESULTS_DIR/test-plan.md`:
 
 ## API Tests (if applicable)
 1. [Endpoint] — [expected behavior]
+   - Before state: [what to check before]
+   - After state: [what to verify changed]
 
 ## UI Tests (if applicable)
 1. [Page/component] — [interaction to test]
+   - Screenshot before: [what to capture]
+   - Screenshot after: [what to capture]
 
-## Negative Tests
-1. [What should NOT happen]
+## Negative Tests (REQUIRED — at least one per feature)
+1. [What should NOT happen] — [how to trigger it]
+   - Expected error: [what error message/code]
+   - State unchanged: [what to verify did NOT change]
 ```
 
-**Be critical** — include edge cases, error paths, and security checks.
+**Be critical** — include edge cases, error paths, and security checks. Every scenario MUST specify what screenshots to take and what state to verify.
 
 ## Step 3: Environment setup
 
@@ -239,7 +328,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 
 ### API testing
 
-Use `curl` with the auth token for backend API tests:
+Use `curl` with the auth token for backend API tests. **For EVERY API call that changes state, record before/after values:**
 
 ```bash
 # Example: List agents
@@ -260,6 +349,27 @@ curl -s -X POST "http://localhost:8006/api/graphs/{graph_id}/execute" \
 # Example: Get execution results
 curl -s -H "Authorization: Bearer $TOKEN" \
   "http://localhost:8006/api/graphs/{graph_id}/executions/{exec_id}" | jq .
+```
+
+**State verification pattern (use for EVERY state-changing API call):**
+```bash
+# 1. Record BEFORE state
+BEFORE_STATE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/{resource} | jq '{relevant_fields}')
+echo "BEFORE: $BEFORE_STATE"
+
+# 2. Perform the action
+ACTION_RESULT=$(curl -s -X POST ... | jq .)
+echo "ACTION RESULT: $ACTION_RESULT"
+
+# 3. Record AFTER state
+AFTER_STATE=$(curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/{resource} | jq '{relevant_fields}')
+echo "AFTER: $AFTER_STATE"
+
+# 4. Log the comparison
+echo "=== STATE CHANGE VERIFICATION ==="
+echo "Before: $BEFORE_STATE"
+echo "After: $AFTER_STATE"
+echo "Expected change: {describe what should have changed}"
 ```
 
 ### Browser testing with agent-browser
@@ -354,19 +464,34 @@ agent-browser --session-name pr-test open 'http://localhost:3000/copilot' --time
 
 ## Step 5: Record results and take screenshots
 
-**Take a screenshot at every significant test step** — before and after interactions, on success, and on failure. Name them sequentially with descriptive names:
+**Take a screenshot at EVERY significant test step** — before and after interactions, on success, and on failure. This is NON-NEGOTIABLE.
 
+**Required screenshot pattern for each test scenario:**
 ```bash
-agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{description}.png
-# Examples:
-# $RESULTS_DIR/01-login-page.png
-# $RESULTS_DIR/02-builder-with-block.png
-# $RESULTS_DIR/03-copilot-response.png
-# $RESULTS_DIR/04-agent-execution-result.png
-# $RESULTS_DIR/05-error-state.png
+# BEFORE the action
+agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{scenario}-before.png
+
+# Perform the action...
+
+# AFTER the action
+agent-browser --session-name pr-test screenshot $RESULTS_DIR/{NN}-{scenario}-after.png
 ```
 
-**Aim for at least one screenshot per test scenario.** More is better — screenshots are the primary evidence that tests were actually run.
+**Naming convention:**
+```bash
+# Examples:
+# $RESULTS_DIR/01-login-page-before.png
+# $RESULTS_DIR/02-login-page-after.png
+# $RESULTS_DIR/03-credits-page-before.png
+# $RESULTS_DIR/04-credits-purchase-after.png
+# $RESULTS_DIR/05-negative-insufficient-credits.png
+# $RESULTS_DIR/06-error-state.png
+```
+
+**Minimum requirements:**
+- At least TWO screenshots per test scenario (before + after)
+- At least ONE screenshot for each negative test case showing the error state
+- If a test fails, screenshot the failure state AND any error logs visible in the UI
 
 ## Step 6: Show results to user with screenshots
 
@@ -390,32 +515,37 @@ Format the output like this:
 ---
 ```
 
-After showing all screenshots, output a summary table:
+After showing all screenshots, output a **detailed** summary table:
 
-| # | Scenario | Result |
-|---|----------|--------|
-| 1 | {name} | PASS/FAIL |
-| 2 | ... | ... |
+| # | Scenario | Result | API Evidence | Screenshot Evidence |
+|---|----------|--------|-------------|-------------------|
+| 1 | {name} | PASS/FAIL | Before: X, After: Y | 01-before.png, 02-after.png |
+| 2 | ... | ... | ... | ... |
 
 **IMPORTANT:** As you show each screenshot and record test results, persist them in shell variables for Step 7:
 
 ```bash
 # Build these variables during Step 6 — they are required by Step 7's script
+# NOTE: declare -A requires Bash 4.0+. This is standard on modern systems (macOS ships zsh
+# but Homebrew bash is 5.x; Linux typically has bash 5.x). If running on Bash <4, use a
+# plain variable with a lookup function instead.
 declare -A SCREENSHOT_EXPLANATIONS=(
   ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
   ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
   # ... one entry per screenshot, using the same explanations you showed the user above
 )
 
-TEST_RESULTS_TABLE="| 1 | Login flow | PASS |
-| 2 | Builder block addition | PASS |
-| 3 | Copilot chat | FAIL |"
+TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-login-after.png |
+| 2 | Credits purchase | PASS | Before: 100, After: 95 | 03-credits-before.png, 04-credits-after.png |
+| 3 | Insufficient credits (negative) | PASS | Credits: 0, rejected | 05-insufficient-credits-error.png |"
 # ... one row per test scenario with actual results
 ```
 
 ## Step 7: Post test report as PR comment with screenshots
 
 Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees), then post a comment with inline images and per-screenshot explanations.
+
+**This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
@@ -424,12 +554,29 @@ SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
 SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
 
 # Step 1: Create blobs for each screenshot and build tree JSON
+# Retry each blob upload up to 3 times. If still failing, list them at end of report.
+shopt -s nullglob
+SCREENSHOT_FILES=("$RESULTS_DIR"/*.png)
+if [ ${#SCREENSHOT_FILES[@]} -eq 0 ]; then
+  echo "ERROR: No screenshots found in $RESULTS_DIR. Test run is incomplete."
+  exit 1
+fi
 TREE_JSON='['
 FIRST=true
-for img in $RESULTS_DIR/*.png; do
+FAILED_UPLOADS=()
+for img in "${SCREENSHOT_FILES[@]}"; do
   BASENAME=$(basename "$img")
   B64=$(base64 < "$img")
-  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
+  BLOB_SHA=""
+  for attempt in 1 2 3; do
+    BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha' 2>/dev/null || true)
+    [ -n "$BLOB_SHA" ] && break
+    sleep 1
+  done
+  if [ -z "$BLOB_SHA" ]; then
+    FAILED_UPLOADS+=("$img")
+    continue
+  fi
   if [ "$FIRST" = true ]; then FIRST=false; else TREE_JSON+=','; fi
   TREE_JSON+="{\"path\":\"${SCREENSHOTS_DIR}/${BASENAME}\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"${BLOB_SHA}\"}"
 done
@@ -453,13 +600,25 @@ Then post the comment with **inline images AND explanations for each screenshot*
 ```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 
-# Build image markdown using SCREENSHOT_EXPLANATIONS and TEST_RESULTS_TABLE from Step 6
+# Build image markdown using uploaded image URLs; skip FAILED_UPLOADS (listed separately)
 
 IMAGE_MARKDOWN=""
-for img in $RESULTS_DIR/*.png; do
+for img in "${SCREENSHOT_FILES[@]}"; do
   BASENAME=$(basename "$img")
   TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
+  # Skip images that failed to upload — they will be listed at the end
+  IS_FAILED=false
+  for failed in "${FAILED_UPLOADS[@]}"; do
+    [ "$(basename "$failed")" = "$BASENAME" ] && IS_FAILED=true && break
+  done
+  if [ "$IS_FAILED" = true ]; then
+    continue
+  fi
   EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
+  if [ -z "$EXPLANATION" ]; then
+    echo "ERROR: Missing screenshot explanation for $BASENAME. Add it to SCREENSHOT_EXPLANATIONS in Step 6."
+    exit 1
+  fi
   IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
 ### ${TITLE}
 ![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
@@ -469,14 +628,32 @@ done
 
 # Write comment body to file to avoid shell interpretation issues with special characters
 COMMENT_FILE=$(mktemp)
-cat > "$COMMENT_FILE" <<INNEREOF
-## 🧪 E2E Test Report
+# If any uploads failed, append a section listing them with instructions
+FAILED_SECTION=""
+if [ ${#FAILED_UPLOADS[@]} -gt 0 ]; then
+  FAILED_SECTION="
+## ⚠️ Failed Screenshot Uploads
+The following screenshots could not be uploaded via the GitHub API after 3 retries.
+**To add them:** drag-and-drop or paste these files into a PR comment manually:
+"
+  for failed in "${FAILED_UPLOADS[@]}"; do
+    FAILED_SECTION="${FAILED_SECTION}
+- \`$(basename "$failed")\` (local path: \`$failed\`)"
+  done
+  FAILED_SECTION="${FAILED_SECTION}
 
-| # | Scenario | Result |
-|---|----------|--------|
+**Run status:** INCOMPLETE until the files above are manually attached and visible inline in the PR."
+fi
+
+cat > "$COMMENT_FILE" <<INNEREOF
+## E2E Test Report
+
+| # | Scenario | Result | API Evidence | Screenshot Evidence |
+|---|----------|--------|-------------|-------------------|
 ${TEST_RESULTS_TABLE}
 
 ${IMAGE_MARKDOWN}
+${FAILED_SECTION}
 INNEREOF
 
 gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
@@ -484,38 +661,57 @@ rm -f "$COMMENT_FILE"
 ```
 
 **The PR comment MUST include:**
-1. A summary table of all scenarios with PASS/FAIL
-2. Every screenshot rendered inline (not just linked)
+1. A summary table of all scenarios with PASS/FAIL and before/after API evidence
+2. Every successfully uploaded screenshot rendered inline; any failed uploads listed with manual attachment instructions
 3. A 1-2 sentence explanation below each screenshot describing what it proves
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
 
 ## Fix mode (--fix flag)
 
-When `--fix` is present, after finding a bug:
+When `--fix` is present, the standard is HIGHER. Do not just note issues — FIX them immediately.
 
-1. Identify the root cause in the code
-2. Fix it in the worktree
-3. Rebuild the affected service: `cd $PLATFORM_DIR && docker compose up --build -d {service_name}`
-4. Re-test the scenario
-5. If fix works, commit and push:
+### Fix protocol for EVERY issue found (including UX issues):
+
+1. **Identify** the root cause in the code — read the relevant source files
+2. **Write a failing test first** (TDD): For backend bugs, write a test marked with `pytest.mark.xfail(reason="...")`. For frontend/Playwright bugs, write a test with `.fixme` annotation. Run it to confirm it fails as expected.
+3. **Screenshot** the broken state: `agent-browser screenshot $RESULTS_DIR/{NN}-broken-{description}.png`
+4. **Fix** the code in the worktree
+5. **Rebuild** ONLY the affected service (not the whole stack):
+   ```bash
+   cd $PLATFORM_DIR && docker compose up --build -d {service_name}
+   # e.g., docker compose up --build -d rest_server
+   # e.g., docker compose up --build -d frontend
+   ```
+6. **Wait** for the service to be ready (poll health endpoint)
+7. **Re-test** the same scenario
+8. **Screenshot** the fixed state: `agent-browser screenshot $RESULTS_DIR/{NN}-fixed-{description}.png`
+9. **Remove the xfail/fixme marker** from the test written in step 2, and verify it passes
+10. **Verify** the fix did not break other scenarios (run a quick smoke test)
+11. **Commit and push** immediately:
    ```bash
    cd $WORKTREE_PATH
    git add -A
    git commit -m "fix: {description of fix}"
    git push
    ```
-6. Continue testing remaining scenarios
-7. After all fixes, run the full test suite again to ensure no regressions
+12. **Continue** to the next test scenario
 
 ### Fix loop (like pr-address)
 
 ```text
-test scenario → find bug → fix code → rebuild service → re-test
-→ repeat until all scenarios pass
-→ commit + push all fixes
-→ run full re-test to verify
+test scenario → find issue (bug OR UX problem) → screenshot broken state
+→ fix code → rebuild affected service only → re-test → screenshot fixed state
+→ verify no regressions → commit + push
+→ repeat for next scenario
+→ after ALL scenarios pass, run full re-test to verify everything together
 ```
+
+**Key differences from non-fix mode:**
+- UX issues count as bugs — fix them (bad alignment, confusing labels, missing loading states)
+- Every fix MUST have a before/after screenshot pair proving it works
+- Commit after EACH fix, not in a batch at the end
+- The final re-test must produce a clean set of all-passing screenshots
 
 ## Known issues and workarounds
 
