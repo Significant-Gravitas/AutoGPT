@@ -104,7 +104,7 @@ export function ExpandableRow({
       {/* Expanded version history */}
       {expanded && (
         <TableRow>
-          <TableCell colSpan={7} className="border-t-0 p-0">
+          <TableCell colSpan={8} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
               <h4 className="mb-2 text-sm font-semibold">Version History</h4>
               <Table>
@@ -120,7 +120,7 @@ export function ExpandableRow({
                     <TableHead>Name</TableHead>
                     <TableHead>Sub Heading</TableHead>
                     <TableHead>Description</TableHead>
-                    {/* <TableHead>Categories</TableHead> */}
+                    <TableHead>Categories</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -192,7 +192,11 @@ export function ExpandableRow({
                         <TableCell>{version.name}</TableCell>
                         <TableCell>{version.sub_heading}</TableCell>
                         <TableCell>{version.description}</TableCell>
-                        {/* <TableCell>{version.categories.join(", ")}</TableCell> */}
+                        <TableCell>
+                          {version.categories.length > 0
+                            ? version.categories.join(", ")
+                            : "None"}
+                        </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             {version.listing_version_id && (

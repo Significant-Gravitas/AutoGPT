@@ -117,6 +117,36 @@ export default function AdminPreviewPage() {
           )}
         </div>
       </div>
+
+      {/* Fields not shown in AgentInfo but important for admin review */}
+      <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {data.instructions && (
+          <div className="rounded-lg border p-4">
+            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+              Instructions
+            </h3>
+            <p className="whitespace-pre-wrap text-sm">{data.instructions}</p>
+          </div>
+        )}
+        {data.recommended_schedule_cron && (
+          <div className="rounded-lg border p-4">
+            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+              Recommended Schedule
+            </h3>
+            <code className="rounded bg-muted px-2 py-1 text-sm">
+              {data.recommended_schedule_cron}
+            </code>
+          </div>
+        )}
+        <div className="rounded-lg border p-4">
+          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">
+            Slug
+          </h3>
+          <code className="rounded bg-muted px-2 py-1 text-sm">
+            {data.slug}
+          </code>
+        </div>
+      </div>
     </div>
   );
 }
