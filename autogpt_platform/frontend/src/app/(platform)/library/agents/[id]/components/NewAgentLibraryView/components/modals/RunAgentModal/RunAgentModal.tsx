@@ -244,41 +244,6 @@ export function RunAgentModal({
               }`}
             >
               <div className="flex items-center justify-end gap-3">
-                {isTriggerRunType ? null : !allRequiredInputsAreSet ? (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button
-                            variant="secondary"
-                            onClick={handleOpenScheduleModal}
-                            disabled={
-                              isExecuting ||
-                              isSettingUpTrigger ||
-                              !allRequiredInputsAreSet
-                            }
-                          >
-                            Schedule Task
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>
-                          Please set up all required inputs and credentials
-                          before scheduling
-                        </p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ) : (
-                  <Button
-                    variant="secondary"
-                    onClick={handleOpenScheduleModal}
-                    disabled={isExecuting || isSettingUpTrigger}
-                  >
-                    Schedule Task
-                  </Button>
-                )}
                 <RunActions
                   defaultRunType={defaultRunType}
                   onRun={handleRunWithSafetyCheck}
@@ -286,6 +251,43 @@ export function RunAgentModal({
                   isExecuting={isExecuting}
                   isSettingUpTrigger={isSettingUpTrigger}
                   isRunReady={allRequiredInputsAreSet}
+                  scheduleButton={
+                    isTriggerRunType ? undefined : !allRequiredInputsAreSet ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                variant="secondary"
+                                onClick={handleOpenScheduleModal}
+                                disabled={
+                                  isExecuting ||
+                                  isSettingUpTrigger ||
+                                  !allRequiredInputsAreSet
+                                }
+                              >
+                                Schedule Task
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>
+                              Please set up all required inputs and credentials
+                              before scheduling
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        onClick={handleOpenScheduleModal}
+                        disabled={isExecuting || isSettingUpTrigger}
+                      >
+                        Schedule Task
+                      </Button>
+                    )
+                  }
                 />
               </div>
               <ScheduleAgentModal

@@ -1,3 +1,4 @@
+import React from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { FlaskIcon } from "@phosphor-icons/react";
 import { RunVariant } from "../../useAgentRunModal";
@@ -9,6 +10,7 @@ interface Props {
   isExecuting?: boolean;
   isSettingUpTrigger?: boolean;
   isRunReady?: boolean;
+  scheduleButton?: React.ReactNode;
 }
 
 export function RunActions({
@@ -18,6 +20,7 @@ export function RunActions({
   isExecuting = false,
   isSettingUpTrigger = false,
   isRunReady = true,
+  scheduleButton,
 }: Props) {
   const isTrigger =
     defaultRunType === "automatic-trigger" ||
@@ -37,6 +40,7 @@ export function RunActions({
           Simulate
         </Button>
       )}
+      {scheduleButton}
       <Button
         variant="primary"
         onClick={onRun}
