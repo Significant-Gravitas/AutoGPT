@@ -457,53 +457,64 @@ async def upsert_chat_session(
     lock = await _get_session_lock(session.session_id)
 
     async with lock:
-        # Always query DB for existing message count to ensure consistency
-        existing_message_count = await chat_db().get_next_sequence(session.session_id)
+        return await _upsert_chat_session_unlocked(session)
 
-        db_error: Exception | None = None
 
-        # Save to database (primary storage)
-        try:
-            await _save_session_to_db(
-                session,
-                existing_message_count,
-                skip_existence_check=existing_message_count > 0,
-            )
-        except Exception as e:
-            logger.error(
-                f"Failed to save session {session.session_id} to database: {e}"
-            )
-            db_error = e
+async def _upsert_chat_session_unlocked(
+    session: ChatSession,
+) -> ChatSession:
+    """Inner upsert logic without locking.
 
-        # Save to cache (best-effort, even if DB failed).
-        # Title updates (update_session_title) run *outside* this lock because
-        # they only touch the title field, not messages.  So a concurrent rename
-        # or auto-title may have written a newer title to Redis while this
-        # upsert was in progress.  Always prefer the cached title to avoid
-        # overwriting it with the stale in-memory copy.
-        try:
-            existing_cached = await _get_session_from_cache(session.session_id)
-            if existing_cached and existing_cached.title:
-                session = session.model_copy(update={"title": existing_cached.title})
-            await cache_chat_session(session)
-        except Exception as e:
-            # If DB succeeded but cache failed, raise cache error
-            if db_error is None:
-                raise RedisError(
-                    f"Failed to persist chat session {session.session_id} to Redis: {e}"
-                ) from e
-            # If both failed, log cache error but raise DB error (more critical)
-            logger.warning(
-                f"Cache write also failed for session {session.session_id}: {e}"
-            )
+    Callers that already hold the session lock should use this to avoid
+    deadlocking on the non-reentrant asyncio.Lock.
+    """
+    # Always query DB for existing message count to ensure consistency
+    existing_message_count = await chat_db().get_next_sequence(session.session_id)
 
-        # Propagate DB error after attempting cache (prevents data loss)
-        if db_error is not None:
-            raise DatabaseError(
-                f"Failed to persist chat session {session.session_id} to database"
-            ) from db_error
+    db_error: Exception | None = None
 
-        return session
+    # Save to database (primary storage)
+    try:
+        await _save_session_to_db(
+            session,
+            existing_message_count,
+            skip_existence_check=existing_message_count > 0,
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to save session {session.session_id} to database: {e}"
+        )
+        db_error = e
+
+    # Save to cache (best-effort, even if DB failed).
+    # Title updates (update_session_title) run *outside* this lock because
+    # they only touch the title field, not messages.  So a concurrent rename
+    # or auto-title may have written a newer title to Redis while this
+    # upsert was in progress.  Always prefer the cached title to avoid
+    # overwriting it with the stale in-memory copy.
+    try:
+        existing_cached = await _get_session_from_cache(session.session_id)
+        if existing_cached and existing_cached.title:
+            session = session.model_copy(update={"title": existing_cached.title})
+        await cache_chat_session(session)
+    except Exception as e:
+        # If DB succeeded but cache failed, raise cache error
+        if db_error is None:
+            raise RedisError(
+                f"Failed to persist chat session {session.session_id} to Redis: {e}"
+            ) from e
+        # If both failed, log cache error but raise DB error (more critical)
+        logger.warning(
+            f"Cache write also failed for session {session.session_id}: {e}"
+        )
+
+    # Propagate DB error after attempting cache (prevents data loss)
+    if db_error is not None:
+        raise DatabaseError(
+            f"Failed to persist chat session {session.session_id} to database"
+        ) from db_error
+
+    return session
 
 
 async def _save_session_to_db(
