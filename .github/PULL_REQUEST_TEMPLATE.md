@@ -4,6 +4,10 @@
 <!-- What: What does this PR change? Summarize the changes at a high level. -->
 <!-- How: How does it work? Describe the approach, key implementation details, or architecture decisions. -->
 
+### Changes 🏗️
+
+<!-- List the key changes. Keep it higher level than the diff but specific enough to highlight what's new/modified. -->
+
 ### Checklist 📋
 
 #### For code changes:
