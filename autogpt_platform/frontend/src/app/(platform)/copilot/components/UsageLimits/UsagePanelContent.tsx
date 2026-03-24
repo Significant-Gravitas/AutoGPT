@@ -78,7 +78,7 @@ function ResetButton({ cost }: { cost: number }) {
     <button
       onClick={() => resetUsage()}
       disabled={isPending}
-      className="mt-1 w-full rounded-md bg-violet-600 px-2 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+      className="mt-1 w-full rounded-full bg-zinc-800 px-2 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-zinc-900 disabled:opacity-50"
     >
       {isPending
         ? "Resetting..."
