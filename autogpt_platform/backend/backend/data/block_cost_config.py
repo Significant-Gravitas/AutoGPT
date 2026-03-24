@@ -548,7 +548,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    ToolOrchestratorBlock: LLM_COST,
     SearchOrganizationsBlock: [
         BlockCost(
             cost_amount=2,
@@ -700,6 +699,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
     ],
+    ToolOrchestratorBlock: LLM_COST,
     VideoNarrationBlock: [
         BlockCost(
             cost_amount=5,  # ElevenLabs TTS cost
