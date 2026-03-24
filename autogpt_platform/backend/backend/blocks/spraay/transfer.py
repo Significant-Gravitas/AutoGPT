@@ -8,7 +8,7 @@ agent-to-agent payments, tips, bounties, or individual payouts.
 import uuid
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsMetaInput, SchemaField
 
 from ._api import SpraayAPIError, spraay_request

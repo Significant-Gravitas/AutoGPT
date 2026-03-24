@@ -9,7 +9,7 @@ import uuid
 from enum import Enum
 from typing import Any
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import CredentialsMetaInput, SchemaField
 
 from ._api import SpraayAPIError, spraay_request
