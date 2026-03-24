@@ -2,6 +2,7 @@
 
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { UploadSimple } from "@phosphor-icons/react";
@@ -11,7 +12,6 @@ import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
