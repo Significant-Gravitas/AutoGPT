@@ -337,6 +337,7 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
+    dry_run: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -424,7 +425,7 @@ async def prepare_block_for_execution(
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
 
-    if missing_credentials:
+    if missing_credentials and not dry_run:
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())

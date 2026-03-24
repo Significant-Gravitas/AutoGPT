@@ -115,6 +115,7 @@ class RunBlockTool(BaseTool):
             user_id=user_id,
             session=session,
             session_id=session_id,
+            dry_run=dry_run,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
