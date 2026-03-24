@@ -33,11 +33,6 @@ async def test_admin_can_access_pending_agent_not_owned() -> None:
             "backend.data.graph.AgentGraph.prisma",
         ) as mock_prisma,
         patch(
-            "backend.data.graph.is_graph_published_in_marketplace",
-            new_callable=AsyncMock,
-            return_value=False,
-        ),
-        patch(
             "backend.data.graph.GraphModel.from_db",
             return_value=mock_graph_model,
         ),
@@ -70,11 +65,6 @@ async def test_admin_download_pending_agent_with_subagents() -> None:
         patch(
             "backend.data.graph.AgentGraph.prisma",
         ) as mock_prisma,
-        patch(
-            "backend.data.graph.is_graph_published_in_marketplace",
-            new_callable=AsyncMock,
-            return_value=False,
-        ),
         patch(
             "backend.data.graph.get_sub_graphs",
             new_callable=AsyncMock,
