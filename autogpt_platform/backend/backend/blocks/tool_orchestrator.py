@@ -1328,11 +1328,11 @@ class ToolOrchestratorBlock(Block):
                 "ANTHROPIC_API_KEY": credentials.api_key.get_secret_value(),
             }
         else:
+            # build_sdk_env() returns a dict for all modes:
+            # - Subscription mode: dict with cleared keys
+            # - Direct Anthropic: {} (subprocess inherits ANTHROPIC_API_KEY)
+            # - OpenRouter: dict with proxy config
             sdk_env = build_sdk_env()
-            if not sdk_env:
-                raise ValueError(
-                    "No API key provided and no global SDK configuration found."
-                )
 
         # Build SDK options
         options = ClaudeAgentOptions(
