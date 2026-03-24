@@ -1,0 +1,50 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.1, pytest-8.4.2, pluggy-1.6.0 -- /Users/majdyz/Code/AutoGPT/autogpt_platform/backend/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/majdyz/Code/AutoGPT11/autogpt_platform/backend
+configfile: pyproject.toml
+plugins: anyio-4.12.1, snapshot-0.9.0, mock-3.15.1, Faker-38.3.0, langsmith-0.7.7, postmarker-1.0, asyncio-1.3.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=function
+collecting ... collected 29 items
+
+autogpt_platform/backend::test_stream_and_publish_passes_through_all_events PASSED [  3%]
+autogpt_platform/backend::test_stream_and_publish_skips_finish_and_error PASSED [  6%]
+autogpt_platform/backend::test_stream_and_publish_no_publish_when_turn_id_empty PASSED [ 10%]
+autogpt_platform/backend::test_stream_and_publish_graceful_on_redis_failure PASSED [ 13%]
+autogpt_platform/backend::test_collect_creates_registry_session_and_publishes PASSED [ 17%]
+autogpt_platform/backend::test_collect_marks_error_on_stream_error PASSED [ 20%]
+autogpt_platform/backend::test_mark_session_completed_skip_error_publish PASSED [ 24%]
+autogpt_platform/backend::test_real_redis_stream_registry_lifecycle PASSED [ 27%]
+autogpt_platform/backend/backend/copilot/sdk/collect_test.py::test_stream_registry_called_on_success PASSED [ 31%]
+autogpt_platform/backend/backend/copilot/sdk/collect_test.py::test_stream_registry_error_on_stream_error PASSED [ 34%]
+autogpt_platform/backend/backend/copilot/sdk/collect_test.py::test_graceful_degradation_when_create_session_fails PASSED [ 37%]
+autogpt_platform/backend/backend/copilot/sdk/collect_test.py::test_tool_calls_published_and_collected PASSED [ 41%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_empty_inputs_returns_empty_permissions PASSED [ 44%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_valid_tool_names_accepted PASSED [ 48%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_invalid_tool_rejected_by_pydantic PASSED [ 51%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_valid_block_name_accepted PASSED [ 55%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_valid_partial_uuid_accepted PASSED [ 58%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_invalid_block_identifier_returns_error PASSED [ 62%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_sdk_builtin_tool_names_accepted PASSED [ 65%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestBuildAndValidatePermissions::test_empty_blocks_skips_validation PASSED [ 68%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestMergeInheritedPermissions::test_no_permissions_no_parent_returns_none PASSED [ 72%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestMergeInheritedPermissions::test_permissions_no_parent_returned_unchanged PASSED [ 75%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestMergeInheritedPermissions::test_child_narrows_parent PASSED [ 79%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestMergeInheritedPermissions::test_none_permissions_with_parent_uses_parent PASSED [ 82%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestMergeInheritedPermissions::test_child_cannot_expand_parent_whitelist PASSED [ 86%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestAutoPilotBlockRunPermissions::test_invalid_tool_rejected_by_pydantic PASSED [ 89%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestAutoPilotBlockRunPermissions::test_invalid_block_yields_error PASSED [ 93%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestAutoPilotBlockRunPermissions::test_empty_prompt_yields_error_before_permission_check PASSED [ 96%]
+autogpt_platform/backend/backend/blocks/autopilot_permissions_test.py::TestAutoPilotBlockRunPermissions::test_valid_permissions_passed_to_execute PASSED [100%]
+
+=============================== warnings summary ===============================
+autogpt_platform/backend/backend/copilot/config.py:12
+  /Users/majdyz/Code/AutoGPT11/autogpt_platform/backend/backend/copilot/config.py:12: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ChatConfig(BaseSettings):
+
+backend/copilot/sdk/collect_test.py::test_stream_registry_called_on_success
+  /Users/majdyz/Code/AutoGPT11/autogpt_platform/backend/backend/blocks/exa/helpers.py:56: UserWarning: Field name "schema" in "SummarySettings" shadows an attribute in parent "BaseModel"
+    class SummarySettings(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 29 passed, 2 warnings in 8.40s ========================
