@@ -135,7 +135,9 @@ class ContinueRunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
-        # dry_run=False: post-approval execution always runs for real.
+        # dry_run=False is safe here: run_block's dry-run fast-path (line ~241)
+        # skips HITL entirely, so continue_run_block is never called during a
+        # dry run — only real executions reach the human review gate.
         result = await execute_block(
             block=block,
             block_id=block_id,
