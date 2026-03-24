@@ -6,14 +6,17 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
 import { AgentImages } from "@/app/(platform)/marketplace/components/AgentImages/AgentImage";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
-import { previewAsAdmin } from "../../actions";
+import { previewAsAdmin, addToLibraryAsAdmin } from "../../actions";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export default function AdminPreviewPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { toast } = useToast();
   const [data, setData] = useState<StoreAgentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isAddingToLibrary, setIsAddingToLibrary] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -28,6 +31,27 @@ export default function AdminPreviewPage() {
     }
     load();
   }, [params.id]);
+
+  async function handleAddToLibrary() {
+    setIsAddingToLibrary(true);
+    try {
+      await addToLibraryAsAdmin(params.id);
+      toast({
+        title: "Added to Library",
+        description: "Agent has been added to your library for review.",
+        duration: 3000,
+      });
+    } catch (e) {
+      toast({
+        title: "Error",
+        description:
+          e instanceof Error ? e.message : "Failed to add agent to library.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingToLibrary(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -73,16 +97,12 @@ export default function AdminPreviewPage() {
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
-          {/* Add to Library creates the record but the builder can't load
-              the graph — get_graph() requires ownership or APPROVED marketplace
-              status. Needs product decision on whether library membership
-              should grant graph access (see SECRT-2167 discussion). */}
           <button
-            disabled
-            title="Coming soon — requires graph access policy change"
-            className="cursor-not-allowed rounded-md bg-muted px-4 py-2 text-sm font-medium text-muted-foreground opacity-50"
+            onClick={handleAddToLibrary}
+            disabled={isAddingToLibrary}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            Add to My Library (coming soon)
+            {isAddingToLibrary ? "Adding..." : "Add to My Library"}
           </button>
         </div>
       </div>

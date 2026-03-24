@@ -164,13 +164,8 @@ async def admin_add_agent_to_library(
     Add a pending marketplace agent to the admin's library for review.
     Uses admin-level access to bypass marketplace APPROVED-only checks.
 
-    NOTE: Currently disabled in the UI. The LibraryAgent record is created
-    successfully, but the builder can't load the graph because get_graph()
-    requires ownership or APPROVED marketplace status. To fix:
-    1. Add a library-membership check to get_graph() access control
-    2. But this has knock-on effects: if a creator un-publishes an agent,
-       users who added it to their library would still have graph access.
-       This needs a product decision.
+    The builder can load the graph because get_graph() checks library
+    membership as a fallback: "you added it, you keep it."
     """
     return await library_db.add_store_agent_to_library_as_admin(
         store_listing_version_id=store_listing_version_id,
