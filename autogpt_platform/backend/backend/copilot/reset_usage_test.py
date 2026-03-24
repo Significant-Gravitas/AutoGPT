@@ -1,6 +1,7 @@
 """Unit tests for the POST /usage/reset endpoint."""
 
-from unittest.mock import AsyncMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -16,8 +17,6 @@ def _make_config(
     weekly_token_limit: int = 12_500_000,
     max_daily_resets: int = 5,
 ):
-    from unittest.mock import MagicMock
-
     cfg = MagicMock()
     cfg.rate_limit_reset_cost = rate_limit_reset_cost
     cfg.daily_token_limit = daily_token_limit
@@ -27,8 +26,6 @@ def _make_config(
 
 
 def _usage(daily_used: int = 3_000_000, daily_limit: int = 2_500_000):
-    from datetime import UTC, datetime, timedelta
-
     return CoPilotUsageStatus(
         daily=UsageWindow(
             used=daily_used,
