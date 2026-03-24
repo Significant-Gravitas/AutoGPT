@@ -3227,7 +3227,7 @@
                   { "$ref": "#/components/schemas/OAuth2Credentials" },
                   { "$ref": "#/components/schemas/APIKeyCredentials" },
                   { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
+                  { "$ref": "#/components/schemas/HostScopedCredentials" }
                 ],
                 "discriminator": {
                   "propertyName": "type",
@@ -3235,7 +3235,7 @@
                     "oauth2": "#/components/schemas/OAuth2Credentials",
                     "api_key": "#/components/schemas/APIKeyCredentials",
                     "user_password": "#/components/schemas/UserPasswordCredentials",
-                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
+                    "host_scoped": "#/components/schemas/HostScopedCredentials"
                   }
                 },
                 "title": "Credentials"
@@ -3249,24 +3249,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Postv1Create Credentials"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -3386,24 +3369,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Getv1Get Specific Credential By Id"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -9629,7 +9595,7 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "HostScopedCredentials-Input": {
+      "HostScopedCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "provider": { "type": "string", "title": "Provider" },
@@ -9654,36 +9620,6 @@
               "format": "password",
               "writeOnly": true
             },
-            "type": "object",
-            "title": "Headers",
-            "description": "Key-value header map to add to matching requests"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "host"],
-        "title": "HostScopedCredentials"
-      },
-      "HostScopedCredentials-Output": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "provider": { "type": "string", "title": "Provider" },
-          "title": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Title"
-          },
-          "type": {
-            "type": "string",
-            "const": "host_scoped",
-            "title": "Type",
-            "default": "host_scoped"
-          },
-          "host": {
-            "type": "string",
-            "title": "Host",
-            "description": "The host/URI pattern to match against request URLs"
-          },
-          "headers": {
-            "additionalProperties": { "type": "string" },
             "type": "object",
             "title": "Headers",
             "description": "Key-value header map to add to matching requests"
