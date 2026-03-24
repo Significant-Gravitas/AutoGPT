@@ -8833,6 +8833,16 @@
               { "type": "null" }
             ],
             "title": "Inputs Summary"
+          },
+          "node_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Node Executions"
           }
         },
         "type": "object",

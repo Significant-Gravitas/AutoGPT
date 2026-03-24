@@ -272,6 +272,7 @@ class ExecutionOutputInfo(BaseModel):
     ended_at: datetime | None = None
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
+    node_executions: list[dict[str, Any]] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):
