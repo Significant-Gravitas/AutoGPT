@@ -17,6 +17,14 @@ gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoG
 gh pr view {N}
 ```
 
+## Read the PR description
+
+Understand the **Why / What / How** before addressing comments — you need context to make good fixes:
+
+```bash
+gh pr view {N} --json body --jq '.body'
+```
+
 ## Fetch comments (all sources)
 
 ### 1. Inline review threads — GraphQL (primary source of actionable items)
