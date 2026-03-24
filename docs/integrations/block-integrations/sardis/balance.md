@@ -31,7 +31,11 @@ This block calls the Sardis balance endpoint for a specific wallet and token. It
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Use this block before planning or executing paid actions so an agent can confirm that a wallet still has both sufficient funds and sufficient policy headroom.
+**Verify funds before payment:** Confirm wallet balance and remaining policy headroom before initiating a paid action.
+
+**Gate workflow branches:** Decide whether to continue, defer, or reroute a purchase flow based on available funds.
+
+**Track wallet health:** Snapshot spendable balance and remaining limit during recurring agent operations.
 <!-- END MANUAL -->
 
 ---

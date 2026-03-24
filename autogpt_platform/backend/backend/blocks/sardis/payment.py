@@ -134,7 +134,7 @@ class SardisPayBlock(Block):
         if result.get("success"):
             yield "status", "APPROVED"
             yield "tx_id", result.get("tx_id", "")
-            yield "amount", input_data.amount
+            yield "amount", float(result.get("amount", input_data.amount))
             yield "message", result.get("message", "Payment approved")
         elif result.get("error"):
             yield "status", "ERROR"

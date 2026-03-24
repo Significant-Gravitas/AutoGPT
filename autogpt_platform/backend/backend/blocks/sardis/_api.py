@@ -1,8 +1,10 @@
+"""Sardis API client helpers used by the Sardis block suite."""
+
 import logging
 from typing import Any
 
 from backend.blocks.sardis._auth import SardisCredentials
-from backend.util.request import Requests
+from backend.util.request import Requests, Response
 
 logger = logging.getLogger(__name__)
 
@@ -13,10 +15,12 @@ class SardisClient:
     API_URL = "https://api.sardis.sh/api/v2"
 
     def __init__(self, credentials: SardisCredentials):
+        """Store Sardis credentials and configure tolerant HTTP handling."""
         self.credentials = credentials
-        self.requests = Requests()
+        self.requests = Requests(raise_for_status=False)
 
     def _get_headers(self) -> dict[str, str]:
+        """Build authenticated Sardis API headers."""
         return {
             "X-API-Key": self.credentials.api_key.get_secret_value(),
             "Content-Type": "application/json",
@@ -43,7 +47,10 @@ class SardisClient:
                 "purpose": purpose,
             },
         )
-        return response.json()
+        return self._normalize_response(
+            response,
+            default_error="Sardis payment request failed",
+        )
 
     async def get_balance(
         self,
@@ -56,7 +63,10 @@ class SardisClient:
             headers=self._get_headers(),
             params={"token": token},
         )
-        return response.json()
+        return self._normalize_response(
+            response,
+            default_error="Sardis balance request failed",
+        )
 
     async def check_policy(
         self,
@@ -76,4 +86,43 @@ class SardisClient:
                 "token": token,
             },
         )
-        return response.json()
+        return self._normalize_response(
+            response,
+            default_error="Sardis policy check failed",
+        )
+
+    @staticmethod
+    def _normalize_response(
+        response: Response,
+        *,
+        default_error: str,
+    ) -> dict[str, Any]:
+        """Convert Sardis responses into a consistent dict error contract."""
+        try:
+            payload = response.json()
+        except Exception:
+            return {
+                "error": f"{default_error}: HTTP {response.status} {response.text()}",
+                "status": response.status,
+            }
+
+        if response.ok:
+            if isinstance(payload, dict):
+                return payload
+            return {"data": payload}
+
+        if isinstance(payload, dict):
+            normalized_payload = dict(payload)
+            normalized_payload.setdefault(
+                "error",
+                payload.get("error")
+                or payload.get("message")
+                or f"{default_error}: HTTP {response.status}",
+            )
+            normalized_payload.setdefault("status", response.status)
+            return normalized_payload
+
+        return {
+            "error": f"{default_error}: HTTP {response.status} {response.text()}",
+            "status": response.status,
+        }

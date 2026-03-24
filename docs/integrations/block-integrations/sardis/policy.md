@@ -10,7 +10,7 @@ Check if a payment would pass spending policy without executing it. Useful for p
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block sends a dry-run style policy check to the Sardis API with the wallet, destination, amount, and token. Sardis evaluates the request against the wallet's configured spending rules and reports whether the payment would be allowed and how much limit would remain afterward.
+This block sends a dry-run-style policy check to the Sardis API with the wallet, destination, amount, and token. Sardis evaluates the request against the wallet's configured spending rules and reports whether the payment would be allowed and how much limit would remain afterward.
 <!-- END MANUAL -->
 
 ### Inputs
@@ -33,7 +33,11 @@ This block sends a dry-run style policy check to the Sardis API with the wallet,
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Use this block before showing a checkout decision or before attempting a transfer so an agent can explain whether a payment would pass policy without creating an onchain transaction.
+**Validate checkout eligibility:** Confirm a proposed payment would pass policy before showing a final checkout decision.
+
+**Gate wallet transfers:** Check whether an operational transfer is allowed before attempting an on-chain movement of funds.
+
+**Route around limit failures:** Estimate remaining policy headroom before deciding to split, defer, or reroute a payment.
 <!-- END MANUAL -->
 
 ---

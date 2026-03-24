@@ -36,7 +36,11 @@ This block sends a transfer request to the Sardis API using a Sardis wallet ID a
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-Use this block when an agent needs to pay for an external service after it has already decided to proceed, such as funding a supplier, paying a tool invoice, or transferring stablecoins to another operational wallet.
+**Pay a supplier:** Execute an approved stablecoin payout to a vendor when a workflow reaches settlement.
+
+**Settle a tool invoice:** Pay an external API or service bill from a policy-controlled operational wallet.
+
+**Move treasury funds:** Transfer funds between wallets while preserving Sardis policy checks and auditability.
 <!-- END MANUAL -->
 
 ---
