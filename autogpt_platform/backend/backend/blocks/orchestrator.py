@@ -1107,10 +1107,12 @@ class OrchestratorBlock(Block):
                 content = str(raw_content)
             else:
                 content = "Tool executed successfully"
+            tool_failed = content.startswith("Tool execution failed:")
             return ToolCallResult(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
                 content=content,
+                is_error=tool_failed,
             )
         except Exception as e:
             logger.error("Tool execution failed: %s", e)
@@ -1283,9 +1285,10 @@ class OrchestratorBlock(Block):
                             text = content
                         else:
                             text = json.dumps(content)
+                        tool_failed = text.startswith("Tool execution failed:")
                         return {
                             "content": [{"type": "text", "text": text}],
-                            "isError": False,
+                            "isError": tool_failed,
                         }
                     except Exception as e:
                         logger.error("SDK tool execution failed: %s", e)
