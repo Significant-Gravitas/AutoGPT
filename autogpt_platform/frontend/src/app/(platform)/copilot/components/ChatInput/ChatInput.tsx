@@ -129,7 +129,13 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             disabled={isInputDisabled}
-            placeholder={isTranscribing ? "Transcribing..." : placeholder}
+            placeholder={
+              isRecording
+                ? ""
+                : isTranscribing
+                  ? "Transcribing..."
+                  : placeholder
+            }
           />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
