@@ -1320,14 +1320,19 @@ class ToolOrchestratorBlock(Block):
             "TodoWrite",
         ]
 
-        # Build SDK env — supports subscription mode (no API key needed),
-        # direct Anthropic, or OpenRouter proxy, same as copilot SDK service.
-        sdk_env = build_sdk_env()
-        if not sdk_env:
-            # Direct Anthropic mode — pass the user-provided API key
+        # Build SDK env — prioritize user-provided credentials over global
+        # OpenRouter config, then fall back to build_sdk_env() for subscription
+        # mode or system-level configuration.
+        if credentials.api_key:
             sdk_env = {
                 "ANTHROPIC_API_KEY": credentials.api_key.get_secret_value(),
             }
+        else:
+            sdk_env = build_sdk_env()
+            if not sdk_env:
+                raise ValueError(
+                    "No API key provided and no global SDK configuration found."
+                )
 
         # Build SDK options
         options = ClaudeAgentOptions(
