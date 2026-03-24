@@ -1245,12 +1245,17 @@ class OrchestratorBlock(Block):
                 "parameters", {"type": "object", "properties": {}}
             )
 
-            # Build input schema for MCP (same as tool_adapter.py pattern)
-            input_schema = {
+            # Build input schema for MCP (same as tool_adapter.py pattern).
+            # Preserve additionalProperties to prevent hallucinated arguments.
+            input_schema: dict[str, Any] = {
                 "type": "object",
                 "properties": tool_params.get("properties", {}),
                 "required": tool_params.get("required", []),
             }
+            if "additionalProperties" in tool_params:
+                input_schema["additionalProperties"] = tool_params[
+                    "additionalProperties"
+                ]
 
             # Capture variables for closure
             _tf = tf
@@ -1341,7 +1346,13 @@ class OrchestratorBlock(Block):
         ]
 
         # Build SDK env — provider-aware credential routing.
+        # SDK mode does not support subscription-mode (platform-managed credits).
         provider = input_data.model.metadata.provider
+        if not credentials.api_key and copilot_config.use_claude_code_subscription:
+            raise ValueError(
+                "SDK mode requires a direct API key. "
+                "Subscription-mode (platform-managed credits) is not supported."
+            )
         if credentials.api_key:
             api_key = credentials.api_key.get_secret_value()
             if provider == "open_router":
@@ -1376,23 +1387,27 @@ class OrchestratorBlock(Block):
             model=input_data.model.value or None,
         )
 
+        # Strip system messages from prompt — they're already passed via
+        # ClaudeAgentOptions.system_prompt to avoid sending them twice.
+        sdk_prompt = [p for p in prompt if p.get("role") != "system"]
+
         # Build user message from prompt.
         # The SDK's query() accepts a string or an async iterable of message dicts.
         # For multi-turn conversations, pass the full history as an async iterable
         # to preserve assistant replies, tool calls/results, and system messages.
-        has_multi_turn = any(p.get("role") in ("assistant", "tool") for p in prompt)
+        has_multi_turn = any(p.get("role") in ("assistant", "tool") for p in sdk_prompt)
         if has_multi_turn:
 
             async def _prompt_iter():
-                for p in prompt:
+                for p in sdk_prompt:
                     yield p
 
             user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
         else:
-            # Single-turn: collapse user/system content into one string
+            # Single-turn: collapse user content into one string
             user_parts = []
-            for p in prompt:
-                if p.get("role") in ("user", "system") and p.get("content"):
+            for p in sdk_prompt:
+                if p.get("role") == "user" and p.get("content"):
                     user_parts.append(str(p["content"]))
             user_message = "\n\n".join(user_parts) if user_parts else input_data.prompt
 
