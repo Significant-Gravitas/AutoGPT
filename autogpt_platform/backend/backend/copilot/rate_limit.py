@@ -36,6 +36,10 @@ class CoPilotUsageStatus(BaseModel):
 
     daily: UsageWindow
     weekly: UsageWindow
+    reset_cost: int = Field(
+        default=0,
+        description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+    )
 
 
 class RateLimitExceeded(Exception):
@@ -61,6 +65,7 @@ async def get_usage_status(
     user_id: str,
     daily_token_limit: int,
     weekly_token_limit: int,
+    rate_limit_reset_cost: int = 0,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -97,6 +102,7 @@ async def get_usage_status(
             limit=weekly_token_limit,
             resets_at=_weekly_reset_time(now=now),
         ),
+        reset_cost=rate_limit_reset_cost,
     )
 
 
@@ -139,6 +145,21 @@ async def check_rate_limit(
 
     if weekly_token_limit > 0 and weekly_used >= weekly_token_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
+
+async def reset_daily_usage(user_id: str) -> None:
+    """Reset a user's daily token usage counter in Redis.
+
+    Called after a user pays credits to extend their daily limit.
+    """
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        await redis.delete(_daily_key(user_id, now=now))
+        logger.info("Reset daily usage for user %s", user_id[:8])
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for resetting daily usage")
+        raise
 
 
 async def record_token_usage(

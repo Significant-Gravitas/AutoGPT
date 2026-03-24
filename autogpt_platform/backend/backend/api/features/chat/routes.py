@@ -32,6 +32,7 @@ from backend.copilot.rate_limit import (
     RateLimitExceeded,
     check_rate_limit,
     get_usage_status,
+    reset_daily_usage,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -426,6 +427,88 @@ async def get_copilot_usage(
         user_id=user_id,
         daily_token_limit=config.daily_token_limit,
         weekly_token_limit=config.weekly_token_limit,
+        rate_limit_reset_cost=config.rate_limit_reset_cost,
+    )
+
+
+class RateLimitResetResponse(BaseModel):
+    """Response from resetting the daily rate limit."""
+
+    success: bool
+    credits_charged: int = Field(description="Credits charged (in cents)")
+    remaining_balance: int = Field(description="Credit balance after charge (in cents)")
+    usage: CoPilotUsageStatus = Field(description="Updated usage status after reset")
+
+
+@router.post(
+    "/usage/reset",
+    status_code=200,
+)
+async def reset_copilot_usage(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> RateLimitResetResponse:
+    """Reset the daily CoPilot rate limit by spending credits.
+
+    Allows users who have hit their daily token limit to spend credits
+    to reset their daily usage counter and continue working.
+    Returns 400 if the feature is disabled or the user is not over the limit.
+    Returns 402 if the user has insufficient credits.
+    """
+    cost = config.rate_limit_reset_cost
+    if cost <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Rate limit reset is not available.",
+        )
+
+    # Verify the user is actually at or over their daily limit.
+    status = await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=config.daily_token_limit,
+        weekly_token_limit=config.weekly_token_limit,
+    )
+    if config.daily_token_limit > 0 and status.daily.used < config.daily_token_limit:
+        raise HTTPException(
+            status_code=400,
+            detail="You have not reached your daily limit yet.",
+        )
+
+    # Charge credits.
+    from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+
+    credit_model = await get_user_credit_model(user_id)
+    try:
+        remaining = await credit_model.spend_credits(
+            user_id=user_id,
+            cost=cost,
+            metadata=UsageTransactionMetadata(
+                reason="CoPilot daily rate limit reset",
+            ),
+        )
+    except Exception as e:
+        if "insufficient" in str(e).lower():
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient credits to reset your rate limit.",
+            ) from e
+        raise
+
+    # Reset daily usage in Redis.
+    await reset_daily_usage(user_id)
+
+    # Return updated usage status.
+    updated_usage = await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=config.daily_token_limit,
+        weekly_token_limit=config.weekly_token_limit,
+        rate_limit_reset_cost=config.rate_limit_reset_cost,
+    )
+
+    return RateLimitResetResponse(
+        success=True,
+        credits_charged=cost,
+        remaining_balance=remaining,
+        usage=updated_usage,
     )
 
 

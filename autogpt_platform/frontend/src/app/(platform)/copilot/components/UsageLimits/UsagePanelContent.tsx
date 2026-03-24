@@ -1,4 +1,10 @@
+import {
+  getGetV2GetCopilotUsageQueryKey,
+  usePostV2ResetCopilotUsage,
+} from "@/app/api/__generated__/endpoints/chat/chat";
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 
 export function formatResetTime(
@@ -70,6 +76,44 @@ function UsageBar({
   );
 }
 
+function ResetButton({ cost }: { cost: number }) {
+  const queryClient = useQueryClient();
+  const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetCopilotUsageQueryKey(),
+        });
+        toast({
+          title: "Rate limit reset",
+          description: "Your daily usage limit has been reset.",
+        });
+      },
+      onError: (error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to reset limit.";
+        toast({
+          title: "Reset failed",
+          description: message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  return (
+    <button
+      onClick={() => resetUsage()}
+      disabled={isPending}
+      className="mt-1 w-full rounded-md bg-violet-600 px-2 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
+    >
+      {isPending
+        ? "Resetting..."
+        : `Reset daily limit for $${(cost / 100).toFixed(2)}`}
+    </button>
+  );
+}
+
 export function UsagePanelContent({
   usage,
   showBillingLink = true,
@@ -79,6 +123,9 @@ export function UsagePanelContent({
 }) {
   const hasDailyLimit = usage.daily.limit > 0;
   const hasWeeklyLimit = usage.weekly.limit > 0;
+  const isDailyExhausted =
+    hasDailyLimit && usage.daily.used >= usage.daily.limit;
+  const resetCost = usage.reset_cost ?? 0;
 
   if (!hasDailyLimit && !hasWeeklyLimit) {
     return (
@@ -105,6 +152,7 @@ export function UsagePanelContent({
           resetsAt={usage.weekly.resets_at}
         />
       )}
+      {isDailyExhausted && resetCost > 0 && <ResetButton cost={resetCost} />}
       {showBillingLink && (
         <Link
           href="/profile/credits"
