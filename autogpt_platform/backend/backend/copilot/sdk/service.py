@@ -1304,6 +1304,10 @@ async def _run_stream_attempt(
             is_tool_only = False
             if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
                 is_tool_only = True
+                # NOTE: Pre-launches are sequential (each await completes
+                # file-ref expansion before the next starts).  This is fine
+                # since expansion is typically sub-ms; a future optimisation
+                # could gather all pre-launches concurrently.
                 for tool_use in sdk_msg.content:
                     if isinstance(tool_use, ToolUseBlock):
                         await pre_launch_tool_call(tool_use.name, tool_use.input)
