@@ -104,7 +104,7 @@ export function ExpandableRow({
       {/* Expanded version history */}
       {expanded && (
         <TableRow>
-          <TableCell colSpan={8} className="border-t-0 p-0">
+          <TableCell colSpan={7} className="border-t-0 p-0">
             <div className="bg-muted/30 px-4 py-3">
               <h4 className="mb-2 text-sm font-semibold">Version History</h4>
               <Table>

@@ -786,7 +786,7 @@ async def test_get_graph_library_fallback_not_used_for_anonymous() -> None:
 
     assert result is None
     # Library should never be queried for anonymous users
-    mock_lib_prisma.return_value.find_first.assert_not_awaited()
+    mock_lib_prisma.return_value.find_first.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -820,8 +820,8 @@ async def test_get_graph_library_not_queried_when_owned() -> None:
 
     assert result is mock_graph_model
     # Neither marketplace nor library should be queried
-    mock_slv_prisma.return_value.find_first.assert_not_awaited()
-    mock_lib_prisma.return_value.find_first.assert_not_awaited()
+    mock_slv_prisma.return_value.find_first.assert_not_called()
+    mock_lib_prisma.return_value.find_first.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -858,7 +858,7 @@ async def test_get_graph_library_not_queried_when_marketplace_approved() -> None
 
     assert result is mock_graph_model
     # Library should not be queried — marketplace was sufficient
-    mock_lib_prisma.return_value.find_first.assert_not_awaited()
+    mock_lib_prisma.return_value.find_first.assert_not_called()
 
 
 @pytest.mark.asyncio

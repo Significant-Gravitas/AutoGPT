@@ -1392,8 +1392,9 @@ async def validate_graph_execution_permissions(
     ## Logic
     A user can execute a graph if any of these is true:
     1. They own the graph and some version of it is still listed in their library
-    2. The graph is published in the marketplace and listed in their library
-    3. The graph is published in the marketplace and is being executed as a sub-agent
+    2. The graph is in the user's library (non-deleted, non-archived)
+    3. The graph is published in the marketplace and listed in their library
+    4. The graph is published in the marketplace and is being executed as a sub-agent
 
     Args:
         graph_id: The ID of the graph to check
@@ -1428,13 +1429,17 @@ async def validate_graph_execution_permissions(
     user_has_in_library = library_agent is not None
 
     # Step 3: Apply permission logic
+    # Access is granted if the user owns it, it's in the marketplace, OR
+    # it's in the user's library ("you added it, you keep it").
     if not (
         user_owns_graph
+        or user_has_in_library
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
             f"You do not have access to graph #{graph_id} v{graph_version}: "
-            "it is not owned by you and not available in the Marketplace"
+            "it is not owned by you, not in your library, "
+            "and not available in the Marketplace"
         )
     elif not (user_has_in_library or is_sub_graph):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
