@@ -737,7 +737,7 @@ class GraphModel(Graph, GraphMeta):
         # Collect errors per node
         node_errors: dict[str, dict[str, str]] = defaultdict(dict)
 
-        # Validate smart decision maker nodes
+        # Validate tool orchestrator nodes
         nodes_block = {
             node.id: block
             for node in graph.nodes

@@ -111,12 +111,12 @@ class TestRunBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_returns_error(self):
-        """Attempting to execute SmartDecisionMakerBlock returns error."""
+        """Attempting to execute OrchestratorBlock returns error."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
         smart_block = make_mock_block(
-            smart_decision_id, "Smart Decision Maker", BlockType.STANDARD
+            orchestrator_id, "Orchestrator", BlockType.STANDARD
         )
 
         with patch(
@@ -127,7 +127,7 @@ class TestRunBlockFiltering:
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
-                block_id=smart_decision_id,
+                block_id=orchestrator_id,
                 input_data={},
             )
 
