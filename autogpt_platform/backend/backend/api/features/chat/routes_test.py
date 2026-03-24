@@ -368,6 +368,7 @@ def test_usage_returns_daily_and_weekly(
         user_id=test_user_id,
         daily_token_limit=10000,
         weekly_token_limit=50000,
+        rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
     )
 
 
@@ -380,6 +381,7 @@ def test_usage_uses_config_limits(
 
     mocker.patch.object(chat_routes.config, "daily_token_limit", 99999)
     mocker.patch.object(chat_routes.config, "weekly_token_limit", 77777)
+    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 500)
 
     response = client.get("/usage")
 
@@ -388,6 +390,7 @@ def test_usage_uses_config_limits(
         user_id=test_user_id,
         daily_token_limit=99999,
         weekly_token_limit=77777,
+        rate_limit_reset_cost=500,
     )
 
 
