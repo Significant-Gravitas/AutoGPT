@@ -426,7 +426,9 @@ async def execute_graph_block(
     tags=["files"],
     dependencies=[Security(requires_user)],
 )
+@limiter.limit("10/minute", key_func=get_user_id_from_request)
 async def upload_file(
+    request: Request,
     user_id: Annotated[str, Security(get_user_id)],
     file: UploadFile = File(...),
     provider: str = "gcs",
@@ -1296,6 +1298,10 @@ async def disable_execution_sharing(
     )
 
 
+# Share tokens older than this are treated as expired.
+_SHARE_TOKEN_MAX_AGE_DAYS = 90
+
+
 @v1_router.get("/public/shared/{share_token}")
 async def get_shared_execution(
     share_token: Annotated[
@@ -1307,6 +1313,15 @@ async def get_shared_execution(
     execution = await execution_db.get_graph_execution_by_share_token(share_token)
     if not execution:
         raise HTTPException(status_code=404, detail="Shared execution not found")
+
+    # Enforce share token expiration (no DB migration required — we use the
+    # existing created_at timestamp as the share creation time).
+    age = datetime.now(timezone.utc) - execution.created_at
+    if age.days > _SHARE_TOKEN_MAX_AGE_DAYS:
+        raise HTTPException(
+            status_code=410,
+            detail="This shared link has expired",
+        )
 
     return execution
 

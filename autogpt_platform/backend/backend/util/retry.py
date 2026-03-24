@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import logging
 import os
 import threading
@@ -20,8 +21,11 @@ logger = logging.getLogger(__name__)
 # Alert threshold for excessive retries
 EXCESSIVE_RETRY_THRESHOLD = 50
 
-# Rate limiting for alerts - track last alert time per function+error combination
-_alert_rate_limiter = {}
+# Rate limiting for alerts - track last alert time per function+error combination.
+# Use an OrderedDict with a max-size cap to prevent unbounded memory growth
+# when many unique error signatures are generated (e.g. errors containing request IDs).
+_ALERT_RATE_LIMITER_MAX_ENTRIES = 1024
+_alert_rate_limiter: collections.OrderedDict[str, float] = collections.OrderedDict()
 _rate_limiter_lock = threading.Lock()
 ALERT_RATE_LIMIT_SECONDS = 300  # 5 minutes between same alerts
 
@@ -37,7 +41,12 @@ def should_send_alert(func_name: str, exception: Exception, context: str = "") -
     with _rate_limiter_lock:
         last_alert_time = _alert_rate_limiter.get(error_signature, 0)
         if current_time - last_alert_time >= ALERT_RATE_LIMIT_SECONDS:
+            # Move to end (most-recently-used) and update timestamp
             _alert_rate_limiter[error_signature] = current_time
+            _alert_rate_limiter.move_to_end(error_signature)
+            # Evict oldest entries when the cache exceeds its size cap
+            while len(_alert_rate_limiter) > _ALERT_RATE_LIMITER_MAX_ENTRIES:
+                _alert_rate_limiter.popitem(last=False)
             return True
         return False
 

@@ -440,8 +440,11 @@ async def stream_chat_completion(
                 except Exception as e:
                     logger.warning(f"Failed to update session title: {e}")
 
-            # Fire and forget - don't block the chat response
-            asyncio.create_task(_update_title())
+            # Fire and forget - don't block the chat response.
+            # Store in _background_tasks to prevent GC and surface exceptions.
+            _title_task = asyncio.create_task(_update_title())
+            _background_tasks.add(_title_task)
+            _title_task.add_done_callback(_background_tasks.discard)
 
     # Build system prompt with business understanding
     system_prompt, understanding = await _build_system_prompt(user_id)

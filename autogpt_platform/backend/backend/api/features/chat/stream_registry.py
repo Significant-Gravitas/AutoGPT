@@ -37,6 +37,9 @@ _local_tasks: dict[str, asyncio.Task] = {}
 # Maps queue id() to (task_id, asyncio.Task) for proper cleanup on unsubscribe
 _listener_tasks: dict[int, tuple[str, asyncio.Task]] = {}
 
+# Maximum age (seconds) before an orphaned listener entry is force-cleaned.
+_LISTENER_TASK_MAX_AGE_SECONDS = 3600  # 1 hour
+
 # Timeout for putting chunks into subscriber queues (seconds)
 # If the queue is full and doesn't drain within this time, send an overflow error
 QUEUE_PUT_TIMEOUT = 5.0
@@ -702,3 +705,22 @@ async def unsubscribe_from_task(
         logger.error(f"Error during listener task cancellation for task {task_id}: {e}")
 
     logger.debug(f"Successfully unsubscribed from task {task_id}")
+
+
+def sweep_done_listener_tasks() -> int:
+    """Remove entries from ``_listener_tasks`` whose asyncio.Task has already
+    finished.  This prevents stale references from accumulating if a subscriber
+    disconnects without calling ``unsubscribe_from_task`` (e.g. network drop).
+
+    Returns the number of entries removed.
+    """
+    to_remove = [
+        queue_id
+        for queue_id, (_tid, task) in _listener_tasks.items()
+        if task.done()
+    ]
+    for queue_id in to_remove:
+        _listener_tasks.pop(queue_id, None)
+    if to_remove:
+        logger.info(f"Swept {len(to_remove)} completed listener tasks")
+    return len(to_remove)

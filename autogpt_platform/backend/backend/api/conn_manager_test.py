@@ -45,8 +45,26 @@ def test_disconnect(
     connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
 
     assert mock_websocket not in connection_manager.active_connections
-    assert mock_websocket not in connection_manager.subscriptions["test_channel_42"]
+    # Empty subscription channels are now cleaned up on disconnect
+    assert "test_channel_42" not in connection_manager.subscriptions
     assert "user-1" not in connection_manager.user_connections
+
+
+def test_disconnect_keeps_channel_with_other_subscribers(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """Channels that still have subscribers must not be removed."""
+    other_ws = AsyncMock(spec=WebSocket)
+    connection_manager.active_connections.add(mock_websocket)
+    connection_manager.active_connections.add(other_ws)
+    connection_manager.subscriptions["shared_channel"] = {mock_websocket, other_ws}
+    connection_manager.user_connections["user-1"] = {mock_websocket}
+
+    connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+
+    assert "shared_channel" in connection_manager.subscriptions
+    assert other_ws in connection_manager.subscriptions["shared_channel"]
+    assert mock_websocket not in connection_manager.subscriptions["shared_channel"]
 
 
 @pytest.mark.asyncio

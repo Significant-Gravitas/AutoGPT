@@ -33,6 +33,15 @@ config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
 
 
+def _log_task_failure(task: asyncio.Task) -> None:
+    """Done-callback that logs unhandled exceptions from background tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning(f"Background task failed: {exc}", exc_info=exc)
+
+
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
@@ -468,9 +477,13 @@ async def create_library_agent(
             )
         )
 
-    # Generate images for the main graph and sub-graphs
+    # Generate images for the main graph and sub-graphs.
+    # Keep task references to prevent GC and surface exceptions via logging.
     for agent, graph in zip(library_agents, graph_entries):
-        asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
+        task = asyncio.create_task(
+            add_generated_agent_image(graph, user_id, agent.id)
+        )
+        task.add_done_callback(_log_task_failure)
 
     return [library_model.LibraryAgent.from_db(agent) for agent in library_agents]
 

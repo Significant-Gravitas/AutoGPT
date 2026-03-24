@@ -32,6 +32,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.circuit_breaker import CircuitOpenError, circuit_breaker_registry
 from backend.util.logging import TruncatedLogger
 from backend.util.prompt import compress_context, estimate_token_count
 from backend.util.text import TextFormatter
@@ -696,6 +697,10 @@ async def llm_call(
     available_tokens = max(context_window - estimated_input_tokens, 0)
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
+    # Circuit breaker: reject early if provider is experiencing repeated failures
+    breaker = circuit_breaker_registry.get(provider)
+    breaker.pre_call()
+
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
@@ -1006,6 +1011,9 @@ async def llm_call(
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
+
+    # Record success so the circuit breaker resets its failure count.
+    breaker.record_success()
 
     logger.info(
         "llm_call",
@@ -1326,9 +1334,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "response", {"response": response_text}
                     yield "prompt", self.prompt
                     return
+            except CircuitOpenError:
+                raise  # Don't retry when the circuit is open
             except Exception as e:
                 logger.exception(f"Error calling LLM: {e}")
                 _err_lower = str(e).lower()
+
+                # Record the failure for the circuit breaker
+                _provider_name = llm_model.metadata.provider
+                circuit_breaker_registry.get(_provider_name).record_failure()
+
                 if (
                     "maximum context length" in _err_lower
                     or "token limit" in _err_lower

@@ -31,8 +31,14 @@ class ConnectionManager:
 
     def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
         self.active_connections.discard(websocket)
-        for subscribers in self.subscriptions.values():
+        # Remove the socket from all subscription channels and clean up empty sets
+        empty_channels = []
+        for channel, subscribers in self.subscriptions.items():
             subscribers.discard(websocket)
+            if not subscribers:
+                empty_channels.append(channel)
+        for channel in empty_channels:
+            del self.subscriptions[channel]
         user_conns = self.user_connections.get(user_id)
         if user_conns is not None:
             user_conns.discard(websocket)
