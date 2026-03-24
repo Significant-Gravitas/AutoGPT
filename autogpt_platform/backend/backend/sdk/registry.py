@@ -202,6 +202,8 @@ class AutoRegistry:
 
         # Patch credentials store to include SDK-registered credentials
         try:
+            # Lazy import: credentials_store depends on settings which may not
+            # be fully initialized at class-definition time.
             from backend.integrations.credentials_store import (
                 IntegrationCredentialsStore,
             )

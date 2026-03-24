@@ -73,7 +73,7 @@ class TestGetCredentialReturnsMetaOnly:
         assert data["provider"] == "openai"
         assert data["type"] == "api_key"
         assert "api_key" not in data
-        assert "secret" not in str(data).lower() or "sk-" not in str(data)
+        assert "sk-secret-key-value" not in str(data)
 
     def test_oauth2_credential_no_secret(self):
         cred = _make_oauth2_cred()
@@ -97,14 +97,14 @@ class TestSdkDefaultCredentialsNotAccessible:
     """SDK default credentials (ID ending in '-default') must be hidden."""
 
     def test_get_sdk_default_returns_404(self):
-        cred = _make_sdk_default_cred("openai")
         with patch(
             "backend.api.features.integrations.router.creds_manager"
         ) as mock_mgr:
-            mock_mgr.get = AsyncMock(return_value=cred)
+            mock_mgr.get = AsyncMock()
             resp = client.get("/openai/credentials/openai-default")
 
         assert resp.status_code == 404
+        mock_mgr.get.assert_not_called()
 
     def test_list_credentials_excludes_sdk_defaults(self):
         user_cred = _make_api_key_cred()
