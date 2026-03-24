@@ -9,7 +9,9 @@ from autogpt_libs import auth
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Security
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from starlette.requests import Request
 
+from backend.api.middleware.rate_limit import get_user_id_from_request, limiter
 from backend.util.exceptions import NotFoundError
 
 from . import service as chat_service
@@ -239,9 +241,11 @@ async def get_session(
 @router.post(
     "/sessions/{session_id}/stream",
 )
+@limiter.limit("10/minute", key_func=get_user_id_from_request)
 async def stream_chat_post(
+    request: Request,
     session_id: str,
-    request: StreamChatRequest,
+    body: StreamChatRequest,
     user_id: str | None = Depends(auth.get_user_id),
 ):
     """
@@ -290,11 +294,11 @@ async def stream_chat_post(
 
             async for chunk in chat_service.stream_chat_completion(
                 session_id,
-                request.message,
-                is_user_message=request.is_user_message,
+                body.message,
+                is_user_message=body.is_user_message,
                 user_id=user_id,
                 session=session,  # Pass pre-fetched session to avoid double-fetch
-                context=request.context,
+                context=body.context,
             ):
                 # Write to Redis (subscribers will receive via XREAD)
                 await stream_registry.publish_chunk(task_id, chunk)
@@ -374,7 +378,9 @@ async def stream_chat_post(
 @router.get(
     "/sessions/{session_id}/stream",
 )
+@limiter.limit("10/minute", key_func=get_user_id_from_request)
 async def stream_chat_get(
+    request: Request,
     session_id: str,
     message: Annotated[str, Query(min_length=1, max_length=10000)],
     user_id: str | None = Depends(auth.get_user_id),

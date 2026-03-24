@@ -6,13 +6,10 @@
     "plugin:@tanstack/query/recommended"
   ],
   "rules": {
-    // Disabling exhaustive-deps to avoid forcing unnecessary dependencies and useCallback proliferation.
-    // We rely on code review for proper dependency management instead of mechanical rule following.
-    // See: https://kentcdodds.com/blog/usememo-and-usecallback
-    "react-hooks/exhaustive-deps": "off",
-    // Disable temporarily as we have some `any` in the codebase and we need to got case by case
-    // and see if they can be fixed.
-    "@typescript-eslint/no-explicit-any": "off",
+    // Warn on exhaustive-deps to catch stale closures while allowing code-review overrides.
+    "react-hooks/exhaustive-deps": "warn",
+    // Warn on explicit any to encourage incremental type-safety improvements.
+    "@typescript-eslint/no-explicit-any": "warn",
     // Allow unused vars that start with underscore (convention for intentionally unused)
     "@typescript-eslint/no-unused-vars": [
       "error",

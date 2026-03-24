@@ -710,6 +710,35 @@ class Settings(BaseModel):
     config: Config = Config()
     secrets: Secrets = Secrets()
 
+    _KNOWN_PLACEHOLDER_ENCRYPTION_KEYS: Set[str] = {
+        "",
+        "DVmMsBOFGRKbfBCMaICmnOet4ubKrMVMjBATCYMEJmQ=",
+        "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=",
+    }
+
+    def validate_secrets(self) -> None:
+        """Validate that critical secrets are properly configured.
+
+        Raises ValueError in production/dev environments when placeholder or
+        empty secrets are detected.  Logs warnings in local environments.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        is_local = self.config.app_env == AppEnvironment.LOCAL
+
+        # Encryption key check
+        if self.secrets.encryption_key in self._KNOWN_PLACEHOLDER_ENCRYPTION_KEYS:
+            msg = (
+                "ENCRYPTION_KEY is empty or still set to a known placeholder value. "
+                "Generate a unique key with: "
+                "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            )
+            if is_local:
+                logger.warning(msg)
+            else:
+                raise ValueError(msg)
+
     def save(self) -> None:
         # Save updated config to JSON file
         if self.config.updated_fields:

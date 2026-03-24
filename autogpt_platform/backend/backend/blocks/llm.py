@@ -118,6 +118,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT4_TURBO = "gpt-4-turbo"
     GPT3_5_TURBO = "gpt-3.5-turbo"
     # Anthropic models
+    CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
     CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
@@ -294,6 +296,12 @@ MODEL_METADATA = {
         "openai", 16385, 4096, "GPT-3.5 Turbo", "OpenAI", "OpenAI", 1
     ),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
+    LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
+        "anthropic", 200000, 64000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
+    ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 2
+    ),  # claude-sonnet-4-6
     LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
         "anthropic", 200000, 32000, "Claude Opus 4.1", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-1-20250805

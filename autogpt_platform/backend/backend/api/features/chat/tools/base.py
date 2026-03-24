@@ -1,5 +1,6 @@
 """Base classes and shared utilities for chat tools."""
 
+import asyncio
 import logging
 from typing import Any
 
@@ -11,6 +12,11 @@ from backend.api.features.chat.response_model import StreamToolOutputAvailable
 from .models import ErrorResponse, NeedLoginResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
+
+# Default per-tool execution timeout (seconds).
+# Long-running tools (is_long_running=True) get a longer default.
+DEFAULT_TOOL_TIMEOUT = 120
+DEFAULT_LONG_RUNNING_TOOL_TIMEOUT = 600
 
 
 class BaseTool:
@@ -45,6 +51,15 @@ class BaseTool:
         history and visible when the user refreshes.
         """
         return False
+
+    @property
+    def timeout_seconds(self) -> int:
+        """Maximum execution time in seconds before the tool is cancelled."""
+        return (
+            DEFAULT_LONG_RUNNING_TOOL_TIMEOUT
+            if self.is_long_running
+            else DEFAULT_TOOL_TIMEOUT
+        )
 
     def as_openai_tool(self) -> ChatCompletionToolParam:
         """Convert to OpenAI tool format."""
@@ -90,11 +105,28 @@ class BaseTool:
             )
 
         try:
-            result = await self._execute(user_id, session, **kwargs)
+            result = await asyncio.wait_for(
+                self._execute(user_id, session, **kwargs),
+                timeout=self.timeout_seconds,
+            )
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=result.model_dump_json(),
+            )
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Tool {self.name} timed out after {self.timeout_seconds}s"
+            )
+            return StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=self.name,
+                output=ErrorResponse(
+                    message=f"{self.name} timed out after {self.timeout_seconds}s",
+                    error="timeout",
+                    session_id=session.session_id,
+                ).model_dump_json(),
+                success=False,
             )
         except Exception as e:
             logger.error(f"Error in {self.name}: {e}", exc_info=True)

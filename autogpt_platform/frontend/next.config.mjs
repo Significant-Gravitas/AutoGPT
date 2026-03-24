@@ -1,5 +1,7 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 /**
  * Security headers applied to every response from the Next.js server.
  * These complement the backend's SecurityHeadersMiddleware.
@@ -37,8 +39,8 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // Scripts: self + inline eval needed by Next.js HMR and some third-party libs
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://*.posthog.com https://*.launchdarkly.com",
+      // Scripts: self + inline; unsafe-eval only in dev (needed by Next.js HMR)
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://*.sentry.io https://*.posthog.com https://*.launchdarkly.com`,
       // Styles: self + inline styles used by Tailwind/shadcn
       "style-src 'self' 'unsafe-inline'",
       // Images: self + remote patterns already whitelisted in next.config images
@@ -68,11 +70,11 @@ const nextConfig = {
   ],
   experimental: {
     serverActions: {
-      bodySizeLimit: "256mb",
+      bodySizeLimit: "50mb",
     },
-    // Increase body size limit for API routes (file uploads) - 256MB to match backend limit
-    proxyClientMaxBodySize: "256mb",
-    middlewareClientMaxBodySize: "256mb",
+    // Body size limit for API routes (file uploads)
+    proxyClientMaxBodySize: "50mb",
+    middlewareClientMaxBodySize: "50mb",
   },
   images: {
     domains: [
@@ -119,9 +121,7 @@ const nextConfig = {
   },
 };
 
-const isDevelopmentBuild = process.env.NODE_ENV !== "production";
-
-export default isDevelopmentBuild
+export default isDev
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
@@ -153,7 +153,7 @@ export default isDevelopmentBuild
       // This can increase your server load as well as your hosting bill.
       // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
       // side errors will fail.
-      tunnelRoute: "/store",
+      tunnelRoute: "/monitoring/sentry",
 
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)

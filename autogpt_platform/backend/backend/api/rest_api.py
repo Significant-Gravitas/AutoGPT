@@ -92,6 +92,8 @@ def launch_darkly_context():
 async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
+    backend.util.settings.Settings().validate_secrets()
+
     await backend.data.db.connect()
 
     # Configure thread pool for FastAPI sync operation performance

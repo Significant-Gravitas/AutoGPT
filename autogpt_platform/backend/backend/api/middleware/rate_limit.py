@@ -30,9 +30,14 @@ def get_user_id_from_request(request: Request) -> str:
     """
     Extract the JWT ``sub`` claim from the Bearer token for per-user rate
     limiting.  No cryptographic verification is performed here — the existing
-    auth middleware handles that.  Falls back to the remote IP address when
-    the header is absent or the token is malformed.
+    auth middleware handles that.
+
+    The extracted ``sub`` is combined with the client IP address so that a
+    forged token cannot be used to exhaust another user's rate-limit bucket
+    from a different IP.  Falls back to the remote IP address alone when the
+    header is absent or the token is malformed.
     """
+    ip = get_remote_address(request)
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         try:
@@ -41,10 +46,10 @@ def get_user_id_from_request(request: Request) -> str:
             payload_b64 += "=" * (-len(payload_b64) % 4)
             sub = json.loads(base64.urlsafe_b64decode(payload_b64)).get("sub")
             if sub:
-                return str(sub)
+                return f"{sub}:{ip}"
         except Exception:
             pass
-    return get_remote_address(request)
+    return ip
 
 
 def _build_storage_uri() -> str:
