@@ -61,12 +61,12 @@ async def test_run_block_returns_details_when_no_input_provided():
     )
 
     with patch(
-        "backend.copilot.tools.run_block.get_block",
+        "backend.copilot.tools.helpers.get_block",
         return_value=http_block,
     ):
         # Mock credentials check to return no missing credentials
         with patch(
-            "backend.copilot.tools.run_block.resolve_block_credentials",
+            "backend.copilot.tools.helpers.resolve_block_credentials",
             new_callable=AsyncMock,
             return_value=({}, []),  # (matched_credentials, missing_credentials)
         ):
@@ -119,11 +119,11 @@ async def test_run_block_returns_details_when_only_credentials_provided():
     }
 
     with patch(
-        "backend.copilot.tools.run_block.get_block",
+        "backend.copilot.tools.helpers.get_block",
         return_value=mock,
     ):
         with patch(
-            "backend.copilot.tools.run_block.resolve_block_credentials",
+            "backend.copilot.tools.helpers.resolve_block_credentials",
             new_callable=AsyncMock,
             return_value=(
                 {

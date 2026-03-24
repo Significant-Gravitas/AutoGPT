@@ -706,6 +706,49 @@ Advanced options include upscaling, custom color palettes, and negative prompts 
 
 ---
 
+## Orchestrator
+
+### What it is
+Uses AI to intelligently decide what tool to use.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The prompt to send to the language model. | str | Yes |
+| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-sonnet-4-6" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
+| multiple_tool_calls | Whether to allow multiple tool calls in a single response. | bool | No |
+| sys_prompt | The system prompt to provide additional context to the model. | str | No |
+| conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, Any]] | No |
+| last_tool_output | The output of the last tool that was called. | Last Tool Output | No |
+| retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
+| prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
+| max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
+| ollama_host | Ollama host for local  models | str | No |
+| agent_mode_max_iterations | Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit. | int | No |
+| conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| tools | The tools that are available to use. | Tools |
+| finished | The finished message to display to the user. | str |
+| conversations | The conversation history to provide context for the prompt. | List[Any] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Perplexity
 
 ### What it is
@@ -742,55 +785,6 @@ Choose from different sonar model variants including deep-research for comprehen
 **Current Events**: Query real-time information that LLMs with static training data can't provide.
 
 **Competitive Intelligence**: Research companies, products, or markets with cited sources.
-<!-- END MANUAL -->
-
----
-
-## Smart Decision Maker
-
-### What it is
-Uses AI to intelligently decide what tool to use.
-
-### How it works
-<!-- MANUAL: how_it_works -->
-This block enables agentic behavior by letting an LLM decide which tools to use based on the prompt. Connect tool outputs to feed back results, creating autonomous reasoning loops.
-
-Configure agent_mode_max_iterations to control loop behavior: 0 for single decisions, -1 for infinite looping, or a positive number for max iterations. The block outputs tool calls or a finished message.
-<!-- END MANUAL -->
-
-### Inputs
-
-| Input | Description | Type | Required |
-|-------|-------------|------|----------|
-| prompt | The prompt to send to the language model. | str | Yes |
-| model | The language model to use for answering the prompt. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-sonnet-4-6" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
-| multiple_tool_calls | Whether to allow multiple tool calls in a single response. | bool | No |
-| sys_prompt | The system prompt to provide additional context to the model. | str | No |
-| conversation_history | The conversation history to provide context for the prompt. | List[Dict[str, Any]] | No |
-| last_tool_output | The output of the last tool that was called. | Last Tool Output | No |
-| retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
-| prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
-| max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
-| ollama_host | Ollama host for local  models | str | No |
-| agent_mode_max_iterations | Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit. | int | No |
-| conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
-
-### Outputs
-
-| Output | Description | Type |
-|--------|-------------|------|
-| error | Error message if the operation failed | str |
-| tools | The tools that are available to use. | Tools |
-| finished | The finished message to display to the user. | str |
-| conversations | The conversation history to provide context for the prompt. | List[Any] |
-
-### Possible use case
-<!-- MANUAL: use_case -->
-**Autonomous Agents**: Build agents that can independently decide which tools to use for tasks.
-
-**Dynamic Workflows**: Create workflows that adapt their execution path based on AI decisions.
-
-**Multi-Tool Orchestration**: Let AI coordinate multiple tools to accomplish complex goals.
 <!-- END MANUAL -->
 
 ---

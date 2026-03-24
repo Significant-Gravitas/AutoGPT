@@ -1,6 +1,6 @@
 import json
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import fastapi.exceptions
@@ -13,7 +13,7 @@ from backend.api.model import CreateGraph
 from backend.blocks._base import BlockSchema, BlockSchemaInput
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.data.graph import Graph, Link, Node
+from backend.data.graph import Graph, Link, Node, get_graph
 from backend.data.model import SchemaField
 from backend.data.user import DEFAULT_USER_ID
 from backend.usecases.sample import create_test_user
@@ -595,3 +595,82 @@ def test_mcp_credential_combine_no_discriminator_values():
         f"Expected 1 credential entry for MCP blocks without discriminator_values, "
         f"got {len(combined)}: {list(combined.keys())}"
     )
+
+
+# --------------- get_graph access-control regression tests --------------- #
+# These protect the behavior introduced in PR #11323 (Reinier, 2025-11-05):
+# non-owners can access APPROVED marketplace agents but NOT pending ones.
+
+
+def _make_mock_db_graph(user_id: str = "owner-user-id") -> MagicMock:
+    graph = MagicMock()
+    graph.userId = user_id
+    graph.id = "graph-id"
+    graph.version = 1
+    graph.Nodes = []
+    return graph
+
+
+@pytest.mark.asyncio
+async def test_get_graph_non_owner_approved_marketplace_agent() -> None:
+    """A non-owner should be able to access a graph that has an APPROVED
+    marketplace listing.  This is the normal marketplace download flow."""
+    owner_id = "owner-user-id"
+    requester_id = "different-user-id"
+    graph_id = "graph-id"
+    mock_graph = _make_mock_db_graph(owner_id)
+    mock_graph_model = MagicMock(name="GraphModel")
+
+    mock_listing = MagicMock()
+    mock_listing.AgentGraph = mock_graph
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch(
+            "backend.data.graph.StoreListingVersion.prisma",
+        ) as mock_slv_prisma,
+        patch(
+            "backend.data.graph.GraphModel.from_db",
+            return_value=mock_graph_model,
+        ),
+    ):
+        # First lookup (owned graph) returns None — requester != owner
+        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
+        # Marketplace fallback finds an APPROVED listing
+        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=mock_listing)
+
+        result = await get_graph(
+            graph_id=graph_id,
+            version=1,
+            user_id=requester_id,
+        )
+
+    assert result is not None, "Non-owner should access APPROVED marketplace agent"
+
+
+@pytest.mark.asyncio
+async def test_get_graph_non_owner_pending_marketplace_agent_denied() -> None:
+    """A non-owner must NOT be able to access a graph that only has a PENDING
+    (not APPROVED) marketplace listing.  The marketplace fallback filters on
+    submissionStatus=APPROVED, so pending agents should be invisible."""
+    requester_id = "different-user-id"
+    graph_id = "graph-id"
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch(
+            "backend.data.graph.StoreListingVersion.prisma",
+        ) as mock_slv_prisma,
+    ):
+        # First lookup (owned graph) returns None
+        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
+        # Marketplace fallback finds nothing (not APPROVED)
+        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        result = await get_graph(
+            graph_id=graph_id,
+            version=1,
+            user_id=requester_id,
+        )
+
+    assert result is None, "Non-owner must not access a pending marketplace agent"
