@@ -55,6 +55,15 @@ class TestResetCopilotUsage:
             assert exc_info.value.status_code == 400
             assert "not available" in exc_info.value.detail
 
+    async def test_no_daily_limit_returns_400(self):
+        """When daily_token_limit=0 (unlimited), endpoint returns 400."""
+
+        with patch(f"{_MODULE}.config", _make_config(daily_token_limit=0)):
+            with pytest.raises(HTTPException) as exc_info:
+                await reset_copilot_usage(user_id="user-1")
+            assert exc_info.value.status_code == 400
+            assert "nothing to reset" in exc_info.value.detail.lower()
+
     async def test_not_at_limit_returns_400(self):
         """When user hasn't hit their daily limit, returns 400."""
 

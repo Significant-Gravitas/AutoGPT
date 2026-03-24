@@ -475,6 +475,12 @@ async def reset_copilot_usage(
             detail="Rate limit reset is not available.",
         )
 
+    if config.daily_token_limit <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No daily limit is configured — nothing to reset.",
+        )
+
     # Check max daily resets.
     if config.max_daily_resets > 0:
         reset_count = await get_daily_reset_count(user_id)
