@@ -173,6 +173,8 @@ class PerplexityBlock(Block):
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
+            timeout=60.0,
+            max_retries=3,
         )
 
         messages = []

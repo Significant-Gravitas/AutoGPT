@@ -174,11 +174,13 @@ def get_openai_client() -> "AsyncOpenAI | None":
     from openai import AsyncOpenAI
 
     if settings.secrets.openai_internal_api_key:
-        return AsyncOpenAI(api_key=settings.secrets.openai_internal_api_key)
+        return AsyncOpenAI(api_key=settings.secrets.openai_internal_api_key, timeout=60.0, max_retries=3)
     if settings.secrets.open_router_api_key:
         return AsyncOpenAI(
             api_key=settings.secrets.open_router_api_key,
             base_url=OPENROUTER_BASE_URL,
+            timeout=60.0,
+            max_retries=3,
         )
     return None
 

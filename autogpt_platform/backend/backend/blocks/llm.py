@@ -804,7 +804,7 @@ async def llm_call(
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
     if provider == "openai":
-        oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
+        oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value(), timeout=60.0, max_retries=3)
 
         tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
 
@@ -876,7 +876,9 @@ async def llm_call(
                     last_role = p["role"]
 
         client = anthropic.AsyncAnthropic(
-            api_key=credentials.api_key.get_secret_value()
+            api_key=credentials.api_key.get_secret_value(),
+            timeout=60.0,
+            max_retries=3,
         )
         try:
             resp = await client.messages.create(
@@ -990,6 +992,8 @@ async def llm_call(
         client = openai.AsyncOpenAI(
             base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
+            timeout=60.0,
+            max_retries=3,
         )
 
         parallel_tool_calls_param = get_parallel_tool_calls_param(
@@ -1032,6 +1036,8 @@ async def llm_call(
         client = openai.AsyncOpenAI(
             base_url="https://api.llama.com/compat/v1/",
             api_key=credentials.api_key.get_secret_value(),
+            timeout=60.0,
+            max_retries=3,
         )
 
         parallel_tool_calls_param = get_parallel_tool_calls_param(
@@ -1078,6 +1084,8 @@ async def llm_call(
                 "X-Title": "AutoGPT",
                 "HTTP-Referer": "https://github.com/Significant-Gravitas/AutoGPT",
             },
+            timeout=60.0,
+            max_retries=3,
         )
 
         completion = client.chat.completions.create(
@@ -1102,6 +1110,8 @@ async def llm_call(
         client = openai.AsyncOpenAI(
             base_url="https://api.v0.dev/v1",
             api_key=credentials.api_key.get_secret_value(),
+            timeout=60.0,
+            max_retries=3,
         )
 
         response_format = None
