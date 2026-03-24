@@ -145,7 +145,7 @@ class TestRunBlockFiltering:
         token = _current_permissions.set(perms)
         try:
             with patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=standard_block,
             ):
                 tool = RunBlockTool()
@@ -173,7 +173,7 @@ class TestRunBlockFiltering:
         try:
             with (
                 patch(
-                    "backend.copilot.tools.run_block.get_block",
+                    "backend.copilot.tools.helpers.get_block",
                     return_value=standard_block,
                 ),
                 patch(
