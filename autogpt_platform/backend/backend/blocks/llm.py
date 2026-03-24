@@ -724,6 +724,8 @@ def extract_openai_reasoning(response) -> str | None:
 
 def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
     """Extract tool calls from OpenAI-compatible response."""
+    if not response.choices:
+        return None
     if response.choices[0].message.tool_calls:
         return [
             ToolContentBlock(
