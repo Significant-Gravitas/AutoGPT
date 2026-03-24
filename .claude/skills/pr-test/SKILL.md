@@ -554,11 +554,17 @@ SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
 SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
 
 # Step 1: Create blobs for each screenshot and build tree JSON
-# Retry each blob upload up to 3 times. If still failing, mark for base64 inline fallback.
+# Retry each blob upload up to 3 times. If still failing, list them at end of report.
+shopt -s nullglob
+SCREENSHOT_FILES=("$RESULTS_DIR"/*.png)
+if [ ${#SCREENSHOT_FILES[@]} -eq 0 ]; then
+  echo "ERROR: No screenshots found in $RESULTS_DIR. Test run is incomplete."
+  exit 1
+fi
 TREE_JSON='['
 FIRST=true
 FAILED_UPLOADS=()
-for img in $RESULTS_DIR/*.png; do
+for img in "${SCREENSHOT_FILES[@]}"; do
   BASENAME=$(basename "$img")
   B64=$(base64 < "$img")
   BLOB_SHA=""
@@ -594,36 +600,44 @@ Then post the comment with **inline images AND explanations for each screenshot*
 ```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 
-# Build image markdown using uploaded image URLs; for FAILED_UPLOADS, embed base64 payload
+# Build image markdown using uploaded image URLs; skip FAILED_UPLOADS (listed separately)
 
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
   TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
   EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
-  # Check if this image failed to upload; if so, embed as base64 inline
+  # Skip images that failed to upload — they will be listed at the end
   IS_FAILED=false
   for failed in "${FAILED_UPLOADS[@]}"; do
     [ "$(basename "$failed")" = "$BASENAME" ] && IS_FAILED=true && break
   done
   if [ "$IS_FAILED" = true ]; then
-    B64_DATA=$(base64 < "$img")
-    IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
-### ${TITLE}
-![${BASENAME}](data:image/png;base64,${B64_DATA})
-${EXPLANATION}
-"
-  else
-    IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
+    continue
+  fi
+  IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
 ### ${TITLE}
 ![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
 ${EXPLANATION}
 "
-  fi
 done
 
 # Write comment body to file to avoid shell interpretation issues with special characters
 COMMENT_FILE=$(mktemp)
+# If any uploads failed, append a section listing them with instructions
+FAILED_SECTION=""
+if [ ${#FAILED_UPLOADS[@]} -gt 0 ]; then
+  FAILED_SECTION="
+## ⚠️ Failed Screenshot Uploads
+The following screenshots could not be uploaded via the GitHub API after 3 retries.
+**To add them:** drag-and-drop or paste these files into a PR comment manually:
+"
+  for failed in "${FAILED_UPLOADS[@]}"; do
+    FAILED_SECTION="${FAILED_SECTION}
+- \`$(basename "$failed")\` (local path: \`$failed\`)"
+  done
+fi
+
 cat > "$COMMENT_FILE" <<INNEREOF
 ## E2E Test Report
 
@@ -632,6 +646,7 @@ cat > "$COMMENT_FILE" <<INNEREOF
 ${TEST_RESULTS_TABLE}
 
 ${IMAGE_MARKDOWN}
+${FAILED_SECTION}
 INNEREOF
 
 gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
