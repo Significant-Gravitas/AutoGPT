@@ -73,6 +73,7 @@ async def get_usage_status(
         user_id: The user's ID.
         daily_token_limit: Max tokens per day (0 = unlimited).
         weekly_token_limit: Max tokens per week (0 = unlimited).
+        rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
 
     Returns:
         CoPilotUsageStatus with current usage and limits.
