@@ -160,8 +160,18 @@ async def cancel_pending_tool_tasks() -> None:
     queues.clear()
     # Await all cancelled tasks so their cleanup (finally blocks, DB rollbacks)
     # completes before the next retry attempt starts new pre-launches.
+    # Use a timeout to prevent hanging indefinitely if a task's cleanup is stuck.
     if cancelled_tasks:
-        await asyncio.gather(*cancelled_tasks, return_exceptions=True)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*cancelled_tasks, return_exceptions=True),
+                timeout=5.0,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Timed out waiting for %d cancelled task(s) to clean up",
+                len(cancelled_tasks),
+            )
 
 
 def reset_tool_failure_counters() -> None:
@@ -481,6 +491,12 @@ def create_tool_handler(base_tool: BaseTool):
                     )
                     if not task.done():
                         task.cancel()
+                        # Await cancellation to prevent duplicate concurrent
+                        # execution for blocks with side effects.
+                        try:
+                            await task
+                        except (asyncio.CancelledError, Exception):
+                            pass
                     # Fall through to the direct-execution path below.
                 else:
                     # Args match — await the pre-launched task.
