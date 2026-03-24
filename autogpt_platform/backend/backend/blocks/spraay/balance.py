@@ -1,4 +1,9 @@
-"""Spraay token balance check block."""
+"""Spraay token balance check block.
+
+This module provides the SpraayGetBalanceBlock, which queries the balance
+of any ERC-20 token or native token for a given wallet address on any
+of the 13 supported blockchain networks.
+"""
 
 import uuid
 from typing import Any
@@ -12,8 +17,7 @@ from .batch_payment import ChainNetwork
 
 
 class SpraayGetBalanceBlock(Block):
-    """
-    Check a wallet's token balance on any supported chain.
+    """Check a wallet's token balance on any supported chain.
 
     Query the balance of any ERC-20 token or native token for a given wallet
     address. Useful for pre-flight checks before sending payments, monitoring
@@ -21,6 +25,8 @@ class SpraayGetBalanceBlock(Block):
     """
 
     class Input(BlockSchema):
+        """Input schema for the balance check block."""
+
         credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
@@ -40,6 +46,8 @@ class SpraayGetBalanceBlock(Block):
         )
 
     class Output(BlockSchema):
+        """Output schema for the balance check block."""
+
         balance: str = SchemaField(
             description="Token balance in the token's smallest unit (wei/lamports/sats)",
         )
@@ -54,6 +62,7 @@ class SpraayGetBalanceBlock(Block):
         )
 
     def __init__(self):
+        """Initialize the SpraayGetBalanceBlock with metadata and test fixtures."""
         super().__init__(
             id="c3d4e5f6-a7b8-9012-cdef-123456789012",
             description=(
@@ -95,6 +104,20 @@ class SpraayGetBalanceBlock(Block):
         wallet_address: str,
         token_address: str,
     ) -> dict:
+        """Fetch the token balance for a wallet via the Spraay gateway.
+
+        Args:
+            api_key: Spraay API key for authentication.
+            chain: Target blockchain network identifier.
+            wallet_address: Wallet address to query the balance for.
+            token_address: Contract address of the token to check.
+
+        Returns:
+            Dictionary containing balance, formatted_balance, and token_symbol.
+
+        Raises:
+            SpraayAPIError: If the gateway returns an error.
+        """
         return spraay_request(
             method="GET",
             endpoint="/v1/balance",
@@ -107,6 +130,20 @@ class SpraayGetBalanceBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        """Execute the balance check block.
+
+        Queries the Spraay gateway for the token balance of the specified
+        wallet and yields the raw balance, formatted balance, and token
+        symbol on success, or an error message on failure.
+
+        Args:
+            input_data: Validated input containing credentials, chain,
+                wallet address, and token address.
+            **kwargs: Additional keyword arguments passed by the executor.
+
+        Yields:
+            Output fields: balance, formatted_balance, token_symbol, or error.
+        """
         try:
             api_key = input_data.credentials.api_key.get_secret_value()
 

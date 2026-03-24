@@ -1,4 +1,9 @@
-"""Spraay x402 Gateway API client wrapper."""
+"""Spraay x402 Gateway API client wrapper.
+
+Provides a shared HTTP client for making authenticated requests to the
+Spraay payment gateway. All block implementations use this module to
+communicate with the gateway at gateway.spraay.app.
+"""
 
 import json
 import logging
@@ -12,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 class SpraayAPIError(Exception):
-    """Raised when a Spraay gateway API call fails."""
+    """Raised when a Spraay gateway API call fails.
+
+    Attributes:
+        status_code: HTTP status code returned by the gateway (0 for connection errors).
+        message: Human-readable error description.
+    """
 
     def __init__(self, status_code: int, message: str):
         self.status_code = status_code
@@ -28,22 +38,27 @@ def spraay_request(
     params: dict[str, Any] | None = None,
     timeout: int = 30,
 ) -> dict[str, Any]:
-    """
-    Make a request to the Spraay x402 gateway.
+    """Make an authenticated request to the Spraay x402 gateway.
+
+    Constructs a full URL from the base gateway URL and the given endpoint,
+    attaches a Bearer token for authentication, and returns the parsed JSON
+    response. Raises SpraayAPIError on HTTP errors, malformed JSON, or
+    connection failures.
 
     Args:
-        method: HTTP method (GET, POST, etc.)
-        endpoint: API endpoint path (e.g. "/v1/batch/send")
-        api_key: Spraay API key for authentication
-        json_body: JSON request body (for POST/PUT)
-        params: Query parameters (for GET)
-        timeout: Request timeout in seconds
+        method: HTTP method (GET, POST, etc.).
+        endpoint: API endpoint path (e.g. "/v1/batch/send").
+        api_key: Spraay API key for Bearer token authentication.
+        json_body: Optional JSON request body for POST/PUT requests.
+        params: Optional query parameters for GET requests.
+        timeout: Request timeout in seconds. Defaults to 30.
 
     Returns:
-        Parsed JSON response as a dictionary
+        Parsed JSON response as a dictionary.
 
     Raises:
-        SpraayAPIError: If the API returns an error status
+        SpraayAPIError: If the gateway returns an HTTP error, the response
+            body is not valid JSON, or a connection error occurs.
     """
     url = f"{SPRAAY_GATEWAY_BASE_URL}{endpoint}"
     headers = {

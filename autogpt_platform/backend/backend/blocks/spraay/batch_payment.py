@@ -1,4 +1,9 @@
-"""Spraay batch payment block for sending crypto payments to multiple recipients."""
+"""Spraay batch payment block for sending crypto payments to multiple recipients.
+
+This module provides the SpraayBatchPaymentBlock, which enables AutoGPT agents
+to send payments to multiple wallet addresses in a single on-chain transaction.
+Supports ERC-20 tokens, native tokens, and USDC across 13 blockchain networks.
+"""
 
 import uuid
 from enum import Enum
@@ -12,6 +17,12 @@ from ._config import spraay_provider
 
 
 class ChainNetwork(str, Enum):
+    """Supported blockchain networks for Spraay payment operations.
+
+    Each value corresponds to a chain identifier accepted by the Spraay
+    gateway API. Covers EVM chains, Solana, Bitcoin, Stacks, and Bittensor.
+    """
+
     BASE = "base"
     ETHEREUM = "ethereum"
     ARBITRUM = "arbitrum"
@@ -28,8 +39,7 @@ class ChainNetwork(str, Enum):
 
 
 class SpraayBatchPaymentBlock(Block):
-    """
-    Send batch crypto payments to multiple recipients in a single transaction.
+    """Send batch crypto payments to multiple recipients in a single transaction.
 
     Spraay batches multiple transfers into one on-chain transaction, saving gas
     and time. Supports ERC-20 tokens, native tokens, and USDC across 13 chains.
@@ -37,6 +47,8 @@ class SpraayBatchPaymentBlock(Block):
     """
 
     class Input(BlockSchema):
+        """Input schema for the batch payment block."""
+
         credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
@@ -69,6 +81,8 @@ class SpraayBatchPaymentBlock(Block):
         )
 
     class Output(BlockSchema):
+        """Output schema for the batch payment block."""
+
         transaction_hash: str = SchemaField(
             description="On-chain transaction hash of the batch payment",
         )
@@ -86,6 +100,7 @@ class SpraayBatchPaymentBlock(Block):
         )
 
     def __init__(self):
+        """Initialize the SpraayBatchPaymentBlock with metadata and test fixtures."""
         super().__init__(
             id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
             description=(
@@ -136,6 +151,22 @@ class SpraayBatchPaymentBlock(Block):
         amounts: list[str],
         sender_address: str,
     ) -> dict:
+        """Execute a batch payment via the Spraay gateway.
+
+        Args:
+            api_key: Spraay API key for authentication.
+            chain: Target blockchain network identifier.
+            token_address: Contract address of the token to transfer.
+            recipients: List of recipient wallet addresses.
+            amounts: List of transfer amounts in the token's smallest unit.
+            sender_address: Wallet address initiating the batch payment.
+
+        Returns:
+            Dictionary containing transaction_hash, batch_id, and status.
+
+        Raises:
+            SpraayAPIError: If the gateway returns an error.
+        """
         return spraay_request(
             method="POST",
             endpoint="/v1/batch/send",
@@ -150,6 +181,21 @@ class SpraayBatchPaymentBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        """Execute the batch payment block.
+
+        Validates that recipients and amounts lists are the same length,
+        then submits the batch payment to the Spraay gateway. Yields
+        transaction details on success or an error message on failure.
+
+        Args:
+            input_data: Validated input containing credentials, chain,
+                token address, recipients, amounts, and sender address.
+            **kwargs: Additional keyword arguments passed by the executor.
+
+        Yields:
+            Output fields: transaction_hash, batch_id, status,
+            total_recipients, or error.
+        """
         try:
             if len(input_data.recipients) != len(input_data.amounts):
                 raise ValueError(
