@@ -17,6 +17,9 @@ from backend.util.workspace import WorkspaceManager
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
+    from backend.copilot.permissions import CopilotPermissions
+
+
 # Allowed base directory for the Read tool.  Public so service.py can use it
 # for sweep operations without depending on a private implementation detail.
 # Respects CLAUDE_CONFIG_DIR env var, consistent with transcript.py's
@@ -43,6 +46,12 @@ _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
+# Current execution's capability filter.  None means "no restrictions".
+# Set by set_execution_context(); read by run_block and service.py.
+_current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
+    "_current_permissions", default=None
+)
+
 
 def encode_cwd_for_cli(cwd: str) -> str:
     """Encode a working directory path the same way the Claude CLI does.
@@ -63,6 +72,7 @@ def set_execution_context(
     session: ChatSession,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
+    permissions: "CopilotPermissions | None" = None,
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -70,11 +80,17 @@ def set_execution_context(
     _current_sandbox.set(sandbox)
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
+    _current_permissions.set(permissions)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
     """Return the current (user_id, session) pair for the active request."""
     return _current_user_id.get(), _current_session.get()
+
+
+def get_current_permissions() -> "CopilotPermissions | None":
+    """Return the capability filter for the current execution, or None if unrestricted."""
+    return _current_permissions.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
