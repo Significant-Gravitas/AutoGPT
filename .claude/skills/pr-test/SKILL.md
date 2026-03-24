@@ -526,6 +526,9 @@ After showing all screenshots, output a **detailed** summary table:
 
 ```bash
 # Build these variables during Step 6 — they are required by Step 7's script
+# NOTE: declare -A requires Bash 4.0+. This is standard on modern systems (macOS ships zsh
+# but Homebrew bash is 5.x; Linux typically has bash 5.x). If running on Bash <4, use a
+# plain variable with a lookup function instead.
 declare -A SCREENSHOT_EXPLANATIONS=(
   ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
   ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
@@ -551,12 +554,23 @@ SCREENSHOTS_BRANCH="test-screenshots/pr-${PR_NUMBER}"
 SCREENSHOTS_DIR="test-screenshots/PR-${PR_NUMBER}"
 
 # Step 1: Create blobs for each screenshot and build tree JSON
+# Retry each blob upload up to 3 times. If still failing, mark for base64 inline fallback.
 TREE_JSON='['
 FIRST=true
+FAILED_UPLOADS=()
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
   B64=$(base64 < "$img")
-  BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha')
+  BLOB_SHA=""
+  for attempt in 1 2 3; do
+    BLOB_SHA=$(gh api "repos/${REPO}/git/blobs" -f content="$B64" -f encoding="base64" --jq '.sha' 2>/dev/null || true)
+    [ -n "$BLOB_SHA" ] && break
+    sleep 1
+  done
+  if [ -z "$BLOB_SHA" ]; then
+    FAILED_UPLOADS+=("$img")
+    continue
+  fi
   if [ "$FIRST" = true ]; then FIRST=false; else TREE_JSON+=','; fi
   TREE_JSON+="{\"path\":\"${SCREENSHOTS_DIR}/${BASENAME}\",\"mode\":\"100644\",\"type\":\"blob\",\"sha\":\"${BLOB_SHA}\"}"
 done
@@ -580,18 +594,32 @@ Then post the comment with **inline images AND explanations for each screenshot*
 ```bash
 REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 
-# Build image markdown using SCREENSHOT_EXPLANATIONS and TEST_RESULTS_TABLE from Step 6
+# Build image markdown using uploaded image URLs; for FAILED_UPLOADS, embed base64 payload
 
 IMAGE_MARKDOWN=""
 for img in $RESULTS_DIR/*.png; do
   BASENAME=$(basename "$img")
   TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
   EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
-  IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
+  # Check if this image failed to upload; if so, embed as base64 inline
+  IS_FAILED=false
+  for failed in "${FAILED_UPLOADS[@]}"; do
+    [ "$(basename "$failed")" = "$BASENAME" ] && IS_FAILED=true && break
+  done
+  if [ "$IS_FAILED" = true ]; then
+    B64_DATA=$(base64 < "$img")
+    IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
+### ${TITLE}
+![${BASENAME}](data:image/png;base64,${B64_DATA})
+${EXPLANATION}
+"
+  else
+    IMAGE_MARKDOWN="${IMAGE_MARKDOWN}
 ### ${TITLE}
 ![${BASENAME}](${REPO_URL}/${SCREENSHOTS_DIR}/${BASENAME})
 ${EXPLANATION}
 "
+  fi
 done
 
 # Write comment body to file to avoid shell interpretation issues with special characters
@@ -624,26 +652,28 @@ When `--fix` is present, the standard is HIGHER. Do not just note issues — FIX
 ### Fix protocol for EVERY issue found (including UX issues):
 
 1. **Identify** the root cause in the code — read the relevant source files
-2. **Screenshot** the broken state: `agent-browser screenshot $RESULTS_DIR/{NN}-broken-{description}.png`
-3. **Fix** the code in the worktree
-4. **Rebuild** ONLY the affected service (not the whole stack):
+2. **Write a failing test first** (TDD): For backend bugs, write a test marked with `pytest.mark.xfail(reason="...")`. For frontend/Playwright bugs, write a test with `.fixme` annotation. Run it to confirm it fails as expected.
+3. **Screenshot** the broken state: `agent-browser screenshot $RESULTS_DIR/{NN}-broken-{description}.png`
+4. **Fix** the code in the worktree
+5. **Rebuild** ONLY the affected service (not the whole stack):
    ```bash
    cd $PLATFORM_DIR && docker compose up --build -d {service_name}
    # e.g., docker compose up --build -d rest_server
    # e.g., docker compose up --build -d frontend
    ```
-5. **Wait** for the service to be ready (poll health endpoint)
-6. **Re-test** the exact same scenario
-7. **Screenshot** the fixed state: `agent-browser screenshot $RESULTS_DIR/{NN}-fixed-{description}.png`
-8. **Verify** the fix did not break other scenarios (run a quick smoke test)
-9. **Commit and push** immediately:
+6. **Wait** for the service to be ready (poll health endpoint)
+7. **Re-test** the same scenario
+8. **Screenshot** the fixed state: `agent-browser screenshot $RESULTS_DIR/{NN}-fixed-{description}.png`
+9. **Remove the xfail/fixme marker** from the test written in step 2, and verify it passes
+10. **Verify** the fix did not break other scenarios (run a quick smoke test)
+11. **Commit and push** immediately:
    ```bash
    cd $WORKTREE_PATH
    git add -A
    git commit -m "fix: {description of fix}"
    git push
    ```
-10. **Continue** to the next test scenario
+12. **Continue** to the next test scenario
 
 ### Fix loop (like pr-address)
 
