@@ -31,7 +31,6 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
-from backend.copilot.sdk.env import build_sdk_env
 from backend.copilot.sdk.env import config as copilot_config
 from backend.data.dynamic_fields import (
     extract_base_field_name,
@@ -1351,33 +1350,28 @@ class OrchestratorBlock(Block):
         # Build SDK env — provider-aware credential routing.
         # SDK mode does not support subscription-mode (platform-managed credits).
         provider = input_data.model.metadata.provider
-        if not credentials.api_key and copilot_config.use_claude_code_subscription:
+        if not credentials.api_key:
             raise ValueError(
-                "SDK mode requires a direct API key. "
-                "Subscription-mode (platform-managed credits) is not supported."
+                "SDK mode requires direct API credentials and does not support "
+                "subscription mode. Please provide an Anthropic or OpenRouter API key."
             )
-        if credentials.api_key:
-            api_key = credentials.api_key.get_secret_value()
-            if provider == "open_router":
-                # Route through OpenRouter proxy: set base URL + auth token,
-                # clear API key so the SDK uses AUTH_TOKEN instead.
-                or_base = (
-                    copilot_config.base_url or "https://openrouter.ai/api"
-                ).rstrip("/")
-                if or_base.endswith("/v1"):
-                    or_base = or_base[:-3]
-                sdk_env = {
-                    "ANTHROPIC_BASE_URL": or_base,
-                    "ANTHROPIC_AUTH_TOKEN": api_key,
-                    "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-                }
-            else:
-                # Direct Anthropic key
-                sdk_env = {"ANTHROPIC_API_KEY": api_key}
+        api_key = credentials.api_key.get_secret_value()
+        if provider == "open_router":
+            # Route through OpenRouter proxy: set base URL + auth token,
+            # clear API key so the SDK uses AUTH_TOKEN instead.
+            or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
+                "/"
+            )
+            if or_base.endswith("/v1"):
+                or_base = or_base[:-3]
+            sdk_env = {
+                "ANTHROPIC_BASE_URL": or_base,
+                "ANTHROPIC_AUTH_TOKEN": api_key,
+                "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+            }
         else:
-            # Fall back to build_sdk_env() for subscription mode,
-            # system-level Anthropic key, or global OpenRouter config.
-            sdk_env = build_sdk_env()
+            # Direct Anthropic key
+            sdk_env = {"ANTHROPIC_API_KEY": api_key}
 
         # Build SDK options
         options = ClaudeAgentOptions(
