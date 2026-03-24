@@ -14,7 +14,7 @@ Test a PR/branch end-to-end by building the full platform, interacting via brows
 
 ## Critical Requirements
 
-These are NON-NEGOTIABLE. Every test run MUST satisfy ALL of the following:
+These are NON-NEGOTIABLE. Every test run MUST satisfy ALL the following:
 
 ### 1. Screenshots at Every Step
 - Take a screenshot at EVERY significant test step — not just at the end
