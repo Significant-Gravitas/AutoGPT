@@ -17,6 +17,16 @@ gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoG
 gh pr view {N}
 ```
 
+## Read the PR description
+
+Before reading code, understand the **why** — what problem this PR is solving:
+
+```bash
+gh pr view {N} --json body --jq '.body'
+```
+
+If the description lacks a "Why" section, note this as feedback — every PR should explain its motivation.
+
 ## Read the diff
 
 ```bash
@@ -33,6 +43,8 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 ```
 
 ## What to check
+
+**Motivation clarity:** Does the PR description explain *why* this change is needed? If not, request a `## Why` section before reviewing the implementation — you can't judge the approach without understanding the problem.
 
 **Correctness:** logic errors, off-by-one, missing edge cases, race conditions (TOCTOU in file access, credit charging), error handling gaps, async correctness (missing `await`, unclosed resources).
 

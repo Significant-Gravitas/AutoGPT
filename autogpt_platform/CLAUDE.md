@@ -55,6 +55,7 @@ AutoGPT Platform is a monorepo containing:
 - Create the PR against the `dev` branch of the repository.
 - Ensure the branch name is descriptive (e.g., `feature/add-new-block`)
 - Use conventional commit messages (see below)
+- **Start the PR description with a `## Why` section** explaining the motivation — why this change is needed, what problem it solves, or what's broken/missing without it. The rest of the description covers the what and how, but the why comes first. Reviewers need this to judge whether the approach fits the problem.
 - Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description
 - Always use `--body-file` to pass PR body — avoids shell interpretation of backticks and special characters:
   ```bash

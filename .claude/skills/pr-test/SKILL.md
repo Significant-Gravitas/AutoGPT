@@ -53,11 +53,16 @@ Before testing, understand what changed:
 
 ```bash
 cd $WORKTREE_PATH
+
+# Read PR description to understand the WHY
+gh pr view {N} --json body --jq '.body'
+
 git log --oneline dev..HEAD | head -20
 git diff dev --stat
 ```
 
-Read the changed files to understand:
+Read the PR description and changed files to understand:
+0. **Why does this PR exist?** What problem does it solve? (from the `## Why` section)
 1. What feature/fix does this PR implement?
 2. What components are affected? (backend, frontend, copilot, executor, etc.)
 3. What are the key user-facing behaviors to test?
