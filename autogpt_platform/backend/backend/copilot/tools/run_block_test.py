@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.copilot.context import _current_permissions
+from backend.copilot.permissions import CopilotPermissions
 
 from ._test_data import make_session
 from .models import (
@@ -131,6 +133,69 @@ class TestRunBlockFiltering:
 
         assert isinstance(response, ErrorResponse)
         assert "cannot be run directly" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_block_denied_by_permissions_returns_error(self):
+        """A block denied by CopilotPermissions returns an ErrorResponse."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+        standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
+
+        perms = CopilotPermissions(blocks=[block_id], blocks_exclude=True)
+        token = _current_permissions.set(perms)
+        try:
+            with patch(
+                "backend.copilot.tools.run_block.get_block",
+                return_value=standard_block,
+            ):
+                tool = RunBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        assert isinstance(response, ErrorResponse)
+        assert "not permitted" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_allowed_by_permissions_passes_guard(self):
+        """A block explicitly allowed by a whitelist CopilotPermissions passes the guard."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+        standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
+
+        perms = CopilotPermissions(blocks=[block_id], blocks_exclude=False)
+        token = _current_permissions.set(perms)
+        try:
+            with (
+                patch(
+                    "backend.copilot.tools.run_block.get_block",
+                    return_value=standard_block,
+                ),
+                patch(
+                    "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                    return_value=({}, []),
+                ),
+            ):
+                tool = RunBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        # Must NOT be blocked by permissions — assert it's not a permission error
+        assert (
+            not isinstance(response, ErrorResponse)
+            or "not permitted" not in response.message
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
