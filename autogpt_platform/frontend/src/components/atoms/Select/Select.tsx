@@ -119,7 +119,7 @@ export function Select({
   );
 
   const selectWithError = (
-    <div className={cn("relative mb-6", wrapperClassName)}>
+    <div className={cn("relative mb-6 w-full", wrapperClassName)}>
       {select}
       <Text
         variant="small-medium"
