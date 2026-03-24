@@ -15,45 +15,10 @@ import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
 const TITLE_POLL_MAX_ATTEMPTS = 5;
-
-/**
- * Extract a prompt from the URL hash fragment.
- * Supports: /copilot#prompt=URL-encoded-text
- * Optionally auto-submits if ?autosubmit=true is in the query string.
- * Returns null if no prompt is present.
- */
-function extractPromptFromUrl(): {
-  prompt: string;
-  autosubmit: boolean;
-} | null {
-  if (typeof window === "undefined") return null;
-
-  const hash = window.location.hash;
-  if (!hash) return null;
-
-  const hashParams = new URLSearchParams(hash.slice(1));
-  const prompt = hashParams.get("prompt");
-
-  if (!prompt || !prompt.trim()) return null;
-
-  const searchParams = new URLSearchParams(window.location.search);
-  const autosubmit = searchParams.get("autosubmit") === "true";
-
-  // Clean up hash + autosubmit param only (preserve other query params)
-  const cleanURL = new URL(window.location.href);
-  cleanURL.hash = "";
-  cleanURL.searchParams.delete("autosubmit");
-  window.history.replaceState(
-    null,
-    "",
-    `${cleanURL.pathname}${cleanURL.search}`,
-  );
-
-  return { prompt: prompt.trim(), autosubmit };
-}
 
 interface UploadedFile {
   file_id: string;
@@ -130,16 +95,23 @@ export function useCopilotPage() {
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   const pendingFilesRef = useRef<File[]>([]);
+  // Pre-built file parts from workflow import (already uploaded, skip re-upload)
+  const pendingFilePartsRef = useRef<FileUIPart[]>([]);
 
   // --- Send pending message after session creation ---
   useEffect(() => {
     if (!sessionId || pendingMessage === null) return;
     const msg = pendingMessage;
     const files = pendingFilesRef.current;
+    const prebuiltParts = pendingFilePartsRef.current;
     setPendingMessage(null);
     pendingFilesRef.current = [];
+    pendingFilePartsRef.current = [];
 
-    if (files.length > 0) {
+    if (prebuiltParts.length > 0) {
+      // File already uploaded (e.g. workflow import) — send directly
+      sendMessage({ text: msg, files: prebuiltParts });
+    } else if (files.length > 0) {
       setIsUploadingFiles(true);
       void uploadFiles(files, sessionId)
         .then((uploaded) => {
@@ -164,26 +136,11 @@ export function useCopilotPage() {
   }, [sessionId, pendingMessage, sendMessage]);
 
   // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
-  const { setInitialPrompt } = useCopilotUIStore();
-  const hasProcessedUrlPrompt = useRef(false);
-  useEffect(() => {
-    if (hasProcessedUrlPrompt.current) return;
-
-    const urlPrompt = extractPromptFromUrl();
-    if (!urlPrompt) return;
-
-    hasProcessedUrlPrompt.current = true;
-
-    if (urlPrompt.autosubmit) {
-      setPendingMessage(urlPrompt.prompt);
-      void createSession().catch(() => {
-        setPendingMessage(null);
-        setInitialPrompt(urlPrompt.prompt);
-      });
-    } else {
-      setInitialPrompt(urlPrompt.prompt);
-    }
-  }, [createSession, setInitialPrompt]);
+  useWorkflowImportAutoSubmit({
+    createSession,
+    setPendingMessage,
+    pendingFilePartsRef,
+  });
 
   async function uploadFiles(
     files: File[],

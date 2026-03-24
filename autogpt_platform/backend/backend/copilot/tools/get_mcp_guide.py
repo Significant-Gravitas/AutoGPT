@@ -38,11 +38,7 @@ class GetMCPGuideTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Returns the MCP tool guide: known hosted server URLs (Notion, Linear, "
-            "Stripe, Intercom, Cloudflare, Atlassian) and authentication workflow. "
-            "Call before using run_mcp_tool if you need a server URL or auth info."
-        )
+        return "Get MCP server URLs and auth guide. Call before run_mcp_tool if you need a server URL or auth info."
 
     @property
     def parameters(self) -> dict[str, Any]:

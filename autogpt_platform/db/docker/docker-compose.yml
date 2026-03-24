@@ -66,6 +66,9 @@ services:
     container_name: supabase-kong
     image: kong:2.8.1
     restart: unless-stopped
+    networks:
+      - default
+      - shared-network
     ports:
       - 8000:8000/tcp
       - 8443:8443/tcp
@@ -407,6 +410,9 @@ services:
     container_name: supabase-db
     image: supabase/postgres:15.8.1.049
     restart: unless-stopped
+    networks:
+      - default
+      - app-network
     volumes:
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       # Must be superuser to create event trigger
@@ -537,6 +543,12 @@ services:
         "-c",
         "/app/bin/migrate && /app/bin/supavisor eval \"$$(cat /etc/pooler/pooler.exs)\" && /app/bin/server"
       ]
+
+networks:
+  shared-network:
+    name: shared-network
+  app-network:
+    name: app-network
 
 volumes:
   supabase-config:

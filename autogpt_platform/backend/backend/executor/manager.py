@@ -81,6 +81,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .simulator import simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -222,9 +223,11 @@ async def execute_node(
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
     # Sanity check: validate the execution input.
-    input_data, error = validate_exec(node, data.inputs, resolve_input=False)
+    input_data, error = validate_exec(
+        node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
+    )
     if input_data is None:
-        log_metadata.error(f"Skip execution, input validation error: {error}")
+        log_metadata.warning(f"Skip execution, input validation error: {error}")
         yield "error", error
         return
 
@@ -372,9 +375,12 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        async for output_name, output_data in node_block.execute(
-            input_data, **extra_exec_kwargs
-        ):
+        if execution_context.dry_run:
+            block_iter = simulate_block(node_block, input_data)
+        else:
+            block_iter = node_block.execute(input_data, **extra_exec_kwargs)
+
+        async for output_name, output_data in block_iter:
             output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
@@ -506,7 +512,9 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            next_node_input, validation_msg = validate_exec(
+                next_node, next_node_input, dry_run=execution_context.dry_run
+            )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
             # Incomplete input data, skip queueing the execution.
@@ -551,7 +559,9 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg = validate_exec(next_node, idata)
+                idata, msg = validate_exec(
+                    next_node, idata, dry_run=execution_context.dry_run
+                )
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
@@ -829,9 +839,12 @@ class ExecutionProcessor:
             return
 
         if exec_meta.stats is None:
-            exec_stats = GraphExecutionStats()
+            exec_stats = GraphExecutionStats(
+                is_dry_run=graph_exec.execution_context.dry_run,
+            )
         else:
             exec_stats = exec_meta.stats.to_db()
+            exec_stats.is_dry_run = graph_exec.execution_context.dry_run
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -971,7 +984,10 @@ class ExecutionProcessor:
         running_node_evaluation = self.running_node_evaluation
 
         try:
-            if db_client.get_credits(graph_exec.user_id) <= 0:
+            if (
+                not graph_exec.execution_context.dry_run
+                and db_client.get_credits(graph_exec.user_id) <= 0
+            ):
                 raise InsufficientBalanceError(
                     user_id=graph_exec.user_id,
                     message="You have no credits left to run an agent.",
@@ -1042,21 +1058,24 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) ------------------------------
+                # Charge usage (may raise) — skipped for dry runs
                 try:
-                    cost, remaining_balance = self._charge_usage(
-                        node_exec=queued_node_exec,
-                        execution_count=increment_execution_count(graph_exec.user_id),
-                    )
-                    with execution_stats_lock:
-                        execution_stats.cost += cost
-                    # Check if we crossed the low balance threshold
-                    self._handle_low_balance(
-                        db_client=db_client,
-                        user_id=graph_exec.user_id,
-                        current_balance=remaining_balance,
-                        transaction_cost=cost,
-                    )
+                    if not graph_exec.execution_context.dry_run:
+                        cost, remaining_balance = self._charge_usage(
+                            node_exec=queued_node_exec,
+                            execution_count=increment_execution_count(
+                                graph_exec.user_id
+                            ),
+                        )
+                        with execution_stats_lock:
+                            execution_stats.cost += cost
+                        # Check if we crossed the low balance threshold
+                        self._handle_low_balance(
+                            db_client=db_client,
+                            user_id=graph_exec.user_id,
+                            current_balance=remaining_balance,
+                            transaction_cost=cost,
+                        )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id

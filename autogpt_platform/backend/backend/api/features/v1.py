@@ -592,6 +592,11 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
+    """Configure auto top-up settings and perform an immediate top-up if needed.
+
+    Raises HTTPException(422) if the request parameters are invalid or if
+    the credit top-up fails.
+    """
     if request.threshold < 0:
         raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
@@ -606,10 +611,20 @@ async def configure_user_auto_top_up(
     user_credit_model = await get_user_credit_model(user_id)
     current_balance = await user_credit_model.get_credits(user_id)
 
-    if current_balance < request.threshold:
-        await user_credit_model.top_up_credits(user_id, request.amount)
-    else:
-        await user_credit_model.top_up_credits(user_id, 0)
+    try:
+        if current_balance < request.threshold:
+            await user_credit_model.top_up_credits(user_id, request.amount)
+        else:
+            await user_credit_model.top_up_credits(user_id, 0)
+    except ValueError as e:
+        known_messages = (
+            "must not be negative",
+            "already exists for user",
+            "No payment method found",
+        )
+        if any(msg in str(e) for msg in known_messages):
+            raise HTTPException(status_code=422, detail=str(e))
+        raise
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
@@ -965,14 +980,16 @@ async def execute_graph(
     source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
+    dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
-    user_credit_model = await get_user_credit_model(user_id)
-    current_balance = await user_credit_model.get_credits(user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
-        )
+    if not dry_run:
+        user_credit_model = await get_user_credit_model(user_id)
+        current_balance = await user_credit_model.get_credits(user_id)
+        if current_balance <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient balance to execute the agent. Please top up your account.",
+            )
 
     try:
         result = await execution_utils.add_graph_execution(
@@ -982,6 +999,7 @@ async def execute_graph(
             preset_id=preset_id,
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
+            dry_run=dry_run,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)

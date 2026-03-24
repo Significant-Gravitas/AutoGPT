@@ -20,9 +20,9 @@ SSRF protection:
 
 Requires:
   npm install -g agent-browser
-  agent-browser install   (downloads Chromium, one-time — skipped in Docker
-                           where system chromium is pre-installed and
-                           AGENT_BROWSER_EXECUTABLE_PATH is set)
+  In Docker: system chromium package with AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+             (set automatically — no `agent-browser install` needed).
+  Locally: run `agent-browser install` to download Chromium.
 """
 
 import asyncio
@@ -410,18 +410,11 @@ class BrowserNavigateTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Navigate to a URL using a real browser. Returns an accessibility "
-            "tree snapshot listing the page's interactive elements with @ref IDs "
-            "(e.g. @e3) that can be used with browser_act. "
-            "Session persists — cookies and login state carry over between calls. "
-            "Use this (with browser_act) for multi-step interaction: login flows, "
-            "form filling, button clicks, or anything requiring page interaction. "
-            "For plain static pages, prefer web_fetch — no browser overhead. "
-            "For authenticated pages: navigate to the login page first, use browser_act "
-            "to fill credentials and submit, then navigate to the target page. "
-            "Note: for slow SPAs, the returned snapshot may reflect a partially-loaded "
-            "state. If elements seem missing, use browser_act with action='wait' and a "
-            "CSS selector or millisecond delay, then take a browser_screenshot to verify."
+            "Navigate to a URL in a real browser. Returns accessibility tree with @ref IDs "
+            "for browser_act. Session persists (cookies/auth carry over). "
+            "For static pages, prefer web_fetch. "
+            "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify. "
+            "For auth: navigate to login, fill creds and submit with browser_act, then navigate to target."
         )
 
     @property
@@ -431,13 +424,13 @@ class BrowserNavigateTool(BaseTool):
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The HTTP/HTTPS URL to navigate to.",
+                    "description": "HTTP/HTTPS URL to navigate to.",
                 },
                 "wait_for": {
                     "type": "string",
                     "enum": ["networkidle", "load", "domcontentloaded"],
                     "default": "networkidle",
-                    "description": "When to consider navigation complete. Use 'networkidle' for SPAs (default).",
+                    "description": "Navigation completion strategy (default: networkidle).",
                 },
             },
             "required": ["url"],
@@ -556,14 +549,12 @@ class BrowserActTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Interact with the current browser page. Use @ref IDs from the "
-            "snapshot (e.g. '@e3') to target elements. Returns an updated snapshot. "
-            "Supported actions: click, dblclick, fill, type, scroll, hover, press, "
+            "Interact with the current browser page using @ref IDs from the snapshot. "
+            "Actions: click, dblclick, fill, type, scroll, hover, press, "
             "check, uncheck, select, wait, back, forward, reload. "
-            "fill clears the field before typing; type appends without clearing. "
-            "wait accepts a CSS selector (waits for element) or milliseconds string (e.g. '1000'). "
-            "Example login flow: fill @e1 with email → fill @e2 with password → "
-            "click @e3 (submit) → browser_navigate to the target page."
+            "fill clears field first; type appends. "
+            "wait accepts CSS selector or milliseconds (e.g. '1000'). "
+            "Returns updated snapshot."
         )
 
     @property
@@ -589,30 +580,21 @@ class BrowserActTool(BaseTool):
                         "forward",
                         "reload",
                     ],
-                    "description": "The action to perform.",
+                    "description": "Action to perform.",
                 },
                 "target": {
                     "type": "string",
-                    "description": (
-                        "Element to target. Use @ref from snapshot (e.g. '@e3'), "
-                        "a CSS selector, or a text description. "
-                        "Required for: click, dblclick, fill, type, hover, check, uncheck, select. "
-                        "For wait: a CSS selector to wait for, or milliseconds as a string (e.g. '1000')."
-                    ),
+                    "description": "@ref ID (e.g. '@e3'), CSS selector, or text. Required for: click, dblclick, fill, type, hover, check, uncheck, select. For wait: CSS selector or milliseconds string (e.g. '1000').",
                 },
                 "value": {
                     "type": "string",
-                    "description": (
-                        "For fill/type: the text to enter. "
-                        "For press: key name (e.g. 'Enter', 'Tab', 'Control+a'). "
-                        "For select: the option value to select."
-                    ),
+                    "description": "Text for fill/type, key for press (e.g. 'Enter'), option for select.",
                 },
                 "direction": {
                     "type": "string",
                     "enum": ["up", "down", "left", "right"],
                     "default": "down",
-                    "description": "For scroll: direction to scroll.",
+                    "description": "Scroll direction (default: down).",
                 },
             },
             "required": ["action"],
@@ -759,12 +741,10 @@ class BrowserScreenshotTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Take a screenshot of the current browser page and save it to the workspace. "
-            "IMPORTANT: After calling this tool, immediately call read_workspace_file "
-            "with the returned file_id to display the image inline to the user — "
-            "the screenshot is not visible until you do this. "
-            "With annotate=true (default), @ref labels are overlaid on interactive "
-            "elements, making it easy to see which @ref ID maps to which element on screen."
+            "Screenshot the current browser page and save to workspace. "
+            "annotate=true overlays @ref labels on elements. "
+            "IMPORTANT: After calling, you MUST immediately call read_workspace_file with the "
+            "returned file_id to display the image inline."
         )
 
     @property
@@ -775,12 +755,12 @@ class BrowserScreenshotTool(BaseTool):
                 "annotate": {
                     "type": "boolean",
                     "default": True,
-                    "description": "Overlay @ref labels on interactive elements (default: true).",
+                    "description": "Overlay @ref labels (default: true).",
                 },
                 "filename": {
                     "type": "string",
                     "default": "screenshot.png",
-                    "description": "Filename to save in the workspace.",
+                    "description": "Workspace filename (default: screenshot.png).",
                 },
             },
         }

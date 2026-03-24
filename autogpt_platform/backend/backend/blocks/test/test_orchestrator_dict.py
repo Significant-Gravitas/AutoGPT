@@ -3,12 +3,12 @@ from unittest.mock import Mock
 import pytest
 
 from backend.blocks.data_manipulation import AddToListBlock, CreateDictionaryBlock
-from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_handles_dynamic_dict_fields():
-    """Test Smart Decision Maker can handle dynamic dictionary fields (_#_) for any block"""
+async def test_orchestrator_handles_dynamic_dict_fields():
+    """Test Orchestrator can handle dynamic dictionary fields (_#_) for any block"""
 
     # Create a mock node for CreateDictionaryBlock
     mock_node = Mock()
@@ -23,24 +23,24 @@ async def test_smart_decision_maker_handles_dynamic_dict_fields():
             source_name="tools_^_create_dict_~_name",
             sink_name="values_#_name",  # Dynamic dict field
             sink_id="dict_node_id",
-            source_id="smart_decision_node_id",
+            source_id="orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_create_dict_~_age",
             sink_name="values_#_age",  # Dynamic dict field
             sink_id="dict_node_id",
-            source_id="smart_decision_node_id",
+            source_id="orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_create_dict_~_city",
             sink_name="values_#_city",  # Dynamic dict field
             sink_id="dict_node_id",
-            source_id="smart_decision_node_id",
+            source_id="orchestrator_node_id",
         ),
     ]
 
     # Generate function signature
-    signature = await SmartDecisionMakerBlock._create_block_function_signature(
+    signature = await OrchestratorBlock._create_block_function_signature(
         mock_node, mock_links  # type: ignore
     )
 
@@ -70,8 +70,8 @@ async def test_smart_decision_maker_handles_dynamic_dict_fields():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_handles_dynamic_list_fields():
-    """Test Smart Decision Maker can handle dynamic list fields (_$_) for any block"""
+async def test_orchestrator_handles_dynamic_list_fields():
+    """Test Orchestrator can handle dynamic list fields (_$_) for any block"""
 
     # Create a mock node for AddToListBlock
     mock_node = Mock()
@@ -86,18 +86,18 @@ async def test_smart_decision_maker_handles_dynamic_list_fields():
             source_name="tools_^_add_to_list_~_0",
             sink_name="entries_$_0",  # Dynamic list field
             sink_id="list_node_id",
-            source_id="smart_decision_node_id",
+            source_id="orchestrator_node_id",
         ),
         Mock(
             source_name="tools_^_add_to_list_~_1",
             sink_name="entries_$_1",  # Dynamic list field
             sink_id="list_node_id",
-            source_id="smart_decision_node_id",
+            source_id="orchestrator_node_id",
         ),
     ]
 
     # Generate function signature
-    signature = await SmartDecisionMakerBlock._create_block_function_signature(
+    signature = await OrchestratorBlock._create_block_function_signature(
         mock_node, mock_links  # type: ignore
     )
 

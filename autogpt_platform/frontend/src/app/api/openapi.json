@@ -1579,6 +1579,7 @@
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
+        "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
         "requestBody": {
           "content": {
@@ -6684,6 +6685,16 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Session Id"
             }
+          },
+          {
+            "name": "overwrite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Overwrite"
+            }
           }
         ],
         "requestBody": {
@@ -7860,7 +7871,12 @@
             "type": "object",
             "title": "Outputs"
           },
-          "success": { "type": "boolean", "title": "Success", "default": true }
+          "success": { "type": "boolean", "title": "Success", "default": true },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["message", "block_id", "block_name", "outputs"],
@@ -8014,7 +8030,8 @@
               { "type": "null" }
             ],
             "title": "Source"
-          }
+          },
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
         "type": "object",
         "title": "Body_postV1Execute graph agent"
@@ -8816,6 +8833,16 @@
               { "type": "null" }
             ],
             "title": "Inputs Summary"
+          },
+          "node_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Node Executions"
           }
         },
         "type": "object",
@@ -9056,6 +9083,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9201,6 +9233,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9288,6 +9325,11 @@
           "share_token": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
+          },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
           },
           "stats": {
             "anyOf": [
