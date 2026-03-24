@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -342,14 +343,21 @@ class IntegrationCredentialsStore:
         user_integrations = await self._get_user_integrations(user_id)
         all_credentials = user_integrations.credentials
 
+        # Auto-provision AgentMail pod if org key is configured
+        agentmail_pod_api_key = (
+            user_integrations.managed_credentials.agentmail_pod_api_key
+        )
+        if not agentmail_pod_api_key and settings.secrets.agentmail_api_key:
+            agentmail_pod_api_key = await self._provision_agentmail_pod(user_id)
+
         # Synthesize managed AgentMail pod key as a selectable credential
-        if user_integrations.managed_credentials.agentmail_pod_api_key:
+        if agentmail_pod_api_key:
             all_credentials.append(
                 APIKeyCredentials(
                     id=AGENTMAIL_POD_KEY_CREDENTIAL_ID,
                     provider="agent_mail",
                     title="AgentMail (managed by AutoGPT)",
-                    api_key=user_integrations.managed_credentials.agentmail_pod_api_key,
+                    api_key=agentmail_pod_api_key,
                     expires_at=None,
                 )
             )
@@ -498,6 +506,29 @@ class IntegrationCredentialsStore:
             user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
                 pod_api_key
             )
+
+    async def _provision_agentmail_pod(self, user_id: str) -> SecretStr | None:
+        """Auto-provision an AgentMail pod for the user. Returns the pod API key."""
+        from agentmail import AsyncAgentMail
+
+        logger = logging.getLogger(__name__)
+        client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
+        try:
+            pod = await client.pods.create(client_id=user_id)
+            api_key = await client.pods.api_keys.create(
+                pod_id=pod.pod_id, name="autogpt-managed"
+            )
+            pod_api_key = SecretStr(api_key.api_key)
+            await self.set_agentmail_pod_credentials(
+                user_id, pod.pod_id, api_key.api_key
+            )
+            logger.info(f"Auto-provisioned AgentMail pod for user {user_id}")
+            return pod_api_key
+        except Exception as e:
+            logger.error(
+                f"Failed to auto-provision AgentMail pod for user {user_id}: {e}"
+            )
+            return None
 
     # ===================== OAUTH STATES ===================== #
 
