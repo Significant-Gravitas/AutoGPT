@@ -1,5 +1,6 @@
 """Spraay x402 Gateway API client wrapper."""
 
+import json
 import logging
 from typing import Any
 
@@ -64,12 +65,20 @@ def spraay_request(
             error_msg = response.text
             try:
                 error_data = response.json()
-                error_msg = error_data.get("error", error_data.get("message", str(error_data)))
-            except ValueError:
+                error_msg = error_data.get(
+                    "error", error_data.get("message", str(error_data))
+                )
+            except (json.JSONDecodeError, ValueError):
                 pass
             raise SpraayAPIError(response.status_code, error_msg)
 
-        return response.json()
+        try:
+            return response.json()
+        except (json.JSONDecodeError, ValueError):
+            raise SpraayAPIError(
+                response.status_code,
+                f"Invalid JSON in response: {response.text[:200]}",
+            )
 
     except requests.RequestException as e:
         raise SpraayAPIError(0, f"Connection error: {str(e)}")

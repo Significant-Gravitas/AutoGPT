@@ -1,9 +1,10 @@
 """Spraay transaction status check block."""
 
 import uuid
+from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsMetaInput, SchemaField
 
 from ._api import SpraayAPIError, spraay_request
 from ._config import spraay_provider
@@ -20,7 +21,7 @@ class SpraayTransactionStatusBlock(Block):
     """
 
     class Input(BlockSchema):
-        credentials: spraay_provider.credentials_field() = SchemaField(  # type: ignore
+        credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
         chain: ChainNetwork = SchemaField(
