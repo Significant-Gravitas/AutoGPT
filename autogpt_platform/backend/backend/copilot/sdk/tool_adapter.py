@@ -415,7 +415,10 @@ def create_tool_handler(base_tool: BaseTool):
                             e,
                             exc_info=True,
                         )
-                        return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+                        return _mcp_error(
+                            f"Failed to execute {base_tool.name}. "
+                            "Check server logs for details."
+                        )
 
                     # Pre-truncate the result so the _truncating wrapper (which
                     # wraps this handler) receives an already-within-budget
@@ -437,7 +440,9 @@ def create_tool_handler(base_tool: BaseTool):
             logger.error(
                 "Error executing tool %s: %s", base_tool.name, e, exc_info=True
             )
-            return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+            return _mcp_error(
+                f"Failed to execute {base_tool.name}. Check server logs for details."
+            )
 
     return tool_handler
 
