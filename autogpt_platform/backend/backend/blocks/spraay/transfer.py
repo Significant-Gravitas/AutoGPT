@@ -5,13 +5,17 @@ for sending a one-to-one crypto transfer on any supported chain. Ideal for
 agent-to-agent payments, tips, bounties, or individual payouts.
 """
 
-import uuid
-from typing import Any
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsMetaInput, SchemaField
-
-from ._api import SpraayAPIError, spraay_request
+from ._api import spraay_request
 from ._config import spraay_provider
 from .batch_payment import ChainNetwork
 
@@ -27,7 +31,7 @@ class SpraayTokenTransferBlock(Block):
     class Input(BlockSchema):
         """Input schema for the single transfer block."""
 
-        credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
+        credentials: CredentialsMetaInput = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
         chain: ChainNetwork = SchemaField(
@@ -70,19 +74,19 @@ class SpraayTokenTransferBlock(Block):
     def __init__(self):
         """Initialize the SpraayTokenTransferBlock with metadata and test fixtures."""
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-bcde-f12345678901",
+            id="b01eb191-8ca9-4cda-9783-23fb6d9b6cf4",
             description=(
                 "Send a single crypto token transfer to one recipient. "
                 "Supports native tokens and ERC-20s across 13 chains. "
                 "Powered by Spraay's x402 payment gateway."
             ),
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.BASIC},
             input_schema=SpraayTokenTransferBlock.Input,
             output_schema=SpraayTokenTransferBlock.Output,
             test_input={
                 "credentials": {
                     "provider": "spraay",
-                    "id": str(uuid.uuid4()),
+                    "id": "test-cred-id",
                     "type": "api_key",
                 },
                 "chain": "base",
@@ -141,37 +145,34 @@ class SpraayTokenTransferBlock(Block):
             },
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         """Execute the single transfer block.
 
-        Submits a one-to-one token transfer to the Spraay gateway and
-        yields the transaction hash and status on success, or an error
-        message on failure.
-
         Args:
-            input_data: Validated input containing credentials, chain,
-                token address, recipient, amount, and sender address.
+            input_data: Validated input containing chain, token address,
+                recipient, amount, and sender address.
+            credentials: API key credentials injected by the framework.
             **kwargs: Additional keyword arguments passed by the executor.
 
         Yields:
             Output fields: transaction_hash, status, or error.
         """
-        try:
-            api_key = input_data.credentials.api_key.get_secret_value()
+        api_key = credentials.api_key.get_secret_value()
 
-            result = self.execute_transfer(
-                api_key=api_key,
-                chain=input_data.chain.value,
-                token_address=input_data.token_address,
-                recipient=input_data.recipient,
-                amount=input_data.amount,
-                sender_address=input_data.sender_address,
-            )
+        result = self.execute_transfer(
+            api_key=api_key,
+            chain=input_data.chain.value,
+            token_address=input_data.token_address,
+            recipient=input_data.recipient,
+            amount=input_data.amount,
+            sender_address=input_data.sender_address,
+        )
 
-            yield "transaction_hash", result.get("transaction_hash", "")
-            yield "status", result.get("status", "pending")
-
-        except SpraayAPIError as e:
-            yield "error", f"Spraay API error: {e.message}"
-        except Exception as e:
-            yield "error", f"Unexpected error: {str(e)}"
+        yield "transaction_hash", result.get("transaction_hash", "")
+        yield "status", result.get("status", "pending")
