@@ -191,9 +191,11 @@ class TestRunBlockFiltering:
         finally:
             _current_permissions.reset(token)
 
-        # Must NOT be blocked by permissions
-        if isinstance(response, ErrorResponse):
-            assert "not permitted" not in response.message
+        # Must NOT be blocked by permissions — assert it's not a permission error
+        assert (
+            not isinstance(response, ErrorResponse)
+            or "not permitted" not in response.message
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
