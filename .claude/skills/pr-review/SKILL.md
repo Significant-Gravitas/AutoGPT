@@ -19,13 +19,13 @@ gh pr view {N}
 
 ## Read the PR description
 
-Before reading code, understand the **why** — what problem this PR is solving:
+Before reading code, understand the **why**, **what**, and **how** from the PR description:
 
 ```bash
 gh pr view {N} --json body --jq '.body'
 ```
 
-If the description lacks a "Why" section, note this as feedback — every PR should explain its motivation.
+Every PR should have a Why / What / How structure. If any of these are missing, note it as feedback.
 
 ## Read the diff
 
@@ -44,7 +44,7 @@ gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews
 
 ## What to check
 
-**Motivation clarity:** Does the PR description explain *why* this change is needed? If not, request a `## Why` section before reviewing the implementation — you can't judge the approach without understanding the problem.
+**Description quality:** Does the PR description cover Why (motivation/problem), What (summary of changes), and How (approach/implementation details)? If any are missing, request them — you can't judge the approach without understanding the problem and intent.
 
 **Correctness:** logic errors, off-by-one, missing edge cases, race conditions (TOCTOU in file access, credit charging), error handling gaps, async correctness (missing `await`, unclosed resources).
 

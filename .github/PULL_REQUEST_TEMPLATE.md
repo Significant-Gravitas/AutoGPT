@@ -1,14 +1,8 @@
-### Why 🤔
+### Why / What / How
 
-<!-- Why does this PR exist? What problem does it solve, or what's broken/missing without it? -->
-
-### What 🏗️
-
-<!-- What does this PR change? Summarize the changes at a high level. -->
-
-### How 🔧
-
-<!-- How does it work? Describe the approach, key implementation details, or architecture decisions. -->
+<!-- Why: Why does this PR exist? What problem does it solve, or what's broken/missing without it? -->
+<!-- What: What does this PR change? Summarize the changes at a high level. -->
+<!-- How: How does it work? Describe the approach, key implementation details, or architecture decisions. -->
 
 ### Checklist 📋
 
