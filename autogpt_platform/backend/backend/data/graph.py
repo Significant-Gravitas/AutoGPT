@@ -1136,6 +1136,27 @@ async def get_graph(
         ):
             graph = store_listing.AgentGraph
 
+    # Fall back to library membership: if the user has the agent in their
+    # library (non-deleted, non-archived), grant access even if the agent is
+    # no longer published. "You added it, you keep it."
+    if graph is None and user_id is not None:
+        library_where: dict[str, object] = {
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isArchived": False,
+        }
+        if version is not None:
+            library_where["agentGraphVersion"] = version
+
+        library_agent = await LibraryAgent.prisma().find_first(
+            where=library_where,
+            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+            order={"agentGraphVersion": "desc"},
+        )
+        if library_agent and library_agent.AgentGraph:
+            graph = library_agent.AgentGraph
+
     if graph is None:
         return None
 

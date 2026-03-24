@@ -295,39 +295,35 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
     mock_admin.assert_not_awaited()
 
 
-# ---- Known limitation: library membership doesn't grant graph access ---- #
+# ---- Library membership grants graph access (product decision) ---- #
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(
-    reason="get_graph() requires ownership or APPROVED marketplace status. "
-    "Library membership alone doesn't grant access — needs product decision "
-    "on whether adding to library should grant graph access (affects "
-    "un-publish behavior for all users, not just admins)."
-)
-async def test_admin_can_view_library_agent_for_pending_submission() -> None:
-    """After an admin adds a pending agent to their library, they should be
-    able to load the graph in the builder. Currently fails because get_graph()
-    doesn't check library membership."""
+async def test_library_member_can_view_pending_agent_in_builder() -> None:
+    """After adding a pending agent to their library, the user should be
+    able to load the graph in the builder via get_graph()."""
+    mock_graph = _make_mock_graph()
     mock_graph_model = MagicMock(name="GraphModel")
+    mock_library_agent = MagicMock()
+    mock_library_agent.AgentGraph = mock_graph
 
     with (
         patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
         patch(
             "backend.data.graph.StoreListingVersion.prisma",
         ) as mock_slv_prisma,
+        patch("backend.data.graph.LibraryAgent.prisma") as mock_lib_prisma,
         patch(
             "backend.data.graph.GraphModel.from_db",
             return_value=mock_graph_model,
         ),
     ):
-        # User doesn't own the graph
         mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
-        # Agent is NOT approved in marketplace
         mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
+        mock_lib_prisma.return_value.find_first = AsyncMock(
+            return_value=mock_library_agent
+        )
 
-        # But it IS in the user's library (not tested here — get_graph
-        # doesn't check library membership at all today)
         from backend.data.graph import get_graph
 
         result = await get_graph(
@@ -336,6 +332,4 @@ async def test_admin_can_view_library_agent_for_pending_submission() -> None:
             user_id=ADMIN_USER_ID,
         )
 
-    # This SHOULD return the graph if library membership grants access,
-    # but currently returns None because get_graph has no library check.
-    assert result is not None, "Library membership should grant graph access"
+    assert result is mock_graph_model, "Library membership should grant graph access"
