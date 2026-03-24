@@ -57,7 +57,7 @@ async def execute_graph(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     from backend.blocks.agent import AgentExecutorBlock
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
     from backend.data import graph
 
     test_user = await create_test_user()
@@ -66,7 +66,7 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
 
     nodes = [
         graph.Node(
-            block_id=SmartDecisionMakerBlock().id,
+            block_id=OrchestratorBlock().id,
             input_default={
                 "prompt": "Hello, World!",
                 "credentials": creds,
@@ -108,10 +108,10 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_smart_decision_maker_function_signature(server: SpinTestServer):
+async def test_orchestrator_function_signature(server: SpinTestServer):
     from backend.blocks.agent import AgentExecutorBlock
     from backend.blocks.basic import StoreValueBlock
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
     from backend.data import graph
 
     test_user = await create_test_user()
@@ -120,7 +120,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
 
     nodes = [
         graph.Node(
-            block_id=SmartDecisionMakerBlock().id,
+            block_id=OrchestratorBlock().id,
             input_default={
                 "prompt": "Hello, World!",
                 "credentials": creds,
@@ -169,7 +169,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     )
     test_graph = await create_graph(server, test_graph, test_user)
 
-    tool_functions = await SmartDecisionMakerBlock._create_tool_node_signatures(
+    tool_functions = await OrchestratorBlock._create_tool_node_signatures(
         test_graph.nodes[0].id
     )
     assert tool_functions is not None, "Tool functions should not be None"
@@ -198,12 +198,12 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_tracks_llm_stats():
-    """Test that SmartDecisionMakerBlock correctly tracks LLM usage stats."""
+async def test_orchestrator_tracks_llm_stats():
+    """Test that OrchestratorBlock correctly tracks LLM usage stats."""
     import backend.blocks.llm as llm_module
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     # Mock the llm.llm_call function to return controlled data
     mock_response = MagicMock()
@@ -224,14 +224,14 @@ async def test_smart_decision_maker_tracks_llm_stats():
         new_callable=AsyncMock,
         return_value=mock_response,
     ), patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=[],
     ):
 
         # Create test input
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Should I continue with this task?",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -274,12 +274,12 @@ async def test_smart_decision_maker_tracks_llm_stats():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_parameter_validation():
-    """Test that SmartDecisionMakerBlock correctly validates tool call parameters."""
+async def test_orchestrator_parameter_validation():
+    """Test that OrchestratorBlock correctly validates tool call parameters."""
     import backend.blocks.llm as llm_module
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     # Mock tool functions with specific parameter schema
     mock_tool_functions = [
@@ -327,13 +327,13 @@ async def test_smart_decision_maker_parameter_validation():
         new_callable=AsyncMock,
         return_value=mock_response_with_typo,
     ) as mock_llm_call, patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -394,13 +394,13 @@ async def test_smart_decision_maker_parameter_validation():
         new_callable=AsyncMock,
         return_value=mock_response_missing_required,
     ), patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -454,13 +454,13 @@ async def test_smart_decision_maker_parameter_validation():
         new_callable=AsyncMock,
         return_value=mock_response_valid,
     ), patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -518,13 +518,13 @@ async def test_smart_decision_maker_parameter_validation():
         new_callable=AsyncMock,
         return_value=mock_response_all_params,
     ), patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
     ):
 
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Search for keywords",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -562,12 +562,12 @@ async def test_smart_decision_maker_parameter_validation():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_raw_response_conversion():
-    """Test that SmartDecisionMaker correctly handles different raw_response types with retry mechanism."""
+async def test_orchestrator_raw_response_conversion():
+    """Test that Orchestrator correctly handles different raw_response types with retry mechanism."""
     import backend.blocks.llm as llm_module
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     # Mock tool functions
     mock_tool_functions = [
@@ -637,7 +637,7 @@ async def test_smart_decision_maker_raw_response_conversion():
     with patch(
         "backend.blocks.llm.llm_call", new_callable=AsyncMock
     ) as mock_llm_call, patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=mock_tool_functions,
@@ -646,7 +646,7 @@ async def test_smart_decision_maker_raw_response_conversion():
         # Second call returns successful response
         mock_llm_call.side_effect = [mock_response_retry, mock_response_success]
 
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Test prompt",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -715,12 +715,12 @@ async def test_smart_decision_maker_raw_response_conversion():
         new_callable=AsyncMock,
         return_value=mock_response_ollama,
     ), patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=[],  # No tools for this test
     ):
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Simple prompt",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -771,12 +771,12 @@ async def test_smart_decision_maker_raw_response_conversion():
         new_callable=AsyncMock,
         return_value=mock_response_dict,
     ), patch.object(
-        SmartDecisionMakerBlock,
+        OrchestratorBlock,
         "_create_tool_node_signatures",
         new_callable=AsyncMock,
         return_value=[],
     ):
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Another test",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -811,12 +811,12 @@ async def test_smart_decision_maker_raw_response_conversion():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_agent_mode():
+async def test_orchestrator_agent_mode():
     """Test that agent mode executes tools directly and loops until finished."""
     import backend.blocks.llm as llm_module
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     # Mock tool call that requires multiple iterations
     mock_tool_call_1 = MagicMock()
@@ -893,7 +893,7 @@ async def test_smart_decision_maker_agent_mode():
     with patch("backend.blocks.llm.llm_call", llm_call_mock), patch.object(
         block, "_create_tool_node_signatures", return_value=mock_tool_signatures
     ), patch(
-        "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+        "backend.blocks.orchestrator.get_database_manager_async_client",
         return_value=mock_db_client,
     ), patch(
         "backend.executor.manager.async_update_node_execution_status",
@@ -929,7 +929,7 @@ async def test_smart_decision_maker_agent_mode():
         }
 
         # Test agent mode with max_iterations = 3
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Complete this task using tools",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -969,12 +969,12 @@ async def test_smart_decision_maker_agent_mode():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_traditional_mode_default():
+async def test_orchestrator_traditional_mode_default():
     """Test that default behavior (agent_mode_max_iterations=0) works as traditional mode."""
     import backend.blocks.llm as llm_module
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     # Mock tool call
     mock_tool_call = MagicMock()
@@ -1018,7 +1018,7 @@ async def test_smart_decision_maker_traditional_mode_default():
     ):
 
         # Test default behavior (traditional mode)
-        input_data = SmartDecisionMakerBlock.Input(
+        input_data = OrchestratorBlock.Input(
             prompt="Test prompt",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -1060,12 +1060,12 @@ async def test_smart_decision_maker_traditional_mode_default():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_uses_customized_name_for_blocks():
-    """Test that SmartDecisionMakerBlock uses customized_name from node metadata for tool names."""
+async def test_orchestrator_uses_customized_name_for_blocks():
+    """Test that OrchestratorBlock uses customized_name from node metadata for tool names."""
     from unittest.mock import MagicMock
 
     from backend.blocks.basic import StoreValueBlock
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
     from backend.data.graph import Link, Node
 
     # Create a mock node with customized_name in metadata
@@ -1080,7 +1080,7 @@ async def test_smart_decision_maker_uses_customized_name_for_blocks():
     mock_link.sink_name = "input"
 
     # Call the function directly
-    result = await SmartDecisionMakerBlock._create_block_function_signature(
+    result = await OrchestratorBlock._create_block_function_signature(
         mock_node, [mock_link]
     )
 
@@ -1091,12 +1091,12 @@ async def test_smart_decision_maker_uses_customized_name_for_blocks():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_falls_back_to_block_name():
-    """Test that SmartDecisionMakerBlock falls back to block.name when no customized_name."""
+async def test_orchestrator_falls_back_to_block_name():
+    """Test that OrchestratorBlock falls back to block.name when no customized_name."""
     from unittest.mock import MagicMock
 
     from backend.blocks.basic import StoreValueBlock
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
     from backend.data.graph import Link, Node
 
     # Create a mock node without customized_name
@@ -1111,7 +1111,7 @@ async def test_smart_decision_maker_falls_back_to_block_name():
     mock_link.sink_name = "input"
 
     # Call the function directly
-    result = await SmartDecisionMakerBlock._create_block_function_signature(
+    result = await OrchestratorBlock._create_block_function_signature(
         mock_node, [mock_link]
     )
 
@@ -1122,11 +1122,11 @@ async def test_smart_decision_maker_falls_back_to_block_name():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_uses_customized_name_for_agents():
-    """Test that SmartDecisionMakerBlock uses customized_name from metadata for agent nodes."""
+async def test_orchestrator_uses_customized_name_for_agents():
+    """Test that OrchestratorBlock uses customized_name from metadata for agent nodes."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
     from backend.data.graph import Link, Node
 
     # Create a mock node with customized_name in metadata
@@ -1152,10 +1152,10 @@ async def test_smart_decision_maker_uses_customized_name_for_agents():
     mock_db_client.get_graph_metadata.return_value = mock_graph_meta
 
     with patch(
-        "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+        "backend.blocks.orchestrator.get_database_manager_async_client",
         return_value=mock_db_client,
     ):
-        result = await SmartDecisionMakerBlock._create_agent_function_signature(
+        result = await OrchestratorBlock._create_agent_function_signature(
             mock_node, [mock_link]
         )
 
@@ -1166,11 +1166,11 @@ async def test_smart_decision_maker_uses_customized_name_for_agents():
 
 
 @pytest.mark.asyncio
-async def test_smart_decision_maker_agent_falls_back_to_graph_name():
+async def test_orchestrator_agent_falls_back_to_graph_name():
     """Test that agent node falls back to graph name when no customized_name."""
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+    from backend.blocks.orchestrator import OrchestratorBlock
     from backend.data.graph import Link, Node
 
     # Create a mock node without customized_name
@@ -1196,10 +1196,10 @@ async def test_smart_decision_maker_agent_falls_back_to_graph_name():
     mock_db_client.get_graph_metadata.return_value = mock_graph_meta
 
     with patch(
-        "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+        "backend.blocks.orchestrator.get_database_manager_async_client",
         return_value=mock_db_client,
     ):
-        result = await SmartDecisionMakerBlock._create_agent_function_signature(
+        result = await OrchestratorBlock._create_agent_function_signature(
             mock_node, [mock_link]
         )
 
