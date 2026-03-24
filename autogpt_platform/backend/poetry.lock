@@ -1436,18 +1436,21 @@ tests = ["coverage", "coveralls", "dill", "mock", "nose"]
 
 [[package]]
 name = "faker"
-version = "38.3.0"
+version = "40.11.0"
 description = "Faker is a Python package that generates fake data for you."
 optional = false
 python-versions = ">=3.10"
 groups = ["dev"]
 files = [
-    {file = "faker-38.3.0-py3-none-any.whl", hash = "sha256:b5499b6f2d090dec9b90ded8eae6a27daed10fda3e0dba7a182bb2be8a4d4a6b"},
-    {file = "faker-38.3.0.tar.gz", hash = "sha256:4997de214510db9328ed83b9591891c66e91d7e9a903e5744e0255a68f51ac16"},
+    {file = "faker-40.11.0-py3-none-any.whl", hash = "sha256:0e9816c950528d2a37d74863f3ef389ea9a3a936cbcde0b11b8499942e25bf90"},
+    {file = "faker-40.11.0.tar.gz", hash = "sha256:7c419299103b13126bd02ec14bd2b47b946edb5a5eedf305e66a193b25f9a734"},
 ]
 
 [package.dependencies]
-tzdata = "*"
+tzdata = {version = "*", markers = "platform_system == \"Windows\""}
+
+[package.extras]
+tzdata = ["tzdata"]
 
 [[package]]
 name = "fastapi"
@@ -7832,6 +7835,7 @@ files = [
     {file = "tzdata-2025.3-py2.py3-none-any.whl", hash = "sha256:06a47e5700f3081aab02b2e513160914ff0694bce9947d6b76ebd6bf57cfc5d1"},
     {file = "tzdata-2025.3.tar.gz", hash = "sha256:de39c2ca5dc7b0344f2eba86f49d614019d29f060fc4ebc8a417896a620b56a7"},
 ]
+markers = {dev = "platform_system == \"Windows\""}
 
 [[package]]
 name = "tzlocal"
@@ -8976,4 +8980,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "938e93b7de4005bdd60ce5fb542a63df79115f9e21b1cb9940a19605f00d354a"
+content-hash = "f07b4938bc10bd72bb9395019b214a41f24a982b3c887fe5f34e227f2e764a36"
