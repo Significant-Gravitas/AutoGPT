@@ -5718,7 +5718,7 @@
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
         "summary": "Admin Add Pending Agent to Library",
-        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nNOTE: Currently disabled in the UI. The LibraryAgent record is created\nsuccessfully, but the builder can't load the graph because get_graph()\nrequires ownership or APPROVED marketplace status. To fix:\n1. Add a library-membership check to get_graph() access control\n2. But this has knock-on effects: if a creator un-publishes an agent,\n   users who added it to their library would still have graph access.\n   This needs a product decision.",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
         "operationId": "postV2Admin add pending agent to library",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
