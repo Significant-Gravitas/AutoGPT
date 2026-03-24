@@ -176,9 +176,9 @@ async def acquire_reset_lock(user_id: str, ttl_seconds: int = 10) -> bool:
         redis = await get_redis_async()
         key = f"{_RESET_LOCK_PREFIX}:{user_id}"
         return bool(await redis.set(key, "1", nx=True, ex=ttl_seconds))
-    except (RedisError, ConnectionError, OSError):
-        logger.warning("Redis unavailable for reset lock, allowing reset")
-        return True
+    except (RedisError, ConnectionError, OSError) as exc:
+        logger.warning("Redis unavailable for reset lock, rejecting reset: %s", exc)
+        return False
 
 
 async def release_reset_lock(user_id: str) -> None:
