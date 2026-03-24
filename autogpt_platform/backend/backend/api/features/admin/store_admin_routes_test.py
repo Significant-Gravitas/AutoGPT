@@ -284,3 +284,49 @@ async def test_resolve_graph_regular_uses_get_graph() -> None:
         graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
     )
     mock_admin.assert_not_awaited()
+
+
+# ---- Known limitation: library membership doesn't grant graph access ---- #
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(
+    reason="get_graph() requires ownership or APPROVED marketplace status. "
+    "Library membership alone doesn't grant access — needs product decision "
+    "on whether adding to library should grant graph access (affects "
+    "un-publish behavior for all users, not just admins)."
+)
+async def test_admin_can_view_library_agent_for_pending_submission() -> None:
+    """After an admin adds a pending agent to their library, they should be
+    able to load the graph in the builder. Currently fails because get_graph()
+    doesn't check library membership."""
+    mock_graph_model = MagicMock(name="GraphModel")
+
+    with (
+        patch("backend.data.graph.AgentGraph.prisma") as mock_ag_prisma,
+        patch(
+            "backend.data.graph.StoreListingVersion.prisma",
+        ) as mock_slv_prisma,
+        patch(
+            "backend.data.graph.GraphModel.from_db",
+            return_value=mock_graph_model,
+        ),
+    ):
+        # User doesn't own the graph
+        mock_ag_prisma.return_value.find_first = AsyncMock(return_value=None)
+        # Agent is NOT approved in marketplace
+        mock_slv_prisma.return_value.find_first = AsyncMock(return_value=None)
+
+        # But it IS in the user's library (not tested here — get_graph
+        # doesn't check library membership at all today)
+        from backend.data.graph import get_graph
+
+        result = await get_graph(
+            graph_id=GRAPH_ID,
+            version=GRAPH_VERSION,
+            user_id=ADMIN_USER_ID,
+        )
+
+    # This SHOULD return the graph if library membership grants access,
+    # but currently returns None because get_graph has no library check.
+    assert result is not None, "Library membership should grant graph access"
