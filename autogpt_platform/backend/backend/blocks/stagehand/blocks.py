@@ -103,6 +103,11 @@ class StagehandObserveBlock(Block):
         instruction: str = SchemaField(
             description="Natural language description of elements or actions to discover.",
         )
+        dom_settle_timeout_ms: int = SchemaField(
+            description="Timeout in ms to wait for the DOM to settle after navigation.",
+            default=30000,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         selector: str = SchemaField(description="XPath selector to locate element.")
@@ -132,28 +137,28 @@ class StagehandObserveBlock(Block):
 
         logger.debug(f"OBSERVE: Using model provider {model_credentials.provider}")
 
-        client = AsyncStagehand(
+        async with AsyncStagehand(
             browserbase_api_key=stagehand_credentials.api_key.get_secret_value(),
             browserbase_project_id=input_data.browserbase_project_id,
             model_api_key=model_credentials.api_key.get_secret_value(),
-        )
+        ) as client:
+            session = await client.sessions.start(
+                model_name=input_data.model.provider_name,
+                dom_settle_timeout_ms=input_data.dom_settle_timeout_ms,
+            )
+            try:
+                await session.navigate(url=input_data.url)
 
-        session = await client.sessions.start(
-            model_name=input_data.model.provider_name,
-        )
-
-        await session.navigate(url=input_data.url)
-
-        observe_response = await session.observe(
-            instruction=input_data.instruction,
-        )
-        for result in observe_response.data.result:
-            yield "selector", result.selector
-            yield "description", result.description
-            yield "method", result.method
-            yield "arguments", result.arguments
-
-        await session.end()
+                observe_response = await session.observe(
+                    instruction=input_data.instruction,
+                )
+                for result in observe_response.data.result:
+                    yield "selector", result.selector
+                    yield "description", result.description
+                    yield "method", result.method
+                    yield "arguments", result.arguments
+            finally:
+                await session.end()
 
 
 class StagehandActBlock(Block):
@@ -185,6 +190,16 @@ class StagehandActBlock(Block):
             description="Variables to use in the action. Variables contains data you want the action to use.",
             default_factory=dict,
         )
+        dom_settle_timeout_ms: int = SchemaField(
+            description="Timeout in ms to wait for the DOM to settle after navigation.",
+            default=30000,
+            advanced=True,
+        )
+        timeout_ms: int = SchemaField(
+            description="Timeout in ms for each action.",
+            default=30000,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(
@@ -213,32 +228,33 @@ class StagehandActBlock(Block):
 
         logger.debug(f"ACT: Using model provider {model_credentials.provider}")
 
-        client = AsyncStagehand(
+        async with AsyncStagehand(
             browserbase_api_key=stagehand_credentials.api_key.get_secret_value(),
             browserbase_project_id=input_data.browserbase_project_id,
             model_api_key=model_credentials.api_key.get_secret_value(),
-        )
-
-        session = await client.sessions.start(
-            model_name=input_data.model.provider_name,
-        )
-
-        await session.navigate(url=input_data.url)
-
-        for action in input_data.action:
-            act_options = ActOptions(
-                variables={k: v for k, v in input_data.variables.items()},
+        ) as client:
+            session = await client.sessions.start(
+                model_name=input_data.model.provider_name,
+                dom_settle_timeout_ms=input_data.dom_settle_timeout_ms,
             )
-            act_response = await session.act(
-                input=action,
-                options=act_options,
-            )
-            result = act_response.data.result
-            yield "success", result.success
-            yield "message", result.message
-            yield "action", result.action_description
+            try:
+                await session.navigate(url=input_data.url)
 
-        await session.end()
+                for action in input_data.action:
+                    act_options = ActOptions(
+                        variables={k: v for k, v in input_data.variables.items()},
+                        timeout=input_data.timeout_ms,
+                    )
+                    act_response = await session.act(
+                        input=action,
+                        options=act_options,
+                    )
+                    result = act_response.data.result
+                    yield "success", result.success
+                    yield "message", result.message
+                    yield "action", result.action_description
+            finally:
+                await session.end()
 
 
 class StagehandExtractBlock(Block):
@@ -266,6 +282,11 @@ class StagehandExtractBlock(Block):
         instruction: str = SchemaField(
             description="Natural language description of elements or actions to discover.",
         )
+        dom_settle_timeout_ms: int = SchemaField(
+            description="Timeout in ms to wait for the DOM to settle after navigation.",
+            default=30000,
+            advanced=True,
+        )
 
     class Output(BlockSchemaOutput):
         extraction: str = SchemaField(description="Extracted data from the page.")
@@ -290,21 +311,21 @@ class StagehandExtractBlock(Block):
 
         logger.debug(f"EXTRACT: Using model provider {model_credentials.provider}")
 
-        client = AsyncStagehand(
+        async with AsyncStagehand(
             browserbase_api_key=stagehand_credentials.api_key.get_secret_value(),
             browserbase_project_id=input_data.browserbase_project_id,
             model_api_key=model_credentials.api_key.get_secret_value(),
-        )
+        ) as client:
+            session = await client.sessions.start(
+                model_name=input_data.model.provider_name,
+                dom_settle_timeout_ms=input_data.dom_settle_timeout_ms,
+            )
+            try:
+                await session.navigate(url=input_data.url)
 
-        session = await client.sessions.start(
-            model_name=input_data.model.provider_name,
-        )
-
-        await session.navigate(url=input_data.url)
-
-        extract_response = await session.extract(
-            instruction=input_data.instruction,
-        )
-        yield "extraction", str(extract_response.data.result)
-
-        await session.end()
+                extract_response = await session.extract(
+                    instruction=input_data.instruction,
+                )
+                yield "extraction", str(extract_response.data.result)
+            finally:
+                await session.end()

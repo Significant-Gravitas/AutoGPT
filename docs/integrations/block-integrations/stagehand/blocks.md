@@ -67,6 +67,7 @@ Supports searching within iframes and configurable timeouts for dynamic content 
 | model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-sonnet-4-5-20250929" \| "claude-sonnet-4-6" | No |
 | url | URL to navigate to. | str | Yes |
 | instruction | Natural language description of elements or actions to discover. | str | Yes |
+| dom_settle_timeout_ms | Timeout in ms to wait for the DOM to settle after navigation. | int | No |
 
 ### Outputs
 
