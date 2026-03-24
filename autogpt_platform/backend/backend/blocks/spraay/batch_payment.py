@@ -5,14 +5,19 @@ to send payments to multiple wallet addresses in a single on-chain transaction.
 Supports ERC-20 tokens, native tokens, and USDC across 13 blockchain networks.
 """
 
-import uuid
 from enum import Enum
-from typing import Any
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsMetaInput, SchemaField
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
-from ._api import SpraayAPIError, spraay_request
+from ._api import spraay_request
 from ._config import spraay_provider
 
 
@@ -49,7 +54,7 @@ class SpraayBatchPaymentBlock(Block):
     class Input(BlockSchema):
         """Input schema for the batch payment block."""
 
-        credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
+        credentials: CredentialsMetaInput = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
         chain: ChainNetwork = SchemaField(
@@ -102,19 +107,19 @@ class SpraayBatchPaymentBlock(Block):
     def __init__(self):
         """Initialize the SpraayBatchPaymentBlock with metadata and test fixtures."""
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="9f9ce1c7-a021-4611-90bf-6f14ee7ccf84",
             description=(
                 "Send batch crypto payments to multiple recipients in one transaction. "
                 "Supports 13 blockchain networks including Base, Ethereum, Solana, and Bitcoin. "
                 "Powered by Spraay's x402 payment gateway."
             ),
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.BASIC},
             input_schema=SpraayBatchPaymentBlock.Input,
             output_schema=SpraayBatchPaymentBlock.Output,
             test_input={
                 "credentials": {
                     "provider": "spraay",
-                    "id": str(uuid.uuid4()),
+                    "id": "test-cred-id",
                     "type": "api_key",
                 },
                 "chain": "base",
@@ -180,48 +185,46 @@ class SpraayBatchPaymentBlock(Block):
             },
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         """Execute the batch payment block.
 
         Validates that recipients and amounts lists are the same length,
-        then submits the batch payment to the Spraay gateway. Yields
-        transaction details on success or an error message on failure.
+        then submits the batch payment to the Spraay gateway.
 
         Args:
-            input_data: Validated input containing credentials, chain,
-                token address, recipients, amounts, and sender address.
+            input_data: Validated input containing chain, token address,
+                recipients, amounts, and sender address.
+            credentials: API key credentials injected by the framework.
             **kwargs: Additional keyword arguments passed by the executor.
 
         Yields:
             Output fields: transaction_hash, batch_id, status,
             total_recipients, or error.
         """
-        try:
-            if len(input_data.recipients) != len(input_data.amounts):
-                raise ValueError(
-                    f"Recipients ({len(input_data.recipients)}) and amounts "
-                    f"({len(input_data.amounts)}) lists must be the same length"
-                )
-
-            api_key = input_data.credentials.api_key.get_secret_value()
-
-            result = self.execute_batch(
-                api_key=api_key,
-                chain=input_data.chain.value,
-                token_address=input_data.token_address,
-                recipients=input_data.recipients,
-                amounts=input_data.amounts,
-                sender_address=input_data.sender_address,
+        if len(input_data.recipients) != len(input_data.amounts):
+            raise ValueError(
+                f"Recipients ({len(input_data.recipients)}) and amounts "
+                f"({len(input_data.amounts)}) lists must be the same length"
             )
 
-            yield "transaction_hash", result.get("transaction_hash", "")
-            yield "batch_id", result.get("batch_id", "")
-            yield "status", result.get("status", "pending")
-            yield "total_recipients", len(input_data.recipients)
+        api_key = credentials.api_key.get_secret_value()
 
-        except SpraayAPIError as e:
-            yield "error", f"Spraay API error: {e.message}"
-        except ValueError as e:
-            yield "error", str(e)
-        except Exception as e:
-            yield "error", f"Unexpected error: {str(e)}"
+        result = self.execute_batch(
+            api_key=api_key,
+            chain=input_data.chain.value,
+            token_address=input_data.token_address,
+            recipients=input_data.recipients,
+            amounts=input_data.amounts,
+            sender_address=input_data.sender_address,
+        )
+
+        yield "transaction_hash", result.get("transaction_hash", "")
+        yield "batch_id", result.get("batch_id", "")
+        yield "status", result.get("status", "pending")
+        yield "total_recipients", len(input_data.recipients)

@@ -5,13 +5,17 @@ of any ERC-20 token or native token for a given wallet address on any
 of the 13 supported blockchain networks.
 """
 
-import uuid
-from typing import Any
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsMetaInput, SchemaField
-
-from ._api import SpraayAPIError, spraay_request
+from ._api import spraay_request
 from ._config import spraay_provider
 from .batch_payment import ChainNetwork
 
@@ -27,7 +31,7 @@ class SpraayGetBalanceBlock(Block):
     class Input(BlockSchema):
         """Input schema for the balance check block."""
 
-        credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
+        credentials: CredentialsMetaInput = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
         chain: ChainNetwork = SchemaField(
@@ -64,19 +68,19 @@ class SpraayGetBalanceBlock(Block):
     def __init__(self):
         """Initialize the SpraayGetBalanceBlock with metadata and test fixtures."""
         super().__init__(
-            id="c3d4e5f6-a7b8-9012-cdef-123456789012",
+            id="b81a036d-8bf7-460c-bca8-b1242d0aa3cb",
             description=(
                 "Check token balance for any wallet on 13 supported chains. "
                 "Supports native tokens and ERC-20s. "
                 "Powered by Spraay's x402 payment gateway."
             ),
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.BASIC},
             input_schema=SpraayGetBalanceBlock.Input,
             output_schema=SpraayGetBalanceBlock.Output,
             test_input={
                 "credentials": {
                     "provider": "spraay",
-                    "id": str(uuid.uuid4()),
+                    "id": "test-cred-id",
                     "type": "api_key",
                 },
                 "chain": "base",
@@ -129,36 +133,33 @@ class SpraayGetBalanceBlock(Block):
             },
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         """Execute the balance check block.
 
-        Queries the Spraay gateway for the token balance of the specified
-        wallet and yields the raw balance, formatted balance, and token
-        symbol on success, or an error message on failure.
-
         Args:
-            input_data: Validated input containing credentials, chain,
-                wallet address, and token address.
+            input_data: Validated input containing chain, wallet address,
+                and token address.
+            credentials: API key credentials injected by the framework.
             **kwargs: Additional keyword arguments passed by the executor.
 
         Yields:
             Output fields: balance, formatted_balance, token_symbol, or error.
         """
-        try:
-            api_key = input_data.credentials.api_key.get_secret_value()
+        api_key = credentials.api_key.get_secret_value()
 
-            result = self.fetch_balance(
-                api_key=api_key,
-                chain=input_data.chain.value,
-                wallet_address=input_data.wallet_address,
-                token_address=input_data.token_address,
-            )
+        result = self.fetch_balance(
+            api_key=api_key,
+            chain=input_data.chain.value,
+            wallet_address=input_data.wallet_address,
+            token_address=input_data.token_address,
+        )
 
-            yield "balance", result.get("balance", "0")
-            yield "formatted_balance", result.get("formatted_balance", "0")
-            yield "token_symbol", result.get("token_symbol", "")
-
-        except SpraayAPIError as e:
-            yield "error", f"Spraay API error: {e.message}"
-        except Exception as e:
-            yield "error", f"Unexpected error: {str(e)}"
+        yield "balance", result.get("balance", "0")
+        yield "formatted_balance", result.get("formatted_balance", "0")
+        yield "token_symbol", result.get("token_symbol", "")

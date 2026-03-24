@@ -5,13 +5,17 @@ on-chain confirmation status of a previously submitted transaction. Use it
 in workflows to wait for confirmations, retry failures, or log completions.
 """
 
-import uuid
-from typing import Any
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    SchemaField,
+)
 
-from backend.blocks._base import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import CredentialsMetaInput, SchemaField
-
-from ._api import SpraayAPIError, spraay_request
+from ._api import spraay_request
 from ._config import spraay_provider
 from .batch_payment import ChainNetwork
 
@@ -27,7 +31,7 @@ class SpraayTransactionStatusBlock(Block):
     class Input(BlockSchema):
         """Input schema for the transaction status block."""
 
-        credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
+        credentials: CredentialsMetaInput = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
         chain: ChainNetwork = SchemaField(
@@ -60,19 +64,19 @@ class SpraayTransactionStatusBlock(Block):
     def __init__(self):
         """Initialize the SpraayTransactionStatusBlock with metadata and test fixtures."""
         super().__init__(
-            id="d4e5f6a7-b8c9-0123-defa-234567890123",
+            id="0617a4fb-c6b7-4569-8330-8912c37086c5",
             description=(
                 "Check the confirmation status of a Spraay transaction. "
                 "Returns confirmations, block number, and gas used. "
                 "Powered by Spraay's x402 payment gateway."
             ),
-            categories={BlockCategory.FINANCE},
+            categories={BlockCategory.BASIC},
             input_schema=SpraayTransactionStatusBlock.Input,
             output_schema=SpraayTransactionStatusBlock.Output,
             test_input={
                 "credentials": {
                     "provider": "spraay",
-                    "id": str(uuid.uuid4()),
+                    "id": "test-cred-id",
                     "type": "api_key",
                 },
                 "chain": "base",
@@ -124,37 +128,33 @@ class SpraayTransactionStatusBlock(Block):
             },
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
+    ) -> BlockOutput:
         """Execute the transaction status check block.
 
-        Queries the Spraay gateway for the confirmation status of the
-        given transaction hash and yields status details on success,
-        or an error message on failure.
-
         Args:
-            input_data: Validated input containing credentials, chain,
-                and transaction hash.
+            input_data: Validated input containing chain and transaction hash.
+            credentials: API key credentials injected by the framework.
             **kwargs: Additional keyword arguments passed by the executor.
 
         Yields:
             Output fields: status, confirmations, block_number, gas_used,
             or error.
         """
-        try:
-            api_key = input_data.credentials.api_key.get_secret_value()
+        api_key = credentials.api_key.get_secret_value()
 
-            result = self.fetch_status(
-                api_key=api_key,
-                chain=input_data.chain.value,
-                transaction_hash=input_data.transaction_hash,
-            )
+        result = self.fetch_status(
+            api_key=api_key,
+            chain=input_data.chain.value,
+            transaction_hash=input_data.transaction_hash,
+        )
 
-            yield "status", result.get("status", "unknown")
-            yield "confirmations", result.get("confirmations", 0)
-            yield "block_number", result.get("block_number", 0)
-            yield "gas_used", result.get("gas_used", "0")
-
-        except SpraayAPIError as e:
-            yield "error", f"Spraay API error: {e.message}"
-        except Exception as e:
-            yield "error", f"Unexpected error: {str(e)}"
+        yield "status", result.get("status", "unknown")
+        yield "confirmations", result.get("confirmations", 0)
+        yield "block_number", result.get("block_number", 0)
+        yield "gas_used", result.get("gas_used", "0")
