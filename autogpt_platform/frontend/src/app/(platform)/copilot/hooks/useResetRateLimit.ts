@@ -9,8 +9,8 @@ export function useResetRateLimit(onSuccess?: () => void) {
   const queryClient = useQueryClient();
   const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
     mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({
           queryKey: getGetV2GetCopilotUsageQueryKey(),
         });
         toast({

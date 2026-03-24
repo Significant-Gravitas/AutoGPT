@@ -448,6 +448,15 @@ class RateLimitResetResponse(BaseModel):
 @router.post(
     "/usage/reset",
     status_code=200,
+    responses={
+        400: {
+            "description": "Bad Request (feature disabled or daily limit not reached)"
+        },
+        402: {"description": "Payment Required (insufficient credits)"},
+        429: {
+            "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
+        },
+    },
 )
 async def reset_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],

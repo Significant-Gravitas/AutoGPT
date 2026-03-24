@@ -1397,8 +1397,15 @@
               }
             }
           },
+          "400": {
+            "description": "Bad Request (feature disabled or daily limit not reached)"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "Payment Required (insufficient credits)" },
+          "429": {
+            "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]

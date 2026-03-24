@@ -97,20 +97,20 @@ export function CopilotPage() {
     dismissRateLimit,
   } = useCopilotPage();
 
-  const { data: usage, isLoading: isUsageLoading } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess: hasUsage } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsageStatus,
       refetchInterval: 30000,
       staleTime: 10000,
     },
   });
-  const resetCost = usage?.reset_cost ?? 0;
+  const resetCost = usage?.reset_cost;
 
   // Fall back to a toast when the credit-based reset feature is disabled.
   // Wait for usage query to resolve before deciding — otherwise we'd dismiss
-  // the rate limit message while reset_cost is still unknown (default 0).
+  // the rate limit message while reset_cost is still unknown (undefined).
   useEffect(() => {
-    if (rateLimitMessage && !isUsageLoading && resetCost <= 0) {
+    if (rateLimitMessage && hasUsage && (resetCost ?? 0) <= 0) {
       toast({
         title: "Usage limit reached",
         description: rateLimitMessage,
@@ -118,7 +118,7 @@ export function CopilotPage() {
       });
       dismissRateLimit();
     }
-  }, [rateLimitMessage, resetCost, isUsageLoading, dismissRateLimit]);
+  }, [rateLimitMessage, resetCost, hasUsage, dismissRateLimit]);
 
   if (isUserLoading || !isLoggedIn) {
     return (
@@ -197,9 +197,9 @@ export function CopilotPage() {
       )}
       <NotificationDialog />
       <RateLimitResetDialog
-        isOpen={!!rateLimitMessage && resetCost > 0}
+        isOpen={!!rateLimitMessage && (resetCost ?? 0) > 0}
         onClose={dismissRateLimit}
-        resetCost={resetCost}
+        resetCost={resetCost ?? 0}
         resetMessage={rateLimitMessage ?? ""}
       />
     </SidebarProvider>
