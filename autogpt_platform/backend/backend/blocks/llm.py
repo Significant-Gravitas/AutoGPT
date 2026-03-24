@@ -49,6 +49,9 @@ settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
+# HTTP status codes for user-caused errors that should not be reported to Sentry.
+USER_ERROR_STATUS_CODES = (401, 403, 429)
+
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
@@ -948,7 +951,7 @@ async def llm_call(
             )
         except anthropic.APIStatusError as e:
             error_message = f"Anthropic API error: {str(e)}"
-            if e.status_code in (401, 403, 429):
+            if e.status_code in USER_ERROR_STATUS_CODES:
                 logger.warning(error_message)
             else:
                 logger.error(error_message)
@@ -1468,9 +1471,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
-                if isinstance(
-                    e, (anthropic.APIStatusError, openai.APIStatusError)
-                ) and e.status_code in (401, 403, 429):
+                if (
+                    isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
+                    and e.status_code in USER_ERROR_STATUS_CODES
+                ):
                     logger.warning(f"Error calling LLM: {e}")
                 else:
                     logger.exception(f"Error calling LLM: {e}")
