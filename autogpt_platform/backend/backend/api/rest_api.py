@@ -522,7 +522,10 @@ class AgentServer(backend.util.service.AppProcess):
         provider: ProviderName,
         credentials: Credentials,
     ):
-        from .features.integrations.router import create_credentials, get_credential
+        from backend.api.features.integrations.router import (
+            create_credentials,
+            get_credential,
+        )
 
         try:
             return await create_credentials(

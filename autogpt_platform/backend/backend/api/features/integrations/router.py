@@ -98,6 +98,15 @@ async def login(
     return LoginResponse(login_url=login_url, state_token=state_token)
 
 
+# SDK default credentials use IDs like "{provider}-default" (set in sdk/builder.py).
+# They must never be exposed to users via the API.
+_SDK_DEFAULT_SUFFIX = "-default"
+
+
+def _is_sdk_default(cred_id: str) -> bool:
+    return cred_id.endswith(_SDK_DEFAULT_SUFFIX)
+
+
 class CredentialsMetaResponse(BaseModel):
     id: str
     provider: str
@@ -136,6 +145,18 @@ class CredentialsMetaResponse(BaseModel):
         ):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
+
+
+def _to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    return CredentialsMetaResponse(
+        id=cred.id,
+        provider=cred.provider,
+        type=cred.type,
+        title=cred.title,
+        scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
+        username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+        host=CredentialsMetaResponse.get_host(cred),
+    )
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -222,17 +243,7 @@ async def list_credentials(
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
-        CredentialsMetaResponse(
-            id=cred.id,
-            provider=cred.provider,
-            type=cred.type,
-            title=cred.title,
-            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
-            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=CredentialsMetaResponse.get_host(cred),
-        )
-        for cred in credentials
-        if not cred.id.endswith("-default")
+        _to_meta_response(cred) for cred in credentials if not _is_sdk_default(cred.id)
     ]
 
 
@@ -246,17 +257,7 @@ async def list_credentials_by_provider(
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
-        CredentialsMetaResponse(
-            id=cred.id,
-            provider=cred.provider,
-            type=cred.type,
-            title=cred.title,
-            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
-            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=CredentialsMetaResponse.get_host(cred),
-        )
-        for cred in credentials
-        if not cred.id.endswith("-default")
+        _to_meta_response(cred) for cred in credentials if not _is_sdk_default(cred.id)
     ]
 
 
@@ -270,31 +271,20 @@ async def get_credential(
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> CredentialsMetaResponse:
+    if _is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     credential = await creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if credential.id.endswith("-default"):
+    if not provider_matches(credential.provider, provider):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if not provider_matches(credential.provider, provider):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Credentials with ID {cred_id} not found for provider {provider}",
-        )
-    return CredentialsMetaResponse(
-        id=credential.id,
-        provider=credential.provider,
-        type=credential.type,
-        title=credential.title,
-        scopes=credential.scopes if isinstance(credential, OAuth2Credentials) else None,
-        username=(
-            credential.username if isinstance(credential, OAuth2Credentials) else None
-        ),
-        host=CredentialsMetaResponse.get_host(credential),
-    )
+    return _to_meta_response(credential)
 
 
 @router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
@@ -313,19 +303,7 @@ async def create_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to store credentials: {str(e)}",
         )
-    return CredentialsMetaResponse(
-        id=credentials.id,
-        provider=credentials.provider,
-        type=credentials.type,
-        title=credentials.title,
-        scopes=(
-            credentials.scopes if isinstance(credentials, OAuth2Credentials) else None
-        ),
-        username=(
-            credentials.username if isinstance(credentials, OAuth2Credentials) else None
-        ),
-        host=CredentialsMetaResponse.get_host(credentials),
-    )
+    return _to_meta_response(credentials)
 
 
 class CredentialsDeletionResponse(BaseModel):
