@@ -11,6 +11,7 @@ from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
 )
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.db_accessors import review_db
@@ -143,6 +144,27 @@ class RunBlockTool(BaseTool):
                 hint = " This block is designed for use within graphs only."
             return ErrorResponse(
                 message=f"Block '{block.name}' cannot be run directly.{hint}",
+                session_id=session_id,
+            )
+
+        # Check block-level permissions before execution.
+        perms = get_current_permissions()
+        if perms is not None and not perms.is_block_allowed(block_id, block.name):
+            available_hint = (
+                f"Allowed identifiers: {perms.blocks!r}. "
+                if not perms.blocks_exclude and perms.blocks
+                else (
+                    f"Blocked identifiers: {perms.blocks!r}. "
+                    if perms.blocks_exclude and perms.blocks
+                    else ""
+                )
+            )
+            return ErrorResponse(
+                message=(
+                    f"Block '{block.name}' ({block_id}) is not permitted "
+                    f"by the current execution permissions. {available_hint}"
+                    "Use find_block to discover blocks that are allowed."
+                ),
                 session_id=session_id,
             )
 
