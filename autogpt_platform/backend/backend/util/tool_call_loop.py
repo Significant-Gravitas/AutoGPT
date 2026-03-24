@@ -188,15 +188,12 @@ async def tool_call_loop(
         ToolCallLoopResult after each iteration. Check ``finished_naturally``
         to determine if the loop completed or is still running.
     """
-    result = ToolCallLoopResult(
-        response_text="",
-        messages=messages,
-    )
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
     iteration = 0
 
     while max_iterations < 0 or iteration < max_iterations:
         iteration += 1
-        result.iterations = iteration
 
         # On last iteration, add a hint to finish
         iteration_messages = list(messages)
@@ -211,15 +208,20 @@ async def tool_call_loop(
 
         # Call LLM
         response = await llm_call(iteration_messages, tools)
-        result.total_prompt_tokens += response.prompt_tokens
-        result.total_completion_tokens += response.completion_tokens
+        total_prompt_tokens += response.prompt_tokens
+        total_completion_tokens += response.completion_tokens
 
         # No tool calls = done
         if not response.tool_calls:
-            result.response_text = response.response_text or ""
             update_conversation(messages, response)
-            result.finished_naturally = True
-            yield result
+            yield ToolCallLoopResult(
+                response_text=response.response_text or "",
+                messages=messages,
+                total_prompt_tokens=total_prompt_tokens,
+                total_completion_tokens=total_completion_tokens,
+                iterations=iteration,
+                finished_naturally=True,
+            )
             return
 
         # Execute tools
@@ -231,13 +233,22 @@ async def tool_call_loop(
         # Update conversation with response + tool results
         update_conversation(messages, response, tool_results)
 
-        # Yield intermediate result so callers can drain buffered events
-        result.finished_naturally = False
-        yield result
+        # Yield a fresh result so callers can drain buffered events
+        yield ToolCallLoopResult(
+            response_text="",
+            messages=messages,
+            total_prompt_tokens=total_prompt_tokens,
+            total_completion_tokens=total_completion_tokens,
+            iterations=iteration,
+            finished_naturally=False,
+        )
 
     # Hit max iterations
-    result.response_text = (
-        f"Completed after {max_iterations} iterations (limit reached)"
+    yield ToolCallLoopResult(
+        response_text=f"Completed after {max_iterations} iterations (limit reached)",
+        messages=messages,
+        total_prompt_tokens=total_prompt_tokens,
+        total_completion_tokens=total_completion_tokens,
+        iterations=iteration,
+        finished_naturally=False,
     )
-    result.finished_naturally = False
-    yield result

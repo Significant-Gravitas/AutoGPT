@@ -4,7 +4,7 @@ import re
 import types
 import uuid as uuid_mod
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import AsyncIterable, Sequence
 from concurrent.futures import Future
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -32,6 +32,7 @@ from backend.blocks._base import (
 )
 from backend.blocks.agent import AgentExecutorBlock
 from backend.copilot.sdk.env import build_sdk_env
+from backend.copilot.sdk.env import config as copilot_config
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -352,7 +353,9 @@ class OrchestratorBlock(Block):
         use_sdk_mode: bool = SchemaField(
             title="Use Claude Agent SDK",
             default=False,
-            description="Use Claude Agent SDK for tool orchestration (Claude models only). "
+            description="Use Claude Agent SDK for tool orchestration. "
+            "Only supports 'anthropic' and 'open_router' providers. "
+            "Requires valid API credentials for the selected provider. "
             "The SDK manages the conversation loop and tool calling natively.",
             advanced=True,
         )
@@ -1083,11 +1086,31 @@ class OrchestratorBlock(Block):
                 execution_processor,
                 responses_api=use_responses_api,
             )
-            content = result.get("content", "Tool executed successfully")
+            # Unwrap the tool content from the provider-specific envelope.
+            # _execute_single_tool_with_manager returns a full message dict
+            # (e.g. {"role":"tool","content":"..."} for Chat API,
+            #  or {"type":"function_call_output","output":"..."} for Responses API).
+            raw_content = result.get("content") or result.get("output")
+            if isinstance(raw_content, list):
+                # Anthropic format: [{"type":"tool_result","content":"..."}]
+                parts = [
+                    item.get("content", "")
+                    for item in raw_content
+                    if isinstance(item, dict)
+                ]
+                content = (
+                    "\n".join(str(p) for p in parts)
+                    if parts
+                    else "Tool executed successfully"
+                )
+            elif raw_content is not None:
+                content = str(raw_content)
+            else:
+                content = "Tool executed successfully"
             return ToolCallResult(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
-                content=(content if isinstance(content, str) else json.dumps(content)),
+                content=content,
             )
         except Exception as e:
             logger.error("Tool execution failed: %s", e)
@@ -1182,21 +1205,17 @@ class OrchestratorBlock(Block):
                 "additional tool calls."
             )
 
-        try:
-            loop_result = ToolCallLoopResult(response_text="", messages=current_prompt)
-            async for loop_result in tool_call_loop(
-                messages=current_prompt,
-                tools=tool_functions,
-                llm_call=bound_llm_caller,
-                execute_tool=bound_tool_executor,
-                update_conversation=bound_conversation_updater,
-                max_iterations=max_iterations,
-                last_iteration_message=last_iter_msg,
-            ):
-                pass  # Drain the generator; final result is in loop_result
-        except Exception as e:
-            yield "error", f"LLM call failed in agent mode: {e}"
-            return
+        loop_result = ToolCallLoopResult(response_text="", messages=current_prompt)
+        async for loop_result in tool_call_loop(
+            messages=current_prompt,
+            tools=tool_functions,
+            llm_call=bound_llm_caller,
+            execute_tool=bound_tool_executor,
+            update_conversation=bound_conversation_updater,
+            max_iterations=max_iterations,
+            last_iteration_message=last_iter_msg,
+        ):
+            pass  # Drain the generator; final result is in loop_result
 
         yield "finished", loop_result.response_text
         yield "conversations", loop_result.messages
@@ -1316,18 +1335,29 @@ class OrchestratorBlock(Block):
             "TodoWrite",
         ]
 
-        # Build SDK env — prioritize user-provided credentials over global
-        # OpenRouter config, then fall back to build_sdk_env() for subscription
-        # mode or system-level configuration.
+        # Build SDK env — provider-aware credential routing.
+        provider = input_data.model.metadata.provider
         if credentials.api_key:
-            sdk_env = {
-                "ANTHROPIC_API_KEY": credentials.api_key.get_secret_value(),
-            }
+            api_key = credentials.api_key.get_secret_value()
+            if provider == "open_router":
+                # Route through OpenRouter proxy: set base URL + auth token,
+                # clear API key so the SDK uses AUTH_TOKEN instead.
+                or_base = (
+                    copilot_config.base_url or "https://openrouter.ai/api"
+                ).rstrip("/")
+                if or_base.endswith("/v1"):
+                    or_base = or_base[:-3]
+                sdk_env = {
+                    "ANTHROPIC_BASE_URL": or_base,
+                    "ANTHROPIC_AUTH_TOKEN": api_key,
+                    "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+                }
+            else:
+                # Direct Anthropic key
+                sdk_env = {"ANTHROPIC_API_KEY": api_key}
         else:
-            # build_sdk_env() returns a dict for all modes:
-            # - Subscription mode: dict with cleared keys
-            # - Direct Anthropic: {} (subprocess inherits ANTHROPIC_API_KEY)
-            # - OpenRouter: dict with proxy config
+            # Fall back to build_sdk_env() for subscription mode,
+            # system-level Anthropic key, or global OpenRouter config.
             sdk_env = build_sdk_env()
 
         # Build SDK options
@@ -1341,14 +1371,25 @@ class OrchestratorBlock(Block):
             model=input_data.model.value or None,
         )
 
-        # Build user message from prompt
-        user_parts = []
-        for p in prompt:
-            if p.get("role") == "user" and p.get("content"):
-                user_parts.append(str(p["content"]))
-            elif p.get("role") == "system" and p.get("content"):
-                user_parts.append(str(p["content"]))
-        user_message = "\n\n".join(user_parts) if user_parts else input_data.prompt
+        # Build user message from prompt.
+        # The SDK's query() accepts a string or an async iterable of message dicts.
+        # For multi-turn conversations, pass the full history as an async iterable
+        # to preserve assistant replies, tool calls/results, and system messages.
+        has_multi_turn = any(p.get("role") in ("assistant", "tool") for p in prompt)
+        if has_multi_turn:
+
+            async def _prompt_iter():
+                for p in prompt:
+                    yield p
+
+            user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
+        else:
+            # Single-turn: collapse user/system content into one string
+            user_parts = []
+            for p in prompt:
+                if p.get("role") in ("user", "system") and p.get("content"):
+                    user_parts.append(str(p["content"]))
+            user_message = "\n\n".join(user_parts) if user_parts else input_data.prompt
 
         # Run SDK client with heartbeat-safe message iteration.
         # We must NOT cancel __anext__() mid-flight — doing so corrupts
