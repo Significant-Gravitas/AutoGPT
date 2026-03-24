@@ -41,6 +41,7 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.features.integrations.router import CredentialsMetaResponse
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
@@ -521,7 +522,7 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         provider: ProviderName,
         credentials: Credentials,
-    ) -> Credentials:
+    ) -> CredentialsMetaResponse:
         from .features.integrations.router import create_credentials, get_credential
 
         try:

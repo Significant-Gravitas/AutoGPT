@@ -232,6 +232,7 @@ async def list_credentials(
             host=CredentialsMetaResponse.get_host(cred),
         )
         for cred in credentials
+        if not cred.id.endswith("-default")
     ]
 
 
@@ -255,6 +256,7 @@ async def list_credentials_by_provider(
             host=CredentialsMetaResponse.get_host(cred),
         )
         for cred in credentials
+        if not cred.id.endswith("-default")
     ]
 
 
@@ -267,18 +269,32 @@ async def get_credential(
     ],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Security(get_user_id)],
-) -> Credentials:
+) -> CredentialsMetaResponse:
     credential = await creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if credential.provider != provider:
+    if credential.id.endswith("-default"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if not provider_matches(credential.provider, provider):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Credentials do not match the specified provider",
+            detail=f"Credentials with ID {cred_id} not found for provider {provider}",
         )
-    return credential
+    return CredentialsMetaResponse(
+        id=credential.id,
+        provider=credential.provider,
+        type=credential.type,
+        title=credential.title,
+        scopes=credential.scopes if isinstance(credential, OAuth2Credentials) else None,
+        username=(
+            credential.username if isinstance(credential, OAuth2Credentials) else None
+        ),
+        host=CredentialsMetaResponse.get_host(credential),
+    )
 
 
 @router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
@@ -288,7 +304,7 @@ async def create_credentials(
         ProviderName, Path(title="The provider to create credentials for")
     ],
     credentials: Credentials,
-) -> Credentials:
+) -> CredentialsMetaResponse:
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
@@ -297,7 +313,19 @@ async def create_credentials(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to store credentials: {str(e)}",
         )
-    return credentials
+    return CredentialsMetaResponse(
+        id=credentials.id,
+        provider=credentials.provider,
+        type=credentials.type,
+        title=credentials.title,
+        scopes=(
+            credentials.scopes if isinstance(credentials, OAuth2Credentials) else None
+        ),
+        username=(
+            credentials.username if isinstance(credentials, OAuth2Credentials) else None
+        ),
+        host=CredentialsMetaResponse.get_host(credentials),
+    )
 
 
 class CredentialsDeletionResponse(BaseModel):
