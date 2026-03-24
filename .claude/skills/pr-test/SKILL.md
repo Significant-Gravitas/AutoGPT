@@ -53,14 +53,20 @@ Before testing, understand what changed:
 
 ```bash
 cd $WORKTREE_PATH
+
+# Read PR description to understand the WHY
+gh pr view {N} --json body --jq '.body'
+
 git log --oneline dev..HEAD | head -20
 git diff dev --stat
 ```
 
-Read the changed files to understand:
-1. What feature/fix does this PR implement?
-2. What components are affected? (backend, frontend, copilot, executor, etc.)
-3. What are the key user-facing behaviors to test?
+Read the PR description (Why / What / How) and changed files to understand:
+0. **Why** does this PR exist? What problem does it solve?
+1. **What** feature/fix does this PR implement?
+2. **How** does it work? What's the approach?
+3. What components are affected? (backend, frontend, copilot, executor, etc.)
+4. What are the key user-facing behaviors to test?
 
 ## Step 2: Write test scenarios
 
