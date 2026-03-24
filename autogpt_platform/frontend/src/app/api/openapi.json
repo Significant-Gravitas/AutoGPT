@@ -1579,6 +1579,7 @@
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
+        "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
         "requestBody": {
           "content": {
@@ -6683,6 +6684,16 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "overwrite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Overwrite"
             }
           }
         ],

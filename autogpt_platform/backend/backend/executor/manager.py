@@ -224,7 +224,7 @@ async def execute_node(
     # Sanity check: validate the execution input.
     input_data, error = validate_exec(node, data.inputs, resolve_input=False)
     if input_data is None:
-        log_metadata.error(f"Skip execution, input validation error: {error}")
+        log_metadata.warning(f"Skip execution, input validation error: {error}")
         yield "error", error
         return
 

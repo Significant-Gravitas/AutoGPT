@@ -5,6 +5,7 @@ from prisma.enums import ContentType
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockType
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import search
 
@@ -38,7 +39,7 @@ COPILOT_EXCLUDED_BLOCK_TYPES = {
 
 # Specific block IDs excluded from CoPilot (STANDARD type but still require graph context)
 COPILOT_EXCLUDED_BLOCK_IDS = {
-    # SmartDecisionMakerBlock - dynamically discovers downstream blocks via graph topology;
+    # OrchestratorBlock - dynamically discovers downstream blocks via graph topology;
     # usable in agent graphs (guide hardcodes its ID) but cannot run standalone.
     "3b191d9f-356f-482d-8238-ba04b6d18381",
 }
@@ -54,13 +55,9 @@ class FindBlockTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for available blocks by name or description, or look up a "
-            "specific block by its ID. "
-            "Blocks are reusable components that perform specific tasks like "
-            "sending emails, making API calls, processing text, etc. "
-            "IMPORTANT: Use this tool FIRST to get the block's 'id' before calling run_block. "
-            "The response includes each block's id, name, and description. "
-            "Call run_block with the block's id **with no inputs** to see detailed inputs/outputs and execute it."
+            "Search blocks by name or description. Returns block IDs for run_block. "
+            "Always call this FIRST to get block IDs before using run_block. "
+            "Then call run_block with the block's id and empty input_data to see its detailed schema."
         )
 
     @property
@@ -70,19 +67,11 @@ class FindBlockTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": (
-                        "Search query to find blocks by name or description, "
-                        "or a block ID (UUID) for direct lookup. "
-                        "Use keywords like 'email', 'http', 'text', 'ai', etc."
-                    ),
+                    "description": "Search keywords (e.g. 'email', 'http', 'ai').",
                 },
                 "include_schemas": {
                     "type": "boolean",
-                    "description": (
-                        "If true, include full input_schema and output_schema "
-                        "for each block. Use when generating agent JSON that "
-                        "needs block schemas. Default is false."
-                    ),
+                    "description": "Include full input/output schemas (for agent JSON generation).",
                     "default": False,
                 },
             },
@@ -161,6 +150,19 @@ class FindBlockTool(BaseTool):
                             session_id=session_id,
                         )
 
+                    # Check block-level permissions — hide denied blocks entirely
+                    perms = get_current_permissions()
+                    if perms is not None and not perms.is_block_allowed(
+                        block.id, block.name
+                    ):
+                        return NoResultsResponse(
+                            message=f"No blocks found for '{query}'",
+                            suggestions=[
+                                "Search for an alternative block by name",
+                            ],
+                            session_id=session_id,
+                        )
+
                     summary = BlockInfoSummary(
                         id=block.id,
                         name=block.name,
@@ -207,6 +209,7 @@ class FindBlockTool(BaseTool):
                 )
 
             # Enrich results with block information
+            perms = get_current_permissions()
             blocks: list[BlockInfoSummary] = []
             for result in results:
                 block_id = result["content_id"]
@@ -220,6 +223,12 @@ class FindBlockTool(BaseTool):
                 if (
                     block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
                     or block.id in COPILOT_EXCLUDED_BLOCK_IDS
+                ):
+                    continue
+
+                # Skip blocks denied by execution permissions
+                if perms is not None and not perms.is_block_allowed(
+                    block.id, block.name
                 ):
                     continue
 

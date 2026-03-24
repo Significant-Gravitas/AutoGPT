@@ -113,7 +113,7 @@ export function StoreCard({
 
         {/* Third Section: Description */}
         <div className="mt-2.5 flex w-full flex-col">
-          <Text variant="body" className="line-clamp-3 leading-normal">
+          <Text variant="body" className="line-clamp-2 leading-normal">
             {description}
           </Text>
         </div>
