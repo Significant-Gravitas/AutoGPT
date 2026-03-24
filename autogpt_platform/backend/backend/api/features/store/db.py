@@ -391,6 +391,11 @@ async def get_available_graph(
 async def get_store_agent_by_version_id(
     store_listing_version_id: str,
 ) -> store_model.StoreAgentDetails:
+    """Get agent details from the StoreAgent view (APPROVED agents only).
+
+    See also: `get_store_agent_details_as_admin()` which bypasses the
+    APPROVED-only StoreAgent view for admin preview of pending submissions.
+    """
     logger.debug(f"Getting store agent details for {store_listing_version_id}")
 
     try:
@@ -409,6 +414,51 @@ async def get_store_agent_by_version_id(
     except Exception as e:
         logger.error(f"Error getting store agent details: {e}")
         raise DatabaseError("Failed to fetch agent details") from e
+
+
+async def get_store_agent_details_as_admin(
+    store_listing_version_id: str,
+) -> store_model.StoreAgentDetails:
+    """Get agent details for admin preview, bypassing the APPROVED-only
+    StoreAgent view. Queries StoreListingVersion directly so pending
+    submissions are visible."""
+    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id},
+        include={
+            "StoreListing": {"include": {"CreatorProfile": True}},
+        },
+    )
+    if not slv or not slv.StoreListing:
+        raise NotFoundError(
+            f"Store listing version {store_listing_version_id} not found"
+        )
+
+    listing = slv.StoreListing
+    profile = listing.CreatorProfile if listing else None
+
+    return store_model.StoreAgentDetails(
+        store_listing_version_id=slv.id,
+        slug=listing.slug if listing else "",
+        agent_name=slv.name,
+        agent_video=slv.videoUrl or "",
+        agent_output_demo=slv.agentOutputDemoUrl or "",
+        agent_image=slv.imageUrls,
+        creator=profile.username if profile else "",
+        creator_avatar=profile.avatarUrl or "" if profile else "",
+        sub_heading=slv.subHeading,
+        description=slv.description,
+        instructions=slv.instructions,
+        categories=slv.categories,
+        runs=0,
+        rating=0.0,
+        versions=[str(slv.version)],
+        graph_id=slv.agentGraphId,
+        graph_versions=[str(slv.agentGraphVersion)],
+        last_updated=slv.updatedAt,
+        recommended_schedule_cron=None,
+        active_version_id=listing.activeVersionId or slv.id if listing else slv.id,
+        has_approved_version=listing.hasApprovedVersion if listing else False,
+    )
 
 
 class StoreCreatorsSortOptions(Enum):

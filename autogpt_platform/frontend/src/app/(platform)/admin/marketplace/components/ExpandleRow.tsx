@@ -10,11 +10,13 @@ import {
   TableBody,
 } from "@/components/__legacy__/ui/table";
 import { Badge } from "@/components/__legacy__/ui/badge";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye } from "lucide-react";
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import type { StoreListingWithVersionsAdminView } from "@/app/api/__generated__/models/storeListingWithVersionsAdminView";
 import type { StoreSubmissionAdminView } from "@/app/api/__generated__/models/storeSubmissionAdminView";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import { Button } from "@/components/__legacy__/ui/button";
 import { ApproveRejectButtons } from "./ApproveRejectButton";
 import { DownloadAgentAdminButton } from "./DownloadAgentButton";
 
@@ -76,9 +78,19 @@ export function ExpandableRow({
         <TableCell className="text-right">
           <div className="flex justify-end gap-2">
             {latestVersion?.listing_version_id && (
-              <DownloadAgentAdminButton
-                storeListingVersionId={latestVersion.listing_version_id}
-              />
+              <>
+                <Link
+                  href={`/admin/marketplace/preview/${latestVersion.listing_version_id}`}
+                >
+                  <Button size="sm" variant="outline">
+                    <Eye className="mr-2 h-4 w-4" />
+                    Preview
+                  </Button>
+                </Link>
+                <DownloadAgentAdminButton
+                  storeListingVersionId={latestVersion.listing_version_id}
+                />
+              </>
             )}
 
             {(latestVersion?.status === SubmissionStatus.PENDING ||
@@ -184,11 +196,21 @@ export function ExpandableRow({
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             {version.listing_version_id && (
-                              <DownloadAgentAdminButton
-                                storeListingVersionId={
-                                  version.listing_version_id
-                                }
-                              />
+                              <>
+                                <Link
+                                  href={`/admin/marketplace/preview/${version.listing_version_id}`}
+                                >
+                                  <Button size="sm" variant="outline">
+                                    <Eye className="mr-2 h-4 w-4" />
+                                    Preview
+                                  </Button>
+                                </Link>
+                                <DownloadAgentAdminButton
+                                  storeListingVersionId={
+                                    version.listing_version_id
+                                  }
+                                />
+                              </>
                             )}
                             {(version.status === SubmissionStatus.PENDING ||
                               version.status === SubmissionStatus.APPROVED) && (

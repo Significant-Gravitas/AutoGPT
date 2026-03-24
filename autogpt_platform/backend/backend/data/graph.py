@@ -1096,6 +1096,9 @@ async def get_graph(
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
 
+    See also: `get_graph_as_admin()` which bypasses ownership and marketplace
+    checks for admin-only routes.
+
     Returns `None` if the record is not found.
     """
     graph = None
