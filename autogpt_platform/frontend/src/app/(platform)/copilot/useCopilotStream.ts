@@ -318,6 +318,7 @@ export function useCopilotStream({
     reconnectAttemptsRef.current = 0;
     isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
+    setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
     setReconnectExhausted(false);
