@@ -284,7 +284,11 @@ DEFAULT_CREDENTIALS = [
     elevenlabs_credentials,
 ]
 
-SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
+AGENTMAIL_POD_KEY_CREDENTIAL_ID = "agentmail-pod-key-00000000-0000-0000"
+
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS} | {
+    AGENTMAIL_POD_KEY_CREDENTIAL_ID,
+}
 
 # Set of providers that have system credentials available
 SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
@@ -335,8 +339,20 @@ class IntegrationCredentialsStore:
             )
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        users_credentials = (await self._get_user_integrations(user_id)).credentials
-        all_credentials = users_credentials
+        user_integrations = await self._get_user_integrations(user_id)
+        all_credentials = user_integrations.credentials
+
+        # Synthesize managed AgentMail pod key as a selectable credential
+        if user_integrations.managed_credentials.agentmail_pod_api_key:
+            all_credentials.append(
+                APIKeyCredentials(
+                    id=AGENTMAIL_POD_KEY_CREDENTIAL_ID,
+                    provider="agent_mail",
+                    title="AgentMail (managed by AutoGPT)",
+                    api_key=user_integrations.managed_credentials.agentmail_pod_api_key,
+                    expires_at=None,
+                )
+            )
         # These will always be added
         all_credentials.append(ollama_credentials)
 
@@ -472,6 +488,16 @@ class IntegrationCredentialsStore:
         _profile_key = SecretStr(profile_key)
         async with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
+
+    async def set_agentmail_pod_credentials(
+        self, user_id: str, pod_id: str, pod_api_key: str
+    ) -> None:
+        """Set the AgentMail pod credentials for a user."""
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.managed_credentials.agentmail_pod_id = pod_id
+            user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
+                pod_api_key
+            )
 
     # ===================== OAUTH STATES ===================== #
 

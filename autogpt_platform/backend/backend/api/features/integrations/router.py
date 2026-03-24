@@ -846,6 +846,45 @@ async def get_ayrshare_sso_url(
     return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
 
 
+@router.post("/agentmail/connect")
+async def connect_agentmail(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> dict:
+    """
+    Create an AgentMail pod for the user and store the pod API key
+    as a managed credential.
+    """
+    from agentmail import AsyncAgentMail
+
+    if not settings.secrets.agentmail_api_key:
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AgentMail integration is not configured",
+        )
+
+    user_integrations: UserIntegrations = await get_user_integrations(user_id)
+    if user_integrations.managed_credentials.agentmail_pod_api_key:
+        return {"status": "already_connected"}
+
+    client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
+    try:
+        pod = await client.pods.create(client_id=user_id)
+        api_key = await client.pods.api_keys.create(
+            pod_id=pod.pod_id, name="autogpt-managed"
+        )
+        await creds_manager.store.set_agentmail_pod_credentials(
+            user_id, pod.pod_id, api_key.api_key
+        )
+    except Exception as e:
+        logger.error(f"Error creating AgentMail pod for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to create AgentMail pod",
+        )
+
+    return {"status": "connected", "pod_id": pod.pod_id}
+
+
 # === PROVIDER DISCOVERY ENDPOINTS ===
 @router.get("/providers", response_model=List[str])
 async def list_providers() -> List[str]:

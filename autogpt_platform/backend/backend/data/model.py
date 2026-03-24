@@ -485,6 +485,8 @@ class UserIntegrations(BaseModel):
     class ManagedCredentials(BaseModel):
         """Integration credentials managed by us, rather than by the user"""
 
+        agentmail_pod_id: Optional[str] = None
+        agentmail_pod_api_key: Optional[SecretStr] = None
         ayrshare_profile_key: Optional[SecretStr] = None
 
         @field_serializer("*")
