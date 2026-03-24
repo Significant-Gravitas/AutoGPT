@@ -7871,7 +7871,12 @@
             "type": "object",
             "title": "Outputs"
           },
-          "success": { "type": "boolean", "title": "Success", "default": true }
+          "success": { "type": "boolean", "title": "Success", "default": true },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["message", "block_id", "block_name", "outputs"],
@@ -8025,7 +8030,8 @@
               { "type": "null" }
             ],
             "title": "Source"
-          }
+          },
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
         "type": "object",
         "title": "Body_postV1Execute graph agent"
@@ -8827,6 +8833,16 @@
               { "type": "null" }
             ],
             "title": "Inputs Summary"
+          },
+          "node_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Node Executions"
           }
         },
         "type": "object",
@@ -9067,6 +9083,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9212,6 +9233,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9299,6 +9325,11 @@
           "share_token": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
+          },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
           },
           "stats": {
             "anyOf": [
