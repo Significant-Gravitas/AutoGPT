@@ -121,5 +121,121 @@ def main(
         agent.start_interaction_loop()
 
 
+@main.command()
+@click.option(
+    "--template",
+    "-t",
+    type=click.Choice(["build", "research", "code-review"]),
+    default="build",
+    help="Agent template to use",
+)
+@click.option("--name", "-n", help="Override the agent name")
+@click.option("--role", "-r", help="Override the agent role")
+@click.option(
+    "--project-dir",
+    "-p",
+    default=".",
+    help="Project directory for build agents",
+)
+@click.option("-c", "--continuous", is_flag=True, help="Enable Continuous Mode")
+@click.option(
+    "-l",
+    "--continuous-limit",
+    type=int,
+    help="Defines the number of times to run in continuous mode",
+)
+@click.option("--speak", is_flag=True, help="Enable Speak Mode")
+@click.option("--debug", is_flag=True, help="Enable Debug Mode")
+@click.option("--gpt3only", is_flag=True, help="Enable GPT3.5 Only Mode")
+@click.option("--gpt4only", is_flag=True, help="Enable GPT4 Only Mode")
+@click.option(
+    "--use-memory",
+    "-m",
+    "memory_type",
+    type=str,
+    help="Defines which Memory backend to use",
+)
+@click.option(
+    "-b",
+    "--browser-name",
+    help="Specifies which web-browser to use when using selenium to scrape the web.",
+)
+@click.option(
+    "--allow-downloads",
+    is_flag=True,
+    help="Dangerous: Allows Auto-GPT to download files natively.",
+)
+def agent(
+    template: str,
+    name: str,
+    role: str,
+    project_dir: str,
+    continuous: bool,
+    continuous_limit: int,
+    speak: bool,
+    debug: bool,
+    gpt3only: bool,
+    gpt4only: bool,
+    memory_type: str,
+    browser_name: str,
+    allow_downloads: bool,
+) -> None:
+    """Create and run a specialized agent from a template.
+
+    Templates: build, research, code-review
+    """
+    import logging
+    import os
+
+    from colorama import Fore
+
+    from autogpt.agent.agent_builder import AgentBuilder
+    from autogpt.config import Config, check_openai_api_key
+    from autogpt.configurator import create_config
+    from autogpt.logs import logger
+
+    cfg = Config()
+    check_openai_api_key()
+    create_config(
+        continuous,
+        continuous_limit,
+        None,  # ai_settings
+        True,  # skip_reprompt
+        speak,
+        debug,
+        gpt3only,
+        gpt4only,
+        memory_type,
+        browser_name,
+        allow_downloads,
+    )
+    logger.set_level(logging.DEBUG if cfg.debug_mode else logging.INFO)
+
+    abs_project_dir = os.path.abspath(project_dir)
+
+    builder = AgentBuilder().from_template(template)
+
+    if name:
+        builder.with_name(name)
+    if role:
+        builder.with_role(role)
+
+    builder.with_project_dir(abs_project_dir)
+
+    logger.typewriter_log(
+        "Creating agent from template:", Fore.GREEN, template
+    )
+
+    new_agent = builder.build_agent(
+        agent_type="build" if template == "build" else "default"
+    )
+
+    logger.typewriter_log(
+        "Agent ready:", Fore.GREEN, f"{new_agent.ai_name}"
+    )
+
+    new_agent.start_interaction_loop()
+
+
 if __name__ == "__main__":
     main()
