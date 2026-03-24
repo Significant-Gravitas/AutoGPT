@@ -205,6 +205,12 @@ async def simulate_block(
             logger.error("simulate_block: LLM call failed: %s", e, exc_info=True)
             break
 
+    logger.error(
+        "simulate_block: all %d retries exhausted for block=%s; last_error=%s",
+        _MAX_JSON_RETRIES,
+        getattr(block, "name", "?"),
+        last_error,
+    )
     yield (
         "error",
         f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "

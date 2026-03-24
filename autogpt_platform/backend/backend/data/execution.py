@@ -721,7 +721,7 @@ async def create_graph_execution(
     graph_version: int,
     starting_nodes_input: list[tuple[str, BlockInput]],  # list[(node_id, BlockInput)]
     inputs: Mapping[str, JsonValue],
-    user_id: str,
+    user_id: str,  # Validated by callers (API auth layer / service-level checks)
     preset_id: Optional[str] = None,
     credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
