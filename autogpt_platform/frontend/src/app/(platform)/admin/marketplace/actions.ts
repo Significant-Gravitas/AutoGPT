@@ -6,7 +6,6 @@ import {
   postV2ReviewStoreSubmission,
   getV2AdminDownloadAgentFile,
   getV2AdminPreviewSubmissionListing,
-  postV2AdminAddPendingAgentToLibrary,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -68,9 +67,5 @@ export async function previewAsAdmin(storeListingVersionId: string) {
   return okData(response);
 }
 
-export async function addToLibraryAsAdmin(storeListingVersionId: string) {
-  const response = await postV2AdminAddPendingAgentToLibrary(
-    storeListingVersionId,
-  );
-  return okData(response);
-}
+// addToLibraryAsAdmin — disabled pending product decision on whether
+// library membership should grant graph access (see SECRT-2167).
