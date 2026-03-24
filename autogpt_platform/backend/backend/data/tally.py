@@ -348,7 +348,7 @@ async def extract_business_understanding(
     """
     settings = Settings()
     api_key = settings.secrets.open_router_api_key
-    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
+    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL, timeout=60.0, max_retries=3)
 
     try:
         response = await asyncio.wait_for(
