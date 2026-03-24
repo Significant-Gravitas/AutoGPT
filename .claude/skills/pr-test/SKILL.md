@@ -603,10 +603,14 @@ REPO_URL="https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_BRANCH}"
 # Build image markdown using uploaded image URLs; skip FAILED_UPLOADS (listed separately)
 
 IMAGE_MARKDOWN=""
-for img in $RESULTS_DIR/*.png; do
+for img in "${SCREENSHOT_FILES[@]}"; do
   BASENAME=$(basename "$img")
   TITLE=$(echo "${BASENAME%.png}" | sed 's/^[0-9]*-//' | sed 's/-/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1')
   EXPLANATION="${SCREENSHOT_EXPLANATIONS[$BASENAME]}"
+  if [ -z "$EXPLANATION" ]; then
+    echo "ERROR: Missing screenshot explanation for $BASENAME. Add it to SCREENSHOT_EXPLANATIONS in Step 6."
+    exit 1
+  fi
   # Skip images that failed to upload — they will be listed at the end
   IS_FAILED=false
   for failed in "${FAILED_UPLOADS[@]}"; do
@@ -636,6 +640,9 @@ The following screenshots could not be uploaded via the GitHub API after 3 retri
     FAILED_SECTION="${FAILED_SECTION}
 - \`$(basename "$failed")\` (local path: \`$failed\`)"
   done
+  FAILED_SECTION="${FAILED_SECTION}
+
+**Run status:** INCOMPLETE until the files above are manually attached and visible inline in the PR."
 fi
 
 cat > "$COMMENT_FILE" <<INNEREOF
