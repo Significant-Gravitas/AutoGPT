@@ -476,14 +476,28 @@ async def _construct_starting_node_execution_input(
     # Dry runs simulate every block — missing credentials are irrelevant.
     # Strip credential-only errors so the graph can proceed.
     if dry_run and validation_errors:
+
+        def _is_credential_error(msg: str) -> bool:
+            """Match errors produced by _validate_node_input_credentials."""
+            m = msg.lower()
+            return (
+                m == "these credentials are required"
+                or m.startswith("invalid credentials:")
+                or m.startswith("credentials not available:")
+                or m.startswith("unknown credentials #")
+            )
+
         validation_errors = {
             node_id: {
                 field: msg
                 for field, msg in errors.items()
-                if "credential" not in msg.lower()
+                if not _is_credential_error(msg)
             }
             for node_id, errors in validation_errors.items()
-            if any("credential" not in msg.lower() for msg in errors.values())
+        }
+        # Remove nodes that have no remaining errors
+        validation_errors = {
+            node_id: errors for node_id, errors in validation_errors.items() if errors
         }
     n_error_nodes = len(validation_errors)
     n_errors = sum(len(errors) for errors in validation_errors.values())
