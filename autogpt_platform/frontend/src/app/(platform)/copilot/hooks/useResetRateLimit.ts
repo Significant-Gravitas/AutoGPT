@@ -3,6 +3,7 @@ import {
   getGetV2GetCopilotUsageQueryKey,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { ApiError } from "@/lib/autogpt-server-api";
 import { useQueryClient } from "@tanstack/react-query";
 
 export function useResetRateLimit(onSuccess?: () => void) {
@@ -22,7 +23,11 @@ export function useResetRateLimit(onSuccess?: () => void) {
       },
       onError: (error: unknown) => {
         const message =
-          error instanceof Error ? error.message : "Failed to reset limit.";
+          error instanceof ApiError
+            ? (error.response?.detail ?? error.message)
+            : error instanceof Error
+              ? error.message
+              : "Failed to reset limit.";
         toast({
           title: "Reset failed",
           description: message,

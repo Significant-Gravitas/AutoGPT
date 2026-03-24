@@ -507,6 +507,17 @@ async def reset_copilot_usage(
                 detail="You have not reached your daily limit yet.",
             )
 
+        # If the weekly limit is also exhausted, resetting the daily counter
+        # won't help — the user would still be blocked by the weekly limit.
+        if (
+            config.weekly_token_limit > 0
+            and usage_status.weekly.used >= config.weekly_token_limit
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Your weekly limit is also reached. Resetting the daily limit won't help.",
+            )
+
         # Charge credits.
         credit_model = await get_user_credit_model(user_id)
         try:

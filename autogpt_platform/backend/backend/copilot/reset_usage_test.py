@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from backend.api.features.chat.routes import reset_copilot_usage
 from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -47,7 +48,6 @@ _MODULE = "backend.api.features.chat.routes"
 class TestResetCopilotUsage:
     async def test_feature_disabled_returns_400(self):
         """When rate_limit_reset_cost=0, endpoint returns 400."""
-        from backend.api.features.chat.routes import reset_copilot_usage
 
         with patch(f"{_MODULE}.config", _make_config(rate_limit_reset_cost=0)):
             with pytest.raises(HTTPException) as exc_info:
@@ -57,7 +57,6 @@ class TestResetCopilotUsage:
 
     async def test_not_at_limit_returns_400(self):
         """When user hasn't hit their daily limit, returns 400."""
-        from backend.api.features.chat.routes import reset_copilot_usage
 
         cfg = _make_config()
         with (
@@ -77,7 +76,6 @@ class TestResetCopilotUsage:
 
     async def test_insufficient_credits_returns_402(self):
         """When user doesn't have enough credits, returns 402."""
-        from backend.api.features.chat.routes import reset_copilot_usage
 
         mock_credit_model = AsyncMock()
         mock_credit_model.spend_credits.side_effect = InsufficientBalanceError(
@@ -108,7 +106,6 @@ class TestResetCopilotUsage:
 
     async def test_happy_path(self):
         """Successful reset: charges credits, resets usage, returns response."""
-        from backend.api.features.chat.routes import reset_copilot_usage
 
         mock_credit_model = AsyncMock()
         mock_credit_model.spend_credits.return_value = 1800  # remaining balance
@@ -139,7 +136,6 @@ class TestResetCopilotUsage:
 
     async def test_max_daily_resets_exceeded(self):
         """When user has exhausted daily resets, returns 429."""
-        from backend.api.features.chat.routes import reset_copilot_usage
 
         cfg = _make_config(max_daily_resets=3)
         with (
@@ -149,3 +145,34 @@ class TestResetCopilotUsage:
             with pytest.raises(HTTPException) as exc_info:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 429
+
+    async def test_weekly_limit_exhausted_returns_400(self):
+        """When the weekly limit is also exhausted, resetting daily won't help."""
+
+        cfg = _make_config()
+        weekly_exhausted = CoPilotUsageStatus(
+            daily=UsageWindow(
+                used=3_000_000,
+                limit=2_500_000,
+                resets_at=datetime.now(UTC) + timedelta(hours=6),
+            ),
+            weekly=UsageWindow(
+                used=12_500_000,
+                limit=12_500_000,
+                resets_at=datetime.now(UTC) + timedelta(days=3),
+            ),
+        )
+        with (
+            patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
+            patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
+            patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
+            patch(
+                f"{_MODULE}.get_usage_status",
+                AsyncMock(return_value=weekly_exhausted),
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await reset_copilot_usage(user_id="user-1")
+            assert exc_info.value.status_code == 400
+            assert "weekly" in exc_info.value.detail.lower()
