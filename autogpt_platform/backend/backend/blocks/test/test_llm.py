@@ -1,3 +1,4 @@
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anthropic
@@ -5,7 +6,12 @@ import httpx
 import openai
 import pytest
 
+import backend.blocks.llm as llm
 from backend.data.model import NodeExecutionStats
+
+# TEST_CREDENTIALS_INPUT is a plain dict that satisfies AICredentials at runtime
+# but not at the type level. Cast once here to avoid per-test suppressors.
+_TEST_AI_CREDENTIALS = cast(llm.AICredentials, llm.TEST_CREDENTIALS_INPUT)
 
 
 class TestLLMStatsTracking:
@@ -697,19 +703,18 @@ class TestUserErrorStatusCodeHandling:
             call_count += 1
             raise _make_anthropic_status_error(status_code)
 
-        block.llm_call = mock_llm_call  # type: ignore
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
 
-        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-            prompt="Test",
-            expected_format={"key": "desc"},
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-            retry=3,
-        )
-
-        with pytest.raises(RuntimeError):
-            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                pass
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
 
         assert (
             call_count == 1
@@ -729,19 +734,18 @@ class TestUserErrorStatusCodeHandling:
             call_count += 1
             raise _make_openai_status_error(status_code)
 
-        block.llm_call = mock_llm_call  # type: ignore
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
 
-        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-            prompt="Test",
-            expected_format={"key": "desc"},
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-            retry=3,
-        )
-
-        with pytest.raises(RuntimeError):
-            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                pass
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
 
         assert (
             call_count == 1
@@ -760,19 +764,18 @@ class TestUserErrorStatusCodeHandling:
             call_count += 1
             raise _make_anthropic_status_error(500)
 
-        block.llm_call = mock_llm_call  # type: ignore
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+                retry=3,
+            )
 
-        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-            prompt="Test",
-            expected_format={"key": "desc"},
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-            retry=3,
-        )
-
-        with pytest.raises(RuntimeError):
-            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                pass
+            with pytest.raises(RuntimeError):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
 
         assert (
             call_count > 1
@@ -788,22 +791,21 @@ class TestUserErrorStatusCodeHandling:
         async def mock_llm_call(*args, **kwargs):
             raise _make_anthropic_status_error(401)
 
-        block.llm_call = mock_llm_call  # type: ignore
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+                prompt="Test",
+                expected_format={"key": "desc"},
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
 
-        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
-            prompt="Test",
-            expected_format={"key": "desc"},
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
-        )
-
-        with (
-            patch.object(llm.logger, "warning") as mock_warning,
-            patch.object(llm.logger, "exception") as mock_exception,
-            pytest.raises(RuntimeError),
-        ):
-            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-                pass
+            with (
+                patch.object(llm.logger, "warning") as mock_warning,
+                patch.object(llm.logger, "exception") as mock_exception,
+                pytest.raises(RuntimeError),
+            ):
+                async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                    pass
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()

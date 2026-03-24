@@ -894,63 +894,60 @@ async def llm_call(
         client = anthropic.AsyncAnthropic(
             api_key=credentials.api_key.get_secret_value()
         )
-        try:
-            resp = await client.messages.create(
-                model=llm_model.value,
-                system=sysprompt,
-                messages=messages,
-                max_tokens=max_tokens,
-                tools=an_tools,
-                timeout=600,
-            )
+        resp = await client.messages.create(
+            model=llm_model.value,
+            system=sysprompt,
+            messages=messages,
+            max_tokens=max_tokens,
+            tools=an_tools,
+            timeout=600,
+        )
 
-            if not resp.content:
-                raise ValueError("No content returned from Anthropic.")
+        if not resp.content:
+            raise ValueError("No content returned from Anthropic.")
 
-            tool_calls = None
-            for content_block in resp.content:
-                # Antropic is different to openai, need to iterate through
-                # the content blocks to find the tool calls
-                if content_block.type == "tool_use":
-                    if tool_calls is None:
-                        tool_calls = []
-                    tool_calls.append(
-                        ToolContentBlock(
-                            id=content_block.id,
-                            type=content_block.type,
-                            function=ToolCall(
-                                name=content_block.name,
-                                arguments=json.dumps(content_block.input),
-                            ),
-                        )
+        tool_calls = None
+        for content_block in resp.content:
+            # Antropic is different to openai, need to iterate through
+            # the content blocks to find the tool calls
+            if content_block.type == "tool_use":
+                if tool_calls is None:
+                    tool_calls = []
+                tool_calls.append(
+                    ToolContentBlock(
+                        id=content_block.id,
+                        type=content_block.type,
+                        function=ToolCall(
+                            name=content_block.name,
+                            arguments=json.dumps(content_block.input),
+                        ),
                     )
-
-            if not tool_calls and resp.stop_reason == "tool_use":
-                logger.warning(
-                    f"Tool use stop reason but no tool calls found in content. {resp}"
                 )
 
-            reasoning = None
-            for content_block in resp.content:
-                if hasattr(content_block, "type") and content_block.type == "thinking":
-                    reasoning = content_block.thinking
-                    break
-
-            return LLMResponse(
-                raw_response=resp,
-                prompt=prompt,
-                response=(
-                    resp.content[0].name
-                    if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
-                    else getattr(resp.content[0], "text", "")
-                ),
-                tool_calls=tool_calls,
-                prompt_tokens=resp.usage.input_tokens,
-                completion_tokens=resp.usage.output_tokens,
-                reasoning=reasoning,
+        if not tool_calls and resp.stop_reason == "tool_use":
+            logger.warning(
+                f"Tool use stop reason but no tool calls found in content. {resp}"
             )
-        except anthropic.APIError:
-            raise
+
+        reasoning = None
+        for content_block in resp.content:
+            if hasattr(content_block, "type") and content_block.type == "thinking":
+                reasoning = content_block.thinking
+                break
+
+        return LLMResponse(
+            raw_response=resp,
+            prompt=prompt,
+            response=(
+                resp.content[0].name
+                if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
+                else getattr(resp.content[0], "text", "")
+            ),
+            tool_calls=tool_calls,
+            prompt_tokens=resp.usage.input_tokens,
+            completion_tokens=resp.usage.output_tokens,
+            reasoning=reasoning,
+        )
     elif provider == "groq":
         if tools:
             raise ValueError("Groq does not support tools.")
