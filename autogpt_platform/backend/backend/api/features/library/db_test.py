@@ -150,7 +150,10 @@ async def test_add_agent_to_library(mocker):
     )
 
     # Mock graph_db.get_graph function that's called to check for HITL blocks
-    mock_graph_db = mocker.patch("backend.api.features.library.db.graph_db")
+    # (lives in _add_to_library.py after refactor, not db.py)
+    mock_graph_db = mocker.patch(
+        "backend.api.features.library._add_to_library.graph_db"
+    )
     mock_graph_model = mocker.Mock()
     mock_graph_model.nodes = (
         []
