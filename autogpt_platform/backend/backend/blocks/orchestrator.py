@@ -258,7 +258,7 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
-class ToolOrchestratorBlock(Block):
+class OrchestratorBlock(Block):
     """
     A block that uses a language model to orchestrate tool calls, supporting both
     single-shot and iterative agent mode execution.
@@ -402,8 +402,8 @@ class ToolOrchestratorBlock(Block):
             description="Uses AI to intelligently decide what tool to use.",
             categories={BlockCategory.AI},
             block_type=BlockType.AI,
-            input_schema=ToolOrchestratorBlock.Input,
-            output_schema=ToolOrchestratorBlock.Output,
+            input_schema=OrchestratorBlock.Input,
+            output_schema=OrchestratorBlock.Output,
             test_input={
                 "prompt": "Hello, World!",
                 "credentials": llm.TEST_CREDENTIALS_INPUT,
@@ -441,7 +441,7 @@ class ToolOrchestratorBlock(Block):
         tool_name = custom_name if custom_name else block.name
 
         tool_function: dict[str, Any] = {
-            "name": ToolOrchestratorBlock.cleanup(tool_name),
+            "name": OrchestratorBlock.cleanup(tool_name),
             "description": block.description,
         }
         sink_block_input_schema = block.input_schema
@@ -452,7 +452,7 @@ class ToolOrchestratorBlock(Block):
             field_name = link.sink_name
             is_dynamic = is_dynamic_field(field_name)
             # Clean property key to ensure Anthropic API compatibility for ALL fields
-            clean_field_name = ToolOrchestratorBlock.cleanup(field_name)
+            clean_field_name = OrchestratorBlock.cleanup(field_name)
             field_mapping[clean_field_name] = field_name
 
             if is_dynamic:
@@ -486,7 +486,7 @@ class ToolOrchestratorBlock(Block):
             field_name = link.sink_name
             is_dynamic = is_dynamic_field(field_name)
             # Always use cleaned field name for property key (Anthropic API compliance)
-            clean_field_name = ToolOrchestratorBlock.cleanup(field_name)
+            clean_field_name = OrchestratorBlock.cleanup(field_name)
 
             if is_dynamic:
                 base_name = extract_base_field_name(field_name)
@@ -543,7 +543,7 @@ class ToolOrchestratorBlock(Block):
         tool_name = custom_name if custom_name else sink_graph_meta.name
 
         tool_function: dict[str, Any] = {
-            "name": ToolOrchestratorBlock.cleanup(tool_name),
+            "name": OrchestratorBlock.cleanup(tool_name),
             "description": sink_graph_meta.description,
         }
 
@@ -553,7 +553,7 @@ class ToolOrchestratorBlock(Block):
         for link in links:
             field_name = link.sink_name
 
-            clean_field_name = ToolOrchestratorBlock.cleanup(field_name)
+            clean_field_name = OrchestratorBlock.cleanup(field_name)
             field_mapping[clean_field_name] = field_name
 
             sink_block_input_schema = sink_node.input_default["input_schema"]
@@ -619,17 +619,13 @@ class ToolOrchestratorBlock(Block):
                 raise ValueError(f"Sink node not found: {links[0].sink_id}")
 
             if sink_node.block_id == AgentExecutorBlock().id:
-                tool_func = (
-                    await ToolOrchestratorBlock._create_agent_function_signature(
-                        sink_node, links
-                    )
+                tool_func = await OrchestratorBlock._create_agent_function_signature(
+                    sink_node, links
                 )
                 return_tool_functions.append(tool_func)
             else:
-                tool_func = (
-                    await ToolOrchestratorBlock._create_block_function_signature(
-                        sink_node, links
-                    )
+                tool_func = await OrchestratorBlock._create_block_function_signature(
+                    sink_node, links
                 )
                 return_tool_functions.append(tool_func)
 
@@ -909,7 +905,7 @@ class ToolOrchestratorBlock(Block):
                 task=node_exec_future,
             )
 
-            # Execute the node directly since we're in the ToolOrchestrator context
+            # Execute the node directly since we're in the Orchestrator context
             node_exec_future.set_result(
                 await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
@@ -1113,7 +1109,7 @@ class ToolOrchestratorBlock(Block):
                 return
         elif input_data.last_tool_output:
             logger.error(
-                f"[ToolOrchestratorBlock-node_exec_id={node_exec_id}] "
+                f"[OrchestratorBlock-node_exec_id={node_exec_id}] "
                 f"No pending tool calls found. This may indicate an issue with the "
                 f"conversation history, or the tool giving response more than once."
                 f"This should not happen! Please check the conversation history for any inconsistencies."
@@ -1250,7 +1246,7 @@ class ToolOrchestratorBlock(Block):
                 emit_key = f"tools_^_{sink_node_id}_~_{original_field_name}"
 
                 logger.debug(
-                    "[ToolOrchestratorBlock|geid:%s|neid:%s] emit %s",
+                    "[OrchestratorBlock|geid:%s|neid:%s] emit %s",
                     graph_exec_id,
                     node_exec_id,
                     emit_key,

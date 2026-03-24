@@ -612,7 +612,7 @@ class TestEnsureToolPairsIntact:
     # ---- Mixed/Edge Case Tests ----
 
     def test_anthropic_with_type_message_field(self):
-        """Test Anthropic format with 'type': 'message' field (tool_orchestrator style)."""
+        """Test Anthropic format with 'type': 'message' field (orchestrator style)."""
         all_msgs = [
             {"role": "system", "content": "You are helpful."},
             {
@@ -628,7 +628,7 @@ class TestEnsureToolPairsIntact:
             },
             {
                 "role": "user",
-                "type": "message",  # Extra field from tool_orchestrator
+                "type": "message",  # Extra field from orchestrator
                 "content": [
                     {
                         "type": "tool_result",

@@ -1,10 +1,10 @@
 """
-Tests for ToolOrchestratorBlock support in agent generator.
+Tests for OrchestratorBlock support in agent generator.
 
 Covers:
-- AgentFixer.fix_tool_orchestrator_blocks()
-- AgentValidator.validate_tool_orchestrator_blocks()
-- End-to-end fix → validate → pipeline for ToolOrchestrator agents
+- AgentFixer.fix_orchestrator_blocks()
+- AgentValidator.validate_orchestrator_blocks()
+- End-to-end fix → validate → pipeline for Orchestrator agents
 """
 
 import uuid
@@ -28,7 +28,7 @@ def _make_sdm_node(
     input_default: dict | None = None,
     metadata: dict | None = None,
 ) -> dict:
-    """Create a ToolOrchestratorBlock node dict."""
+    """Create a OrchestratorBlock node dict."""
     return {
         "id": node_id or _uid(),
         "block_id": TOOL_ORCHESTRATOR_BLOCK_ID,
@@ -125,15 +125,15 @@ def _make_orchestrator_agent() -> dict:
 # ---------------------------------------------------------------------------
 
 
-class TestFixToolOrchestratorBlocks:
-    """Tests for AgentFixer.fix_tool_orchestrator_blocks()."""
+class TestFixOrchestratorBlocks:
+    """Tests for AgentFixer.fix_orchestrator_blocks()."""
 
     def test_fills_defaults_when_missing(self):
         """All agent-mode defaults are populated for a bare SDM node."""
         fixer = AgentFixer()
         agent = {"nodes": [_make_sdm_node()], "links": []}
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10
@@ -159,7 +159,7 @@ class TestFixToolOrchestratorBlocks:
             "links": [],
         }
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 5
@@ -182,7 +182,7 @@ class TestFixToolOrchestratorBlocks:
             "links": [],
         }
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10  # kept
@@ -192,7 +192,7 @@ class TestFixToolOrchestratorBlocks:
         assert len(fixer.fixes_applied) == 3
 
     def test_skips_non_sdm_nodes(self):
-        """Non-ToolOrchestrator nodes are untouched."""
+        """Non-Orchestrator nodes are untouched."""
         fixer = AgentFixer()
         other_node = {
             "id": _uid(),
@@ -202,7 +202,7 @@ class TestFixToolOrchestratorBlocks:
         }
         agent = {"nodes": [other_node], "links": []}
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         assert "agent_mode_max_iterations" not in result["nodes"][0]["input_default"]
         assert len(fixer.fixes_applied) == 0
@@ -217,7 +217,7 @@ class TestFixToolOrchestratorBlocks:
         }
         agent = {"nodes": [node], "links": []}
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         assert "input_default" in result["nodes"][0]
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 10
@@ -233,7 +233,7 @@ class TestFixToolOrchestratorBlocks:
         }
         agent = {"nodes": [node], "links": []}
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         assert isinstance(result["nodes"][0]["input_default"], dict)
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 10
@@ -255,7 +255,7 @@ class TestFixToolOrchestratorBlocks:
             "links": [],
         }
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10  # None → default
@@ -275,7 +275,7 @@ class TestFixToolOrchestratorBlocks:
             "links": [],
         }
 
-        result = fixer.fix_tool_orchestrator_blocks(agent)
+        result = fixer.fix_orchestrator_blocks(agent)
 
         # First node: 3 defaults filled (agent_mode was already set)
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 3
@@ -284,7 +284,7 @@ class TestFixToolOrchestratorBlocks:
         assert len(fixer.fixes_applied) == 7  # 3 + 4
 
     def test_registered_in_apply_all_fixes(self):
-        """fix_tool_orchestrator_blocks runs as part of apply_all_fixes."""
+        """fix_orchestrator_blocks runs as part of apply_all_fixes."""
         fixer = AgentFixer()
         agent = {
             "nodes": [_make_sdm_node()],
@@ -295,7 +295,7 @@ class TestFixToolOrchestratorBlocks:
 
         defaults = result["nodes"][0]["input_default"]
         assert defaults["agent_mode_max_iterations"] == 10
-        assert any("ToolOrchestratorBlock" in fix for fix in fixer.fixes_applied)
+        assert any("OrchestratorBlock" in fix for fix in fixer.fixes_applied)
 
 
 # ---------------------------------------------------------------------------
@@ -303,15 +303,15 @@ class TestFixToolOrchestratorBlocks:
 # ---------------------------------------------------------------------------
 
 
-class TestValidateToolOrchestratorBlocks:
-    """Tests for AgentValidator.validate_tool_orchestrator_blocks()."""
+class TestValidateOrchestratorBlocks:
+    """Tests for AgentValidator.validate_orchestrator_blocks()."""
 
     def test_valid_sdm_with_tools(self):
         """SDM with downstream tool links passes validation."""
         validator = AgentValidator()
         agent = _make_orchestrator_agent()
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is True
         assert len(validator.errors) == 0
@@ -325,7 +325,7 @@ class TestValidateToolOrchestratorBlocks:
             "links": [],  # no tool links
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
@@ -344,20 +344,20 @@ class TestValidateToolOrchestratorBlocks:
             ],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
 
     def test_no_sdm_nodes_passes(self):
-        """Agent without ToolOrchestrator nodes passes trivially."""
+        """Agent without Orchestrator nodes passes trivially."""
         validator = AgentValidator()
         agent = {
             "nodes": [_make_input_node(), _make_output_node()],
             "links": [],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is True
         assert len(validator.errors) == 0
@@ -373,7 +373,7 @@ class TestValidateToolOrchestratorBlocks:
         )
         agent = {"nodes": [sdm], "links": []}
 
-        validator.validate_tool_orchestrator_blocks(agent)
+        validator.validate_orchestrator_blocks(agent)
 
         assert "My Orchestrator" in validator.errors[0]
 
@@ -392,7 +392,7 @@ class TestValidateToolOrchestratorBlocks:
             ],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
@@ -408,7 +408,7 @@ class TestValidateToolOrchestratorBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert any("agent_mode_max_iterations=0" in e for e in validator.errors)
@@ -423,7 +423,7 @@ class TestValidateToolOrchestratorBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is True
         assert len(validator.errors) == 0
@@ -438,7 +438,7 @@ class TestValidateToolOrchestratorBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert any("unusually high" in e for e in validator.errors)
@@ -453,7 +453,7 @@ class TestValidateToolOrchestratorBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert any("non-integer" in e for e in validator.errors)
@@ -468,7 +468,7 @@ class TestValidateToolOrchestratorBlocks:
             "links": [_link(sdm["id"], "tools", tool["id"], "query")],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert any("invalid" in e and "-5" in e for e in validator.errors)
@@ -488,14 +488,14 @@ class TestValidateToolOrchestratorBlocks:
             ],
         }
 
-        result = validator.validate_tool_orchestrator_blocks(agent)
+        result = validator.validate_orchestrator_blocks(agent)
 
         assert result is False
         assert len(validator.errors) == 1
         assert "no downstream tool blocks" in validator.errors[0]
 
     def test_registered_in_validate(self):
-        """validate_tool_orchestrator_blocks runs as part of validate()."""
+        """validate_orchestrator_blocks runs as part of validate()."""
         validator = AgentValidator()
         sdm = _make_sdm_node()
         agent = {
@@ -512,7 +512,7 @@ class TestValidateToolOrchestratorBlocks:
         blocks = [
             {
                 "id": TOOL_ORCHESTRATOR_BLOCK_ID,
-                "name": "ToolOrchestratorBlock",
+                "name": "OrchestratorBlock",
                 "inputSchema": {"properties": {"prompt": {"type": "string"}}},
                 "outputSchema": {
                     "properties": {
@@ -557,7 +557,7 @@ class TestValidateToolOrchestratorBlocks:
 # ---------------------------------------------------------------------------
 
 
-class TestToolOrchestratorE2EPipeline:
+class TestOrchestratorE2EPipeline:
     """End-to-end tests: build agent JSON → fix → validate."""
 
     def test_orchestrator_agent_fix_then_validate(self):
@@ -578,7 +578,7 @@ class TestToolOrchestratorE2EPipeline:
 
         # Validate (standalone SDM check)
         validator = AgentValidator()
-        assert validator.validate_tool_orchestrator_blocks(fixed) is True
+        assert validator.validate_orchestrator_blocks(fixed) is True
 
     def test_bare_sdm_no_tools_fix_then_validate(self):
         """SDM without tools: fixer fills defaults, validator catches error."""
@@ -606,7 +606,7 @@ class TestToolOrchestratorE2EPipeline:
 
         # Validate catches missing tools
         validator = AgentValidator()
-        assert validator.validate_tool_orchestrator_blocks(fixed) is False
+        assert validator.validate_orchestrator_blocks(fixed) is False
         assert any("no downstream tool blocks" in e for e in validator.errors)
 
     def test_sdm_with_user_set_bounded_iterations(self):
@@ -639,7 +639,7 @@ class TestToolOrchestratorE2EPipeline:
         blocks = [
             {
                 "id": TOOL_ORCHESTRATOR_BLOCK_ID,
-                "name": "ToolOrchestratorBlock",
+                "name": "OrchestratorBlock",
                 "inputSchema": {
                     "properties": {
                         "prompt": {"type": "string"},
@@ -709,5 +709,5 @@ class TestToolOrchestratorE2EPipeline:
         assert is_valid, f"Validation failed: {error_msg}"
 
         # SDM-specific validation should pass (has tool links)
-        sdm_errors = [e for e in validator.errors if "ToolOrchestratorBlock" in e]
+        sdm_errors = [e for e in validator.errors if "OrchestratorBlock" in e]
         assert len(sdm_errors) == 0, f"Unexpected SDM errors: {sdm_errors}"

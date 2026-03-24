@@ -69,8 +69,8 @@ class TestFindBlockFiltering:
         assert BlockType.HUMAN_IN_THE_LOOP in COPILOT_EXCLUDED_BLOCK_TYPES
         assert BlockType.AGENT in COPILOT_EXCLUDED_BLOCK_TYPES
 
-    def test_excluded_block_ids_contains_tool_orchestrator(self):
-        """Verify ToolOrchestratorBlock is in COPILOT_EXCLUDED_BLOCK_IDS."""
+    def test_excluded_block_ids_contains_orchestrator(self):
+        """Verify OrchestratorBlock is in COPILOT_EXCLUDED_BLOCK_IDS."""
         assert "3b191d9f-356f-482d-8238-ba04b6d18381" in COPILOT_EXCLUDED_BLOCK_IDS
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -120,18 +120,18 @@ class TestFindBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_filtered_from_results(self):
-        """Verify ToolOrchestratorBlock is filtered from search results."""
+        """Verify OrchestratorBlock is filtered from search results."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        tool_orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
         search_results = [
-            {"content_id": tool_orchestrator_id, "score": 0.9},
+            {"content_id": orchestrator_id, "score": 0.9},
             {"content_id": "normal-block-id", "score": 0.8},
         ]
 
-        # ToolOrchestratorBlock has STANDARD type but is excluded by ID
+        # OrchestratorBlock has STANDARD type but is excluded by ID
         smart_block = make_mock_block(
-            tool_orchestrator_id, "Tool Orchestrator", BlockType.STANDARD
+            orchestrator_id, "Orchestrator", BlockType.STANDARD
         )
         normal_block = make_mock_block(
             "normal-block-id", "Normal Block", BlockType.STANDARD
@@ -139,7 +139,7 @@ class TestFindBlockFiltering:
 
         def mock_get_block(block_id):
             return {
-                tool_orchestrator_id: smart_block,
+                orchestrator_id: smart_block,
                 "normal-block-id": normal_block,
             }.get(block_id)
 
@@ -161,7 +161,7 @@ class TestFindBlockFiltering:
                     user_id=_TEST_USER_ID, session=session, query="decision"
                 )
 
-        # Should only return normal block, not ToolOrchestratorBlock
+        # Should only return normal block, not OrchestratorBlock
         assert isinstance(response, BlockListResponse)
         assert len(response.blocks) == 1
         assert response.blocks[0].id == "normal-block-id"
@@ -601,10 +601,8 @@ class TestFindBlockDirectLookup:
     async def test_uuid_lookup_excluded_block_id(self):
         """UUID matching an excluded block ID returns NoResultsResponse."""
         session = make_session(user_id=_TEST_USER_ID)
-        tool_orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
-        block = make_mock_block(
-            tool_orchestrator_id, "Tool Orchestrator", BlockType.STANDARD
-        )
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        block = make_mock_block(orchestrator_id, "Orchestrator", BlockType.STANDARD)
 
         with patch(
             "backend.copilot.tools.find_block.get_block",
@@ -612,7 +610,7 @@ class TestFindBlockDirectLookup:
         ):
             tool = FindBlockTool()
             response = await tool._execute(
-                user_id=_TEST_USER_ID, session=session, query=tool_orchestrator_id
+                user_id=_TEST_USER_ID, session=session, query=orchestrator_id
             )
 
         from .models import NoResultsResponse

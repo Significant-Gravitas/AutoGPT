@@ -32,11 +32,11 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
-from backend.blocks.tool_orchestrator import ToolOrchestratorBlock
 from backend.blocks.video.narration import VideoNarrationBlock
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
@@ -699,7 +699,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
     ],
-    ToolOrchestratorBlock: LLM_COST,
+    OrchestratorBlock: LLM_COST,
     VideoNarrationBlock: [
         BlockCost(
             cost_amount=5,  # ElevenLabs TTS cost
