@@ -1,6 +1,6 @@
-"""Tests for SmartDecisionMakerBlock compatibility with the OpenAI Responses API.
+"""Tests for OrchestratorBlock compatibility with the OpenAI Responses API.
 
-The SmartDecisionMakerBlock manages conversation history in the Chat Completions
+The OrchestratorBlock manages conversation history in the Chat Completions
 format, but OpenAI models now use the Responses API which has a fundamentally
 different conversation structure.  These tests document:
 
@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.blocks.smart_decision_maker import (
-    SmartDecisionMakerBlock,
+from backend.blocks.orchestrator import (
+    OrchestratorBlock,
     _combine_tool_responses,
     _convert_raw_response_to_dict,
     _create_tool_response,
@@ -733,7 +733,7 @@ class TestUpdateConversation:
 
     def test_dict_raw_response_no_reasoning_no_tools(self):
         """Dict raw_response, no reasoning → appends assistant dict."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         resp = self._make_response({"role": "assistant", "content": "hi"})
         block._update_conversation(prompt, resp)
@@ -741,7 +741,7 @@ class TestUpdateConversation:
 
     def test_dict_raw_response_with_reasoning_no_tool_calls(self):
         """Reasoning present, no tool calls → reasoning prepended."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         resp = self._make_response(
             {"role": "assistant", "content": "answer"},
@@ -757,7 +757,7 @@ class TestUpdateConversation:
 
     def test_dict_raw_response_with_reasoning_and_anthropic_tool_calls(self):
         """Reasoning + Anthropic tool_use in content → reasoning skipped."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         raw = {
             "role": "assistant",
@@ -772,7 +772,7 @@ class TestUpdateConversation:
 
     def test_with_tool_outputs(self):
         """Tool outputs → extended onto prompt."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         resp = self._make_response({"role": "assistant", "content": None})
         outputs = [{"role": "tool", "tool_call_id": "call_1", "content": "r"}]
@@ -782,7 +782,7 @@ class TestUpdateConversation:
 
     def test_without_tool_outputs(self):
         """No tool outputs → only assistant message appended."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         resp = self._make_response({"role": "assistant", "content": "done"})
         block._update_conversation(prompt, resp, None)
@@ -790,7 +790,7 @@ class TestUpdateConversation:
 
     def test_string_raw_response(self):
         """Ollama string → wrapped as assistant dict."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         resp = self._make_response("hello from ollama")
         block._update_conversation(prompt, resp)
@@ -800,7 +800,7 @@ class TestUpdateConversation:
 
     def test_responses_api_text_response_produces_valid_items(self):
         """Responses API text response → conversation items must have valid role."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": "user"},
@@ -820,7 +820,7 @@ class TestUpdateConversation:
 
     def test_responses_api_function_call_produces_valid_items(self):
         """Responses API function_call → conversation items must have valid type."""
-        block = SmartDecisionMakerBlock()
+        block = OrchestratorBlock()
         prompt: list[dict] = []
         resp = self._make_response(
             _MockResponse(output=[_MockFunctionCall("tool", "{}", call_id="call_1")])
@@ -856,7 +856,7 @@ async def test_agent_mode_conversation_valid_for_responses_api():
     """
     import backend.blocks.llm as llm_module
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     # First response: tool call
     mock_tc = MagicMock()
@@ -936,7 +936,7 @@ async def test_agent_mode_conversation_valid_for_responses_api():
     with patch("backend.blocks.llm.llm_call", llm_mock), patch.object(
         block, "_create_tool_node_signatures", return_value=tool_sigs
     ), patch(
-        "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+        "backend.blocks.orchestrator.get_database_manager_async_client",
         return_value=mock_db,
     ), patch(
         "backend.executor.manager.async_update_node_execution_status",
@@ -945,7 +945,7 @@ async def test_agent_mode_conversation_valid_for_responses_api():
         "backend.integrations.creds_manager.IntegrationCredentialsManager"
     ):
 
-        inp = SmartDecisionMakerBlock.Input(
+        inp = OrchestratorBlock.Input(
             prompt="Improve this",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
@@ -992,7 +992,7 @@ async def test_traditional_mode_conversation_valid_for_responses_api():
     """Traditional mode: the yielded conversation must contain only valid items."""
     import backend.blocks.llm as llm_module
 
-    block = SmartDecisionMakerBlock()
+    block = OrchestratorBlock()
 
     mock_tc = MagicMock()
     mock_tc.function.name = "my_tool"
@@ -1028,7 +1028,7 @@ async def test_traditional_mode_conversation_valid_for_responses_api():
         "backend.blocks.llm.llm_call", new_callable=AsyncMock, return_value=resp
     ), patch.object(block, "_create_tool_node_signatures", return_value=tool_sigs):
 
-        inp = SmartDecisionMakerBlock.Input(
+        inp = OrchestratorBlock.Input(
             prompt="Do it",
             model=llm_module.DEFAULT_LLM_MODEL,
             credentials=llm_module.TEST_CREDENTIALS_INPUT,  # type: ignore
