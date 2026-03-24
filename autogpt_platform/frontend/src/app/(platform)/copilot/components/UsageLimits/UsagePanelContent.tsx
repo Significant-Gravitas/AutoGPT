@@ -1,4 +1,5 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
@@ -75,15 +76,17 @@ function ResetButton({ cost }: { cost: number }) {
   const { resetUsage, isPending } = useResetRateLimit();
 
   return (
-    <button
+    <Button
+      variant="primary"
+      size="small"
       onClick={() => resetUsage()}
-      disabled={isPending}
-      className="mt-1 w-full rounded-full bg-zinc-800 px-2 py-1.5 text-[11px] font-medium text-white transition-colors hover:bg-zinc-900 disabled:opacity-50"
+      loading={isPending}
+      className="mt-1 w-full text-[11px]"
     >
       {isPending
         ? "Resetting..."
         : `Reset daily limit for $${(cost / 100).toFixed(2)}`}
-    </button>
+    </Button>
   );
 }
 
