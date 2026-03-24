@@ -7,6 +7,7 @@ logic lives in exactly one place.
 
 import logging
 
+import prisma.errors
 import prisma.models
 
 import backend.api.features.library.model as library_model
@@ -78,25 +79,38 @@ async def add_graph_to_library(
     if deleted_agent and deleted_agent.isDeleted:
         return await update_library_agent(deleted_agent.id, user_id, is_deleted=False)
 
-    added_agent = await prisma.models.LibraryAgent.prisma().create(
-        data={
-            "User": {"connect": {"id": user_id}},
-            "AgentGraph": {
-                "connect": {
-                    "graphVersionId": {
-                        "id": graph_model.id,
-                        "version": graph_model.version,
+    try:
+        added_agent = await prisma.models.LibraryAgent.prisma().create(
+            data={
+                "User": {"connect": {"id": user_id}},
+                "AgentGraph": {
+                    "connect": {
+                        "graphVersionId": {
+                            "id": graph_model.id,
+                            "version": graph_model.version,
+                        }
                     }
-                }
+                },
+                "isCreatedByUser": False,
+                "useGraphIsActiveVersion": False,
+                "settings": SafeJson(
+                    GraphSettings.from_graph(graph_model).model_dump()
+                ),
             },
-            "isCreatedByUser": False,
-            "useGraphIsActiveVersion": False,
-            "settings": SafeJson(GraphSettings.from_graph(graph_model).model_dump()),
-        },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-    )
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
+        )
+    except prisma.errors.UniqueViolationError:
+        # Race condition: concurrent request created the row between our
+        # check and create.  Re-read instead of crashing.
+        existing = await get_library_agent_by_graph_id(
+            user_id, graph_model.id, graph_model.version
+        )
+        if existing:
+            return existing
+        raise  # Shouldn't happen, but don't swallow unexpected errors
+
     logger.debug(
         f"Added graph #{graph_model.id} v{graph_model.version} "
         f"for store listing version #{store_listing_version_id} "

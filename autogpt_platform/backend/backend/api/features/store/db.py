@@ -434,17 +434,23 @@ async def get_store_agent_details_as_admin(
         )
 
     listing = slv.StoreListing
-    profile = listing.CreatorProfile if listing else None
+    # CreatorProfile is a required FK relation — should always exist.
+    # If it's None, the DB is in a bad state.
+    profile = listing.CreatorProfile
+    if not profile:
+        raise DatabaseError(
+            f"StoreListing {listing.id} has no CreatorProfile — FK violated"
+        )
 
     return store_model.StoreAgentDetails(
         store_listing_version_id=slv.id,
-        slug=listing.slug if listing else "",
+        slug=listing.slug,
         agent_name=slv.name,
         agent_video=slv.videoUrl or "",
         agent_output_demo=slv.agentOutputDemoUrl or "",
         agent_image=slv.imageUrls,
-        creator=profile.username if profile else "",
-        creator_avatar=profile.avatarUrl or "" if profile else "",
+        creator=profile.username,
+        creator_avatar=profile.avatarUrl or "",
         sub_heading=slv.subHeading,
         description=slv.description,
         instructions=slv.instructions,
@@ -456,7 +462,7 @@ async def get_store_agent_details_as_admin(
         graph_versions=[str(slv.agentGraphVersion)],
         last_updated=slv.updatedAt,
         recommended_schedule_cron=None,
-        active_version_id=listing.activeVersionId or slv.id if listing else slv.id,
+        active_version_id=listing.activeVersionId or slv.id,
         has_approved_version=listing.hasApprovedVersion if listing else False,
     )
 

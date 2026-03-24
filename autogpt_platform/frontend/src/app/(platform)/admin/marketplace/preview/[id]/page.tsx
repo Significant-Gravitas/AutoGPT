@@ -97,12 +97,16 @@ export default function AdminPreviewPage() {
             Admin Preview
             {!data.has_approved_version && " — Pending Approval"}
           </span>
+          {/* Add to Library creates the record but the builder can't load
+              the graph — get_graph() requires ownership or APPROVED marketplace
+              status. Needs product decision on whether library membership
+              should grant graph access (see SECRT-2167 discussion). */}
           <button
-            onClick={handleAddToLibrary}
-            disabled={isAddingToLibrary}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            disabled
+            title="Coming soon — requires graph access policy change"
+            className="cursor-not-allowed rounded-md bg-muted px-4 py-2 text-sm font-medium text-muted-foreground opacity-50"
           >
-            {isAddingToLibrary ? "Adding..." : "Add to My Library"}
+            Add to My Library (coming soon)
           </button>
         </div>
       </div>

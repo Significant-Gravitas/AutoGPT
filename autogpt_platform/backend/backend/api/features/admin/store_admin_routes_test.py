@@ -183,6 +183,7 @@ async def test_preview_queries_store_listing_version_not_store_agent() -> None:
     mock_slv.updatedAt = datetime(2026, 3, 24, tzinfo=timezone.utc)
 
     mock_listing = MagicMock()
+    mock_listing.id = "listing-id"
     mock_listing.slug = "test-agent"
     mock_listing.activeVersionId = SLV_ID
     mock_listing.hasApprovedVersion = False
