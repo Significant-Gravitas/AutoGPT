@@ -6,17 +6,14 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
 import { AgentImages } from "@/app/(platform)/marketplace/components/AgentImages/AgentImage";
 import type { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
-import { previewAsAdmin, addToLibraryAsAdmin } from "../../actions";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import { previewAsAdmin } from "../../actions";
 
 export default function AdminPreviewPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { toast } = useToast();
   const [data, setData] = useState<StoreAgentDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isAddingToLibrary, setIsAddingToLibrary] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -31,27 +28,6 @@ export default function AdminPreviewPage() {
     }
     load();
   }, [params.id]);
-
-  async function handleAddToLibrary() {
-    setIsAddingToLibrary(true);
-    try {
-      await addToLibraryAsAdmin(params.id);
-      toast({
-        title: "Added to Library",
-        description: "Agent has been added to your library for review.",
-        duration: 3000,
-      });
-    } catch (e) {
-      toast({
-        title: "Error",
-        description:
-          e instanceof Error ? e.message : "Failed to add agent to library.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAddingToLibrary(false);
-    }
-  }
 
   if (isLoading) {
     return (
