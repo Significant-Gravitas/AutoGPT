@@ -1,6 +1,6 @@
 """SDK environment variable builder — importable without circular deps.
 
-Extracted from ``service.py`` so that ``backend.blocks.tool_orchestrator``
+Extracted from ``service.py`` so that ``backend.blocks.orchestrator``
 can reuse the same subscription / OpenRouter / direct-Anthropic logic
 without pulling in the full copilot service module (which would create a
 circular import through ``executor`` → ``credit`` → ``block_cost_config``).

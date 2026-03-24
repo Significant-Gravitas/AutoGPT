@@ -1012,7 +1012,7 @@ class OrchestratorBlock(Block):
         tools: Sequence[Any],
         *,
         credentials: llm.APIKeyCredentials,
-        input_data: "ToolOrchestratorBlock.Input",
+        input_data: "OrchestratorBlock.Input",
     ) -> LLMLoopResponse:
         """LLM caller callback for agent mode: wraps _attempt_llm_call_with_validation."""
         resp = await self._attempt_llm_call_with_validation(
@@ -1069,7 +1069,7 @@ class OrchestratorBlock(Block):
                 content=f"Invalid JSON arguments: {e}",
                 is_error=True,
             )
-        tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
+        tool_info = OrchestratorBlock._build_tool_info_from_args(
             tool_call_id=tool_call.id,
             tool_name=tool_call.name,
             tool_args=tool_args,
@@ -1125,7 +1125,7 @@ class OrchestratorBlock(Block):
 
     async def _execute_tools_agent_mode(
         self,
-        input_data: "ToolOrchestratorBlock.Input",
+        input_data: "OrchestratorBlock.Input",
         credentials: llm.APIKeyCredentials,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],
@@ -1237,7 +1237,7 @@ class OrchestratorBlock(Block):
                     func = _tool_func["function"]
 
                     # Build ToolInfo using shared helper
-                    tool_info = ToolOrchestratorBlock._build_tool_info_from_args(
+                    tool_info = OrchestratorBlock._build_tool_info_from_args(
                         tool_call_id=f"sdk-{uuid_mod.uuid4().hex[:12]}",
                         tool_name=func["name"],
                         tool_args=args,
@@ -1278,7 +1278,7 @@ class OrchestratorBlock(Block):
 
     async def _execute_tools_sdk_mode(
         self,
-        input_data: "ToolOrchestratorBlock.Input",
+        input_data: "OrchestratorBlock.Input",
         credentials: llm.APIKeyCredentials,
         tool_functions: list[dict[str, Any]],
         prompt: list[dict[str, Any]],

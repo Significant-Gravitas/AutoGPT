@@ -1,7 +1,7 @@
 """Shared tool-calling conversation loop.
 
 Provides a generic, provider-agnostic conversation loop that both
-the ToolOrchestratorBlock and copilot baseline can use. The loop:
+the OrchestratorBlock and copilot baseline can use. The loop:
 
 1. Calls the LLM with tool definitions
 2. Extracts tool calls from the response
@@ -51,7 +51,7 @@ class ToolDefinition(TypedDict):
     """OpenAI-compatible tool definition (function-calling format).
 
     Compatible with ``openai.types.chat.ChatCompletionToolParam`` and the
-    dict-based tool definitions built by ``ToolOrchestratorBlock``.
+    dict-based tool definitions built by ``OrchestratorBlock``.
     """
 
     type: str
