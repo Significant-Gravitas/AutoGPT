@@ -131,7 +131,7 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser @anthropic-ai/claude-code \
+    && npm install -g agent-browser \
     && rm -rf /tmp/* /root/.npm
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
