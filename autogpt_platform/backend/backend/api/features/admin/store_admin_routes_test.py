@@ -1,13 +1,24 @@
+"""Tests for admin store routes and the bypass logic they depend on.
+
+Tests are organized by what they protect:
+- SECRT-2162: get_graph_as_admin bypasses ownership/marketplace checks
+- SECRT-2167 security: admin endpoints reject non-admin users
+- SECRT-2167 bypass: preview queries StoreListingVersion (not StoreAgent view),
+  and add-to-library uses get_graph_as_admin (not get_graph)
+"""
+
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
+import fastapi.responses
 import fastapi.testclient
 import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.data.graph import get_graph_as_admin
+from backend.util.exceptions import NotFoundError
 
 from .store_admin_routes import router as store_admin_router
 
@@ -28,21 +39,18 @@ def _make_mock_graph(user_id: str = CREATOR_USER_ID) -> MagicMock:
     return graph
 
 
-# ---- get_graph_as_admin unit tests (SECRT-2162 regression) ---- #
+# ---- SECRT-2162: get_graph_as_admin bypasses ownership checks ---- #
 
 
 @pytest.mark.asyncio
 async def test_admin_can_access_pending_agent_not_owned() -> None:
-    """Admin must be able to access a graph they don't own even if it's not
-    APPROVED in the marketplace. This is the core use case: reviewing a
-    submitted-but-pending agent from the admin dashboard."""
+    """get_graph_as_admin must return a graph even when the admin doesn't own
+    it and it's not APPROVED in the marketplace."""
     mock_graph = _make_mock_graph()
     mock_graph_model = MagicMock(name="GraphModel")
 
     with (
-        patch(
-            "backend.data.graph.AgentGraph.prisma",
-        ) as mock_prisma,
+        patch("backend.data.graph.AgentGraph.prisma") as mock_prisma,
         patch(
             "backend.data.graph.GraphModel.from_db",
             return_value=mock_graph_model,
@@ -57,25 +65,19 @@ async def test_admin_can_access_pending_agent_not_owned() -> None:
             for_export=False,
         )
 
-    assert (
-        result is not None
-    ), "Admin should be able to access a pending agent they don't own"
     assert result is mock_graph_model
 
 
 @pytest.mark.asyncio
 async def test_admin_download_pending_agent_with_subagents() -> None:
-    """Admin export (for_export=True) of a pending agent must include
-    sub-graphs. This exercises the full export code path that the Download
-    button uses."""
+    """get_graph_as_admin with for_export=True must call get_sub_graphs
+    and pass sub_graphs to GraphModel.from_db."""
     mock_graph = _make_mock_graph()
     mock_sub_graph = MagicMock(name="SubGraph")
     mock_graph_model = MagicMock(name="GraphModel")
 
     with (
-        patch(
-            "backend.data.graph.AgentGraph.prisma",
-        ) as mock_prisma,
+        patch("backend.data.graph.AgentGraph.prisma") as mock_prisma,
         patch(
             "backend.data.graph.get_sub_graphs",
             new_callable=AsyncMock,
@@ -95,7 +97,7 @@ async def test_admin_download_pending_agent_with_subagents() -> None:
             for_export=True,
         )
 
-    assert result is not None, "Admin export of pending agent must succeed"
+    assert result is mock_graph_model
     mock_get_sub.assert_awaited_once_with(mock_graph)
     mock_from_db.assert_called_once_with(
         graph=mock_graph,
@@ -104,10 +106,18 @@ async def test_admin_download_pending_agent_with_subagents() -> None:
     )
 
 
-# ---- Route-level tests for admin preview & add-to-library (SECRT-2167) ---- #
+# ---- SECRT-2167 security: admin endpoints reject non-admin users ---- #
 
 app = fastapi.FastAPI()
 app.include_router(store_admin_router)
+
+
+@app.exception_handler(NotFoundError)
+async def _not_found_handler(
+    request: fastapi.Request, exc: NotFoundError
+) -> fastapi.responses.JSONResponse:
+    return fastapi.responses.JSONResponse(status_code=404, content={"detail": str(exc)})
+
 
 client = fastapi.testclient.TestClient(app)
 
@@ -118,37 +128,6 @@ def setup_app_admin_auth(mock_jwt_admin):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
-
-
-def _make_mock_store_agent_details() -> MagicMock:
-    """Return a mock that looks like StoreAgentDetails for JSON serialization."""
-    return MagicMock(
-        store_listing_version_id=SLV_ID,
-        slug="test-agent",
-        agent_name="Test Agent",
-        agent_video="",
-        agent_output_demo="",
-        agent_image=["https://example.com/img.png"],
-        creator="test-creator",
-        creator_avatar="",
-        sub_heading="A test agent",
-        description="Full description",
-        instructions=None,
-        categories=["productivity"],
-        runs=0,
-        rating=0.0,
-        versions=["1"],
-        graph_id=GRAPH_ID,
-        graph_versions=["1"],
-        last_updated=datetime(2026, 3, 24, tzinfo=timezone.utc),
-        recommended_schedule_cron=None,
-        active_version_id=SLV_ID,
-        has_approved_version=False,
-        changelog=None,
-    )
-
-
-# -- Security tests --
 
 
 def test_preview_requires_admin(mock_jwt_user) -> None:
@@ -168,80 +147,139 @@ def test_add_to_library_requires_admin(mock_jwt_user) -> None:
 def test_preview_nonexistent_submission(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Preview of a nonexistent submission must return 404."""
-    from backend.util.exceptions import NotFoundError
-
+    """Preview of a nonexistent submission returns 404."""
     mocker.patch(
         "backend.api.features.admin.store_admin_routes.store_db"
         ".get_store_agent_details_as_admin",
         side_effect=NotFoundError("not found"),
     )
     response = client.get(f"/admin/submissions/{SLV_ID}/preview")
-    assert response.status_code in (404, 500)
+    assert response.status_code == 404
 
 
-# -- Functional tests --
+# ---- SECRT-2167 bypass: verify the right data sources are used ---- #
 
 
-def test_admin_preview_pending_submission(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """Admin should be able to preview a pending submission with full details."""
-    from backend.api.features.store.model import StoreAgentDetails
+@pytest.mark.asyncio
+async def test_preview_queries_store_listing_version_not_store_agent() -> None:
+    """get_store_agent_details_as_admin must query StoreListingVersion
+    directly (not the APPROVED-only StoreAgent view). This is THE test that
+    prevents the bypass from being accidentally reverted."""
+    from backend.api.features.store.db import get_store_agent_details_as_admin
 
-    mock_details = StoreAgentDetails(
-        store_listing_version_id=SLV_ID,
-        slug="test-agent",
-        agent_name="Test Agent",
-        agent_video="",
-        agent_output_demo="",
-        agent_image=["https://example.com/img.png"],
-        creator="test-creator",
-        creator_avatar="",
-        sub_heading="A test agent",
-        description="Full description",
-        categories=["productivity"],
-        runs=0,
-        rating=0.0,
-        versions=["1"],
-        graph_id=GRAPH_ID,
-        graph_versions=["1"],
-        last_updated=datetime(2026, 3, 24, tzinfo=timezone.utc),
-        active_version_id=SLV_ID,
-        has_approved_version=False,
+    mock_slv = MagicMock()
+    mock_slv.id = SLV_ID
+    mock_slv.name = "Test Agent"
+    mock_slv.subHeading = "Short desc"
+    mock_slv.description = "Long desc"
+    mock_slv.videoUrl = None
+    mock_slv.agentOutputDemoUrl = None
+    mock_slv.imageUrls = ["https://example.com/img.png"]
+    mock_slv.instructions = None
+    mock_slv.categories = ["productivity"]
+    mock_slv.version = 1
+    mock_slv.agentGraphId = GRAPH_ID
+    mock_slv.agentGraphVersion = GRAPH_VERSION
+    mock_slv.updatedAt = datetime(2026, 3, 24, tzinfo=timezone.utc)
+
+    mock_listing = MagicMock()
+    mock_listing.slug = "test-agent"
+    mock_listing.activeVersionId = SLV_ID
+    mock_listing.hasApprovedVersion = False
+    mock_listing.CreatorProfile = MagicMock(username="creator", avatarUrl="")
+    mock_slv.StoreListing = mock_listing
+
+    with patch(
+        "backend.api.features.store.db.prisma.models.StoreListingVersion.prisma",
+    ) as mock_slv_prisma:
+        mock_slv_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
+
+        result = await get_store_agent_details_as_admin(SLV_ID)
+
+    # Verify it queried StoreListingVersion (not StoreAgent)
+    mock_slv_prisma.return_value.find_unique.assert_awaited_once()
+    await_args = mock_slv_prisma.return_value.find_unique.await_args
+    assert await_args is not None
+    assert await_args.kwargs["where"] == {"id": SLV_ID}
+
+    # Verify the result has the right data
+    assert result.agent_name == "Test Agent"
+    assert result.agent_image == ["https://example.com/img.png"]
+    assert result.has_approved_version is False
+    assert result.runs == 0
+    assert result.rating == 0.0
+
+
+@pytest.mark.asyncio
+async def test_resolve_graph_admin_uses_get_graph_as_admin() -> None:
+    """resolve_graph_for_library(admin=True) must call get_graph_as_admin,
+    not get_graph. This is THE test that prevents the add-to-library bypass
+    from being accidentally reverted."""
+    from backend.api.features.library._add_to_library import resolve_graph_for_library
+
+    mock_slv = MagicMock()
+    mock_slv.AgentGraph = MagicMock(id=GRAPH_ID, version=GRAPH_VERSION)
+    mock_graph_model = MagicMock(name="GraphModel")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models"
+            ".StoreListingVersion.prisma",
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db"
+            ".get_graph_as_admin",
+            new_callable=AsyncMock,
+            return_value=mock_graph_model,
+        ) as mock_admin,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db.get_graph",
+            new_callable=AsyncMock,
+        ) as mock_regular,
+    ):
+        mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
+
+        result = await resolve_graph_for_library(SLV_ID, ADMIN_USER_ID, admin=True)
+
+    assert result is mock_graph_model
+    mock_admin.assert_awaited_once_with(
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id=ADMIN_USER_ID
     )
-    mocker.patch(
-        "backend.api.features.admin.store_admin_routes.store_db"
-        ".get_store_agent_details_as_admin",
-        return_value=mock_details,
+    mock_regular.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resolve_graph_regular_uses_get_graph() -> None:
+    """resolve_graph_for_library(admin=False) must call get_graph,
+    not get_graph_as_admin. Ensures the non-admin path is preserved."""
+    from backend.api.features.library._add_to_library import resolve_graph_for_library
+
+    mock_slv = MagicMock()
+    mock_slv.AgentGraph = MagicMock(id=GRAPH_ID, version=GRAPH_VERSION)
+    mock_graph_model = MagicMock(name="GraphModel")
+
+    with (
+        patch(
+            "backend.api.features.library._add_to_library.prisma.models"
+            ".StoreListingVersion.prisma",
+        ) as mock_prisma,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db"
+            ".get_graph_as_admin",
+            new_callable=AsyncMock,
+        ) as mock_admin,
+        patch(
+            "backend.api.features.library._add_to_library.graph_db.get_graph",
+            new_callable=AsyncMock,
+            return_value=mock_graph_model,
+        ) as mock_regular,
+    ):
+        mock_prisma.return_value.find_unique = AsyncMock(return_value=mock_slv)
+
+        result = await resolve_graph_for_library(SLV_ID, "regular-user-id", admin=False)
+
+    assert result is mock_graph_model
+    mock_regular.assert_awaited_once_with(
+        graph_id=GRAPH_ID, version=GRAPH_VERSION, user_id="regular-user-id"
     )
-
-    response = client.get(f"/admin/submissions/{SLV_ID}/preview")
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["agent_name"] == "Test Agent"
-    assert data["agent_image"] == ["https://example.com/img.png"]
-    assert data["categories"] == ["productivity"]
-    assert data["has_approved_version"] is False
-    assert data["runs"] == 0
-
-
-def test_admin_add_pending_agent_to_library(
-    mocker: pytest_mock.MockerFixture,
-    admin_user_id: str,
-) -> None:
-    """Admin should be able to add a pending agent to their library."""
-    mock_library_agent = MagicMock()
-    mock_library_agent.id = "lib-agent-id"
-    mock_library_agent.name = "Test Agent"
-
-    mocker.patch(
-        "backend.api.features.admin.store_admin_routes.library_db"
-        ".add_store_agent_to_library_as_admin",
-        new_callable=AsyncMock,
-        return_value=mock_library_agent,
-    )
-
-    response = client.post(f"/admin/submissions/{SLV_ID}/add-to-library")
-    assert response.status_code == 201
+    mock_admin.assert_not_awaited()
