@@ -10,6 +10,7 @@ interface Props {
   onClose: () => void;
   resetCost: number;
   resetMessage: string;
+  isWeeklyExhausted?: boolean;
 }
 
 function formatCents(cents: number): string {
@@ -21,6 +22,7 @@ export function RateLimitResetDialog({
   onClose,
   resetCost,
   resetMessage,
+  isWeeklyExhausted = false,
 }: Props) {
   const { resetUsage, isPending } = useResetRateLimit(onClose);
 
@@ -38,25 +40,34 @@ export function RateLimitResetDialog({
       <Dialog.Content>
         <div className="flex flex-col gap-3">
           <Text variant="body">{resetMessage}</Text>
-          <Text variant="body">
-            You can spend{" "}
-            <Text variant="body-medium" as="span">
-              {formatCents(resetCost)}
-            </Text>{" "}
-            in credits to reset your daily limit and continue working.
-          </Text>
+          {isWeeklyExhausted ? (
+            <Text variant="body">
+              Your weekly limit is also reached, so resetting the daily limit
+              won&apos;t help. Please wait for your limits to reset.
+            </Text>
+          ) : (
+            <Text variant="body">
+              You can spend{" "}
+              <Text variant="body-medium" as="span">
+                {formatCents(resetCost)}
+              </Text>{" "}
+              in credits to reset your daily limit and continue working.
+            </Text>
+          )}
         </div>
         <Dialog.Footer>
           <Button variant="secondary" onClick={onClose} disabled={isPending}>
-            Wait for reset
+            {isWeeklyExhausted ? "OK" : "Wait for reset"}
           </Button>
-          <Button
-            variant="primary"
-            onClick={() => resetUsage()}
-            loading={isPending}
-          >
-            Reset for {formatCents(resetCost)}
-          </Button>
+          {!isWeeklyExhausted && (
+            <Button
+              variant="primary"
+              onClick={() => resetUsage()}
+              loading={isPending}
+            >
+              Reset for {formatCents(resetCost)}
+            </Button>
+          )}
         </Dialog.Footer>
       </Dialog.Content>
     </Dialog>

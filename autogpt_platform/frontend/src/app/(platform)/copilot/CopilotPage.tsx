@@ -207,6 +207,11 @@ export function CopilotPage() {
         onClose={dismissRateLimit}
         resetCost={resetCost ?? 0}
         resetMessage={rateLimitMessage ?? ""}
+        isWeeklyExhausted={
+          hasUsage &&
+          usage.weekly.limit > 0 &&
+          usage.weekly.used >= usage.weekly.limit
+        }
       />
     </SidebarProvider>
   );
