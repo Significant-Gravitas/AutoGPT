@@ -53,9 +53,7 @@ class SardisPayBlock(Block):
 
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="APPROVED, BLOCKED, or ERROR")
-        tx_id: str = SchemaField(
-            description="Transaction ID if approved", default=""
-        )
+        tx_id: str = SchemaField(description="Transaction ID if approved", default="")
         message: str = SchemaField(description="Status message", default="")
         amount: float = SchemaField(description="Payment amount", default=0)
         error: str = SchemaField(description="Error message if failed", default="")
