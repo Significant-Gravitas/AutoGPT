@@ -1,4 +1,9 @@
-"""Spraay single token transfer block."""
+"""Spraay single token transfer block.
+
+This module provides the SpraayTokenTransferBlock, a simplified interface
+for sending a one-to-one crypto transfer on any supported chain. Ideal for
+agent-to-agent payments, tips, bounties, or individual payouts.
+"""
 
 import uuid
 from typing import Any
@@ -12,8 +17,7 @@ from .batch_payment import ChainNetwork
 
 
 class SpraayTokenTransferBlock(Block):
-    """
-    Send a single crypto token transfer on any supported chain.
+    """Send a single crypto token transfer on any supported chain.
 
     A simplified interface for one-to-one transfers. Under the hood, this uses
     the same Spraay batch infrastructure but optimized for single-recipient
@@ -21,6 +25,8 @@ class SpraayTokenTransferBlock(Block):
     """
 
     class Input(BlockSchema):
+        """Input schema for the single transfer block."""
+
         credentials: CredentialsMetaInput[Any, Any] = spraay_provider.credentials_field(
             description="Spraay API credentials",
         )
@@ -49,6 +55,8 @@ class SpraayTokenTransferBlock(Block):
         )
 
     class Output(BlockSchema):
+        """Output schema for the single transfer block."""
+
         transaction_hash: str = SchemaField(
             description="On-chain transaction hash",
         )
@@ -60,6 +68,7 @@ class SpraayTokenTransferBlock(Block):
         )
 
     def __init__(self):
+        """Initialize the SpraayTokenTransferBlock with metadata and test fixtures."""
         super().__init__(
             id="b2c3d4e5-f6a7-8901-bcde-f12345678901",
             description=(
@@ -103,6 +112,22 @@ class SpraayTokenTransferBlock(Block):
         amount: str,
         sender_address: str,
     ) -> dict:
+        """Execute a single token transfer via the Spraay gateway.
+
+        Args:
+            api_key: Spraay API key for authentication.
+            chain: Target blockchain network identifier.
+            token_address: Contract address of the token to transfer.
+            recipient: Wallet address of the payment recipient.
+            amount: Transfer amount in the token's smallest unit.
+            sender_address: Wallet address initiating the transfer.
+
+        Returns:
+            Dictionary containing transaction_hash and status.
+
+        Raises:
+            SpraayAPIError: If the gateway returns an error.
+        """
         return spraay_request(
             method="POST",
             endpoint="/v1/transfer/send",
@@ -117,6 +142,20 @@ class SpraayTokenTransferBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        """Execute the single transfer block.
+
+        Submits a one-to-one token transfer to the Spraay gateway and
+        yields the transaction hash and status on success, or an error
+        message on failure.
+
+        Args:
+            input_data: Validated input containing credentials, chain,
+                token address, recipient, amount, and sender address.
+            **kwargs: Additional keyword arguments passed by the executor.
+
+        Yields:
+            Output fields: transaction_hash, status, or error.
+        """
         try:
             api_key = input_data.credentials.api_key.get_secret_value()
 
