@@ -98,6 +98,8 @@ export function UsagePanelContent({
   const hasWeeklyLimit = usage.weekly.limit > 0;
   const isDailyExhausted =
     hasDailyLimit && usage.daily.used >= usage.daily.limit;
+  const isWeeklyExhausted =
+    hasWeeklyLimit && usage.weekly.used >= usage.weekly.limit;
   const resetCost = usage.reset_cost ?? 0;
 
   if (!hasDailyLimit && !hasWeeklyLimit) {
@@ -125,7 +127,9 @@ export function UsagePanelContent({
           resetsAt={usage.weekly.resets_at}
         />
       )}
-      {isDailyExhausted && resetCost > 0 && <ResetButton cost={resetCost} />}
+      {isDailyExhausted && !isWeeklyExhausted && resetCost > 0 && (
+        <ResetButton cost={resetCost} />
+      )}
       {showBillingLink && (
         <Link
           href="/profile/credits"

@@ -126,13 +126,17 @@ class TestResetCopilotUsage:
                 f"{_MODULE}.get_user_credit_model",
                 AsyncMock(return_value=mock_credit_model),
             ),
-            patch(f"{_MODULE}.reset_daily_usage", AsyncMock(return_value=True)),
-            patch(f"{_MODULE}.increment_daily_reset_count", AsyncMock()),
+            patch(
+                f"{_MODULE}.reset_daily_usage", AsyncMock(return_value=True)
+            ) as mock_reset,
+            patch(f"{_MODULE}.increment_daily_reset_count", AsyncMock()) as mock_incr,
         ):
             result = await reset_copilot_usage(user_id="user-1")
             assert result.success is True
             assert result.credits_charged == 500
             assert result.remaining_balance == 1500
+            mock_reset.assert_awaited_once()
+            mock_incr.assert_awaited_once()
 
     async def test_max_daily_resets_exceeded(self):
         """When user has exhausted daily resets, returns 429."""
