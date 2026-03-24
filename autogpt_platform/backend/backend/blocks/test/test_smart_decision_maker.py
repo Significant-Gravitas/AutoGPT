@@ -1207,3 +1207,80 @@ async def test_smart_decision_maker_agent_falls_back_to_graph_name():
     assert result["type"] == "function"
     assert result["function"]["name"] == "original_agent_name"  # Graph name cleaned
     assert result["function"]["_sink_node_id"] == "test-agent-node-id"
+
+
+@pytest.mark.asyncio
+async def test_smart_decision_maker_deduplicates_tool_names():
+    """Test that _create_tool_node_signatures deduplicates tool names.
+
+    When multiple blocks of the same type (and no custom name) are connected
+    to the SmartDecisionMaker, they would previously produce identical tool
+    names.  Anthropic (and potentially other providers) reject duplicate tool
+    names with HTTP 400.  The deduplication logic appends ``_2``, ``_3``, ...
+    to later occurrences so every tool name is unique.
+
+    Regression test for https://github.com/Significant-Gravitas/AutoGPT/issues/10761
+    """
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from backend.blocks.basic import StoreValueBlock
+    from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
+
+    store_block = StoreValueBlock()
+
+    # --- helpers to build fake DB responses --------------------------------
+    def _make_node(node_id: str, metadata: dict | None = None):
+        node = MagicMock()
+        node.id = node_id
+        node.block_id = store_block.id
+        node.block = store_block
+        node.metadata = metadata or {}
+        return node
+
+    def _make_link(source_id: str, sink_id: str, sink_name: str):
+        link = MagicMock()
+        link.source_id = source_id
+        link.source_name = "tools_^_some_tool"
+        link.sink_id = sink_id
+        link.sink_name = sink_name
+        return link
+
+    sdm_node_id = "sdm-node"
+    node_a = _make_node("node-a")  # No custom name -> "storevalueblock"
+    node_b = _make_node("node-b")  # No custom name -> "storevalueblock" (duplicate!)
+    node_c = _make_node("node-c")  # No custom name -> "storevalueblock" (triple!)
+
+    link_a = _make_link(sdm_node_id, "node-a", "input")
+    link_b = _make_link(sdm_node_id, "node-b", "input")
+    link_c = _make_link(sdm_node_id, "node-c", "input")
+
+    # Patch is_tool_pin to always return True for our test links
+    with patch(
+        "backend.blocks.smart_decision_maker.is_tool_pin", return_value=True
+    ):
+        mock_db_client = AsyncMock()
+        mock_db_client.get_connected_output_nodes.return_value = [
+            (link_a, node_a),
+            (link_b, node_b),
+            (link_c, node_c),
+        ]
+
+        with patch(
+            "backend.blocks.smart_decision_maker.get_database_manager_async_client",
+            return_value=mock_db_client,
+        ):
+            tool_functions = await SmartDecisionMakerBlock._create_tool_node_signatures(
+                sdm_node_id
+            )
+
+    # All three should be present
+    assert len(tool_functions) == 3
+
+    names = [tf["function"]["name"] for tf in tool_functions]
+    # First keeps the original name, subsequent ones get _2, _3
+    assert names[0] == "storevalueblock"
+    assert names[1] == "storevalueblock_2"
+    assert names[2] == "storevalueblock_3"
+
+    # Verify all names are unique (the core requirement)
+    assert len(set(names)) == len(names), f"Tool names are not unique: {names}"

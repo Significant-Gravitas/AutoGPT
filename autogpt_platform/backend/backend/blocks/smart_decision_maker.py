@@ -632,6 +632,20 @@ class SmartDecisionMakerBlock(Block):
                 )
                 return_tool_functions.append(tool_func)
 
+        # Deduplicate tool names to avoid API errors (e.g. Anthropic rejects
+        # duplicate tool names).  When multiple tools share the same cleaned
+        # name we append ``_2``, ``_3``, ... to the later occurrences so that
+        # every name stays unique and deterministic.
+        seen_names: dict[str, int] = {}
+        for tool_func in return_tool_functions:
+            name = tool_func["function"]["name"]
+            if name in seen_names:
+                seen_names[name] += 1
+                new_name = f"{name}_{seen_names[name]}"
+                tool_func["function"]["name"] = new_name
+            else:
+                seen_names[name] = 1
+
         return return_tool_functions
 
     async def _attempt_llm_call_with_validation(
