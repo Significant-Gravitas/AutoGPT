@@ -949,15 +949,7 @@ async def llm_call(
                 completion_tokens=resp.usage.output_tokens,
                 reasoning=reasoning,
             )
-        except anthropic.APIStatusError as e:
-            error_message = f"Anthropic API error: {str(e)}"
-            if e.status_code in USER_ERROR_STATUS_CODES:
-                logger.warning(error_message)
-            else:
-                logger.error(error_message)
-            raise
-        except anthropic.APIError as e:
-            logger.error(f"Anthropic API error: {str(e)}")
+        except anthropic.APIError:
             raise
     elif provider == "groq":
         if tools:

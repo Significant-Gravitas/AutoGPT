@@ -1,5 +1,8 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anthropic
+import httpx
+import openai
 import pytest
 
 from backend.data.model import NodeExecutionStats
@@ -655,3 +658,152 @@ class TestAITextSummarizerValidation:
         error_message = str(exc_info.value)
         assert "Expected a string summary" in error_message
         assert "received dict" in error_message
+
+
+def _make_anthropic_status_error(status_code: int) -> anthropic.APIStatusError:
+    """Create an anthropic.APIStatusError with the given status code."""
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    response = httpx.Response(status_code, request=request)
+    return anthropic.APIStatusError(
+        f"Error code: {status_code}", response=response, body=None
+    )
+
+
+def _make_openai_status_error(status_code: int) -> openai.APIStatusError:
+    """Create an openai.APIStatusError with the given status code."""
+    response = httpx.Response(
+        status_code, request=httpx.Request("POST", "https://api.openai.com/v1/chat")
+    )
+    return openai.APIStatusError(
+        f"Error code: {status_code}", response=response, body=None
+    )
+
+
+class TestUserErrorStatusCodeHandling:
+    """Test that user-caused LLM API errors (401/403/429) break the retry loop
+    and are logged as warnings, while server errors (500) trigger retries."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [401, 403, 429])
+    async def test_anthropic_user_error_breaks_retry_loop(self, status_code: int):
+        """401/403/429 Anthropic errors should break immediately, not retry."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise _make_anthropic_status_error(status_code)
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test",
+            expected_format={"key": "desc"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=3,
+        )
+
+        with pytest.raises(RuntimeError):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert (
+            call_count == 1
+        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status_code", [401, 403, 429])
+    async def test_openai_user_error_breaks_retry_loop(self, status_code: int):
+        """401/403/429 OpenAI errors should break immediately, not retry."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise _make_openai_status_error(status_code)
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test",
+            expected_format={"key": "desc"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=3,
+        )
+
+        with pytest.raises(RuntimeError):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert (
+            call_count == 1
+        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+
+    @pytest.mark.asyncio
+    async def test_server_error_retries(self):
+        """500 errors should be retried (not break immediately)."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise _make_anthropic_status_error(500)
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test",
+            expected_format={"key": "desc"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=3,
+        )
+
+        with pytest.raises(RuntimeError):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        assert (
+            call_count > 1
+        ), f"Expected multiple retry attempts for 500, got {call_count}"
+
+    @pytest.mark.asyncio
+    async def test_user_error_logs_warning_not_exception(self):
+        """User-caused errors should log with logger.warning, not logger.exception."""
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+
+        async def mock_llm_call(*args, **kwargs):
+            raise _make_anthropic_status_error(401)
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test",
+            expected_format={"key": "desc"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+        )
+
+        with (
+            patch.object(llm.logger, "warning") as mock_warning,
+            patch.object(llm.logger, "exception") as mock_exception,
+            pytest.raises(RuntimeError),
+        ):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        mock_warning.assert_called_once()
+        mock_exception.assert_not_called()
