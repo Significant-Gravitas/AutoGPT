@@ -946,10 +946,16 @@ async def llm_call(
                 completion_tokens=resp.usage.output_tokens,
                 reasoning=reasoning,
             )
-        except anthropic.APIError as e:
+        except anthropic.APIStatusError as e:
             error_message = f"Anthropic API error: {str(e)}"
-            logger.error(error_message)
-            raise ValueError(error_message)
+            if e.status_code in (401, 403, 429):
+                logger.warning(error_message)
+            else:
+                logger.error(error_message)
+            raise
+        except anthropic.APIError as e:
+            logger.error(f"Anthropic API error: {str(e)}")
+            raise
     elif provider == "groq":
         if tools:
             raise ValueError("Groq does not support tools.")
@@ -1462,7 +1468,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
-                logger.exception(f"Error calling LLM: {e}")
+                if isinstance(
+                    e, (anthropic.APIStatusError, openai.APIStatusError)
+                ) and e.status_code in (401, 403, 429):
+                    logger.warning(f"Error calling LLM: {e}")
+                else:
+                    logger.exception(f"Error calling LLM: {e}")
                 if (
                     "maximum context length" in str(e).lower()
                     or "token limit" in str(e).lower()
