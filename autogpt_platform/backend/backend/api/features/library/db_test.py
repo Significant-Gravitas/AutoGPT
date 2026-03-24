@@ -155,6 +155,8 @@ async def test_add_agent_to_library(mocker):
         "backend.api.features.library._add_to_library.graph_db"
     )
     mock_graph_model = mocker.Mock()
+    mock_graph_model.id = "agent1"
+    mock_graph_model.version = 1
     mock_graph_model.nodes = (
         []
     )  # Empty list so _has_human_in_the_loop_blocks returns False
