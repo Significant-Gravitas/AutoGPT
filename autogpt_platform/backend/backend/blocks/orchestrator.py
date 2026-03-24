@@ -1205,17 +1205,22 @@ class OrchestratorBlock(Block):
                 "additional tool calls."
             )
 
-        loop_result = ToolCallLoopResult(response_text="", messages=current_prompt)
-        async for loop_result in tool_call_loop(
-            messages=current_prompt,
-            tools=tool_functions,
-            llm_call=bound_llm_caller,
-            execute_tool=bound_tool_executor,
-            update_conversation=bound_conversation_updater,
-            max_iterations=max_iterations,
-            last_iteration_message=last_iter_msg,
-        ):
-            pass  # Drain the generator; final result is in loop_result
+        try:
+            loop_result = ToolCallLoopResult(response_text="", messages=current_prompt)
+            async for loop_result in tool_call_loop(
+                messages=current_prompt,
+                tools=tool_functions,
+                llm_call=bound_llm_caller,
+                execute_tool=bound_tool_executor,
+                update_conversation=bound_conversation_updater,
+                max_iterations=max_iterations,
+                last_iteration_message=last_iter_msg,
+            ):
+                pass  # Drain the generator; final result is in loop_result
+        except ValueError as e:
+            # Validation errors (e.g. bad tool args) are user-facing
+            yield "error", str(e)
+            return
 
         yield "finished", loop_result.response_text
         yield "conversations", loop_result.messages
