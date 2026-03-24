@@ -26,7 +26,7 @@ These are NON-NEGOTIABLE. Every test run MUST satisfy ALL of the following:
 - Push ALL screenshots to a temp branch `test-screenshots/pr-{N}`
 - Post a PR comment with ALL screenshots embedded inline using GitHub raw URLs
 - This is NOT optional — every test run MUST end with a PR comment containing screenshots
-- If screenshot upload fails, retry. If it still fails, attach base64-encoded images directly in the comment
+- If screenshot upload fails, retry. If it still fails, list failed files and require manual drag-and-drop/paste attachment in the PR comment
 
 ### 3. State Verification with Before/After Evidence
 - For EVERY state-changing operation (API call, user action), capture the state BEFORE and AFTER
@@ -655,7 +655,7 @@ rm -f "$COMMENT_FILE"
 
 **The PR comment MUST include:**
 1. A summary table of all scenarios with PASS/FAIL and before/after API evidence
-2. Every screenshot rendered inline (not just linked)
+2. Every successfully uploaded screenshot rendered inline; any failed uploads listed with manual attachment instructions
 3. A 1-2 sentence explanation below each screenshot describing what it proves
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
