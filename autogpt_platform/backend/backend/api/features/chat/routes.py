@@ -30,8 +30,12 @@ from backend.copilot.model import (
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
+    acquire_reset_lock,
     check_rate_limit,
+    get_daily_reset_count,
     get_usage_status,
+    increment_daily_reset_count,
+    release_reset_lock,
     reset_daily_usage,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
@@ -60,9 +64,10 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import get_or_create_workspace
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 
 config = ChatConfig()
 
@@ -461,40 +466,62 @@ async def reset_copilot_usage(
             detail="Rate limit reset is not available.",
         )
 
-    # Verify the user is actually at or over their daily limit.
-    status = await get_usage_status(
-        user_id=user_id,
-        daily_token_limit=config.daily_token_limit,
-        weekly_token_limit=config.weekly_token_limit,
-    )
-    if config.daily_token_limit > 0 and status.daily.used < config.daily_token_limit:
+    # Check max daily resets.
+    if config.max_daily_resets > 0:
+        reset_count = await get_daily_reset_count(user_id)
+        if reset_count >= config.max_daily_resets:
+            raise HTTPException(
+                status_code=429,
+                detail=f"You've used all {config.max_daily_resets} resets for today.",
+            )
+
+    # Acquire a per-user lock to prevent TOCTOU races (concurrent resets).
+    if not await acquire_reset_lock(user_id):
         raise HTTPException(
-            status_code=400,
-            detail="You have not reached your daily limit yet.",
+            status_code=429,
+            detail="A reset is already in progress. Please try again.",
         )
 
-    # Charge credits.
-    from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
-
-    credit_model = await get_user_credit_model(user_id)
     try:
-        remaining = await credit_model.spend_credits(
+        # Verify the user is actually at or over their daily limit.
+        usage_status = await get_usage_status(
             user_id=user_id,
-            cost=cost,
-            metadata=UsageTransactionMetadata(
-                reason="CoPilot daily rate limit reset",
-            ),
+            daily_token_limit=config.daily_token_limit,
+            weekly_token_limit=config.weekly_token_limit,
         )
-    except Exception as e:
-        if "insufficient" in str(e).lower():
+        if (
+            config.daily_token_limit > 0
+            and usage_status.daily.used < config.daily_token_limit
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="You have not reached your daily limit yet.",
+            )
+
+        # Charge credits.
+        credit_model = await get_user_credit_model(user_id)
+        try:
+            remaining = await credit_model.spend_credits(
+                user_id=user_id,
+                cost=cost,
+                metadata=UsageTransactionMetadata(
+                    reason="CoPilot daily rate limit reset",
+                ),
+            )
+        except InsufficientBalanceError as e:
             raise HTTPException(
                 status_code=402,
                 detail="Insufficient credits to reset your rate limit.",
             ) from e
-        raise
 
-    # Reset daily usage in Redis.
-    await reset_daily_usage(user_id)
+        # Reset daily usage in Redis (fail-open: if Redis is down, the user
+        # still paid — we log the failure but don't raise).
+        await reset_daily_usage(user_id)
+
+        # Track the reset count for daily cap enforcement.
+        await increment_daily_reset_count(user_id)
+    finally:
+        await release_reset_lock(user_id)
 
     # Return updated usage status.
     updated_usage = await get_usage_status(

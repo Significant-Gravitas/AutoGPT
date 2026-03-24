@@ -1,0 +1,36 @@
+import {
+  usePostV2ResetCopilotUsage,
+  getGetV2GetCopilotUsageQueryKey,
+} from "@/app/api/__generated__/endpoints/chat/chat";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+
+export function useResetRateLimit(onSuccess?: () => void) {
+  const queryClient = useQueryClient();
+  const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetCopilotUsageQueryKey(),
+        });
+        toast({
+          title: "Rate limit reset",
+          description:
+            "Your daily usage limit has been reset. You can continue working.",
+        });
+        onSuccess?.();
+      },
+      onError: (error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to reset limit.";
+        toast({
+          title: "Reset failed",
+          description: message,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  return { resetUsage, isPending };
+}

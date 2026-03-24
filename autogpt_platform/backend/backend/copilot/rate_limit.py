@@ -147,19 +147,73 @@ async def check_rate_limit(
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
 
 
-async def reset_daily_usage(user_id: str) -> None:
+async def reset_daily_usage(user_id: str) -> bool:
     """Reset a user's daily token usage counter in Redis.
 
     Called after a user pays credits to extend their daily limit.
+    Fails open: returns False if Redis is unavailable (consistent with
+    the fail-open design of this module).
     """
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
         await redis.delete(_daily_key(user_id, now=now))
         logger.info("Reset daily usage for user %s", user_id[:8])
+        return True
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting daily usage")
-        raise
+        return False
+
+
+_RESET_LOCK_PREFIX = "copilot:reset_lock"
+_RESET_COUNT_PREFIX = "copilot:reset_count"
+
+
+async def acquire_reset_lock(user_id: str, ttl_seconds: int = 10) -> bool:
+    """Acquire a short-lived lock to serialize rate limit resets per user."""
+    try:
+        redis = await get_redis_async()
+        key = f"{_RESET_LOCK_PREFIX}:{user_id}"
+        return bool(await redis.set(key, "1", nx=True, ex=ttl_seconds))
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for reset lock, allowing reset")
+        return True
+
+
+async def release_reset_lock(user_id: str) -> None:
+    """Release the per-user reset lock."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(f"{_RESET_LOCK_PREFIX}:{user_id}")
+    except (RedisError, ConnectionError, OSError):
+        pass  # Lock will expire via TTL
+
+
+async def get_daily_reset_count(user_id: str) -> int:
+    """Get how many times the user has reset today."""
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
+        val = await redis.get(key)
+        return int(val or 0)
+    except (RedisError, ConnectionError, OSError):
+        return 0
+
+
+async def increment_daily_reset_count(user_id: str) -> None:
+    """Increment and track how many resets this user has done today."""
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
+        pipe = redis.pipeline(transaction=False)
+        pipe.incr(key)
+        seconds_until_reset = int((_daily_reset_time(now=now) - now).total_seconds())
+        pipe.expire(key, max(seconds_until_reset, 1))
+        await pipe.execute()
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for tracking reset count")
 
 
 async def record_token_usage(

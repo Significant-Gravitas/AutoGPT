@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  usePostV2ResetCopilotUsage,
-  getGetV2GetCopilotUsageQueryKey,
-} from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { useQueryClient } from "@tanstack/react-query";
+import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 interface Props {
   isOpen: boolean;
@@ -27,31 +22,7 @@ export function RateLimitResetDialog({
   resetCost,
   resetMessage,
 }: Props) {
-  const queryClient = useQueryClient();
-  const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: getGetV2GetCopilotUsageQueryKey(),
-        });
-        toast({
-          title: "Rate limit reset",
-          description:
-            "Your daily usage limit has been reset. You can continue working.",
-        });
-        onClose();
-      },
-      onError: (error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to reset limit.";
-        toast({
-          title: "Reset failed",
-          description: message,
-          variant: "destructive",
-        });
-      },
-    },
-  });
+  const { resetUsage, isPending } = useResetRateLimit(onClose);
 
   return (
     <Dialog

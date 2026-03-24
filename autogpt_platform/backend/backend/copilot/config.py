@@ -98,6 +98,10 @@ class ChatConfig(BaseSettings):
         default=200,
         description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
     )
+    max_daily_resets: int = Field(
+        default=5,
+        description="Maximum number of credit-based rate limit resets per user per day. 0 = unlimited.",
+    )
 
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
