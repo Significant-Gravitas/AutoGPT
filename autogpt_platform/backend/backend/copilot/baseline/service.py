@@ -100,71 +100,75 @@ async def _baseline_llm_caller(
     """
     state.pending_events.append(StreamStartStep())
 
-    client = _get_openai_client()
-    typed_messages = cast(list[ChatCompletionMessageParam], messages)
-    if tools:
-        typed_tools = cast(list[ChatCompletionToolParam], tools)
-        response = await client.chat.completions.create(
-            model=config.model,
-            messages=typed_messages,
-            tools=typed_tools,
-            stream=True,
-            stream_options={"include_usage": True},
-        )
-    else:
-        response = await client.chat.completions.create(
-            model=config.model,
-            messages=typed_messages,
-            stream=True,
-            stream_options={"include_usage": True},
-        )
-
-    round_text = ""
-    tool_calls_by_index: dict[int, dict[str, str]] = {}
-
-    async for chunk in response:
-        if chunk.usage:
-            state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-            state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-
-        delta = chunk.choices[0].delta if chunk.choices else None
-        if not delta:
-            continue
-
-        if delta.content:
-            if not state.text_started:
-                state.pending_events.append(StreamTextStart(id=state.text_block_id))
-                state.text_started = True
-            round_text += delta.content
-            state.pending_events.append(
-                StreamTextDelta(id=state.text_block_id, delta=delta.content)
+    try:
+        client = _get_openai_client()
+        typed_messages = cast(list[ChatCompletionMessageParam], messages)
+        if tools:
+            typed_tools = cast(list[ChatCompletionToolParam], tools)
+            response = await client.chat.completions.create(
+                model=config.model,
+                messages=typed_messages,
+                tools=typed_tools,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+        else:
+            response = await client.chat.completions.create(
+                model=config.model,
+                messages=typed_messages,
+                stream=True,
+                stream_options={"include_usage": True},
             )
 
-        if delta.tool_calls:
-            for tc in delta.tool_calls:
-                idx = tc.index
-                if idx not in tool_calls_by_index:
-                    tool_calls_by_index[idx] = {
-                        "id": "",
-                        "name": "",
-                        "arguments": "",
-                    }
-                entry = tool_calls_by_index[idx]
-                if tc.id:
-                    entry["id"] = tc.id
-                if tc.function and tc.function.name:
-                    entry["name"] = tc.function.name
-                if tc.function and tc.function.arguments:
-                    entry["arguments"] += tc.function.arguments
+        round_text = ""
+        tool_calls_by_index: dict[int, dict[str, str]] = {}
 
-    # Close text block
-    if state.text_started:
-        state.pending_events.append(StreamTextEnd(id=state.text_block_id))
-        state.text_started = False
-        state.text_block_id = str(uuid.uuid4())
+        async for chunk in response:
+            if chunk.usage:
+                state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                state.turn_completion_tokens += chunk.usage.completion_tokens or 0
 
-    state.assistant_text += round_text
-    state.pending_events.append(StreamFinishStep())
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if not delta:
+                continue
+
+            if delta.content:
+                if not state.text_started:
+                    state.pending_events.append(StreamTextStart(id=state.text_block_id))
+                    state.text_started = True
+                round_text += delta.content
+                state.pending_events.append(
+                    StreamTextDelta(id=state.text_block_id, delta=delta.content)
+                )
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_by_index:
+                        tool_calls_by_index[idx] = {
+                            "id": "",
+                            "name": "",
+                            "arguments": "",
+                        }
+                    entry = tool_calls_by_index[idx]
+                    if tc.id:
+                        entry["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        entry["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        entry["arguments"] += tc.function.arguments
+
+        # Close text block
+        if state.text_started:
+            state.pending_events.append(StreamTextEnd(id=state.text_block_id))
+            state.text_started = False
+            state.text_block_id = str(uuid.uuid4())
+
+        state.assistant_text += round_text
+    finally:
+        # Always emit StreamFinishStep to match the StreamStartStep,
+        # even if an exception occurred during streaming.
+        state.pending_events.append(StreamFinishStep())
 
     # Convert to shared format
     llm_tool_calls = [
