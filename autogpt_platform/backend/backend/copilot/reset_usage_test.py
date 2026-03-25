@@ -44,6 +44,13 @@ def _usage(daily_used: int = 3_000_000, daily_limit: int = 2_500_000):
 _MODULE = "backend.api.features.chat.routes"
 
 
+def _mock_settings(enable_credit: bool = True):
+    """Return a mock Settings object with the given enable_credit flag."""
+    mock = MagicMock()
+    mock.config.enable_credit = enable_credit
+    return mock
+
+
 @pytest.mark.asyncio
 class TestResetCopilotUsage:
     async def test_feature_disabled_returns_400(self):
@@ -58,7 +65,10 @@ class TestResetCopilotUsage:
     async def test_no_daily_limit_returns_400(self):
         """When daily_token_limit=0 (unlimited), endpoint returns 400."""
 
-        with patch(f"{_MODULE}.config", _make_config(daily_token_limit=0)):
+        with (
+            patch(f"{_MODULE}.config", _make_config(daily_token_limit=0)),
+            patch(f"{_MODULE}.settings", _mock_settings()),
+        ):
             with pytest.raises(HTTPException) as exc_info:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 400
@@ -70,6 +80,7 @@ class TestResetCopilotUsage:
         cfg = _make_config()
         with (
             patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
@@ -98,6 +109,7 @@ class TestResetCopilotUsage:
         cfg = _make_config()
         with (
             patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
@@ -126,6 +138,7 @@ class TestResetCopilotUsage:
 
         with (
             patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
@@ -155,11 +168,24 @@ class TestResetCopilotUsage:
         cfg = _make_config(max_daily_resets=3)
         with (
             patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=3)),
         ):
             with pytest.raises(HTTPException) as exc_info:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 429
+
+    async def test_credit_system_disabled_returns_400(self):
+        """When enable_credit=False, endpoint returns 400."""
+
+        with (
+            patch(f"{_MODULE}.config", _make_config()),
+            patch(f"{_MODULE}.settings", _mock_settings(enable_credit=False)),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await reset_copilot_usage(user_id="user-1")
+            assert exc_info.value.status_code == 400
+            assert "credit system is disabled" in exc_info.value.detail.lower()
 
     async def test_weekly_limit_exhausted_returns_400(self):
         """When the weekly limit is also exhausted, resetting daily won't help."""
@@ -179,6 +205,7 @@ class TestResetCopilotUsage:
         )
         with (
             patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
             patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,

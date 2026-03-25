@@ -68,6 +68,9 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.settings import Settings
+
+settings = Settings()
 
 config = ChatConfig()
 
@@ -473,6 +476,12 @@ async def reset_copilot_usage(
         raise HTTPException(
             status_code=400,
             detail="Rate limit reset is not available.",
+        )
+
+    if not settings.config.enable_credit:
+        raise HTTPException(
+            status_code=400,
+            detail="Rate limit reset is not available (credit system is disabled).",
         )
 
     if config.daily_token_limit <= 0:
