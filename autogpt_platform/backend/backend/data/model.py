@@ -312,6 +312,15 @@ def SchemaField(
     )  # type: ignore
 
 
+# SDK default credentials use IDs like "{provider}-default" (set in sdk/builder.py).
+# They must never be exposed to users via the API.
+SDK_DEFAULT_SUFFIX = "-default"
+
+
+def is_sdk_default(cred_id: str) -> bool:
+    return cred_id.endswith(SDK_DEFAULT_SUFFIX)
+
+
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
@@ -888,6 +897,10 @@ class GraphExecutionStats(BaseModel):
     correctness_score: Optional[float] = Field(
         default=None,
         description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
+    )
+    is_dry_run: bool = Field(
+        default=False,
+        description="Whether this execution was a dry-run simulation",
     )
 
 

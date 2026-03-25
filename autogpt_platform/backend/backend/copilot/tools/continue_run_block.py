@@ -119,8 +119,11 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         logger.info(
-            f"Continuing block {block.name} ({block_id}) for user {user_id} "
-            f"with review_id={review_id}"
+            "Continuing block %s (%s) for user %s with review_id=%s",
+            block.name,
+            block_id,
+            user_id,
+            review_id,
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
@@ -132,6 +135,9 @@ class ContinueRunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
+        # dry_run=False is safe here: run_block's dry-run fast-path (line ~241)
+        # skips HITL entirely, so continue_run_block is never called during a
+        # dry run — only real executions reach the human review gate.
         result = await execute_block(
             block=block,
             block_id=block_id,
@@ -140,6 +146,7 @@ class ContinueRunBlockTool(BaseTool):
             session_id=session_id,
             node_exec_id=review_id,
             matched_credentials=matched_creds,
+            dry_run=False,
         )
 
         # Delete review record after successful execution (one-time use)
