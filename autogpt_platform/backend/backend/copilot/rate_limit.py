@@ -20,17 +20,6 @@ logger = logging.getLogger(__name__)
 # Redis key prefixes
 _USAGE_KEY_PREFIX = "copilot:usage"
 
-# Lua script: atomically decrement a key by N, flooring at 0.
-# Avoids the DECRBY-then-SET race with concurrent INCRBY.
-_DECRBY_FLOOR_ZERO_LUA = """
-local cur = tonumber(redis.call('GET', KEYS[1]) or 0)
-local dec = tonumber(ARGV[1])
-local nv = cur - dec
-if nv < 0 then nv = 0 end
-redis.call('SET', KEYS[1], nv, 'KEEPTTL')
-return nv
-"""
-
 
 class UsageWindow(BaseModel):
     """Usage within a single time window."""
@@ -180,18 +169,15 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
         redis = await get_redis_async()
         await redis.delete(_daily_key(user_id, now=now))
 
-        # Reduce weekly usage by one day's worth of capacity atomically.
-        # Uses a Lua script to DECRBY and floor at 0 in a single atomic
-        # operation, avoiding races with concurrent INCRBY from
-        # record_token_usage().
+        # Reduce weekly usage by one day's worth of capacity.
+        # DECRBY is not perfectly atomic with concurrent INCRBY, but this
+        # is acceptable: rate limits are approximate, and resets are rare
+        # (user pays $5). A negative result is clamped to 0.
         if daily_token_limit > 0:
             w_key = _weekly_key(user_id, now=now)
-            await redis.eval(  # type: ignore[misc]  # redis-py async stubs
-                _DECRBY_FLOOR_ZERO_LUA,
-                1,
-                w_key,
-                str(daily_token_limit),
-            )
+            new_val = await redis.decrby(w_key, daily_token_limit)
+            if new_val < 0:
+                await redis.set(w_key, 0, keepttl=True)
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True

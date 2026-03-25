@@ -355,10 +355,10 @@ class TestResetDailyUsage:
         mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_reduces_weekly_usage_via_lua_script(self):
-        """Weekly counter should be atomically reduced via Lua eval."""
+    async def test_reduces_weekly_usage_via_decrby(self):
+        """Weekly counter should be reduced via DECRBY."""
         mock_redis = AsyncMock()
-        mock_redis.eval = AsyncMock(return_value=35000)
+        mock_redis.decrby = AsyncMock(return_value=35000)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -366,11 +366,23 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=10000)
 
-        mock_redis.eval.assert_called_once()
-        call_args = mock_redis.eval.call_args
-        # eval(script, numkeys, key, amount)
-        assert call_args.args[2] is not None  # weekly key
-        assert call_args.args[3] == "10000"  # decrement amount as string
+        mock_redis.decrby.assert_called_once()
+        mock_redis.set.assert_not_called()  # 35000 > 0, no clamp needed
+
+    @pytest.mark.asyncio
+    async def test_clamps_negative_weekly_to_zero(self):
+        """If DECRBY goes negative, SET to 0."""
+        mock_redis = AsyncMock()
+        mock_redis.decrby = AsyncMock(return_value=-5000)
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        mock_redis.decrby.assert_called_once()
+        mock_redis.set.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_no_weekly_reduction_when_daily_limit_zero(self):
@@ -383,9 +395,8 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=0)
 
-        # Should only delete daily key, not call eval for weekly
         mock_redis.delete.assert_called_once()
-        mock_redis.eval.assert_not_called()
+        mock_redis.decrby.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_false_when_redis_unavailable(self):
