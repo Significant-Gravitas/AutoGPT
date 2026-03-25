@@ -184,7 +184,7 @@ def _build_storage_supplement(
 
 ### Shell & filesystem
 - The SDK built-in Bash tool is NOT available. Use `bash_exec` for shell commands ({sandbox_type}). Working dir: `{working_dir}`
-- SDK file tools (Read/Write/Edit/Glob/Grep) and `bash_exec` share one filesystem — use relative or absolute paths under this dir.
+- SDK file tools (Write/Edit/Glob/Grep) and `bash_exec` share one filesystem — use relative or absolute paths under this dir. (`Read` also accesses host-side SDK tool-result files.)
 - `read_workspace_file`/`write_workspace_file` operate on **persistent cloud workspace storage** (separate from the working dir).
 
 ### Two storage systems — CRITICAL to understand
