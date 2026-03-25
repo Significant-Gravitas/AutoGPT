@@ -609,9 +609,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
 _READ_TOOL_NAME = "Read"
 _READ_TOOL_DESCRIPTION = (
     "Read a file from the local filesystem. "
-    "Use offset and limit to read specific line ranges for large files. "
-    "Use this tool (NOT bash_exec) to read SDK tool-result files under "
-    "~/.claude/projects/.../tool-results/."
+    "Use offset and limit to read specific line ranges for large files."
 )
 _READ_TOOL_SCHEMA = {
     "type": "object",

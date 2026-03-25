@@ -44,8 +44,7 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after timeout (default 30s, max 120s). "
-            "CANNOT read SDK tool-result files (~/.claude/projects/...); use Read instead."
+            "Killed after timeout (default 30s, max 120s)."
         )
 
     @property
