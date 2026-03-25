@@ -76,7 +76,7 @@ export function RateLimitResetDialog({
             </Text>
           )}
         </div>
-        <Dialog.Footer>
+        <Dialog.Footer className="!justify-center">
           <Button variant="secondary" onClick={onClose} disabled={isPending}>
             {cannotReset ? "OK" : "Wait for reset"}
           </Button>
