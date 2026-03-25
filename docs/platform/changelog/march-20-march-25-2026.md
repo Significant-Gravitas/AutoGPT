@@ -55,7 +55,6 @@ The marketplace continues to get cleaner and easier to browse. Card descriptions
 * Added DB_STATEMENT_CACHE_SIZE env var for Prisma engine tuning [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12521)
 * Bumped stagehand ^0.5.1 → ^3.4.0 to fix yanked litellm dependency [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12539)
 * Registered AutoPilot sessions with stream registry for SSE updates [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12500)
-* Prevented logging of sensitive data in SafeJson fallback [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12547)
 * Allowed /tmp as valid path in E2B sandbox file tools [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12501)
 
 </details>
