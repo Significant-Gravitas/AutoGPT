@@ -344,6 +344,7 @@ class TestResetDailyUsage:
     @pytest.mark.asyncio
     async def test_deletes_daily_key(self):
         mock_redis = AsyncMock()
+        mock_redis.decrby = AsyncMock(return_value=0)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
