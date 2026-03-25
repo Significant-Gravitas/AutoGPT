@@ -1370,10 +1370,11 @@ class OrchestratorBlock(Block):
         # because a user may select an Anthropic model but route through OpenRouter.
         provider = credentials.provider
         if not credentials.api_key:
-            raise ValueError(
+            yield "error", (
                 "SDK mode requires direct API credentials and does not support "
                 "subscription mode. Please provide an Anthropic or OpenRouter API key."
             )
+            return
         api_key = credentials.api_key.get_secret_value()
         if provider == "open_router":
             # Route through OpenRouter proxy: set base URL + auth token,
