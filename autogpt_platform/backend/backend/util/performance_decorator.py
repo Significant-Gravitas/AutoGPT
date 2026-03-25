@@ -10,8 +10,6 @@ Provides comprehensive performance measurement capabilities for blocks including
 - Metrics logging and collection
 """
 
-import asyncio
-import functools
 import inspect
 import json
 import logging
@@ -76,7 +74,7 @@ def measure_block_performance(
                 try:
                     if len(args) > 1 and hasattr(args[1], 'dict'):
                         input_size = len(json.dumps(args[1].dict()).encode())
-                except:
+                except Exception:
                     input_size = 0
             
             success = True
@@ -147,17 +145,19 @@ def measure_block_performance(
                         f"Score={performance_score:.1f}/100"
                     )
                 
-                # Store metrics for analytics
-                if hasattr(args[0], '_performance_metrics'):
-                    args[0]._performance_metrics.append(metrics)
+                # Store metrics in block instance if available
+                instance = args[0]
+                if hasattr(instance, '_performance_metrics'):
+                    instance._performance_metrics.append(metrics)
                 elif hasattr(args[0], '__self__') and hasattr(args[0].__self__, '_performance_metrics'):
                     args[0].__self__._performance_metrics.append(metrics)
         
-        @functools.wraps(func)
+        @wraps(func)
         def sync_wrapper(*args, **kwargs) -> Any:
             start_time = time.time()
             start_cpu = os.times()[0] + os.times()[1]
             
+            # Start memory tracking if requested
             if track_memory:
                 tracemalloc.start()
             
@@ -166,7 +166,7 @@ def measure_block_performance(
                 try:
                     if len(args) > 1 and hasattr(args[1], 'dict'):
                         input_size = len(json.dumps(args[1].dict()).encode())
-                except:
+                except Exception:
                     input_size = 0
             
             success = True

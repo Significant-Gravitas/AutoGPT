@@ -14,7 +14,6 @@ from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSche
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput, SchemaField
 from backend.blocks.helpers.http import GetRequest
 from backend.integrations.providers import ProviderName
-from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 from backend.util.performance_decorator import measure_block_performance
 

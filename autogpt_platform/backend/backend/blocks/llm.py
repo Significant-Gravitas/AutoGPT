@@ -6,7 +6,7 @@ import secrets
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from typing import Any, Iterable, List, Literal, NamedTuple, Optional
+from typing import Any, Dict, Iterable, List, Literal, NamedTuple, Optional
 
 import anthropic
 import ollama
@@ -2394,39 +2394,41 @@ Please provide a helpful response based on the context provided above."""
             )
             
             # Step 3: Get model configuration
-            model_info = get_model_info(input_data.model, credentials.provider)
+            from backend.blocks.llm import LlmModel
+            model_metadata = LlmModel[input_data.model].metadata
             
             # Step 4: Prepare messages
             messages = [{"role": "user", "content": final_prompt}]
             
             # Step 5: Call the LLM
-            if model_info.provider == ProviderName.ANTHROPIC:
+            if model_metadata.provider == ProviderName.ANTHROPIC:
                 response = await self._call_anthropic(
                     messages=messages,
-                    model=model_info,
+                    model=model_metadata,
                     temperature=input_data.temperature,
                     credentials=credentials,
                     include_reasoning=input_data.include_reasoning,
                 )
-            elif model_info.provider == ProviderName.OPENAI:
+            elif model_metadata.provider == ProviderName.OPENAI:
                 response = await self._call_openai(
                     messages=messages,
-                    model=model_info,
+                    model=model_metadata,
                     temperature=input_data.temperature,
                     credentials=credentials,
                     include_reasoning=input_data.include_reasoning,
                 )
-            elif model_info.provider == ProviderName.GROQ:
+            elif model_metadata.provider == ProviderName.GROQ:
                 response = await self._call_groq(
                     messages=messages,
-                    model=model_info,
+                    model=model_metadata,
                     temperature=input_data.temperature,
                     credentials=credentials,
                 )
             else:
+                # Default to OpenAI-compatible
                 response = await self._call_openai_compatible(
                     messages=messages,
-                    model=model_info,
+                    model=model_metadata,
                     temperature=input_data.temperature,
                     credentials=credentials,
                 )
