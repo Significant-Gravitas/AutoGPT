@@ -1998,7 +1998,9 @@ class AIConversationBlock(AIBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        if not input_data.messages and not input_data.prompt:
+        has_messages = any(input_data.messages)
+        has_prompt = bool(input_data.prompt and input_data.prompt.strip())
+        if not has_messages and not has_prompt:
             raise ValueError(
                 "Cannot call LLM with no messages and no prompt. "
                 "Provide at least one message or a non-empty prompt."

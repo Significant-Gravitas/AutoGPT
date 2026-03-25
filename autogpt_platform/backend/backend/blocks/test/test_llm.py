@@ -515,18 +515,19 @@ class TestAIConversationBlockValidation:
         async def mock_llm_call(input_data, credentials):
             return {"response": "OK"}
 
-        block.llm_call = mock_llm_call  # type: ignore
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIConversationBlock.Input(
+                messages=[],
+                prompt="Hello, how are you?",
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
 
-        input_data = llm.AIConversationBlock.Input(
-            messages=[],
-            prompt="Hello, how are you?",
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=_TEST_AI_CREDENTIALS,
-        )
-
-        outputs = {}
-        async for name, data in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-            outputs[name] = data
+            outputs = {}
+            async for name, data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[name] = data
 
         assert outputs["response"] == "OK"
 
@@ -538,18 +539,19 @@ class TestAIConversationBlockValidation:
         async def mock_llm_call(input_data, credentials):
             return {"response": "response from conversation"}
 
-        block.llm_call = mock_llm_call  # type: ignore
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIConversationBlock.Input(
+                messages=[{"role": "user", "content": "Hello"}],
+                prompt="",
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
 
-        input_data = llm.AIConversationBlock.Input(
-            messages=[{"role": "user", "content": "Hello"}],
-            prompt="",
-            model=llm.DEFAULT_LLM_MODEL,
-            credentials=_TEST_AI_CREDENTIALS,
-        )
-
-        outputs = {}
-        async for name, data in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
-            outputs[name] = data
+            outputs = {}
+            async for name, data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[name] = data
 
         assert outputs["response"] == "response from conversation"
 
@@ -782,9 +784,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert call_count == 1, (
-            f"Expected exactly 1 call for status {status_code}, got {call_count}"
-        )
+        assert (
+            call_count == 1
+        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -813,9 +815,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert call_count == 1, (
-            f"Expected exactly 1 call for status {status_code}, got {call_count}"
-        )
+        assert (
+            call_count == 1
+        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -843,9 +845,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert call_count > 1, (
-            f"Expected multiple retry attempts for 500, got {call_count}"
-        )
+        assert (
+            call_count > 1
+        ), f"Expected multiple retry attempts for 500, got {call_count}"
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
