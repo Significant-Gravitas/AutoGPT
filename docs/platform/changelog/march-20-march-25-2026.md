@@ -38,7 +38,9 @@ The marketplace continues to get cleaner and easier to browse. Card descriptions
 <details>
 <summary>Fixes</summary>
 
-* Fixed 5 production Sentry alerts for improved stability [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12496)
+* Fixed blocks with complex inputs (e.g. GitHub Multi-File Commit) sometimes failing silently [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12496)
+* Fixed auto top-up setup showing a generic error when no payment method is on file [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12496)
+* Fixed re-uploading a file to AutoPilot failing instead of replacing the existing file [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12496)
 * OAuth popup detection — the app now notices when you close an OAuth window and lets you dismiss the waiting modal [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12443)
 * Added circuit breaker to prevent infinite tool-call retry loops [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12499)
 * Reduced noisy error logging from user-caused LLM API errors [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12516)
