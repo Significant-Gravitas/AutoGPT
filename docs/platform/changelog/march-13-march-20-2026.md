@@ -1,4 +1,6 @@
-# March 13 — March 20, 2026
+# Explore a new marketplace, track usage, and give instant feedback
+
+*March 13 – March 20, 2026*
 
 **Platform version:** `v0.6.52`
 
