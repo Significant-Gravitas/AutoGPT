@@ -1224,9 +1224,11 @@ class OrchestratorBlock(Block):
                 max_iterations=max_iterations,
                 last_iteration_message=last_iter_msg,
             ):
-                # Yield intermediate results every iteration so the UI
-                # can display progressive tool calls and conversations.
-                yield "conversations", loop_result.messages
+                # Yield intermediate tool calls so the UI can show progress.
+                # Skip the final conversation yield here — it is emitted once
+                # after "finished" to avoid duplicate data.
+                if not loop_result.finished_naturally:
+                    yield "conversations", loop_result.messages
                 for tc in loop_result.last_tool_calls:
                     yield "tool_calls", {
                         "name": tc.name,
@@ -1437,59 +1439,68 @@ class OrchestratorBlock(Block):
         total_prompt_tokens = 0
         total_completion_tokens = 0
 
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(user_message)
+        try:
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(user_message)
 
-            msg_iter = client.receive_response().__aiter__()
-            pending_task: asyncio.Task[Any] | None = None
+                msg_iter = client.receive_response().__aiter__()
+                pending_task: asyncio.Task[Any] | None = None
 
-            async def _next_msg() -> Any:
-                return await msg_iter.__anext__()
+                async def _next_msg() -> Any:
+                    return await msg_iter.__anext__()
 
-            try:
-                while True:
-                    if pending_task is None:
-                        pending_task = asyncio.create_task(_next_msg())
+                try:
+                    while True:
+                        if pending_task is None:
+                            pending_task = asyncio.create_task(_next_msg())
 
-                    done, _ = await asyncio.wait(
-                        {pending_task}, timeout=_HEARTBEAT_INTERVAL
-                    )
+                        done, _ = await asyncio.wait(
+                            {pending_task}, timeout=_HEARTBEAT_INTERVAL
+                        )
 
-                    if not done:
-                        # Heartbeat — SDK is still processing, keep waiting
-                        continue
+                        if not done:
+                            # Heartbeat — SDK is still processing, keep waiting
+                            continue
 
-                    pending_task = None
-                    try:
-                        sdk_msg = done.pop().result()
-                    except StopAsyncIteration:
-                        break
+                        pending_task = None
+                        try:
+                            sdk_msg = done.pop().result()
+                        except StopAsyncIteration:
+                            break
 
-                    if isinstance(sdk_msg, AssistantMessage):
-                        text_parts = []
-                        for content_block in sdk_msg.content:
-                            if isinstance(content_block, TextBlock):
-                                text_parts.append(content_block.text)
-                                response_parts.append(content_block.text)
-                        if text_parts:
-                            conversation.append(
-                                {"role": "assistant", "content": "".join(text_parts)}
-                            )
-                    elif isinstance(sdk_msg, ResultMessage):
-                        if sdk_msg.usage:
-                            total_prompt_tokens += getattr(
-                                sdk_msg.usage, "input_tokens", 0
-                            )
-                            total_completion_tokens += getattr(
-                                sdk_msg.usage, "output_tokens", 0
-                            )
-            finally:
-                if pending_task is not None and not pending_task.done():
-                    pending_task.cancel()
-                    try:
-                        await pending_task
-                    except (asyncio.CancelledError, StopAsyncIteration):
-                        pass
+                        if isinstance(sdk_msg, AssistantMessage):
+                            text_parts = []
+                            for content_block in sdk_msg.content:
+                                if isinstance(content_block, TextBlock):
+                                    text_parts.append(content_block.text)
+                                    response_parts.append(content_block.text)
+                            if text_parts:
+                                conversation.append(
+                                    {
+                                        "role": "assistant",
+                                        "content": "".join(text_parts),
+                                    }
+                                )
+                        elif isinstance(sdk_msg, ResultMessage):
+                            if sdk_msg.usage:
+                                total_prompt_tokens += getattr(
+                                    sdk_msg.usage, "input_tokens", 0
+                                )
+                                total_completion_tokens += getattr(
+                                    sdk_msg.usage, "output_tokens", 0
+                                )
+                finally:
+                    if pending_task is not None and not pending_task.done():
+                        pending_task.cancel()
+                        try:
+                            await pending_task
+                        except (asyncio.CancelledError, StopAsyncIteration):
+                            pass
+        except Exception as e:
+            # Surface SDK errors as user-visible output instead of crashing,
+            # consistent with _execute_tools_agent_mode error handling.
+            yield "error", str(e)
+            return
 
         response_text = "".join(response_parts)
 
