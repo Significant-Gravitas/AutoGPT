@@ -297,3 +297,15 @@ def test_agent_input_block_ignores_legacy_placeholder_values():
     assert (
         "enum" not in schema
     ), "AgentInputBlock should not produce enum from legacy placeholder_values"
+
+
+def test_dropdown_input_block_produces_enum():
+    """Verify AgentDropdownInputBlock.Input.generate_schema() produces enum."""
+    from backend.blocks.io import AgentDropdownInputBlock
+
+    options = ["Option A", "Option B"]
+    instance = AgentDropdownInputBlock.Input.model_construct(
+        name="choice", value=None, placeholder_values=options
+    )
+    schema = instance.generate_schema()
+    assert schema.get("enum") == options
