@@ -1,6 +1,10 @@
 """Sardis API client helpers used by the Sardis block suite."""
 
+import hashlib
 import logging
+import threading
+import uuid
+from collections import OrderedDict
 from typing import Any
 
 from backend.blocks.sardis._auth import SardisCredentials
@@ -9,18 +13,28 @@ from backend.util.request import Requests, Response
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Client singleton — reuses connections across block invocations
+# Client cache — bounded LRU with threading lock
 # ---------------------------------------------------------------------------
 
-_clients: dict[str, "SardisClient"] = {}
+_lock = threading.Lock()
+_clients: OrderedDict[str, "SardisClient"] = OrderedDict()
+_MAX_CLIENTS = 32
 
 
 def get_client(credentials: SardisCredentials) -> "SardisClient":
-    """Return a cached client keyed on the API key hash."""
-    cache_key = str(hash(credentials.api_key.get_secret_value()))
-    if cache_key not in _clients:
-        _clients[cache_key] = SardisClient(credentials)
-    return _clients[cache_key]
+    """Return a cached client keyed on the API key hash (bounded LRU)."""
+    cache_key = hashlib.sha256(
+        credentials.api_key.get_secret_value().encode()
+    ).hexdigest()[:16]
+    with _lock:
+        if cache_key in _clients:
+            _clients.move_to_end(cache_key)
+            return _clients[cache_key]
+        client = SardisClient(credentials)
+        _clients[cache_key] = client
+        if len(_clients) > _MAX_CLIENTS:
+            _clients.popitem(last=False)
+        return client
 
 
 class SardisClient:
@@ -56,6 +70,7 @@ class SardisClient:
         """
         response = await self.requests.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
+            headers={"Idempotency-Key": str(uuid.uuid4())},
             json={
                 "destination": to,
                 "amount": amount,
@@ -127,7 +142,10 @@ class SardisClient:
         if response.ok:
             if isinstance(payload, dict):
                 return payload
-            return {"data": payload}
+            return {
+                "error": f"{default_error}: unexpected response body type {type(payload).__name__}",
+                "status": response.status,
+            }
 
         if isinstance(payload, dict):
             normalized_payload = dict(payload)

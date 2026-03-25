@@ -1,4 +1,5 @@
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from pydantic import field_validator
@@ -64,10 +65,12 @@ class SardisPolicyCheckBlock(Block):
         @classmethod
         def _validate_amount(cls, v: str) -> str:
             try:
-                val = float(v)
-            except (ValueError, TypeError):
+                val = Decimal(v)
+            except (InvalidOperation, TypeError):
                 raise ValueError(f"amount must be a numeric string, got '{v}'")
-            if val < 0.01:
+            if not val.is_finite():
+                raise ValueError(f"amount must be a finite numeric string, got '{v}'")
+            if val < Decimal("0.01"):
                 raise ValueError(f"amount must be >= 0.01, got '{v}'")
             return v
 
