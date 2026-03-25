@@ -309,3 +309,46 @@ def test_dropdown_input_block_produces_enum():
     )
     schema = instance.generate_schema()
     assert schema.get("enum") == options
+
+
+def test_generate_schema_integration_legacy_placeholder_values():
+    """Test the full Graph._generate_schema path with legacy placeholder_values
+    on AgentInputBlock — verifies no enum leaks through the graph loading path."""
+    from backend.blocks.io import AgentInputBlock
+    from backend.data.graph import BaseGraph
+
+    legacy_input_default = {
+        "name": "url",
+        "value": "",
+        "description": "Enter a URL",
+        "placeholder_values": ["https://example.com"],
+    }
+    result = BaseGraph._generate_schema(
+        (AgentInputBlock.Input, legacy_input_default),
+    )
+    url_props = result["properties"]["url"]
+    assert (
+        "enum" not in url_props
+    ), "Graph schema should not contain enum from AgentInputBlock placeholder_values"
+
+
+def test_generate_schema_integration_dropdown_produces_enum():
+    """Test the full Graph._generate_schema path with AgentDropdownInputBlock
+    — verifies enum IS produced for dropdown blocks."""
+    from backend.blocks.io import AgentDropdownInputBlock
+    from backend.data.graph import BaseGraph
+
+    dropdown_input_default = {
+        "name": "color",
+        "value": None,
+        "placeholder_values": ["Red", "Green", "Blue"],
+    }
+    result = BaseGraph._generate_schema(
+        (AgentDropdownInputBlock.Input, dropdown_input_default),
+    )
+    color_props = result["properties"]["color"]
+    assert color_props.get("enum") == [
+        "Red",
+        "Green",
+        "Blue",
+    ], "Graph schema should contain enum from AgentDropdownInputBlock"
