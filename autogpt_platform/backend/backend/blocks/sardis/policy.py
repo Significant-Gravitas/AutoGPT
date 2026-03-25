@@ -82,9 +82,7 @@ class SardisPolicyCheckBlock(Block):
             description="Remaining spending limit after this payment (decimal string)",
             default="0",
         )
-        error: str = SchemaField(
-            description="Error message if failed", default=""
-        )
+        error: str = SchemaField(description="Error message if failed", default="")
 
     def __init__(self):
         super().__init__(

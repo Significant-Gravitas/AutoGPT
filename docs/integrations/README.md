@@ -181,6 +181,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Retrieve key-value information for the current user |
+| [Sardis Balance](block-integrations/sardis/balance.md#sardis-balance) | Check the balance and remaining spending limits of a Sardis wallet |
+| [Sardis Policy Check](block-integrations/sardis/policy.md#sardis-policy-check) | Check if a payment would pass spending policy without executing it |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
 ## Text Processing
@@ -607,9 +609,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Exa Webset Webhook](block-integrations/exa/webhook_blocks.md#exa-webset-webhook) | Receive webhook notifications for Exa webset events |
 | [Generic Webhook Trigger](block-integrations/generic_webhook/triggers.md#generic-webhook-trigger) | This block will output the contents of the generic input for the webhook |
 | [Read RSS Feed](block-integrations/misc.md#read-rss-feed) | Reads RSS feed entries from a given URL |
-| [Sardis Balance](block-integrations/sardis/balance.md#sardis-balance) | Check the balance and remaining spending limits of a Sardis wallet |
 | [Sardis Pay](block-integrations/sardis/payment.md#sardis-pay) | Execute a policy-controlled payment from a Sardis wallet |
-| [Sardis Policy Check](block-integrations/sardis/policy.md#sardis-policy-check) | Check if a payment would pass spending policy without executing it |
 | [Send Authenticated Web Request](block-integrations/misc.md#send-authenticated-web-request) | Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart) |
 | [Send Email](block-integrations/misc.md#send-email) | This block sends an email using the provided SMTP credentials |
 | [Send Web Request](block-integrations/misc.md#send-web-request) | Make an HTTP request (JSON / form / multipart) |

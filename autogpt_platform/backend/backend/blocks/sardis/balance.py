@@ -55,9 +55,7 @@ class SardisBalanceBlock(Block):
             description="Remaining spending limit (decimal string)", default="0"
         )
         token: str = SchemaField(description="Token type", default="USDC")
-        error: str = SchemaField(
-            description="Error message if failed", default=""
-        )
+        error: str = SchemaField(description="Error message if failed", default="")
 
     def __init__(self):
         super().__init__(
@@ -90,9 +88,7 @@ class SardisBalanceBlock(Block):
         )
 
     @staticmethod
-    async def get_balance(
-        client: SardisClient, wallet_id: str, token: str
-    ) -> dict:
+    async def get_balance(client: SardisClient, wallet_id: str, token: str) -> dict:
         return await client.get_balance(wallet_id=wallet_id, token=token)
 
     async def run(

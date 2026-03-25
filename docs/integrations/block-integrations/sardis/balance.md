@@ -17,8 +17,8 @@ This block calls the Sardis balance endpoint for a specific wallet and token. It
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| wallet_id | Sardis wallet ID (starts with wal_). Validated via `field_validator`. | str | Yes |
-| token | Token to check | Literal["USDC", "USDT", "EURC", "PYUSD"] | No |
+| wallet_id | Sardis wallet ID (starts with wal_) | str | Yes |
+| token | Token to check | "USDC" \| "USDT" \| "EURC" \| "PYUSD" | No |
 
 ### Outputs
 

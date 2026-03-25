@@ -33,18 +33,12 @@ class SardisClient:
         self.credentials = credentials
         self.requests = Requests(
             raise_for_status=False,
+            retry_max_attempts=3,
             extra_headers={
                 "X-API-Key": credentials.api_key.get_secret_value(),
                 "Content-Type": "application/json",
             },
         )
-
-    def _get_headers(self) -> dict[str, str]:
-        """Build authenticated Sardis API headers."""
-        return {
-            "X-API-Key": self.credentials.api_key.get_secret_value(),
-            "Content-Type": "application/json",
-        }
 
     async def send_payment(
         self,
@@ -62,7 +56,6 @@ class SardisClient:
         """
         response = await self.requests.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
-            headers=self._get_headers(),
             json={
                 "destination": to,
                 "amount": amount,
@@ -84,7 +77,6 @@ class SardisClient:
         """Get wallet balance."""
         response = await self.requests.get(
             f"{self.API_URL}/wallets/{wallet_id}/balance",
-            headers=self._get_headers(),
             params={"token": token},
         )
         return self._normalize_response(
@@ -105,7 +97,6 @@ class SardisClient:
         """
         response = await self.requests.post(
             f"{self.API_URL}/policies/check",
-            headers=self._get_headers(),
             json={
                 "wallet_id": wallet_id,
                 "amount": amount,

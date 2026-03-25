@@ -46,12 +46,12 @@ class SardisPayBlock(Block):
             description="Token to use",
             default="USDC",
         )
-        chain: Literal[
-            "base", "polygon", "ethereum", "arbitrum", "optimism"
-        ] = SchemaField(
-            description="Blockchain to use",
-            default="base",
-            advanced=True,
+        chain: Literal["base", "polygon", "ethereum", "arbitrum", "optimism"] = (
+            SchemaField(
+                description="Blockchain to use",
+                default="base",
+                advanced=True,
+            )
         )
         purpose: str = SchemaField(
             description="Reason for payment (used in audit trail)",
@@ -84,19 +84,13 @@ class SardisPayBlock(Block):
             return v
 
     class Output(BlockSchemaOutput):
-        status: str = SchemaField(
-            description="APPROVED, BLOCKED, or ERROR", default=""
-        )
-        tx_id: str = SchemaField(
-            description="Transaction ID if approved", default=""
-        )
+        status: str = SchemaField(description="APPROVED, BLOCKED, or ERROR", default="")
+        tx_id: str = SchemaField(description="Transaction ID if approved", default="")
         message: str = SchemaField(description="Status message", default="")
         amount: str = SchemaField(
             description="Payment amount (decimal string)", default="0"
         )
-        error: str = SchemaField(
-            description="Error message if failed", default=""
-        )
+        error: str = SchemaField(description="Error message if failed", default="")
 
     def __init__(self):
         super().__init__(
