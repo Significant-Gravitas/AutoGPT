@@ -4645,6 +4645,125 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "Create Model",
+        "description": "Create a new LLM model.\n\nRequires admin authentication.",
+        "operationId": "postV2CreateModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Postv2Createmodel"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm/models/{slug}": {
+      "delete": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "Delete Model",
+        "description": "Delete an LLM model.\n\nRequires admin authentication.",
+        "operationId": "deleteV2DeleteModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Slug" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "Update Model",
+        "description": "Update an existing LLM model.\n\nRequires admin authentication.",
+        "operationId": "patchV2UpdateModel",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Slug" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateLlmModelRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Updatemodel"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/llm/providers": {
@@ -4669,6 +4788,129 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "Create Provider",
+        "description": "Create a new LLM provider.\n\nRequires admin authentication.",
+        "operationId": "postV2CreateProvider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLlmProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Postv2Createprovider"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/llm/providers/{name}": {
+      "delete": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "Delete Provider",
+        "description": "Delete an LLM provider.\n\nRequires admin authentication.\nA provider can only be deleted if it has no associated models.",
+        "operationId": "deleteV2DeleteProvider",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Name" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "Update Provider",
+        "description": "Update an existing LLM provider.\n\nRequires admin authentication.",
+        "operationId": "patchV2UpdateProvider",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Name" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLlmProviderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Patchv2Updateprovider"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/mcp/discover-tools": {
@@ -8352,6 +8594,158 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
+      },
+      "CreateLlmModelRequest": {
+        "properties": {
+          "slug": {
+            "type": "string",
+            "title": "Slug",
+            "description": "Model slug (e.g., 'gpt-4', 'claude-3-opus')"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Human-readable model name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "Model description"
+          },
+          "provider_id": {
+            "type": "string",
+            "title": "Provider Id",
+            "description": "Provider ID (UUID)"
+          },
+          "creator_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Id",
+            "description": "Creator ID (UUID)"
+          },
+          "context_window": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Context Window",
+            "description": "Maximum context window in tokens"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Max Output Tokens",
+            "description": "Maximum output tokens (None if unlimited)"
+          },
+          "price_tier": {
+            "type": "integer",
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Price Tier",
+            "description": "Price tier (1=cheapest, 2=medium, 3=expensive)"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "description": "Whether the model is enabled",
+            "default": true
+          },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "description": "Whether the model is recommended",
+            "default": false
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools",
+            "description": "Supports function calling",
+            "default": false
+          },
+          "supports_json_output": {
+            "type": "boolean",
+            "title": "Supports Json Output",
+            "description": "Supports JSON output mode",
+            "default": false
+          },
+          "supports_reasoning": {
+            "type": "boolean",
+            "title": "Supports Reasoning",
+            "description": "Supports reasoning mode",
+            "default": false
+          },
+          "supports_parallel_tool_calls": {
+            "type": "boolean",
+            "title": "Supports Parallel Tool Calls",
+            "description": "Supports parallel tool calls",
+            "default": false
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities",
+            "description": "Additional capabilities"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "Additional metadata"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "provider_id",
+          "context_window",
+          "price_tier"
+        ],
+        "title": "CreateLlmModelRequest",
+        "description": "Request model for creating an LLM model."
+      },
+      "CreateLlmProviderRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider identifier (e.g., 'openai', 'anthropic')"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name",
+            "description": "Human-readable provider name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "Provider description"
+          },
+          "default_credential_provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Provider",
+            "description": "Default credential system identifier"
+          },
+          "default_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Id",
+            "description": "Default credential ID"
+          },
+          "default_credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Type",
+            "description": "Default credential type"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "Additional metadata"
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "CreateLlmProviderRequest",
+        "description": "Request model for creating an LLM provider."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -13836,6 +14230,138 @@
         "type": "object",
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
+      },
+      "UpdateLlmModelRequest": {
+        "properties": {
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name",
+            "description": "Human-readable model name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "Model description"
+          },
+          "creator_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Creator Id",
+            "description": "Creator ID (UUID)"
+          },
+          "context_window": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Context Window",
+            "description": "Maximum context window in tokens"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Max Output Tokens",
+            "description": "Maximum output tokens (None if unlimited)"
+          },
+          "price_tier": {
+            "anyOf": [
+              { "type": "integer", "maximum": 3.0, "minimum": 1.0 },
+              { "type": "null" }
+            ],
+            "title": "Price Tier",
+            "description": "Price tier (1=cheapest, 2=medium, 3=expensive)"
+          },
+          "is_enabled": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Enabled",
+            "description": "Whether the model is enabled"
+          },
+          "is_recommended": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Recommended",
+            "description": "Whether the model is recommended"
+          },
+          "supports_tools": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Tools",
+            "description": "Supports function calling"
+          },
+          "supports_json_output": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Json Output",
+            "description": "Supports JSON output mode"
+          },
+          "supports_reasoning": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Reasoning",
+            "description": "Supports reasoning mode"
+          },
+          "supports_parallel_tool_calls": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Supports Parallel Tool Calls",
+            "description": "Supports parallel tool calls"
+          },
+          "capabilities": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Capabilities",
+            "description": "Additional capabilities"
+          },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata",
+            "description": "Additional metadata"
+          }
+        },
+        "type": "object",
+        "title": "UpdateLlmModelRequest",
+        "description": "Request model for updating an LLM model."
+      },
+      "UpdateLlmProviderRequest": {
+        "properties": {
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name",
+            "description": "Human-readable provider name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "Provider description"
+          },
+          "default_credential_provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Provider",
+            "description": "Default credential system identifier"
+          },
+          "default_credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Id",
+            "description": "Default credential ID"
+          },
+          "default_credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Default Credential Type",
+            "description": "Default credential type"
+          },
+          "metadata": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Metadata",
+            "description": "Additional metadata"
+          }
+        },
+        "type": "object",
+        "title": "UpdateLlmProviderRequest",
+        "description": "Request model for updating an LLM provider."
       },
       "UpdatePermissionsRequest": {
         "properties": {
