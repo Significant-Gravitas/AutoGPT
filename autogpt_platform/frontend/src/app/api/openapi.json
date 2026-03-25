@@ -5711,6 +5711,82 @@
         }
       }
     },
+    "/api/store/admin/submissions/{store_listing_version_id}/add-to-library": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Add Pending Agent to Library",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
+        "operationId": "postV2Admin add pending agent to library",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/submissions/{store_listing_version_id}/preview": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Preview Submission Listing",
+        "description": "Preview a marketplace submission as it would appear on the listing page.\nBypasses the APPROVED-only StoreAgent view so admins can preview pending\nsubmissions before approving.",
+        "operationId": "getV2Admin preview submission listing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/submissions/{store_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin"],

@@ -2,7 +2,7 @@
 
 When E2B is active, these tools replace the SDK built-in Read/Write/Edit/
 Glob/Grep so that all file operations share the same ``/home/user``
-filesystem as ``bash_exec``.
+and ``/tmp`` filesystems as ``bash_exec``.
 
 SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
@@ -16,10 +16,13 @@ import shlex
 from typing import Any, Callable
 
 from backend.copilot.context import (
+    E2B_ALLOWED_DIRS,
+    E2B_ALLOWED_DIRS_STR,
     E2B_WORKDIR,
     get_current_sandbox,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_within_allowed_dirs,
     resolve_sandbox_path,
 )
 
@@ -36,7 +39,7 @@ async def _check_sandbox_symlink_escape(
     ``readlink -f`` follows actual symlinks on the sandbox filesystem.
 
     Returns the canonical parent path, or ``None`` if the path escapes
-    ``E2B_WORKDIR``.
+    the allowed sandbox directories.
 
     Note: There is an inherent TOCTOU window between this check and the
     subsequent ``sandbox.files.write()``.  A symlink could theoretically be
@@ -52,10 +55,7 @@ async def _check_sandbox_symlink_escape(
     if (
         canonical_res.exit_code != 0
         or not canonical_parent
-        or (
-            canonical_parent != E2B_WORKDIR
-            and not canonical_parent.startswith(E2B_WORKDIR + "/")
-        )
+        or not is_within_allowed_dirs(canonical_parent)
     ):
         return None
     return canonical_parent
@@ -87,6 +87,38 @@ def _get_sandbox_and_path(
     except ValueError as exc:
         return _mcp(str(exc), error=True)
     return sandbox, remote
+
+
+async def _sandbox_write(sandbox: Any, path: str, content: str) -> None:
+    """Write *content* to *path* inside the sandbox.
+
+    The E2B filesystem API (``sandbox.files.write``) and the command API
+    (``sandbox.commands.run``) run as **different users**.  On ``/tmp``
+    (which has the sticky bit set) this means ``sandbox.files.write`` can
+    create new files but cannot overwrite files previously created by
+    ``sandbox.commands.run`` (or itself), because the sticky bit restricts
+    deletion/rename to the file owner.
+
+    To work around this, writes targeting ``/tmp`` are performed via
+    ``tee`` through the command API, which runs as the sandbox ``user``
+    and can therefore always overwrite user-owned files.
+    """
+    if path == "/tmp" or path.startswith("/tmp/"):
+        import base64 as _b64
+
+        encoded = _b64.b64encode(content.encode()).decode()
+        result = await sandbox.commands.run(
+            f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}",
+            cwd=E2B_WORKDIR,
+            timeout=10,
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(
+                f"shell write failed (exit {result.exit_code}): "
+                + (result.stderr or "").strip()
+            )
+    else:
+        await sandbox.files.write(path, content)
 
 
 # Tool handlers
@@ -139,13 +171,16 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         parent = os.path.dirname(remote)
-        if parent and parent != E2B_WORKDIR:
+        if parent and parent not in E2B_ALLOWED_DIRS:
             await sandbox.files.make_dir(parent)
         canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
         if canonical_parent is None:
-            return _mcp(f"Path must be within {E2B_WORKDIR}: {parent}", error=True)
+            return _mcp(
+                f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
+                error=True,
+            )
         remote = os.path.join(canonical_parent, os.path.basename(remote))
-        await sandbox.files.write(remote, content)
+        await _sandbox_write(sandbox, remote, content)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 
@@ -172,7 +207,10 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
     parent = os.path.dirname(remote)
     canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
     if canonical_parent is None:
-        return _mcp(f"Path must be within {E2B_WORKDIR}: {parent}", error=True)
+        return _mcp(
+            f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
+            error=True,
+        )
     remote = os.path.join(canonical_parent, os.path.basename(remote))
 
     try:
@@ -197,7 +235,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         else content.replace(old_string, new_string, 1)
     )
     try:
-        await sandbox.files.write(remote, updated)
+        await _sandbox_write(sandbox, remote, updated)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 
@@ -290,14 +328,14 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
-        "Read a file from the cloud sandbox (/home/user). "
+        "Read a file from the cloud sandbox (/home/user or /tmp). "
         "Use offset and limit for large files.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute).",
+                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
                 },
                 "offset": {
                     "type": "integer",
@@ -314,7 +352,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "write_file",
-        "Write or create a file in the cloud sandbox (/home/user). "
+        "Write or create a file in the cloud sandbox (/home/user or /tmp). "
         "Parent directories are created automatically. "
         "To copy a workspace file into the sandbox, use "
         "read_workspace_file with save_to_path instead.",
@@ -323,7 +361,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute).",
+                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
                 },
                 "content": {"type": "string", "description": "Content to write."},
             },
@@ -340,7 +378,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute).",
+                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
                 },
                 "old_string": {"type": "string", "description": "Text to find."},
                 "new_string": {"type": "string", "description": "Replacement text."},
