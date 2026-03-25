@@ -61,6 +61,7 @@ class SardisClient:
         )
         self._requests_no_retry = Requests(
             raise_for_status=False,
+            retry_max_attempts=1,
             extra_headers={
                 "X-API-Key": credentials.api_key.get_secret_value(),
                 "Content-Type": "application/json",
