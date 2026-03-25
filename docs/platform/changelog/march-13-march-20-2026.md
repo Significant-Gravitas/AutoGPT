@@ -67,7 +67,7 @@ The **feedback button** has moved to the header, making it accessible from any p
 <summary>Under the hood</summary>
 
 * Read-only SQL views layer with analytics schema [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12367)
-* AutoPilotBlock for invoking AutoPilot from agent graphs [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12439)
+* AutoPilot block for running AutoPilot from inside agents or as a sub-agent within AutoPilot itself [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12439)
 * GitHub CLI support with automatic token injection [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12426)
 * Improved end-to-end CI with reduced costs [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12437)
 * New integration tests for Builder stores, components, and hooks [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12433)
