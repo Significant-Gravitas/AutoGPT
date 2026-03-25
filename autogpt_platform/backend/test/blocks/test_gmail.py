@@ -1,5 +1,6 @@
 import base64
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock, patch
 
 import pytest
@@ -10,6 +11,7 @@ from backend.blocks.google.gmail import (
     create_mime_message,
     validate_email_recipients,
 )
+from backend.data.execution import ExecutionContext
 
 
 class TestGmailReadBlock:
@@ -312,7 +314,7 @@ class TestCreateMimeMessageValidation:
             body="Hello",
             attachments=[],
         )
-        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
 
         with pytest.raises(ValueError, match="Invalid email address"):
             await create_mime_message(input_data, exec_ctx)
@@ -328,7 +330,7 @@ class TestCreateMimeMessageValidation:
             body="Hello",
             attachments=[],
         )
-        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
 
         with pytest.raises(ValueError, match="'cc'"):
             await create_mime_message(input_data, exec_ctx)
@@ -344,7 +346,7 @@ class TestCreateMimeMessageValidation:
             body="Hello",
             attachments=[],
         )
-        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
 
         # Should succeed without raising
         result = await create_mime_message(input_data, exec_ctx)
@@ -380,7 +382,7 @@ class TestBuildReplyMessageValidation:
             replyAll=False,
             attachments=[],
         )
-        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+        exec_ctx = cast(ExecutionContext, SimpleNamespace(graph_exec_id="test-exec-id"))
 
         with pytest.raises(ValueError, match="Invalid email address"):
             await _build_reply_message(mock_service, input_data, exec_ctx)
