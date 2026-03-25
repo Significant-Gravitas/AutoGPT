@@ -12,13 +12,10 @@ Provides intelligent context management for LLM conversations including:
 import hashlib
 import logging
 import time
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, Set, Tuple, Union
-
-from pydantic import BaseModel
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
 
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 from backend.util.settings import Settings
