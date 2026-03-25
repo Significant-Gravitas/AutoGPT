@@ -100,6 +100,7 @@ async def _baseline_llm_caller(
     """
     state.pending_events.append(StreamStartStep())
 
+    round_text = ""
     try:
         client = _get_openai_client()
         typed_messages = cast(list[ChatCompletionMessageParam], messages)
@@ -119,8 +120,6 @@ async def _baseline_llm_caller(
                 stream=True,
                 stream_options={"include_usage": True},
             )
-
-        round_text = ""
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         async for chunk in response:
@@ -163,9 +162,10 @@ async def _baseline_llm_caller(
             state.pending_events.append(StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
-
-        state.assistant_text += round_text
     finally:
+        # Always persist partial text so the session history stays consistent,
+        # even when the stream is interrupted by an exception.
+        state.assistant_text += round_text
         # Always emit StreamFinishStep to match the StreamStartStep,
         # even if an exception occurred during streaming.
         state.pending_events.append(StreamFinishStep())
