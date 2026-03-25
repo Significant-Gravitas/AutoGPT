@@ -475,6 +475,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: "NodeExecutionStats" = NodeExecutionStats()
+        # Initialize performance metrics tracking
+        self._performance_metrics: list[Any] = []
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
