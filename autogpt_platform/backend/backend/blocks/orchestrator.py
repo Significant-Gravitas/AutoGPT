@@ -1218,8 +1218,9 @@ class OrchestratorBlock(Block):
                 last_iteration_message=last_iter_msg,
             ):
                 pass  # Drain the generator; final result is in loop_result
-        except ValueError as e:
-            # Validation errors (e.g. bad tool args) are user-facing
+        except Exception as e:
+            # Catch all errors (validation, network, API) so that the block
+            # surfaces them as user-visible output instead of crashing.
             yield "error", str(e)
             return
 
