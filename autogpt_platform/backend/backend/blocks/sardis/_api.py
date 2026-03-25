@@ -3,7 +3,6 @@
 import hashlib
 import logging
 import threading
-import uuid
 from collections import OrderedDict
 from typing import Any
 
@@ -43,11 +42,25 @@ class SardisClient:
     API_URL = "https://api.sardis.sh/api/v2"
 
     def __init__(self, credentials: SardisCredentials):
-        """Store Sardis credentials and configure tolerant HTTP handling."""
+        """Store Sardis credentials and configure tolerant HTTP handling.
+
+        Two HTTP clients are used:
+        * ``_requests_safe`` -- retries enabled (3 attempts) for idempotent
+          operations (balance queries, policy checks).
+        * ``_requests_no_retry`` -- **no** retries, used exclusively for
+          ``send_payment`` to avoid duplicate financial transactions.
+        """
         self.credentials = credentials
-        self.requests = Requests(
+        self._requests_safe = Requests(
             raise_for_status=False,
             retry_max_attempts=3,
+            extra_headers={
+                "X-API-Key": credentials.api_key.get_secret_value(),
+                "Content-Type": "application/json",
+            },
+        )
+        self._requests_no_retry = Requests(
+            raise_for_status=False,
             extra_headers={
                 "X-API-Key": credentials.api_key.get_secret_value(),
                 "Content-Type": "application/json",
@@ -68,9 +81,8 @@ class SardisClient:
         ``amount`` is a decimal *string* — never a float — so the exact value
         the caller entered reaches the API without IEEE 754 rounding.
         """
-        response = await self.requests.post(
+        response = await self._requests_no_retry.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
-            headers={"Idempotency-Key": str(uuid.uuid4())},
             json={
                 "destination": to,
                 "amount": amount,
@@ -90,7 +102,7 @@ class SardisClient:
         token: str = "USDC",
     ) -> dict[str, Any]:
         """Get wallet balance."""
-        response = await self.requests.get(
+        response = await self._requests_safe.get(
             f"{self.API_URL}/wallets/{wallet_id}/balance",
             params={"token": token},
         )
@@ -110,7 +122,7 @@ class SardisClient:
 
         ``amount`` is a decimal *string* to preserve precision.
         """
-        response = await self.requests.post(
+        response = await self._requests_safe.post(
             f"{self.API_URL}/policies/check",
             json={
                 "wallet_id": wallet_id,
