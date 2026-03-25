@@ -336,13 +336,15 @@ async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
     graph_version: Optional[int] = None,
+    include_archived: bool = False,
 ) -> library_model.LibraryAgent | None:
     filter: prisma.types.LibraryAgentWhereInput = {
         "agentGraphId": graph_id,
         "userId": user_id,
         "isDeleted": False,
-        "isArchived": False,
     }
+    if not include_archived:
+        filter["isArchived"] = False
     if graph_version is not None:
         filter["agentGraphVersion"] = graph_version
 
@@ -583,7 +585,9 @@ async def update_graph_in_library(
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
-    library_agent = await get_library_agent_by_graph_id(user_id, created_graph.id)
+    library_agent = await get_library_agent_by_graph_id(
+        user_id, created_graph.id, include_archived=True
+    )
     if not library_agent:
         raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
 
