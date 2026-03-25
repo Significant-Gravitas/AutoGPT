@@ -148,10 +148,19 @@ async def check_rate_limit(
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
 
 
-async def reset_daily_usage(user_id: str) -> bool:
+async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
     """Reset a user's daily token usage counter in Redis.
 
     Called after a user pays credits to extend their daily limit.
+    Also reduces the weekly usage counter by ``daily_token_limit`` tokens
+    (clamped to 0) so the user effectively gets one extra day's worth of
+    weekly capacity.
+
+    Args:
+        user_id: The user's ID.
+        daily_token_limit: The configured daily token limit. When positive,
+            the weekly counter is reduced by this amount.
+
     Fails open: returns False if Redis is unavailable (consistent with
     the fail-open design of this module).
     """
@@ -159,6 +168,16 @@ async def reset_daily_usage(user_id: str) -> bool:
     try:
         redis = await get_redis_async()
         await redis.delete(_daily_key(user_id, now=now))
+
+        # Reduce weekly usage by one day's worth of capacity.
+        if daily_token_limit > 0:
+            w_key = _weekly_key(user_id, now=now)
+            weekly_raw = await redis.get(w_key)
+            weekly_used = int(weekly_raw or 0)
+            new_weekly = max(0, weekly_used - daily_token_limit)
+            if weekly_used > 0:
+                await redis.set(w_key, str(new_weekly), keepttl=True)
+
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
     except (RedisError, ConnectionError, OSError):

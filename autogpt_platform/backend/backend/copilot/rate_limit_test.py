@@ -12,6 +12,7 @@ from .rate_limit import (
     check_rate_limit,
     get_usage_status,
     record_token_usage,
+    reset_daily_usage,
 )
 
 _USER = "test-user-rl"
@@ -332,3 +333,104 @@ class TestRecordTokenUsage:
         ):
             # Should not raise — fail-open
             await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
+
+
+# ---------------------------------------------------------------------------
+# reset_daily_usage
+# ---------------------------------------------------------------------------
+
+
+class TestResetDailyUsage:
+    @pytest.mark.asyncio
+    async def test_deletes_daily_key(self):
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value="5000")
+        mock_redis.set = AsyncMock()
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        assert result is True
+        mock_redis.delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_reduces_weekly_usage_by_daily_limit(self):
+        """Weekly counter should be reduced by daily_token_limit."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value="45000")
+        mock_redis.set = AsyncMock()
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        # Weekly should be set to 45000 - 10000 = 35000
+        mock_redis.set.assert_called_once()
+        call_args = mock_redis.set.call_args
+        assert call_args.args[1] == "35000"
+        assert call_args.kwargs.get("keepttl") is True
+
+    @pytest.mark.asyncio
+    async def test_weekly_usage_clamped_to_zero(self):
+        """Weekly counter should not go below 0."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value="5000")
+        mock_redis.set = AsyncMock()
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        # Weekly should be set to max(0, 5000 - 10000) = 0
+        mock_redis.set.assert_called_once()
+        call_args = mock_redis.set.call_args
+        assert call_args.args[1] == "0"
+
+    @pytest.mark.asyncio
+    async def test_no_weekly_reduction_when_daily_limit_zero(self):
+        """When daily_token_limit is 0, weekly counter should not be touched."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value="5000")
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=0)
+
+        # Should only delete daily key, not read/write weekly
+        mock_redis.delete.assert_called_once()
+        mock_redis.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_weekly_set_when_weekly_already_zero(self):
+        """When weekly usage is already 0, no SET should be issued."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(return_value="0")
+        mock_redis.set = AsyncMock()
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        # weekly_used is 0 so we skip the set
+        mock_redis.set.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_redis_unavailable(self):
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ):
+            result = await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        assert result is False

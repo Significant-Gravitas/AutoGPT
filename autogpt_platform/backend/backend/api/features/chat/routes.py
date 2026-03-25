@@ -542,7 +542,9 @@ async def reset_copilot_usage(
 
         # Reset daily usage in Redis.  If this fails the user was already
         # charged, so we must surface the error instead of silently succeeding.
-        if not await reset_daily_usage(user_id):
+        if not await reset_daily_usage(
+            user_id, daily_token_limit=config.daily_token_limit
+        ):
             raise HTTPException(
                 status_code=503,
                 detail="Rate limit reset failed — please try again later. "
