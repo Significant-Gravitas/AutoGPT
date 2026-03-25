@@ -676,17 +676,27 @@ class OrchestratorBlock(Block):
             name = tool_func["function"]["name"]
             name_counts[name] = name_counts.get(name, 0) + 1
 
-        name_seen: dict[str, int] = {}
+        # Collect all final names to avoid collisions with user-defined names
+        all_names: set[str] = {
+            tool_func["function"]["name"] for tool_func in return_tool_functions
+        }
+
         for tool_func in return_tool_functions:
             func = tool_func["function"]
             name = func["name"]
             if name_counts[name] > 1:
-                idx = name_seen.get(name, 0) + 1
-                name_seen[name] = idx
-                suffix = f"_{idx}"
-                # Anthropic tool names have a 64-char limit
-                max_base = 64 - len(suffix)
-                func["name"] = f"{name[:max_base]}{suffix}"
+                # Find the next available suffix that doesn't collide
+                idx = 1
+                while True:
+                    suffix = f"_{idx}"
+                    # Anthropic tool names have a 64-char limit
+                    max_base = 64 - len(suffix)
+                    candidate = f"{name[:max_base]}{suffix}"
+                    if candidate not in all_names:
+                        break
+                    idx += 1
+                func["name"] = candidate
+                all_names.add(candidate)
 
                 # Enrich description with hardcoded defaults so the LLM can
                 # distinguish between tools that share the same block type.

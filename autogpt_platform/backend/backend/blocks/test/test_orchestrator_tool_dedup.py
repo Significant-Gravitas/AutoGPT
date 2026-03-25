@@ -363,3 +363,41 @@ async def test_long_tool_name_truncated():
     for tool in tools:
         name = tool["function"]["name"]
         assert len(name) <= 64, f"Tool name exceeds 64 chars: {name!r} ({len(name)})"
+
+
+@pytest.mark.asyncio
+async def test_suffix_collision_with_user_named_tool():
+    """If a user-named tool is 'my_tool_1', dedup of 'my_tool' should skip to _2."""
+    block = MatchTextPatternBlock()
+    # Two nodes with same block name (will collide)
+    node_a = _make_mock_node(block, "node_a", input_default={"match": "foo"})
+    node_b = _make_mock_node(block, "node_b", input_default={"match": "bar"})
+
+    # A third node that a user has customized to match the _1 suffix pattern
+    base = OrchestratorBlock.cleanup(block.name)
+    node_c = _make_mock_node(block, "node_c", metadata={"customized_name": f"{base}_1"})
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+    link_c = _make_mock_link("tools_^_c_~_text", "text", "node_c", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+        (link_c, node_c),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == len(names), f"Tool names are not unique: {names}"
+    # The user-named tool keeps its name
+    assert f"{base}_1" in names
+    # The duplicates should skip _1 (taken) and use _2, _3
+    assert f"{base}_2" in names
+    assert f"{base}_3" in names
