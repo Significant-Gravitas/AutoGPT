@@ -333,10 +333,12 @@ export function useCopilotStream({
             }
             return prev;
           });
-          resumeStream();
+          await resumeStream();
         }
         // If !backendActive, the refetch will update hydratedMessages via
         // React Query, and the hydration effect below will merge them in.
+      } catch (err) {
+        console.warn("[copilot] wake re-sync failed", err);
       } finally {
         setIsSyncing(false);
       }
