@@ -81,9 +81,12 @@ from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .subscription import validate_subscription as _validate_claude_code_subscription
 from .tool_adapter import (
+    cancel_pending_tool_tasks,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    pre_launch_tool_call,
+    reset_stash_event,
     reset_tool_failure_counters,
     set_execution_context,
     wait_for_stash,
@@ -180,6 +183,19 @@ def _is_prompt_too_long(err: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+
+
+def _is_tool_only_message(sdk_msg: object) -> bool:
+    """Return True if *sdk_msg* is an AssistantMessage containing only ToolUseBlocks.
+
+    Such a message represents a parallel tool-call batch (no text output yet).
+    The ``bool(…content)`` guard prevents vacuous-truth evaluation on an empty list.
+    """
+    return (
+        isinstance(sdk_msg, AssistantMessage)
+        and bool(sdk_msg.content)
+        and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+    )
 
 
 class ReducedContext(NamedTuple):
@@ -1275,6 +1291,29 @@ async def _run_stream_attempt(
                     ended_with_stream_error = True
                     break
 
+            # Parallel tool execution: pre-launch every ToolUseBlock as an
+            # asyncio.Task the moment its AssistantMessage arrives.  The SDK
+            # sends one AssistantMessage per tool call when issuing parallel
+            # calls, so each message is pre-launched independently.  The MCP
+            # handlers will await the already-running task instead of executing
+            # fresh, making all concurrent tool calls run in parallel.
+            #
+            # Also determine if the message is a tool-only batch (all content
+            # items are ToolUseBlocks) — such messages have no text output yet,
+            # so we skip the wait_for_stash flush below.
+            is_tool_only = False
+            if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
+                is_tool_only = True
+                # NOTE: Pre-launches are sequential (each await completes
+                # file-ref expansion before the next starts).  This is fine
+                # since expansion is typically sub-ms; a future optimisation
+                # could gather all pre-launches concurrently.
+                for tool_use in sdk_msg.content:
+                    if isinstance(tool_use, ToolUseBlock):
+                        await pre_launch_tool_call(tool_use.name, tool_use.input)
+                    else:
+                        is_tool_only = False
+
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next
             # message can arrive before the hook stashes output.
@@ -1288,15 +1327,12 @@ async def _run_stream_attempt(
             # AssistantMessages (each containing only
             # ToolUseBlocks), we must NOT wait/flush — the prior
             # tools are still executing concurrently.
-            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
-                isinstance(b, ToolUseBlock) for b in sdk_msg.content
-            )
             if (
                 state.adapter.has_unresolved_tool_calls
                 and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
-                and not is_parallel_continuation
+                and not is_tool_only
             ):
-                if await wait_for_stash(timeout=0.5):
+                if await wait_for_stash():
                     await asyncio.sleep(0)
                 else:
                     logger.warning(
@@ -1876,10 +1912,12 @@ async def stream_chat_completion_sdk(
         )
 
         for attempt in range(_MAX_STREAM_ATTEMPTS):
+            # Clear any stale stash signal from the previous attempt so
+            # wait_for_stash() doesn't fire prematurely on a leftover event.
+            reset_stash_event()
             # Reset tool-level circuit breaker so failures from a previous
             # (rolled-back) attempt don't carry over to the fresh attempt.
             reset_tool_failure_counters()
-
             if attempt > 0:
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
@@ -1935,6 +1973,10 @@ async def stream_chat_completion_sdk(
                     if not isinstance(event, StreamHeartbeat):
                         events_yielded += 1
                     yield event
+                # Cancel any pre-launched tasks that were never dispatched
+                # by the SDK (e.g. edge-case SDK behaviour changes). Symmetric
+                # with the three error-path await cancel_pending_tool_tasks() calls.
+                await cancel_pending_tool_tasks()
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
                 logger.warning(
@@ -1943,6 +1985,9 @@ async def stream_chat_completion_sdk(
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
+                # Cancel any pre-launched tasks so they don't continue executing
+                # against a rolled-back or abandoned session.
+                await cancel_pending_tool_tasks()
                 raise
             except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
@@ -1974,6 +2019,8 @@ async def stream_chat_completion_sdk(
                     retryable=True,
                 )
                 ended_with_stream_error = True
+                # Cancel any pre-launched tasks from the failed attempt.
+                await cancel_pending_tool_tasks()
                 break
             except Exception as e:
                 stream_err = e
@@ -1990,6 +2037,9 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # Cancel any pre-launched tasks from the failed attempt so they
+                # don't continue executing against the rolled-back session.
+                await cancel_pending_tool_tasks()
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
@@ -2101,6 +2151,16 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(session.messages),
             )
+    except GeneratorExit:
+        # GeneratorExit is raised when the async generator is closed by the
+        # caller (e.g. client disconnect, page refresh).  We MUST release the
+        # stream lock here because the ``finally`` block at the end of this
+        # function may not execute when GeneratorExit propagates through nested
+        # async generators.  Without this, the lock stays held for its full TTL
+        # and the user sees "Another stream is already active" on every retry.
+        logger.warning("%s GeneratorExit — releasing stream lock", log_prefix)
+        await lock.release()
+        raise
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)

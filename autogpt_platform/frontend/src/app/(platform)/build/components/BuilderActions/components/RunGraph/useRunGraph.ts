@@ -129,10 +129,12 @@ export const useRunGraph = () => {
       },
     });
 
-  const handleRunGraph = async () => {
+  const handleRunGraph = async ({
+    dryRun = false,
+  }: { dryRun?: boolean } = {}) => {
     await saveGraph(undefined);
 
-    if (hasInputs() || hasCredentials()) {
+    if (!dryRun && (hasInputs() || hasCredentials())) {
       setOpenRunInputDialog(true);
     } else {
       // Optimistically set running state immediately for responsive UI
@@ -140,7 +142,12 @@ export const useRunGraph = () => {
       await executeGraph({
         graphId: flowID ?? "",
         graphVersion: flowVersion || null,
-        data: { inputs: {}, credentials_inputs: {}, source: "builder" },
+        data: {
+          inputs: {},
+          credentials_inputs: {},
+          source: "builder",
+          ...(dryRun && { dry_run: true }),
+        },
       });
     }
   };
