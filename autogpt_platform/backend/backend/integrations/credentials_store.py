@@ -522,6 +522,10 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
+        if updated.id in _MANAGED_CREDENTIAL_IDS:
+            raise ValueError(
+                f"Managed credential #{updated.id} cannot be updated directly"
+            )
         async with await self.locked_user_integrations(user_id):
             current = await self.get_creds_by_id(user_id, updated.id)
             if not current:
@@ -556,6 +560,8 @@ class IntegrationCredentialsStore:
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
+        if credentials_id in _MANAGED_CREDENTIAL_IDS:
+            raise ValueError(f"Managed credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
             filtered_credentials = [
                 c for c in await self.get_all_creds(user_id) if c.id != credentials_id
