@@ -7,6 +7,8 @@ import fastapi
 import fastapi.responses
 import prisma.enums
 
+import backend.api.features.library.db as library_db
+import backend.api.features.library.model as library_model
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
@@ -132,3 +134,40 @@ async def admin_download_agent_file(
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
         )
+
+
+@router.get(
+    "/submissions/{store_listing_version_id}/preview",
+    summary="Admin Preview Submission Listing",
+)
+async def admin_preview_submission(
+    store_listing_version_id: str,
+) -> store_model.StoreAgentDetails:
+    """
+    Preview a marketplace submission as it would appear on the listing page.
+    Bypasses the APPROVED-only StoreAgent view so admins can preview pending
+    submissions before approving.
+    """
+    return await store_db.get_store_agent_details_as_admin(store_listing_version_id)
+
+
+@router.post(
+    "/submissions/{store_listing_version_id}/add-to-library",
+    summary="Admin Add Pending Agent to Library",
+    status_code=201,
+)
+async def admin_add_agent_to_library(
+    store_listing_version_id: str,
+    user_id: str = fastapi.Security(autogpt_libs.auth.get_user_id),
+) -> library_model.LibraryAgent:
+    """
+    Add a pending marketplace agent to the admin's library for review.
+    Uses admin-level access to bypass marketplace APPROVED-only checks.
+
+    The builder can load the graph because get_graph() checks library
+    membership as a fallback: "you added it, you keep it."
+    """
+    return await library_db.add_store_agent_to_library_as_admin(
+        store_listing_version_id=store_listing_version_id,
+        user_id=user_id,
+    )

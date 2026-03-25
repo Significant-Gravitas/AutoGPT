@@ -361,12 +361,11 @@ class GraphExecution(GraphExecutionMeta):
         outputs: CompletedBlockOutput = defaultdict(list)
         for exec in complete_node_executions:
             if (
-                block := get_block(exec.block_id)
-            ) and block.block_type == BlockType.OUTPUT:
-                if "name" in exec.input_data:
-                    outputs[exec.input_data["name"]].append(
-                        exec.input_data.get("value")
-                    )
+                (block := get_block(exec.block_id))
+                and block.block_type == BlockType.OUTPUT
+                and "name" in exec.input_data
+            ):
+                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
 
         return GraphExecution(
             **{
