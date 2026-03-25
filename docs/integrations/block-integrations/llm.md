@@ -731,7 +731,7 @@ _Add technical explanation here._
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 | ollama_host | Ollama host for local  models | str | No |
 | agent_mode_max_iterations | Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit. | int | No |
-| use_sdk_mode | Use Claude Agent SDK for tool orchestration. Only supports 'anthropic' and 'open_router' providers. Requires valid API credentials for the selected provider. The SDK manages the conversation loop and tool calling natively. | bool | No |
+| use_sdk_mode | Use Claude Agent SDK for tool orchestration. Only supports Claude models via 'anthropic' or 'open_router' providers. Requires valid API credentials (subscription mode not supported). The SDK manages the conversation loop natively, so 'Agent Mode Max Iterations' is ignored when this is enabled. | bool | No |
 | conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
 
 ### Outputs
