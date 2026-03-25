@@ -365,9 +365,10 @@ class GraphExecution(GraphExecutionMeta):
                 continue
             if "name" not in exec.input_data:
                 logger.debug(
-                    "Skipping %s node execution %s: no 'name' in input_data",
-                    block.block_type,
+                    "Skipping OUTPUT node execution %s (block_id=%s): "
+                    "no 'name' in input_data",
                     exec.node_exec_id,
+                    exec.block_id,
                 )
                 continue
             outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
