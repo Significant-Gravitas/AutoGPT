@@ -412,16 +412,6 @@ class OrchestratorBlock(Block):
             test_credentials=llm.TEST_CREDENTIALS,
         )
 
-    _SENSITIVE_FIELD_PATTERNS = frozenset(
-        {"credentials", "api_key", "api_secret", "password", "secret", "token"}
-    )
-
-    @staticmethod
-    def _is_sensitive_field(field_name: str) -> bool:
-        """Check if a field name likely contains sensitive data."""
-        name_lower = field_name.lower()
-        return any(p in name_lower for p in OrchestratorBlock._SENSITIVE_FIELD_PATTERNS)
-
     @staticmethod
     def cleanup(s: str):
         """Clean up block names for use as tool function names."""
@@ -524,9 +514,7 @@ class OrchestratorBlock(Block):
             {
                 k: v
                 for k, v in defaults.items()
-                if k not in linked_fields
-                and not k.startswith("_")
-                and not OrchestratorBlock._is_sensitive_field(k)
+                if k not in linked_fields and not k.startswith("_")
             }
             if isinstance(defaults, dict)
             else {}
@@ -616,7 +604,6 @@ class OrchestratorBlock(Block):
                 if k not in linked_fields
                 and k not in ("graph_id", "graph_version", "input_schema")
                 and not k.startswith("_")
-                and not OrchestratorBlock._is_sensitive_field(k)
             }
             if isinstance(defaults, dict)
             else {}
