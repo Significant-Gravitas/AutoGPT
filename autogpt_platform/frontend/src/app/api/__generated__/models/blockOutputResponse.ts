@@ -20,4 +20,5 @@ export interface BlockOutputResponse {
   block_name: string;
   outputs: BlockOutputResponseOutputs;
   success?: boolean;
+  is_dry_run?: boolean;
 }

@@ -89,6 +89,7 @@ class ExecutionContext(BaseModel):
     # Safety settings
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
+    dry_run: bool = False  # When True, blocks are LLM-simulated, no real execution
 
     # User settings
     user_timezone: str = "UTC"
@@ -178,6 +179,7 @@ class GraphExecutionMeta(BaseDbModel):
     )
     is_shared: bool = False
     share_token: Optional[str] = None
+    is_dry_run: bool = False
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -306,6 +308,7 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
+            is_dry_run=stats.is_dry_run if stats else False,
         )
 
 
@@ -718,11 +721,12 @@ async def create_graph_execution(
     graph_version: int,
     starting_nodes_input: list[tuple[str, BlockInput]],  # list[(node_id, BlockInput)]
     inputs: Mapping[str, JsonValue],
-    user_id: str,
+    user_id: str,  # Validated by callers (API auth layer / service-level checks)
     preset_id: Optional[str] = None,
     credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
+    is_dry_run: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -760,6 +764,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
