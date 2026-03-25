@@ -1227,11 +1227,6 @@ class OrchestratorBlock(Block):
                 # Yield intermediate results every iteration so the UI
                 # can display progressive tool calls and conversations.
                 yield "conversations", loop_result.messages
-                for tc in loop_result.last_tool_calls:
-                    yield "tools", {
-                        "name": tc.name,
-                        "arguments": tc.arguments,
-                    }
         except Exception as e:
             # Catch all errors (validation, network, API) so that the block
             # surfaces them as user-visible output instead of crashing.
