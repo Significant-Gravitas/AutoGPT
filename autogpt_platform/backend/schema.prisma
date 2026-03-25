@@ -71,6 +71,10 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+  
+  // SAML Provider relations
+  SAMLUsers               SAMLUser[]
+  SAMLAuthRequests        SAMLAuthRequest[]
 }
 
 enum OnboardingStep {
@@ -1300,4 +1304,110 @@ model OAuthRefreshToken {
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+}
+
+// SAML Identity Provider configurations
+model SAMLProvider {
+  id          String   @id @default(uuid())
+  providerName String  @unique // e.g., "okta", "azure", "adfs"
+  displayName String   // Human-readable name
+  enabled     Boolean  @default(true)
+  
+  // SP configuration
+  entityId    String   // Service Provider entity ID
+  acsUrl      String   // Assertion Consumer Service URL
+  sloUrl      String?  // Single Logout URL (optional)
+  
+  // IdP configuration
+  idpEntityId String   // Identity Provider entity ID
+  idpSsoUrl   String   // IdP Single Sign-On URL
+  idpSloUrl   String?  // IdP Single Logout URL (optional)
+  idpX509Cert String   // IdP X.509 certificate (PEM format)
+  
+  // Security settings
+  wantAssertionsSigned Boolean  @default(true)
+  wantResponseSigned    Boolean  @default(true)
+  wantAssertionsEncrypted Boolean @default(false)
+  wantNameIdEncrypted   Boolean  @default(false)
+  
+  // Attribute mapping (JSON)
+  attributeMapping Json // Map of SAML attributes to local fields
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  users SAMLUser[]
+  
+  @@index([providerName])
+  @@index([enabled])
+}
+
+// SAML user sessions
+model SAMLUser {
+  id           String   @id @default(uuid())
+  providerId   String
+  provider     SAMLProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  
+  // SAML identifiers
+  nameId       String   // NameID from SAML assertion
+  sessionIndex String?  // Session index for logout
+  
+  // User information
+  userId       String   // Link to internal User
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Extracted attributes
+  email        String?
+  name         String?
+  firstName    String?
+  lastName     String?
+  username     String?
+  
+  // Groups/roles from IdP
+  groups       String[] // Array of group names
+  
+  // Raw attributes (JSON)
+  rawAttributes Json // All SAML attributes
+  
+  // Session management
+  createdAt    DateTime @default(now())
+  lastLoginAt  DateTime @default(now())
+  expiresAt    DateTime? // Session expiration (from IdP)
+  
+  // Status
+  active       Boolean  @default(true)
+  
+  @@unique([providerId, nameId]) // One user per provider per NameID
+  @@index([userId])
+  @@index([email])
+  @@index([active])
+  @@index([expiresAt]) // For cleanup
+}
+
+// SAML authentication requests (for tracking)
+model SAMLAuthRequest {
+  id         String   @id @default(uuid())
+  providerId String
+  provider   SAMLProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  
+  // Request details
+  requestId  String   // SAML request ID
+  relayState String?  // Relay state from SP
+  
+  // Status
+  status     String   @default("pending") // pending, completed, failed
+  
+  // User (if known)
+  userId     String?
+  User       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  // Timestamps
+  createdAt  DateTime @default(now())
+  completedAt DateTime?
+  
+  @@index([requestId])
+  @@index([providerId])
+  @@index([status])
+  @@index([createdAt]) // For cleanup
 }

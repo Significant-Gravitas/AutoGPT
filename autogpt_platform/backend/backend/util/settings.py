@@ -726,6 +726,64 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
+    
+    # SAML Authentication Settings
+    saml_sp_entity_id: str = Field(
+        default="",
+        description="SAML Service Provider entity ID"
+    )
+    saml_acs_url: str = Field(
+        default="",
+        description="SAML Assertion Consumer Service URL"
+    )
+    saml_slo_url: str = Field(
+        default="",
+        description="SAML Single Logout Service URL"
+    )
+    
+    # Okta SAML Configuration
+    saml_okta_enabled: bool = Field(
+        default=False,
+        description="Enable Okta SAML authentication"
+    )
+    saml_okta_entity_id: str = Field(
+        default="",
+        description="Okta IdP entity ID"
+    )
+    saml_okta_sso_url: str = Field(
+        default="",
+        description="Okta SSO URL"
+    )
+    saml_okta_slo_url: str = Field(
+        default="",
+        description="Okta SLO URL"
+    )
+    saml_okta_x509_cert: str = Field(
+        default="",
+        description="Okta IdP X.509 certificate (PEM format)"
+    )
+    
+    # Azure AD SAML Configuration
+    saml_azure_enabled: bool = Field(
+        default=False,
+        description="Enable Azure AD SAML authentication"
+    )
+    saml_azure_entity_id: str = Field(
+        default="",
+        description="Azure AD IdP entity ID"
+    )
+    saml_azure_sso_url: str = Field(
+        default="",
+        description="Azure AD SSO URL"
+    )
+    saml_azure_slo_url: str = Field(
+        default="",
+        description="Azure AD SLO URL"
+    )
+    saml_azure_x509_cert: str = Field(
+        default="",
+        description="Azure AD IdP X.509 certificate (PEM format)"
+    )
 
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
