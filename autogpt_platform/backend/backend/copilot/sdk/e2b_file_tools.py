@@ -89,6 +89,38 @@ def _get_sandbox_and_path(
     return sandbox, remote
 
 
+async def _sandbox_write(sandbox: Any, path: str, content: str) -> None:
+    """Write *content* to *path* inside the sandbox.
+
+    The E2B filesystem API (``sandbox.files.write``) and the command API
+    (``sandbox.commands.run``) run as **different users**.  On ``/tmp``
+    (which has the sticky bit set) this means ``sandbox.files.write`` can
+    create new files but cannot overwrite files previously created by
+    ``sandbox.commands.run`` (or itself), because the sticky bit restricts
+    deletion/rename to the file owner.
+
+    To work around this, writes targeting ``/tmp`` are performed via
+    ``tee`` through the command API, which runs as the sandbox ``user``
+    and can therefore always overwrite user-owned files.
+    """
+    if path == "/tmp" or path.startswith("/tmp/"):
+        import base64 as _b64
+
+        encoded = _b64.b64encode(content.encode()).decode()
+        result = await sandbox.commands.run(
+            f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}",
+            cwd=E2B_WORKDIR,
+            timeout=10,
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(
+                f"shell write failed (exit {result.exit_code}): "
+                + (result.stderr or "").strip()
+            )
+    else:
+        await sandbox.files.write(path, content)
+
+
 # Tool handlers
 
 
@@ -148,7 +180,7 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
                 error=True,
             )
         remote = os.path.join(canonical_parent, os.path.basename(remote))
-        await sandbox.files.write(remote, content)
+        await _sandbox_write(sandbox, remote, content)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 
@@ -203,7 +235,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         else content.replace(old_string, new_string, 1)
     )
     try:
-        await sandbox.files.write(remote, updated)
+        await _sandbox_write(sandbox, remote, updated)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 

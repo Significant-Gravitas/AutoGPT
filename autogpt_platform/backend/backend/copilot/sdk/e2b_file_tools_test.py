@@ -15,6 +15,7 @@ from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_proj
 from .e2b_file_tools import (
     _check_sandbox_symlink_escape,
     _read_local,
+    _sandbox_write,
     resolve_sandbox_path,
 )
 
@@ -259,3 +260,78 @@ class TestCheckSandboxSymlinkEscape:
         sandbox = _make_sandbox(stdout="/tmp\n", exit_code=0)
         result = await _check_sandbox_symlink_escape(sandbox, "/tmp")
         assert result == "/tmp"
+
+
+# ---------------------------------------------------------------------------
+# _sandbox_write — routing writes through shell for /tmp paths
+# ---------------------------------------------------------------------------
+
+
+class TestSandboxWrite:
+    @pytest.mark.asyncio
+    async def test_tmp_path_uses_shell_command(self):
+        """Writes to /tmp should use commands.run (shell) instead of files.write."""
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        files = SimpleNamespace(write=AsyncMock())
+        sandbox = SimpleNamespace(commands=commands, files=files)
+
+        await _sandbox_write(sandbox, "/tmp/test.py", "print('hello')")
+
+        commands.run.assert_called_once()
+        files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_home_user_path_uses_files_api(self):
+        """Writes to /home/user should use sandbox.files.write."""
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        files = SimpleNamespace(write=AsyncMock())
+        sandbox = SimpleNamespace(commands=commands, files=files)
+
+        await _sandbox_write(sandbox, "/home/user/test.py", "print('hello')")
+
+        files.write.assert_called_once_with("/home/user/test.py", "print('hello')")
+        commands.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tmp_nested_path_uses_shell_command(self):
+        """Writes to nested /tmp paths should use commands.run."""
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        files = SimpleNamespace(write=AsyncMock())
+        sandbox = SimpleNamespace(commands=commands, files=files)
+
+        await _sandbox_write(sandbox, "/tmp/subdir/file.txt", "content")
+
+        commands.run.assert_called_once()
+        files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tmp_write_shell_failure_raises(self):
+        """Shell write failure should raise RuntimeError."""
+        run_result = SimpleNamespace(stdout="", stderr="No space left", exit_code=1)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        sandbox = SimpleNamespace(commands=commands)
+
+        with pytest.raises(RuntimeError, match="shell write failed"):
+            await _sandbox_write(sandbox, "/tmp/test.txt", "content")
+
+    @pytest.mark.asyncio
+    async def test_tmp_write_preserves_content_with_special_chars(self):
+        """Content with special shell characters should be preserved via base64."""
+        import base64
+
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        sandbox = SimpleNamespace(commands=commands)
+
+        content = "print(\"Hello $USER\")\n# a `backtick` and 'quotes'\n"
+        await _sandbox_write(sandbox, "/tmp/special.py", content)
+
+        # Verify the command contains base64-encoded content
+        call_args = commands.run.call_args[0][0]
+        # Extract the base64 string from the command
+        encoded_in_cmd = call_args.split("echo ")[1].split(" |")[0].strip("'")
+        decoded = base64.b64decode(encoded_in_cmd).decode()
+        assert decoded == content
