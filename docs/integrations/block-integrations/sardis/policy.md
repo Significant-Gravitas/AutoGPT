@@ -26,7 +26,7 @@ This block sends a dry-run-style policy check to the Sardis API with the wallet,
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if failed | str |
+| error | Error message if the operation failed | str |
 | allowed | Whether the payment would be allowed | bool |
 | reason | Explanation of the policy decision | str |
 | remaining_limit | Remaining spending limit after this payment (decimal string) | str |

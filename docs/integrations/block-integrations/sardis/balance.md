@@ -24,7 +24,7 @@ This block calls the Sardis balance endpoint for a specific wallet and token. It
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if failed | str |
+| error | Error message if the operation failed | str |
 | balance | Current balance (decimal string) | str |
 | remaining_limit | Remaining spending limit (decimal string) | str |
 | token | Token type | str |

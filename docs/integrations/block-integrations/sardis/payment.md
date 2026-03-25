@@ -28,7 +28,7 @@ This block sends a transfer request to the Sardis API using a Sardis wallet ID a
 
 | Output | Description | Type |
 |--------|-------------|------|
-| error | Error message if failed | str |
+| error | Error message if the operation failed | str |
 | status | APPROVED, BLOCKED, or ERROR | str |
 | tx_id | Transaction ID if approved | str |
 | message | Status message | str |
