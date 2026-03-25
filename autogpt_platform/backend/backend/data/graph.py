@@ -1426,8 +1426,24 @@ async def validate_graph_execution_permissions(
     # Step 1: Check if user owns this graph
     user_owns_graph = graph and graph.userId == user_id
 
-    # Step 2: Check if agent is in the library *and not deleted*
+    # Step 2: Check if the exact graph version is in the library.
     user_has_in_library = library_agent is not None
+    owner_has_live_library_entry = user_has_in_library
+    if user_owns_graph and not user_has_in_library:
+        # Owners are allowed to execute a new version as long as some live
+        # library entry still exists for the graph. Non-owners stay
+        # version-specific.
+        owner_has_live_library_entry = (
+            await LibraryAgent.prisma().find_first(
+                where={
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "isDeleted": False,
+                    "isArchived": False,
+                }
+            )
+            is not None
+        )
 
     # Step 3: Apply permission logic
     # Access is granted if the user owns it, it's in the marketplace, OR
@@ -1442,7 +1458,7 @@ async def validate_graph_execution_permissions(
             "it is not owned by you, not in your library, "
             "and not available in the Marketplace"
         )
-    elif not (user_has_in_library or is_sub_graph):
+    elif not (user_has_in_library or owner_has_live_library_entry or is_sub_graph):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
     # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
