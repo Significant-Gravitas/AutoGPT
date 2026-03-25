@@ -31,11 +31,11 @@ This block calls the Sardis balance endpoint for a specific wallet and token. It
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Verify funds before payment:** Confirm wallet balance and remaining policy headroom before initiating a paid action.
+**Budget monitoring:** Check remaining spending limits before executing a workflow.
 
-**Gate workflow branches:** Decide whether to continue, defer, or reroute a purchase flow based on available funds.
+**Multi-agent oversight:** Monitor balances across multiple agent wallets from a single dashboard flow.
 
-**Track wallet health:** Snapshot spendable balance and remaining limit during recurring agent operations.
+**Threshold alerts:** Trigger notifications when wallet balance drops below a critical level.
 <!-- END MANUAL -->
 
 ---

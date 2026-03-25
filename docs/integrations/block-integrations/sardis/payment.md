@@ -36,11 +36,11 @@ This block sends a transfer request to the Sardis API using a Sardis wallet ID a
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Pay a supplier:** Execute an approved stablecoin payout to a vendor when a workflow reaches settlement.
+**API procurement:** Agent automatically pays for cloud compute, data APIs, or SaaS subscriptions within policy limits.
 
-**Settle a tool invoice:** Pay an external API or service bill from a policy-controlled operational wallet.
+**Agent-to-agent settlement:** Autonomous agents settle invoices with each other using escrowed stablecoin payments.
 
-**Move treasury funds:** Transfer funds between wallets while preserving Sardis policy checks and auditability.
+**Scheduled disbursements:** Execute recurring payroll or vendor payments with per-transaction policy validation.
 <!-- END MANUAL -->
 
 ---

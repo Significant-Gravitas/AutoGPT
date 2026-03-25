@@ -33,11 +33,11 @@ This block sends a dry-run-style policy check to the Sardis API with the wallet,
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Validate checkout eligibility:** Confirm a proposed payment would pass policy before showing a final checkout decision.
+**Pre-flight validation:** Dry-run a payment against spending rules before committing funds.
 
-**Gate wallet transfers:** Check whether an operational transfer is allowed before attempting an on-chain movement of funds.
+**Workflow gating:** Only proceed to the payment step if the policy engine confirms the transaction is within limits.
 
-**Route around limit failures:** Estimate remaining policy headroom before deciding to split, defer, or reroute a payment.
+**Audit trail:** Log every policy decision for compliance reporting without executing any on-chain transaction.
 <!-- END MANUAL -->
 
 ---
