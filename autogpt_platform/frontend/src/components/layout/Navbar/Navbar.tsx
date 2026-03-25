@@ -2,6 +2,7 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
+import { IconAutoGPTLogo } from "@/components/__legacy__/ui/icons";
 import { IconType } from "@/components/__legacy__/ui/icons";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
@@ -15,9 +16,10 @@ import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
+import { NavbarLink } from "./components/NavbarLink";
 import { NavbarLoading } from "./components/NavbarLoading";
 import { Wallet } from "./components/Wallet/Wallet";
-import { getAccountMenuItems, loggedInLinks } from "./helpers";
+import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 
 export function Navbar() {
   const { user, isLoggedIn, isUserLoading } = useSupabase();
@@ -45,7 +47,7 @@ export function Navbar() {
 
   const homeHref = isChatEnabled === true ? "/copilot" : "/library";
 
-  const mobileNavLinks = [
+  const actualLoggedInLinks = [
     { name: "Home", href: homeHref },
     ...(isChatEnabled === true ? [{ name: "Agents", href: "/library" }] : []),
     ...loggedInLinks,
@@ -65,7 +67,29 @@ export function Navbar() {
           className="inline-flex w-full items-center border-b border-zinc-100 bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
-          <div className="flex-1" />
+          {!isSmallScreen ? (
+            <div className="flex flex-1 items-center gap-5">
+              {isLoggedIn
+                ? actualLoggedInLinks.map((link) => (
+                    <NavbarLink
+                      key={link.name}
+                      name={link.name}
+                      href={link.href}
+                    />
+                  ))
+                : loggedOutLinks.map((link) => (
+                    <NavbarLink
+                      key={link.name}
+                      name={link.name}
+                      href={link.href}
+                    />
+                  ))}
+            </div>
+          ) : null}
+
+          <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
+            <IconAutoGPTLogo className="h-full w-full" />
+          </div>
 
           {/* Right section */}
           {isLoggedIn && !isSmallScreen ? (
@@ -101,7 +125,7 @@ export function Navbar() {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: mobileNavLinks
+                  items: actualLoggedInLinks
                     .map((link) => {
                       return {
                         icon:
