@@ -550,16 +550,31 @@ async def reset_copilot_usage(
                 detail="Insufficient credits to reset your rate limit.",
             ) from e
 
-        # Reset daily usage in Redis.  If this fails the user was already
-        # charged, so we must surface the error instead of silently succeeding.
+        # Reset daily usage in Redis.  If this fails, refund the credits
+        # so the user is not charged for a service they did not receive.
         if not await reset_daily_usage(
             user_id, daily_token_limit=config.daily_token_limit
         ):
+            # Compensate: refund the charged credits.
+            try:
+                await credit_model.top_up_credits(user_id, cost)
+                logger.warning(
+                    "Refunded %d credits to user %s after Redis reset failure",
+                    cost,
+                    user_id[:8],
+                )
+            except Exception:
+                logger.error(
+                    "CRITICAL: Failed to refund %d credits to user %s "
+                    "after Redis reset failure — manual intervention required",
+                    cost,
+                    user_id[:8],
+                    exc_info=True,
+                )
             raise HTTPException(
                 status_code=503,
                 detail="Rate limit reset failed — please try again later. "
-                "Your credits have been charged; contact support if the "
-                "issue persists.",
+                "Your credits have not been charged.",
             )
 
         # Track the reset count for daily cap enforcement.
