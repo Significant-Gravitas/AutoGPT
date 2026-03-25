@@ -83,7 +83,7 @@ class SardisPayBlock(Block):
             id="353e4e7f-f4c7-4091-badc-59170ef15500",
             description="Execute a policy-controlled payment from a Sardis wallet. "
             "Each payment is verified against spending policies before execution.",
-            categories={BlockCategory.OUTPUT},
+            categories={BlockCategory.DATA},
             input_schema=SardisPayBlock.Input,
             output_schema=SardisPayBlock.Output,
             test_input=[
