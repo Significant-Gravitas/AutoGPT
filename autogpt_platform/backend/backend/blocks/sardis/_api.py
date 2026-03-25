@@ -1,8 +1,8 @@
 """Sardis API client helpers used by the Sardis block suite."""
 
+import asyncio
 import hashlib
 import logging
-import threading
 import uuid
 from collections import OrderedDict
 from typing import Any
@@ -13,20 +13,20 @@ from backend.util.request import Requests, Response
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Client cache — bounded LRU with threading lock
+# Client cache — bounded LRU with async lock
 # ---------------------------------------------------------------------------
 
-_lock = threading.Lock()
+_lock = asyncio.Lock()
 _clients: OrderedDict[str, "SardisClient"] = OrderedDict()
 _MAX_CLIENTS = 32
 
 
-def get_client(credentials: SardisCredentials) -> "SardisClient":
+async def get_client(credentials: SardisCredentials) -> "SardisClient":
     """Return a cached client keyed on the API key hash (bounded LRU)."""
     cache_key = hashlib.sha256(
         credentials.api_key.get_secret_value().encode()
     ).hexdigest()[:16]
-    with _lock:
+    async with _lock:
         if cache_key in _clients:
             _clients.move_to_end(cache_key)
             return _clients[cache_key]
@@ -77,15 +77,22 @@ class SardisClient:
         token: str = "USDC",
         chain: str = "base",
         purpose: str = "Payment",
+        idempotency_key: str = "",
     ) -> dict[str, Any]:
         """Execute a policy-controlled payment.
 
         ``amount`` is a decimal *string* — never a float — so the exact value
         the caller entered reaches the API without IEEE 754 rounding.
+
+        ``idempotency_key`` should be derived from the execution context
+        (e.g. ``node_exec_id``) so that retrying the same logical payment
+        does not create a duplicate charge.  Falls back to a random UUID
+        when no key is provided (e.g. in tests).
         """
+        key = idempotency_key or str(uuid.uuid4())
         response = await self._requests_no_retry.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
-            headers={"Idempotency-Key": str(uuid.uuid4())},
+            headers={"Idempotency-Key": key},
             json={
                 "destination": to,
                 "amount": amount,
@@ -149,8 +156,9 @@ class SardisClient:
         try:
             payload = response.json()
         except Exception:
+            body = (response.text() or "")[:200]
             return {
-                "error": f"{default_error}: HTTP {response.status} {response.text()}",
+                "error": f"{default_error}: HTTP {response.status} {body}",
                 "status": response.status,
             }
 
@@ -173,7 +181,8 @@ class SardisClient:
             normalized_payload.setdefault("status", response.status)
             return normalized_payload
 
+        body = (response.text() or "")[:200]
         return {
-            "error": f"{default_error}: HTTP {response.status} {response.text()}",
+            "error": f"{default_error}: HTTP {response.status} {body}",
             "status": response.status,
         }

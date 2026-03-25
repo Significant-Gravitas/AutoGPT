@@ -124,7 +124,7 @@ class SardisPolicyCheckBlock(Block):
         credentials: SardisCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = get_client(credentials)
+        client = await get_client(credentials)
         result = await self.check_policy(
             client=client,
             wallet_id=input_data.wallet_id,

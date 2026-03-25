@@ -77,6 +77,9 @@ class SardisPayBlock(Block):
         amount: str = SchemaField(
             description="Payment amount (decimal string)", default="0"
         )
+        error: str = SchemaField(
+            description="Error message if the operation failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -112,6 +115,7 @@ class SardisPayBlock(Block):
                 }
             },
             test_credentials=TEST_CREDENTIALS,
+            is_sensitive_action=True,
         )
 
     @staticmethod
@@ -123,6 +127,7 @@ class SardisPayBlock(Block):
         token: str,
         chain: str,
         purpose: str,
+        idempotency_key: str = "",
     ) -> dict:
         return await client.send_payment(
             wallet_id=wallet_id,
@@ -131,6 +136,7 @@ class SardisPayBlock(Block):
             token=token,
             chain=chain,
             purpose=purpose,
+            idempotency_key=idempotency_key,
         )
 
     async def run(
@@ -138,9 +144,10 @@ class SardisPayBlock(Block):
         input_data: Input,
         *,
         credentials: SardisCredentials,
+        node_exec_id: str = "",
         **kwargs,
     ) -> BlockOutput:
-        client = get_client(credentials)
+        client = await get_client(credentials)
         result = await self.send_payment(
             client=client,
             wallet_id=input_data.wallet_id,
@@ -149,6 +156,7 @@ class SardisPayBlock(Block):
             token=input_data.token,
             chain=input_data.chain,
             purpose=input_data.purpose,
+            idempotency_key=node_exec_id,
         )
 
         # Explicit three-way status logic:
