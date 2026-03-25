@@ -1224,7 +1224,9 @@ class OrchestratorBlock(Block):
                 max_iterations=max_iterations,
                 last_iteration_message=last_iter_msg,
             ):
-                pass  # Drain the generator; final result is in loop_result
+                # Yield intermediate results every iteration so the UI
+                # can display progressive tool calls and conversations.
+                yield "conversations", loop_result.messages
         except Exception as e:
             # Catch all errors (validation, network, API) so that the block
             # surfaces them as user-visible output instead of crashing.
