@@ -5,29 +5,15 @@ Provides semantic search capabilities using embeddings and vector similarity.
 Enhances the existing search functionality with AI-powered understanding.
 """
 
-import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple
-
+from typing import Any, Dict, List, Optional, Union, Literal
 import numpy as np
-from pydantic import BaseModel, SecretStr
+from pydantic import SecretStr
 
-from backend.blocks._base import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-)
-from backend.blocks.helpers.http import GetRequest
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
-    SchemaField,
-)
+from backend.data.block import Block, BlockCategory, BlockSchema, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput, SchemaField
+from backend.util.request import get_requests_session
 from backend.integrations.providers import ProviderName
-from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
 
@@ -57,7 +43,7 @@ class SemanticSearchInput(BlockSchemaInput):
         default=SIMILARITY_THRESHOLD
     )
     credentials: Optional[CredentialsMetaInput[
-        Literal[ProviderName.OPENAI], Literal["api_key"]
+        ProviderName.OPENAI, Literal["api_key"]
     ]] = CredentialsField(
         description="OpenAI API key for embedding generation (optional if using cached embeddings)",
         optional=True
@@ -68,13 +54,17 @@ class SemanticSearchOutput(BlockSchemaOutput):
     results: List[Dict[str, Any]] = SchemaField(
         description="List of semantically similar results with scores"
     )
-    query_embedding: Optional[List[float]] = SchemaField(
-        description="The embedding vector for the query (for debugging)",
-        default=None
+    model: str = SchemaField(
+        description="Embedding model to use (e.g., 'text-embedding-3-small')",
+        default="text-embedding-3-small"
     )
     error: str = SchemaField(
         description="Error message if the search fails",
         default=""
+    )
+    query_embedding: Optional[List[float]] = SchemaField(
+        description="The embedding vector for the query (for debugging)",
+        default=None
     )
 
 
@@ -103,6 +93,7 @@ class SemanticSearchBlock(Block, GetRequest):
                     {"content": "Supervised learning methods", "score": 0.82},
                     {"content": "Unsupervised clustering", "score": 0.75}
                 ],
+                "model": "text-embedding-3-small",
                 "query_embedding": [0.1, 0.2, 0.3],
                 "error": ""
             },
@@ -224,6 +215,7 @@ class SemanticSearchBlock(Block, GetRequest):
             
             # Output results
             yield "results", results
+            yield "model", EMBEDDING_MODEL
             yield "query_embedding", query_embedding
             
             logger.info(f"Found {len(results)} semantic matches for query: {input_data.query}")
@@ -233,6 +225,7 @@ class SemanticSearchBlock(Block, GetRequest):
             logger.error(error_msg)
             yield "error", error_msg
             yield "results", []
+            yield "model", EMBEDDING_MODEL
             yield "query_embedding", None
 
 
@@ -253,7 +246,7 @@ async def embed_blocks_for_search(blocks: List[Dict[str, Any]]) -> List[Dict[str
     
     for block in blocks:
         # Extract searchable text from block
-        searchable_text = f"{block.get('name', '')} {block.get('description', '')}"
+        # searchable_text = f"{block.get('name', '')} {block.get('description', '')}"
         
         # Generate embedding (in production, batch this for efficiency)
         # embedding = await generate_embedding(searchable_text)

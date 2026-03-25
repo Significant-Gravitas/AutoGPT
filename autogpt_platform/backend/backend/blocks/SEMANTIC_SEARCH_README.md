@@ -68,9 +68,11 @@ def calculate_cosine_similarity(vector_a: List[float], vector_b: List[float]) ->
 1. Perform semantic search using embeddings
 2. Perform lexical search using BM25
 3. Combine results with weighted scoring:
-   ```
+
+   ```python
    combined_score = (semantic_score * 0.6) + (lexical_score * 0.4)
    ```
+
 4. Re-rank top results with BM25
 5. Return final ranked list
 
