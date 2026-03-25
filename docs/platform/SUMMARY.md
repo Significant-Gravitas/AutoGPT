@@ -2,19 +2,33 @@
 
 * [What is the AutoGPT Platform?](what-is-autogpt-platform.md)
 
-## Getting Started
+## Using the Platform
 
-* [Setting Up Auto-GPT (Local Host)](getting-started.md)
+* [Getting Started (Cloud)](getting-started-cloud.md)
+* [AutoPilot](autopilot.md)
+* [Agent Builder Guide](agent-builder-guide.md)
+* [Agent Library](agent-library.md)
+* [Marketplace](marketplace.md)
+* [Scheduling & Triggers](scheduling-and-triggers.md)
+* [Templates](templates.md)
+* [Credits & Billing](credits-and-billing.md)
+* [Integrations & Credentials](integrations-and-credentials.md)
+* [Data Flow & Execution](data-flow-and-execution.md)
+* [Sharing & Exporting Agents](sharing-and-exporting.md)
+
+## Self-Hosting
+
+* [Setting Up AutoGPT (Self-Host)](getting-started.md)
 * [AutoGPT Platform Installer](installer.md)
+* [Advanced Setup](advanced_setup.md)
+
+## Tutorials
+
+* [Create a Basic Agent](create-basic-agent.md)
 * [Edit an Agent](edit-agent.md)
 * [Delete an Agent](delete-agent.md)
 * [Download & Import an Agent](download-agent-from-marketplace-local.md)
-* [Create a Basic Agent](create-basic-agent.md)
 * [Submit an Agent to the Marketplace](submit-agent-to-marketplace.md)
-
-## Advanced Setup
-
-* [Advanced Setup](advanced_setup.md)
 
 ## Building Blocks
 
