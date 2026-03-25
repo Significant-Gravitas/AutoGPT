@@ -6,6 +6,7 @@ import pytest
 
 from backend.blocks.google.gmail import (
     GmailReadBlock,
+    _build_reply_message,
     create_mime_message,
     validate_email_recipients,
 )
@@ -356,8 +357,6 @@ class TestBuildReplyMessageValidation:
     @pytest.mark.asyncio
     async def test_invalid_to_raises_before_reply_construction(self):
         """Invalid 'to' in reply should raise ValueError before MIME work."""
-        from backend.blocks.google.gmail import _build_reply_message
-
         mock_service = Mock()
         mock_parent = {
             "threadId": "thread-1",
