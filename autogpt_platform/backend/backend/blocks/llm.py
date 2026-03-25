@@ -110,9 +110,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
         """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
         if isinstance(value, str) and "/" in value:
             stripped = value.split("/", 1)[1]
-            for member in cls:
-                if member.value == stripped:
-                    return member
+            try:
+                return cls(stripped)
+            except ValueError:
+                return None
         return None
 
     # OpenAI models

@@ -809,3 +809,20 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+
+class TestLlmModelMissing:
+    """Test that LlmModel handles provider-prefixed model names."""
+
+    def test_provider_prefixed_model_resolves(self):
+        assert (
+            llm.LlmModel("anthropic/claude-sonnet-4-6")
+            == llm.LlmModel.CLAUDE_4_6_SONNET
+        )
+
+    def test_bare_model_still_works(self):
+        assert llm.LlmModel("claude-sonnet-4-6") == llm.LlmModel.CLAUDE_4_6_SONNET
+
+    def test_invalid_prefixed_model_raises(self):
+        with pytest.raises(ValueError):
+            llm.LlmModel("invalid/nonexistent-model")
