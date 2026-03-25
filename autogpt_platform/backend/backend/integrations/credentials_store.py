@@ -4,13 +4,12 @@ import logging
 import secrets
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from agentmail import AsyncAgentMail
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, SecretStr
 
 from backend.data.db import prisma
 from backend.data.model import (
@@ -28,9 +27,10 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class ManagedCredentialDef:
+class ManagedCredentialDef(BaseModel):
     """Declarative definition of a per-user managed credential."""
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
     credential_id: str
     provider: str
@@ -38,12 +38,9 @@ class ManagedCredentialDef:
     # Field name on ManagedCredentials that holds the SecretStr API key
     api_key_field: str
     # Called when api_key_field is None to auto-provision.
-    # Signature: (user_id, store) -> SecretStr | None
+    # Signature: (user_id: str, store: IntegrationCredentialsStore) -> SecretStr | None
     # Must assume locked_user_integrations is held by caller.
-    provision: (
-        Callable[["str", "IntegrationCredentialsStore"], Awaitable[SecretStr | None]]
-        | None
-    ) = None
+    provision: Callable[[str, Any], Awaitable[SecretStr | None]] | None = None
     # Settings.secrets field that must be truthy for provisioning to trigger.
     requires_setting: str | None = None
 
@@ -322,16 +319,28 @@ async def _provision_agentmail_pod(
     """Auto-provision an AgentMail pod for the user. Returns the pod API key.
 
     Must be called with locked_user_integrations already held.
+
+    Idempotency: if a previous attempt created the pod but failed before
+    persisting the API key, the stored ``agentmail_pod_id`` is reused instead
+    of creating a duplicate pod.
     """
     client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
     try:
-        pod = await client.pods.create(client_id=user_id)
+        # Re-read to check for a partially-provisioned pod (idempotency)
+        user_integrations = await store._get_user_integrations(user_id)
+        existing_pod_id = user_integrations.managed_credentials.agentmail_pod_id
+
+        if existing_pod_id:
+            # Pod was created previously but the API key wasn't persisted
+            pod = await client.pods.get(pod_id=existing_pod_id)
+        else:
+            pod = await client.pods.create(client_id=user_id)
+
         api_key = await client.pods.api_keys.create(
             pod_id=pod.pod_id, name="autogpt-managed"
         )
         pod_api_key = SecretStr(api_key.api_key)
         # Write directly — caller already holds locked_user_integrations
-        user_integrations = await store._get_user_integrations(user_id)
         user_integrations.managed_credentials.agentmail_pod_id = pod.pod_id
         user_integrations.managed_credentials.agentmail_pod_api_key = pod_api_key
         await store.db_manager.update_user_integrations(user_id, user_integrations)
@@ -344,7 +353,7 @@ async def _provision_agentmail_pod(
 
 MANAGED_CREDENTIAL_DEFS: list[ManagedCredentialDef] = [
     ManagedCredentialDef(
-        credential_id="agentmail-pod-key-00000000-0000-0000",
+        credential_id="00000000-0000-0000-0000-000000000008",
         provider="agent_mail",
         title="AgentMail (managed by AutoGPT)",
         api_key_field="agentmail_pod_api_key",
@@ -360,7 +369,9 @@ SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS} | {
 }
 
 # Set of providers that have system credentials available
-SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
+SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS} | {
+    defn.provider for defn in MANAGED_CREDENTIAL_DEFS
+}
 
 
 def is_system_credential(credential_id: str) -> bool:
@@ -404,10 +415,20 @@ class IntegrationCredentialsStore:
                     f"for user #{user_id}"
                 )
             await self._set_user_integration_creds(
-                user_id, [*(await self.get_all_creds(user_id)), credentials]
+                user_id,
+                [*(await self._get_all_creds_unlocked(user_id)), credentials],
             )
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
+        """Public entry point — acquires lock, then delegates."""
+        async with await self.locked_user_integrations(user_id):
+            return await self._get_all_creds_unlocked(user_id)
+
+    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
+        """Return all credentials for *user_id*.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
         user_integrations = await self._get_user_integrations(user_id)
         all_credentials = list(user_integrations.credentials)
 
@@ -422,15 +443,15 @@ class IntegrationCredentialsStore:
                 and defn.provision
                 and _setting_is_set(defn.requires_setting)
             ):
-                async with await self.locked_user_integrations(user_id):
-                    user_integrations = await self._get_user_integrations(user_id)
-                    api_key = getattr(
-                        user_integrations.managed_credentials,
-                        defn.api_key_field,
-                        None,
-                    )
-                    if not api_key:
-                        api_key = await defn.provision(user_id, self)
+                # Re-read under the (already-held) lock to avoid races
+                user_integrations = await self._get_user_integrations(user_id)
+                api_key = getattr(
+                    user_integrations.managed_credentials,
+                    defn.api_key_field,
+                    None,
+                )
+                if not api_key:
+                    api_key = await defn.provision(user_id, self)
 
             if api_key:
                 all_credentials.append(
@@ -522,9 +543,9 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
-        if updated.id in _MANAGED_CREDENTIAL_IDS:
+        if updated.id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(
-                f"Managed credential #{updated.id} cannot be updated directly"
+                f"System credential #{updated.id} cannot be updated directly"
             )
         async with await self.locked_user_integrations(user_id):
             current = await self.get_creds_by_id(user_id, updated.id)
@@ -555,16 +576,18 @@ class IntegrationCredentialsStore:
             # Update the credentials
             updated_credentials_list = [
                 updated if c.id == updated.id else c
-                for c in await self.get_all_creds(user_id)
+                for c in await self._get_all_creds_unlocked(user_id)
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
-        if credentials_id in _MANAGED_CREDENTIAL_IDS:
-            raise ValueError(f"Managed credential #{credentials_id} cannot be deleted")
+        if credentials_id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(f"System credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
             filtered_credentials = [
-                c for c in await self.get_all_creds(user_id) if c.id != credentials_id
+                c
+                for c in await self._get_all_creds_unlocked(user_id)
+                if c.id != credentials_id
             ]
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
@@ -583,16 +606,6 @@ class IntegrationCredentialsStore:
         _profile_key = SecretStr(profile_key)
         async with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
-
-    async def set_agentmail_pod_credentials(
-        self, user_id: str, pod_id: str, pod_api_key: str
-    ) -> None:
-        """Set the AgentMail pod credentials for a user."""
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.managed_credentials.agentmail_pod_id = pod_id
-            user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
-                pod_api_key
-            )
 
     # ===================== OAUTH STATES ===================== #
 
