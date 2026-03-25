@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import threading
+import uuid
 from collections import OrderedDict
 from typing import Any
 
@@ -84,6 +85,7 @@ class SardisClient:
         """
         response = await self._requests_no_retry.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
+            headers={"Idempotency-Key": str(uuid.uuid4())},
             json={
                 "destination": to,
                 "amount": amount,

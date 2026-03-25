@@ -1,5 +1,3 @@
-import re
-from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from pydantic import field_validator
@@ -16,11 +14,12 @@ from backend.blocks.sardis._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     SardisCredentials,
+    SardisCredentialsField,
     SardisCredentialsInput,
+    validate_amount,
+    validate_wallet_id,
 )
-from backend.data.model import CredentialsField, SchemaField
-
-_WALLET_ID_RE = re.compile(r"^wal_[a-zA-Z0-9]+$")
+from backend.data.model import SchemaField
 
 
 class SardisPayBlock(Block):
@@ -59,32 +58,17 @@ class SardisPayBlock(Block):
             default="Payment",
             advanced=True,
         )
-        credentials: SardisCredentialsInput = CredentialsField(
-            description="Sardis API credentials",
-        )
+        credentials: SardisCredentialsInput = SardisCredentialsField()
 
         @field_validator("wallet_id")
         @classmethod
         def _validate_wallet_id(cls, v: str) -> str:
-            if not _WALLET_ID_RE.match(v):
-                raise ValueError(
-                    "wallet_id must start with 'wal_' followed by alphanumeric "
-                    f"characters, got '{v}'"
-                )
-            return v
+            return validate_wallet_id(v)
 
         @field_validator("amount")
         @classmethod
         def _validate_amount(cls, v: str) -> str:
-            try:
-                val = Decimal(v)
-            except (InvalidOperation, TypeError):
-                raise ValueError(f"amount must be a numeric string, got '{v}'")
-            if not val.is_finite():
-                raise ValueError(f"amount must be a finite numeric string, got '{v}'")
-            if val < Decimal("0.01"):
-                raise ValueError(f"amount must be >= 0.01, got '{v}'")
-            return v
+            return validate_amount(v)
 
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="APPROVED, BLOCKED, or ERROR", default="")
@@ -93,7 +77,6 @@ class SardisPayBlock(Block):
         amount: str = SchemaField(
             description="Payment amount (decimal string)", default="0"
         )
-        error: str = SchemaField(description="Error message if failed", default="")
 
     def __init__(self):
         super().__init__(

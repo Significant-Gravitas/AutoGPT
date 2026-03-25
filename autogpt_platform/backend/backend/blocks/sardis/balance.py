@@ -1,4 +1,3 @@
-import re
 from typing import Literal
 
 from pydantic import field_validator
@@ -15,11 +14,11 @@ from backend.blocks.sardis._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
     SardisCredentials,
+    SardisCredentialsField,
     SardisCredentialsInput,
+    validate_wallet_id,
 )
-from backend.data.model import CredentialsField, SchemaField
-
-_WALLET_ID_RE = re.compile(r"^wal_[a-zA-Z0-9]+$")
+from backend.data.model import SchemaField
 
 
 class SardisBalanceBlock(Block):
@@ -33,19 +32,12 @@ class SardisBalanceBlock(Block):
             description="Token to check",
             default="USDC",
         )
-        credentials: SardisCredentialsInput = CredentialsField(
-            description="Sardis API credentials",
-        )
+        credentials: SardisCredentialsInput = SardisCredentialsField()
 
         @field_validator("wallet_id")
         @classmethod
         def _validate_wallet_id(cls, v: str) -> str:
-            if not _WALLET_ID_RE.match(v):
-                raise ValueError(
-                    "wallet_id must start with 'wal_' followed by alphanumeric "
-                    f"characters, got '{v}'"
-                )
-            return v
+            return validate_wallet_id(v)
 
     class Output(BlockSchemaOutput):
         balance: str = SchemaField(
@@ -55,7 +47,6 @@ class SardisBalanceBlock(Block):
             description="Remaining spending limit (decimal string)", default="0"
         )
         token: str = SchemaField(description="Token type", default="USDC")
-        error: str = SchemaField(description="Error message if failed", default="")
 
     def __init__(self):
         super().__init__(

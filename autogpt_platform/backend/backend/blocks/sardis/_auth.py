@@ -1,3 +1,5 @@
+import re
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from pydantic import SecretStr
@@ -24,6 +26,35 @@ TEST_CREDENTIALS_INPUT = {
     "type": TEST_CREDENTIALS.type,
     "title": TEST_CREDENTIALS.title,
 }
+
+# ---------------------------------------------------------------------------
+# Shared validators
+# ---------------------------------------------------------------------------
+
+_WALLET_ID_RE = re.compile(r"^wal_[a-zA-Z0-9]+$")
+
+
+def validate_wallet_id(v: str) -> str:
+    """Validate that a wallet ID matches the ``wal_<alnum>`` pattern."""
+    if not _WALLET_ID_RE.match(v):
+        raise ValueError(
+            "wallet_id must start with 'wal_' followed by alphanumeric "
+            f"characters, got '{v}'"
+        )
+    return v
+
+
+def validate_amount(v: str) -> str:
+    """Validate that an amount is a finite decimal string >= 0.01."""
+    try:
+        val = Decimal(v)
+    except (InvalidOperation, TypeError):
+        raise ValueError(f"amount must be a numeric string, got '{v}'")
+    if not val.is_finite():
+        raise ValueError(f"amount must be a finite numeric string, got '{v}'")
+    if val < Decimal("0.01"):
+        raise ValueError(f"amount must be >= 0.01, got '{v}'")
+    return v
 
 
 def SardisCredentialsField() -> SardisCredentialsInput:
