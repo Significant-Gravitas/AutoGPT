@@ -58,14 +58,25 @@ async def test_user(server, test_user_id: str):
 
     yield test_user_id
 
-    # Cleanup - delete in correct order due to foreign key constraints
-    await PrismaOAuthAccessToken.prisma().delete_many(where={"userId": test_user_id})
-    await PrismaOAuthRefreshToken.prisma().delete_many(where={"userId": test_user_id})
-    await PrismaOAuthAuthorizationCode.prisma().delete_many(
-        where={"userId": test_user_id}
-    )
-    await PrismaOAuthApplication.prisma().delete_many(where={"ownerId": test_user_id})
-    await PrismaUser.prisma().delete(where={"id": test_user_id})
+    # Cleanup - delete in correct order due to foreign key constraints.
+    # Wrap in try/except because the event loop or Prisma engine may already
+    # be closed during session teardown on Python 3.12+.
+    try:
+        await PrismaOAuthAccessToken.prisma().delete_many(
+            where={"userId": test_user_id}
+        )
+        await PrismaOAuthRefreshToken.prisma().delete_many(
+            where={"userId": test_user_id}
+        )
+        await PrismaOAuthAuthorizationCode.prisma().delete_many(
+            where={"userId": test_user_id}
+        )
+        await PrismaOAuthApplication.prisma().delete_many(
+            where={"ownerId": test_user_id}
+        )
+        await PrismaUser.prisma().delete(where={"id": test_user_id})
+    except RuntimeError:
+        pass
 
 
 @pytest_asyncio.fixture
