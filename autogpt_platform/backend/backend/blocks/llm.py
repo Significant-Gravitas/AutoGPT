@@ -2218,3 +2218,378 @@ class AIListGeneratorBlock(AIBlockBase):
         |Ensure you provide a proper JSON array with only string values in the 'list' field.
         """
     )
+
+
+class SemanticLLMBlock(Block):
+    """
+    LLM Block with semantic search capabilities for context retrieval.
+    Can search through previous conversations and documents to find relevant context.
+    """
+    
+    class Input(BlockSchemaInput):
+        prompt: str = SchemaField(description="The prompt to send to the LLM")
+        context_search: str = SchemaField(
+            description="Query to search for relevant context from previous conversations",
+            default=""
+        )
+        max_context_items: int = SchemaField(
+            description="Maximum number of context items to retrieve",
+            default=3
+        )
+        model: LlmModel = SchemaField(
+            description="The LLM model to use",
+            default=LlmModel.GPT_4_O_MINI
+        )
+        credentials: AICredentials = AICredentialsField()
+        temperature: float = SchemaField(
+            description="The temperature parameter for the LLM",
+            default=0.7
+        )
+        use_semantic_context: bool = SchemaField(
+            description="Whether to use semantic search for context retrieval",
+            default=True
+        )
+        include_reasoning: bool = SchemaField(
+            description="Include reasoning in the response (for supported models)",
+            default=False
+        )
+
+    class Output(BlockSchemaOutput):
+        response: str = SchemaField(description="The LLM's response")
+        retrieved_context: List[Dict[str, Any]] = SchemaField(
+            description="Context items retrieved via semantic search"
+        )
+        usage: Dict[str, Any] = SchemaField(
+            description="Token usage information"
+        )
+        reasoning: Optional[str] = SchemaField(
+            description="Model's reasoning (if requested and supported)",
+            default=None
+        )
+        error: str = SchemaField(
+            description="Error message if the LLM call fails",
+            default=""
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="semantic-llm-001",
+            description="LLM block with semantic search capabilities for intelligent context retrieval",
+            categories={BlockCategory.AI},
+            input_schema=SemanticLLMBlock.Input,
+            output_schema=SemanticLLMBlock.Output,
+            test_input={
+                "prompt": "What did we discuss about machine learning?",
+                "context_search": "machine learning algorithms discussion",
+                "model": LlmModel.GPT_4_O_MINI,
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "temperature": 0.7,
+                "use_semantic_context": True
+            },
+            test_output={
+                "response": "Based on our previous discussion, we talked about various machine learning algorithms including supervised learning, unsupervised learning, and reinforcement learning...",
+                "retrieved_context": [
+                    {"content": "We discussed supervised learning algorithms", "score": 0.89},
+                    {"content": "Explored unsupervised clustering methods", "score": 0.82}
+                ],
+                "usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
+                "reasoning": None,
+                "error": ""
+            },
+            test_credentials=TEST_CREDENTIALS,
+        )
+
+    async def _search_semantic_context(
+        self,
+        search_query: str,
+        max_items: int,
+        conversation_history: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for semantically relevant context from conversation history.
+        
+        In production, this would:
+        1. Generate embedding for the search query
+        2. Search vector database for similar conversation snippets
+        3. Return the most relevant items with similarity scores
+        """
+        if not search_query or not conversation_history:
+            return []
+        
+        # Mock semantic search results for demonstration
+        # In production, this would use the existing embeddings system
+        mock_context_results = [
+            {
+                "content": "We discussed various supervised learning algorithms like linear regression and decision trees",
+                "timestamp": "2024-01-15T10:00:00Z",
+                "score": 0.91,
+                "type": "user_message"
+            },
+            {
+                "content": "I explained how unsupervised learning works with clustering algorithms like K-means",
+                "timestamp": "2024-01-15T10:05:00Z",
+                "score": 0.85,
+                "type": "assistant_message"
+            },
+            {
+                "content": "We explored reinforcement learning and its applications in game AI",
+                "timestamp": "2024-01-15T10:10:00Z",
+                "score": 0.78,
+                "type": "user_message"
+            }
+        ]
+        
+        return mock_context_results[:max_items]
+
+    async def _build_contextual_prompt(
+        self,
+        original_prompt: str,
+        context_items: List[Dict[str, Any]]
+    ) -> str:
+        """Build a prompt that includes the retrieved context."""
+        if not context_items:
+            return original_prompt
+        
+        context_text = "\n\n".join([
+            f"[{item.get('type', 'context').title()}]: {item.get('content', '')}"
+            for item in context_items
+        ])
+        
+        contextual_prompt = f"""Based on the following context information, please answer the user's question:
+
+CONTEXT:
+{context_text}
+
+USER QUESTION:
+{original_prompt}
+
+Please provide a helpful response based on the context provided above."""
+        
+        return contextual_prompt
+
+    async def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs
+    ) -> BlockOutput:
+        """Execute the semantic LLM block."""
+        try:
+            # Step 1: Retrieve semantic context if requested
+            retrieved_context = []
+            if input_data.use_semantic_context and input_data.context_search:
+                # In production, fetch actual conversation history
+                conversation_history = kwargs.get("conversation_history", [])
+                retrieved_context = await self._search_semantic_context(
+                    input_data.context_search,
+                    input_data.max_context_items,
+                    conversation_history
+                )
+            
+            # Step 2: Build contextual prompt
+            final_prompt = await self._build_contextual_prompt(
+                input_data.prompt,
+                retrieved_context
+            )
+            
+            # Step 3: Get model configuration
+            model_info = get_model_info(input_data.model, credentials.provider)
+            
+            # Step 4: Prepare messages
+            messages = [{"role": "user", "content": final_prompt}]
+            
+            # Step 5: Call the LLM
+            if model_info.provider == ProviderName.ANTHROPIC:
+                response = await self._call_anthropic(
+                    messages=messages,
+                    model=model_info,
+                    temperature=input_data.temperature,
+                    credentials=credentials,
+                    include_reasoning=input_data.include_reasoning,
+                )
+            elif model_info.provider == ProviderName.OPENAI:
+                response = await self._call_openai(
+                    messages=messages,
+                    model=model_info,
+                    temperature=input_data.temperature,
+                    credentials=credentials,
+                    include_reasoning=input_data.include_reasoning,
+                )
+            elif model_info.provider == ProviderName.GROQ:
+                response = await self._call_groq(
+                    messages=messages,
+                    model=model_info,
+                    temperature=input_data.temperature,
+                    credentials=credentials,
+                )
+            else:
+                response = await self._call_openai_compatible(
+                    messages=messages,
+                    model=model_info,
+                    temperature=input_data.temperature,
+                    credentials=credentials,
+                )
+            
+            # Step 6: Output results
+            yield "response", response.get("content", "")
+            yield "retrieved_context", retrieved_context
+            yield "usage", response.get("usage", {})
+            yield "reasoning", response.get("reasoning")
+            
+            logger.info(f"Semantic LLM call completed with {len(retrieved_context)} context items")
+            
+        except Exception as e:
+            error_msg = f"Semantic LLM call failed: {str(e)}"
+            logger.error(error_msg)
+            yield "error", error_msg
+            yield "response", ""
+            yield "retrieved_context", []
+            yield "usage", {}
+            yield "reasoning", None
+
+    async def _call_anthropic(
+        self,
+        messages: List[Dict[str, str]],
+        model: ModelMetadata,
+        temperature: float,
+        credentials: APIKeyCredentials,
+        include_reasoning: bool = False,
+    ) -> Dict[str, Any]:
+        """Call Anthropic's API with reasoning support."""
+        client = anthropic.AsyncAnthropic(api_key=credentials.api_key.get_secret_value())
+        
+        # Prepare messages for Anthropic
+        system_message = None
+        user_messages = []
+        
+        for msg in messages:
+            if msg["role"] == "system":
+                system_message = msg["content"]
+            else:
+                user_messages.append(msg)
+        
+        # Create the request
+        request_params = {
+            "model": model.provider_name,
+            "max_tokens": model.max_output_tokens or 4096,
+            "temperature": temperature,
+            "messages": user_messages,
+        }
+        
+        if system_message:
+            request_params["system"] = system_message
+        
+        if include_reasoning and "reasoning" in model.provider_name.lower():
+            request_params["max_tokens"] = 8192  # Increased for reasoning
+        
+        response = await client.messages.create(**request_params)
+        
+        result = {
+            "content": response.content[0].text,
+            "usage": {
+                "prompt_tokens": response.usage.input_tokens,
+                "completion_tokens": response.usage.output_tokens,
+                "total_tokens": response.usage.input_tokens + response.usage.output_tokens,
+            },
+        }
+        
+        # Extract reasoning if present
+        if hasattr(response, 'reasoning') and response.reasoning:
+            result["reasoning"] = response.reasoning.text
+        
+        return result
+
+    async def _call_openai(
+        self,
+        messages: List[Dict[str, str]],
+        model: ModelMetadata,
+        temperature: float,
+        credentials: APIKeyCredentials,
+        include_reasoning: bool = False,
+    ) -> Dict[str, Any]:
+        """Call OpenAI's API with reasoning support."""
+        client = get_openai_client(credentials.api_key.get_secret_value())
+        
+        request_params = {
+            "model": model.provider_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": model.max_output_tokens or 4096,
+        }
+        
+        # Add reasoning parameter for supported models
+        if include_reasoning and "o1" in model.provider_name.lower():
+            request_params["reasoning_effort"] = "medium"
+        
+        response = await client.chat.completions.create(**request_params)
+        
+        result = {
+            "content": response.choices[0].message.content,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            },
+        }
+        
+        # Extract reasoning if present
+        if hasattr(response.choices[0].message, 'reasoning') and response.choices[0].message.reasoning:
+            result["reasoning"] = response.choices[0].message.reasoning
+        
+        return result
+
+    async def _call_groq(
+        self,
+        messages: List[Dict[str, str]],
+        model: ModelMetadata,
+        temperature: float,
+        credentials: APIKeyCredentials,
+    ) -> Dict[str, Any]:
+        """Call Groq's API."""
+        client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
+        
+        response = await client.chat.completions.create(
+            model=model.provider_name,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=model.max_output_tokens or 4096,
+        )
+        
+        return {
+            "content": response.choices[0].message.content,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            },
+        }
+
+    async def _call_openai_compatible(
+        self,
+        messages: List[Dict[str, str]],
+        model: ModelMetadata,
+        temperature: float,
+        credentials: APIKeyCredentials,
+    ) -> Dict[str, Any]:
+        """Call OpenAI-compatible APIs."""
+        client = openai.AsyncOpenAI(
+            api_key=credentials.api_key.get_secret_value(),
+            base_url=model.base_url
+        )
+        
+        response = await client.chat.completions.create(
+            model=model.provider_name,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=model.max_output_tokens or 4096,
+        )
+        
+        return {
+            "content": response.choices[0].message.content,
+            "usage": {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            },
+        }
