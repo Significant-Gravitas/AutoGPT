@@ -10,6 +10,8 @@ Provides comprehensive performance measurement capabilities for blocks including
 - Metrics logging and collection
 """
 
+import asyncio
+import functools
 import inspect
 import json
 import logging
@@ -74,7 +76,7 @@ def measure_block_performance(
                 try:
                     if len(args) > 1 and hasattr(args[1], 'dict'):
                         input_size = len(json.dumps(args[1].dict()).encode())
-                except Exception:
+                except (json.JSONDecodeError, AttributeError, TypeError):
                     input_size = 0
             
             success = True
@@ -112,7 +114,7 @@ def measure_block_performance(
                             output_size = 100  # Rough estimate for generators
                         else:
                             output_size = len(str(result).encode())
-                    except:
+                    except (TypeError, AttributeError):
                         output_size = 0
                 
                 # Calculate performance score (0-100)
@@ -152,7 +154,7 @@ def measure_block_performance(
                 elif hasattr(args[0], '__self__') and hasattr(args[0].__self__, '_performance_metrics'):
                     args[0].__self__._performance_metrics.append(metrics)
         
-        @wraps(func)
+        @functools.wraps(func)
         def sync_wrapper(*args, **kwargs) -> Any:
             start_time = time.time()
             start_cpu = os.times()[0] + os.times()[1]
@@ -166,7 +168,7 @@ def measure_block_performance(
                 try:
                     if len(args) > 1 and hasattr(args[1], 'dict'):
                         input_size = len(json.dumps(args[1].dict()).encode())
-                except Exception:
+                except (json.JSONDecodeError, AttributeError, TypeError):
                     input_size = 0
             
             success = True
@@ -198,7 +200,7 @@ def measure_block_performance(
                 if track_io and result is not None:
                     try:
                         output_size = len(str(result).encode())
-                    except:
+                    except (TypeError, AttributeError):
                         output_size = 0
                 
                 time_score = max(0, 100 - (execution_time_ms / 100))
@@ -227,6 +229,13 @@ def measure_block_performance(
                         f"Memory={memory_peak_mb:.2f}MB, "
                         f"Score={performance_score:.1f}/100"
                     )
+                
+                # Store metrics in block instance if available
+                instance = args[0]
+                if hasattr(instance, '_performance_metrics'):
+                    instance._performance_metrics.append(metrics)
+                elif hasattr(args[0], '__self__') and hasattr(args[0].__self__, '_performance_metrics'):
+                    args[0].__self__._performance_metrics.append(metrics)
         
         # Return appropriate wrapper based on function type
         # Check for both coroutines and async generators (Block.run() methods are async generators)
