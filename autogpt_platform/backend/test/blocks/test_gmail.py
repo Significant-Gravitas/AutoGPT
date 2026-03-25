@@ -1,9 +1,14 @@
 import base64
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
-from backend.blocks.google.gmail import GmailReadBlock, validate_email_recipients
+from backend.blocks.google.gmail import (
+    GmailReadBlock,
+    create_mime_message,
+    validate_email_recipients,
+)
 
 
 class TestGmailReadBlock:
@@ -290,3 +295,93 @@ class TestValidateEmailRecipients:
 
     def test_empty_list_passes(self):
         validate_email_recipients([])
+
+
+class TestCreateMimeMessageValidation:
+    """Integration tests verifying validation hooks in create_mime_message()."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_to_raises_before_mime_construction(self):
+        """Invalid 'to' recipients should raise ValueError before any MIME work."""
+        input_data = SimpleNamespace(
+            to=["not-an-email"],
+            cc=[],
+            bcc=[],
+            subject="Test",
+            body="Hello",
+            attachments=[],
+        )
+        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+
+        with pytest.raises(ValueError, match="Invalid email address"):
+            await create_mime_message(input_data, exec_ctx)
+
+    @pytest.mark.asyncio
+    async def test_invalid_cc_raises_before_mime_construction(self):
+        """Invalid 'cc' recipients should raise ValueError."""
+        input_data = SimpleNamespace(
+            to=["valid@example.com"],
+            cc=["bad-addr"],
+            bcc=[],
+            subject="Test",
+            body="Hello",
+            attachments=[],
+        )
+        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+
+        with pytest.raises(ValueError, match="'cc'"):
+            await create_mime_message(input_data, exec_ctx)
+
+    @pytest.mark.asyncio
+    async def test_valid_recipients_passes_validation(self):
+        """Valid recipients should not raise during validation."""
+        input_data = SimpleNamespace(
+            to=["user@example.com"],
+            cc=["other@example.com"],
+            bcc=[],
+            subject="Test",
+            body="Hello",
+            attachments=[],
+        )
+        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+
+        # Should succeed without raising
+        result = await create_mime_message(input_data, exec_ctx)
+        assert isinstance(result, str)
+
+
+class TestBuildReplyMessageValidation:
+    """Integration tests verifying validation hooks in _build_reply_message()."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_to_raises_before_reply_construction(self):
+        """Invalid 'to' in reply should raise ValueError before MIME work."""
+        from backend.blocks.google.gmail import _build_reply_message
+
+        mock_service = Mock()
+        mock_parent = {
+            "threadId": "thread-1",
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "Original"},
+                    {"name": "Message-ID", "value": "<msg@example.com>"},
+                    {"name": "From", "value": "sender@example.com"},
+                ]
+            },
+        }
+        mock_service.users().messages().get().execute.return_value = mock_parent
+
+        input_data = SimpleNamespace(
+            parentMessageId="msg-1",
+            to=["not-valid"],
+            cc=[],
+            bcc=[],
+            subject="",
+            body="Reply body",
+            replyAll=False,
+            attachments=[],
+        )
+        exec_ctx = SimpleNamespace(graph_exec_id="test-exec-id")
+
+        with pytest.raises(ValueError, match="Invalid email address"):
+            await _build_reply_message(mock_service, input_data, exec_ctx)
