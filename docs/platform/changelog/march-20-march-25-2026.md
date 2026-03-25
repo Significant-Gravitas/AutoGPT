@@ -28,9 +28,9 @@ The marketplace continues to get cleaner and easier to browse. Card descriptions
 <summary>Improvements</summary>
 
 * **Dry-run execution mode** — Test your agents end-to-end without making real API calls or using credits. An LLM simulates each block so you can verify wiring before going live. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12483)
-* **Parallel block execution** — Agents can now run independent blocks at the same time, making complex workflows significantly faster. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12472)
-* **Smarter AutoPilot** — The AutoPilot block can now filter which tools and blocks it uses, giving you more control over its behaviour. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12482)
-* **Leaner tool schemas** — Tool schema token cost has been reduced by 34%, meaning faster and cheaper AI-powered blocks. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12398)
+* **Parallel AutoPilot actions** — When AutoPilot needs to perform several steps at once, it now runs them simultaneously — no more waiting for each to finish before starting the next. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12472)
+* **Scoped AutoPilot tools** — You can now control exactly which tools and blocks AutoPilot has access to — whether running it as a block or using sub-agents — so you can build tightly constrained agentic systems. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12482)
+* **Leaner tool schemas** — Tool schema token cost has been reduced by 34%, meaning faster and cheaper AutoPilot. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12398)
 * **Admin marketplace preview** — Admins can now preview and download submitted agents before approving them. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12536)
 
 </details>
