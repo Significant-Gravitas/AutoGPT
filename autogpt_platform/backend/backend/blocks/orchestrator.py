@@ -258,6 +258,43 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
+def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
+    """Ensure all tool names are unique (Anthropic API requires this).
+
+    When multiple nodes use the same block type, they get the same tool name.
+    This appends _1, _2, etc. and enriches descriptions with hardcoded defaults
+    so the LLM can distinguish them. Mutates the list in place.
+    """
+    names = [t["function"]["name"] for t in tools]
+    duplicates = {n for n in names if names.count(n) > 1}
+    if not duplicates:
+        for t in tools:
+            t["function"].pop("_hardcoded_defaults", None)
+        return
+
+    taken: set[str] = set(names)
+    counters: dict[str, int] = {}
+
+    for tool in tools:
+        func = tool["function"]
+        name = func["name"]
+        defaults = func.pop("_hardcoded_defaults", {})
+
+        if name not in duplicates:
+            continue
+
+        counters[name] = counters.get(name, 0) + 1
+        suffix = f"_{counters[name]}"
+        func["name"] = f"{name[:64 - len(suffix)]}{suffix}"
+        taken.add(func["name"])
+
+        if defaults:
+            summary = ", ".join(f"{k}={json.dumps(v)}" for k, v in defaults.items())
+            func["description"] = (
+                f"{func.get('description', '')} [Pre-configured: {summary}]"
+            )
+
+
 class OrchestratorBlock(Block):
     """
     A block that uses a language model to orchestrate tool calls, supporting both
@@ -657,48 +694,7 @@ class OrchestratorBlock(Block):
                 )
                 return_tool_functions.append(tool_func)
 
-        # Disambiguate duplicate tool names (Anthropic API requires unique names)
-        name_counts: dict[str, int] = {}
-        for tool_func in return_tool_functions:
-            name = tool_func["function"]["name"]
-            name_counts[name] = name_counts.get(name, 0) + 1
-
-        # Collect all final names to avoid collisions with user-defined names
-        all_names: set[str] = {
-            tool_func["function"]["name"] for tool_func in return_tool_functions
-        }
-
-        for tool_func in return_tool_functions:
-            func = tool_func["function"]
-            name = func["name"]
-            if name_counts[name] > 1:
-                # Find the next available suffix that doesn't collide
-                idx = 1
-                while True:
-                    suffix = f"_{idx}"
-                    # Anthropic tool names have a 64-char limit
-                    max_base = 64 - len(suffix)
-                    candidate = f"{name[:max_base]}{suffix}"
-                    if candidate not in all_names:
-                        break
-                    idx += 1
-                func["name"] = candidate
-                all_names.add(candidate)
-
-                # Enrich description with hardcoded defaults so the LLM can
-                # distinguish between tools that share the same block type.
-                defaults = func.pop("_hardcoded_defaults", {})
-                if defaults:
-                    defaults_summary = ", ".join(
-                        f"{k}={json.dumps(v)}" for k, v in defaults.items()
-                    )
-                    func["description"] = (
-                        f"{func.get('description', '')} "
-                        f"[Pre-configured: {defaults_summary}]"
-                    )
-            else:
-                func.pop("_hardcoded_defaults", None)
-
+        _disambiguate_tool_names(return_tool_functions)
         return return_tool_functions
 
     async def _attempt_llm_call_with_validation(
