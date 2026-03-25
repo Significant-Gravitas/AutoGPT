@@ -229,3 +229,22 @@ async def test_add_agent_to_library_not_found(mocker):
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"AgentGraph": True}
     )
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_by_graph_id_excludes_archived(mocker):
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
+
+    result = await db.get_library_agent_by_graph_id("test-user", "agent1", 7)
+
+    assert result is None
+    mock_library_agent.return_value.find_first.assert_called_once()
+    where = mock_library_agent.return_value.find_first.call_args.kwargs["where"]
+    assert where == {
+        "agentGraphId": "agent1",
+        "userId": "test-user",
+        "isDeleted": False,
+        "isArchived": False,
+        "agentGraphVersion": 7,
+    }

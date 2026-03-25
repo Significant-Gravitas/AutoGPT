@@ -341,6 +341,7 @@ async def get_library_agent_by_graph_id(
         "agentGraphId": graph_id,
         "userId": user_id,
         "isDeleted": False,
+        "isArchived": False,
     }
     if graph_version is not None:
         filter["agentGraphVersion"] = graph_version

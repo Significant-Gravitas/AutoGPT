@@ -1416,6 +1416,7 @@ async def validate_graph_execution_permissions(
             where={
                 "userId": user_id,
                 "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
                 "isDeleted": False,
                 "isArchived": False,
             }

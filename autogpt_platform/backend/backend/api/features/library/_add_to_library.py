@@ -76,8 +76,13 @@ async def add_graph_to_library(
             }
         },
     )
-    if deleted_agent and deleted_agent.isDeleted:
-        return await update_library_agent(deleted_agent.id, user_id, is_deleted=False)
+    if deleted_agent and (deleted_agent.isDeleted or deleted_agent.isArchived):
+        return await update_library_agent(
+            deleted_agent.id,
+            user_id,
+            is_deleted=False,
+            is_archived=False,
+        )
 
     try:
         added_agent = await prisma.models.LibraryAgent.prisma().create(

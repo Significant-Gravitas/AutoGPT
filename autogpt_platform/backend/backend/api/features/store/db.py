@@ -463,7 +463,7 @@ async def get_store_agent_details_as_admin(
         last_updated=slv.updatedAt,
         recommended_schedule_cron=slv.recommendedScheduleCron,
         active_version_id=listing.activeVersionId or slv.id,
-        has_approved_version=listing.hasApprovedVersion if listing else False,
+        has_approved_version=listing.hasApprovedVersion,
     )
 
 
