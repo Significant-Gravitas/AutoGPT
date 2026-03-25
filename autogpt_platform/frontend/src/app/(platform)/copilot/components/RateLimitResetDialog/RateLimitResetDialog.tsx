@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 interface Props {
@@ -30,6 +30,7 @@ export function RateLimitResetDialog({
   isBillingEnabled = false,
 }: Props) {
   const { resetUsage, isPending } = useResetRateLimit(onClose);
+  const router = useRouter();
 
   // Whether to hide the reset button entirely
   const cannotReset = isWeeklyExhausted || hasInsufficientCredits;
@@ -75,11 +76,15 @@ export function RateLimitResetDialog({
             {cannotReset ? "OK" : "Wait for reset"}
           </Button>
           {hasInsufficientCredits && isBillingEnabled && (
-            <Link href="/profile/credits">
-              <Button variant="primary" onClick={onClose}>
-                Add credits
-              </Button>
-            </Link>
+            <Button
+              variant="primary"
+              onClick={() => {
+                onClose();
+                router.push("/profile/credits");
+              }}
+            >
+              Add credits
+            </Button>
           )}
           {!cannotReset && (
             <Button

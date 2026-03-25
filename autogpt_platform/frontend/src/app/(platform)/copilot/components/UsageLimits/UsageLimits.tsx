@@ -1,5 +1,7 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import useCredits from "@/hooks/useCredits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   Popover,
   PopoverContent,
@@ -7,6 +9,7 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/ui/button";
 import { ChartBar } from "@phosphor-icons/react";
+import { MIN_CREDITS_FOR_RESET } from "../../constants";
 import { UsagePanelContent } from "./UsagePanelContent";
 
 export { UsagePanelContent, formatResetTime } from "./UsagePanelContent";
@@ -20,6 +23,11 @@ export function UsageLimits() {
     },
   });
 
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { credits } = useCredits({ fetchInitialCredits: true });
+  const hasInsufficientCredits =
+    credits !== null && credits < MIN_CREDITS_FOR_RESET;
+
   if (isLoading || !usage) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
 
@@ -31,7 +39,11 @@ export function UsageLimits() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-3">
-        <UsagePanelContent usage={usage} />
+        <UsagePanelContent
+          usage={usage}
+          hasInsufficientCredits={hasInsufficientCredits}
+          isBillingEnabled={isBillingEnabled}
+        />
       </PopoverContent>
     </Popover>
   );

@@ -17,6 +17,7 @@ import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
+import { MIN_CREDITS_FOR_RESET } from "./constants";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
@@ -114,8 +115,6 @@ export function CopilotPage() {
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { credits } = useCredits({ fetchInitialCredits: true });
-  // Minimum credit balance required to offer the reset option (in cents).
-  const MIN_CREDITS_FOR_RESET = 500; // $5.00
   const hasInsufficientCredits =
     credits !== null && credits < MIN_CREDITS_FOR_RESET;
 

@@ -1,7 +1,5 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { Button } from "@/components/atoms/Button/Button";
-import useCredits from "@/hooks/useCredits";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
@@ -92,15 +90,16 @@ function ResetButton({ cost }: { cost: number }) {
   );
 }
 
-// Minimum credit balance required to offer the reset option (in cents).
-const MIN_CREDITS_FOR_RESET = 500; // $5.00
-
 export function UsagePanelContent({
   usage,
   showBillingLink = true,
+  hasInsufficientCredits = false,
+  isBillingEnabled = false,
 }: {
   usage: CoPilotUsageStatus;
   showBillingLink?: boolean;
+  hasInsufficientCredits?: boolean;
+  isBillingEnabled?: boolean;
 }) {
   const hasDailyLimit = usage.daily.limit > 0;
   const hasWeeklyLimit = usage.weekly.limit > 0;
@@ -109,11 +108,6 @@ export function UsagePanelContent({
   const isWeeklyExhausted =
     hasWeeklyLimit && usage.weekly.used >= usage.weekly.limit;
   const resetCost = usage.reset_cost ?? 0;
-
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits } = useCredits({ fetchInitialCredits: true });
-  const hasInsufficientCredits =
-    credits !== null && credits < MIN_CREDITS_FOR_RESET;
 
   if (!hasDailyLimit && !hasWeeklyLimit) {
     return (
