@@ -11,11 +11,11 @@ Provides HTTP endpoints for SAML authentication flows including:
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
 from backend.integrations.auth.saml import SAMLAuthManager, get_saml_manager
@@ -61,7 +61,7 @@ class CreateUserRequest(BaseModel):
 
 
 # Helper Functions
-async def get_saml_manager() -> SAMLAuthManager:
+async def get_saml_manager_dep() -> SAMLAuthManager:
     """Get the SAML manager instance."""
     return get_saml_manager()
 
@@ -89,7 +89,7 @@ async def list_providers(
 @router.post("/login", response_model=LoginResponse)
 async def initiate_login(
     request: LoginRequest,
-    saml_manager: SAMLAuthManager = Depends(get_saml_manager)
+    saml_manager: SAMLAuthManager = Depends(get_saml_manager_dep)
 ):
     """Initiate SAML login flow."""
     try:
@@ -125,7 +125,7 @@ async def initiate_login(
 async def initiate_login_get(
     provider_name: str,
     relay_state: Optional[str] = Query(None),
-    saml_manager: SAMLAuthManager = Depends(get_saml_manager)
+    saml_manager: SAMLAuthManager = Depends(get_saml_manager_dep)
 ):
     """Initiate SAML login via GET request."""
     try:
@@ -163,7 +163,7 @@ async def initiate_login_get(
 @router.post("/acs")
 async def process_assertion(
     request: Request,
-    saml_manager: SAMLAuthManager = Depends(get_saml_manager)
+    saml_manager: SAMLAuthManager = Depends(get_saml_manager_dep)
 ):
     """
     Process SAML Assertion (Assertion Consumer Service).
@@ -233,7 +233,7 @@ async def process_assertion(
 async def initiate_logout(
     provider_name: str,
     user_id: str = Depends(get_user_id),
-    saml_manager: SAMLAuthManager = Depends(get_saml_manager)
+    saml_manager: SAMLAuthManager = Depends(get_saml_manager_dep)
 ):
     """Initiate SAML logout flow."""
     try:
@@ -275,7 +275,7 @@ async def initiate_logout(
 @router.post("/slo")
 async def process_logout_response(
     request: Request,
-    saml_manager: SAMLAuthManager = Depends(get_saml_manager)
+    saml_manager: SAMLAuthManager = Depends(get_saml_manager_dep)
 ):
     """
     Process SAML Logout Response (Single Logout Service).
@@ -311,7 +311,7 @@ async def process_logout_response(
 @router.get("/metadata/{provider_name}")
 async def get_metadata(
     provider_name: str,
-    saml_manager: SAMLAuthManager = Depends(get_saml_manager)
+    saml_manager: SAMLAuthManager = Depends(get_saml_manager_dep)
 ):
     """Get SP metadata for a SAML provider."""
     try:

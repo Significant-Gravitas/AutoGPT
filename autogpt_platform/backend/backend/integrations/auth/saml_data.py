@@ -5,8 +5,9 @@ Handles database operations for SAML providers, users, and authentication reques
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+import uuid
 
 from prisma import Json
 from prisma.enums import APIKeyPermission
@@ -401,7 +402,7 @@ class SAMLAuthService:
             logger.info(f"Created new user via SAML: {user.email}")
         
         # Create or update SAML user record
-        saml_user = await SAMLUserData.create_or_update_user(
+        await SAMLUserData.create_or_update_user(
             provider_id=provider.id,
             name_id=name_id,
             user_id=user.id,

@@ -6,20 +6,16 @@ integrating with enterprise identity providers like Okta, Azure AD, ADFS, etc.
 """
 
 import logging
-import uuid
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, Field, SecretStr, validator
+from pydantic import BaseModel, Field, validator
 from saml2 import BINDING_HTTP_POST, BINDING_HTTP_REDIRECT
 from saml2.client import Saml2Client
 from saml2.config import Config as Saml2Config
 from saml2.metadata import entity_descriptor
 from saml2.response import StatusResponse
-from saml2.saml import NameID
 
-from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)

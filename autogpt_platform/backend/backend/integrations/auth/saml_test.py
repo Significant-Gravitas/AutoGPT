@@ -4,7 +4,7 @@ Tests for SAML Authentication Integration
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from backend.integrations.auth.saml import (
     SAMLAuthManager,
@@ -14,7 +14,6 @@ from backend.integrations.auth.saml import (
 from backend.integrations.auth.saml_data import (
     SAMLAuthService,
     SAMLAuthRequestData,
-    SAMLProviderData,
     SAMLUserData,
 )
 from backend.data.auth.base import APIAuthorizationInfo
@@ -163,10 +162,10 @@ class TestSAMLAuthManager:
         mock_client_class.return_value = mock_client
         mock_client.config = MagicMock()
         
-        from saml2.metadata import entity_descriptor
+        from saml2.metadata import entity_descriptor as mock_entity_descriptor
         mock_metadata = MagicMock()
         mock_metadata.__str__ = lambda: "<EntityDescriptor>...</EntityDescriptor>"
-        with patch('backend.integrations.auth.saml.entity_descriptor', return_value=mock_metadata):
+        with patch('backend.integrations.auth.saml.entity_descriptor', mock_entity_descriptor):
             manager.register_provider(provider_config)
             
             metadata = manager.generate_metadata("test")
