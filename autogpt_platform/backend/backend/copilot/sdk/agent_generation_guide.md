@@ -208,6 +208,20 @@ call in a loop until the task is complete:
 Regular blocks work exactly like sub-agents as tools — wire each input
 field from `source_name: "tools"` on the Orchestrator side.
 
+### Testing with Dry Run
+
+After saving an agent, suggest a dry run to validate wiring without consuming
+real API calls, credentials, or credits:
+
+1. **Run**: Call `run_agent` or `run_block` with `dry_run=True` and provide
+   sample inputs. This executes the graph with mock outputs, verifying that
+   links resolve correctly and required inputs are satisfied.
+2. **Check results**: Call `view_agent_output` with `show_execution_details=True`
+   to inspect the full node-by-node execution trace. This shows what each node
+   received as input and produced as output, making it easy to spot wiring issues.
+3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
+   the agent JSON and re-save before suggesting a real execution.
+
 ### Example: Simple AI Text Processor
 
 A minimal agent with input, processing, and output:
