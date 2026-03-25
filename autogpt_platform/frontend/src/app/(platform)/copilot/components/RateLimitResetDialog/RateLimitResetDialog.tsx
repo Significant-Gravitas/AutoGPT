@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import Link from "next/link";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 interface Props {
@@ -11,6 +12,8 @@ interface Props {
   resetCost: number;
   resetMessage: string;
   isWeeklyExhausted?: boolean;
+  hasInsufficientCredits?: boolean;
+  isBillingEnabled?: boolean;
 }
 
 function formatCents(cents: number): string {
@@ -23,8 +26,13 @@ export function RateLimitResetDialog({
   resetCost,
   resetMessage,
   isWeeklyExhausted = false,
+  hasInsufficientCredits = false,
+  isBillingEnabled = false,
 }: Props) {
   const { resetUsage, isPending } = useResetRateLimit(onClose);
+
+  // Whether to hide the reset button entirely
+  const cannotReset = isWeeklyExhausted || hasInsufficientCredits;
 
   return (
     <Dialog
@@ -45,6 +53,13 @@ export function RateLimitResetDialog({
               Your weekly limit is also reached, so resetting the daily limit
               won&apos;t help. Please wait for your limits to reset.
             </Text>
+          ) : hasInsufficientCredits ? (
+            <Text variant="body">
+              You don&apos;t have enough credits to reset your daily limit.
+              {isBillingEnabled
+                ? " Add credits to continue working."
+                : " Please wait for your limits to reset."}
+            </Text>
           ) : (
             <Text variant="body">
               You can spend{" "}
@@ -57,9 +72,16 @@ export function RateLimitResetDialog({
         </div>
         <Dialog.Footer>
           <Button variant="secondary" onClick={onClose} disabled={isPending}>
-            {isWeeklyExhausted ? "OK" : "Wait for reset"}
+            {cannotReset ? "OK" : "Wait for reset"}
           </Button>
-          {!isWeeklyExhausted && (
+          {hasInsufficientCredits && isBillingEnabled && (
+            <Link href="/profile/credits">
+              <Button variant="primary" onClick={onClose}>
+                Add credits
+              </Button>
+            </Link>
+          )}
+          {!cannotReset && (
             <Button
               variant="primary"
               onClick={() => resetUsage()}

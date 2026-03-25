@@ -3,6 +3,8 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import useCredits from "@/hooks/useCredits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { UploadSimple } from "@phosphor-icons/react";
@@ -110,6 +112,13 @@ export function CopilotPage() {
   });
   const resetCost = usage?.reset_cost;
 
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { credits } = useCredits({ fetchInitialCredits: true });
+  // Minimum credit balance required to offer the reset option (in cents).
+  const MIN_CREDITS_FOR_RESET = 500; // $5.00
+  const hasInsufficientCredits =
+    credits !== null && credits < MIN_CREDITS_FOR_RESET;
+
   // Fall back to a toast when the credit-based reset feature is disabled or
   // when the usage query fails (so the user still gets feedback).
   useEffect(() => {
@@ -212,6 +221,8 @@ export function CopilotPage() {
           usage.weekly.limit > 0 &&
           usage.weekly.used >= usage.weekly.limit
         }
+        hasInsufficientCredits={hasInsufficientCredits}
+        isBillingEnabled={isBillingEnabled}
       />
     </SidebarProvider>
   );

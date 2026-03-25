@@ -1,5 +1,7 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { Button } from "@/components/atoms/Button/Button";
+import useCredits from "@/hooks/useCredits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import Link from "next/link";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
@@ -90,6 +92,9 @@ function ResetButton({ cost }: { cost: number }) {
   );
 }
 
+// Minimum credit balance required to offer the reset option (in cents).
+const MIN_CREDITS_FOR_RESET = 500; // $5.00
+
 export function UsagePanelContent({
   usage,
   showBillingLink = true,
@@ -104,6 +109,11 @@ export function UsagePanelContent({
   const isWeeklyExhausted =
     hasWeeklyLimit && usage.weekly.used >= usage.weekly.limit;
   const resetCost = usage.reset_cost ?? 0;
+
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { credits } = useCredits({ fetchInitialCredits: true });
+  const hasInsufficientCredits =
+    credits !== null && credits < MIN_CREDITS_FOR_RESET;
 
   if (!hasDailyLimit && !hasWeeklyLimit) {
     return (
@@ -130,9 +140,21 @@ export function UsagePanelContent({
           resetsAt={usage.weekly.resets_at}
         />
       )}
-      {isDailyExhausted && !isWeeklyExhausted && resetCost > 0 && (
-        <ResetButton cost={resetCost} />
-      )}
+      {isDailyExhausted &&
+        !isWeeklyExhausted &&
+        resetCost > 0 &&
+        !hasInsufficientCredits && <ResetButton cost={resetCost} />}
+      {isDailyExhausted &&
+        !isWeeklyExhausted &&
+        hasInsufficientCredits &&
+        isBillingEnabled && (
+          <Link
+            href="/profile/credits"
+            className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Add credits to reset
+          </Link>
+        )}
       {showBillingLink && (
         <Link
           href="/profile/credits"
