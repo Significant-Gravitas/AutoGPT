@@ -4,7 +4,7 @@
 
 **Platform version:** `v0.6.53`
 
-This release makes it easier than ever to **bring your existing automations into AutoGPT**. You can now import workflows straight from n8n, Make.com, and Zapier — plus the marketplace gets another round of visual polish.
+This release makes it easier than ever to **bring your existing automations into AutoGPT**. You can now import workflows straight from n8n, Make.com, and Zapier, **test your agents before they go live** with a new dry-run mode, plus the marketplace gets another round of visual polish.
 
 ***
 
@@ -24,16 +24,24 @@ The marketplace continues to get cleaner and easier to browse. Card descriptions
 
 ***
 
+## Test your agents before they go live
+
+A new **dry-run mode** lets you simulate a full run of any agent without real-world side effects. Every block executes and produces realistic outputs, so you can verify your agent works correctly — before it sends emails, updates spreadsheets, or takes any real action. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12483)
+
+This is especially powerful with AutoPilot. When AutoPilot builds an agent for you, it can now automatically test it to make sure it works and the quality is up to standard. It can also preview exactly what an agent will do before you commit to running it — so you always know what to expect.
+
+***
+
 <details>
 <summary>Improvements</summary>
 
-* **Dry-run execution mode** — Test your agents end-to-end without making real API calls or using credits. An LLM simulates each block so you can verify wiring before going live. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12483)
 * **Parallel AutoPilot actions** — When AutoPilot needs to perform several steps at once, it now runs them simultaneously — no more waiting for each to finish before starting the next. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12472)
 * **Scoped AutoPilot tools** — You can now control exactly which tools and blocks AutoPilot has access to — whether running it as a block or using sub-agents — so you can build tightly constrained agentic systems. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12482)
 * **Leaner tool schemas** — Tool schema token cost has been reduced by 34%, meaning faster and cheaper AutoPilot. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12398)
 * **Admin marketplace preview** — Admins can now preview and download submitted agents before approving them. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12536)
 
 </details>
+
 
 <details>
 <summary>Fixes</summary>
