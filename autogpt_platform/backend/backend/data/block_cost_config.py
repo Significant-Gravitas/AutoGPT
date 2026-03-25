@@ -151,6 +151,8 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.V0_1_5_MD: 1,
     LlmModel.V0_1_5_LG: 2,
     LlmModel.V0_1_0_MD: 1,
+    LlmModel.MINIMAX_M2_5: 1,
+    LlmModel.MINIMAX_M2_5_HIGHSPEED: 1,
 }
 
 for model in LlmModel:
