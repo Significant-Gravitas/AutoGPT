@@ -71,6 +71,7 @@ export function CopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     createSession,
     onSend,
     isLoadingSession,
@@ -178,6 +179,7 @@ export function CopilotPage() {
             isSessionError={isSessionError}
             isCreatingSession={isCreatingSession}
             isReconnecting={isReconnecting}
+            isSyncing={isSyncing}
             onCreateSession={createSession}
             onSend={onSend}
             onStop={stop}
