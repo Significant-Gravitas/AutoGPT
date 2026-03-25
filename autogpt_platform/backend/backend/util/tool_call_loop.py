@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, TypedDict
 
 logger = logging.getLogger(__name__)
@@ -150,6 +150,7 @@ class ToolCallLoopResult:
     total_completion_tokens: int = 0
     iterations: int = 0
     finished_naturally: bool = True  # False if hit max iterations
+    last_tool_calls: list[LLMToolCall] = field(default_factory=list)
 
 
 async def tool_call_loop(
@@ -241,6 +242,7 @@ async def tool_call_loop(
             total_completion_tokens=total_completion_tokens,
             iterations=iteration,
             finished_naturally=False,
+            last_tool_calls=list(response.tool_calls),
         )
 
     # Hit max iterations
