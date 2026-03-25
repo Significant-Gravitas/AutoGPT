@@ -66,6 +66,7 @@ from backend.copilot.tools.models import (
 from backend.copilot.tracking import track_user_message
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
+from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
@@ -1045,6 +1046,47 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
+
+
+# ========== Suggested Prompts ==========
+
+
+class SuggestedTheme(BaseModel):
+    """A themed group of suggested prompts."""
+
+    name: str
+    prompts: list[str]
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts grouped by theme."""
+
+    themes: list[SuggestedTheme]
+
+
+@router.get(
+    "/suggested-prompts",
+    dependencies=[Security(auth.requires_user)],
+)
+async def get_suggested_prompts(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> SuggestedPromptsResponse:
+    """
+    Get LLM-generated suggested prompts grouped by theme.
+
+    Returns personalized quick-action prompts based on the user's
+    business understanding. Returns empty themes list if no custom
+    prompts are available.
+    """
+    understanding = await get_business_understanding(user_id)
+    if understanding is None or not understanding.suggested_prompts:
+        return SuggestedPromptsResponse(themes=[])
+
+    themes = [
+        SuggestedTheme(name=name, prompts=prompts)
+        for name, prompts in understanding.suggested_prompts.items()
+    ]
+    return SuggestedPromptsResponse(themes=themes)
 
 
 # ========== Configuration ==========
