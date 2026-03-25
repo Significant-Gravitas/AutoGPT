@@ -1,5 +1,5 @@
 -- Seed LLM Registry from existing hard-coded data
--- This migration populates the LlmProvider, LlmModel, and LlmModelCost tables
+-- This migration populates the LlmProvider, LlmModelCreator, LlmModel, and LlmModelCost tables
 -- with data from the existing MODEL_METADATA and MODEL_COST dictionaries
 
 -- Insert Providers
@@ -15,11 +15,36 @@ VALUES
     (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'v0', 'v0', 'v0 by Vercel models', 'v0', 'api_key', '{}'::jsonb)
 ON CONFLICT ("name") DO NOTHING;
 
--- Insert Models (using CTEs to reference provider IDs)
+-- Insert Model Creators
+INSERT INTO "LlmModelCreator" ("id", "createdAt", "updatedAt", "name", "displayName", "description", "websiteUrl", "logoUrl", "metadata")
+VALUES
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'openai', 'OpenAI', 'Creator of GPT, O1, O3, and DALL-E models', 'https://openai.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'anthropic', 'Anthropic', 'Creator of Claude AI models', 'https://anthropic.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'meta', 'Meta', 'Creator of Llama foundation models', 'https://llama.meta.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'google', 'Google', 'Creator of Gemini and PaLM models', 'https://deepmind.google', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'mistralai', 'Mistral AI', 'Creator of Mistral and Codestral models', 'https://mistral.ai', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'cohere', 'Cohere', 'Creator of Command language models', 'https://cohere.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'deepseek', 'DeepSeek', 'Creator of DeepSeek reasoning models', 'https://deepseek.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'alibaba', 'Alibaba', 'Creator of Qwen language models', 'https://qwenlm.github.io', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'nvidia', 'NVIDIA', 'Creator of Nemotron models', 'https://nvidia.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'vercel', 'Vercel', 'Creator of v0 AI models', 'https://v0.dev', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'microsoft', 'Microsoft', 'Creator of Phi models', 'https://microsoft.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'xai', 'xAI', 'Creator of Grok models', 'https://x.ai', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'perplexity', 'Perplexity AI', 'Creator of Sonar search models', 'https://perplexity.ai', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'nousresearch', 'Nous Research', 'Creator of Hermes language models', 'https://nousresearch.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'amazon', 'Amazon', 'Creator of Nova language models', 'https://aws.amazon.com', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'gryphe', 'Gryphe', 'Creator of MythoMax models', 'https://huggingface.co/Gryphe', NULL, '{}'::jsonb),
+    (gen_random_uuid(), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'moonshotai', 'Moonshot AI', 'Creator of Kimi language models', 'https://moonshot.ai', NULL, '{}'::jsonb)
+ON CONFLICT ("name") DO NOTHING;
+
+-- Insert Models (using CTEs to reference provider and creator IDs)
 WITH provider_ids AS (
     SELECT "id", "name" FROM "LlmProvider"
+),
+creator_ids AS (
+    SELECT "id", "name" FROM "LlmModelCreator"
 )
-INSERT INTO "LlmModel" ("id", "createdAt", "updatedAt", "slug", "displayName", "description", "providerId", "contextWindow", "maxOutputTokens", "isEnabled", "capabilities", "metadata")
+INSERT INTO "LlmModel" ("id", "createdAt", "updatedAt", "slug", "displayName", "description", "providerId", "creatorId", "contextWindow", "maxOutputTokens", "isEnabled", "capabilities", "metadata")
 SELECT
     gen_random_uuid(),
     CURRENT_TIMESTAMP,
@@ -28,111 +53,113 @@ SELECT
     model_display_name,
     NULL,
     p."id",
+    c."id",
     context_window,
     max_output_tokens,
     true,
     '{}'::jsonb,
     '{}'::jsonb
 FROM (VALUES
-    -- OpenAI models
-    ('o3-2025-04-16', 'O3', 'openai', 200000, 100000),
-    ('o3-mini', 'O3 Mini', 'openai', 200000, 100000),
-    ('o1', 'O1', 'openai', 200000, 100000),
-    ('o1-mini', 'O1 Mini', 'openai', 128000, 65536),
-    ('gpt-5.2-2025-12-11', 'GPT-5.2', 'openai', 400000, 128000),
-    ('gpt-5-2025-08-07', 'GPT 5', 'openai', 400000, 128000),
-    ('gpt-5.1-2025-11-13', 'GPT 5.1', 'openai', 400000, 128000),
-    ('gpt-5-mini-2025-08-07', 'GPT 5 Mini', 'openai', 400000, 128000),
-    ('gpt-5-nano-2025-08-07', 'GPT 5 Nano', 'openai', 400000, 128000),
-    ('gpt-5-chat-latest', 'GPT 5 Chat', 'openai', 400000, 16384),
-    ('gpt-4.1-2025-04-14', 'GPT 4.1', 'openai', 1000000, 32768),
-    ('gpt-4.1-mini-2025-04-14', 'GPT 4.1 Mini', 'openai', 1047576, 32768),
-    ('gpt-4o-mini', 'GPT 4o Mini', 'openai', 128000, 16384),
-    ('gpt-4o', 'GPT 4o', 'openai', 128000, 16384),
-    ('gpt-4-turbo', 'GPT 4 Turbo', 'openai', 128000, 4096),
-    -- Anthropic models
-    ('claude-opus-4-6', 'Claude Opus 4.6', 'anthropic', 200000, 128000),
-    ('claude-sonnet-4-6', 'Claude Sonnet 4.6', 'anthropic', 200000, 64000),
-    ('claude-opus-4-1-20250805', 'Claude 4.1 Opus', 'anthropic', 200000, 32000),
-    ('claude-opus-4-20250514', 'Claude 4 Opus', 'anthropic', 200000, 32000),
-    ('claude-sonnet-4-20250514', 'Claude 4 Sonnet', 'anthropic', 200000, 64000),
-    ('claude-opus-4-5-20251101', 'Claude 4.5 Opus', 'anthropic', 200000, 64000),
-    ('claude-sonnet-4-5-20250929', 'Claude 4.5 Sonnet', 'anthropic', 200000, 64000),
-    ('claude-haiku-4-5-20251001', 'Claude 4.5 Haiku', 'anthropic', 200000, 64000),
-    ('claude-3-haiku-20240307', 'Claude 3 Haiku', 'anthropic', 200000, 4096),
-    -- AI/ML API models
-    ('Qwen/Qwen2.5-72B-Instruct-Turbo', 'Qwen 2.5 72B', 'aiml_api', 32000, 8000),
-    ('nvidia/llama-3.1-nemotron-70b-instruct', 'Llama 3.1 Nemotron 70B', 'aiml_api', 128000, 40000),
-    ('meta-llama/Llama-3.3-70B-Instruct-Turbo', 'Llama 3.3 70B', 'aiml_api', 128000, NULL),
-    ('meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'Meta Llama 3.1 70B', 'aiml_api', 131000, 2000),
-    ('meta-llama/Llama-3.2-3B-Instruct-Turbo', 'Llama 3.2 3B', 'aiml_api', 128000, NULL),
-    -- Groq models
-    ('llama-3.3-70b-versatile', 'Llama 3.3 70B', 'groq', 128000, 32768),
-    ('llama-3.1-8b-instant', 'Llama 3.1 8B', 'groq', 128000, 8192),
-    -- Ollama models
-    ('llama3.3', 'Llama 3.3', 'ollama', 8192, NULL),
-    ('llama3.2', 'Llama 3.2', 'ollama', 8192, NULL),
-    ('llama3', 'Llama 3', 'ollama', 8192, NULL),
-    ('llama3.1:405b', 'Llama 3.1 405B', 'ollama', 8192, NULL),
-    ('dolphin-mistral:latest', 'Dolphin Mistral', 'ollama', 32768, NULL),
-    -- OpenRouter models
-    ('google/gemini-2.5-pro-preview-03-25', 'Gemini 2.5 Pro', 'open_router', 1050000, 8192),
-    ('google/gemini-2.5-pro', 'Gemini 2.5 Pro', 'open_router', 1048576, 65536),
-    ('google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview', 'open_router', 1048576, 65536),
-    ('google/gemini-3-flash-preview', 'Gemini 3 Flash Preview', 'open_router', 1048576, 65536),
-    ('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 'open_router', 1048576, 65535),
-    ('google/gemini-2.0-flash-001', 'Gemini 2.0 Flash', 'open_router', 1048576, 8192),
-    ('google/gemini-3.1-flash-lite-preview', 'Gemini 3.1 Flash Lite Preview', 'open_router', 1048576, 65536),
-    ('google/gemini-2.5-flash-lite-preview-06-17', 'Gemini 2.5 Flash Lite Preview', 'open_router', 1048576, 65535),
-    ('google/gemini-2.0-flash-lite-001', 'Gemini 2.0 Flash Lite', 'open_router', 1048576, 8192),
-    ('mistralai/mistral-nemo', 'Mistral Nemo', 'open_router', 128000, 4096),
-    ('mistralai/mistral-large-2512', 'Mistral Large 3 2512', 'open_router', 262144, NULL),
-    ('mistralai/mistral-medium-3.1', 'Mistral Medium 3.1', 'open_router', 131072, NULL),
-    ('mistralai/mistral-small-3.2-24b-instruct', 'Mistral Small 3.2 24B', 'open_router', 131072, 131072),
-    ('mistralai/codestral-2508', 'Codestral 2508', 'open_router', 256000, NULL),
-    ('cohere/command-r-08-2024', 'Command R', 'open_router', 128000, 4096),
-    ('cohere/command-r-plus-08-2024', 'Command R Plus', 'open_router', 128000, 4096),
-    ('cohere/command-a-03-2025', 'Command A 03.2025', 'open_router', 256000, 8192),
-    ('cohere/command-a-reasoning-08-2025', 'Command A Reasoning 08.2025', 'open_router', 256000, 32768),
-    ('cohere/command-a-translate-08-2025', 'Command A Translate 08.2025', 'open_router', 128000, 8192),
-    ('cohere/command-a-vision-07-2025', 'Command A Vision 07.2025', 'open_router', 128000, 8192),
-    ('deepseek/deepseek-chat', 'DeepSeek Chat', 'open_router', 64000, 2048),
-    ('deepseek/deepseek-r1-0528', 'DeepSeek R1', 'open_router', 163840, 163840),
-    ('perplexity/sonar', 'Perplexity Sonar', 'open_router', 127000, 8000),
-    ('perplexity/sonar-pro', 'Perplexity Sonar Pro', 'open_router', 200000, 8000),
-    ('perplexity/sonar-deep-research', 'Perplexity Sonar Deep Research', 'open_router', 128000, 16000),
-    ('perplexity/sonar-reasoning-pro', 'Sonar Reasoning Pro', 'open_router', 128000, 8000),
-    ('nousresearch/hermes-3-llama-3.1-405b', 'Hermes 3 Llama 3.1 405B', 'open_router', 131000, 4096),
-    ('nousresearch/hermes-3-llama-3.1-70b', 'Hermes 3 Llama 3.1 70B', 'open_router', 12288, 12288),
-    ('openai/gpt-oss-120b', 'GPT OSS 120B', 'open_router', 131072, 131072),
-    ('openai/gpt-oss-20b', 'GPT OSS 20B', 'open_router', 131072, 32768),
-    ('amazon/nova-lite-v1', 'Amazon Nova Lite', 'open_router', 300000, 5120),
-    ('amazon/nova-micro-v1', 'Amazon Nova Micro', 'open_router', 128000, 5120),
-    ('amazon/nova-pro-v1', 'Amazon Nova Pro', 'open_router', 300000, 5120),
-    ('microsoft/wizardlm-2-8x22b', 'WizardLM 2 8x22B', 'open_router', 65536, 4096),
-    ('microsoft/phi-4', 'Phi-4', 'open_router', 16384, 16384),
-    ('gryphe/mythomax-l2-13b', 'MythoMax L2 13B', 'open_router', 4096, 4096),
-    ('meta-llama/llama-4-scout', 'Llama 4 Scout', 'open_router', 131072, 131072),
-    ('meta-llama/llama-4-maverick', 'Llama 4 Maverick', 'open_router', 1048576, 1000000),
-    ('x-ai/grok-3', 'Grok 3', 'open_router', 131072, 131072),
-    ('x-ai/grok-4', 'Grok 4', 'open_router', 256000, 256000),
-    ('x-ai/grok-4-fast', 'Grok 4 Fast', 'open_router', 2000000, 30000),
-    ('x-ai/grok-4.1-fast', 'Grok 4.1 Fast', 'open_router', 2000000, 30000),
-    ('x-ai/grok-code-fast-1', 'Grok Code Fast 1', 'open_router', 256000, 10000),
-    ('moonshotai/kimi-k2', 'Kimi K2', 'open_router', 131000, 131000),
-    ('qwen/qwen3-235b-a22b-thinking-2507', 'Qwen 3 235B Thinking', 'open_router', 262144, 262144),
-    ('qwen/qwen3-coder', 'Qwen 3 Coder', 'open_router', 262144, 262144),
-    -- Llama API models
-    ('Llama-4-Scout-17B-16E-Instruct-FP8', 'Llama 4 Scout', 'llama_api', 128000, 4028),
-    ('Llama-4-Maverick-17B-128E-Instruct-FP8', 'Llama 4 Maverick', 'llama_api', 128000, 4028),
-    ('Llama-3.3-8B-Instruct', 'Llama 3.3 8B', 'llama_api', 128000, 4028),
-    ('Llama-3.3-70B-Instruct', 'Llama 3.3 70B', 'llama_api', 128000, 4028),
-    -- v0 models
-    ('v0-1.5-md', 'v0 1.5 MD', 'v0', 128000, 64000),
-    ('v0-1.5-lg', 'v0 1.5 LG', 'v0', 512000, 64000),
-    ('v0-1.0-md', 'v0 1.0 MD', 'v0', 128000, 64000)
-) AS models(model_slug, model_display_name, provider_name, context_window, max_output_tokens)
+    -- OpenAI models (creator: openai)
+    ('o3-2025-04-16', 'O3', 'openai', 'openai', 200000, 100000),
+    ('o3-mini', 'O3 Mini', 'openai', 'openai', 200000, 100000),
+    ('o1', 'O1', 'openai', 'openai', 200000, 100000),
+    ('o1-mini', 'O1 Mini', 'openai', 'openai', 128000, 65536),
+    ('gpt-5.2-2025-12-11', 'GPT-5.2', 'openai', 'openai', 400000, 128000),
+    ('gpt-5-2025-08-07', 'GPT 5', 'openai', 'openai', 400000, 128000),
+    ('gpt-5.1-2025-11-13', 'GPT 5.1', 'openai', 'openai', 400000, 128000),
+    ('gpt-5-mini-2025-08-07', 'GPT 5 Mini', 'openai', 'openai', 400000, 128000),
+    ('gpt-5-nano-2025-08-07', 'GPT 5 Nano', 'openai', 'openai', 400000, 128000),
+    ('gpt-5-chat-latest', 'GPT 5 Chat', 'openai', 'openai', 400000, 16384),
+    ('gpt-4.1-2025-04-14', 'GPT 4.1', 'openai', 'openai', 1000000, 32768),
+    ('gpt-4.1-mini-2025-04-14', 'GPT 4.1 Mini', 'openai', 'openai', 1047576, 32768),
+    ('gpt-4o-mini', 'GPT 4o Mini', 'openai', 'openai', 128000, 16384),
+    ('gpt-4o', 'GPT 4o', 'openai', 'openai', 128000, 16384),
+    ('gpt-4-turbo', 'GPT 4 Turbo', 'openai', 'openai', 128000, 4096),
+    -- Anthropic models (creator: anthropic)
+    ('claude-opus-4-6', 'Claude Opus 4.6', 'anthropic', 'anthropic', 200000, 128000),
+    ('claude-sonnet-4-6', 'Claude Sonnet 4.6', 'anthropic', 'anthropic', 200000, 64000),
+    ('claude-opus-4-1-20250805', 'Claude 4.1 Opus', 'anthropic', 'anthropic', 200000, 32000),
+    ('claude-opus-4-20250514', 'Claude 4 Opus', 'anthropic', 'anthropic', 200000, 32000),
+    ('claude-sonnet-4-20250514', 'Claude 4 Sonnet', 'anthropic', 'anthropic', 200000, 64000),
+    ('claude-opus-4-5-20251101', 'Claude 4.5 Opus', 'anthropic', 'anthropic', 200000, 64000),
+    ('claude-sonnet-4-5-20250929', 'Claude 4.5 Sonnet', 'anthropic', 'anthropic', 200000, 64000),
+    ('claude-haiku-4-5-20251001', 'Claude 4.5 Haiku', 'anthropic', 'anthropic', 200000, 64000),
+    ('claude-3-haiku-20240307', 'Claude 3 Haiku', 'anthropic', 'anthropic', 200000, 4096),
+    -- AI/ML API models (creators: alibaba, nvidia, meta)
+    ('Qwen/Qwen2.5-72B-Instruct-Turbo', 'Qwen 2.5 72B', 'aiml_api', 'alibaba', 32000, 8000),
+    ('nvidia/llama-3.1-nemotron-70b-instruct', 'Llama 3.1 Nemotron 70B', 'aiml_api', 'nvidia', 128000, 40000),
+    ('meta-llama/Llama-3.3-70B-Instruct-Turbo', 'Llama 3.3 70B', 'aiml_api', 'meta', 128000, NULL),
+    ('meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'Meta Llama 3.1 70B', 'aiml_api', 'meta', 131000, 2000),
+    ('meta-llama/Llama-3.2-3B-Instruct-Turbo', 'Llama 3.2 3B', 'aiml_api', 'meta', 128000, NULL),
+    -- Groq models (creator: meta for Llama)
+    ('llama-3.3-70b-versatile', 'Llama 3.3 70B', 'groq', 'meta', 128000, 32768),
+    ('llama-3.1-8b-instant', 'Llama 3.1 8B', 'groq', 'meta', 128000, 8192),
+    -- Ollama models (creators: meta for Llama, mistralai for Mistral)
+    ('llama3.3', 'Llama 3.3', 'ollama', 'meta', 8192, NULL),
+    ('llama3.2', 'Llama 3.2', 'ollama', 'meta', 8192, NULL),
+    ('llama3', 'Llama 3', 'ollama', 'meta', 8192, NULL),
+    ('llama3.1:405b', 'Llama 3.1 405B', 'ollama', 'meta', 8192, NULL),
+    ('dolphin-mistral:latest', 'Dolphin Mistral', 'ollama', 'mistralai', 32768, NULL),
+    -- OpenRouter models (creators: google, mistralai, cohere, deepseek, perplexity, nousresearch, openai, amazon, microsoft, gryphe, meta, xai, moonshotai, alibaba)
+    ('google/gemini-2.5-pro-preview-03-25', 'Gemini 2.5 Pro', 'open_router', 'google', 1050000, 8192),
+    ('google/gemini-2.5-pro', 'Gemini 2.5 Pro', 'open_router', 'google', 1048576, 65536),
+    ('google/gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview', 'open_router', 'google', 1048576, 65536),
+    ('google/gemini-3-flash-preview', 'Gemini 3 Flash Preview', 'open_router', 'google', 1048576, 65536),
+    ('google/gemini-2.5-flash', 'Gemini 2.5 Flash', 'open_router', 'google', 1048576, 65535),
+    ('google/gemini-2.0-flash-001', 'Gemini 2.0 Flash', 'open_router', 'google', 1048576, 8192),
+    ('google/gemini-3.1-flash-lite-preview', 'Gemini 3.1 Flash Lite Preview', 'open_router', 'google', 1048576, 65536),
+    ('google/gemini-2.5-flash-lite-preview-06-17', 'Gemini 2.5 Flash Lite Preview', 'open_router', 'google', 1048576, 65535),
+    ('google/gemini-2.0-flash-lite-001', 'Gemini 2.0 Flash Lite', 'open_router', 'google', 1048576, 8192),
+    ('mistralai/mistral-nemo', 'Mistral Nemo', 'open_router', 'mistralai', 128000, 4096),
+    ('mistralai/mistral-large-2512', 'Mistral Large 3 2512', 'open_router', 'mistralai', 262144, NULL),
+    ('mistralai/mistral-medium-3.1', 'Mistral Medium 3.1', 'open_router', 'mistralai', 131072, NULL),
+    ('mistralai/mistral-small-3.2-24b-instruct', 'Mistral Small 3.2 24B', 'open_router', 'mistralai', 131072, 131072),
+    ('mistralai/codestral-2508', 'Codestral 2508', 'open_router', 'mistralai', 256000, NULL),
+    ('cohere/command-r-08-2024', 'Command R', 'open_router', 'cohere', 128000, 4096),
+    ('cohere/command-r-plus-08-2024', 'Command R Plus', 'open_router', 'cohere', 128000, 4096),
+    ('cohere/command-a-03-2025', 'Command A 03.2025', 'open_router', 'cohere', 256000, 8192),
+    ('cohere/command-a-reasoning-08-2025', 'Command A Reasoning 08.2025', 'open_router', 'cohere', 256000, 32768),
+    ('cohere/command-a-translate-08-2025', 'Command A Translate 08.2025', 'open_router', 'cohere', 128000, 8192),
+    ('cohere/command-a-vision-07-2025', 'Command A Vision 07.2025', 'open_router', 'cohere', 128000, 8192),
+    ('deepseek/deepseek-chat', 'DeepSeek Chat', 'open_router', 'deepseek', 64000, 2048),
+    ('deepseek/deepseek-r1-0528', 'DeepSeek R1', 'open_router', 'deepseek', 163840, 163840),
+    ('perplexity/sonar', 'Perplexity Sonar', 'open_router', 'perplexity', 127000, 8000),
+    ('perplexity/sonar-pro', 'Perplexity Sonar Pro', 'open_router', 'perplexity', 200000, 8000),
+    ('perplexity/sonar-deep-research', 'Perplexity Sonar Deep Research', 'open_router', 'perplexity', 128000, 16000),
+    ('perplexity/sonar-reasoning-pro', 'Sonar Reasoning Pro', 'open_router', 'perplexity', 128000, 8000),
+    ('nousresearch/hermes-3-llama-3.1-405b', 'Hermes 3 Llama 3.1 405B', 'open_router', 'nousresearch', 131000, 4096),
+    ('nousresearch/hermes-3-llama-3.1-70b', 'Hermes 3 Llama 3.1 70B', 'open_router', 'nousresearch', 12288, 12288),
+    ('openai/gpt-oss-120b', 'GPT OSS 120B', 'open_router', 'openai', 131072, 131072),
+    ('openai/gpt-oss-20b', 'GPT OSS 20B', 'open_router', 'openai', 131072, 32768),
+    ('amazon/nova-lite-v1', 'Amazon Nova Lite', 'open_router', 'amazon', 300000, 5120),
+    ('amazon/nova-micro-v1', 'Amazon Nova Micro', 'open_router', 'amazon', 128000, 5120),
+    ('amazon/nova-pro-v1', 'Amazon Nova Pro', 'open_router', 'amazon', 300000, 5120),
+    ('microsoft/wizardlm-2-8x22b', 'WizardLM 2 8x22B', 'open_router', 'microsoft', 65536, 4096),
+    ('microsoft/phi-4', 'Phi-4', 'open_router', 'microsoft', 16384, 16384),
+    ('gryphe/mythomax-l2-13b', 'MythoMax L2 13B', 'open_router', 'gryphe', 4096, 4096),
+    ('meta-llama/llama-4-scout', 'Llama 4 Scout', 'open_router', 'meta', 131072, 131072),
+    ('meta-llama/llama-4-maverick', 'Llama 4 Maverick', 'open_router', 'meta', 1048576, 1000000),
+    ('x-ai/grok-3', 'Grok 3', 'open_router', 'xai', 131072, 131072),
+    ('x-ai/grok-4', 'Grok 4', 'open_router', 'xai', 256000, 256000),
+    ('x-ai/grok-4-fast', 'Grok 4 Fast', 'open_router', 'xai', 2000000, 30000),
+    ('x-ai/grok-4.1-fast', 'Grok 4.1 Fast', 'open_router', 'xai', 2000000, 30000),
+    ('x-ai/grok-code-fast-1', 'Grok Code Fast 1', 'open_router', 'xai', 256000, 10000),
+    ('moonshotai/kimi-k2', 'Kimi K2', 'open_router', 'moonshotai', 131000, 131000),
+    ('qwen/qwen3-235b-a22b-thinking-2507', 'Qwen 3 235B Thinking', 'open_router', 'alibaba', 262144, 262144),
+    ('qwen/qwen3-coder', 'Qwen 3 Coder', 'open_router', 'alibaba', 262144, 262144),
+    -- Llama API models (creator: meta)
+    ('Llama-4-Scout-17B-16E-Instruct-FP8', 'Llama 4 Scout', 'llama_api', 'meta', 128000, 4028),
+    ('Llama-4-Maverick-17B-128E-Instruct-FP8', 'Llama 4 Maverick', 'llama_api', 'meta', 128000, 4028),
+    ('Llama-3.3-8B-Instruct', 'Llama 3.3 8B', 'llama_api', 'meta', 128000, 4028),
+    ('Llama-3.3-70B-Instruct', 'Llama 3.3 70B', 'llama_api', 'meta', 128000, 4028),
+    -- v0 models (creator: vercel)
+    ('v0-1.5-md', 'v0 1.5 MD', 'v0', 'vercel', 128000, 64000),
+    ('v0-1.5-lg', 'v0 1.5 LG', 'v0', 'vercel', 512000, 64000),
+    ('v0-1.0-md', 'v0 1.0 MD', 'v0', 'vercel', 128000, 64000)
+) AS models(model_slug, model_display_name, provider_name, creator_name, context_window, max_output_tokens)
 JOIN provider_ids p ON p."name" = models.provider_name
+JOIN creator_ids c ON c."name" = models.creator_name
 ON CONFLICT ("slug") DO NOTHING;
 
 -- Insert Costs (using CTEs to reference model IDs)
