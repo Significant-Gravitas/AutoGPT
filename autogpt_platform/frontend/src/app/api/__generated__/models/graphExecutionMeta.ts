@@ -31,6 +31,6 @@ export interface GraphExecutionMeta {
   ended_at?: GraphExecutionMetaEndedAt;
   is_shared?: boolean;
   share_token?: GraphExecutionMetaShareToken;
-  stats: GraphExecutionMetaStats;
   is_dry_run?: boolean;
+  stats: GraphExecutionMetaStats;
 }
