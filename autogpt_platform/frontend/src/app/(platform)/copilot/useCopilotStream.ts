@@ -107,8 +107,8 @@ export function useCopilotStream({
   const [reconnectExhausted, setReconnectExhausted] = useState(false);
   // True while performing a wake re-sync (blocks chat input).
   const [isSyncing, setIsSyncing] = useState(false);
-  // Tracks the last time the page was visible — used to detect sleep/wake gaps.
-  const lastVisibleAtRef = useRef(Date.now());
+  // Tracks the last time the page was hidden — used to detect sleep/wake gaps.
+  const lastHiddenAtRef = useRef(Date.now());
 
   function handleReconnect(sid: string) {
     if (isReconnectScheduledRef.current || !sid) return;
@@ -311,8 +311,8 @@ export function useCopilotStream({
       const sid = sessionIdRef.current;
       if (!sid) return;
 
-      const elapsed = Date.now() - lastVisibleAtRef.current;
-      lastVisibleAtRef.current = Date.now();
+      const elapsed = Date.now() - lastHiddenAtRef.current;
+      lastHiddenAtRef.current = Date.now();
 
       if (document.visibilityState !== "visible") return;
       if (elapsed < WAKE_RESYNC_THRESHOLD_MS) return;
@@ -344,7 +344,7 @@ export function useCopilotStream({
 
     function onVisibilityChange() {
       if (document.visibilityState === "hidden") {
-        lastVisibleAtRef.current = Date.now();
+        lastHiddenAtRef.current = Date.now();
       } else {
         handleWakeResync();
       }

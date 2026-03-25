@@ -166,7 +166,7 @@ export function MobileDrawer({
                         !completedSessionIDs.has(session.id) &&
                         session.id !== currentSessionId && (
                           <CircleNotch
-                            className="h-3.5 w-3.5 shrink-0 animate-spin text-zinc-400"
+                            className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
                             weight="bold"
                           />
                         )}
