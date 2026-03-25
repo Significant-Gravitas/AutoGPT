@@ -258,6 +258,11 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
+_SENSITIVE_FIELD_NAMES = frozenset(
+    {"credentials", "api_key", "password", "secret", "token", "auth"}
+)
+
+
 def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     """Ensure all tool names are unique (Anthropic API requires this).
 
@@ -283,13 +288,25 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
         if name not in duplicates:
             continue
 
+        # Find next available suffix, skipping names already taken
         counters[name] = counters.get(name, 0) + 1
-        suffix = f"_{counters[name]}"
-        func["name"] = f"{name[:64 - len(suffix)]}{suffix}"
-        taken.add(func["name"])
+        while True:
+            suffix = f"_{counters[name]}"
+            candidate = f"{name[:64 - len(suffix)]}{suffix}"
+            if candidate not in taken:
+                break
+            counters[name] += 1
+        func["name"] = candidate
+        taken.add(candidate)
 
-        if defaults:
-            summary = ", ".join(f"{k}={json.dumps(v)}" for k, v in defaults.items())
+        # Filter out sensitive fields before building description
+        safe_defaults = {
+            k: v for k, v in defaults.items() if k.lower() not in _SENSITIVE_FIELD_NAMES
+        }
+        if safe_defaults:
+            summary = ", ".join(
+                f"{k}={json.dumps(v)}" for k, v in safe_defaults.items()
+            )
             func["description"] = (
                 f"{func.get('description', '')} [Pre-configured: {summary}]"
             )
