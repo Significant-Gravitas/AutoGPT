@@ -412,6 +412,16 @@ class OrchestratorBlock(Block):
             test_credentials=llm.TEST_CREDENTIALS,
         )
 
+    _SENSITIVE_FIELD_PATTERNS = frozenset(
+        {"credentials", "api_key", "api_secret", "password", "secret", "token"}
+    )
+
+    @staticmethod
+    def _is_sensitive_field(field_name: str) -> bool:
+        """Check if a field name likely contains sensitive data."""
+        name_lower = field_name.lower()
+        return any(p in name_lower for p in OrchestratorBlock._SENSITIVE_FIELD_PATTERNS)
+
     @staticmethod
     def cleanup(s: str):
         """Clean up block names for use as tool function names."""
@@ -514,7 +524,9 @@ class OrchestratorBlock(Block):
             {
                 k: v
                 for k, v in defaults.items()
-                if k not in linked_fields and not k.startswith("_")
+                if k not in linked_fields
+                and not k.startswith("_")
+                and not OrchestratorBlock._is_sensitive_field(k)
             }
             if isinstance(defaults, dict)
             else {}
@@ -596,13 +608,19 @@ class OrchestratorBlock(Block):
 
         # Store hardcoded defaults (non-linked inputs) for disambiguation
         linked_fields = {link.sink_name for link in links}
-        tool_function["_hardcoded_defaults"] = {
-            k: v
-            for k, v in sink_node.input_default.items()
-            if k not in linked_fields
-            and k not in ("graph_id", "graph_version", "input_schema")
-            and not k.startswith("_")
-        }
+        defaults = sink_node.input_default
+        tool_function["_hardcoded_defaults"] = (
+            {
+                k: v
+                for k, v in defaults.items()
+                if k not in linked_fields
+                and k not in ("graph_id", "graph_version", "input_schema")
+                and not k.startswith("_")
+                and not OrchestratorBlock._is_sensitive_field(k)
+            }
+            if isinstance(defaults, dict)
+            else {}
+        )
 
         return {"type": "function", "function": tool_function}
 
@@ -665,7 +683,10 @@ class OrchestratorBlock(Block):
             if name_counts[name] > 1:
                 idx = name_seen.get(name, 0) + 1
                 name_seen[name] = idx
-                func["name"] = f"{name}_{idx}"
+                suffix = f"_{idx}"
+                # Anthropic tool names have a 64-char limit
+                max_base = 64 - len(suffix)
+                func["name"] = f"{name[:max_base]}{suffix}"
 
                 # Enrich description with hardcoded defaults so the LLM can
                 # distinguish between tools that share the same block type.
@@ -680,10 +701,6 @@ class OrchestratorBlock(Block):
                     )
             else:
                 func.pop("_hardcoded_defaults", None)
-
-        # Clean up _hardcoded_defaults from non-duplicate tools
-        for tool_func in return_tool_functions:
-            tool_func["function"].pop("_hardcoded_defaults", None)
 
         return return_tool_functions
 

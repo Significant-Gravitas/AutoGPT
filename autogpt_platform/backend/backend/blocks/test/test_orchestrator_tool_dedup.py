@@ -291,3 +291,75 @@ async def test_mixed_unique_and_duplicate_names():
     base = OrchestratorBlock.cleanup(block_a.name)
     assert f"{base}_1" in names
     assert f"{base}_2" in names
+
+
+@pytest.mark.asyncio
+async def test_sensitive_fields_excluded_from_defaults():
+    """Credentials and other sensitive fields must not leak into descriptions."""
+    block = MatchTextPatternBlock()
+    node_a = _make_mock_node(
+        block,
+        "node_a",
+        input_default={
+            "match": "error",
+            "credentials": {"api_key": "sk-secret"},
+            "api_key": "my-key",
+            "password": "hunter2",
+        },
+    )
+    node_b = _make_mock_node(
+        block, "node_b", input_default={"match": "warning", "credentials": {"x": "y"}}
+    )
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    for tool in tools:
+        desc = tool["function"].get("description", "")
+        assert "sk-secret" not in desc
+        assert "my-key" not in desc
+        assert "hunter2" not in desc
+        assert "credentials=" not in desc
+        assert "api_key=" not in desc
+        assert "password=" not in desc
+
+
+@pytest.mark.asyncio
+async def test_long_tool_name_truncated():
+    """Tool names exceeding 64 chars should be truncated before suffixing."""
+    block = MatchTextPatternBlock()
+    long_name = "a" * 63  # 63 chars, adding _1 would make 65
+
+    node_a = _make_mock_node(block, "node_a", metadata={"customized_name": long_name})
+    node_b = _make_mock_node(block, "node_b", metadata={"customized_name": long_name})
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    for tool in tools:
+        name = tool["function"]["name"]
+        assert len(name) <= 64, f"Tool name exceeds 64 chars: {name!r} ({len(name)})"
