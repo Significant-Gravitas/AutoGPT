@@ -360,18 +360,12 @@ class GraphExecution(GraphExecutionMeta):
 
         outputs: CompletedBlockOutput = defaultdict(list)
         for exec in complete_node_executions:
-            block = get_block(exec.block_id)
-            if not block or block.block_type != BlockType.OUTPUT:
-                continue
-            if "name" not in exec.input_data:
-                logger.debug(
-                    "Skipping OUTPUT node execution %s (block_id=%s): "
-                    "no 'name' in input_data",
-                    exec.node_exec_id,
-                    exec.block_id,
-                )
-                continue
-            outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
+            if (
+                (block := get_block(exec.block_id))
+                and block.block_type == BlockType.OUTPUT
+                and "name" in exec.input_data
+            ):
+                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
 
         return GraphExecution(
             **{
