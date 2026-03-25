@@ -1,9 +1,16 @@
 import base64
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
 
-from backend.blocks.google.gmail import GmailReadBlock, validate_email_recipients
+from backend.blocks.google.gmail import (
+    GmailReadBlock,
+    _build_reply_message,
+    create_mime_message,
+    validate_email_recipients,
+)
+from backend.data.execution import ExecutionContext
 
 
 class TestGmailReadBlock:
@@ -290,3 +297,138 @@ class TestValidateEmailRecipients:
 
     def test_empty_list_passes(self):
         validate_email_recipients([])
+
+
+class TestCreateMimeMessageValidation:
+    """Test that create_mime_message() raises ValueError for invalid recipients."""
+
+    @staticmethod
+    def _make_input(to=None, cc=None, bcc=None):
+        return SimpleNamespace(
+            to=to or ["valid@example.com"],
+            cc=cc or [],
+            bcc=bcc or [],
+            subject="Test",
+            body="Hello",
+            content_type=None,
+            attachments=[],
+        )
+
+    @staticmethod
+    def _exec_ctx():
+        return ExecutionContext(user_id="u1", graph_exec_id="g1")
+
+    @pytest.mark.asyncio
+    async def test_invalid_to_raises(self):
+        with pytest.raises(ValueError, match="Invalid email address.*'to'"):
+            await create_mime_message(
+                self._make_input(to=["not-an-email"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_cc_raises(self):
+        with pytest.raises(ValueError, match="Invalid email address.*'cc'"):
+            await create_mime_message(
+                self._make_input(cc=["bad-addr"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_bcc_raises(self):
+        with pytest.raises(ValueError, match="Invalid email address.*'bcc'"):
+            await create_mime_message(
+                self._make_input(bcc=["nope"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_valid_recipients_no_error(self):
+        """Sanity check: valid emails should not raise."""
+        result = await create_mime_message(
+            self._make_input(
+                to=["alice@example.com"],
+                cc=["bob@example.com"],
+                bcc=["carol@example.com"],
+            ),
+            self._exec_ctx(),
+        )
+        assert isinstance(result, str)  # base64-encoded message
+
+
+class TestBuildReplyMessageValidation:
+    """Test that _build_reply_message() raises ValueError for invalid recipients."""
+
+    @staticmethod
+    def _make_input(to=None, cc=None, bcc=None):
+        return SimpleNamespace(
+            threadId="t1",
+            parentMessageId="m1",
+            to=to or [],
+            cc=cc or [],
+            bcc=bcc or [],
+            replyAll=False,
+            subject="",
+            body="Reply body",
+            content_type=None,
+            attachments=[],
+        )
+
+    @staticmethod
+    def _exec_ctx():
+        return ExecutionContext(user_id="u1", graph_exec_id="g1")
+
+    @staticmethod
+    def _mock_service(from_addr="sender@example.com"):
+        """Build a mock Gmail service that returns a parent message."""
+        parent_message = {
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "Original subject"},
+                    {"name": "Message-ID", "value": "<abc@mail.example.com>"},
+                    {"name": "From", "value": from_addr},
+                    {"name": "To", "value": "me@example.com"},
+                ]
+            }
+        }
+        svc = Mock()
+        svc.users().messages().get().execute.return_value = parent_message
+        return svc
+
+    @pytest.mark.asyncio
+    async def test_invalid_to_raises(self):
+        with pytest.raises(ValueError, match="Invalid email address.*'to'"):
+            await _build_reply_message(
+                self._mock_service(),
+                self._make_input(to=["bad-addr"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_cc_raises(self):
+        with pytest.raises(ValueError, match="Invalid email address.*'cc'"):
+            await _build_reply_message(
+                self._mock_service(),
+                self._make_input(to=["valid@example.com"], cc=["not-valid"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_bcc_raises(self):
+        with pytest.raises(ValueError, match="Invalid email address.*'bcc'"):
+            await _build_reply_message(
+                self._mock_service(),
+                self._make_input(to=["valid@example.com"], bcc=["nope"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_auto_resolved_invalid_from_raises(self):
+        """When to/cc/bcc are empty, recipients are resolved from the parent.
+        If the parent From header is invalid, validation should still fire."""
+        with pytest.raises(ValueError, match="Invalid email address.*'to'"):
+            await _build_reply_message(
+                self._mock_service(from_addr="bad-sender"),
+                self._make_input(),  # to=[] triggers auto-resolution
+                self._exec_ctx(),
+            )
