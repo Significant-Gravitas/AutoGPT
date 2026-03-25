@@ -344,8 +344,7 @@ class TestResetDailyUsage:
     @pytest.mark.asyncio
     async def test_deletes_daily_key(self):
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value="5000")
-        mock_redis.set = AsyncMock()
+        mock_redis.eval = AsyncMock(return_value=0)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -358,10 +357,9 @@ class TestResetDailyUsage:
 
     @pytest.mark.asyncio
     async def test_reduces_weekly_usage_by_daily_limit(self):
-        """Weekly counter should be reduced by daily_token_limit."""
+        """Weekly counter should be reduced via Lua script."""
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value="45000")
-        mock_redis.set = AsyncMock()
+        mock_redis.eval = AsyncMock(return_value=35000)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -369,18 +367,16 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=10000)
 
-        # Weekly should be set to 45000 - 10000 = 35000
-        mock_redis.set.assert_called_once()
-        call_args = mock_redis.set.call_args
-        assert call_args.args[1] == "35000"
-        assert call_args.kwargs.get("keepttl") is True
+        # Lua script is called with (script, 1, weekly_key, daily_token_limit)
+        mock_redis.eval.assert_called_once()
+        call_args = mock_redis.eval.call_args
+        assert call_args.args[3] == "10000"  # ARGV[1] = daily_token_limit
 
     @pytest.mark.asyncio
     async def test_weekly_usage_clamped_to_zero(self):
-        """Weekly counter should not go below 0."""
+        """Weekly counter should not go below 0 (handled by Lua script)."""
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value="5000")
-        mock_redis.set = AsyncMock()
+        mock_redis.eval = AsyncMock(return_value=0)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -388,10 +384,10 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=10000)
 
-        # Weekly should be set to max(0, 5000 - 10000) = 0
-        mock_redis.set.assert_called_once()
-        call_args = mock_redis.set.call_args
-        assert call_args.args[1] == "0"
+        # Lua script handles clamping internally
+        mock_redis.eval.assert_called_once()
+        call_args = mock_redis.eval.call_args
+        assert call_args.args[3] == "10000"
 
     @pytest.mark.asyncio
     async def test_no_weekly_reduction_when_daily_limit_zero(self):
@@ -410,11 +406,10 @@ class TestResetDailyUsage:
         mock_redis.get.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_no_weekly_set_when_weekly_already_zero(self):
-        """When weekly usage is already 0, no SET should be issued."""
+    async def test_weekly_eval_called_when_daily_limit_positive(self):
+        """Lua script should be called when daily_token_limit > 0."""
         mock_redis = AsyncMock()
-        mock_redis.get = AsyncMock(return_value="0")
-        mock_redis.set = AsyncMock()
+        mock_redis.eval = AsyncMock(return_value=0)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -422,8 +417,8 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=10000)
 
-        # weekly_used is 0 so we skip the set
-        mock_redis.set.assert_not_called()
+        # Lua script handles the atomic decrement
+        mock_redis.eval.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_returns_false_when_redis_unavailable(self):
