@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.google.gmail import GmailReadBlock, validate_email_recipients
 
 
 class TestGmailReadBlock:
@@ -250,3 +250,43 @@ class TestGmailReadBlock:
 
         result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "This email does not contain a readable body."
+
+
+class TestValidateEmailRecipients:
+    """Test cases for validate_email_recipients."""
+
+    def test_valid_single_email(self):
+        validate_email_recipients(["user@example.com"])
+
+    def test_valid_multiple_emails(self):
+        validate_email_recipients(["a@b.com", "x@y.org", "test@sub.domain.co"])
+
+    def test_invalid_missing_at(self):
+        with pytest.raises(ValueError, match="Invalid email address"):
+            validate_email_recipients(["not-an-email"])
+
+    def test_invalid_missing_domain_dot(self):
+        with pytest.raises(ValueError, match="Invalid email address"):
+            validate_email_recipients(["user@localhost"])
+
+    def test_invalid_empty_string(self):
+        with pytest.raises(ValueError, match="Invalid email address"):
+            validate_email_recipients([""])
+
+    def test_invalid_json_object_string(self):
+        with pytest.raises(ValueError, match="Invalid email address"):
+            validate_email_recipients(['{"email": "user@example.com"}'])
+
+    def test_mixed_valid_and_invalid(self):
+        with pytest.raises(ValueError, match="'bad-addr'"):
+            validate_email_recipients(["good@example.com", "bad-addr"])
+
+    def test_field_name_in_error(self):
+        with pytest.raises(ValueError, match="'cc'"):
+            validate_email_recipients(["nope"], field_name="cc")
+
+    def test_whitespace_trimmed(self):
+        validate_email_recipients(["  user@example.com  "])
+
+    def test_empty_list_passes(self):
+        validate_email_recipients([])

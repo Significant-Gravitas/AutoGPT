@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import re
 from abc import ABC
 from email import encoders
 from email.mime.base import MIMEBase
@@ -44,6 +45,27 @@ NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 def serialize_email_recipients(recipients: list[str]) -> str:
     """Serialize recipients list to comma-separated string."""
     return ", ".join(recipients)
+
+
+# RFC 5322 simplified pattern: local@domain where domain has at least one dot
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def validate_email_recipients(
+    recipients: list[str], field_name: str = "to"
+) -> None:
+    """Validate that all recipients are plausible email addresses.
+
+    Raises ``ValueError`` with a user-friendly message listing every
+    invalid entry so the caller (or LLM) can correct them in one pass.
+    """
+    invalid = [addr for addr in recipients if not _EMAIL_RE.match(addr.strip())]
+    if invalid:
+        formatted = ", ".join(f"'{a}'" for a in invalid)
+        raise ValueError(
+            f"Invalid email address(es) in '{field_name}': {formatted}. "
+            f"Each entry must be a valid email address (e.g. user@example.com)."
+        )
 
 
 def _make_mime_text(
@@ -99,6 +121,13 @@ async def create_mime_message(
     execution_context: ExecutionContext,
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
+
+    # Validate all recipient lists before building the MIME message
+    validate_email_recipients(input_data.to, "to")
+    if input_data.cc:
+        validate_email_recipients(input_data.cc, "cc")
+    if input_data.bcc:
+        validate_email_recipients(input_data.bcc, "bcc")
 
     message = MIMEMultipart()
     message["to"] = serialize_email_recipients(input_data.to)
@@ -1167,6 +1196,14 @@ async def _build_reply_message(
         references.append(headers["message-id"])
 
     # Create MIME message
+    # Validate all recipient lists before building the MIME message
+    if input_data.to:
+        validate_email_recipients(input_data.to, "to")
+    if input_data.cc:
+        validate_email_recipients(input_data.cc, "cc")
+    if input_data.bcc:
+        validate_email_recipients(input_data.bcc, "bcc")
+
     msg = MIMEMultipart()
     if input_data.to:
         msg["To"] = ", ".join(input_data.to)
