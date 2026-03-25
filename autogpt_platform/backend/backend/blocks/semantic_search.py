@@ -6,13 +6,13 @@ Enhances the existing search functionality with AI-powered understanding.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union, Literal
+from typing import Any, Dict, List, Optional, Literal
 import numpy as np
 from pydantic import SecretStr
 
-from backend.data.block import Block, BlockCategory, BlockSchema, BlockSchemaInput, BlockSchemaOutput, BlockOutput
+from backend.data.block import Block, BlockCategory, BlockSchemaInput, BlockSchemaOutput, BlockOutput
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput, SchemaField
-from backend.util.request import get_requests_session
+from backend.blocks.helpers.http import GetRequest
 from backend.integrations.providers import ProviderName
 from backend.util.clients import get_openai_client
 from backend.util.settings import Settings
