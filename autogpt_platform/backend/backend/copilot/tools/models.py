@@ -272,6 +272,7 @@ class ExecutionOutputInfo(BaseModel):
     ended_at: datetime | None = None
     outputs: dict[str, list[Any]]
     inputs_summary: dict[str, Any] | None = None
+    node_executions: list[dict[str, Any]] | None = None
 
 
 class AgentOutputResponse(ToolResponseBase):
@@ -457,6 +458,7 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
+    is_dry_run: bool = False
 
 
 class ReviewRequiredResponse(ToolResponseBase):

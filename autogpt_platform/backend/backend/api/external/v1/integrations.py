@@ -18,15 +18,20 @@ from pydantic import BaseModel, Field, SecretStr
 
 from backend.api.external.middleware import require_permission
 from backend.api.features.integrations.models import get_all_provider_names
+from backend.api.features.integrations.router import (
+    CredentialsMetaResponse,
+    to_meta_response,
+)
 from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.model import (
     APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
-    OAuth2Credentials,
     UserPasswordCredentials,
+    is_sdk_default,
 )
+from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -89,18 +94,6 @@ class OAuthCompleteResponse(BaseModel):
     state_metadata: dict[str, Any] = Field(
         default_factory=dict, description="Echoed metadata from initiate request"
     )
-
-
-class CredentialSummary(BaseModel):
-    """Summary of a credential without sensitive data."""
-
-    id: str
-    provider: str
-    type: CredentialsType
-    title: Optional[str] = None
-    scopes: Optional[list[str]] = None
-    username: Optional[str] = None
-    host: Optional[str] = None
 
 
 class ProviderInfo(BaseModel):
@@ -473,12 +466,12 @@ async def complete_oauth(
     )
 
 
-@integrations_router.get("/credentials", response_model=list[CredentialSummary])
+@integrations_router.get("/credentials", response_model=list[CredentialsMetaResponse])
 async def list_credentials(
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> list[CredentialSummary]:
+) -> list[CredentialsMetaResponse]:
     """
     List all credentials for the authenticated user.
 
@@ -486,28 +479,19 @@ async def list_credentials(
     """
     credentials = await creds_manager.store.get_all_creds(auth.user_id)
     return [
-        CredentialSummary(
-            id=cred.id,
-            provider=cred.provider,
-            type=cred.type,
-            title=cred.title,
-            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
-            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
-        )
-        for cred in credentials
+        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
     ]
 
 
 @integrations_router.get(
-    "/{provider}/credentials", response_model=list[CredentialSummary]
+    "/{provider}/credentials", response_model=list[CredentialsMetaResponse]
 )
 async def list_credentials_by_provider(
     provider: Annotated[str, Path(title="The provider to list credentials for")],
     auth: APIAuthorizationInfo = Security(
         require_permission(APIKeyPermission.READ_INTEGRATIONS)
     ),
-) -> list[CredentialSummary]:
+) -> list[CredentialsMetaResponse]:
     """
     List credentials for a specific provider.
     """
@@ -515,16 +499,7 @@ async def list_credentials_by_provider(
         auth.user_id, provider
     )
     return [
-        CredentialSummary(
-            id=cred.id,
-            provider=cred.provider,
-            type=cred.type,
-            title=cred.title,
-            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
-            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
-        )
-        for cred in credentials
+        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
     ]
 
 
@@ -597,11 +572,11 @@ async def create_credential(
     # Store credentials
     try:
         await creds_manager.create(auth.user_id, credentials)
-    except Exception as e:
-        logger.error(f"Failed to store credentials: {e}")
+    except Exception:
+        logger.exception("Failed to store credentials")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to store credentials: {str(e)}",
+            detail="Failed to store credentials",
         )
 
     logger.info(f"Created {request.type} credentials for provider {provider}")
@@ -639,15 +614,18 @@ async def delete_credential(
     use the main API's delete endpoint which handles webhook cleanup and
     token revocation.
     """
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
     if not creds:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if creds.provider != provider:
+    if not provider_matches(creds.provider, provider):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Credentials do not match the specified provider",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
 
     await creds_manager.delete(auth.user_id, cred_id)

@@ -10,7 +10,7 @@ from .helpers import (
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
-    SMART_DECISION_MAKER_BLOCK_ID,
+    TOOL_ORCHESTRATOR_BLOCK_ID,
     AgentDict,
     are_types_compatible,
     get_defined_property_type,
@@ -1024,18 +1024,18 @@ class AgentValidator:
 
         return valid
 
-    def validate_smart_decision_maker_blocks(
+    def validate_orchestrator_blocks(
         self,
         agent: AgentDict,
         node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
-        """Validate that SmartDecisionMakerBlock nodes have downstream tools.
+        """Validate that OrchestratorBlock nodes have downstream tools.
 
-        Checks that each SmartDecisionMakerBlock node has at least one link
+        Checks that each OrchestratorBlock node has at least one link
         with ``source_name == "tools"`` connecting to a downstream block.
         Without tools, the block has nothing to call and will error at runtime.
 
-        Returns True if all SmartDecisionMakerBlock nodes are valid.
+        Returns True if all OrchestratorBlock nodes are valid.
         """
         valid = True
         nodes = agent.get("nodes", [])
@@ -1045,7 +1045,7 @@ class AgentValidator:
         non_tool_block_ids = {AGENT_INPUT_BLOCK_ID, AGENT_OUTPUT_BLOCK_ID}
 
         for node in nodes:
-            if node.get("block_id") != SMART_DECISION_MAKER_BLOCK_ID:
+            if node.get("block_id") != TOOL_ORCHESTRATOR_BLOCK_ID:
                 continue
 
             node_id = node.get("id", "unknown")
@@ -1060,7 +1060,7 @@ class AgentValidator:
             max_iter = input_default.get("agent_mode_max_iterations")
             if max_iter is not None and not isinstance(max_iter, int):
                 self.add_error(
-                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"OrchestratorBlock node '{customized_name}' "
                     f"({node_id}) has non-integer "
                     f"agent_mode_max_iterations={max_iter!r}. "
                     f"This field must be an integer."
@@ -1068,7 +1068,7 @@ class AgentValidator:
                 valid = False
             elif isinstance(max_iter, int) and max_iter < -1:
                 self.add_error(
-                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"OrchestratorBlock node '{customized_name}' "
                     f"({node_id}) has invalid "
                     f"agent_mode_max_iterations={max_iter}. "
                     f"Use -1 for infinite or a positive number for "
@@ -1077,7 +1077,7 @@ class AgentValidator:
                 valid = False
             elif isinstance(max_iter, int) and max_iter > 100:
                 self.add_error(
-                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"OrchestratorBlock node '{customized_name}' "
                     f"({node_id}) has agent_mode_max_iterations="
                     f"{max_iter} which is unusually high. Values above "
                     f"100 risk excessive cost and long execution times. "
@@ -1087,7 +1087,7 @@ class AgentValidator:
                 valid = False
             elif max_iter == 0:
                 self.add_error(
-                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"OrchestratorBlock node '{customized_name}' "
                     f"({node_id}) has agent_mode_max_iterations=0 "
                     f"(traditional mode). The agent generator only supports "
                     f"agent mode (set to -1 for infinite or a positive "
@@ -1105,7 +1105,7 @@ class AgentValidator:
 
             if not has_tools:
                 self.add_error(
-                    f"SmartDecisionMakerBlock node '{customized_name}' "
+                    f"OrchestratorBlock node '{customized_name}' "
                     f"({node_id}) has no downstream tool blocks connected. "
                     f"Connect at least one block to its 'tools' output so "
                     f"the AI has tools to call."
@@ -1222,8 +1222,8 @@ class AgentValidator:
                 self.validate_mcp_tool_blocks(agent),
             ),
             (
-                "SmartDecisionMaker blocks",
-                self.validate_smart_decision_maker_blocks(agent, node_lookup),
+                "Orchestrator blocks",
+                self.validate_orchestrator_blocks(agent, node_lookup),
             ),
         ]
 

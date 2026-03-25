@@ -63,6 +63,50 @@ Example — committing an image file to GitHub:
 }}
 ```
 
+### Writing large files — CRITICAL
+**Never write an entire large document in a single tool call.**  When the
+content you want to write exceeds ~2000 words the tool call's output token
+limit will silently truncate the arguments, producing an empty `{{}}` input
+that fails repeatedly.
+
+**Preferred: compose from file references.**  If the data is already in
+files (tool outputs, workspace files), compose the report in one call
+using `@@agptfile:` references — the system expands them inline:
+
+```bash
+cat > report.md << 'EOF'
+# Research Report
+## Data from web research
+@@agptfile:/home/user/web_results.txt
+## Block execution output
+@@agptfile:workspace://<file_id>
+## Conclusion
+<brief synthesis>
+EOF
+```
+
+**Fallback: write section-by-section.**  When you must generate content
+from conversation context (no files to reference), split into multiple
+`bash_exec` calls — one section per call:
+
+```bash
+cat > report.md << 'EOF'
+# Section 1
+<content from your earlier tool call results>
+EOF
+```
+```bash
+cat >> report.md << 'EOF'
+# Section 2
+<content from your earlier tool call results>
+EOF
+```
+Use `cat >` for the first chunk and `cat >>` to append subsequent chunks.
+Do not re-fetch or re-generate data you already have from prior tool calls.
+
+After building the file, reference it with `@@agptfile:` in other tools:
+`@@agptfile:/home/user/report.md`
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
@@ -161,9 +205,10 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/`. To read these files,
-always use `read_file` or `Read` (NOT `read_workspace_file`).
-`read_workspace_file` reads from cloud workspace storage, where SDK
-tool-results are NOT stored.
+always use `Read` (NOT `bash_exec`, NOT `read_workspace_file`).
+These files are on the host filesystem — `bash_exec` runs in the sandbox and
+CANNOT access them. `read_workspace_file` reads from cloud workspace storage,
+where SDK tool-results are NOT stored.
 {_SHARED_TOOL_NOTES}{extra_notes}"""
 
 

@@ -14,7 +14,7 @@ import time
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
-from backend.copilot.response_model import StreamFinish
+from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.executor.cluster_lock import ClusterLock
@@ -23,6 +23,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import set_service_name
 from backend.util.retry import func_retry
+from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
@@ -153,8 +154,6 @@ class CoPilotProcessor:
         worker's event loop, ensuring ``aiohttp.ClientSession.close()``
         runs on the same loop that created the session.
         """
-        from backend.util.workspace_storage import shutdown_workspace_storage
-
         coro = shutdown_workspace_storage()
         try:
             future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
@@ -268,34 +267,36 @@ class CoPilotProcessor:
                 log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             # Stream chat completion and publish chunks to Redis.
-            async for chunk in stream_fn(
+            # stream_and_publish wraps the raw stream with registry
+            # publishing (shared with collect_copilot_response).
+            raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
                 is_user_message=entry.is_user_message,
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
+            )
+            async for chunk in stream_registry.stream_and_publish(
+                session_id=entry.session_id,
+                turn_id=entry.turn_id,
+                stream=raw_stream,
             ):
                 if cancel.is_set():
                     log.info("Cancel requested, breaking stream")
+                    break
+
+                # Capture StreamError so mark_session_completed receives
+                # the error message (stream_and_publish yields but does
+                # not publish StreamError — that's done by mark_session_completed).
+                if isinstance(chunk, StreamError):
+                    error_msg = chunk.errorText
                     break
 
                 current_time = time.monotonic()
                 if current_time - last_refresh >= refresh_interval:
                     cluster_lock.refresh()
                     last_refresh = current_time
-
-                # Skip StreamFinish — mark_session_completed publishes it.
-                if isinstance(chunk, StreamFinish):
-                    continue
-
-                try:
-                    await stream_registry.publish_chunk(entry.turn_id, chunk)
-                except Exception as e:
-                    log.error(
-                        f"Error publishing chunk {type(chunk).__name__}: {e}",
-                        exc_info=True,
-                    )
 
             # Stream loop completed
             if cancel.is_set():

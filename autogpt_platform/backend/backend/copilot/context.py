@@ -17,6 +17,9 @@ from backend.util.workspace import WorkspaceManager
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
+    from backend.copilot.permissions import CopilotPermissions
+
+
 # Allowed base directory for the Read tool.  Public so service.py can use it
 # for sweep operations without depending on a private implementation detail.
 # Respects CLAUDE_CONFIG_DIR env var, consistent with transcript.py's
@@ -43,6 +46,12 @@ _current_sandbox: ContextVar["AsyncSandbox | None"] = ContextVar(
 )
 _current_sdk_cwd: ContextVar[str] = ContextVar("_current_sdk_cwd", default="")
 
+# Current execution's capability filter.  None means "no restrictions".
+# Set by set_execution_context(); read by run_block and service.py.
+_current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
+    "_current_permissions", default=None
+)
+
 
 def encode_cwd_for_cli(cwd: str) -> str:
     """Encode a working directory path the same way the Claude CLI does.
@@ -63,6 +72,7 @@ def set_execution_context(
     session: ChatSession,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
+    permissions: "CopilotPermissions | None" = None,
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -70,11 +80,17 @@ def set_execution_context(
     _current_sandbox.set(sandbox)
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
+    _current_permissions.set(permissions)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
     """Return the current (user_id, session) pair for the active request."""
     return _current_user_id.get(), _current_session.get()
+
+
+def get_current_permissions() -> "CopilotPermissions | None":
+    """Return the capability filter for the current execution, or None if unrestricted."""
+    return _current_permissions.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":
@@ -88,17 +104,32 @@ def get_sdk_cwd() -> str:
 
 
 E2B_WORKDIR = "/home/user"
+E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
+E2B_ALLOWED_DIRS_STR: str = " or ".join(E2B_ALLOWED_DIRS)
+
+
+def is_within_allowed_dirs(path: str) -> bool:
+    """Return True if *path* is within one of the allowed sandbox directories."""
+    for allowed in E2B_ALLOWED_DIRS:
+        if path == allowed or path.startswith(allowed + "/"):
+            return True
+    return False
 
 
 def resolve_sandbox_path(path: str) -> str:
-    """Normalise *path* to an absolute sandbox path under ``/home/user``.
+    """Normalise *path* to an absolute sandbox path under an allowed directory.
+
+    Allowed directories: ``/home/user`` and ``/tmp``.
+    Relative paths are resolved against ``/home/user``.
 
     Raises :class:`ValueError` if the resolved path escapes the sandbox.
     """
     candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
-    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
-        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
+    if not is_within_allowed_dirs(normalized):
+        raise ValueError(
+            f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(path)}"
+        )
     return normalized
 
 
