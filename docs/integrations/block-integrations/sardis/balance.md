@@ -17,16 +17,16 @@ This block calls the Sardis balance endpoint for a specific wallet and token. It
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| wallet_id | Sardis wallet ID (starts with wal_) | str | Yes |
-| token | Token to check (USDC, USDT, EURC, PYUSD) | str | No |
+| wallet_id | Sardis wallet ID (starts with wal_). Validated via `field_validator`. | str | Yes |
+| token | Token to check | Literal["USDC", "USDT", "EURC", "PYUSD"] | No |
 
 ### Outputs
 
 | Output | Description | Type |
 |--------|-------------|------|
 | error | Error message if failed | str |
-| balance | Current balance | float |
-| remaining_limit | Remaining spending limit | float |
+| balance | Current balance (decimal string) | str |
+| remaining_limit | Remaining spending limit (decimal string) | str |
 | token | Token type | str |
 
 ### Possible use case

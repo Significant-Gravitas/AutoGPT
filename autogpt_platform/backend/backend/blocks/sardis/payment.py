@@ -1,3 +1,8 @@
+import re
+from typing import Literal
+
+from pydantic import field_validator
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -5,7 +10,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.blocks.sardis._api import SardisClient
+from backend.blocks.sardis._api import SardisClient, get_client
 from backend.blocks.sardis._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -13,6 +18,8 @@ from backend.blocks.sardis._auth import (
     SardisCredentialsInput,
 )
 from backend.data.model import CredentialsField, SchemaField
+
+_WALLET_ID_RE = re.compile(r"^wal_[a-zA-Z0-9]+$")
 
 
 class SardisPayBlock(Block):
@@ -29,16 +36,20 @@ class SardisPayBlock(Block):
         destination: str = SchemaField(
             description="Recipient address, merchant ID, or wallet ID",
         )
-        amount: float = SchemaField(
-            description="Payment amount in token units",
-            ge=0.01,
+        amount: str = SchemaField(
+            description=(
+                "Payment amount as a decimal string (e.g. '25.00'). "
+                "String type avoids IEEE 754 float rounding."
+            ),
         )
-        token: str = SchemaField(
-            description="Token to use (USDC, USDT, EURC, PYUSD)",
+        token: Literal["USDC", "USDT", "EURC", "PYUSD"] = SchemaField(
+            description="Token to use",
             default="USDC",
         )
-        chain: str = SchemaField(
-            description="Blockchain to use (base, polygon, ethereum, arbitrum, optimism)",
+        chain: Literal[
+            "base", "polygon", "ethereum", "arbitrum", "optimism"
+        ] = SchemaField(
+            description="Blockchain to use",
             default="base",
             advanced=True,
         )
@@ -51,12 +62,41 @@ class SardisPayBlock(Block):
             description="Sardis API credentials",
         )
 
+        @field_validator("wallet_id")
+        @classmethod
+        def _validate_wallet_id(cls, v: str) -> str:
+            if not _WALLET_ID_RE.match(v):
+                raise ValueError(
+                    "wallet_id must start with 'wal_' followed by alphanumeric "
+                    f"characters, got '{v}'"
+                )
+            return v
+
+        @field_validator("amount")
+        @classmethod
+        def _validate_amount(cls, v: str) -> str:
+            try:
+                val = float(v)
+            except (ValueError, TypeError):
+                raise ValueError(f"amount must be a numeric string, got '{v}'")
+            if val < 0.01:
+                raise ValueError(f"amount must be >= 0.01, got '{v}'")
+            return v
+
     class Output(BlockSchemaOutput):
-        status: str = SchemaField(description="APPROVED, BLOCKED, or ERROR")
-        tx_id: str = SchemaField(description="Transaction ID if approved", default="")
+        status: str = SchemaField(
+            description="APPROVED, BLOCKED, or ERROR", default=""
+        )
+        tx_id: str = SchemaField(
+            description="Transaction ID if approved", default=""
+        )
         message: str = SchemaField(description="Status message", default="")
-        amount: float = SchemaField(description="Payment amount", default=0)
-        error: str = SchemaField(description="Error message if failed", default="")
+        amount: str = SchemaField(
+            description="Payment amount (decimal string)", default="0"
+        )
+        error: str = SchemaField(
+            description="Error message if failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -70,7 +110,7 @@ class SardisPayBlock(Block):
                 {
                     "wallet_id": "wal_test123",
                     "destination": "0x1234567890abcdef1234567890abcdef12345678",
-                    "amount": 10.0,
+                    "amount": "10.00",
                     "token": "USDC",
                     "chain": "base",
                     "purpose": "Test payment",
@@ -80,7 +120,7 @@ class SardisPayBlock(Block):
             test_output=[
                 ("status", "APPROVED"),
                 ("tx_id", "tx_mock123"),
-                ("amount", 10.0),
+                ("amount", "10.00"),
                 ("message", "Payment approved"),
             ],
             test_mock={
@@ -88,7 +128,7 @@ class SardisPayBlock(Block):
                     "success": True,
                     "tx_id": "tx_mock123",
                     "message": "Payment approved",
-                    "amount": 10.0,
+                    "amount": "10.00",
                 }
             },
             test_credentials=TEST_CREDENTIALS,
@@ -99,7 +139,7 @@ class SardisPayBlock(Block):
         client: SardisClient,
         wallet_id: str,
         destination: str,
-        amount: float,
+        amount: str,
         token: str,
         chain: str,
         purpose: str,
@@ -120,7 +160,7 @@ class SardisPayBlock(Block):
         credentials: SardisCredentials,
         **kwargs,
     ) -> BlockOutput:
-        client = SardisClient(credentials)
+        client = get_client(credentials)
         result = await self.send_payment(
             client=client,
             wallet_id=input_data.wallet_id,
@@ -131,14 +171,21 @@ class SardisPayBlock(Block):
             purpose=input_data.purpose,
         )
 
+        # Explicit three-way status logic:
+        #   1. success == True  → APPROVED
+        #   2. "error" key      → ERROR (API / network / server fault)
+        #   3. anything else    → BLOCKED (policy denial or unknown shape)
         if result.get("success"):
             yield "status", "APPROVED"
             yield "tx_id", result.get("tx_id", "")
-            yield "amount", float(result.get("amount", input_data.amount))
+            yield "amount", str(result.get("amount", input_data.amount))
             yield "message", result.get("message", "Payment approved")
-        elif result.get("error"):
+        elif "error" in result:
             yield "status", "ERROR"
-            yield "error", result.get("error", "Unknown error")
+            yield "error", str(result["error"])
         else:
             yield "status", "BLOCKED"
-            yield "message", result.get("message", "Payment blocked by policy")
+            yield "message", result.get(
+                "message",
+                result.get("reason", "Payment blocked by policy"),
+            )

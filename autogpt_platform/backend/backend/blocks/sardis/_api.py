@@ -8,6 +8,20 @@ from backend.util.request import Requests, Response
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Client singleton — reuses connections across block invocations
+# ---------------------------------------------------------------------------
+
+_clients: dict[str, "SardisClient"] = {}
+
+
+def get_client(credentials: SardisCredentials) -> "SardisClient":
+    """Return a cached client keyed on the API key hash."""
+    cache_key = str(credentials.api_key.get_secret_value().__hash__())
+    if cache_key not in _clients:
+        _clients[cache_key] = SardisClient(credentials)
+    return _clients[cache_key]
+
 
 class SardisClient:
     """Client for the Sardis API."""
@@ -17,7 +31,13 @@ class SardisClient:
     def __init__(self, credentials: SardisCredentials):
         """Store Sardis credentials and configure tolerant HTTP handling."""
         self.credentials = credentials
-        self.requests = Requests(raise_for_status=False)
+        self.requests = Requests(
+            raise_for_status=False,
+            extra_headers={
+                "X-API-Key": credentials.api_key.get_secret_value(),
+                "Content-Type": "application/json",
+            },
+        )
 
     def _get_headers(self) -> dict[str, str]:
         """Build authenticated Sardis API headers."""
@@ -30,12 +50,16 @@ class SardisClient:
         self,
         wallet_id: str,
         to: str,
-        amount: float,
+        amount: str,
         token: str = "USDC",
         chain: str = "base",
         purpose: str = "Payment",
     ) -> dict[str, Any]:
-        """Execute a policy-controlled payment."""
+        """Execute a policy-controlled payment.
+
+        ``amount`` is a decimal *string* — never a float — so the exact value
+        the caller entered reaches the API without IEEE 754 rounding.
+        """
         response = await self.requests.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
             headers=self._get_headers(),
@@ -71,11 +95,14 @@ class SardisClient:
     async def check_policy(
         self,
         wallet_id: str,
-        amount: float,
+        amount: str,
         destination: str,
         token: str = "USDC",
     ) -> dict[str, Any]:
-        """Check if a payment would be allowed by spending policy."""
+        """Check if a payment would be allowed by spending policy.
+
+        ``amount`` is a decimal *string* to preserve precision.
+        """
         response = await self.requests.post(
             f"{self.API_URL}/policies/check",
             headers=self._get_headers(),

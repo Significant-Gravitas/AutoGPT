@@ -17,10 +17,10 @@ This block sends a dry-run-style policy check to the Sardis API with the wallet,
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| wallet_id | Sardis wallet ID (starts with wal_) | str | Yes |
+| wallet_id | Sardis wallet ID (starts with wal_). Validated via `field_validator`. | str | Yes |
 | destination | Recipient address or merchant ID | str | Yes |
-| amount | Payment amount to check | float | Yes |
-| token | Token to check (USDC, USDT, EURC, PYUSD) | str | No |
+| amount | Payment amount to check as a decimal string (e.g. '25.00'). String type avoids IEEE 754 float rounding. | str | Yes |
+| token | Token to check | Literal["USDC", "USDT", "EURC", "PYUSD"] | No |
 
 ### Outputs
 
@@ -29,7 +29,7 @@ This block sends a dry-run-style policy check to the Sardis API with the wallet,
 | error | Error message if failed | str |
 | allowed | Whether the payment would be allowed | bool |
 | reason | Explanation of the policy decision | str |
-| remaining_limit | Remaining spending limit after this payment | float |
+| remaining_limit | Remaining spending limit after this payment (decimal string) | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->

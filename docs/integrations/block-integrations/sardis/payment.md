@@ -17,11 +17,11 @@ This block sends a transfer request to the Sardis API using a Sardis wallet ID a
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| wallet_id | Sardis wallet ID (starts with wal_) | str | Yes |
+| wallet_id | Sardis wallet ID (starts with wal_). Validated via `field_validator`. | str | Yes |
 | destination | Recipient address, merchant ID, or wallet ID | str | Yes |
-| amount | Payment amount in token units | float | Yes |
-| token | Token to use (USDC, USDT, EURC, PYUSD) | str | No |
-| chain | Blockchain to use (base, polygon, ethereum, arbitrum, optimism) | str | No |
+| amount | Payment amount as a decimal string (e.g. '25.00'). String type avoids IEEE 754 float rounding. | str | Yes |
+| token | Token to use | Literal["USDC", "USDT", "EURC", "PYUSD"] | No |
+| chain | Blockchain to use | Literal["base", "polygon", "ethereum", "arbitrum", "optimism"] | No |
 | purpose | Reason for payment (used in audit trail) | str | No |
 
 ### Outputs
@@ -32,7 +32,7 @@ This block sends a transfer request to the Sardis API using a Sardis wallet ID a
 | status | APPROVED, BLOCKED, or ERROR | str |
 | tx_id | Transaction ID if approved | str |
 | message | Status message | str |
-| amount | Payment amount | float |
+| amount | Payment amount (decimal string) | str |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
