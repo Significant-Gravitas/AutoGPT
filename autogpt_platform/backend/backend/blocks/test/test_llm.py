@@ -488,6 +488,72 @@ class TestLLMStatsTracking:
         assert outputs["response"] == {"result": "test"}
 
 
+class TestAIConversationBlockValidation:
+    """Test that AIConversationBlock validates inputs before calling the LLM."""
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_and_empty_prompt_raises_error(self):
+        """Empty messages with no prompt should raise ValueError, not a cryptic API error."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_with_prompt_succeeds(self):
+        """Empty messages but a non-empty prompt should proceed without error."""
+        block = llm.AIConversationBlock()
+
+        async def mock_llm_call(input_data, credentials):
+            return {"response": "OK"}
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[],
+            prompt="Hello, how are you?",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        outputs = {}
+        async for name, data in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            outputs[name] = data
+
+        assert outputs["response"] == "OK"
+
+    @pytest.mark.asyncio
+    async def test_nonempty_messages_with_empty_prompt_succeeds(self):
+        """Non-empty messages with no prompt should proceed without error."""
+        block = llm.AIConversationBlock()
+
+        async def mock_llm_call(input_data, credentials):
+            return {"response": "response from conversation"}
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": "Hello"}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        outputs = {}
+        async for name, data in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+            outputs[name] = data
+
+        assert outputs["response"] == "response from conversation"
+
+
 class TestAITextSummarizerValidation:
     """Test that AITextSummarizerBlock validates LLM responses are strings."""
 
@@ -716,9 +782,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("status_code", [401, 403, 429])
@@ -747,9 +813,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count == 1
-        ), f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        assert call_count == 1, (
+            f"Expected exactly 1 call for status {status_code}, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
@@ -777,9 +843,9 @@ class TestUserErrorStatusCodeHandling:
                 async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                     pass
 
-        assert (
-            call_count > 1
-        ), f"Expected multiple retry attempts for 500, got {call_count}"
+        assert call_count > 1, (
+            f"Expected multiple retry attempts for 500, got {call_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
