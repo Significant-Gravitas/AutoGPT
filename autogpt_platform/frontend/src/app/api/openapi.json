@@ -1358,6 +1358,30 @@
         }
       }
     },
+    "/api/chat/suggested-prompts": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Suggested Prompts",
+        "description": "Get LLM-generated suggested prompts grouped by theme.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns empty themes list if no custom\nprompts are available.",
+        "operationId": "getV2GetSuggestedPrompts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/usage": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -5665,6 +5689,82 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/submissions/{store_listing_version_id}/add-to-library": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Add Pending Agent to Library",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
+        "operationId": "postV2Admin add pending agent to library",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/submissions/{store_listing_version_id}/preview": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Preview Submission Listing",
+        "description": "Preview a marketplace submission as it would appear on the listing page.\nBypasses the APPROVED-only StoreAgent view so admins can preview pending\nsubmissions before approving.",
+        "operationId": "getV2Admin preview submission listing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -12677,6 +12777,33 @@
         "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
+      },
+      "SuggestedPromptsResponse": {
+        "properties": {
+          "themes": {
+            "items": { "$ref": "#/components/schemas/SuggestedTheme" },
+            "type": "array",
+            "title": "Themes"
+          }
+        },
+        "type": "object",
+        "required": ["themes"],
+        "title": "SuggestedPromptsResponse",
+        "description": "Response model for user-specific suggested prompts grouped by theme."
+      },
+      "SuggestedTheme": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "prompts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Prompts"
+          }
+        },
+        "type": "object",
+        "required": ["name", "prompts"],
+        "title": "SuggestedTheme",
+        "description": "A themed group of suggested prompts."
       },
       "SuggestionsResponse": {
         "properties": {
