@@ -2,10 +2,13 @@ import base64
 import hashlib
 import logging
 import secrets
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from agentmail import AsyncAgentMail
 from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
 
@@ -22,6 +25,33 @@ from backend.data.redis_client import get_redis_async
 from backend.util.settings import Settings
 
 settings = Settings()
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ManagedCredentialDef:
+    """Declarative definition of a per-user managed credential."""
+
+    credential_id: str
+    provider: str
+    title: str
+    # Field name on ManagedCredentials that holds the SecretStr API key
+    api_key_field: str
+    # Called when api_key_field is None to auto-provision.
+    # Signature: (user_id, store) -> SecretStr | None
+    # Must assume locked_user_integrations is held by caller.
+    provision: (
+        Callable[["str", "IntegrationCredentialsStore"], Awaitable[SecretStr | None]]
+        | None
+    ) = None
+    # Settings.secrets field that must be truthy for provisioning to trigger.
+    requires_setting: str | None = None
+
+
+def _setting_is_set(field_name: str | None) -> bool:
+    if not field_name:
+        return True
+    return bool(getattr(settings.secrets, field_name, None))
 
 
 def provider_matches(stored: str, expected: str) -> bool:
@@ -285,10 +315,48 @@ DEFAULT_CREDENTIALS = [
     elevenlabs_credentials,
 ]
 
-AGENTMAIL_POD_KEY_CREDENTIAL_ID = "agentmail-pod-key-00000000-0000-0000"
+
+async def _provision_agentmail_pod(
+    user_id: str, store: "IntegrationCredentialsStore"
+) -> SecretStr | None:
+    """Auto-provision an AgentMail pod for the user. Returns the pod API key.
+
+    Must be called with locked_user_integrations already held.
+    """
+    client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
+    try:
+        pod = await client.pods.create(client_id=user_id)
+        api_key = await client.pods.api_keys.create(
+            pod_id=pod.pod_id, name="autogpt-managed"
+        )
+        pod_api_key = SecretStr(api_key.api_key)
+        # Write directly — caller already holds locked_user_integrations
+        user_integrations = await store._get_user_integrations(user_id)
+        user_integrations.managed_credentials.agentmail_pod_id = pod.pod_id
+        user_integrations.managed_credentials.agentmail_pod_api_key = pod_api_key
+        await store.db_manager.update_user_integrations(user_id, user_integrations)
+        logger.info(f"Auto-provisioned AgentMail pod for user {user_id}")
+        return pod_api_key
+    except Exception as e:
+        logger.error(f"Failed to auto-provision AgentMail pod for user {user_id}: {e}")
+        return None
+
+
+MANAGED_CREDENTIAL_DEFS: list[ManagedCredentialDef] = [
+    ManagedCredentialDef(
+        credential_id="agentmail-pod-key-00000000-0000-0000",
+        provider="agent_mail",
+        title="AgentMail (managed by AutoGPT)",
+        api_key_field="agentmail_pod_api_key",
+        provision=_provision_agentmail_pod,
+        requires_setting="agentmail_api_key",
+    ),
+]
+
+_MANAGED_CREDENTIAL_IDS = {defn.credential_id for defn in MANAGED_CREDENTIAL_DEFS}
 
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS} | {
-    AGENTMAIL_POD_KEY_CREDENTIAL_ID,
+    defn.credential_id for defn in MANAGED_CREDENTIAL_DEFS
 }
 
 # Set of providers that have system credentials available
@@ -341,26 +409,39 @@ class IntegrationCredentialsStore:
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
         user_integrations = await self._get_user_integrations(user_id)
-        all_credentials = user_integrations.credentials
+        all_credentials = list(user_integrations.credentials)
 
-        # Auto-provision AgentMail pod if org key is configured
-        agentmail_pod_api_key = (
-            user_integrations.managed_credentials.agentmail_pod_api_key
-        )
-        if not agentmail_pod_api_key and settings.secrets.agentmail_api_key:
-            agentmail_pod_api_key = await self._provision_agentmail_pod(user_id)
-
-        # Synthesize managed AgentMail pod key as a selectable credential
-        if agentmail_pod_api_key:
-            all_credentials.append(
-                APIKeyCredentials(
-                    id=AGENTMAIL_POD_KEY_CREDENTIAL_ID,
-                    provider="agent_mail",
-                    title="AgentMail (managed by AutoGPT)",
-                    api_key=agentmail_pod_api_key,
-                    expires_at=None,
-                )
+        # --- Managed credentials (per-user, auto-provisioned) ---
+        for defn in MANAGED_CREDENTIAL_DEFS:
+            api_key = getattr(
+                user_integrations.managed_credentials, defn.api_key_field, None
             )
+
+            if (
+                not api_key
+                and defn.provision
+                and _setting_is_set(defn.requires_setting)
+            ):
+                async with await self.locked_user_integrations(user_id):
+                    user_integrations = await self._get_user_integrations(user_id)
+                    api_key = getattr(
+                        user_integrations.managed_credentials,
+                        defn.api_key_field,
+                        None,
+                    )
+                    if not api_key:
+                        api_key = await defn.provision(user_id, self)
+
+            if api_key:
+                all_credentials.append(
+                    APIKeyCredentials(
+                        id=defn.credential_id,
+                        provider=defn.provider,
+                        title=defn.title,
+                        api_key=api_key,
+                        expires_at=None,
+                    )
+                )
         # These will always be added
         all_credentials.append(ollama_credentials)
 
@@ -507,29 +588,6 @@ class IntegrationCredentialsStore:
                 pod_api_key
             )
 
-    async def _provision_agentmail_pod(self, user_id: str) -> SecretStr | None:
-        """Auto-provision an AgentMail pod for the user. Returns the pod API key."""
-        from agentmail import AsyncAgentMail
-
-        logger = logging.getLogger(__name__)
-        client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
-        try:
-            pod = await client.pods.create(client_id=user_id)
-            api_key = await client.pods.api_keys.create(
-                pod_id=pod.pod_id, name="autogpt-managed"
-            )
-            pod_api_key = SecretStr(api_key.api_key)
-            await self.set_agentmail_pod_credentials(
-                user_id, pod.pod_id, api_key.api_key
-            )
-            logger.info(f"Auto-provisioned AgentMail pod for user {user_id}")
-            return pod_api_key
-        except Exception as e:
-            logger.error(
-                f"Failed to auto-provision AgentMail pod for user {user_id}: {e}"
-            )
-            return None
-
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(
@@ -620,8 +678,12 @@ class IntegrationCredentialsStore:
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
         integrations = await self._get_user_integrations(user_id)
-        # Remove default credentials from the list
-        credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
+        # Remove default and managed credentials from the list
+        credentials = [
+            c
+            for c in credentials
+            if c not in DEFAULT_CREDENTIALS and c.id not in _MANAGED_CREDENTIAL_IDS
+        ]
         integrations.credentials = credentials
         await self.db_manager.update_user_integrations(user_id, integrations)
 

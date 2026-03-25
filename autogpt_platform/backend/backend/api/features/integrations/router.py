@@ -40,7 +40,10 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
@@ -331,6 +334,11 @@ async def delete_credentials(
     if is_sdk_default(cred_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if is_system_credential(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System-managed credentials cannot be deleted",
         )
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
