@@ -231,6 +231,23 @@ async def record_token_usage(
         )
 
 
+async def reset_user_usage(user_id: str) -> None:
+    """Reset a user's daily and weekly usage counters.
+
+    Deletes the Redis keys for the current daily and weekly windows.
+    """
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        await redis.delete(
+            _daily_key(user_id, now=now),
+            _weekly_key(user_id, now=now),
+        )
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for resetting user usage")
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------

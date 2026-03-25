@@ -62,12 +62,25 @@ from backend.copilot.tracking import track_user_message
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
+from backend.util.feature_flag import Flag, get_feature_flag_value
 
 config = ChatConfig()
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
+
+
+async def _get_global_rate_limits(user_id: str) -> tuple[int, int]:
+    """Resolve global rate limits from LaunchDarkly, falling back to config."""
+    daily = await get_feature_flag_value(
+        Flag.COPILOT_DAILY_TOKEN_LIMIT.value, user_id, config.daily_token_limit
+    )
+    weekly = await get_feature_flag_value(
+        Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value, user_id, config.weekly_token_limit
+    )
+    return int(daily), int(weekly)
+
 
 logger = logging.getLogger(__name__)
 
@@ -421,11 +434,14 @@ async def get_copilot_usage(
     """Get CoPilot usage status for the authenticated user.
 
     Returns current token usage vs limits for daily and weekly windows.
+    Respects per-user rate limit overrides set by admins, with global
+    defaults sourced from LaunchDarkly (falling back to config).
     """
+    daily_limit, weekly_limit = await _get_global_rate_limits(user_id)
     return await get_usage_status(
         user_id=user_id,
-        daily_token_limit=config.daily_token_limit,
-        weekly_token_limit=config.weekly_token_limit,
+        daily_token_limit=daily_limit,
+        weekly_token_limit=weekly_limit,
     )
 
 
@@ -526,12 +542,14 @@ async def stream_chat_post(
 
     # Pre-turn rate limit check (token-based).
     # check_rate_limit short-circuits internally when both limits are 0.
+    # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
+            daily_limit, weekly_limit = await _get_global_rate_limits(user_id)
             await check_rate_limit(
                 user_id=user_id,
-                daily_token_limit=config.daily_token_limit,
-                weekly_token_limit=config.weekly_token_limit,
+                daily_token_limit=daily_limit,
+                weekly_token_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e

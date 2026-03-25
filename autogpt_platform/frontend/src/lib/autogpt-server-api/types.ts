@@ -964,6 +964,15 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
+export type UserRateLimitResponse = {
+  user_id: string;
+  daily_token_limit: number;
+  weekly_token_limit: number;
+  daily_tokens_used: number;
+  weekly_tokens_used: number;
+};
+
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

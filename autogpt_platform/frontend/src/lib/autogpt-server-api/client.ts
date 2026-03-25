@@ -53,6 +53,7 @@ import type {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  UserRateLimitResponse,
   UsersBalanceHistoryResponse,
   WebSocketNotification,
 } from "./types";
@@ -478,6 +479,16 @@ export default class BackendAPI {
     transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
+  }
+
+  getUserRateLimit(user_id: string): Promise<UserRateLimitResponse> {
+    return this._get("/copilot/admin/rate_limit", { user_id });
+  }
+
+  resetUserRateLimit(user_id: string): Promise<UserRateLimitResponse> {
+    return this._request("POST", "/copilot/admin/rate_limit/reset", {
+      user_id,
+    });
   }
 
   ////////////////////////////////////////
