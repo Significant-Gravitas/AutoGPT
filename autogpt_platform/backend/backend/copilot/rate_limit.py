@@ -20,6 +20,20 @@ logger = logging.getLogger(__name__)
 # Redis key prefixes
 _USAGE_KEY_PREFIX = "copilot:usage"
 
+# Lua script: atomically decrement a key by ARGV[1] with a floor of 0.
+# Avoids the race condition of a non-atomic GET + SET when a concurrent
+# INCRBY (from record_token_usage) could be lost.
+_LUA_DECRBY_FLOOR_ZERO = """
+local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
+if cur > 0 then
+    local dec = tonumber(ARGV[1])
+    local new_val = math.max(0, cur - dec)
+    redis.call('SET', KEYS[1], tostring(new_val), 'KEEPTTL')
+    return new_val
+end
+return 0
+"""
+
 
 class UsageWindow(BaseModel):
     """Usage within a single time window."""
@@ -170,13 +184,16 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
         await redis.delete(_daily_key(user_id, now=now))
 
         # Reduce weekly usage by one day's worth of capacity.
+        # Uses a Lua script for atomicity — prevents a concurrent INCRBY
+        # from record_token_usage() being lost between a GET and SET.
         if daily_token_limit > 0:
             w_key = _weekly_key(user_id, now=now)
-            weekly_raw = await redis.get(w_key)
-            weekly_used = int(weekly_raw or 0)
-            new_weekly = max(0, weekly_used - daily_token_limit)
-            if weekly_used > 0:
-                await redis.set(w_key, str(new_weekly), keepttl=True)
+            await redis.eval(  # type: ignore[union-attr]
+                _LUA_DECRBY_FLOOR_ZERO,
+                1,
+                w_key,
+                str(daily_token_limit),
+            )
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
