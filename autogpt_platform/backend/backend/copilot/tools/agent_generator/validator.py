@@ -5,6 +5,8 @@ import logging
 import re
 from typing import Any
 
+from backend.data.dynamic_fields import DICT_SPLIT
+
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
@@ -256,95 +258,6 @@ class AgentValidator:
 
         return valid
 
-    def validate_nested_sink_links(
-        self,
-        agent: AgentDict,
-        blocks: list[dict[str, Any]],
-        node_lookup: dict[str, dict[str, Any]] | None = None,
-    ) -> bool:
-        """
-        Validate nested sink links (links with _#_ notation).
-        Returns True if all nested links are valid, False otherwise.
-        """
-        valid = True
-        block_input_schemas = {
-            block.get("id", ""): block.get("inputSchema", {}).get("properties", {})
-            for block in blocks
-        }
-        block_names = {
-            block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
-        }
-        if node_lookup is None:
-            node_lookup = self._build_node_lookup(agent)
-
-        for link in agent.get("links", []):
-            sink_name = link.get("sink_name", "")
-            sink_id = link.get("sink_id")
-
-            if not sink_name or not sink_id:
-                continue
-
-            if "_#_" in sink_name:
-                parent, child = sink_name.split("_#_", 1)
-
-                sink_node = node_lookup.get(sink_id)
-                if not sink_node:
-                    continue
-
-                block_id = sink_node.get("block_id")
-                input_props = block_input_schemas.get(block_id, {})
-
-                parent_schema = input_props.get(parent)
-                if not parent_schema:
-                    block_name = block_names.get(block_id, "Unknown Block")
-                    self.add_error(
-                        f"Invalid nested sink link '{sink_name}' for "
-                        f"node '{sink_id}' (block "
-                        f"'{block_name}' - {block_id}): Parent property "
-                        f"'{parent}' does not exist in the block's "
-                        f"input schema."
-                    )
-                    valid = False
-                    continue
-
-                # Check if additionalProperties is allowed either directly
-                # or via anyOf
-                allows_additional_properties = parent_schema.get(
-                    "additionalProperties", False
-                )
-
-                # Check anyOf for additionalProperties
-                if not allows_additional_properties and "anyOf" in parent_schema:
-                    any_of_schemas = parent_schema.get("anyOf", [])
-                    if isinstance(any_of_schemas, list):
-                        for schema_option in any_of_schemas:
-                            if isinstance(schema_option, dict) and schema_option.get(
-                                "additionalProperties"
-                            ):
-                                allows_additional_properties = True
-                                break
-
-                if not allows_additional_properties:
-                    if not (
-                        isinstance(parent_schema, dict)
-                        and "properties" in parent_schema
-                        and isinstance(parent_schema["properties"], dict)
-                        and child in parent_schema["properties"]
-                    ):
-                        block_name = block_names.get(block_id, "Unknown Block")
-                        self.add_error(
-                            f"Invalid nested sink link '{sink_name}' "
-                            f"for node '{link.get('sink_id', '')}' (block "
-                            f"'{block_name}' - {block_id}): Child "
-                            f"property '{child}' does not exist in "
-                            f"parent '{parent}' schema. Available "
-                            f"properties: "
-                            f"{list(parent_schema.get('properties', {}).keys())}"
-                        )
-                        valid = False
-
-        return valid
-
     def validate_prompt_double_curly_braces_spaces(self, agent: AgentDict) -> bool:
         """
         Validate that prompt parameters do not contain spaces in double curly
@@ -471,8 +384,8 @@ class AgentValidator:
                 output_props = block_output_schemas.get(block_id, {})
 
             # Handle nested source names (with _#_ notation)
-            if "_#_" in source_name:
-                parent, child = source_name.split("_#_", 1)
+            if DICT_SPLIT in source_name:
+                parent, child = source_name.split(DICT_SPLIT, 1)
 
                 parent_schema = output_props.get(parent)
                 if not parent_schema:
@@ -569,9 +482,6 @@ class AgentValidator:
         nested inputs with _#_ notation and dynamic schemas for
         AgentExecutorBlock.
 
-        This method supersedes validate_nested_sink_links — it covers nested
-        link validation with correct AgentExecutorBlock dynamic-schema support.
-
         Args:
             agent: The agent dictionary to validate
             blocks: List of available blocks with their schemas
@@ -613,7 +523,7 @@ class AgentValidator:
             block_name: str,
             block_id: str,
         ) -> bool:
-            parent, child = field_name.split("_#_", 1)
+            parent, child = field_name.split(DICT_SPLIT, 1)
             parent_schema = input_props.get(parent)
             if not parent_schema:
                 self.add_error(
@@ -686,7 +596,7 @@ class AgentValidator:
                 f"'{link_id}' to node '{sink_id}'"
             )
 
-            if "_#_" in sink_name:
+            if DICT_SPLIT in sink_name:
                 if not check_nested_input(
                     input_props, sink_name, context, block_name, block_id
                 ):
@@ -728,15 +638,10 @@ class AgentValidator:
                     f"has unknown input_default key '{key}'"
                 )
 
-                if "_#_" in key:
-                    parent = key.split("_#_", 1)[0]
-                    if parent not in input_props:
-                        available_inputs = list(input_props.keys())
-                        self.add_error(
-                            f"{context}: Parent property '{parent}' does "
-                            f"not exist in the block's input schema. "
-                            f"Available inputs: {available_inputs}"
-                        )
+                if DICT_SPLIT in key:
+                    if not check_nested_input(
+                        input_props, key, context, block_name, block_id
+                    ):
                         valid = False
                 else:
                     if key not in input_props:

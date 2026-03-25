@@ -332,43 +332,6 @@ class TestValidatePromptDoubleCurlyBracesSpaces:
 
 
 # ============================================================================
-# validate_nested_sink_links
-# ============================================================================
-
-
-class TestValidateNestedSinkLinks:
-    def test_valid_nested_link_passes(self):
-        v = AgentValidator()
-        block = _make_block(
-            block_id="b1",
-            input_schema={
-                "properties": {
-                    "config": {
-                        "type": "object",
-                        "properties": {"key": {"type": "string"}},
-                    }
-                },
-                "required": [],
-            },
-        )
-        node = _make_node(node_id="n1", block_id="b1")
-        link = _make_link(sink_id="n1", sink_name="config_#_key", source_id="n2")
-        agent = _make_agent(nodes=[node], links=[link])
-
-        assert v.validate_nested_sink_links(agent, [block]) is True
-
-    def test_invalid_parent_fails(self):
-        v = AgentValidator()
-        block = _make_block(block_id="b1")
-        node = _make_node(node_id="n1", block_id="b1")
-        link = _make_link(sink_id="n1", sink_name="nonexistent_#_key", source_id="n2")
-        agent = _make_agent(nodes=[node], links=[link])
-
-        assert v.validate_nested_sink_links(agent, [block]) is False
-        assert any("does not exist" in e for e in v.errors)
-
-
-# ============================================================================
 # validate_agent_executor_block_schemas
 # ============================================================================
 
@@ -811,6 +774,53 @@ class TestValidateSinkInputExistence:
             sink_name="query",
         )
         agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
+    def test_input_default_nested_invalid_child_fails(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {"key": {"type": "string"}},
+                    }
+                },
+                "required": [],
+            },
+        )
+        node = _make_node(
+            node_id="n1",
+            block_id="b1",
+            input_default={"config_#_invalid_child": "value"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_sink_input_existence(agent, [block]) is False
+        assert any("invalid_child" in e for e in v.errors)
+
+    def test_input_default_nested_valid_child_passes(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {"key": {"type": "string"}},
+                    }
+                },
+                "required": [],
+            },
+        )
+        node = _make_node(
+            node_id="n1",
+            block_id="b1",
+            input_default={"config_#_key": "value"},
+        )
+        agent = _make_agent(nodes=[node])
 
         assert v.validate_sink_input_existence(agent, [block]) is True
 
