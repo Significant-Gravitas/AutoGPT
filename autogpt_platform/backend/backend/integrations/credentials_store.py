@@ -335,13 +335,15 @@ async def _provision_agentmail_pod(
             pod = await client.pods.get(pod_id=existing_pod_id)
         else:
             pod = await client.pods.create(client_id=user_id)
+            # Persist pod_id immediately so retries can reuse it
+            user_integrations.managed_credentials.agentmail_pod_id = pod.pod_id
+            await store.db_manager.update_user_integrations(user_id, user_integrations)
 
         api_key = await client.pods.api_keys.create(
             pod_id=pod.pod_id, name="autogpt-managed"
         )
         pod_api_key = SecretStr(api_key.api_key)
         # Write directly — caller already holds locked_user_integrations
-        user_integrations.managed_credentials.agentmail_pod_id = pod.pod_id
         user_integrations.managed_credentials.agentmail_pod_api_key = pod_api_key
         await store.db_manager.update_user_integrations(user_id, user_integrations)
         logger.info(f"Auto-provisioned AgentMail pod for user {user_id}")
@@ -407,16 +409,40 @@ class IntegrationCredentialsStore:
             return get_database_manager_async_client()
 
     # =============== USER-MANAGED CREDENTIALS =============== #
+
+    async def _get_persisted_user_creds_unlocked(
+        self, user_id: str
+    ) -> list[Credentials]:
+        """Return only the persisted (user-stored) credentials — no side effects.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        return list((await self._get_user_integrations(user_id)).credentials)
+
+    async def _get_creds_by_id_unlocked(
+        self, user_id: str, credentials_id: str
+    ) -> Credentials | None:
+        """Look up a credential by ID without acquiring the lock.
+
+        Searches both persisted and synthesised (system/managed) credentials.
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        all_credentials = await self._get_all_creds_unlocked(user_id)
+        return next((c for c in all_credentials if c.id == credentials_id), None)
+
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
-            if await self.get_creds_by_id(user_id, credentials.id):
+            if await self._get_creds_by_id_unlocked(user_id, credentials.id):
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
             await self._set_user_integration_creds(
                 user_id,
-                [*(await self._get_all_creds_unlocked(user_id)), credentials],
+                [
+                    *(await self._get_persisted_user_creds_unlocked(user_id)),
+                    credentials,
+                ],
             )
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
@@ -548,7 +574,7 @@ class IntegrationCredentialsStore:
                 f"System credential #{updated.id} cannot be updated directly"
             )
         async with await self.locked_user_integrations(user_id):
-            current = await self.get_creds_by_id(user_id, updated.id)
+            current = await self._get_creds_by_id_unlocked(user_id, updated.id)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
@@ -573,10 +599,10 @@ class IntegrationCredentialsStore:
                     f"to more restrictive set of scopes {updated.scopes}"
                 )
 
-            # Update the credentials
+            # Update only persisted credentials — no side-effectful provisioning
             updated_credentials_list = [
                 updated if c.id == updated.id else c
-                for c in await self._get_all_creds_unlocked(user_id)
+                for c in await self._get_persisted_user_creds_unlocked(user_id)
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
@@ -586,7 +612,7 @@ class IntegrationCredentialsStore:
         async with await self.locked_user_integrations(user_id):
             filtered_credentials = [
                 c
-                for c in await self._get_all_creds_unlocked(user_id)
+                for c in await self._get_persisted_user_creds_unlocked(user_id)
                 if c.id != credentials_id
             ]
             await self._set_user_integration_creds(user_id, filtered_credentials)
