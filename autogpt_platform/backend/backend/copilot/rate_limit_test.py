@@ -344,7 +344,6 @@ class TestResetDailyUsage:
     @pytest.mark.asyncio
     async def test_deletes_daily_key(self):
         mock_redis = AsyncMock()
-        mock_redis.decrby = AsyncMock(return_value=5000)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -356,10 +355,10 @@ class TestResetDailyUsage:
         mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_reduces_weekly_usage_via_decrby(self):
-        """Weekly counter should be reduced via DECRBY."""
+    async def test_reduces_weekly_usage_via_lua_script(self):
+        """Weekly counter should be atomically reduced via Lua eval."""
         mock_redis = AsyncMock()
-        mock_redis.decrby = AsyncMock(return_value=35000)
+        mock_redis.eval = AsyncMock(return_value=35000)
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -367,29 +366,11 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=10000)
 
-        mock_redis.decrby.assert_called_once()
-        call_args = mock_redis.decrby.call_args
-        assert call_args.args[1] == 10000
-        # Positive result — no SET to 0 needed
-        mock_redis.set.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_weekly_usage_clamped_to_zero_when_negative(self):
-        """Weekly counter should be SET to 0 when DECRBY goes negative."""
-        mock_redis = AsyncMock()
-        mock_redis.decrby = AsyncMock(return_value=-5000)
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
-        ):
-            await reset_daily_usage(_USER, daily_token_limit=10000)
-
-        mock_redis.decrby.assert_called_once()
-        mock_redis.set.assert_called_once()
-        set_args = mock_redis.set.call_args
-        assert set_args.args[1] == 0
-        assert set_args.kwargs.get("keepttl") is True
+        mock_redis.eval.assert_called_once()
+        call_args = mock_redis.eval.call_args
+        # eval(script, numkeys, key, amount)
+        assert call_args.args[2] is not None  # weekly key
+        assert call_args.args[3] == "10000"  # decrement amount as string
 
     @pytest.mark.asyncio
     async def test_no_weekly_reduction_when_daily_limit_zero(self):
@@ -402,24 +383,9 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_token_limit=0)
 
-        # Should only delete daily key, not decrby weekly
+        # Should only delete daily key, not call eval for weekly
         mock_redis.delete.assert_called_once()
-        mock_redis.decrby.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_no_set_when_decrby_returns_zero(self):
-        """When DECRBY returns exactly 0, no SET call is needed."""
-        mock_redis = AsyncMock()
-        mock_redis.decrby = AsyncMock(return_value=0)
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
-        ):
-            await reset_daily_usage(_USER, daily_token_limit=10000)
-
-        mock_redis.decrby.assert_called_once()
-        mock_redis.set.assert_not_called()
+        mock_redis.eval.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_false_when_redis_unavailable(self):
