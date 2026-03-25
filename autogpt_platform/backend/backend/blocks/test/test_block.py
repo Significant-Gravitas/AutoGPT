@@ -279,3 +279,21 @@ class TestAutoCredentialsFieldsValidation:
         assert "Duplicate auto_credentials kwarg_name 'credentials'" in str(
             exc_info.value
         )
+
+
+def test_agent_input_block_ignores_legacy_placeholder_values():
+    """Verify AgentInputBlock.Input.model_construct tolerates extra placeholder_values
+    for backward compatibility with existing agent JSON."""
+    from backend.blocks.io import AgentInputBlock
+
+    legacy_data = {
+        "name": "url",
+        "value": "",
+        "description": "Enter a URL",
+        "placeholder_values": ["https://example.com"],
+    }
+    instance = AgentInputBlock.Input.model_construct(**legacy_data)
+    schema = instance.generate_schema()
+    assert (
+        "enum" not in schema
+    ), "AgentInputBlock should not produce enum from legacy placeholder_values"

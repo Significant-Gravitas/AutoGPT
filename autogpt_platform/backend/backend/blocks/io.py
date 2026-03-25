@@ -28,9 +28,9 @@ class AgentInputBlock(Block):
     """
     This block is used to provide input to the graph.
 
-    It takes in a value, name, description, default values list and bool to limit selection to default values.
+    It takes in a value, name, and description.
 
-    It Outputs the value passed as input.
+    It outputs the value passed as input.
     """
 
     class Input(BlockSchemaInput):
@@ -79,14 +79,14 @@ class AgentInputBlock(Block):
                         "description": "Example test input.",
                     },
                     {
-                        "value": "Hello, World!",
+                        "value": 42,
                         "name": "input_2",
-                        "description": "Example test input.",
+                        "description": "Example numeric input.",
                     },
                 ],
                 "test_output": [
                     ("result", "Hello, World!"),
-                    ("result", "Hello, World!"),
+                    ("result", 42),
                 ],
                 "categories": {BlockCategory.INPUT, BlockCategory.BASIC},
                 "block_type": BlockType.INPUT,
