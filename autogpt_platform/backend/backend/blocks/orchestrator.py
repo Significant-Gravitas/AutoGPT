@@ -284,9 +284,15 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
             continue
 
         counters[name] = counters.get(name, 0) + 1
-        suffix = f"_{counters[name]}"
-        func["name"] = f"{name[:64 - len(suffix)]}{suffix}"
-        taken.add(func["name"])
+        # Skip suffixes that collide with existing (e.g. user-named) tools
+        while True:
+            suffix = f"_{counters[name]}"
+            candidate = f"{name[:64 - len(suffix)]}{suffix}"
+            if candidate not in taken:
+                break
+            counters[name] += 1
+        func["name"] = candidate
+        taken.add(candidate)
 
         if defaults:
             summary = ", ".join(f"{k}={json.dumps(v)}" for k, v in defaults.items())
@@ -544,14 +550,19 @@ class OrchestratorBlock(Block):
         tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
-        # Store hardcoded defaults (non-linked inputs) for disambiguation
+        # Store hardcoded defaults (non-linked inputs) for disambiguation.
+        # Exclude linked fields, private fields, and credential/auth fields
+        # to avoid leaking sensitive data into tool descriptions.
         linked_fields = {link.sink_name for link in links}
+        _skip = {"credentials", "api_key", "password", "secret", "token", "auth"}
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
             {
                 k: v
                 for k, v in defaults.items()
-                if k not in linked_fields and not k.startswith("_")
+                if k not in linked_fields
+                and not k.startswith("_")
+                and k.lower() not in _skip
             }
             if isinstance(defaults, dict)
             else {}
@@ -631,8 +642,11 @@ class OrchestratorBlock(Block):
         tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
-        # Store hardcoded defaults (non-linked inputs) for disambiguation
+        # Store hardcoded defaults (non-linked inputs) for disambiguation.
+        # Exclude linked fields, private fields, agent meta fields, and
+        # credential/auth fields to avoid leaking sensitive data.
         linked_fields = {link.sink_name for link in links}
+        _skip = {"credentials", "api_key", "password", "secret", "token", "auth"}
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
             {
@@ -641,6 +655,7 @@ class OrchestratorBlock(Block):
                 if k not in linked_fields
                 and k not in ("graph_id", "graph_version", "input_schema")
                 and not k.startswith("_")
+                and k.lower() not in _skip
             }
             if isinstance(defaults, dict)
             else {}
