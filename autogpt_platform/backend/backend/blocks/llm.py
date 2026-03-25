@@ -709,6 +709,8 @@ def convert_openai_tool_fmt_to_anthropic(
 def extract_openai_reasoning(response) -> str | None:
     """Extract reasoning from OpenAI-compatible response if available."""
     """Note: This will likely not working since the reasoning is not present in another Response API"""
+    if not response.choices:
+        return None
     reasoning = None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
@@ -1122,6 +1124,13 @@ async def llm_call(
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
         )
+
+        # If there's no response, raise an error
+        if not response.choices:
+            if response:
+                raise ValueError(f"v0 API error: {response}")
+            else:
+                raise ValueError("No response from v0 API.")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
