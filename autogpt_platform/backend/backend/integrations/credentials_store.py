@@ -419,31 +419,21 @@ class IntegrationCredentialsStore:
         """
         return list((await self._get_user_integrations(user_id)).credentials)
 
-    async def _get_creds_by_id_unlocked(
-        self, user_id: str, credentials_id: str
-    ) -> Credentials | None:
-        """Look up a credential by ID without acquiring the lock.
-
-        Searches both persisted and synthesised (system/managed) credentials.
-        **Caller must already hold ``locked_user_integrations(user_id)``.**
-        """
-        all_credentials = await self._get_all_creds_unlocked(user_id)
-        return next((c for c in all_credentials if c.id == credentials_id), None)
-
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
-            if await self._get_creds_by_id_unlocked(user_id, credentials.id):
+            # Check system/managed IDs without triggering provisioning
+            if credentials.id in SYSTEM_CREDENTIAL_IDS:
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
-            await self._set_user_integration_creds(
-                user_id,
-                [
-                    *(await self._get_persisted_user_creds_unlocked(user_id)),
-                    credentials,
-                ],
-            )
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            if any(c.id == credentials.id for c in persisted):
+                raise ValueError(
+                    f"Can not re-create existing credentials #{credentials.id} "
+                    f"for user #{user_id}"
+                )
+            await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
         """Public entry point — acquires lock, then delegates."""
@@ -574,7 +564,8 @@ class IntegrationCredentialsStore:
                 f"System credential #{updated.id} cannot be updated directly"
             )
         async with await self.locked_user_integrations(user_id):
-            current = await self._get_creds_by_id_unlocked(user_id, updated.id)
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            current = next((c for c in persisted if c.id == updated.id), None)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
@@ -601,8 +592,7 @@ class IntegrationCredentialsStore:
 
             # Update only persisted credentials — no side-effectful provisioning
             updated_credentials_list = [
-                updated if c.id == updated.id else c
-                for c in await self._get_persisted_user_creds_unlocked(user_id)
+                updated if c.id == updated.id else c for c in persisted
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
