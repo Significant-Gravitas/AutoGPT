@@ -17,7 +17,7 @@ _clients: dict[str, "SardisClient"] = {}
 
 def get_client(credentials: SardisCredentials) -> "SardisClient":
     """Return a cached client keyed on the API key hash."""
-    cache_key = str(credentials.api_key.get_secret_value().__hash__())
+    cache_key = str(hash(credentials.api_key.get_secret_value()))
     if cache_key not in _clients:
         _clients[cache_key] = SardisClient(credentials)
     return _clients[cache_key]
