@@ -101,6 +101,9 @@ class ExecutionContext(BaseModel):
     # Workspace
     workspace_id: Optional[str] = None
     session_id: Optional[str] = None
+    
+    # Conversation context
+    conversation_context: Optional["ConversationContext"] = None
 
 
 # -------------------------- Models -------------------------- #
@@ -1565,3 +1568,79 @@ async def get_frequently_executed_graphs(
         }
         for row in result
     ]
+
+
+# -------------------------- Conversation Context -------------------------- #
+
+
+class ConversationContext:
+    """
+    Manages conversation context for LLM interactions within executions.
+    Integrates with the ContextWindowManager for intelligent context management.
+    """
+    
+    def __init__(
+        self,
+        max_tokens: int = 8000,
+        strategy: str = "sliding",
+        session_id: Optional[str] = None,
+    ):
+        """
+        Initialize conversation context.
+        
+        Args:
+            max_tokens: Maximum tokens for context window
+            strategy: Context management strategy
+            session_id: Optional session identifier
+        """
+        from backend.util.context import create_context_manager
+        
+        self.context_manager = create_context_manager(
+            max_tokens=max_tokens,
+            strategy=strategy
+        )
+        self.session_id = session_id
+        self.message_count = 0
+    
+    def add_message(
+        self,
+        role: str,
+        content: str,
+        importance: str = "medium",
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Add a message to the conversation context."""
+        self.context_manager.add_message(
+            role=role,
+            content=content,
+            importance=importance,
+            metadata=metadata
+        )
+        self.message_count += 1
+    
+    def get_context(
+        self,
+        format_type: str = "openai",
+        max_tokens: Optional[int] = None
+    ) -> List[Dict[str, str]]:
+        """Get formatted context for LLM."""
+        return self.context_manager.get_formatted_context(
+            format_type=format_type,
+            max_tokens=max_tokens
+        )
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get context statistics."""
+        _, stats = self.context_manager.get_context()
+        return {
+            "total_messages": self.message_count,
+            "context_messages": stats.preserved_messages,
+            "total_tokens": stats.total_tokens,
+            "max_tokens": stats.max_tokens,
+            "utilization_percent": stats.utilization_percent,
+        }
+    
+    def clear(self) -> None:
+        """Clear the conversation context."""
+        self.context_manager.clear()
+        self.message_count = 0
