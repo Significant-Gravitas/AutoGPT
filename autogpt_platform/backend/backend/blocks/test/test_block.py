@@ -4,6 +4,8 @@ import pytest
 
 from backend.blocks import get_blocks
 from backend.blocks._base import Block, BlockSchemaInput
+from backend.blocks.io import AgentDropdownInputBlock, AgentInputBlock
+from backend.data.graph import BaseGraph
 from backend.data.model import SchemaField
 from backend.util.test import execute_block_test
 
@@ -284,8 +286,6 @@ class TestAutoCredentialsFieldsValidation:
 def test_agent_input_block_ignores_legacy_placeholder_values():
     """Verify AgentInputBlock.Input.model_construct tolerates extra placeholder_values
     for backward compatibility with existing agent JSON."""
-    from backend.blocks.io import AgentInputBlock
-
     legacy_data = {
         "name": "url",
         "value": "",
@@ -301,8 +301,6 @@ def test_agent_input_block_ignores_legacy_placeholder_values():
 
 def test_dropdown_input_block_produces_enum():
     """Verify AgentDropdownInputBlock.Input.generate_schema() produces enum."""
-    from backend.blocks.io import AgentDropdownInputBlock
-
     options = ["Option A", "Option B"]
     instance = AgentDropdownInputBlock.Input.model_construct(
         name="choice", value=None, placeholder_values=options
@@ -314,9 +312,6 @@ def test_dropdown_input_block_produces_enum():
 def test_generate_schema_integration_legacy_placeholder_values():
     """Test the full Graph._generate_schema path with legacy placeholder_values
     on AgentInputBlock — verifies no enum leaks through the graph loading path."""
-    from backend.blocks.io import AgentInputBlock
-    from backend.data.graph import BaseGraph
-
     legacy_input_default = {
         "name": "url",
         "value": "",
@@ -335,9 +330,6 @@ def test_generate_schema_integration_legacy_placeholder_values():
 def test_generate_schema_integration_dropdown_produces_enum():
     """Test the full Graph._generate_schema path with AgentDropdownInputBlock
     — verifies enum IS produced for dropdown blocks."""
-    from backend.blocks.io import AgentDropdownInputBlock
-    from backend.data.graph import BaseGraph
-
     dropdown_input_default = {
         "name": "color",
         "value": None,
