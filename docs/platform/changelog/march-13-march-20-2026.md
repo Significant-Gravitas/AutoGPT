@@ -4,7 +4,7 @@
 
 **Platform version:** `v0.6.52`
 
-This week's release brings a **refreshed marketplace**, a **usage monitor** so you always know where your credits stand, a **new feedback button**, and **smarter prompt suggestions** tailored to your business.
+This week's release brings a **refreshed marketplace**, a **usage monitor** so you always know where your credits stand, and a **new feedback button**.
 
 ***
 
@@ -29,14 +29,6 @@ A new **usage monitor** gives you full visibility into your credit balance and t
 The **feedback button** has moved to the header, making it accessible from any page. Share your thoughts, report issues, or request features without having to navigate away from what you're doing. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12462)
 
 <figure><img src="../.gitbook/assets/feedback-button-hero.png" alt="The new feedback button in the header"><figcaption><p>The feedback button is now always within reach in the header</p></figcaption></figure>
-
-***
-
-## Smarter, personalized prompt suggestions
-
-AutoPilot now **learns about your business** and generates personalized quick-action prompts tailored to your specific needs. Instead of generic suggestions, you'll see prompts that match your industry, workflows, and goals — making it faster to get started on the tasks that matter most to you. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12374)
-
-<figure><img src="../.gitbook/assets/prompt-context-hero.png" alt="Personalized prompt suggestions in AutoPilot"><figcaption><p>Get prompt suggestions tailored to your business and workflows</p></figcaption></figure>
 
 ***
 
