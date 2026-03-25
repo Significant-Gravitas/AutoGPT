@@ -353,9 +353,10 @@ class OrchestratorBlock(Block):
             title="Use Claude Agent SDK",
             default=False,
             description="Use Claude Agent SDK for tool orchestration. "
-            "Only supports 'anthropic' and 'open_router' providers. "
-            "Requires valid API credentials for the selected provider. "
-            "The SDK manages the conversation loop and tool calling natively.",
+            "Only supports Claude models via 'anthropic' or 'open_router' providers. "
+            "Requires valid API credentials (subscription mode not supported). "
+            "The SDK manages the conversation loop natively, "
+            "so 'Agent Mode Max Iterations' is ignored when this is enabled.",
             advanced=True,
         )
         conversation_compaction: bool = SchemaField(
@@ -1602,12 +1603,18 @@ class OrchestratorBlock(Block):
 
         # Execute tools based on the selected mode
         if input_data.use_sdk_mode:
-            # Validate provider — SDK mode only works with Anthropic-compatible models
+            # Validate — SDK mode only works with Claude models
             provider = input_data.model.metadata.provider
+            model_name = input_data.model.value
             if provider not in ("anthropic", "open_router"):
                 raise ValueError(
-                    f"SDK mode requires an Anthropic-compatible model (got provider={provider}). "
-                    "Please select an Anthropic or OpenRouter model, or disable SDK mode."
+                    f"SDK mode requires an Anthropic-compatible provider (got provider={provider}). "
+                    "Please select an Anthropic or OpenRouter provider, or disable SDK mode."
+                )
+            if not model_name.startswith("claude"):
+                raise ValueError(
+                    f"SDK mode only supports Claude models (got model={model_name}). "
+                    "Please select a Claude model, or disable SDK mode."
                 )
             # SDK mode: Claude Agent SDK manages conversation + tool calling
             execution_params = ExecutionParams(
