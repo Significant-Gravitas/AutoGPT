@@ -4603,6 +4603,74 @@
         }
       }
     },
+    "/api/llm/models": {
+      "get": {
+        "tags": ["v2", "llm", "llm"],
+        "summary": "List Models",
+        "description": "List all LLM models available to users.\n\nReturns models from the in-memory registry cache.\nUse enabled_only=true to filter to only enabled models (default).",
+        "operationId": "getV2ListModels",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "enabled_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Only return enabled models",
+              "default": true,
+              "title": "Enabled Only"
+            },
+            "description": "Only return enabled models"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LlmModelsResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/llm/providers": {
+      "get": {
+        "tags": ["v2", "llm", "llm"],
+        "summary": "List Providers",
+        "description": "List all LLM providers with their enabled models.\n\nGroups enabled models by provider from the in-memory registry.",
+        "operationId": "getV2ListProviders",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProvidersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/mcp/discover-tools": {
       "post": {
         "tags": ["v2", "mcp", "mcp"],
@@ -10256,6 +10324,154 @@
         "required": ["sessions", "total"],
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
+      },
+      "LlmModel": {
+        "properties": {
+          "slug": { "type": "string", "title": "Slug" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "provider_name": { "type": "string", "title": "Provider Name" },
+          "creator": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LlmModelCreator" },
+              { "type": "null" }
+            ]
+          },
+          "context_window": { "type": "integer", "title": "Context Window" },
+          "max_output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Max Output Tokens"
+          },
+          "price_tier": { "type": "integer", "title": "Price Tier" },
+          "is_recommended": {
+            "type": "boolean",
+            "title": "Is Recommended",
+            "default": false
+          },
+          "capabilities": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Capabilities"
+          },
+          "costs": {
+            "items": { "$ref": "#/components/schemas/LlmModelCost" },
+            "type": "array",
+            "title": "Costs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "slug",
+          "display_name",
+          "provider_name",
+          "context_window",
+          "price_tier"
+        ],
+        "title": "LlmModel",
+        "description": "Public-facing LLM model information."
+      },
+      "LlmModelCost": {
+        "properties": {
+          "unit": { "type": "string", "title": "Unit" },
+          "credit_cost": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Credit Cost"
+          },
+          "credential_provider": {
+            "type": "string",
+            "title": "Credential Provider"
+          },
+          "credential_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Id"
+          },
+          "credential_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credential Type"
+          },
+          "currency": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Currency"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["unit", "credit_cost", "credential_provider"],
+        "title": "LlmModelCost",
+        "description": "Cost configuration for an LLM model."
+      },
+      "LlmModelCreator": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "website_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Website Url"
+          },
+          "logo_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logo Url"
+          }
+        },
+        "type": "object",
+        "required": ["id", "name", "display_name"],
+        "title": "LlmModelCreator",
+        "description": "Represents the organization that created/trained the model."
+      },
+      "LlmModelsResponse": {
+        "properties": {
+          "models": {
+            "items": { "$ref": "#/components/schemas/LlmModel" },
+            "type": "array",
+            "title": "Models"
+          },
+          "total": { "type": "integer", "title": "Total" }
+        },
+        "type": "object",
+        "required": ["models", "total"],
+        "title": "LlmModelsResponse",
+        "description": "Response for GET /llm/models."
+      },
+      "LlmProvider": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "display_name": { "type": "string", "title": "Display Name" },
+          "models": {
+            "items": { "$ref": "#/components/schemas/LlmModel" },
+            "type": "array",
+            "title": "Models"
+          }
+        },
+        "type": "object",
+        "required": ["name", "display_name"],
+        "title": "LlmProvider",
+        "description": "Provider with its enabled models."
+      },
+      "LlmProvidersResponse": {
+        "properties": {
+          "providers": {
+            "items": { "$ref": "#/components/schemas/LlmProvider" },
+            "type": "array",
+            "title": "Providers"
+          }
+        },
+        "type": "object",
+        "required": ["providers"],
+        "title": "LlmProvidersResponse",
+        "description": "Response for GET /llm/providers."
       },
       "LogRawMetricRequest": {
         "properties": {
