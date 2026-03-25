@@ -182,9 +182,9 @@ This is ideal when you want to constrain user input to a predefined set of choic
 | value | Text selected from a dropdown. | str | No |
 | title | The title of the input. | str | No |
 | description | The description of the input. | str | No |
-| placeholder_values | Possible values for the dropdown. | List[Any] | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
 | secret | Whether the input should be treated as a secret. | bool | No |
+| placeholder_values | Possible values for the dropdown. | List[Any] | No |
 
 ### Outputs
 
