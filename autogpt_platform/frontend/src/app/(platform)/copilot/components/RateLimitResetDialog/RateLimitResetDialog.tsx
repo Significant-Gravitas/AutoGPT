@@ -14,6 +14,7 @@ interface Props {
   isWeeklyExhausted?: boolean;
   hasInsufficientCredits?: boolean;
   isBillingEnabled?: boolean;
+  onCreditChange?: () => void;
 }
 
 function formatCents(cents: number): string {
@@ -28,8 +29,12 @@ export function RateLimitResetDialog({
   isWeeklyExhausted = false,
   hasInsufficientCredits = false,
   isBillingEnabled = false,
+  onCreditChange,
 }: Props) {
-  const { resetUsage, isPending } = useResetRateLimit(onClose);
+  const { resetUsage, isPending } = useResetRateLimit({
+    onSuccess: onClose,
+    onCreditChange,
+  });
   const router = useRouter();
 
   // Whether to hide the reset button entirely

@@ -72,8 +72,14 @@ function UsageBar({
   );
 }
 
-function ResetButton({ cost }: { cost: number }) {
-  const { resetUsage, isPending } = useResetRateLimit();
+function ResetButton({
+  cost,
+  onCreditChange,
+}: {
+  cost: number;
+  onCreditChange?: () => void;
+}) {
+  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
 
   return (
     <Button
@@ -95,11 +101,13 @@ export function UsagePanelContent({
   showBillingLink = true,
   hasInsufficientCredits = false,
   isBillingEnabled = false,
+  onCreditChange,
 }: {
   usage: CoPilotUsageStatus;
   showBillingLink?: boolean;
   hasInsufficientCredits?: boolean;
   isBillingEnabled?: boolean;
+  onCreditChange?: () => void;
 }) {
   const hasDailyLimit = usage.daily.limit > 0;
   const hasWeeklyLimit = usage.weekly.limit > 0;
@@ -137,7 +145,9 @@ export function UsagePanelContent({
       {isDailyExhausted &&
         !isWeeklyExhausted &&
         resetCost > 0 &&
-        !hasInsufficientCredits && <ResetButton cost={resetCost} />}
+        !hasInsufficientCredits && (
+          <ResetButton cost={resetCost} onCreditChange={onCreditChange} />
+        )}
       {isDailyExhausted &&
         !isWeeklyExhausted &&
         hasInsufficientCredits &&

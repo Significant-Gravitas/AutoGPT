@@ -114,7 +114,7 @@ export function CopilotPage() {
   const resetCost = usage?.reset_cost;
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits } = useCredits({ fetchInitialCredits: true });
+  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
   const hasInsufficientCredits =
     credits !== null && credits < MIN_CREDITS_FOR_RESET;
 
@@ -222,6 +222,7 @@ export function CopilotPage() {
         }
         hasInsufficientCredits={hasInsufficientCredits}
         isBillingEnabled={isBillingEnabled}
+        onCreditChange={fetchCredits}
       />
     </SidebarProvider>
   );

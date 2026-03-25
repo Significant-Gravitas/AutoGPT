@@ -6,7 +6,10 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api";
 import { useQueryClient } from "@tanstack/react-query";
 
-export function useResetRateLimit(onSuccess?: () => void) {
+export function useResetRateLimit(options?: {
+  onSuccess?: () => void;
+  onCreditChange?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
     mutation: {
@@ -19,7 +22,8 @@ export function useResetRateLimit(onSuccess?: () => void) {
           description:
             "Your daily usage limit has been reset. You can continue working.",
         });
-        onSuccess?.();
+        options?.onCreditChange?.();
+        options?.onSuccess?.();
       },
       onError: (error: unknown) => {
         const message =
