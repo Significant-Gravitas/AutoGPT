@@ -67,7 +67,7 @@ These define the agent's interface — what it accepts and what it produces.
 **AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
 - Defines a user-facing input field on the agent
 - Required `input_default` fields: `name` (str), `value` (default: null)
-- Optional: `title`, `description`, `placeholder_values` (for dropdowns)
+- Optional: `title`, `description`
 - Output: `result` — the user-provided value at runtime
 - Create one AgentInputBlock per distinct input the agent needs
 
