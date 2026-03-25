@@ -36,7 +36,7 @@ The **feedback button** has moved to the header, making it accessible from any p
 
 <summary>Improvements</summary>
 
-* **Shareable prompt links** — share an AutoPilot prompt via URL so anyone can pick up exactly where you left off [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12406)
+* **Shareable prompt links** — share an AutoPilot prompt via URL so anyone can try it out with a single click — a great way to share use cases and ideas [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12406)
 * **"Run now" button on schedules** — manually trigger any scheduled agent run with one click [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12388)
 * **"Jump Back In" on Library** — quickly resume your most recent agent right from the Library page [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12387)
 * **Rich media previews in Builder** — see images, files, and other media directly in node outputs and file inputs [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12432)
