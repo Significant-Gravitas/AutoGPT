@@ -43,8 +43,12 @@ NO_WRAP_POLICY = SMTP.clone(max_line_length=0)
 
 
 def serialize_email_recipients(recipients: list[str]) -> str:
-    """Serialize recipients list to comma-separated string."""
-    return ", ".join(recipients)
+    """Serialize recipients list to comma-separated string.
+
+    Strips leading/trailing whitespace from each address to keep MIME
+    headers clean (mirrors the strip done in ``validate_email_recipients``).
+    """
+    return ", ".join(addr.strip() for addr in recipients)
 
 
 # RFC 5322 simplified pattern: local@domain where domain has at least one dot
@@ -132,9 +136,9 @@ async def create_mime_message(
     message["subject"] = input_data.subject
 
     if input_data.cc:
-        message["cc"] = ", ".join(input_data.cc)
+        message["cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
-        message["bcc"] = ", ".join(input_data.bcc)
+        message["bcc"] = serialize_email_recipients(input_data.bcc)
 
     # Use the new helper function with content_type if available
     content_type = getattr(input_data, "content_type", None)
@@ -1195,8 +1199,7 @@ async def _build_reply_message(
 
     # Create MIME message
     # Validate all recipient lists before building the MIME message
-    if input_data.to:
-        validate_email_recipients(input_data.to, "to")
+    validate_email_recipients(input_data.to, "to")
     if input_data.cc:
         validate_email_recipients(input_data.cc, "cc")
     if input_data.bcc:
@@ -1204,11 +1207,11 @@ async def _build_reply_message(
 
     msg = MIMEMultipart()
     if input_data.to:
-        msg["To"] = ", ".join(input_data.to)
+        msg["To"] = serialize_email_recipients(input_data.to)
     if input_data.cc:
-        msg["Cc"] = ", ".join(input_data.cc)
+        msg["Cc"] = serialize_email_recipients(input_data.cc)
     if input_data.bcc:
-        msg["Bcc"] = ", ".join(input_data.bcc)
+        msg["Bcc"] = serialize_email_recipients(input_data.bcc)
     msg["Subject"] = subject
     if headers.get("message-id"):
         msg["In-Reply-To"] = headers["message-id"]
@@ -1729,11 +1732,11 @@ To: {original_to}
 
         # Create MIME message
         msg = MIMEMultipart()
-        msg["To"] = ", ".join(input_data.to)
+        msg["To"] = serialize_email_recipients(input_data.to)
         if input_data.cc:
-            msg["Cc"] = ", ".join(input_data.cc)
+            msg["Cc"] = serialize_email_recipients(input_data.cc)
         if input_data.bcc:
-            msg["Bcc"] = ", ".join(input_data.bcc)
+            msg["Bcc"] = serialize_email_recipients(input_data.bcc)
         msg["Subject"] = subject
 
         # Add body with proper content type
