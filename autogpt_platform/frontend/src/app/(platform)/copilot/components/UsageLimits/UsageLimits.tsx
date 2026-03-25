@@ -9,7 +9,6 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/ui/button";
 import { ChartBar } from "@phosphor-icons/react";
-import { MIN_CREDITS_FOR_RESET } from "../../constants";
 import { UsagePanelContent } from "./UsagePanelContent";
 
 export { UsagePanelContent, formatResetTime } from "./UsagePanelContent";
@@ -25,8 +24,9 @@ export function UsageLimits() {
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
+  const resetCost = usage?.reset_cost;
   const hasInsufficientCredits =
-    credits !== null && credits < MIN_CREDITS_FOR_RESET;
+    credits !== null && resetCost != null && credits < resetCost;
 
   if (isLoading || !usage) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;

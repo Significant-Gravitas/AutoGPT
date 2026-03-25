@@ -17,7 +17,6 @@ import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
 import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
-import { MIN_CREDITS_FOR_RESET } from "./constants";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
@@ -116,7 +115,7 @@ export function CopilotPage() {
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
   const hasInsufficientCredits =
-    credits !== null && credits < MIN_CREDITS_FOR_RESET;
+    credits !== null && resetCost != null && credits < resetCost;
 
   // Fall back to a toast when the credit-based reset feature is disabled or
   // when the usage query fails (so the user still gets feedback).
