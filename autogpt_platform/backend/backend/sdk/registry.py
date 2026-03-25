@@ -202,40 +202,31 @@ class AutoRegistry:
 
         # Patch credentials store to include SDK-registered credentials
         try:
-            import sys
-            from typing import Any
+            # Lazy import: credentials_store depends on settings which may not
+            # be fully initialized at class-definition time.
+            from backend.integrations.credentials_store import (
+                IntegrationCredentialsStore,
+            )
 
-            # Get the module from sys.modules to respect mocking
-            if "backend.integrations.credentials_store" in sys.modules:
-                creds_store: Any = sys.modules["backend.integrations.credentials_store"]
-            else:
-                import backend.integrations.credentials_store
+            original_get_all_creds = IntegrationCredentialsStore.get_all_creds
 
-                creds_store: Any = backend.integrations.credentials_store
+            async def patched_get_all_creds(
+                self: IntegrationCredentialsStore, user_id: str
+            ) -> list[Credentials]:
+                original_creds = await original_get_all_creds(self, user_id)
 
-            if hasattr(creds_store, "IntegrationCredentialsStore"):
-                store_class = creds_store.IntegrationCredentialsStore
-                if hasattr(store_class, "get_all_creds"):
-                    original_get_all_creds = store_class.get_all_creds
+                sdk_creds = cls.get_all_credentials()
 
-                    async def patched_get_all_creds(self, user_id: str):
-                        # Get original credentials
-                        original_creds = await original_get_all_creds(self, user_id)
+                existing_ids = {c.id for c in original_creds}
+                for cred in sdk_creds:
+                    if cred.id not in existing_ids:
+                        original_creds.append(cred)
 
-                        # Add SDK-registered credentials
-                        sdk_creds = cls.get_all_credentials()
+                return original_creds
 
-                        # Combine credentials, avoiding duplicates by ID
-                        existing_ids = {c.id for c in original_creds}
-                        for cred in sdk_creds:
-                            if cred.id not in existing_ids:
-                                original_creds.append(cred)
-
-                        return original_creds
-
-                    store_class.get_all_creds = patched_get_all_creds
-                    logger.info(
-                        "Successfully patched IntegrationCredentialsStore.get_all_creds"
-                    )
+            IntegrationCredentialsStore.get_all_creds = patched_get_all_creds
+            logger.info(
+                "Successfully patched IntegrationCredentialsStore.get_all_creds"
+            )
         except Exception as e:
             logging.warning(f"Failed to patch credentials store: {e}")

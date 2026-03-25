@@ -21,6 +21,7 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
@@ -80,6 +81,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
+    dry_run: bool = False,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -89,6 +91,49 @@ async def execute_block(
     Returns:
         BlockOutputResponse on success, ErrorResponse on failure.
     """
+    # Dry-run path: simulate the block with an LLM, no real execution.
+    # HITL review is intentionally skipped — no real execution occurs.
+    if dry_run:
+        try:
+            # Coerce types to match the block's input schema, same as real execution.
+            # This ensures the simulated preview is consistent with real execution
+            # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
+            coerce_inputs_to_schema(input_data, block.input_schema)
+            outputs: dict[str, list[Any]] = defaultdict(list)
+            async for output_name, output_data in simulate_block(block, input_data):
+                outputs[output_name].append(output_data)
+            # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")
+            sim_error = outputs.get("error", [])
+            if (
+                sim_error
+                and isinstance(sim_error[0], str)
+                and sim_error[0].startswith("[SIMULATOR ERROR")
+            ):
+                return ErrorResponse(
+                    message=sim_error[0],
+                    error=sim_error[0],
+                    session_id=session_id,
+                )
+            return BlockOutputResponse(
+                message=(
+                    f"[DRY RUN] Block '{block.name}' simulated successfully "
+                    "— no real execution occurred."
+                ),
+                block_id=block_id,
+                block_name=block.name,
+                outputs=dict(outputs),
+                success=True,
+                is_dry_run=True,
+                session_id=session_id,
+            )
+        except Exception as e:
+            logger.error("Dry-run simulation failed: %s", e, exc_info=True)
+            return ErrorResponse(
+                message=f"Dry-run simulation failed: {e}",
+                error=str(e),
+                session_id=session_id,
+            )
+
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
 
@@ -292,6 +337,7 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
+    dry_run: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -379,7 +425,7 @@ async def prepare_block_for_execution(
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
 
-    if missing_credentials:
+    if missing_credentials and not dry_run:
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
@@ -560,8 +606,10 @@ def _resolve_discriminated_credentials(
                 effective_field_info = field_info.discriminate(discriminator_value)
                 effective_field_info.discriminator_values.add(discriminator_value)
                 logger.debug(
-                    f"Discriminated provider for {field_name}: "
-                    f"{discriminator_value} -> {effective_field_info.provider}"
+                    "Discriminated provider for %s: %s -> %s",
+                    field_name,
+                    discriminator_value,
+                    effective_field_info.provider,
                 )
 
         resolved[field_name] = effective_field_info
