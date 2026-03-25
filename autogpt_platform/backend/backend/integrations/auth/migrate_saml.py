@@ -7,7 +7,6 @@ Run this after updating the schema.prisma file.
 
 import asyncio
 import logging
-from datetime import timedelta
 
 from prisma import Prisma
 

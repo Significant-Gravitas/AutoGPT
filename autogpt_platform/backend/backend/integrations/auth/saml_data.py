@@ -15,7 +15,6 @@ from prisma.models import SAMLProvider, SAMLUser, SAMLAuthRequest, User
 from prisma.types import (
     SAMLProviderCreateInput,
     SAMLProviderUpdateInput,
-    SAMLUserCreateInput,
     SAMLAuthRequestCreateInput,
 )
 
