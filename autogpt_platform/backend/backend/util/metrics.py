@@ -106,6 +106,18 @@ def _before_send(event, hint):
             ind in msg for ind in ("amqp", "pika", "rabbitmq", "aio_pika", "aiormq")
         ):
             return None
+        # User-caused auth/credential errors logged via logger.error()
+        # These leak past the exc_info filter above because they're not exceptions.
+        user_auth_log_keywords = [
+            "invalid x-api-key",
+            "incorrect api key",
+            "authentication_error",
+            "bad credentials",
+            "invalid api key",
+            "missing authentication header",
+        ]
+        if any(kw in msg for kw in user_auth_log_keywords):
+            return None
 
     return event
 

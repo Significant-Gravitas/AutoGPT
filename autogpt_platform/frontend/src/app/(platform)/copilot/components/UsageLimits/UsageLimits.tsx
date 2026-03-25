@@ -21,7 +21,8 @@ export function UsageLimits() {
   });
 
   if (isLoading || !usage) return null;
-  if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
+  if ((usage.daily?.limit ?? 0) <= 0 && (usage.weekly?.limit ?? 0) <= 0)
+    return null;
 
   return (
     <Popover>
