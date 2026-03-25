@@ -51,9 +51,7 @@ def serialize_email_recipients(recipients: list[str]) -> str:
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
-def validate_email_recipients(
-    recipients: list[str], field_name: str = "to"
-) -> None:
+def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
     """Validate that all recipients are plausible email addresses.
 
     Raises ``ValueError`` with a user-friendly message listing every
@@ -1721,6 +1719,13 @@ To: {original_to}
             body = f"{input_data.forwardMessage}\n\n{forward_header}\n\n{original_body}"
         else:
             body = f"{forward_header}\n\n{original_body}"
+
+        # Validate all recipient lists before building the MIME message
+        validate_email_recipients(input_data.to, "to")
+        if input_data.cc:
+            validate_email_recipients(input_data.cc, "cc")
+        if input_data.bcc:
+            validate_email_recipients(input_data.bcc, "bcc")
 
         # Create MIME message
         msg = MIMEMultipart()
