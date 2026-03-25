@@ -33,7 +33,6 @@ _USER_AUTH_KEYWORDS = [
     "insufficient authentication scopes",
     "http 401 error",
     "http 403 error",
-    "http 404 error",
 ]
 
 _AMQP_KEYWORDS = [
