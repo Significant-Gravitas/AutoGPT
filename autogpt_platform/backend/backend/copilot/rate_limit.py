@@ -208,7 +208,7 @@ async def increment_daily_reset_count(user_id: str) -> None:
     try:
         redis = await get_redis_async()
         key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
-        pipe = redis.pipeline(transaction=False)
+        pipe = redis.pipeline(transaction=True)
         pipe.incr(key)
         seconds_until_reset = int((_daily_reset_time(now=now) - now).total_seconds())
         pipe.expire(key, max(seconds_until_reset, 1))

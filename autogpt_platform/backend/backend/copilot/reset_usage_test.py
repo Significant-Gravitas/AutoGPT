@@ -72,7 +72,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
-            patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
+            patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
             patch(
                 f"{_MODULE}.get_usage_status",
                 AsyncMock(return_value=_usage(daily_used=1_000_000)),
@@ -82,6 +82,7 @@ class TestResetCopilotUsage:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 400
             assert "not reached" in exc_info.value.detail
+            mock_release.assert_awaited_once()
 
     async def test_insufficient_credits_returns_402(self):
         """When user doesn't have enough credits, returns 402."""
@@ -99,7 +100,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
-            patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
+            patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
             patch(
                 f"{_MODULE}.get_usage_status",
                 AsyncMock(return_value=_usage()),
@@ -112,6 +113,7 @@ class TestResetCopilotUsage:
             with pytest.raises(HTTPException) as exc_info:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 402
+            mock_release.assert_awaited_once()
 
     async def test_happy_path(self):
         """Successful reset: charges credits, resets usage, returns response."""
@@ -179,7 +181,7 @@ class TestResetCopilotUsage:
             patch(f"{_MODULE}.config", cfg),
             patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
             patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
-            patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
+            patch(f"{_MODULE}.release_reset_lock", AsyncMock()) as mock_release,
             patch(
                 f"{_MODULE}.get_usage_status",
                 AsyncMock(return_value=weekly_exhausted),
@@ -189,3 +191,4 @@ class TestResetCopilotUsage:
                 await reset_copilot_usage(user_id="user-1")
             assert exc_info.value.status_code == 400
             assert "weekly" in exc_info.value.detail.lower()
+            mock_release.assert_awaited_once()
