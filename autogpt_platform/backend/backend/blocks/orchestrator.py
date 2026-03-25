@@ -507,6 +507,19 @@ class OrchestratorBlock(Block):
         tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
+        # Store hardcoded defaults (non-linked inputs) for disambiguation
+        linked_fields = {link.sink_name for link in links}
+        defaults = sink_node.input_default
+        tool_function["_hardcoded_defaults"] = (
+            {
+                k: v
+                for k, v in defaults.items()
+                if k not in linked_fields and not k.startswith("_")
+            }
+            if isinstance(defaults, dict)
+            else {}
+        )
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
@@ -581,6 +594,16 @@ class OrchestratorBlock(Block):
         tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
+        # Store hardcoded defaults (non-linked inputs) for disambiguation
+        linked_fields = {link.sink_name for link in links}
+        tool_function["_hardcoded_defaults"] = {
+            k: v
+            for k, v in sink_node.input_default.items()
+            if k not in linked_fields
+            and k not in ("graph_id", "graph_version", "input_schema")
+            and not k.startswith("_")
+        }
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
@@ -628,6 +651,39 @@ class OrchestratorBlock(Block):
                     sink_node, links
                 )
                 return_tool_functions.append(tool_func)
+
+        # Disambiguate duplicate tool names (Anthropic API requires unique names)
+        name_counts: dict[str, int] = {}
+        for tool_func in return_tool_functions:
+            name = tool_func["function"]["name"]
+            name_counts[name] = name_counts.get(name, 0) + 1
+
+        name_seen: dict[str, int] = {}
+        for tool_func in return_tool_functions:
+            func = tool_func["function"]
+            name = func["name"]
+            if name_counts[name] > 1:
+                idx = name_seen.get(name, 0) + 1
+                name_seen[name] = idx
+                func["name"] = f"{name}_{idx}"
+
+                # Enrich description with hardcoded defaults so the LLM can
+                # distinguish between tools that share the same block type.
+                defaults = func.pop("_hardcoded_defaults", {})
+                if defaults:
+                    defaults_summary = ", ".join(
+                        f"{k}={json.dumps(v)}" for k, v in defaults.items()
+                    )
+                    func["description"] = (
+                        f"{func.get('description', '')} "
+                        f"[Pre-configured: {defaults_summary}]"
+                    )
+            else:
+                func.pop("_hardcoded_defaults", None)
+
+        # Clean up _hardcoded_defaults from non-duplicate tools
+        for tool_func in return_tool_functions:
+            tool_func["function"].pop("_hardcoded_defaults", None)
 
         return return_tool_functions
 
