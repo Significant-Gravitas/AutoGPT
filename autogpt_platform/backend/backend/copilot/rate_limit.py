@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 # Redis key prefixes
 _USAGE_KEY_PREFIX = "copilot:usage"
 
+# Lua script: atomically decrement a key by N, flooring at 0.
+# Avoids the DECRBY-then-SET race with concurrent INCRBY.
+_DECRBY_FLOOR_ZERO_LUA = """
+local cur = tonumber(redis.call('GET', KEYS[1]) or 0)
+local dec = tonumber(ARGV[1])
+local nv = cur - dec
+if nv < 0 then nv = 0 end
+redis.call('SET', KEYS[1], nv, 'KEEPTTL')
+return nv
+"""
+
 
 class UsageWindow(BaseModel):
     """Usage within a single time window."""
@@ -169,16 +180,18 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
         redis = await get_redis_async()
         await redis.delete(_daily_key(user_id, now=now))
 
-        # Reduce weekly usage by one day's worth of capacity.
-        # Uses DECRBY + conditional SET to floor at 0.  There is a tiny
-        # race between DECRBY and SET where a concurrent INCRBY could be
-        # lost, but this only runs on paid resets (rare) and the worst
-        # case is slightly more headroom — acceptable for a rate limit.
+        # Reduce weekly usage by one day's worth of capacity atomically.
+        # Uses a Lua script to DECRBY and floor at 0 in a single atomic
+        # operation, avoiding races with concurrent INCRBY from
+        # record_token_usage().
         if daily_token_limit > 0:
             w_key = _weekly_key(user_id, now=now)
-            new_val = await redis.decrby(w_key, daily_token_limit)
-            if new_val < 0:
-                await redis.set(w_key, 0, keepttl=True)
+            await redis.eval(  # type: ignore[misc]  # redis-py async stubs
+                _DECRBY_FLOOR_ZERO_LUA,
+                1,
+                w_key,
+                str(daily_token_limit),
+            )
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
@@ -211,8 +224,13 @@ async def release_reset_lock(user_id: str) -> None:
         pass  # Lock will expire via TTL
 
 
-async def get_daily_reset_count(user_id: str) -> int:
-    """Get how many times the user has reset today."""
+async def get_daily_reset_count(user_id: str) -> int | None:
+    """Get how many times the user has reset today.
+
+    Returns None when Redis is unavailable so callers can fail-closed
+    for billed operations (as opposed to failing open for read-only
+    rate-limit checks).
+    """
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
@@ -220,7 +238,8 @@ async def get_daily_reset_count(user_id: str) -> int:
         val = await redis.get(key)
         return int(val or 0)
     except (RedisError, ConnectionError, OSError):
-        return 0
+        logger.warning("Redis unavailable for reading daily reset count")
+        return None
 
 
 async def increment_daily_reset_count(user_id: str) -> None:

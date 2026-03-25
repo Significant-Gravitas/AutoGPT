@@ -1430,6 +1430,9 @@
           "402": { "description": "Payment Required (insufficient credits)" },
           "429": {
             "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
+          },
+          "503": {
+            "description": "Service Unavailable (Redis reset failed; credits refunded or support needed)"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]

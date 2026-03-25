@@ -212,7 +212,7 @@ export function CopilotPage() {
       )}
       <NotificationDialog />
       <RateLimitResetDialog
-        isOpen={!!rateLimitMessage && (resetCost ?? 0) > 0}
+        isOpen={!!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0}
         onClose={dismissRateLimit}
         resetCost={resetCost ?? 0}
         resetMessage={rateLimitMessage ?? ""}

@@ -1,5 +1,7 @@
 """Unit tests for the POST /usage/reset endpoint."""
 
+from __future__ import annotations
+
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -219,3 +221,74 @@ class TestResetCopilotUsage:
             assert exc_info.value.status_code == 400
             assert "weekly" in exc_info.value.detail.lower()
             mock_release.assert_awaited_once()
+
+    async def test_redis_failure_for_reset_count_returns_503(self):
+        """When Redis is unavailable for get_daily_reset_count, returns 503."""
+
+        with (
+            patch(f"{_MODULE}.config", _make_config()),
+            patch(f"{_MODULE}.settings", _mock_settings()),
+            patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=None)),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await reset_copilot_usage(user_id="user-1")
+            assert exc_info.value.status_code == 503
+            assert "verify" in exc_info.value.detail.lower()
+
+    async def test_redis_reset_failure_refunds_credits(self):
+        """When reset_daily_usage fails, credits are refunded and 503 returned."""
+
+        mock_credit_model = AsyncMock()
+        mock_credit_model.spend_credits.return_value = 1500
+
+        cfg = _make_config()
+        with (
+            patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
+            patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
+            patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
+            patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
+            patch(
+                f"{_MODULE}.get_usage_status",
+                AsyncMock(return_value=_usage()),
+            ),
+            patch(
+                f"{_MODULE}.get_user_credit_model",
+                AsyncMock(return_value=mock_credit_model),
+            ),
+            patch(f"{_MODULE}.reset_daily_usage", AsyncMock(return_value=False)),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await reset_copilot_usage(user_id="user-1")
+            assert exc_info.value.status_code == 503
+            assert "not been charged" in exc_info.value.detail
+            mock_credit_model.top_up_credits.assert_awaited_once()
+
+    async def test_redis_reset_failure_refund_also_fails(self):
+        """When both reset and refund fail, error message reflects the truth."""
+
+        mock_credit_model = AsyncMock()
+        mock_credit_model.spend_credits.return_value = 1500
+        mock_credit_model.top_up_credits.side_effect = RuntimeError("db down")
+
+        cfg = _make_config()
+        with (
+            patch(f"{_MODULE}.config", cfg),
+            patch(f"{_MODULE}.settings", _mock_settings()),
+            patch(f"{_MODULE}.get_daily_reset_count", AsyncMock(return_value=0)),
+            patch(f"{_MODULE}.acquire_reset_lock", AsyncMock(return_value=True)),
+            patch(f"{_MODULE}.release_reset_lock", AsyncMock()),
+            patch(
+                f"{_MODULE}.get_usage_status",
+                AsyncMock(return_value=_usage()),
+            ),
+            patch(
+                f"{_MODULE}.get_user_credit_model",
+                AsyncMock(return_value=mock_credit_model),
+            ),
+            patch(f"{_MODULE}.reset_daily_usage", AsyncMock(return_value=False)),
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await reset_copilot_usage(user_id="user-1")
+            assert exc_info.value.status_code == 503
+            assert "contact support" in exc_info.value.detail.lower()

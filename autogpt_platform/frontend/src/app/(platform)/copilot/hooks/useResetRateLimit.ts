@@ -14,15 +14,20 @@ export function useResetRateLimit(options?: {
   const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
     mutation: {
       onSuccess: async () => {
+        // Await the usage refetch so the UI shows updated limits before
+        // closing the dialog or re-enabling the reset CTA.
         await queryClient.invalidateQueries({
           queryKey: getGetV2GetCopilotUsageQueryKey(),
         });
+        await queryClient.refetchQueries({
+          queryKey: getGetV2GetCopilotUsageQueryKey(),
+        });
+        options?.onCreditChange?.();
         toast({
           title: "Rate limit reset",
           description:
             "Your daily usage limit has been reset. You can continue working.",
         });
-        options?.onCreditChange?.();
         options?.onSuccess?.();
       },
       onError: (error: unknown) => {
