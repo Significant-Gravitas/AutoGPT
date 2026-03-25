@@ -928,11 +928,17 @@ class OrchestratorBlock(Block):
         node_exec_result = None
         final_input_data = None
 
+        # Merge static defaults from the target node with LLM-provided inputs.
+        # The LLM only passes values it decides to fill (e.g., "value"), but
+        # static defaults like "name" on Agent Output Blocks must be included
+        # so the execution record is complete for from_db() reconstruction.
+        merged_input_data = {**target_node.input_default, **raw_input_data}
+
         # Add all inputs to the execution
-        if not raw_input_data:
+        if not merged_input_data:
             raise ValueError(f"Tool call has no input data: {tool_call}")
 
-        for input_name, input_value in raw_input_data.items():
+        for input_name, input_value in merged_input_data.items():
             node_exec_result, final_input_data = await db_client.upsert_execution_input(
                 node_id=sink_node_id,
                 graph_exec_id=execution_params.graph_exec_id,

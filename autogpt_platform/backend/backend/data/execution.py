@@ -342,6 +342,7 @@ class GraphExecution(GraphExecutionMeta):
                     if (
                         (block := get_block(exec.block_id))
                         and block.block_type == BlockType.INPUT
+                        and "name" in exec.input_data
                     )
                 }
             ),
@@ -362,7 +363,10 @@ class GraphExecution(GraphExecutionMeta):
             if (
                 block := get_block(exec.block_id)
             ) and block.block_type == BlockType.OUTPUT:
-                outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
+                if "name" in exec.input_data:
+                    outputs[exec.input_data["name"]].append(
+                        exec.input_data.get("value")
+                    )
 
         return GraphExecution(
             **{
