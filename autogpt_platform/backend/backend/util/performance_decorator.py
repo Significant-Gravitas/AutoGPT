@@ -12,6 +12,7 @@ Provides comprehensive performance measurement capabilities for blocks including
 
 import asyncio
 import functools
+import inspect
 import json
 import logging
 import os
@@ -228,7 +229,8 @@ def measure_block_performance(
                     )
         
         # Return appropriate wrapper based on function type
-        if asyncio.iscoroutinefunction(func):
+        # Check for both coroutines and async generators (Block.run() methods are async generators)
+        if inspect.iscoroutinefunction(func) or inspect.isasyncgenfunction(func):
             return async_wrapper
         else:
             return sync_wrapper

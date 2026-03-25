@@ -2509,7 +2509,8 @@ Please provide a helpful response based on the context provided above."""
         include_reasoning: bool = False,
     ) -> Dict[str, Any]:
         """Call OpenAI's API with reasoning support."""
-        client = get_openai_client(credentials.api_key.get_secret_value())
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
         
         request_params = {
             "model": model.provider_name,

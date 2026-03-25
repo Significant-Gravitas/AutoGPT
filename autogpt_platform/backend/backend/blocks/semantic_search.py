@@ -115,7 +115,8 @@ class SemanticSearchBlock(Block, GetRequest):
             if not credentials:
                 raise ValueError("OpenAI credentials required for embedding generation")
             
-            client = get_openai_client(credentials.api_key.get_secret_value())
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
             
             response = await client.embeddings.create(
                 model=EMBEDDING_MODEL,
