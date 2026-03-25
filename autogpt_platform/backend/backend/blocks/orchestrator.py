@@ -1349,7 +1349,9 @@ class OrchestratorBlock(Block):
 
         # Build SDK env — provider-aware credential routing.
         # SDK mode does not support subscription-mode (platform-managed credits).
-        provider = input_data.model.metadata.provider
+        # Use *credential* provider for routing (not model metadata provider),
+        # because a user may select an Anthropic model but route through OpenRouter.
+        provider = credentials.provider
         if not credentials.api_key:
             raise ValueError(
                 "SDK mode requires direct API credentials and does not support "
