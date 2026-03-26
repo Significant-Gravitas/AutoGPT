@@ -2,7 +2,7 @@
 
 import { MessageAction } from "@/components/ai-elements/message";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Check, Copy } from "@phosphor-icons/react";
+import { Check, CopySimple } from "@phosphor-icons/react";
 import { useState } from "react";
 
 interface Props {
@@ -33,8 +33,10 @@ export function CopyButton({ text }: Props) {
     <MessageAction
       tooltip={copied ? "Copied!" : "Copy"}
       onClick={handleCopy}
+      variant="ghost"
+      size="icon-sm"
     >
-      {copied ? <Check size={16} /> : <Copy size={16} />}
+      {copied ? <Check size={16} /> : <CopySimple size={16} weight="regular" />}
     </MessageAction>
   );
 }
