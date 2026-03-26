@@ -956,6 +956,23 @@ async def add_graph_execution(
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
 
+    # Validate simulation_context: only used with dry_run, bounded size.
+    _SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
+    safe_simulation_context = simulation_context if dry_run else None
+    if safe_simulation_context is not None:
+        import json as _json
+
+        try:
+            encoded = _json.dumps(safe_simulation_context).encode("utf-8")
+        except (TypeError, ValueError) as e:
+            raise ValueError(
+                f"simulation_context must be JSON-serializable: {e}"
+            ) from e
+        if len(encoded) > _SIMULATION_CONTEXT_MAX_BYTES:
+            raise ValueError(
+                f"simulation_context exceeds {_SIMULATION_CONTEXT_MAX_BYTES} bytes"
+            )
+
     # Generate execution context if it's not provided
     if execution_context is None:
         user = await udb.get_user_by_id(user_id)
@@ -972,7 +989,7 @@ async def add_graph_execution(
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
             dry_run=dry_run,
-            simulation_context=simulation_context,
+            simulation_context=safe_simulation_context,
             # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
