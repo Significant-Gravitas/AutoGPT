@@ -2,8 +2,12 @@
 LLM-powered block simulator for dry-run execution.
 
 When dry_run=True, instead of calling the real block, this module
-role-plays the block's execution using an LLM. No real API calls,
-no side effects. The LLM is grounded by:
+role-plays the block's execution using an LLM.  For most blocks no real
+API calls or side effects occur.  OrchestratorBlock and AgentExecutorBlock
+are exceptions — they execute for real so the orchestrator can make LLM
+calls and agent executors can spawn child graphs (handled in manager.py).
+
+The LLM simulation is grounded by:
   - Block name and description
   - Input/output schemas (from block.input_schema.jsonschema() / output_schema.jsonschema())
   - The actual input values
@@ -88,6 +92,98 @@ def _describe_schema_pins(schema: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "(no output pins defined)"
 
 
+# ---------------------------------------------------------------------------
+# Shared LLM call helper
+# ---------------------------------------------------------------------------
+
+
+async def _call_llm_for_simulation(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    label: str = "simulate",
+) -> dict[str, Any]:
+    """Send a simulation prompt to the LLM and return the parsed JSON dict.
+
+    Handles client acquisition, retries on invalid JSON, and logging.
+
+    Args:
+        system_prompt: The system message for the LLM.
+        user_prompt: The user message for the LLM.
+        label: A short identifier used in log messages (e.g. block name or tool name).
+
+    Returns:
+        The parsed JSON dict from the LLM response.
+
+    Raises:
+        RuntimeError: If no LLM client is available.
+        ValueError: If all retry attempts are exhausted.
+    """
+    client = get_openai_client()
+    if client is None:
+        raise RuntimeError(
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
+            "(missing OpenAI/OpenRouter API key)."
+        )
+
+    model = _simulator_model()
+    last_error: Exception | None = None
+    for attempt in range(_MAX_JSON_RETRIES):
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=_TEMPERATURE,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            if not response.choices:
+                raise ValueError("LLM returned empty choices array")
+            raw = response.choices[0].message.content or ""
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
+
+            logger.debug(
+                "simulate(%s): attempt=%d tokens=%s/%s",
+                label,
+                attempt + 1,
+                getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
+                getattr(getattr(response, "usage", None), "completion_tokens", "?"),
+            )
+            return parsed
+
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
+            logger.warning(
+                "simulate(%s): JSON parse error on attempt %d/%d: %s",
+                label,
+                attempt + 1,
+                _MAX_JSON_RETRIES,
+                e,
+            )
+        except Exception as e:
+            last_error = e
+            logger.error("simulate(%s): LLM call failed: %s", label, e, exc_info=True)
+            break
+
+    msg = (
+        f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
+        f"attempts: {last_error}"
+    )
+    logger.error(
+        "simulate(%s): all retries exhausted; last_error=%s", label, last_error
+    )
+    raise ValueError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Prompt builders
+# ---------------------------------------------------------------------------
+
+
 def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str, str]:
     """Build (system_prompt, user_prompt) for block simulation."""
     input_schema = block.input_schema.jsonschema()
@@ -170,6 +266,11 @@ Rules:
     return system_prompt, user_prompt
 
 
+# ---------------------------------------------------------------------------
+# Public simulation functions
+# ---------------------------------------------------------------------------
+
+
 async def simulate_mcp_block(
     _block: Any,
     input_data: dict[str, Any],
@@ -183,73 +284,15 @@ async def simulate_mcp_block(
     Yields ``(output_name, output_data)`` tuples matching the Block.execute()
     interface.
     """
-    client = get_openai_client()
-    if client is None:
-        yield (
-            "error",
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
-            "(missing OpenAI/OpenRouter API key).",
-        )
-        return
-
     system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
+    label = input_data.get("selected_tool", "mcp_tool")
 
-    model = _simulator_model()
-    last_error: Exception | None = None
-    for attempt in range(_MAX_JSON_RETRIES):
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                temperature=_TEMPERATURE,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            if not response.choices:
-                raise ValueError("LLM returned empty choices array")
-            raw = response.choices[0].message.content or ""
-            parsed = json.loads(raw)
-            if not isinstance(parsed, dict):
-                raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
-
-            logger.debug(
-                "simulate_mcp_block: tool=%s attempt=%d tokens=%s/%s",
-                input_data.get("selected_tool", "?"),
-                attempt + 1,
-                getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
-                getattr(getattr(response, "usage", None), "completion_tokens", "?"),
-            )
-
-            yield "result", parsed.get("result", None)
-            yield "error", parsed.get("error", "")
-            return
-
-        except (json.JSONDecodeError, ValueError) as e:
-            last_error = e
-            logger.warning(
-                "simulate_mcp_block: JSON parse error on attempt %d/%d: %s",
-                attempt + 1,
-                _MAX_JSON_RETRIES,
-                e,
-            )
-        except Exception as e:
-            last_error = e
-            logger.error("simulate_mcp_block: LLM call failed: %s", e, exc_info=True)
-            break
-
-    logger.error(
-        "simulate_mcp_block: all %d retries exhausted for tool=%s; last_error=%s",
-        _MAX_JSON_RETRIES,
-        input_data.get("selected_tool", "?"),
-        last_error,
-    )
-    yield (
-        "error",
-        f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
-        f"attempts: {last_error}",
-    )
+    try:
+        parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
+        yield "result", parsed.get("result", None)
+        yield "error", parsed.get("error", "")
+    except (RuntimeError, ValueError) as e:
+        yield "error", str(e)
 
 
 async def simulate_block(
@@ -261,81 +304,24 @@ async def simulate_block(
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
     On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
     """
-    client = get_openai_client()
-    if client is None:
-        yield (
-            "error",
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
-            "(missing OpenAI/OpenRouter API key).",
-        )
-        return
-
     output_schema = block.output_schema.jsonschema()
     output_properties: dict[str, Any] = output_schema.get("properties", {})
 
     system_prompt, user_prompt = build_simulation_prompt(block, input_data)
+    label = getattr(block, "name", "?")
 
-    model = _simulator_model()
-    last_error: Exception | None = None
-    for attempt in range(_MAX_JSON_RETRIES):
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                temperature=_TEMPERATURE,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            )
-            if not response.choices:
-                raise ValueError("LLM returned empty choices array")
-            raw = response.choices[0].message.content or ""
-            parsed = json.loads(raw)
-            if not isinstance(parsed, dict):
-                raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
+    try:
+        parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
 
-            # Fill missing output pins with defaults
-            result: dict[str, Any] = {}
-            for pin_name in output_properties:
-                if pin_name in parsed:
-                    result[pin_name] = parsed[pin_name]
-                else:
-                    result[pin_name] = "" if pin_name == "error" else None
+        # Fill missing output pins with defaults
+        result: dict[str, Any] = {}
+        for pin_name in output_properties:
+            if pin_name in parsed:
+                result[pin_name] = parsed[pin_name]
+            else:
+                result[pin_name] = "" if pin_name == "error" else None
 
-            logger.debug(
-                "simulate_block: block=%s attempt=%d tokens=%s/%s",
-                getattr(block, "name", "?"),
-                attempt + 1,
-                getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
-                getattr(getattr(response, "usage", None), "completion_tokens", "?"),
-            )
-
-            for pin_name, pin_value in result.items():
-                yield pin_name, pin_value
-            return
-
-        except (json.JSONDecodeError, ValueError) as e:
-            last_error = e
-            logger.warning(
-                "simulate_block: JSON parse error on attempt %d/%d: %s",
-                attempt + 1,
-                _MAX_JSON_RETRIES,
-                e,
-            )
-        except Exception as e:
-            last_error = e
-            logger.error("simulate_block: LLM call failed: %s", e, exc_info=True)
-            break
-
-    logger.error(
-        "simulate_block: all %d retries exhausted for block=%s; last_error=%s",
-        _MAX_JSON_RETRIES,
-        getattr(block, "name", "?"),
-        last_error,
-    )
-    yield (
-        "error",
-        f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
-        f"attempts: {last_error}",
-    )
+        for pin_name, pin_value in result.items():
+            yield pin_name, pin_value
+    except (RuntimeError, ValueError) as e:
+        yield "error", str(e)
