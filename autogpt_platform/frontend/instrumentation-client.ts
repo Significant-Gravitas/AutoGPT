@@ -27,9 +27,6 @@ Sentry.init({
   // (e.g., from browser extensions or CDN-loaded CSS)
   ignoreErrors: [
     /Not allowed to access cross-origin stylesheet/,
-    // Browser extension noise (wallet injections, ad blockers, etc.)
-    /Cannot set property ethereum/,
-    /Cannot redefine property: ethereum/,
     // Sentry SDK internal issue on some mobile browsers
     /Error invoking postEvent: Method not found/,
   ],
