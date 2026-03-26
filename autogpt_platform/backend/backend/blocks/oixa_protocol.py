@@ -114,10 +114,12 @@ class ListAuctionsBlock(_BLOCK_BASE):
 
     async def run(self, input_data: Input) -> BlockOutput:
         result = await _call("GET", f"/api/v1/auctions?status={input_data.status}&limit={input_data.limit}")
+        if result.get("error"):
+            yield "error", result["error"]
+            return
         auctions = result.get("data", {}).get("auctions", result if isinstance(result, list) else [])
         yield "auctions_json", json.dumps(auctions, indent=2)
         yield "count",         len(auctions) if isinstance(auctions, list) else 0
-        yield "error",         result.get("error", "")
 
 
 # ── Place Bid Block ────────────────────────────────────────────────────────────
@@ -176,12 +178,14 @@ class PlaceBidBlock(_BLOCK_BASE):
             "bidder_name": input_data.bidder_name,
             "amount":      input_data.amount,
         })
+        if result.get("error"):
+            yield "error", result["error"]
+            return
         data = result.get("data", result)
         yield "accepted",       data.get("accepted", False)
         yield "current_winner", data.get("current_winner", "")
         yield "current_best",   data.get("current_best", 0.0)
         yield "bid_id",         data.get("bid_id", "")
-        yield "error",          result.get("error", "")
 
 
 # ── Create Auction Block ───────────────────────────────────────────────────────
@@ -237,10 +241,12 @@ class CreateAuctionBlock(_BLOCK_BASE):
             "requester_id":    input_data.requester_id,
             "currency":        "USDC",
         })
+        if result.get("error"):
+            yield "error", result["error"]
+            return
         data = result.get("data", result)
         yield "auction_id", data.get("id", data.get("auction_id", ""))
         yield "status",     data.get("status", "")
-        yield "error",      result.get("error", "")
 
 
 # ── Deliver Output Block ───────────────────────────────────────────────────────
@@ -287,10 +293,12 @@ class DeliverOutputBlock(_BLOCK_BASE):
             "agent_id": input_data.agent_id,
             "output":   input_data.output,
         })
+        if result.get("error"):
+            yield "error", result["error"]
+            return
         data = result.get("data", result)
         yield "passed",       data.get("passed", False)
         yield "payment_usdc", data.get("payment_usdc", 0.0)
-        yield "error",        result.get("error", "")
 
 
 # ── All blocks for auto-discovery ─────────────────────────────────────────────

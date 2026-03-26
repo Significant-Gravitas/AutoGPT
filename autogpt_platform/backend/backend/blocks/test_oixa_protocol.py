@@ -133,7 +133,7 @@ async def test_list_auctions_success():
         result = await collect(block.run(inp))
 
     assert result["count"] == 1
-    assert result["error"] == ""
+    assert result.get("error", "") == ""
     parsed = json.loads(result["auctions_json"])
     assert parsed[0]["id"] == "oixa_auction_001"
 
@@ -161,7 +161,7 @@ async def test_place_bid_accepted():
 
     assert result["accepted"] is True
     assert result["bid_id"] == "oixa_bid_xyz"
-    assert result["error"] == ""
+    assert result.get("error", "") == ""
 
 
 @pytest.mark.asyncio
@@ -190,7 +190,7 @@ async def test_create_auction_success():
 
     assert result["auction_id"] == "oixa_auction_new"
     assert result["status"] == "open"
-    assert result["error"] == ""
+    assert result.get("error", "") == ""
 
 
 # ── DeliverOutputBlock ────────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ async def test_deliver_output_verified():
 
     assert result["passed"] is True
     assert result["payment_usdc"] == 0.95
-    assert result["error"] == ""
+    assert result.get("error", "") == ""
 
 
 @pytest.mark.asyncio
