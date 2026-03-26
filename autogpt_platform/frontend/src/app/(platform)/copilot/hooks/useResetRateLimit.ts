@@ -16,10 +16,8 @@ export function useResetRateLimit(options?: {
       onSuccess: async () => {
         // Await the usage refetch so the UI shows updated limits before
         // closing the dialog or re-enabling the reset CTA.
+        // invalidateQueries already triggers a refetch for active queries.
         await queryClient.invalidateQueries({
-          queryKey: getGetV2GetCopilotUsageQueryKey(),
-        });
-        await queryClient.refetchQueries({
           queryKey: getGetV2GetCopilotUsageQueryKey(),
         });
         options?.onCreditChange?.();
