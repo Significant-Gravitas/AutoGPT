@@ -51,6 +51,8 @@ from backend.util.type import coerce_inputs_to_schema
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
+_SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
+
 # ============ Resource Helpers ============ #
 
 
@@ -943,7 +945,6 @@ async def add_graph_execution(
 
         # Validate simulation_context *before* creating any DB records so we
         # don't leave orphaned INCOMPLETE graph_execution rows on failure.
-        _SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
         safe_simulation_context = simulation_context if dry_run else None
         if safe_simulation_context is not None:
             import json as _json

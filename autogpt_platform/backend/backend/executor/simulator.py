@@ -87,8 +87,10 @@ def _truncate_input_values(input_data: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 # Keys whose values should be masked regardless of nesting depth.
+# Use word-boundary anchors to avoid false positives on keys like
+# "author", "authority", "token_count", etc.
 _SECRET_KEY_PATTERN = re.compile(
-    r"(api_?key|token|password|secret|access_?token|private_?key|auth|credential)",
+    r"\b(api_?key|password|secret|access_?token|private_?key|auth_token|oauth_token|credential)\b",
     re.IGNORECASE,
 )
 
