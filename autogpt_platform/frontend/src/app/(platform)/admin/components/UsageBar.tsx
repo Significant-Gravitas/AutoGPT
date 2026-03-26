@@ -10,7 +10,7 @@ export function UsageBar({ used, limit }: { used: number; limit: number }) {
   if (limit === 0) {
     return <span className="text-sm text-gray-500">Unlimited</span>;
   }
-  const pct = Math.min((used / limit) * 100, 100);
+  const pct = Math.min(Math.max(0, (used / limit) * 100), 100);
   const color =
     pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-yellow-500" : "bg-green-500";
 
