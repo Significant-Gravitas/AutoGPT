@@ -83,9 +83,6 @@ class SardisPayBlock(Block):
         amount: str = SchemaField(
             description="Payment amount (decimal string)", default="0"
         )
-        error: str = SchemaField(
-            description="Error message if the operation failed", default=""
-        )
 
     def __init__(self):
         super().__init__(
