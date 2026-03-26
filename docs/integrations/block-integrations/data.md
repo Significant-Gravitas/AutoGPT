@@ -258,11 +258,11 @@ Supported database types: PostgreSQL, MySQL, and MSSQL. The connection URL must 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
+| database_type | Database engine | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
+| host | Database hostname or IP address | str (password) | Yes |
+| port | Database port (PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
+| database | Name of the database to connect to | str | Yes |
 | query | SQL query to execute | str | Yes |
-| database_type | Type of database to connect to | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
-| host | Database host (e.g., db.example.com) | str (password) | Yes |
-| port | Database port. Leave at 0 to use the default for the selected database type (5432 for PostgreSQL, 3306 for MySQL, 1433 for MSSQL) | int | No |
-| database | Database name | str | Yes |
 | read_only | When enabled (default), only SELECT queries are allowed and the database session is set to read-only mode. Disable to allow write operations (INSERT, UPDATE, DELETE, etc.). | bool | No |
 | timeout | Query timeout in seconds (max 120) | int | No |
 | max_rows | Maximum number of rows to return (max 10000) | int | No |
