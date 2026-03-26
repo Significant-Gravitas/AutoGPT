@@ -928,6 +928,14 @@ async def add_graph_execution(
             execution_context.parent_execution_id if execution_context else None
         )
 
+        # When execution_context is provided (e.g. from AgentExecutorBlock),
+        # inherit dry_run and simulation_context so child-graph validation
+        # skips credential checks and simulated blocks get the same hints.
+        if execution_context and execution_context.dry_run:
+            dry_run = True
+            if simulation_context is None and execution_context.simulation_context:
+                simulation_context = execution_context.simulation_context
+
         # Validate simulation_context *before* creating any DB records so we
         # don't leave orphaned INCOMPLETE graph_execution rows on failure.
         _SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
