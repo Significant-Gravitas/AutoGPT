@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -13,6 +13,7 @@ import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import {
   buildRenderSegments,
@@ -139,6 +140,23 @@ export function ChatMessagesContainer({
   const showThinking =
     status === "submitted" || (status === "streaming" && !hasInflight);
 
+  const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
+  // Reset when a new streaming turn begins.
+  const frozenElapsedRef = useRef(0);
+  const wasStreamingRef = useRef(false);
+  if (isActivelyStreaming) {
+    if (!wasStreamingRef.current) {
+      frozenElapsedRef.current = 0;
+    }
+    if (elapsedSeconds > 0) {
+      frozenElapsedRef.current = elapsedSeconds;
+    }
+  }
+  wasStreamingRef.current = isActivelyStreaming;
+
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
@@ -239,10 +257,18 @@ export function ChatMessagesContainer({
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}
+                    elapsedSeconds={
+                      messageIndex === messages.length - 1
+                        ? frozenElapsedRef.current
+                        : undefined
+                    }
                   />
                 )}
                 {isLastAssistant && showThinking && (
-                  <ThinkingIndicator active={showThinking} />
+                  <ThinkingIndicator
+                    active={showThinking}
+                    elapsedSeconds={elapsedSeconds}
+                  />
                 )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
@@ -268,7 +294,10 @@ export function ChatMessagesContainer({
         {showThinking && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
-              <ThinkingIndicator active={showThinking} />
+              <ThinkingIndicator
+                active={showThinking}
+                elapsedSeconds={elapsedSeconds}
+              />
             </MessageContent>
           </Message>
         )}
