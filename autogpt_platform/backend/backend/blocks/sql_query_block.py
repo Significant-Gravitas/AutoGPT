@@ -89,11 +89,60 @@ _DISALLOWED_KEYWORDS = {
 }
 
 
-def _sanitize_error(error_msg: str, connection_string: str) -> str:
-    """Remove connection string and credentials from error messages."""
+def _sanitize_error(
+    error_msg: str,
+    connection_string: str,
+    *,
+    host: str = "",
+    original_host: str = "",
+    username: str = "",
+    port: int = 0,
+) -> str:
+    """Remove connection string, credentials, and infrastructure details
+    from error messages so they are safe to expose to the LLM.
+
+    Scrubs:
+    - The full connection string
+    - URL-embedded credentials (``://user:pass@``)
+    - ``password=<value>`` key-value pairs
+    - The database hostname / IP used for the connection
+    - The original (pre-resolution) hostname provided by the user
+    - Any IPv4 addresses that appear in the message
+    - The database username
+    - The database port number
+    """
     sanitized = error_msg.replace(connection_string, "<connection_string>")
     sanitized = re.sub(r"password=[^\s&]+", "password=***", sanitized)
     sanitized = re.sub(r"://[^@]+@", "://***:***@", sanitized)
+
+    # Replace the known host (may be an IP already) before the generic IP pass.
+    # Also replace the original (pre-DNS-resolution) hostname if it differs.
+    if original_host and original_host != host:
+        sanitized = sanitized.replace(original_host, "<host>")
+    if host:
+        sanitized = sanitized.replace(host, "<host>")
+
+    # Replace any remaining IPv4 addresses (e.g. resolved IPs the driver logs)
+    sanitized = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", "<ip>", sanitized)
+
+    # Replace the database username
+    if username:
+        sanitized = re.sub(
+            r'for user "?' + re.escape(username) + r'"?',
+            "for user <user>",
+            sanitized,
+        )
+        # Catch remaining bare occurrences (e.g. "FATAL:  role "myuser" does not exist")
+        sanitized = sanitized.replace(f'"{username}"', "<user>")
+
+    # Replace the port number (only when it looks like a port reference)
+    if port:
+        sanitized = re.sub(
+            r"port " + re.escape(str(port)),
+            "port <port>",
+            sanitized,
+        )
+
     return sanitized
 
 
@@ -238,9 +287,8 @@ class SQLQueryBlock(Block):
             default=DatabaseType.POSTGRES,
             description="Type of database to connect to",
         )
-        host: str = SchemaField(
-            description="Database host",
-            placeholder="db.supabase.co",
+        host: SecretStr = SchemaField(
+            description="Database host (e.g., db.example.com)",
         )
         port: int = SchemaField(
             default=0,
@@ -302,7 +350,7 @@ class SQLQueryBlock(Block):
             test_input={
                 "query": "SELECT 1 AS test_col",
                 "database_type": DatabaseType.POSTGRES,
-                "host": "localhost",
+                "host": SecretStr("localhost"),
                 "port": 5432,
                 "database": "test_db",
                 "timeout": 30,
@@ -434,7 +482,7 @@ class SQLQueryBlock(Block):
             yield "error", "SQLite is not supported for remote execution."
             return
 
-        host = input_data.host.strip()
+        host = input_data.host.get_secret_value().strip()
         if not host:
             yield "error", "Database host is required."
             return
@@ -491,7 +539,14 @@ class SQLQueryBlock(Block):
             if affected >= 0:
                 yield "affected_rows", affected
         except OperationalError as e:
-            error_msg = _sanitize_error(str(e).strip(), connection_string)
+            error_msg = _sanitize_error(
+                str(e).strip(),
+                connection_string,
+                host=pinned_host,
+                original_host=host,
+                username=username,
+                port=port,
+            )
             if "timeout" in error_msg.lower() or "cancel" in error_msg.lower():
                 yield "error", f"Query timed out after {input_data.timeout}s."
             elif "connect" in error_msg.lower():
@@ -499,8 +554,22 @@ class SQLQueryBlock(Block):
             else:
                 yield "error", f"Database error: {error_msg}"
         except ProgrammingError as e:
-            msg = _sanitize_error(str(e).strip(), connection_string)
+            msg = _sanitize_error(
+                str(e).strip(),
+                connection_string,
+                host=pinned_host,
+                original_host=host,
+                username=username,
+                port=port,
+            )
             yield "error", f"SQL error: {msg}"
         except DBAPIError as e:
-            msg = _sanitize_error(str(e).strip(), connection_string)
+            msg = _sanitize_error(
+                str(e).strip(),
+                connection_string,
+                host=pinned_host,
+                original_host=host,
+                username=username,
+                port=port,
+            )
             yield "error", f"Database error: {msg}"
