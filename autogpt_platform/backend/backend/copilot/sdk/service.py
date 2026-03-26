@@ -2151,6 +2151,16 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(session.messages),
             )
+    except GeneratorExit:
+        # GeneratorExit is raised when the async generator is closed by the
+        # caller (e.g. client disconnect, page refresh).  We MUST release the
+        # stream lock here because the ``finally`` block at the end of this
+        # function may not execute when GeneratorExit propagates through nested
+        # async generators.  Without this, the lock stays held for its full TTL
+        # and the user sees "Another stream is already active" on every retry.
+        logger.warning("%s GeneratorExit — releasing stream lock", log_prefix)
+        await lock.release()
+        raise
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)

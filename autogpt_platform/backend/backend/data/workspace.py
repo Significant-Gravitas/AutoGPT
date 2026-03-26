@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pydantic
+from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
@@ -75,22 +76,23 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
-    Uses upsert to handle race conditions when multiple concurrent requests
-    attempt to create a workspace for the same user.
-
     Args:
         user_id: The user's ID
 
     Returns:
         Workspace instance
     """
-    workspace = await UserWorkspace.prisma().upsert(
-        where={"userId": user_id},
-        data={
-            "create": {"userId": user_id},
-            "update": {},  # No updates needed if exists
-        },
-    )
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+    if workspace:
+        return Workspace.from_db(workspace)
+
+    try:
+        workspace = await UserWorkspace.prisma().create(data={"userId": user_id})
+    except UniqueViolationError:
+        # Concurrent request already created it
+        workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+        if workspace is None:
+            raise
 
     return Workspace.from_db(workspace)
 

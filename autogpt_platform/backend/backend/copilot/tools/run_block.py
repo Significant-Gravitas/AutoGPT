@@ -1,8 +1,10 @@
 """Tool for executing blocks directly."""
 
 import logging
+import uuid
 from typing import Any
 
+from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 
@@ -47,6 +49,14 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, simulates block execution using an LLM without making any "
+                        "real API calls or producing side effects. Useful for testing agent "
+                        "wiring and previewing outputs. Default: false."
+                    ),
+                },
             },
             "required": ["block_id", "input_data"],
         }
@@ -76,6 +86,7 @@ class RunBlockTool(BaseTool):
         """
         block_id = kwargs.get("block_id", "").strip()
         input_data = kwargs.get("input_data", {})
+        dry_run = bool(kwargs.get("dry_run", False))
         session_id = session.session_id
 
         if not block_id:
@@ -104,6 +115,7 @@ class RunBlockTool(BaseTool):
             user_id=user_id,
             session=session,
             session_id=session_id,
+            dry_run=dry_run,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
@@ -128,6 +140,27 @@ class RunBlockTool(BaseTool):
                     "Use find_block to discover blocks that are allowed."
                 ),
                 session_id=session_id,
+            )
+
+        # Dry-run fast-path: skip credential/HITL checks — simulation never calls
+        # the real service so credentials and review gates are not needed.
+        # Input field validation (unrecognized fields) is already handled by
+        # prepare_block_for_execution above.
+        if dry_run:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            return await execute_block(
+                block=prep.block,
+                block_id=block_id,
+                input_data=prep.input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=synthetic_node_exec_id,
+                matched_credentials=prep.matched_credentials,
+                dry_run=True,
             )
 
         # Show block details when required inputs are not yet provided.
@@ -177,4 +210,5 @@ class RunBlockTool(BaseTool):
             session_id=session_id,
             node_exec_id=synthetic_node_exec_id,
             matched_credentials=prep.matched_credentials,
+            dry_run=dry_run,
         )

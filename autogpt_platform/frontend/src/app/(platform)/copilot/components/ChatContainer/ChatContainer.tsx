@@ -17,6 +17,8 @@ export interface ChatContainerProps {
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
+  /** True while re-syncing session state after device wake. */
+  isSyncing?: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
@@ -35,6 +37,7 @@ export const ChatContainer = ({
   isSessionError,
   isCreatingSession,
   isReconnecting,
+  isSyncing,
   onCreateSession,
   onSend,
   onStop,
@@ -46,6 +49,7 @@ export const ChatContainer = ({
     status === "streaming" ||
     status === "submitted" ||
     !!isReconnecting ||
+    !!isSyncing ||
     isLoadingSession ||
     !!isSessionError;
   const inputLayoutId = "copilot-2-chat-input";
