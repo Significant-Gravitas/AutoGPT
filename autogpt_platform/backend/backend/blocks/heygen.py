@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import SecretStr
 
@@ -153,7 +153,7 @@ class HeyGenCreateVideoBlock(Block):
         credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
-        payload = {
+        payload: dict[str, Any] = {
             "video_inputs": [
                 {
                     "character": {
