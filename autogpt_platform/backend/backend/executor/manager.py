@@ -297,6 +297,18 @@ async def execute_node(
             if default_value is not None and not input_data.get(field_name):
                 input_data[field_name] = default_value
 
+        # Cap agent-mode iterations in dry-run to avoid unbounded loops of real
+        # LLM calls when tool outputs are simulated and may never satisfy the
+        # orchestrator's "finished" condition.
+        _DRY_RUN_MAX_ITERATIONS = 5
+        if isinstance(node_block, OrchestratorBlock):
+            current = input_data.get("agent_mode_max_iterations", 0)
+            if current < 0 or current > _DRY_RUN_MAX_ITERATIONS:
+                log_metadata.info(
+                    f"Dry-run: capping agent_mode_max_iterations from {current} to {_DRY_RUN_MAX_ITERATIONS}"
+                )
+                input_data["agent_mode_max_iterations"] = _DRY_RUN_MAX_ITERATIONS
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
