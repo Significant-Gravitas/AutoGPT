@@ -21,6 +21,31 @@ class DiscordChannel(str, Enum):
     PRODUCT = "product"  # For product alerts (low balance, zero balance, etc.)
 
 
+_USER_AUTH_KEYWORDS = [
+    "incorrect api key",
+    "invalid x-api-key",
+    "invalid api key",
+    "missing authentication header",
+    "invalid api token",
+    "authentication_error",
+    "bad credentials",
+    "unauthorized",
+    "insufficient authentication scopes",
+    "http 401 error",
+    "http 403 error",
+]
+
+_AMQP_KEYWORDS = [
+    "amqpconnection",
+    "amqpconnector",
+    "connection_forced",
+    "channelinvalidstateerror",
+    "no active transport",
+]
+
+_AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
+
+
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
     if "exc_info" in hint:
@@ -28,36 +53,21 @@ def _before_send(event, hint):
         exc_msg = str(exc_value).lower() if exc_value else ""
 
         # AMQP/RabbitMQ transient connection errors — expected during deploys
-        amqp_keywords = [
-            "amqpconnection",
-            "amqpconnector",
-            "connection_forced",
-            "channelinvalidstateerror",
-            "no active transport",
-        ]
-        if any(kw in exc_msg for kw in amqp_keywords):
+        if any(kw in exc_msg for kw in _AMQP_KEYWORDS):
             return None
 
         # "connection refused" only for AMQP-related exceptions (not other services)
         if "connection refused" in exc_msg:
             exc_module = getattr(exc_type, "__module__", "") or ""
             exc_name = getattr(exc_type, "__name__", "") or ""
-            amqp_indicators = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
             if any(
                 ind in exc_module.lower() or ind in exc_name.lower()
-                for ind in amqp_indicators
-            ) or any(kw in exc_msg for kw in ["amqp", "pika", "rabbitmq"]):
+                for ind in _AMQP_INDICATORS
+            ) or any(kw in exc_msg for kw in _AMQP_INDICATORS):
                 return None
 
-        # User-caused credential/auth errors — not platform bugs
-        user_auth_keywords = [
-            "incorrect api key",
-            "invalid x-api-key",
-            "missing authentication header",
-            "invalid api token",
-            "authentication_error",
-        ]
-        if any(kw in exc_msg for kw in user_auth_keywords):
+        # User-caused credential/auth/integration errors — not platform bugs
+        if any(kw in exc_msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
         # Expected business logic — insufficient balance
@@ -93,18 +103,18 @@ def _before_send(event, hint):
     )
     if event.get("logger") and log_msg:
         msg = log_msg.lower()
-        noisy_patterns = [
+        noisy_log_patterns = [
             "amqpconnection",
             "connection_forced",
             "unclosed client session",
             "unclosed connector",
         ]
-        if any(p in msg for p in noisy_patterns):
+        if any(p in msg for p in noisy_log_patterns):
             return None
-        # "connection refused" in logs only when AMQP-related context is present
-        if "connection refused" in msg and any(
-            ind in msg for ind in ("amqp", "pika", "rabbitmq", "aio_pika", "aiormq")
-        ):
+        if "connection refused" in msg and any(ind in msg for ind in _AMQP_INDICATORS):
+            return None
+        # Same auth keywords — errors logged via logger.error() bypass exc_info
+        if any(kw in msg for kw in _USER_AUTH_KEYWORDS):
             return None
 
     return event

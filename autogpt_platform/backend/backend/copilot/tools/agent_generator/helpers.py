@@ -4,6 +4,8 @@ import re
 import uuid
 from typing import Any
 
+from backend.data.dynamic_fields import DICT_SPLIT
+
 from .blocks import get_blocks_as_dicts
 
 __all__ = [
@@ -51,8 +53,8 @@ def generate_uuid() -> str:
 
 def get_defined_property_type(schema: dict[str, Any], name: str) -> str | None:
     """Get property type from a schema, handling nested `_#_` notation."""
-    if "_#_" in name:
-        parent, child = name.split("_#_", 1)
+    if DICT_SPLIT in name:
+        parent, child = name.split(DICT_SPLIT, 1)
         parent_schema = schema.get(parent, {})
         if "properties" in parent_schema and isinstance(
             parent_schema["properties"], dict
