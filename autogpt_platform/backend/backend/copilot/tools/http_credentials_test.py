@@ -10,7 +10,6 @@ These tests verify that:
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from pydantic import SecretStr
 
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
@@ -179,7 +178,6 @@ class TestFindMatchingHostScopedCredential:
 class TestResolveBlockCredentials:
     """Integration tests for resolve_block_credentials with HTTP blocks."""
 
-    @pytest.mark.asyncio
     async def test_matches_host_scoped_credential_for_url(self):
         """resolve_block_credentials should match a host-scoped cred for the given URL."""
         block = SendAuthenticatedWebRequestBlock()
@@ -206,7 +204,6 @@ class TestResolveBlockCredentials:
         assert matched["credentials"].id == "matching-cred-id"
         assert len(missing) == 0
 
-    @pytest.mark.asyncio
     async def test_reports_missing_when_no_matching_host(self):
         """resolve_block_credentials should report missing creds when host doesn't match."""
         block = SendAuthenticatedWebRequestBlock()
@@ -232,7 +229,6 @@ class TestResolveBlockCredentials:
         assert len(matched) == 0
         assert len(missing) == 1
 
-    @pytest.mark.asyncio
     async def test_reports_missing_when_no_credentials(self):
         """resolve_block_credentials should report missing when user has no creds at all."""
         block = SendAuthenticatedWebRequestBlock()
@@ -259,7 +255,6 @@ class TestResolveBlockCredentials:
 class TestRunBlockToolAuthenticatedHttp:
     """End-to-end tests for RunBlockTool with SendAuthenticatedWebRequestBlock."""
 
-    @pytest.mark.asyncio(loop_scope="session")
     async def test_returns_setup_requirements_when_creds_missing(self):
         """When no matching host-scoped credential exists, return SetupRequirementsResponse."""
         session = make_session(user_id=_TEST_USER_ID)
@@ -285,9 +280,15 @@ class TestRunBlockToolAuthenticatedHttp:
         assert isinstance(response, SetupRequirementsResponse)
         assert "credentials" in response.message.lower()
 
-    @pytest.mark.asyncio(loop_scope="session")
     async def test_returns_details_when_creds_matched_but_missing_required_inputs(self):
-        """When credentials are matched but required inputs missing, return BlockDetailsResponse."""
+        """When creds present + required inputs missing -> BlockDetailsResponse.
+
+        Note: with input_data={}, no URL is provided so discriminator_values is
+        empty, meaning _credential_is_for_host() matches any host-scoped
+        credential vacuously. This test exercises the "creds present + inputs
+        missing" branch, not host-based matching (which is covered by
+        TestFindMatchingHostScopedCredential and TestResolveBlockCredentials).
+        """
         session = make_session(user_id=_TEST_USER_ID)
         block = SendAuthenticatedWebRequestBlock()
 
