@@ -854,6 +854,73 @@ async def get_ayrshare_sso_url(
     return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
 
 
+class AgentMailConnectResponse(BaseModel):
+    pod_id: str
+
+
+@router.post("/agentmail/connect")
+async def connect_agentmail(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> AgentMailConnectResponse:
+    """Provision an AgentMail pod for the current user.
+
+    Creates a pod via the org-level API key, generates a pod-scoped API key,
+    and stores both in ``ManagedCredentials``.  The pod key then appears
+    automatically in the credential dropdown for AgentMail blocks.
+
+    Idempotent: if a pod already exists for this user, returns its ID without
+    creating a duplicate.
+    """
+    org_api_key = settings.secrets.agentmail_api_key
+    if not org_api_key:
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="AgentMail integration is not configured",
+        )
+
+    from agentmail import AsyncAgentMail
+
+    user_integrations: UserIntegrations = await get_user_integrations(user_id)
+    existing_pod_id = user_integrations.managed_credentials.agentmail_pod_id
+    existing_key = user_integrations.managed_credentials.agentmail_pod_api_key
+
+    # Already fully provisioned — return early
+    if existing_pod_id and existing_key:
+        return AgentMailConnectResponse(pod_id=existing_pod_id)
+
+    client = AsyncAgentMail(api_key=org_api_key)
+
+    if existing_pod_id:
+        pod_id = existing_pod_id
+    else:
+        try:
+            pod = await client.pods.create(client_id=user_id)
+            pod_id = pod.pod_id
+        except Exception as e:
+            logger.error(f"Failed to create AgentMail pod for user {user_id}: {e}")
+            raise HTTPException(
+                status_code=HTTP_502_BAD_GATEWAY,
+                detail="Failed to create AgentMail pod",
+            )
+
+    try:
+        api_key = await client.pods.api_keys.create(
+            pod_id=pod_id, name="autogpt-managed"
+        )
+    except Exception as e:
+        logger.error(f"Failed to create AgentMail API key for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to create AgentMail API key",
+        )
+
+    await creds_manager.store.set_agentmail_pod_credentials(
+        user_id, pod_id, api_key.api_key
+    )
+    logger.info(f"Provisioned AgentMail pod {pod_id} for user {user_id}")
+    return AgentMailConnectResponse(pod_id=pod_id)
+
+
 # === PROVIDER DISCOVERY ENDPOINTS ===
 @router.get("/providers", response_model=List[str])
 async def list_providers() -> List[str]:

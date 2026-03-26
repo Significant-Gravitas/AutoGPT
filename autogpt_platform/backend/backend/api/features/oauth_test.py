@@ -12,6 +12,7 @@ Tests cover:
 5. Complete OAuth flow end-to-end
 """
 
+import asyncio
 import base64
 import hashlib
 import secrets
@@ -62,19 +63,21 @@ async def test_user(server, test_user_id: str):
     # Wrap in try/except because the event loop or Prisma engine may already
     # be closed during session teardown on Python 3.12+.
     try:
-        await PrismaOAuthAccessToken.prisma().delete_many(
-            where={"userId": test_user_id}
+        await asyncio.gather(
+            PrismaOAuthAccessToken.prisma().delete_many(where={"userId": test_user_id}),
+            PrismaOAuthRefreshToken.prisma().delete_many(
+                where={"userId": test_user_id}
+            ),
+            PrismaOAuthAuthorizationCode.prisma().delete_many(
+                where={"userId": test_user_id}
+            ),
         )
-        await PrismaOAuthRefreshToken.prisma().delete_many(
-            where={"userId": test_user_id}
+        await asyncio.gather(
+            PrismaOAuthApplication.prisma().delete_many(
+                where={"ownerId": test_user_id}
+            ),
+            PrismaUser.prisma().delete(where={"id": test_user_id}),
         )
-        await PrismaOAuthAuthorizationCode.prisma().delete_many(
-            where={"userId": test_user_id}
-        )
-        await PrismaOAuthApplication.prisma().delete_many(
-            where={"ownerId": test_user_id}
-        )
-        await PrismaUser.prisma().delete(where={"id": test_user_id})
     except RuntimeError:
         pass
 
