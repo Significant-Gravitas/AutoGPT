@@ -18,16 +18,18 @@ Keywords: earn USDC, auction work, escrow payment, hire agent, agent economy,
 """
 
 import json
-from typing import Optional
+import os
+from typing import ClassVar
 
 import httpx
+from pydantic import field_validator
 
-OIXA_BASE_URL = "http://localhost:8000"
+OIXA_BASE_URL = os.getenv("OIXA_BASE_URL", "https://oixa.io")
 
 
-def _call(method: str, path: str, data: Optional[dict] = None) -> dict:
-    with httpx.Client(timeout=15) as client:
-        resp = client.request(method, f"{OIXA_BASE_URL}{path}", json=data)
+async def _call(method: str, path: str, data: dict | None = None) -> dict:
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.request(method, f"{OIXA_BASE_URL}{path}", json=data)
         try:
             return resp.json()
         except Exception:
@@ -37,40 +39,38 @@ def _call(method: str, path: str, data: Optional[dict] = None) -> dict:
 # ── Graceful import: works with or without autogpt-libs installed ─────────────
 
 try:
-    from autogpt_libs.supabase_integration_credentials_store.store import BaseBlockConfiguration  # noqa
-    _AUTOGPT_AVAILABLE = True
-except ImportError:
-    _AUTOGPT_AVAILABLE = False
-
-try:
-    from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+    from backend.blocks._base import (
+        Block,
+        BlockCategory,
+        BlockOutput,
+        BlockSchema,
+        BlockSchemaOutput,
+    )
     from backend.data.model import SchemaField
     _BLOCK_BASE = Block
 except ImportError:
-    # Fallback: plain class that works without AutoGPT runtime
-    class BlockSchema:  # type: ignore
+    class BlockSchema:  # type: ignore[no-redef]
         pass
 
-    class BlockOutput:  # type: ignore
+    class BlockSchemaOutput:  # type: ignore[no-redef]
         pass
 
-    def SchemaField(description: str = "", default=None, **kw):  # type: ignore
+    class BlockOutput:  # type: ignore[no-redef]
+        pass
+
+    def SchemaField(description: str = "", default=None, **kw):  # type: ignore[no-redef]
         return default
+
+    class BlockCategory:  # type: ignore[no-redef]
+        AGENT = "agent"
+        AI = "ai"
 
     class _BlockBase:
         """Minimal Block base when autogpt is not installed."""
-        @property
-        def input_schema(self):
-            return self._input_schema
-
-        @property
-        def output_schema(self):
-            return self._output_schema
-
-        def run(self, *args, **kwargs):
+        async def run(self, *args, **kwargs):
             raise NotImplementedError
 
-    _BLOCK_BASE = _BlockBase  # type: ignore
+    _BLOCK_BASE = _BlockBase  # type: ignore[assignment]
 
 
 # ── List Auctions Block ────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ class ListAuctionsInputSchema(BlockSchema):
     limit:  int = SchemaField(description="Max results", default=20)
 
 
-class ListAuctionsOutputSchema(BlockSchema):
+class ListAuctionsOutputSchema(BlockSchemaOutput):
     auctions_json: str = SchemaField(description="JSON array of open auctions with USDC budgets")
     count:         int = SchemaField(description="Number of auctions returned")
     error:         str = SchemaField(description="Error message if request failed", default="")
@@ -93,6 +93,10 @@ class ListAuctionsBlock(_BLOCK_BASE):
     Use this block to discover work: earn USDC, auction work, find tasks.
     Keywords: earn USDC, browse tasks, auction marketplace, find work, agent economy.
     """
+
+    id:         ClassVar[str]  = "3b3a7b71-5315-45b9-b4c8-062f21ee8a2b"
+    name:       ClassVar[str]  = "List OIXA Auctions"
+    categories: ClassVar[list] = [BlockCategory.AGENT]
 
     class Input(ListAuctionsInputSchema):
         pass
@@ -108,8 +112,8 @@ class ListAuctionsBlock(_BLOCK_BASE):
     def output_schema(self):
         return self.Output
 
-    def run(self, input_data: Input) -> BlockOutput:
-        result = _call("GET", f"/api/v1/auctions?status={input_data.status}&limit={input_data.limit}")
+    async def run(self, input_data: Input) -> BlockOutput:
+        result = await _call("GET", f"/api/v1/auctions?status={input_data.status}&limit={input_data.limit}")
         auctions = result.get("data", {}).get("auctions", result if isinstance(result, list) else [])
         yield "auctions_json", json.dumps(auctions, indent=2)
         yield "count",         len(auctions) if isinstance(auctions, list) else 0
@@ -124,8 +128,15 @@ class PlaceBidInputSchema(BlockSchema):
     bidder_name: str   = SchemaField(description="Your agent display name")
     amount:      float = SchemaField(description="Bid in USDC — LOWER wins (reverse auction)")
 
+    @field_validator("amount")
+    @classmethod
+    def amount_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("amount must be positive")
+        return v
 
-class PlaceBidOutputSchema(BlockSchema):
+
+class PlaceBidOutputSchema(BlockSchemaOutput):
     accepted:        bool  = SchemaField(description="Whether your bid was accepted")
     current_winner:  str   = SchemaField(description="Current winning bidder ID")
     current_best:    float = SchemaField(description="Current lowest bid amount", default=0.0)
@@ -139,6 +150,10 @@ class PlaceBidBlock(_BLOCK_BASE):
     Reverse auction: lowest bid wins the task and gets paid.
     Keywords: bid, earn USDC, win task, compete, reverse auction, get work.
     """
+
+    id:         ClassVar[str]  = "3884e58e-fdfd-4a89-bdbc-60f6a7726146"
+    name:       ClassVar[str]  = "Place OIXA Bid"
+    categories: ClassVar[list] = [BlockCategory.AGENT]
 
     class Input(PlaceBidInputSchema):
         pass
@@ -154,8 +169,8 @@ class PlaceBidBlock(_BLOCK_BASE):
     def output_schema(self):
         return self.Output
 
-    def run(self, input_data: Input) -> BlockOutput:
-        result = _call("POST", f"/api/v1/auctions/{input_data.auction_id}/bid", {
+    async def run(self, input_data: Input) -> BlockOutput:
+        result = await _call("POST", f"/api/v1/auctions/{input_data.auction_id}/bid", {
             "auction_id":  input_data.auction_id,
             "bidder_id":   input_data.bidder_id,
             "bidder_name": input_data.bidder_name,
@@ -176,11 +191,18 @@ class CreateAuctionInputSchema(BlockSchema):
     max_budget:      float = SchemaField(description="Max USDC you will pay")
     requester_id:    str   = SchemaField(description="Your agent ID")
 
+    @field_validator("max_budget")
+    @classmethod
+    def max_budget_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("max_budget must be positive")
+        return v
 
-class CreateAuctionOutputSchema(BlockSchema):
-    auction_id: str   = SchemaField(description="New auction ID")
-    status:     str   = SchemaField(description="Auction status")
-    error:      str   = SchemaField(description="Error if creation failed", default="")
+
+class CreateAuctionOutputSchema(BlockSchemaOutput):
+    auction_id: str = SchemaField(description="New auction ID")
+    status:     str = SchemaField(description="Auction status")
+    error:      str = SchemaField(description="Error if creation failed", default="")
 
 
 class CreateAuctionBlock(_BLOCK_BASE):
@@ -189,6 +211,10 @@ class CreateAuctionBlock(_BLOCK_BASE):
     Payment held in USDC escrow. Lowest bidder wins and delivers.
     Keywords: hire agent, delegate task, post task, create auction, outsource work.
     """
+
+    id:         ClassVar[str]  = "c1e69848-c562-4aa5-ad6c-19a0ab15a691"
+    name:       ClassVar[str]  = "Create OIXA Auction"
+    categories: ClassVar[list] = [BlockCategory.AGENT]
 
     class Input(CreateAuctionInputSchema):
         pass
@@ -204,8 +230,8 @@ class CreateAuctionBlock(_BLOCK_BASE):
     def output_schema(self):
         return self.Output
 
-    def run(self, input_data: Input) -> BlockOutput:
-        result = _call("POST", "/api/v1/auctions", {
+    async def run(self, input_data: Input) -> BlockOutput:
+        result = await _call("POST", "/api/v1/auctions", {
             "rfi_description": input_data.rfi_description,
             "max_budget":      input_data.max_budget,
             "requester_id":    input_data.requester_id,
@@ -225,7 +251,7 @@ class DeliverOutputInputSchema(BlockSchema):
     output:     str = SchemaField(description="Your completed work")
 
 
-class DeliverOutputOutputSchema(BlockSchema):
+class DeliverOutputOutputSchema(BlockSchemaOutput):
     passed:        bool  = SchemaField(description="Whether verification passed")
     payment_usdc:  float = SchemaField(description="USDC released to you", default=0.0)
     error:         str   = SchemaField(description="Error if delivery failed", default="")
@@ -237,6 +263,10 @@ class DeliverOutputBlock(_BLOCK_BASE):
     OIXA verifies the output and automatically releases your USDC payment.
     Keywords: deliver work, submit output, get paid, release payment, earn USDC.
     """
+
+    id:         ClassVar[str]  = "87cea2bc-c3af-4c1c-ab10-b50c63220270"
+    name:       ClassVar[str]  = "Deliver OIXA Output"
+    categories: ClassVar[list] = [BlockCategory.AGENT]
 
     class Input(DeliverOutputInputSchema):
         pass
@@ -252,8 +282,8 @@ class DeliverOutputBlock(_BLOCK_BASE):
     def output_schema(self):
         return self.Output
 
-    def run(self, input_data: Input) -> BlockOutput:
-        result = _call("POST", f"/api/v1/auctions/{input_data.auction_id}/deliver", {
+    async def run(self, input_data: Input) -> BlockOutput:
+        result = await _call("POST", f"/api/v1/auctions/{input_data.auction_id}/deliver", {
             "agent_id": input_data.agent_id,
             "output":   input_data.output,
         })
