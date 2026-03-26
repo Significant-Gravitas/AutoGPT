@@ -164,9 +164,13 @@ class TestGetCredentialReturnsMetaOnly:
     def test_list_credentials_no_secrets(self):
         """List endpoint must not leak secrets in any credential."""
         creds = [_make_api_key_cred(), _make_oauth2_cred()]
-        with patch(
-            "backend.api.features.integrations.router.creds_manager"
-        ) as mock_mgr:
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+            patch(
+                "backend.api.features.integrations.router._ensure_managed_credentials",
+                new_callable=AsyncMock,
+            ),
+        ):
             mock_mgr.store.get_all_creds = AsyncMock(return_value=creds)
             resp = client.get("/credentials")
 
@@ -193,9 +197,13 @@ class TestSdkDefaultCredentialsNotAccessible:
     def test_list_credentials_excludes_sdk_defaults(self):
         user_cred = _make_api_key_cred()
         sdk_cred = _make_sdk_default_cred("openai")
-        with patch(
-            "backend.api.features.integrations.router.creds_manager"
-        ) as mock_mgr:
+        with (
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+            patch(
+                "backend.api.features.integrations.router._ensure_managed_credentials",
+                new_callable=AsyncMock,
+            ),
+        ):
             mock_mgr.store.get_all_creds = AsyncMock(return_value=[user_cred, sdk_cred])
             resp = client.get("/credentials")
 
