@@ -35,6 +35,8 @@ from .service import _format_sdk_content_blocks
 from .transcript import (
     _find_last_assistant_entry,
     _flatten_assistant_content,
+    _messages_to_transcript,
+    _rechain_tail,
     _transcript_to_messages,
     compact_transcript,
     validate_transcript,
@@ -171,6 +173,102 @@ class TestFindLastAssistantEntry:
         prefix, tail = _find_last_assistant_entry(transcript)
         assert len(prefix) == 1  # first user
         assert len(tail) == 2  # last assistant + trailing user
+
+
+# ---------------------------------------------------------------------------
+# _rechain_tail — UUID chain patching
+# ---------------------------------------------------------------------------
+
+
+class TestRechainTail:
+    def test_patches_first_entry_parentuuid(self):
+        """First tail entry's parentUuid should point to last prefix uuid."""
+        prefix = _messages_to_transcript(
+            [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi"},
+            ]
+        )
+        # Get the last uuid from the prefix
+        last_prefix_uuid = None
+        for line in prefix.strip().split("\n"):
+            entry = json.loads(line)
+            last_prefix_uuid = entry.get("uuid")
+
+        tail_lines = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "tail-a1",
+                    "parentUuid": "old-parent",
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"type": "text", "text": "Tail msg"}],
+                    },
+                }
+            )
+        ]
+        result = _rechain_tail(prefix, tail_lines)
+        entry = json.loads(result.strip())
+        assert entry["parentUuid"] == last_prefix_uuid
+        assert entry["uuid"] == "tail-a1"  # uuid preserved
+
+    def test_chains_multiple_tail_entries(self):
+        """Subsequent tail entries chain to each other."""
+        prefix = _messages_to_transcript([{"role": "user", "content": "Hi"}])
+        tail_lines = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "t1",
+                    "parentUuid": "old1",
+                    "message": {"role": "assistant", "content": []},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "t2",
+                    "parentUuid": "old2",
+                    "message": {"role": "user", "content": "Follow-up"},
+                }
+            ),
+        ]
+        result = _rechain_tail(prefix, tail_lines)
+        entries = [json.loads(ln) for ln in result.strip().split("\n")]
+        assert len(entries) == 2
+        # Second entry's parentUuid should be first entry's uuid
+        assert entries[1]["parentUuid"] == "t1"
+
+    def test_empty_tail_returns_empty(self):
+        """No tail entries → empty string."""
+        prefix = _messages_to_transcript([{"role": "user", "content": "Hi"}])
+        assert _rechain_tail(prefix, []) == ""
+
+    def test_preserves_message_content_verbatim(self):
+        """Tail message content (including thinking blocks) must not be modified."""
+        prefix = _messages_to_transcript([{"role": "user", "content": "Hi"}])
+        original_content = [
+            THINKING_BLOCK,
+            REDACTED_THINKING_BLOCK,
+            {"type": "text", "text": "Response"},
+        ]
+        tail_lines = [
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "t1",
+                    "parentUuid": "old",
+                    "message": {
+                        "role": "assistant",
+                        "content": original_content,
+                    },
+                }
+            )
+        ]
+        result = _rechain_tail(prefix, tail_lines)
+        entry = json.loads(result.strip())
+        assert entry["message"]["content"] == original_content
 
 
 # ---------------------------------------------------------------------------
