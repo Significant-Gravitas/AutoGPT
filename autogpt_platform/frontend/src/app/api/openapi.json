@@ -12127,7 +12127,8 @@
             "type": "integer",
             "title": "Total Completion Tokens",
             "default": 0
-          }
+          },
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
         "type": "object",
         "required": ["id", "created_at", "updated_at", "user_id", "messages"],

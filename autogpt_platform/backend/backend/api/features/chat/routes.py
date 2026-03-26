@@ -145,6 +145,7 @@ class SessionDetailResponse(BaseModel):
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
+    dry_run: bool = False
 
 
 class SessionSummaryResponse(BaseModel):
@@ -434,6 +435,7 @@ async def get_session(
         active_stream=active_stream_info,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
+        dry_run=session.dry_run,
     )
 
 
