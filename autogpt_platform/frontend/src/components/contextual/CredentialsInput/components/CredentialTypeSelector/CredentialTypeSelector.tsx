@@ -98,7 +98,6 @@ export function CredentialTypeSelector({
             <TabsLineContent value="api_key">
               <APIKeyTabContent
                 schema={schema}
-                provider={provider}
                 siblingInputs={siblingInputs}
                 onCredentialsCreate={(creds) => {
                   onCredentialsCreate(creds);
@@ -164,14 +163,12 @@ function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
 
 type APIKeyTabContentProps = {
   schema: BlockIOCredentialsSubSchema;
-  provider: string;
   siblingInputs?: Record<string, unknown>;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
 };
 
 function APIKeyTabContent({
   schema,
-  provider,
   siblingInputs,
   onCredentialsCreate,
 }: APIKeyTabContentProps) {
@@ -184,16 +181,10 @@ function APIKeyTabContent({
     onSubmit,
   } = useAPIKeyCredentialsModal({ schema, siblingInputs, onCredentialsCreate });
 
-  // Use provider-specific labels for non-API-key secrets (e.g. database URLs)
-  const isDatabase = provider === "database";
-  const secretLabel = isDatabase ? "Connection URL" : "API Key";
-  const namePlaceholder = isDatabase
-    ? "Enter a name for this credential..."
-    : "Enter a name for this API Key...";
-  const secretPlaceholder = isDatabase
-    ? "Enter connection URL..."
-    : "Enter API Key...";
-  const submitLabel = isDatabase ? "Add Credential" : "Add API Key";
+  const secretLabel = "API Key";
+  const namePlaceholder = "Enter a name for this API Key...";
+  const secretPlaceholder = "Enter API Key...";
+  const submitLabel = "Add API Key";
 
   if (!supportsApiKey && !isLoading) {
     return null;

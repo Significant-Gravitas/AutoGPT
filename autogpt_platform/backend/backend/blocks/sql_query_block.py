@@ -7,7 +7,7 @@ from typing import Any, Literal
 import sqlparse
 from pydantic import SecretStr
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine.url import make_url
+from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
 from backend.blocks._base import (
@@ -18,18 +18,19 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.data.model import (
-    APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
     SchemaField,
+    UserPasswordCredentials,
 )
 from backend.integrations.providers import ProviderName
 from backend.util.request import resolve_and_check_blocked
 
-TEST_CREDENTIALS = APIKeyCredentials(
+TEST_CREDENTIALS = UserPasswordCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="database",
-    api_key=SecretStr("postgresql://test_user:test_pass@localhost:5432/test_db"),
+    username=SecretStr("test_user"),
+    password=SecretStr("test_pass"),
     title="Mock Database credentials",
 )
 
@@ -40,16 +41,16 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.title,
 }
 
-DatabaseCredentials = APIKeyCredentials
+DatabaseCredentials = UserPasswordCredentials
 DatabaseCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.DATABASE],
-    Literal["api_key"],
+    Literal["user_password"],
 ]
 
 
 def DatabaseCredentialsField() -> DatabaseCredentialsInput:
     return CredentialsField(
-        description="Database connection URL (e.g., postgresql://user:pass@host:5432/db)",
+        description="Database username and password",
     )
 
 
@@ -136,7 +137,7 @@ def _validate_query_is_read_only(query: str) -> str | None:
     if not statements:
         return "Query is empty."
 
-    # Reject multiple statements — prevents injection via semicolons
+    # Reject multiple statements -- prevents injection via semicolons
     if len(statements) > 1:
         return "Only single statements are allowed."
 
@@ -156,6 +157,34 @@ def _validate_query_is_read_only(query: str) -> str | None:
             return f"Disallowed SQL keyword: {kw}"
 
     return None
+
+
+def _validate_single_statement(
+    query: str,
+) -> tuple[str | None, sqlparse.sql.Statement | None]:
+    """Validate that the query contains exactly one non-empty SQL statement.
+
+    Returns (error_message, parsed_statement). If error_message is not None,
+    the query is invalid and parsed_statement will be None.
+    """
+    stripped = query.strip().rstrip(";").strip()
+    if not stripped:
+        return "Query is empty.", None
+
+    # Parse the SQL using sqlparse for proper tokenization
+    statements = sqlparse.parse(stripped)
+
+    # Filter out empty statements (e.g. from trailing semicolons)
+    statements = [s for s in statements if s.tokens and str(s).strip()]
+
+    if not statements:
+        return "Query is empty.", None
+
+    # Reject multiple statements -- prevents injection via semicolons
+    if len(statements) > 1:
+        return "Only single statements are allowed.", None
+
+    return None, statements[0]
 
 
 def _serialize_value(value: Any) -> Any:
@@ -183,40 +212,46 @@ _DATABASE_TYPE_TO_DRIVER = {
     DatabaseType.MSSQL: "mssql",
 }
 
-
-def _validate_connection_url(
-    connection_string: str, database_type: DatabaseType
-) -> str | None:
-    """Validate that the connection URL matches the selected database type.
-
-    Returns an error message on mismatch, None if valid.
-    """
-    try:
-        url = make_url(connection_string)
-    except Exception:
-        return "Invalid database connection URL."
-
-    expected_prefix = _DATABASE_TYPE_TO_DRIVER[database_type]
-    # SQLAlchemy drivername can be "postgresql+psycopg2", "mysql+pymysql", etc.
-    driver_base = url.drivername.split("+")[0]
-    if driver_base != expected_prefix:
-        return (
-            f"Connection URL driver '{url.drivername}' does not match "
-            f"selected database type '{database_type.value}'. "
-            f"Expected a URL starting with '{expected_prefix}://'."
-        )
-    return None
+# Default ports for each database type.
+_DATABASE_TYPE_DEFAULT_PORT = {
+    DatabaseType.POSTGRES: 5432,
+    DatabaseType.MYSQL: 3306,
+    DatabaseType.MSSQL: 1433,
+}
 
 
 class SQLQueryBlock(Block):
     class Input(BlockSchemaInput):
         query: str = SchemaField(
-            description="SQL SELECT query to execute",
+            description="SQL query to execute",
             placeholder="SELECT * FROM analytics.daily_active_users LIMIT 10",
         )
         database_type: DatabaseType = SchemaField(
             default=DatabaseType.POSTGRES,
             description="Type of database to connect to",
+        )
+        host: str = SchemaField(
+            description="Database host",
+            placeholder="db.supabase.co",
+        )
+        port: int = SchemaField(
+            default=5432,
+            description=(
+                "Database port (default: 5432 for PostgreSQL, "
+                "3306 for MySQL, 1433 for MSSQL)"
+            ),
+        )
+        database: str = SchemaField(
+            description="Database name",
+            placeholder="postgres",
+        )
+        read_only: bool = SchemaField(
+            default=True,
+            description=(
+                "When enabled (default), only SELECT queries are allowed "
+                "and the database session is set to read-only mode. "
+                "Disable to allow write operations (INSERT, UPDATE, DELETE, etc.)."
+            ),
         )
         timeout: int = SchemaField(
             default=30,
@@ -240,16 +275,18 @@ class SQLQueryBlock(Block):
             description="Column names from the query result"
         )
         row_count: int = SchemaField(description="Number of rows returned")
+        affected_rows: int = SchemaField(
+            description="Number of rows affected by a write query (INSERT/UPDATE/DELETE)"
+        )
         error: str = SchemaField(description="Error message if the query failed")
 
     def __init__(self):
         super().__init__(
             id="4dc35c0f-4fd8-465e-9616-5a216f1ba2bc",
             description=(
-                "Executes a read-only SQL query against a database "
-                "and returns the results. Supports PostgreSQL, MySQL, "
-                "SQLite, and MSSQL via SQLAlchemy. "
-                "Only SELECT queries are allowed."
+                "Execute a SQL query. Read-only by default for safety "
+                "-- disable to allow write operations. "
+                "Supports PostgreSQL, MySQL, and MSSQL via SQLAlchemy."
             ),
             categories={BlockCategory.DATA},
             input_schema=SQLQueryBlock.Input,
@@ -257,6 +294,9 @@ class SQLQueryBlock(Block):
             test_input={
                 "query": "SELECT 1 AS test_col",
                 "database_type": DatabaseType.POSTGRES,
+                "host": "localhost",
+                "port": 5432,
+                "database": "test_db",
                 "timeout": 30,
                 "max_rows": 1000,
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -271,6 +311,7 @@ class SQLQueryBlock(Block):
                 "execute_query": lambda *args, **kwargs: (
                     [{"test_col": 1}],
                     ["test_col"],
+                    -1,
                 ),
                 "check_host_allowed": lambda *args, **kwargs: None,
             },
@@ -291,11 +332,15 @@ class SQLQueryBlock(Block):
         query: str,
         timeout: int,
         max_rows: int,
-    ) -> tuple[list[dict[str, Any]], list[str]]:
-        """Execute a read-only SQL query and return (rows, columns).
+        read_only: bool = True,
+    ) -> tuple[list[dict[str, Any]], list[str], int]:
+        """Execute a SQL query and return (rows, columns, affected_rows).
 
-        Uses SQLAlchemy to connect to any supported database. The query
-        is limited to `max_rows` results via DBAPI fetchmany.
+        Uses SQLAlchemy to connect to any supported database.
+        For SELECT queries, rows are limited to ``max_rows`` via DBAPI fetchmany.
+        For write queries, affected_rows contains the rowcount from the driver.
+        When ``read_only`` is True, the database session is set to read-only
+        mode and the transaction is always rolled back.
         """
         engine = create_engine(
             connection_string,
@@ -311,31 +356,39 @@ class SQLQueryBlock(Block):
                 # apply to the explicit transaction we open below.
                 conn = conn.execution_options(isolation_level="AUTOCOMMIT")
 
-                # Set session-level read-only and timeout before starting
-                # the read-only transaction.
+                # Set session-level timeout (always) and read-only
+                # (when read_only=True) before starting the transaction.
                 if engine.dialect.name == "postgresql":
                     conn.execute(text(f"SET statement_timeout = {timeout * 1000}"))
-                    conn.execute(text("SET default_transaction_read_only = ON"))
+                    if read_only:
+                        conn.execute(text("SET default_transaction_read_only = ON"))
                 elif engine.dialect.name == "mysql":
                     conn.execute(
                         text(f"SET SESSION MAX_EXECUTION_TIME = {timeout * 1000}")
                     )
-                    conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
+                    if read_only:
+                        conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
 
                 # Execute the user query inside an explicit transaction so
-                # the read-only setting applies to it.
+                # the read-only setting (if enabled) applies to it.
                 conn.execute(text("BEGIN"))
                 try:
                     result = conn.execute(text(query))
+
+                    affected = result.rowcount if not result.returns_rows else -1
+
                     columns = list(result.keys()) if result.returns_rows else []
-                    rows = result.fetchmany(max_rows)
+                    rows = result.fetchmany(max_rows) if result.returns_rows else []
                     results = [
                         {col: _serialize_value(val) for col, val in zip(columns, row)}
                         for row in rows
                     ]
                 finally:
-                    conn.execute(text("ROLLBACK"))
-            return results, columns
+                    if read_only:
+                        conn.execute(text("ROLLBACK"))
+                    else:
+                        conn.execute(text("COMMIT"))
+            return results, columns, affected
         finally:
             engine.dispose()
 
@@ -344,69 +397,73 @@ class SQLQueryBlock(Block):
         input_data: Input,
         *,
         credentials: DatabaseCredentials,
-        **kwargs,
+        **kwargs: Any,
     ) -> BlockOutput:
-        # Validate query is read-only
-        error = _validate_query_is_read_only(input_data.query)
-        if error:
-            yield "error", error
+        # Multi-statement prevention applies in both modes (security against injection)
+        stmt_error, _ = _validate_single_statement(input_data.query)
+        if stmt_error:
+            yield "error", stmt_error
             return
 
-        connection_string = credentials.api_key.get_secret_value()
+        # When read_only (default), enforce SELECT-only queries
+        if input_data.read_only:
+            ro_error = _validate_query_is_read_only(input_data.query)
+            if ro_error:
+                yield "error", ro_error
+                return
 
-        # Validate connection URL matches the selected database type
-        url_error = _validate_connection_url(
-            connection_string, input_data.database_type
-        )
-        if url_error:
-            yield "error", url_error
-            return
-
-        # SSRF protection: parse the connection URL and validate that the
-        # host is not internal.
+        # SQLite is not supported for remote execution
         if input_data.database_type == DatabaseType.SQLITE:
-            # SQLite allows arbitrary filesystem access and lacks transaction-
-            # level read-only enforcement. Disable until a sandboxing strategy
-            # (e.g. allowlisted paths, read-only URI mode) is implemented.
             yield "error", "SQLite is not supported for remote execution."
             return
-        else:
-            # Network databases: extract host from SQLAlchemy URL and
-            # verify it is not a private/blocked address.
-            try:
-                sa_url = make_url(connection_string)
-            except Exception:
-                yield "error", "Invalid connection string format."
-                return
 
-            host = sa_url.host or ""
+        host = input_data.host.strip()
+        if not host:
+            yield "error", "Database host is required."
+            return
 
-            if not host:
-                yield "error", "Connection string must specify a database host."
-                return
+        # Reject Unix socket paths (host starting with '/')
+        if host.startswith("/"):
+            yield "error", "Unix socket connections are not allowed."
+            return
 
-            # Reject Unix socket paths (host starting with '/')
-            if host.startswith("/"):
-                yield "error", "Unix socket connections are not allowed."
-                return
+        # SSRF protection: validate that the host is not internal.
+        try:
+            await self.check_host_allowed(host)
+        except (ValueError, OSError) as e:
+            yield "error", f"Blocked host: {str(e).strip()}"
+            return
 
-            try:
-                await self.check_host_allowed(host)
-            except (ValueError, OSError) as e:
-                yield "error", f"Blocked host: {str(e).strip()}"
-                return
+        # Build the SQLAlchemy connection URL from discrete fields.
+        # URL.create() accepts the raw password without URL-encoding,
+        # so special characters like @, #, ! work correctly.
+        drivername = _DATABASE_TYPE_TO_DRIVER[input_data.database_type]
+        username = credentials.username.get_secret_value()
+        password = credentials.password.get_secret_value()
+        connection_url = URL.create(
+            drivername=drivername,
+            username=username,
+            password=password,
+            host=host,
+            port=input_data.port,
+            database=input_data.database,
+        )
+        connection_string = connection_url.render_as_string(hide_password=False)
 
         try:
-            results, columns = await asyncio.to_thread(
+            results, columns, affected = await asyncio.to_thread(
                 self.execute_query,
                 connection_string=connection_string,
                 query=input_data.query,
                 timeout=input_data.timeout,
                 max_rows=input_data.max_rows,
+                read_only=input_data.read_only,
             )
             yield "results", results
             yield "columns", columns
             yield "row_count", len(results)
+            if affected >= 0:
+                yield "affected_rows", affected
         except OperationalError as e:
             error_msg = _sanitize_error(str(e).strip(), connection_string)
             if "timeout" in error_msg.lower() or "cancel" in error_msg.lower():
