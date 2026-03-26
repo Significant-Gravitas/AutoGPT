@@ -15,6 +15,7 @@ from typing import Any
 import orjson
 from langfuse import propagate_attributes
 
+from backend.copilot.context import set_execution_context
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -202,6 +203,10 @@ async def stream_chat_completion_baseline(
             openai_messages.append({"role": msg.role, "content": msg.content})
 
     tools = get_available_tools()
+
+    # Propagate execution context (user, session, dry_run) so tool handlers
+    # (run_block, run_agent) can read session-level flags via ContextVars.
+    set_execution_context(user_id, session, dry_run=session.dry_run)
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
