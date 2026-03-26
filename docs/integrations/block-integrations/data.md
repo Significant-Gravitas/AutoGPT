@@ -247,19 +247,19 @@ Execute a SQL query. Read-only by default for safety -- disable to allow write o
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block connects to a database using a SQLAlchemy connection URL and executes a SQL query. It validates that the query is a single statement (using sqlparse to prevent SQL injection via multi-statement attacks), enforces SSRF protections on the database host, and returns results as a list of row dictionaries.
+This block connects to a database using discrete host, port, and database fields and executes a SQL query via SQLAlchemy. It validates that the query is a single statement (using sqlparse to prevent SQL injection via multi-statement attacks), enforces SSRF protections on the database host, and returns results as a list of row dictionaries.
 
-By default, all query types are allowed (SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, etc.). Enable the `read_only` option to restrict the session to read-only mode -- the database session will be set to read-only and the transaction is always rolled back.
+By default, only SELECT queries are allowed (read-only mode). The database session is set to read-only and the transaction is always rolled back. Disable the `read_only` option to allow write operations (INSERT, UPDATE, DELETE, CREATE, DROP, etc.).
 
-Supported database types: PostgreSQL, MySQL, and MSSQL. The connection URL must match the selected database type (e.g., `postgresql://...` for PostgreSQL, `mysql://...` for MySQL).
+Supported database types: PostgreSQL, MySQL, and MSSQL.
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| database_type | Database engine | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
-| host | Database hostname or IP address | str (password) | Yes |
+| database_type | Database engine | "postgres" \| "mysql" \| "mssql" | No |
+| host | Database hostname or IP address | str (secret) | Yes |
 | port | Database port (leave empty for default: PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
 | database | Name of the database to connect to | str | Yes |
 | query | SQL query to execute | str | Yes |
