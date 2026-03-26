@@ -526,7 +526,12 @@ class TestValidateOrchestratorBlocks:
                 "id": AGENT_INPUT_BLOCK_ID,
                 "name": "AgentInputBlock",
                 "inputSchema": {
-                    "properties": {"name": {"type": "string"}},
+                    "properties": {
+                        "name": {"type": "string"},
+                        "title": {"type": "string"},
+                        "value": {},
+                        "description": {"type": "string"},
+                    },
                     "required": ["name"],
                 },
                 "outputSchema": {"properties": {"result": {}}},
@@ -537,6 +542,7 @@ class TestValidateOrchestratorBlocks:
                 "inputSchema": {
                     "properties": {
                         "name": {"type": "string"},
+                        "title": {"type": "string"},
                         "value": {},
                     },
                     "required": ["name"],
@@ -683,7 +689,12 @@ class TestOrchestratorE2EPipeline:
                 "id": AGENT_INPUT_BLOCK_ID,
                 "name": "AgentInputBlock",
                 "inputSchema": {
-                    "properties": {"name": {"type": "string"}},
+                    "properties": {
+                        "name": {"type": "string"},
+                        "title": {"type": "string"},
+                        "value": {},
+                        "description": {"type": "string"},
+                    },
                     "required": ["name"],
                 },
                 "outputSchema": {"properties": {"result": {}}},
@@ -694,6 +705,7 @@ class TestOrchestratorE2EPipeline:
                 "inputSchema": {
                     "properties": {
                         "name": {"type": "string"},
+                        "title": {"type": "string"},
                         "value": {},
                     },
                     "required": ["name"],
