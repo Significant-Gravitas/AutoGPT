@@ -77,12 +77,52 @@ def test_get_rate_limit(
     )
 
 
-def test_reset_user_usage(
+def test_reset_user_usage_daily_only(
     mocker: pytest_mock.MockerFixture,
     configured_snapshot: Snapshot,
     target_user_id: str,
 ) -> None:
-    """Test resetting a user's usage counters to zero."""
+    """Test resetting only daily usage (default behaviour)."""
+    mock_reset = mocker.patch(
+        f"{_MOCK_MODULE}.reset_user_usage",
+        new_callable=AsyncMock,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(2_500_000, 12_500_000),
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_usage_status",
+        new_callable=AsyncMock,
+        return_value=_mock_usage_status(daily_used=0, weekly_used=3_000_000),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/reset",
+        json={"user_id": target_user_id},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["daily_tokens_used"] == 0
+    # Weekly is untouched
+    assert data["weekly_tokens_used"] == 3_000_000
+
+    mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
+
+    configured_snapshot.assert_match(
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
+        "reset_user_usage_daily_only",
+    )
+
+
+def test_reset_user_usage_daily_and_weekly(
+    mocker: pytest_mock.MockerFixture,
+    configured_snapshot: Snapshot,
+    target_user_id: str,
+) -> None:
+    """Test resetting both daily and weekly usage."""
     mock_reset = mocker.patch(
         f"{_MOCK_MODULE}.reset_user_usage",
         new_callable=AsyncMock,
@@ -100,7 +140,7 @@ def test_reset_user_usage(
 
     response = client.post(
         "/admin/rate_limit/reset",
-        json={"user_id": target_user_id},
+        json={"user_id": target_user_id, "reset_weekly": True},
     )
 
     assert response.status_code == 200
@@ -108,11 +148,11 @@ def test_reset_user_usage(
     assert data["daily_tokens_used"] == 0
     assert data["weekly_tokens_used"] == 0
 
-    mock_reset.assert_awaited_once_with(target_user_id)
+    mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=True)
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
-        "reset_user_usage",
+        "reset_user_usage_daily_and_weekly",
     )
 
 

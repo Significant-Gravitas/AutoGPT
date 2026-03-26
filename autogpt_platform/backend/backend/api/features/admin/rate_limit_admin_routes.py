@@ -65,13 +65,17 @@ async def get_user_rate_limit(
 )
 async def reset_user_rate_limit(
     user_id: str = Body(embed=True),
+    reset_weekly: bool = Body(False, embed=True),
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
-    """Reset a user's daily and weekly usage counters to zero. Admin-only."""
-    logger.info(f"Admin {admin_user_id} resetting rate limit for user {user_id}")
+    """Reset a user's daily usage counter (and optionally weekly). Admin-only."""
+    logger.info(
+        f"Admin {admin_user_id} resetting rate limit for user {user_id} "
+        f"(reset_weekly={reset_weekly})"
+    )
 
     try:
-        await reset_user_usage(user_id)
+        await reset_user_usage(user_id, reset_weekly=reset_weekly)
     except Exception as e:
         logger.exception(f"Failed to reset user usage: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e

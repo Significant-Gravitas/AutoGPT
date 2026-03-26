@@ -44,12 +44,13 @@ export function RateLimitManager() {
     }
   }
 
-  async function handleReset() {
+  async function handleReset(resetWeekly: boolean) {
     if (!rateLimitData) return;
 
     try {
       const response = await postV2ResetUserRateLimitUsage({
         user_id: rateLimitData.user_id,
+        reset_weekly: resetWeekly,
       });
       if (response.status !== 200) {
         throw new Error("Failed to reset usage");
@@ -57,7 +58,9 @@ export function RateLimitManager() {
       setRateLimitData(response.data);
       toast({
         title: "Success",
-        description: "User rate limit usage reset to zero.",
+        description: resetWeekly
+          ? "Daily and weekly usage reset to zero."
+          : "Daily usage reset to zero.",
       });
     } catch (error) {
       console.error("Error resetting rate limit:", error);

@@ -1448,7 +1448,7 @@
       "post": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Reset User Rate Limit Usage",
-        "description": "Reset a user's daily and weekly usage counters to zero. Admin-only.",
+        "description": "Reset a user's daily usage counter (and optionally weekly). Admin-only.",
         "operationId": "postV2Reset user rate limit usage",
         "requestBody": {
           "content": {
@@ -8238,7 +8238,14 @@
         "title": "Body_postV2Execute a preset"
       },
       "Body_postV2Reset_user_rate_limit_usage": {
-        "properties": { "user_id": { "type": "string", "title": "User Id" } },
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "reset_weekly": {
+            "type": "boolean",
+            "title": "Reset Weekly",
+            "default": false
+          }
+        },
         "type": "object",
         "required": ["user_id"],
         "title": "Body_postV2Reset user rate limit usage"

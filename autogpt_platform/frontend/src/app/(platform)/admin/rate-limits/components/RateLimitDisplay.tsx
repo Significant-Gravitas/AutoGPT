@@ -39,38 +39,31 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
 
 interface Props {
   data: UserRateLimitResponse;
-  onReset: () => Promise<void>;
+  onReset: (resetWeekly: boolean) => Promise<void>;
 }
 
 export function RateLimitDisplay({ data, onReset }: Props) {
   const [isResetting, setIsResetting] = useState(false);
+  const [resetWeekly, setResetWeekly] = useState(false);
 
   async function handleReset() {
     setIsResetting(true);
     try {
-      await onReset();
+      await onReset(resetWeekly);
     } finally {
       setIsResetting(false);
     }
   }
 
+  const nothingToReset = resetWeekly
+    ? data.daily_tokens_used === 0 && data.weekly_tokens_used === 0
+    : data.daily_tokens_used === 0;
+
   return (
     <div className="rounded-md border bg-white p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">
-          Rate Limits for {data.user_id}
-        </h2>
-        <Button
-          variant="outline"
-          onClick={handleReset}
-          disabled={
-            isResetting ||
-            (data.daily_tokens_used === 0 && data.weekly_tokens_used === 0)
-          }
-        >
-          {isResetting ? "Resetting..." : "Reset Usage to Zero"}
-        </Button>
-      </div>
+      <h2 className="mb-4 text-lg font-semibold">
+        Rate Limits for {data.user_id}
+      </h2>
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
@@ -87,6 +80,25 @@ export function RateLimitDisplay({ data, onReset }: Props) {
             limit={data.weekly_token_limit}
           />
         </div>
+      </div>
+
+      <div className="mt-6 flex items-center gap-3 border-t pt-4">
+        <select
+          value={resetWeekly ? "both" : "daily"}
+          onChange={(e) => setResetWeekly(e.target.value === "both")}
+          className="rounded-md border px-3 py-1.5 text-sm"
+          disabled={isResetting}
+        >
+          <option value="daily">Reset daily only</option>
+          <option value="both">Reset daily + weekly</option>
+        </select>
+        <Button
+          variant="outline"
+          onClick={handleReset}
+          disabled={isResetting || nothingToReset}
+        >
+          {isResetting ? "Resetting..." : "Reset Usage"}
+        </Button>
       </div>
     </div>
   );

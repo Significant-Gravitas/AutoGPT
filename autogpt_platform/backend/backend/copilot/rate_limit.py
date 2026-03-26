@@ -269,18 +269,19 @@ async def get_global_rate_limits(
     return daily, weekly
 
 
-async def reset_user_usage(user_id: str) -> None:
-    """Reset a user's daily and weekly usage counters.
+async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
+    """Reset a user's usage counters.
 
-    Deletes the Redis keys for the current daily and weekly windows.
+    Always deletes the daily Redis key.  When *reset_weekly* is ``True``,
+    the weekly key is deleted as well.
     """
     now = datetime.now(UTC)
+    keys_to_delete = [_daily_key(user_id, now=now)]
+    if reset_weekly:
+        keys_to_delete.append(_weekly_key(user_id, now=now))
     try:
         redis = await get_redis_async()
-        await redis.delete(
-            _daily_key(user_id, now=now),
-            _weekly_key(user_id, now=now),
-        )
+        await redis.delete(*keys_to_delete)
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting user usage")
         raise
