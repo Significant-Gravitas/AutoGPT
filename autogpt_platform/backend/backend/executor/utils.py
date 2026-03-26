@@ -923,6 +923,11 @@ async def add_graph_execution(
         # For resumed executions, simulation_context comes from the existing
         # execution_context (if any) or is gated behind dry_run.
         safe_simulation_context = simulation_context if dry_run else None
+
+        # Apply simulation_context to an already-provided execution_context
+        # so that resumed dry-run executions propagate hints to simulated blocks.
+        if execution_context is not None and safe_simulation_context is not None:
+            execution_context.simulation_context = safe_simulation_context
     else:
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
