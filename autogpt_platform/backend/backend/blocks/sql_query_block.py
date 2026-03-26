@@ -243,10 +243,10 @@ class SQLQueryBlock(Block):
             placeholder="db.supabase.co",
         )
         port: int = SchemaField(
-            default=5432,
+            default=0,
             description=(
-                "Database port (default: 5432 for PostgreSQL, "
-                "3306 for MySQL, 1433 for MSSQL)"
+                "Database port. Leave at 0 to use the default for the selected "
+                "database type (5432 for PostgreSQL, 3306 for MySQL, 1433 for MSSQL)"
             ),
         )
         database: str = SchemaField(
@@ -321,18 +321,20 @@ class SQLQueryBlock(Block):
                     ["test_col"],
                     -1,
                 ),
-                "check_host_allowed": lambda *_args, **_kwargs: None,
+                "check_host_allowed": lambda *_args, **_kwargs: ["127.0.0.1"],
             },
         )
 
     @staticmethod
-    async def check_host_allowed(host: str) -> None:
+    async def check_host_allowed(host: str) -> list[str]:
         """Validate that the given host is not a private/blocked address.
 
+        Returns the list of resolved IP addresses so the caller can pin the
+        connection to the validated IP (preventing DNS rebinding / TOCTOU).
         Raises ValueError or OSError if the host is blocked.
         Extracted as a method so it can be mocked during block tests.
         """
-        await resolve_and_check_blocked(host)
+        return await resolve_and_check_blocked(host)
 
     @staticmethod
     def execute_query(
@@ -350,11 +352,18 @@ class SQLQueryBlock(Block):
         When ``read_only`` is True, the database session is set to read-only
         mode and the transaction is always rolled back.
         """
+        # Determine driver-specific connection timeout argument.
+        # pyodbc (MSSQL) uses "timeout", while PostgreSQL/MySQL use "connect_timeout".
+        if "sqlite" in connection_string:
+            connect_args: dict[str, Any] = {}
+        elif "mssql" in connection_string:
+            connect_args = {"timeout": 10}
+        else:
+            connect_args = {"connect_timeout": 10}
+
         engine = create_engine(
             connection_string,
-            connect_args=(
-                {"connect_timeout": 10} if "sqlite" not in connection_string else {}
-            ),
+            connect_args=connect_args,
             pool_pre_ping=True,
             pool_recycle=300,
         )
@@ -436,18 +445,24 @@ class SQLQueryBlock(Block):
             return
 
         # SSRF protection: validate that the host is not internal.
+        # We use the resolved IP address for the actual connection to prevent
+        # DNS rebinding (TOCTOU) attacks where the DNS record changes between
+        # the check and the connection.
         try:
-            await self.check_host_allowed(host)
+            resolved_ips = await self.check_host_allowed(host)
         except (ValueError, OSError) as e:
             yield "error", f"Blocked host: {str(e).strip()}"
             return
+
+        # Pin the connection to the first resolved IP to prevent DNS rebinding.
+        pinned_host = resolved_ips[0] if resolved_ips else host
 
         # Build the SQLAlchemy connection URL from discrete fields.
         # URL.create() accepts the raw password without URL-encoding,
         # so special characters like @, #, ! work correctly.
         drivername = _DATABASE_TYPE_TO_DRIVER[input_data.database_type]
         port = input_data.port or _DATABASE_TYPE_DEFAULT_PORT.get(
-            input_data.database_type, input_data.port
+            input_data.database_type, 5432
         )
         username = credentials.username.get_secret_value()
         password = credentials.password.get_secret_value()
@@ -455,7 +470,7 @@ class SQLQueryBlock(Block):
             drivername=drivername,
             username=username,
             password=password,
-            host=host,
+            host=pinned_host,
             port=port,
             database=input_data.database,
         )

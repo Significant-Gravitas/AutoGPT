@@ -371,7 +371,7 @@ class TestSQLQueryBlockRunErrorHandling:
         creds = _make_credentials(username="admin", password="supersecret")
         input_data = _make_input(creds)
         # Mock SSRF check to allow the host
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         # Mock execute_query to raise an OperationalError with credentials in msg
         conn_url = "postgresql://admin:supersecret@db.example.com:5432/db"
         block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
@@ -392,7 +392,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block = SQLQueryBlock()
         creds = _make_credentials()
         input_data = _make_input(creds, query="SELECT pg_sleep(1000)", timeout=5)
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
             OperationalError(
                 "canceling statement due to statement timeout",
@@ -410,7 +410,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block = SQLQueryBlock()
         creds = _make_credentials()
         input_data = _make_input(creds, query="SELECT id, name FROM users LIMIT 2")
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
         mock_cols = ["id", "name"]
         block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
@@ -437,7 +437,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block = SQLQueryBlock()
         creds = _make_credentials(username="analytics_ly", password="Qw13!@#1!\\a2")
         input_data = _make_input(creds)
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1}]
         mock_cols = ["id"]
         block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
@@ -464,7 +464,7 @@ class TestSQLQueryBlockWriteMode:
             query="INSERT INTO users (name) VALUES ('Alice')",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -481,7 +481,7 @@ class TestSQLQueryBlockWriteMode:
             query="UPDATE users SET name = 'Bob' WHERE id = 1",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -496,7 +496,7 @@ class TestSQLQueryBlockWriteMode:
             query="DELETE FROM users WHERE id = 1",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -511,7 +511,7 @@ class TestSQLQueryBlockWriteMode:
             query="CREATE TABLE new_table (id INT PRIMARY KEY, name TEXT)",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([], [], 0)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -525,7 +525,7 @@ class TestSQLQueryBlockWriteMode:
             query="DROP TABLE old_table",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([], [], 0)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -583,7 +583,7 @@ class TestSQLQueryBlockWriteMode:
             query="UPDATE users SET active = true WHERE last_login > '2024-01-01'",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([], [], 42)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -598,7 +598,7 @@ class TestSQLQueryBlockWriteMode:
             query="SELECT id, name FROM users LIMIT 2",
             read_only=False,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}]
         mock_cols = ["id", "name"]
         block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
@@ -628,7 +628,7 @@ class TestSQLQueryBlockReadOnlyMode:
             query="SELECT 1 AS col",
             read_only=True,
         )
-        block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: ([{"col": 1}], ["col"], -1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
@@ -667,3 +667,134 @@ class TestSQLQueryBlockReadOnlyMode:
             },
         )
         assert input_data.read_only is True
+
+
+# ---------------------------------------------------------------------------
+# Default port tests (Thread 25: port should auto-detect per database_type)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestSQLQueryBlockDefaultPort:
+    """Port should default based on the selected database_type."""
+
+    async def test_mysql_default_port_3306(self):
+        """MySQL should default to port 3306 when port is 0."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(
+            creds,
+            query="SELECT 1",
+            database_type=DatabaseType.MYSQL,
+            port=0,
+            read_only=False,
+        )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured_conn_str = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_conn_str["value"] = kwargs["connection_string"]
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert ":3306/" in captured_conn_str["value"]
+
+    async def test_mssql_default_port_1433(self):
+        """MSSQL should default to port 1433 when port is 0."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(
+            creds,
+            query="SELECT 1",
+            database_type=DatabaseType.MSSQL,
+            port=0,
+            read_only=False,
+        )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured_conn_str = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_conn_str["value"] = kwargs["connection_string"]
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert ":1433/" in captured_conn_str["value"]
+
+    async def test_postgres_default_port_5432(self):
+        """PostgreSQL should default to port 5432 when port is 0."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(
+            creds,
+            query="SELECT 1",
+            database_type=DatabaseType.POSTGRES,
+            port=0,
+            read_only=False,
+        )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured_conn_str = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_conn_str["value"] = kwargs["connection_string"]
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert ":5432/" in captured_conn_str["value"]
+
+    async def test_explicit_port_overrides_default(self):
+        """Explicitly provided port should be used regardless of database_type."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(
+            creds,
+            query="SELECT 1",
+            database_type=DatabaseType.MYSQL,
+            port=3307,
+            read_only=False,
+        )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured_conn_str = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_conn_str["value"] = kwargs["connection_string"]
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert ":3307/" in captured_conn_str["value"]
+
+
+# ---------------------------------------------------------------------------
+# DNS pinning tests (Thread 24: TOCTOU / DNS rebinding prevention)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestSQLQueryBlockDNSPinning:
+    """Connection should use the resolved IP, not the original hostname."""
+
+    async def test_connection_uses_resolved_ip(self):
+        """The connection string should contain the resolved IP, not the hostname."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, host="evil.example.com")
+        block.check_host_allowed = AsyncMock(return_value=["93.184.216.34"])  # type: ignore[assignment]
+        captured_conn_str = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_conn_str["value"] = kwargs["connection_string"]
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        # The resolved IP should be in the connection string, not the hostname
+        assert "93.184.216.34" in captured_conn_str["value"]
+        assert "evil.example.com" not in captured_conn_str["value"]
