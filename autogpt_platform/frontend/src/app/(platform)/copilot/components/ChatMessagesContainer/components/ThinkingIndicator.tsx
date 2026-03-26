@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { ScaleLoader } from "../../ScaleLoader/ScaleLoader";
 
 const THINKING_PHRASES = [
@@ -72,9 +73,10 @@ function useCyclingPhrase(active: boolean) {
 
 interface Props {
   active: boolean;
+  elapsedSeconds: number;
 }
 
-export function ThinkingIndicator({ active }: Props) {
+export function ThinkingIndicator({ active, elapsedSeconds }: Props) {
   const { phrase, visible } = useCyclingPhrase(active);
 
   return (
@@ -88,6 +90,11 @@ export function ThinkingIndicator({ active }: Props) {
           {phrase}
         </span>
       </span>
+      {elapsedSeconds > 0 && (
+        <span className="text-sm tabular-nums text-neutral-400">
+          {formatElapsed(elapsedSeconds)}
+        </span>
+      )}
     </span>
   );
 }
