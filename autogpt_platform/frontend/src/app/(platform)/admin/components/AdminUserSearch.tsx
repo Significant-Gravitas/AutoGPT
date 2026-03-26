@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Search } from "lucide-react";
+import { Button } from "@/components/atoms/Button/Button";
+import { MagnifyingGlass } from "@phosphor-icons/react";
 
 export interface AdminUserSearchProps {
   /** Current search query value (controlled). Falls back to internal state if omitted. */
@@ -44,7 +44,7 @@ export function AdminUserSearch({
   }
 
   function handleSearch() {
-    onSearch(currentValue);
+    onSearch(currentValue.trim());
   }
 
   return (
@@ -58,10 +58,12 @@ export function AdminUserSearch({
       />
       <Button
         variant="outline"
+        size="small"
         onClick={handleSearch}
         disabled={isLoading || !currentValue.trim()}
+        loading={isLoading}
       >
-        {isLoading ? "Searching..." : <Search className="h-4 w-4" />}
+        {isLoading ? "Searching..." : <MagnifyingGlass size={16} />}
       </Button>
     </div>
   );

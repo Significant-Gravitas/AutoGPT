@@ -151,15 +151,11 @@ export async function AdminUserGrantHistory({
                     <div className="flex items-center justify-end gap-2">
                       <RateLimitModal
                         userId={transaction.user_id}
-                        userEmail={
-                          transaction.user_email ?? "User Email wasn't attached"
-                        }
+                        userEmail={transaction.user_email ?? ""}
                       />
                       <AdminAddMoneyButton
                         userId={transaction.user_id}
-                        userEmail={
-                          transaction.user_email ?? "User Email wasn't attached"
-                        }
+                        userEmail={transaction.user_email ?? ""}
                         currentBalance={transaction.current_balance}
                         defaultAmount={
                           transaction.transaction_type ===

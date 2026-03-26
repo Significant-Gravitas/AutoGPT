@@ -61,12 +61,10 @@ export function RateLimitManager() {
         throw new Error("Failed to fetch rate limit");
       }
       setRateLimitData(response.data);
-      if (response.data.user_email) {
-        setSelectedUser({
-          user_id: response.data.user_id,
-          user_email: response.data.user_email,
-        });
-      }
+      setSelectedUser({
+        user_id: response.data.user_id,
+        user_email: response.data.user_email ?? response.data.user_id,
+      });
     } catch (error) {
       console.error("Error fetching rate limit:", error);
       const hint = looksLikeEmail(trimmed)
