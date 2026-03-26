@@ -15,6 +15,7 @@ conversation updating.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
@@ -225,11 +226,13 @@ async def tool_call_loop(
             )
             return
 
-        # Execute tools
-        tool_results: list[ToolCallResult] = []
-        for tc in response.tool_calls:
-            tr = await execute_tool(tc, tools)
-            tool_results.append(tr)
+        # Execute tools in parallel — independent tool calls can run concurrently.
+        # This mirrors the SDK mode behaviour where the SDK manages parallelism.
+        tool_results: list[ToolCallResult] = list(
+            await asyncio.gather(
+                *(execute_tool(tc, tools) for tc in response.tool_calls)
+            )
+        )
 
         # Update conversation with response + tool results
         update_conversation(messages, response, tool_results)
