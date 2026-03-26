@@ -4,7 +4,11 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageActions,
+  MessageContent,
+} from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
@@ -19,6 +23,7 @@ import {
   splitReasoningAndResponse,
 } from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
@@ -240,6 +245,11 @@ export function ChatMessagesContainer({
                   <ThinkingIndicator active={showThinking} />
                 )}
               </MessageContent>
+              {message.role === "user" && textParts.length > 0 && (
+                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
+                </MessageActions>
+              )}
               {fileParts.length > 0 && (
                 <MessageAttachments
                   files={fileParts}

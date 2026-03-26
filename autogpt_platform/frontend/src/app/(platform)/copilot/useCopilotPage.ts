@@ -56,6 +56,8 @@ export function useCopilotPage() {
     isReconnecting,
     isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
@@ -375,5 +377,8 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }
