@@ -18,6 +18,7 @@ export const providerIcons: Partial<
   aiml_api: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
+  database: fallbackIcon,
   e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
@@ -104,10 +105,7 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
   host_scoped: "Headers",
 };
 
-export function getCredentialTypeLabel(
-  type: CredentialsType,
-  _provider?: string,
-): string {
+export function getCredentialTypeLabel(type: CredentialsType): string {
   return CREDENTIAL_TYPE_LABELS[type] ?? type;
 }
 
