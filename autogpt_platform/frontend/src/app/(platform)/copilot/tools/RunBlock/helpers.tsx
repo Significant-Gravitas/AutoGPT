@@ -248,9 +248,13 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   const icon = <AccordionIcon />;
 
   if (isRunBlockBlockOutput(output)) {
-    // Filter out empty error pins when counting meaningful output keys
+    // For dry-run outputs, filter out empty error pins when counting keys.
+    // For real executions, empty error pins are meaningful (block reported
+    // no error) and should be counted — consistent with BlockOutputCard.
     const keys = Object.entries(output.outputs ?? {})
-      .filter(([k, v]) => !isEmptyErrorPin(k, v as unknown[]))
+      .filter(
+        ([k, v]) => !(output.is_dry_run && isEmptyErrorPin(k, v as unknown[])),
+      )
       .map(([k]) => k);
     const outputCount =
       keys.length > 0
