@@ -125,15 +125,20 @@ def _sanitize_error(
     # Replace any remaining IPv4 addresses (e.g. resolved IPs the driver logs)
     sanitized = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", "<ip>", sanitized)
 
-    # Replace the database username
+    # Replace the database username (handles double-quoted, single-quoted,
+    # and unquoted formats across PostgreSQL, MySQL, and MSSQL error messages).
     if username:
         sanitized = re.sub(
-            r'for user "?' + re.escape(username) + r'"?',
+            r"""for user ["']?""" + re.escape(username) + r"""["']?""",
             "for user <user>",
             sanitized,
         )
-        # Catch remaining bare occurrences (e.g. "FATAL:  role "myuser" does not exist")
+        # Catch remaining bare occurrences in various quote styles:
+        # - PostgreSQL: "FATAL:  role "myuser" does not exist"
+        # - MySQL: "Access denied for user 'myuser'@'host'"
+        # - MSSQL: "Login failed for user 'myuser'"
         sanitized = sanitized.replace(f'"{username}"', "<user>")
+        sanitized = sanitized.replace(f"'{username}'", "<user>")
 
     # Replace the port number (handles "port 5432" and ":5432" formats)
     if port:
