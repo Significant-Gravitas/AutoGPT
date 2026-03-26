@@ -350,7 +350,7 @@ class SQLQueryBlock(Block):
             test_input={
                 "query": "SELECT 1 AS test_col",
                 "database_type": DatabaseType.POSTGRES,
-                "host": SecretStr("localhost"),
+                "host": "localhost",
                 "port": 5432,
                 "database": "test_db",
                 "timeout": 30,
