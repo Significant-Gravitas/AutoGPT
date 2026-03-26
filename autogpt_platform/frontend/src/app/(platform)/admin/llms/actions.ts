@@ -179,6 +179,7 @@ export async function fetchLlmModels(page?: number, pageSize?: number) {
   const params = new URLSearchParams();
   if (page) params.set("page", String(page));
   if (pageSize) params.set("page_size", String(pageSize));
+  params.set("enabled_only", "false");
   const query = params.toString() ? `?${params.toString()}` : "";
   const { data } = await adminFetch(`/api/llm/models${query}`);
   return data;
@@ -289,11 +290,12 @@ export async function revertLlmMigrationAction(
 }
 
 // =============================================================================
-// Creator Actions (not yet implemented in backend)
+// Creator Actions
 // =============================================================================
 
 export async function fetchLlmCreators() {
-  return { creators: [] };
+  const { data } = await adminFetch(`/api/llm/creators`);
+  return data;
 }
 
 export async function createLlmCreatorAction(
