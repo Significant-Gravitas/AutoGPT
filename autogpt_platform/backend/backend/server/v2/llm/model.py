@@ -41,6 +41,7 @@ class LlmModel(pydantic.BaseModel):
     context_window: int
     max_output_tokens: int | None = None
     price_tier: int  # 1=cheapest, 2=medium, 3=expensive
+    is_enabled: bool = True
     is_recommended: bool = False
     capabilities: dict[str, Any] = pydantic.Field(default_factory=dict)
     costs: list[LlmModelCost] = pydantic.Field(default_factory=list)
