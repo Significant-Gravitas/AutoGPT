@@ -38,10 +38,22 @@ def test_sdk_exports_message_types():
 
 
 def test_sdk_exports_content_block_types():
-    from claude_agent_sdk import TextBlock, ToolResultBlock, ToolUseBlock
+    from claude_agent_sdk import TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock
 
-    for cls in (TextBlock, ToolResultBlock, ToolUseBlock):
+    for cls in (TextBlock, ThinkingBlock, ToolResultBlock, ToolUseBlock):
         assert inspect.isclass(cls), f"{cls.__name__} is not a class"
+
+
+def test_thinking_block_has_required_fields():
+    """ThinkingBlock must have thinking + signature for API integrity on resume."""
+    import dataclasses
+
+    from claude_agent_sdk import ThinkingBlock
+
+    assert dataclasses.is_dataclass(ThinkingBlock)
+    field_names = {f.name for f in dataclasses.fields(ThinkingBlock)}
+    assert "thinking" in field_names, "ThinkingBlock missing 'thinking' field"
+    assert "signature" in field_names, "ThinkingBlock missing 'signature' field"
 
 
 def test_sdk_exports_mcp_helpers():

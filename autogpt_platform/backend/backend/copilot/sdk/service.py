@@ -10,6 +10,7 @@ import shutil
 import sys
 import time
 import uuid
+import dataclasses
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
@@ -595,7 +596,9 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
     """Convert SDK content blocks to transcript format.
 
     Handles TextBlock, ToolUseBlock, ToolResultBlock, and ThinkingBlock.
-    Unknown block types are logged and skipped.
+    Unknown block types are preserved via dataclass/dict passthrough so that
+    the Anthropic API's integrity checks pass on session resume (thinking and
+    redacted_thinking blocks must be byte-identical to the original response).
     """
     result: list[dict[str, Any]] = []
     for block in blocks or []:
@@ -620,18 +623,55 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                 tool_result_entry["is_error"] = True
             result.append(tool_result_entry)
         elif isinstance(block, ThinkingBlock):
-            result.append(
-                {
-                    "type": "thinking",
-                    "thinking": block.thinking,
-                    "signature": block.signature,
-                }
-            )
+            # Preserve ALL fields exactly as received — the Anthropic API
+            # validates that thinking blocks are unmodified on session resume.
+            # Using dataclasses.asdict() ensures any future fields added to
+            # ThinkingBlock are automatically preserved.
+            entry = dataclasses.asdict(block)
+            entry["type"] = "thinking"
+            result.append(entry)
         else:
-            logger.warning(
-                f"[SDK] Unknown content block type: {type(block).__name__}. "
-                f"This may indicate a new SDK version with additional block types."
-            )
+            # Preserve unknown block types (e.g. redacted_thinking) via
+            # generic passthrough rather than dropping them — dropped blocks
+            # cause index shifts that break the API's thinking block
+            # integrity check on resume.
+            if dataclasses.is_dataclass(block) and not isinstance(block, type):
+                entry = dataclasses.asdict(block)
+                if "type" not in entry:
+                    # Derive type from class name: RedactedThinkingBlock
+                    # -> redacted_thinking, etc.
+                    cls_name = type(block).__name__
+                    entry["type"] = re.sub(
+                        r"(?<=[a-z])(?=[A-Z])", "_", cls_name.removesuffix("Block")
+                    ).lower()
+                result.append(entry)
+                logger.info(
+                    "[SDK] Preserved unknown block type via passthrough: %s",
+                    type(block).__name__,
+                )
+            elif hasattr(block, "__dict__"):
+                entry = {
+                    k: v
+                    for k, v in block.__dict__.items()
+                    if not k.startswith("_")
+                }
+                if "type" not in entry:
+                    cls_name = type(block).__name__
+                    entry["type"] = re.sub(
+                        r"(?<=[a-z])(?=[A-Z])", "_", cls_name.removesuffix("Block")
+                    ).lower()
+                result.append(entry)
+                logger.info(
+                    "[SDK] Preserved unknown block type via __dict__: %s",
+                    type(block).__name__,
+                )
+            else:
+                logger.warning(
+                    "[SDK] Dropping unserializable content block type: %s. "
+                    "This may break session resume if this block type is "
+                    "subject to API integrity checks.",
+                    type(block).__name__,
+                )
     return result
 
 
