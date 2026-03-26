@@ -10346,6 +10346,11 @@
             "title": "Max Output Tokens"
           },
           "price_tier": { "type": "integer", "title": "Price Tier" },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled",
+            "default": true
+          },
           "is_recommended": {
             "type": "boolean",
             "title": "Is Recommended",
