@@ -54,11 +54,17 @@ def PostgresCredentialsField() -> PostgresCredentialsInput:
     )
 
 
-# SQL statements that modify data or schema
+# Defense-in-depth: reject queries containing data-modifying keywords.
+# NOTE: This regex matches keywords inside string literals and identifiers too
+# (e.g. WHERE action = 'DELETE'). This is intentional — the DB-level readonly
+# session is the primary safety net; this is a secondary check that favors
+# safety over permissiveness. Ambiguous keywords that are harmless on a
+# read-only connection (COMMENT, ANALYZE, LOCK, CLUSTER, REINDEX, VACUUM)
+# are intentionally excluded to avoid false positives on column names.
 _DISALLOWED_SQL_PATTERNS = re.compile(
     r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|"
     r"COPY|EXECUTE|DO\s+\$|CALL|SET\s+(?!LOCAL\s+statement_timeout)"
-    r"|RESET|DISCARD|LOCK|NOTIFY|VACUUM|ANALYZE|CLUSTER|REINDEX|COMMENT)\b",
+    r"|RESET|DISCARD|NOTIFY)\b",
     re.IGNORECASE,
 )
 
@@ -219,7 +225,7 @@ class SQLQueryBlock(Block):
         if parsed.hostname:
             try:
                 await resolve_and_check_blocked(parsed.hostname)
-            except ValueError as e:
+            except (ValueError, OSError) as e:
                 yield "error", f"Blocked host: {str(e).strip()}"
                 return
 
