@@ -231,6 +231,11 @@ async def tool_call_loop(
         # NOTE: asyncio.gather does not cancel sibling tasks when one raises.
         # Callers should handle errors inside execute_tool (return error
         # ToolCallResult) rather than letting exceptions propagate.
+        # BEHAVIOR NOTE: Parallel execution means side-effects from different
+        # tool executors (e.g. streaming events appended to a shared list)
+        # may interleave nondeterministically.  Each event carries its own
+        # tool-call identifier, so consumers must correlate by ID rather
+        # than relying on sequential ordering within a batch.
         tool_results: list[ToolCallResult] = list(
             await asyncio.gather(
                 *(execute_tool(tc, tools) for tc in response.tool_calls)

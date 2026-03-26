@@ -1451,6 +1451,7 @@ class OrchestratorBlock(Block):
         total_prompt_tokens = 0
         total_completion_tokens = 0
 
+        sdk_error: Exception | None = None
         try:
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(user_message)
@@ -1534,20 +1535,29 @@ class OrchestratorBlock(Block):
         except Exception as e:
             # Surface SDK errors as user-visible output instead of crashing,
             # consistent with _execute_tools_agent_mode error handling.
-            yield "error", str(e)
+            # Don't return yet — fall through to merge_stats below so
+            # partial token usage is always recorded.
+            sdk_error = e
+        finally:
+            # Always record usage stats, even on error.  The SDK may have
+            # made LLM calls (consuming tokens) before the failure; dropping
+            # those stats would under-count resource usage.
+            # llm_call_count=1 is approximate; the SDK manages its own
+            # multi-turn loop and only exposes aggregate usage.
+            if total_prompt_tokens > 0 or total_completion_tokens > 0:
+                self.merge_stats(
+                    NodeExecutionStats(
+                        input_token_count=total_prompt_tokens,
+                        output_token_count=total_completion_tokens,
+                        llm_call_count=1,
+                    )
+                )
+
+        if sdk_error is not None:
+            yield "error", str(sdk_error)
             return
 
         response_text = "".join(response_parts)
-
-        # Track usage — llm_call_count=1 is approximate; the SDK manages
-        # its own multi-turn loop internally and only exposes aggregate usage.
-        self.merge_stats(
-            NodeExecutionStats(
-                input_token_count=total_prompt_tokens,
-                output_token_count=total_completion_tokens,
-                llm_call_count=1,
-            )
-        )
 
         yield "finished", response_text
         yield "conversations", conversation
