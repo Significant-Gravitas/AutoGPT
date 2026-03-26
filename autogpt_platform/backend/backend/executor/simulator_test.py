@@ -178,19 +178,15 @@ class TestUrlSanitization:
 
     def test_url_query_params_stripped(self):
         result = _sanitize_url("https://api.example.com/v1?key=secret&token=abc")
-        assert "key=secret" not in result
-        assert "token=abc" not in result
-        assert "api.example.com" in result
+        assert result == "https://api.example.com/v1"
 
     def test_url_fragment_stripped(self):
         result = _sanitize_url("https://example.com/page#section")
-        assert "#section" not in result
-        assert "example.com" in result
+        assert result == "https://example.com/page"
 
     def test_url_userinfo_stripped(self):
         result = _sanitize_url("https://user:pass@example.com/path")
-        assert "user:pass" not in result
-        assert "example.com" in result
+        assert result == "https://example.com/path"
 
     def test_url_path_preserved(self):
         result = _sanitize_url("https://api.example.com/v1/resources")
@@ -210,8 +206,7 @@ class TestUrlSanitization:
         result = _redact_inputs(
             {"endpoint": "https://api.example.com/v1?api_key=secret123"}
         )
-        assert "api_key=secret123" not in result["endpoint"]
-        assert "api.example.com" in result["endpoint"]
+        assert result["endpoint"] == "https://api.example.com/v1"
 
     def test_non_url_non_secret_preserved(self):
         """Regular string values that aren't URLs are preserved."""
