@@ -62,7 +62,6 @@ class ListAuctionsInputSchema(BlockSchema):
 class ListAuctionsOutputSchema(BlockSchemaOutput):
     auctions_json: str = SchemaField(description="JSON array of open auctions with USDC budgets")
     count: int = SchemaField(description="Number of auctions returned")
-    error: str = SchemaField(description="Error message if request failed", default="")
 
 
 class ListAuctionsBlock(Block):
@@ -75,7 +74,7 @@ class ListAuctionsBlock(Block):
 
     id: ClassVar[str] = "3b3a7b71-5315-45b9-b4c8-062f21ee8a2b"
     name: ClassVar[str] = "List OIXA Auctions"
-    categories: ClassVar[list] = [BlockCategory.AGENT]
+    categories: ClassVar[set[BlockCategory]] = {BlockCategory.AGENT}
 
     class Input(ListAuctionsInputSchema):
         pass
@@ -96,7 +95,8 @@ class ListAuctionsBlock(Block):
         if result.get("error"):
             yield "error", result["error"]
             return
-        auctions = result.get("data", {}).get("auctions", result if isinstance(result, list) else [])
+        data = result.get("data") or {}
+        auctions = data.get("auctions", result if isinstance(result, list) else [])
         yield "auctions_json", json.dumps(auctions, indent=2)
         yield "count", len(auctions) if isinstance(auctions, list) else 0
 
@@ -123,7 +123,6 @@ class PlaceBidOutputSchema(BlockSchemaOutput):
     current_winner: str = SchemaField(description="Current winning bidder ID")
     current_best: float = SchemaField(description="Current lowest bid amount", default=0.0)
     bid_id: str = SchemaField(description="Your bid ID", default="")
-    error: str = SchemaField(description="Error if bid rejected", default="")
 
 
 class PlaceBidBlock(Block):
@@ -135,7 +134,7 @@ class PlaceBidBlock(Block):
 
     id: ClassVar[str] = "3884e58e-fdfd-4a89-bdbc-60f6a7726146"
     name: ClassVar[str] = "Place OIXA Bid"
-    categories: ClassVar[list] = [BlockCategory.AGENT]
+    categories: ClassVar[set[BlockCategory]] = {BlockCategory.AGENT}
 
     class Input(PlaceBidInputSchema):
         pass
@@ -187,7 +186,6 @@ class CreateAuctionInputSchema(BlockSchema):
 class CreateAuctionOutputSchema(BlockSchemaOutput):
     auction_id: str = SchemaField(description="New auction ID")
     status: str = SchemaField(description="Auction status")
-    error: str = SchemaField(description="Error if creation failed", default="")
 
 
 class CreateAuctionBlock(Block):
@@ -199,7 +197,7 @@ class CreateAuctionBlock(Block):
 
     id: ClassVar[str] = "c1e69848-c562-4aa5-ad6c-19a0ab15a691"
     name: ClassVar[str] = "Create OIXA Auction"
-    categories: ClassVar[list] = [BlockCategory.AGENT]
+    categories: ClassVar[set[BlockCategory]] = {BlockCategory.AGENT}
 
     class Input(CreateAuctionInputSchema):
         pass
@@ -242,7 +240,6 @@ class DeliverOutputInputSchema(BlockSchema):
 class DeliverOutputOutputSchema(BlockSchemaOutput):
     passed: bool = SchemaField(description="Whether verification passed")
     payment_usdc: float = SchemaField(description="USDC released to you", default=0.0)
-    error: str = SchemaField(description="Error if delivery failed", default="")
 
 
 class DeliverOutputBlock(Block):
@@ -254,7 +251,7 @@ class DeliverOutputBlock(Block):
 
     id: ClassVar[str] = "87cea2bc-c3af-4c1c-ab10-b50c63220270"
     name: ClassVar[str] = "Deliver OIXA Output"
-    categories: ClassVar[list] = [BlockCategory.AGENT]
+    categories: ClassVar[set[BlockCategory]] = {BlockCategory.AGENT}
 
     class Input(DeliverOutputInputSchema):
         pass
@@ -305,7 +302,6 @@ class RegisterOfferInputSchema(BlockSchema):
 class RegisterOfferOutputSchema(BlockSchemaOutput):
     capability_id: str = SchemaField(description="Registered capability ID")
     discovery_url: str = SchemaField(description="URL where other agents can find you", default="")
-    error: str = SchemaField(description="Error if registration failed", default="")
 
 
 class RegisterOfferBlock(Block):
@@ -317,7 +313,7 @@ class RegisterOfferBlock(Block):
 
     id: ClassVar[str] = "f2e8d6c4-a1b9-4f7e-8c5d-3a6b9e2f5c8d"
     name: ClassVar[str] = "Register OIXA Offer"
-    categories: ClassVar[list] = [BlockCategory.AGENT]
+    categories: ClassVar[set[BlockCategory]] = {BlockCategory.AGENT}
 
     class Input(RegisterOfferInputSchema):
         pass
@@ -361,7 +357,6 @@ class CheckBalanceOutputSchema(BlockSchemaOutput):
     score: float = SchemaField(description="Reputation score", default=0.0)
     transactions_completed: int = SchemaField(description="Total completed transactions", default=0)
     rank: int = SchemaField(description="Global rank among all agents", default=0)
-    error: str = SchemaField(description="Error if lookup failed", default="")
 
 
 class CheckBalanceBlock(Block):
@@ -372,7 +367,7 @@ class CheckBalanceBlock(Block):
 
     id: ClassVar[str] = "d4c2b0a8-f6e4-4c8a-9b7d-5e3a1f9b7c5e"
     name: ClassVar[str] = "Check OIXA Balance"
-    categories: ClassVar[list] = [BlockCategory.AGENT]
+    categories: ClassVar[set[BlockCategory]] = {BlockCategory.AGENT}
 
     class Input(CheckBalanceInputSchema):
         pass
@@ -394,9 +389,16 @@ class CheckBalanceBlock(Block):
             yield "error", result["error"]
             return
         data = result.get("data", result)
-        yield "score", float(data.get("score", 0.0))
-        yield "transactions_completed", int(data.get("transactions_completed", 0))
-        yield "rank", int(data.get("rank", 0))
+        try:
+            score = float(data.get("score", 0.0))
+            transactions_completed = int(data.get("transactions_completed", 0))
+            rank = int(data.get("rank", 0))
+        except (ValueError, TypeError):
+            yield "error", "Malformed response data from OIXA API"
+            return
+        yield "score", score
+        yield "transactions_completed", transactions_completed
+        yield "rank", rank
 
 
 # ── All blocks for auto-discovery ─────────────────────────────────────────────

@@ -333,3 +333,30 @@ async def test_check_balance_agent_not_found():
         result = await collect(block.run(inp))
 
     assert result["error"] == "Agent has no reputation record yet"
+
+
+@pytest.mark.asyncio
+async def test_check_balance_malformed_response():
+    payload = {"data": {"score": "N/A", "transactions_completed": "bad", "rank": None}}
+
+    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
+        block = CheckBalanceBlock()
+        inp = CheckBalanceBlock.Input(agent_id="agent_1")
+        result = await collect(block.run(inp))
+
+    assert "error" in result
+    assert "Malformed" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_list_auctions_data_null():
+    """API returns {"data": null} — should not raise AttributeError."""
+    payload = {"data": None}
+
+    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
+        block = ListAuctionsBlock()
+        inp = ListAuctionsBlock.Input()
+        result = await collect(block.run(inp))
+
+    assert result["count"] == 0
+    assert json.loads(result["auctions_json"]) == []
