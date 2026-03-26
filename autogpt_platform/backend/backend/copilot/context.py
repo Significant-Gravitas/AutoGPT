@@ -52,6 +52,11 @@ _current_permissions: "ContextVar[CopilotPermissions | None]" = ContextVar(
     "_current_permissions", default=None
 )
 
+# Session-level dry-run flag.  When True, all tool calls (run_block,
+# run_agent) are forced to use dry-run simulation — no real API calls or
+# side effects.  Set by set_execution_context(); read by tool handlers.
+_session_dry_run: ContextVar[bool] = ContextVar("_session_dry_run", default=False)
+
 
 def encode_cwd_for_cli(cwd: str) -> str:
     """Encode a working directory path the same way the Claude CLI does.
@@ -73,6 +78,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    dry_run: bool = False,
 ) -> None:
     """Set per-turn context variables used by file-resolution tool handlers."""
     _current_user_id.set(user_id)
@@ -81,6 +87,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _session_dry_run.set(dry_run)
 
 
 def get_execution_context() -> tuple[str | None, ChatSession | None]:
@@ -91,6 +98,11 @@ def get_execution_context() -> tuple[str | None, ChatSession | None]:
 def get_current_permissions() -> "CopilotPermissions | None":
     """Return the capability filter for the current execution, or None if unrestricted."""
     return _current_permissions.get()
+
+
+def is_session_dry_run() -> bool:
+    """Return True if the current session has session-level dry-run enabled."""
+    return _session_dry_run.get()
 
 
 def get_current_sandbox() -> "AsyncSandbox | None":

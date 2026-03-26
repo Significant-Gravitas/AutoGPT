@@ -88,6 +88,7 @@ class ChatSessionInfo(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
+    dry_run: bool = False
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:
@@ -126,6 +127,7 @@ class ChatSessionInfo(BaseModel):
             updated_at=prisma_session.updatedAt,
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
+            dry_run=prisma_session.dryRun,
         )
 
 
@@ -133,7 +135,7 @@ class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
 
     @classmethod
-    def new(cls, user_id: str) -> Self:
+    def new(cls, user_id: str, *, dry_run: bool = False) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -143,6 +145,7 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
+            dry_run=dry_run,
         )
 
     @classmethod
@@ -607,21 +610,27 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
         return session
 
 
-async def create_chat_session(user_id: str) -> ChatSession:
+async def create_chat_session(user_id: str, *, dry_run: bool = False) -> ChatSession:
     """Create a new chat session and persist it.
+
+    Args:
+        user_id: The authenticated user ID.
+        dry_run: When True, all tool calls in this session are forced to
+            use dry-run simulation mode (no real API calls or side effects).
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
-    session = ChatSession.new(user_id)
+    session = ChatSession.new(user_id, dry_run=dry_run)
 
     # Create in database first - fail fast if this fails
     try:
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            dry_run=dry_run,
         )
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")

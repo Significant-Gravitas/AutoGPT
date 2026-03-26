@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.context import get_current_permissions
+from backend.copilot.context import get_current_permissions, is_session_dry_run
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -87,6 +87,9 @@ class RunBlockTool(BaseTool):
         block_id = kwargs.get("block_id", "").strip()
         input_data = kwargs.get("input_data", {})
         dry_run = bool(kwargs.get("dry_run", False))
+        # Session-level dry_run forces all tool calls to use dry-run mode.
+        if is_session_dry_run():
+            dry_run = True
         session_id = session.session_id
 
         if not block_id:

@@ -23,6 +23,7 @@ from backend.copilot.context import (
     _current_session,
     _current_user_id,
     _encode_cwd_for_cli,
+    _session_dry_run,
     get_execution_context,
     get_sdk_cwd,
     is_allowed_local_path,
@@ -94,6 +95,7 @@ def set_execution_context(
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
     permissions: "CopilotPermissions | None" = None,
+    dry_run: bool = False,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -106,6 +108,8 @@ def set_execution_context(
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
         permissions: Optional capability filter restricting tools/blocks.
+        dry_run: When True, session-level dry-run is active — all tool calls
+            (run_block, run_agent) are forced to use dry-run simulation.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
@@ -113,6 +117,7 @@ def set_execution_context(
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
     _current_permissions.set(permissions)
+    _session_dry_run.set(dry_run)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
     _tool_task_queues.set({})

@@ -1772,6 +1772,7 @@ async def stream_chat_completion_sdk(
             sandbox=e2b_sandbox,
             sdk_cwd=sdk_cwd,
             permissions=permissions,
+            dry_run=session.dry_run,
         )
 
         # Fail fast when no API credentials are available at all.

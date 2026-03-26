@@ -220,6 +220,10 @@ model ChatSession {
   successfulAgentRuns      Json @default("{}") // Map of graph_id -> count
   successfulAgentSchedules Json @default("{}") // Map of graph_id -> count
 
+  // Dry-run mode: when true, all tool calls (run_block, run_agent) are forced
+  // to use dry-run simulation — no real API calls or side effects.
+  dryRun Boolean @default(false)
+
   // Usage tracking
   totalPromptTokens     Int @default(0)
   totalCompletionTokens Int @default(0)

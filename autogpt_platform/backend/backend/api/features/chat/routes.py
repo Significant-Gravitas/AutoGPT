@@ -103,12 +103,19 @@ class StreamChatRequest(BaseModel):
     )  # Workspace file IDs attached to this message
 
 
+class CreateSessionRequest(BaseModel):
+    """Request model for creating a new chat session."""
+
+    dry_run: bool = False
+
+
 class CreateSessionResponse(BaseModel):
     """Response model containing information on a newly created chat session."""
 
     id: str
     created_at: str
     user_id: str | None
+    dry_run: bool = False
 
 
 class ActiveStreamInfo(BaseModel):
@@ -239,6 +246,7 @@ async def list_sessions(
 )
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
+    request: CreateSessionRequest | None = None,
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -247,22 +255,28 @@ async def create_session(
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
+        request: Optional request body. When provided, ``dry_run=True``
+            forces all tool calls in the session to use dry-run simulation.
 
     Returns:
         CreateSessionResponse: Details of the created session.
 
     """
+    dry_run = request.dry_run if request else False
+
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
+        f"{', dry_run=True' if dry_run else ''}"
     )
 
-    session = await create_chat_session(user_id)
+    session = await create_chat_session(user_id, dry_run=dry_run)
 
     return CreateSessionResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
+        dry_run=session.dry_run,
     )
 
 
