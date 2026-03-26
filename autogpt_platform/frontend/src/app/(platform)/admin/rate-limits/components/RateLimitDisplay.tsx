@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 
 function formatTokens(tokens: number): string {
-  if (tokens === 0) return "Unlimited";
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
   if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
   return tokens.toString();
@@ -23,7 +23,7 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
         <span>{formatTokens(used)} used</span>
-        <span>{formatTokens(limit)} limit</span>
+        <span>{limit === 0 ? "Unlimited" : formatTokens(limit)} limit</span>
       </div>
       <div className="h-2 w-full rounded-full bg-gray-200">
         <div
@@ -45,11 +45,15 @@ interface Props {
 
 export function RateLimitDisplay({ data, onReset }: Props) {
   const [isResetting, setIsResetting] = useState(false);
+  const { toast } = useToast();
 
   async function handleReset() {
     setIsResetting(true);
     try {
       await onReset();
+      toast({ title: "Usage reset successfully" });
+    } catch (_error) {
+      toast({ title: "Failed to reset usage", variant: "destructive" });
     } finally {
       setIsResetting(false);
     }
