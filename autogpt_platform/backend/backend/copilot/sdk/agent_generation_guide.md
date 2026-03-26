@@ -233,7 +233,10 @@ user the agent is ready. NEVER skip this step.
    and realistic sample inputs that exercise every path in the agent. This
    simulates execution using an LLM for each block — no real API calls,
    credentials, or credits are consumed.
-3. **Inspect output**: Examine the dry-run result for problems:
+3. **Inspect output**: Examine the dry-run result for problems. If
+   `wait_for_result` returns only a summary, call
+   `view_agent_output(execution_id=..., show_execution_details=True)` to
+   see the full node-by-node execution trace. Look for:
    - **Errors or failed nodes** — a node raised an exception or returned an
      error status. Common causes: wrong `source_name`/`sink_name` in links,
      missing `input_default` values, or referencing a nonexistent block output.
