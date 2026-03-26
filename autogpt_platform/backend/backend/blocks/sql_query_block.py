@@ -3,7 +3,6 @@ import re
 from decimal import Decimal
 from enum import Enum
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 import sqlparse
 from pydantic import SecretStr
@@ -88,6 +87,10 @@ _DISALLOWED_KEYWORDS = {
     "DISCARD",
     "NOTIFY",
     "DO",
+    # SELECT ... INTO creates tables (PG/MSSQL) or writes files (MySQL OUTFILE/DUMPFILE)
+    "INTO",
+    "OUTFILE",
+    "DUMPFILE",
 }
 
 
@@ -305,14 +308,17 @@ class SQLQueryBlock(Block):
             connect_args=(
                 {"connect_timeout": 10} if "sqlite" not in connection_string else {}
             ),
-            # Execution options for timeout vary by driver; we set a
-            # conservative pool and connection timeout at the engine level.
             pool_pre_ping=True,
             pool_recycle=300,
         )
         try:
             with engine.connect() as conn:
-                # Set the connection to read-only where supported
+                # Use AUTOCOMMIT so SET commands take effect immediately and
+                # apply to the explicit transaction we open below.
+                conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+
+                # Set session-level read-only and timeout before starting
+                # the read-only transaction.
                 if engine.dialect.name == "postgresql":
                     conn.execute(text(f"SET statement_timeout = {timeout * 1000}"))
                     conn.execute(text("SET default_transaction_read_only = ON"))
@@ -322,13 +328,19 @@ class SQLQueryBlock(Block):
                     )
                     conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
 
-                result = conn.execute(text(query))
-                columns = list(result.keys()) if result.returns_rows else []
-                rows = result.fetchmany(max_rows)
-                results = [
-                    {col: _serialize_value(val) for col, val in zip(columns, row)}
-                    for row in rows
-                ]
+                # Execute the user query inside an explicit transaction so
+                # the read-only setting applies to it.
+                conn.execute(text("BEGIN"))
+                try:
+                    result = conn.execute(text(query))
+                    columns = list(result.keys()) if result.returns_rows else []
+                    rows = result.fetchmany(max_rows)
+                    results = [
+                        {col: _serialize_value(val) for col, val in zip(columns, row)}
+                        for row in rows
+                    ]
+                finally:
+                    conn.execute(text("ROLLBACK"))
             return results, columns
         finally:
             engine.dispose()
@@ -357,14 +369,13 @@ class SQLQueryBlock(Block):
             return
 
         # SSRF protection: parse the connection URL and validate that the
-        # host is not internal. SQLite is file-based and handled separately.
+        # host is not internal.
         if input_data.database_type == DatabaseType.SQLITE:
-            # SQLite: block absolute paths outside a safe pattern and
-            # reject any URL that specifies a host (network SQLite is not real).
-            parsed = urlparse(connection_string)
-            if parsed.hostname:
-                yield "error", "SQLite does not support network connections."
-                return
+            # SQLite allows arbitrary filesystem access and lacks transaction-
+            # level read-only enforcement. Disable until a sandboxing strategy
+            # (e.g. allowlisted paths, read-only URI mode) is implemented.
+            yield "error", "SQLite is not supported for remote execution."
+            return
         else:
             # Network databases: extract host from SQLAlchemy URL and
             # verify it is not a private/blocked address.
