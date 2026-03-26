@@ -123,7 +123,7 @@ export function CredentialRow({
           </Text>
           {isRealCredentialType && (
             <span className="shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-[0.625rem] font-medium leading-tight text-zinc-500">
-              {getCredentialTypeLabel(credType, provider)}
+              {getCredentialTypeLabel(credType)}
             </span>
           )}
         </div>

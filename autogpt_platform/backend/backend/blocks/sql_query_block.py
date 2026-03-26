@@ -153,10 +153,11 @@ def _sanitize_error(
 
 
 def _extract_keyword_tokens(parsed: sqlparse.sql.Statement) -> list[str]:
-    """Extract top-level keyword tokens from a parsed SQL statement.
+    """Extract keyword tokens from a parsed SQL statement.
 
-    Walks the token tree and collects Keyword and DML tokens, skipping
-    tokens that are inside string literals, identifiers, or parenthesized groups.
+    Uses sqlparse token type classification to collect Keyword/DML/DDL/DCL
+    tokens. String literals and identifiers have different token types, so
+    they are naturally excluded from the result.
     """
     keywords: list[str] = []
     for token in parsed.flatten():
@@ -421,8 +422,6 @@ class SQLQueryBlock(Block):
         engine = create_engine(
             connection_string,
             connect_args=connect_args,
-            pool_pre_ping=True,
-            pool_recycle=300,
         )
         try:
             with engine.connect() as conn:

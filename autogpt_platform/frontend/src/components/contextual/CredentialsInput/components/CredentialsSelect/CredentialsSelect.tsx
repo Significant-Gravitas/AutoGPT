@@ -91,11 +91,7 @@ export function CredentialsSelect({
           {credentials.map((credential) => (
             <option key={credential.id} value={credential.id}>
               {getCredentialDisplayName(credential, displayName)} (
-              {getCredentialTypeLabel(
-                credential.type as CredentialsType,
-                provider,
-              )}
-              )
+              {getCredentialTypeLabel(credential.type as CredentialsType)})
             </option>
           ))}
         </select>
