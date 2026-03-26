@@ -52,3 +52,60 @@ def build_test_transcript(pairs: list[tuple[str, str]]) -> str:
         lines.append(json.dumps(entry, separators=(",", ":")))
         last_uuid = uid
     return "\n".join(lines) + "\n"
+
+
+def build_structured_transcript(
+    entries: list[tuple[str, str | list[dict]]],
+) -> str:
+    """Build a JSONL transcript with structured content blocks.
+
+    Each entry is (role, content) where content is either a plain string
+    (for user messages) or a list of content block dicts (for assistant
+    messages with thinking/tool_use/text blocks).
+
+    Example::
+
+        build_structured_transcript([
+            ("user", "Hello"),
+            ("assistant", [
+                {"type": "thinking", "thinking": "...", "signature": "sig1"},
+                {"type": "text", "text": "Hi there"},
+            ]),
+        ])
+    """
+    lines: list[str] = []
+    last_uuid: str | None = None
+    for role, content in entries:
+        uid = str(uuid4())
+        entry_type = "assistant" if role == "assistant" else "user"
+        if role == "assistant" and isinstance(content, list):
+            msg: dict = {
+                "role": "assistant",
+                "model": "claude-test",
+                "id": f"msg_{uid[:8]}",
+                "type": "message",
+                "content": content,
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+            }
+        elif role == "assistant":
+            msg = {
+                "role": "assistant",
+                "model": "claude-test",
+                "id": f"msg_{uid[:8]}",
+                "type": "message",
+                "content": [{"type": "text", "text": content}],
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+            }
+        else:
+            msg = {"role": role, "content": content}
+        entry = {
+            "type": entry_type,
+            "uuid": uid,
+            "parentUuid": last_uuid,
+            "message": msg,
+        }
+        lines.append(json.dumps(entry, separators=(",", ":")))
+        last_uuid = uid
+    return "\n".join(lines) + "\n"
