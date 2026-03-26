@@ -466,7 +466,7 @@ async def get_global_rate_limits(
 
     # Apply tier multiplier
     tier = await get_user_tier(user_id)
-    multiplier = TIER_MULTIPLIERS.get(tier, 1)
+    multiplier = TIER_MULTIPLIERS[tier]
     if multiplier != 1:
         daily = daily * multiplier
         weekly = weekly * multiplier
