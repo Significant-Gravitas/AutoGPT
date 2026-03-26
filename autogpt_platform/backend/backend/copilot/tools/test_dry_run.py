@@ -384,7 +384,8 @@ def test_build_mcp_simulation_prompt_contains_tool_info():
     system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
 
     assert "get_weather" in system_prompt
-    assert "mcp.example.com" in system_prompt
+    # Verify the full server URL is included (not just a substring)
+    assert input_data["server_url"] in system_prompt
     assert '"city"' in system_prompt  # schema
     assert "London" in user_prompt  # arguments
 
