@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
-import type { UserRateLimitResponse } from "@/lib/autogpt-server-api/types";
+import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 
 function formatTokens(tokens: number): string {
   if (tokens === 0) return "Unlimited";

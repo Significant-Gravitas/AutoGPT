@@ -6,8 +6,11 @@ import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
 import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import type { UserRateLimitResponse } from "@/lib/autogpt-server-api/types";
-import { getUserRateLimit, resetUserRateLimit } from "../actions";
+import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
+import {
+  getV2GetUserRateLimit,
+  postV2ResetUserRateLimitUsage,
+} from "@/app/api/__generated__/endpoints/admin/admin";
 import { RateLimitDisplay } from "./RateLimitDisplay";
 
 export function RateLimitManager() {
@@ -23,8 +26,11 @@ export function RateLimitManager() {
 
     setIsLoading(true);
     try {
-      const data = await getUserRateLimit(trimmed);
-      setRateLimitData(data);
+      const response = await getV2GetUserRateLimit({ user_id: trimmed });
+      if (response.status !== 200) {
+        throw new Error("Failed to fetch rate limit");
+      }
+      setRateLimitData(response.data);
     } catch (error) {
       console.error("Error fetching rate limit:", error);
       toast({
@@ -42,8 +48,13 @@ export function RateLimitManager() {
     if (!rateLimitData) return;
 
     try {
-      const data = await resetUserRateLimit(rateLimitData.user_id);
-      setRateLimitData(data);
+      const response = await postV2ResetUserRateLimitUsage({
+        user_id: rateLimitData.user_id,
+      });
+      if (response.status !== 200) {
+        throw new Error("Failed to reset usage");
+      }
+      setRateLimitData(response.data);
       toast({
         title: "Success",
         description: "User rate limit usage reset to zero.",
