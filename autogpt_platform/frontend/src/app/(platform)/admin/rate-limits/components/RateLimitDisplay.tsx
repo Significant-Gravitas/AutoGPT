@@ -24,7 +24,7 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
         <span>{formatTokens(used)} used</span>
         <span>{limit === 0 ? "Unlimited" : formatTokens(limit)} limit</span>
       </div>
-      <div className="h-2 w-full rounded-full bg-gray-200">
+      <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700">
         <div
           className={`h-2 rounded-full ${color}`}
           style={{ width: `${pct}%` }}
@@ -60,21 +60,25 @@ export function RateLimitDisplay({ data, onReset }: Props) {
     : data.daily_tokens_used === 0;
 
   return (
-    <div className="rounded-md border bg-white p-6">
+    <div className="rounded-md border bg-white p-6 dark:bg-gray-900">
       <h2 className="mb-4 text-lg font-semibold">
         Rate Limits for {data.user_id}
       </h2>
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Daily Usage</h3>
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Daily Usage
+          </h3>
           <UsageBar
             used={data.daily_tokens_used}
             limit={data.daily_token_limit}
           />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Weekly Usage</h3>
+          <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            Weekly Usage
+          </h3>
           <UsageBar
             used={data.weekly_tokens_used}
             limit={data.weekly_token_limit}
@@ -86,7 +90,7 @@ export function RateLimitDisplay({ data, onReset }: Props) {
         <select
           value={resetWeekly ? "both" : "daily"}
           onChange={(e) => setResetWeekly(e.target.value === "both")}
-          className="rounded-md border px-3 py-1.5 text-sm"
+          className="rounded-md border bg-white px-3 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200"
           disabled={isResetting}
         >
           <option value="daily">Reset daily only</option>

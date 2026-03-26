@@ -25,7 +25,7 @@ const sidebarLinkGroups = [
       {
         text: "Rate Limits",
         href: "/admin/rate-limits",
-        icon: <Gauge size={24} />,
+        icon: <Gauge className="h-6 w-6" />,
       },
       {
         text: "Execution Analytics",

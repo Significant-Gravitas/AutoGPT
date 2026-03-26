@@ -274,6 +274,11 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
 
     Always deletes the daily Redis key.  When *reset_weekly* is ``True``,
     the weekly key is deleted as well.
+
+    Unlike read paths (``get_usage_status``, ``check_rate_limit``) which
+    fail-open on Redis errors, resets intentionally re-raise so the caller
+    knows the operation did not succeed.  A silent failure here would leave
+    the admin believing the counters were zeroed when they were not.
     """
     now = datetime.now(UTC)
     keys_to_delete = [_daily_key(user_id, now=now)]

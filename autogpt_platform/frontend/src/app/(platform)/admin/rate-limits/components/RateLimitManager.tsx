@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/__legacy__/ui/button";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
 import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
@@ -74,7 +74,7 @@ export function RateLimitManager() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border bg-white p-6">
+      <div className="rounded-md border bg-white p-6 dark:bg-gray-900">
         <Label htmlFor="userId" className="mb-2 block text-sm font-medium">
           User ID
         </Label>
