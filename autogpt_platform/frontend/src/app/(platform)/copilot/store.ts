@@ -1,5 +1,6 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
+import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
@@ -7,20 +8,6 @@ export interface DeleteTarget {
 }
 
 const isClient = typeof window !== "undefined";
-
-function loadCompletedSessions(): Set<string> {
-  if (!isClient) return new Set();
-  const raw = storage.get(Key.COPILOT_COMPLETED_SESSIONS);
-  if (!raw) return new Set();
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? new Set<string>(parsed.filter((v) => typeof v === "string"))
-      : new Set();
-  } catch {
-    return new Set();
-  }
-}
 
 function persistCompletedSessions(ids: Set<string>) {
   if (!isClient) return;
@@ -73,7 +60,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   isDrawerOpen: false,
   setDrawerOpen: (open) => set({ isDrawerOpen: open }),
 
-  completedSessionIDs: loadCompletedSessions(),
+  completedSessionIDs: isClient
+    ? parseSessionIDs(storage.get(Key.COPILOT_COMPLETED_SESSIONS))
+    : new Set(),
   addCompletedSession: (id) =>
     set((state) => {
       const next = new Set(state.completedSessionIDs);
@@ -126,6 +115,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       isNotificationsEnabled: false,
       isSoundEnabled: true,
     });
-    document.title = "AutoGPT";
+    document.title = ORIGINAL_TITLE;
   },
 }));

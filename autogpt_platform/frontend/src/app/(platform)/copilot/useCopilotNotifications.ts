@@ -4,9 +4,13 @@ import type { WebSocketNotification } from "@/lib/autogpt-server-api/types";
 import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import {
+  ORIGINAL_TITLE,
+  formatNotificationTitle,
+  parseSessionIDs,
+} from "./helpers";
 import { useCopilotUIStore } from "./store";
 
-const ORIGINAL_TITLE = "AutoGPT";
 const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 
 /**
@@ -55,7 +59,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
 
     const count = useCopilotUIStore.getState().completedSessionIDs.size;
     if (count > 0) {
-      document.title = `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`;
+      document.title = formatNotificationTitle(count);
     }
   }, []);
 
@@ -83,7 +87,7 @@ export function useCopilotNotifications(activeSessionID: string | null) {
       // Always update UI state (checkmark + title) regardless of notification setting
       state.addCompletedSession(sessionID);
       const count = useCopilotUIStore.getState().completedSessionIDs.size;
-      document.title = `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`;
+      document.title = formatNotificationTitle(count);
 
       // Sound and browser notifications are gated by the user setting
       if (!state.isNotificationsEnabled) return;
@@ -147,27 +151,11 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   useEffect(() => {
     function handleStorage(e: StorageEvent) {
       if (e.key !== Key.COPILOT_COMPLETED_SESSIONS) return;
-      let next: Set<string>;
-      try {
-        if (!e.newValue) {
-          next = new Set<string>();
-        } else {
-          const parsed: unknown = JSON.parse(e.newValue);
-          next = Array.isArray(parsed)
-            ? new Set<string>(parsed.filter((v) => typeof v === "string"))
-            : new Set<string>();
-        }
-      } catch {
-        next = new Set<string>();
-      }
       // localStorage is the shared source of truth — adopt it directly so both
       // additions (new completions) and removals (cleared sessions) propagate.
+      const next = parseSessionIDs(e.newValue);
       useCopilotUIStore.setState({ completedSessionIDs: next });
-      const count = next.size;
-      document.title =
-        count > 0
-          ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
-          : ORIGINAL_TITLE;
+      document.title = formatNotificationTitle(next.size);
 
       // Refetch the session list so the sidebar reflects the latest
       // is_processing state (avoids stale spinner after cross-tab clear).
