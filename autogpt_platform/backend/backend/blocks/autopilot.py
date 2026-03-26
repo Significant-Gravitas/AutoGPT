@@ -151,7 +151,10 @@ class AutoPilotBlock(Block):
                 "When enabled, ALL tool calls (run_block and run_agent) in this "
                 "autopilot session are forced to use dry-run simulation mode. "
                 "No real API calls, side effects, or credits are consumed. "
-                "Useful for testing agent wiring and previewing outputs."
+                "Useful for testing agent wiring and previewing outputs. "
+                "Only applies when creating a new session (session_id is empty). "
+                "When reusing an existing session_id, the session's original "
+                "dry_run setting is preserved."
             ),
             default=False,
             advanced=True,

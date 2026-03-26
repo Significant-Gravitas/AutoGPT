@@ -533,6 +533,7 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                dry_run=session.dry_run,
             )
             existing_message_count = 0
 

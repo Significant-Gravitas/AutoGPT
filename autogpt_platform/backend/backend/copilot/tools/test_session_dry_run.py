@@ -162,9 +162,7 @@ class TestRunBlockToolSessionDryRun:
                 # Verify execute_block was called with dry_run=True
                 mock_exec.assert_called_once()
                 call_kwargs = mock_exec.call_args
-                assert call_kwargs.kwargs.get("dry_run") is True or (
-                    len(call_kwargs.args) > 0
-                )
+                assert call_kwargs.kwargs.get("dry_run") is True
         finally:
             _session_dry_run.reset(token)
 
