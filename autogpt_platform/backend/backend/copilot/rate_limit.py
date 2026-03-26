@@ -167,15 +167,24 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
-        await redis.delete(_daily_key(user_id, now=now))
 
-        # Reduce weekly usage by one day's worth of capacity.
-        # DECRBY is not perfectly atomic with concurrent INCRBY, but this
-        # is acceptable: rate limits are approximate, and resets are rare
-        # (user pays $5). A negative result is clamped to 0.
-        if daily_token_limit > 0:
-            w_key = _weekly_key(user_id, now=now)
-            new_val = await redis.decrby(w_key, daily_token_limit)
+        # Use a MULTI/EXEC transaction so that DELETE (daily) and DECRBY
+        # (weekly) either both execute or neither does.  This prevents the
+        # scenario where the daily counter is cleared but the weekly
+        # counter is not decremented — which would let the caller refund
+        # credits even though the daily limit was already reset.
+        d_key = _daily_key(user_id, now=now)
+        w_key = _weekly_key(user_id, now=now) if daily_token_limit > 0 else None
+
+        pipe = redis.pipeline(transaction=True)
+        pipe.delete(d_key)
+        if w_key is not None:
+            pipe.decrby(w_key, daily_token_limit)
+        results = await pipe.execute()
+
+        # Clamp negative weekly counter to 0 (best-effort; not critical).
+        if w_key is not None:
+            new_val = results[1]  # DECRBY result
             if new_val < 0:
                 await redis.set(w_key, 0, keepttl=True)
 
