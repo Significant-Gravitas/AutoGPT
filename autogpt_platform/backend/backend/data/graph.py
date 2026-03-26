@@ -581,7 +581,6 @@ class GraphModel(Graph, GraphMeta):
                     field_name,
                     field_info,
                 ) in node.block.input_schema.get_credentials_fields_info().items():
-
                     discriminator = field_info.discriminator
                     if not discriminator:
                         node_credential_data.append((field_info, (node.id, field_name)))
@@ -1527,6 +1526,16 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
 
 
 async def __create_graph(tx, graph: Graph, user_id: str):
+    # Auto-increment version if a record with (id, version) already exists.
+    # This prevents UniqueViolationError when the copilot re-saves an agent
+    # that already exists at the requested version.
+    existing = await AgentGraph.prisma(tx).find_first(
+        where={"id": graph.id},
+        order={"version": "desc"},
+    )
+    if existing and existing.version >= graph.version:
+        graph.version = existing.version + 1
+
     graphs = [graph] + graph.sub_graphs
 
     await AgentGraph.prisma(tx).create_many(
