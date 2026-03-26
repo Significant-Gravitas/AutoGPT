@@ -15,7 +15,6 @@ import { AdminUserSearch } from "../../components/AdminUserSearch";
 export function SearchAndFilterAdminSpending({
   initialSearch,
 }: {
-  initialStatus?: CreditTransactionType;
   initialSearch?: string;
 }) {
   const router = useRouter();
@@ -35,7 +34,7 @@ export function SearchAndFilterAdminSpending({
     setSearchQuery(searchParams.get("search") || "");
   }, [searchParams]);
 
-  const handleSearch = (query: string) => {
+  function handleSearch(query: string) {
     const params = new URLSearchParams(searchParams.toString());
 
     if (query) {
@@ -53,7 +52,7 @@ export function SearchAndFilterAdminSpending({
     params.set("page", "1"); // Reset to first page on new search
 
     router.push(`${pathname}?${params.toString()}`);
-  };
+  }
 
   return (
     <div className="flex items-center justify-between">

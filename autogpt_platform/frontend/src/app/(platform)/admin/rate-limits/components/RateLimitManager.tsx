@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Label } from "@/components/__legacy__/ui/label";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import type { UserTransaction } from "@/app/api/__generated__/models/userTransaction";
@@ -205,8 +204,8 @@ export function RateLimitManager() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-md border bg-white p-6 dark:bg-gray-900">
-        <Label className="mb-2 block text-sm font-medium">Search User</Label>
+      <div className="rounded-md border bg-white p-6">
+        <label className="mb-2 block text-sm font-medium">Search User</label>
         <AdminUserSearch
           onSearch={handleSearch}
           placeholder="Search by name, email, or user ID..."
@@ -221,7 +220,7 @@ export function RateLimitManager() {
       {/* User selection list -- always require explicit selection */}
       {searchResults.length >= 1 && !selectedUser && (
         <div className="rounded-md border bg-white p-4 dark:bg-gray-900">
-          <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+          <h3 className="mb-2 text-sm font-medium text-gray-700">
             Select a user ({searchResults.length}{" "}
             {searchResults.length === 1 ? "result" : "results"})
           </h3>
@@ -229,7 +228,7 @@ export function RateLimitManager() {
             {searchResults.map((user) => (
               <li key={user.user_id}>
                 <button
-                  className="w-full px-2 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                  className="w-full px-2 py-2 text-left text-sm hover:bg-gray-100"
                   onClick={() => handleSelectUser(user)}
                 >
                   <span className="font-medium">{user.user_email}</span>
@@ -245,7 +244,7 @@ export function RateLimitManager() {
 
       {/* Show selected user */}
       {selectedUser && searchResults.length >= 1 && (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm dark:border-blue-800 dark:bg-blue-950">
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm">
           Selected:{" "}
           <span className="font-medium">{selectedUser.user_email}</span>
           <span className="ml-2 text-xs text-gray-500">

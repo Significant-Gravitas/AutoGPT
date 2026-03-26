@@ -58,7 +58,12 @@ async def _resolve_user_id(
         )
 
     # We have a user_id; try to look up their email for display purposes.
-    resolved_email = await get_user_email_by_id(user_id)
+    # This is non-critical -- a failure should not block the response.
+    try:
+        resolved_email = await get_user_email_by_id(user_id)
+    except Exception:
+        logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
+        resolved_email = None
     return user_id, resolved_email
 
 
@@ -123,7 +128,11 @@ async def reset_user_rate_limit(
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
 
-    resolved_email = await get_user_email_by_id(user_id)
+    try:
+        resolved_email = await get_user_email_by_id(user_id)
+    except Exception:
+        logger.warning("Failed to resolve email for user %s", user_id, exc_info=True)
+        resolved_email = None
 
     return UserRateLimitResponse(
         user_id=user_id,

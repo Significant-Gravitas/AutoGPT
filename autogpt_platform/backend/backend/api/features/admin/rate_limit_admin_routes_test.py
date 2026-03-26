@@ -220,6 +220,35 @@ def test_reset_user_usage_redis_failure(
     assert response.status_code == 500
 
 
+def test_get_rate_limit_email_lookup_failure(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that failing to resolve a user email degrades gracefully."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(2_500_000, 12_500_000),
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_usage_status",
+        new_callable=AsyncMock,
+        return_value=_mock_usage_status(),
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        side_effect=Exception("DB connection lost"),
+    )
+
+    response = client.get("/admin/rate_limit", params={"user_id": target_user_id})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == target_user_id
+    assert data["user_email"] is None
+
+
 def test_admin_endpoints_require_admin_role(mock_jwt_user) -> None:
     """Test that rate limit admin endpoints require admin role."""
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]

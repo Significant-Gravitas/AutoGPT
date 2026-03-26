@@ -16,39 +16,7 @@ import {
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { Gauge } from "@phosphor-icons/react";
-
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return tokens.toString();
-}
-
-function UsageBar({ used, limit }: { used: number; limit: number }) {
-  if (limit === 0) {
-    return <span className="text-sm text-gray-500">Unlimited</span>;
-  }
-  const pct = Math.min((used / limit) * 100, 100);
-  const color =
-    pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-yellow-500" : "bg-green-500";
-
-  return (
-    <div className="space-y-1">
-      <div className="flex justify-between text-sm">
-        <span>{formatTokens(used)} used</span>
-        <span>{formatTokens(limit)} limit</span>
-      </div>
-      <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700">
-        <div
-          className={`h-2 rounded-full ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="text-right text-xs text-gray-500">
-        {pct.toFixed(1)}% used
-      </div>
-    </div>
-  );
-}
+import { UsageBar } from "../../components/UsageBar";
 
 export function RateLimitModal({
   userId,
@@ -171,7 +139,7 @@ export function RateLimitModal({
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <h3 className="text-sm font-medium text-gray-700">
                     Daily Usage
                   </h3>
                   <UsageBar
@@ -180,7 +148,7 @@ export function RateLimitModal({
                   />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <h3 className="text-sm font-medium text-gray-700">
                     Weekly Usage
                   </h3>
                   <UsageBar
@@ -194,7 +162,7 @@ export function RateLimitModal({
                 <select
                   value={resetWeekly ? "both" : "daily"}
                   onChange={(e) => setResetWeekly(e.target.value === "both")}
-                  className="rounded-md border bg-white px-3 py-1.5 text-sm dark:bg-gray-800 dark:text-gray-200"
+                  className="rounded-md border bg-white px-3 py-1.5 text-sm"
                   disabled={isResetting}
                 >
                   <option value="daily">Reset daily only</option>

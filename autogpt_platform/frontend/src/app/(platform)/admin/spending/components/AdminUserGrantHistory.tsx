@@ -81,10 +81,7 @@ export async function AdminUserGrantHistory({
 
   return (
     <div className="space-y-4">
-      <SearchAndFilterAdminSpending
-        initialStatus={initialStatus}
-        initialSearch={initialSearch}
-      />
+      <SearchAndFilterAdminSpending initialSearch={initialSearch} />
 
       <div className="rounded-md border bg-white">
         <Table>
