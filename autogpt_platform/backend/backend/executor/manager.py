@@ -383,6 +383,22 @@ async def execute_node(
                     f"Please re-select the file to authenticate with {provider.capitalize()}."
                 )
 
+    # For passthrough blocks in dry-run: if required credentials were not
+    # acquired (e.g. user hasn't configured them), fall back to simulation
+    # instead of failing with a credentials error.
+    if _dry_run_passthrough:
+        required_cred_fields = {
+            f
+            for f, field_info in input_model.model_fields.items()
+            if f in input_model.get_credentials_fields() and field_info.is_required()
+        }
+        acquired_cred_fields = set(extra_exec_kwargs.keys()) & required_cred_fields
+        if required_cred_fields and not acquired_cred_fields:
+            log_metadata.info(
+                "Dry-run passthrough: credentials not available, falling back to simulation"
+            )
+            _dry_run_passthrough = False
+
     output_size = 0
 
     # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
