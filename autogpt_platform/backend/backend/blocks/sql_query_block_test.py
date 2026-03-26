@@ -77,7 +77,8 @@ class TestValidateSingleStatement:
 
     def test_comment_only_query(self):
         error, stmt = _validate_single_statement("-- just a comment")
-        assert error is not None  # Either "empty" or rejected
+        assert error == "Query is empty."
+        assert stmt is None
 
 
 class TestValidateQueryIsReadOnly:
@@ -373,7 +374,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
         # Mock execute_query to raise an OperationalError with credentials in msg
         conn_url = "postgresql://admin:supersecret@db.example.com:5432/db"
-        block.execute_query = lambda **kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
             OperationalError(
                 f"could not connect to server: Connection refused\n"
                 f'\tIs the server running on host "{conn_url}"?',
@@ -392,7 +393,7 @@ class TestSQLQueryBlockRunErrorHandling:
         creds = _make_credentials()
         input_data = _make_input(creds, query="SELECT pg_sleep(1000)", timeout=5)
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
             OperationalError(
                 "canceling statement due to statement timeout",
                 params=None,
@@ -412,7 +413,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
         mock_cols = ["id", "name"]
-        block.execute_query = lambda **kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert outputs["results"] == mock_rows
         assert outputs["columns"] == mock_cols
@@ -439,7 +440,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
         mock_rows = [{"id": 1}]
         mock_cols = ["id"]
-        block.execute_query = lambda **kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == mock_rows
@@ -464,7 +465,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([], [], 1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == []
@@ -481,7 +482,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([], [], 1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == 1
@@ -496,7 +497,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([], [], 1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == 1
@@ -511,7 +512,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([], [], 0)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 0)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
 
@@ -525,7 +526,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([], [], 0)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 0)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
 
@@ -583,7 +584,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([], [], 42)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 42)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == 42
@@ -600,7 +601,7 @@ class TestSQLQueryBlockWriteMode:
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}]
         mock_cols = ["id", "name"]
-        block.execute_query = lambda **kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert outputs["results"] == mock_rows
         assert outputs["columns"] == mock_cols
@@ -628,7 +629,7 @@ class TestSQLQueryBlockReadOnlyMode:
             read_only=True,
         )
         block.check_host_allowed = AsyncMock(return_value=None)  # type: ignore[assignment]
-        block.execute_query = lambda **kwargs: ([{"col": 1}], ["col"], -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([{"col": 1}], ["col"], -1)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == [{"col": 1}]

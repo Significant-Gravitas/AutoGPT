@@ -106,7 +106,7 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
 
 export function getCredentialTypeLabel(
   type: CredentialsType,
-  provider?: string,
+  _provider?: string,
 ): string {
   return CREDENTIAL_TYPE_LABELS[type] ?? type;
 }
