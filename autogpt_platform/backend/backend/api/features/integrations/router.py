@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Callable, List, Literal
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -227,6 +227,7 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    await _ensure_managed_credentials(user_id)
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -854,31 +855,25 @@ async def get_ayrshare_sso_url(
     return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
 
 
-class AgentMailConnectResponse(BaseModel):
-    pod_id: str
+# ========== MANAGED CREDENTIAL AUTO-PROVISIONING ========== #
+#
+# To add a new managed credential:
+# 1. Add a provisioning function like _provision_agentmail
+# 2. Add an entry to _MANAGED_CREDENTIAL_PROVISIONERS
+# 3. Add synthesis logic in credentials_store._get_all_creds_unlocked
+#
 
 
-@router.post("/agentmail/connect")
-async def connect_agentmail(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> AgentMailConnectResponse:
-    """Provision an AgentMail pod for the current user.
+async def _provision_agentmail(user_id: str) -> None:
+    """Provision an AgentMail pod + API key for *user_id*.
 
-    Creates a pod via the org-level API key, generates a pod-scoped API key,
-    and stores both in ``ManagedCredentials``.  The pod key then appears
-    automatically in the credential dropdown for AgentMail blocks.
-
-    Idempotent: if a pod already exists for this user, returns its ID without
-    creating a duplicate.
+    Idempotent: reuses an existing pod if one was already created.
     """
     from agentmail import AsyncAgentMail
 
     org_api_key = settings.secrets.agentmail_api_key
     if not org_api_key:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="AgentMail API key is not configured",
-        )
+        return
 
     # Check for existing pod under lock (fast path)
     async with await creds_manager.store.locked_user_integrations(user_id):
@@ -887,7 +882,7 @@ async def connect_agentmail(
         existing_key = user_integrations.managed_credentials.agentmail_pod_api_key
 
         if existing_pod_id and existing_key:
-            return AgentMailConnectResponse(pod_id=existing_pod_id)
+            return
 
     # External API calls outside the lock to avoid blocking other operations
     client = AsyncAgentMail(api_key=org_api_key)
@@ -913,11 +908,77 @@ async def connect_agentmail(
         pod_id=pod_id, name=f"{user_id}-agpt-managed"
     )
 
-    # Persist under lock (re-check handles concurrent requests)
     await creds_manager.store.set_agentmail_pod_credentials(
         user_id, pod_id, api_key_obj.api_key
     )
 
+
+# Registry: each entry is a provisioning function.
+# To auto-provision a new managed credential, just append to this list.
+_MANAGED_CREDENTIAL_PROVISIONERS: list[
+    tuple[str, Callable[[str], Any]]  # (name, async fn(user_id) -> None)
+] = [
+    ("agentmail", _provision_agentmail),
+]
+
+
+async def _ensure_managed_credentials(user_id: str) -> None:
+    """Auto-provision all managed credentials for *user_id*.
+
+    Runs all provisioners concurrently. Failures are logged and swallowed
+    so that one broken provider doesn't block the credential listing.
+    """
+
+    async def _safe_provision(name: str, provisioner, uid: str) -> None:
+        try:
+            await provisioner(uid)
+        except Exception as e:
+            logger.error("Auto-provisioning %s failed for user %s: %s", name, uid, e)
+
+    await asyncio.gather(
+        *[
+            _safe_provision(name, provisioner, user_id)
+            for name, provisioner in _MANAGED_CREDENTIAL_PROVISIONERS
+        ]
+    )
+
+
+class AgentMailConnectResponse(BaseModel):
+    pod_id: str
+
+
+@router.post("/agentmail/connect")
+async def connect_agentmail(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> AgentMailConnectResponse:
+    """Provision an AgentMail pod for the current user.
+
+    Creates a pod via the org-level API key, generates a pod-scoped API key,
+    and stores both in ``ManagedCredentials``.  The pod key then appears
+    automatically in the credential dropdown for AgentMail blocks.
+
+    Idempotent: if a pod already exists for this user, returns its ID without
+    creating a duplicate.
+    """
+    org_api_key = settings.secrets.agentmail_api_key
+    if not org_api_key:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="AgentMail API key is not configured",
+        )
+
+    await _provision_agentmail(user_id)
+
+    # Read back the pod_id to return it
+    async with await creds_manager.store.locked_user_integrations(user_id):
+        user_integrations: UserIntegrations = await get_user_integrations(user_id)
+        pod_id = user_integrations.managed_credentials.agentmail_pod_id
+
+    if not pod_id:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision AgentMail pod",
+        )
     return AgentMailConnectResponse(pod_id=pod_id)
 
 
