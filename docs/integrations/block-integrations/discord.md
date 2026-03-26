@@ -1,7 +1,7 @@
 ## Read Discord Messages
 
 ### What it is
-A block that reads messages from a Discord channel using a bot token.
+A block that reads new messages from a Discord channel using a bot token and triggers when a new message is posted.
 
 ### What it does
 This block connects to Discord using a bot token and retrieves messages from a specified channel. It can operate continuously or retrieve a single message.
