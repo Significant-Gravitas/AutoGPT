@@ -105,6 +105,21 @@ class TestValidateQueryIsReadOnly:
         result = _validate_query_is_read_only(query)
         assert result is not None
 
+    # --- SELECT INTO / OUTFILE / DUMPFILE (write-via-SELECT attacks) ---
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT * INTO new_table FROM users",
+            "SELECT * INTO OUTFILE '/tmp/dump.csv' FROM users",
+            "SELECT * INTO DUMPFILE '/tmp/dump.bin' FROM users",
+        ],
+    )
+    def test_select_into_variants_rejected(self, query: str):
+        result = _validate_query_is_read_only(query)
+        assert result is not None
+        assert "INTO" in result
+
     # --- String literals containing keywords should NOT be rejected ---
 
     @pytest.mark.parametrize(
