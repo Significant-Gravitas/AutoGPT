@@ -61,6 +61,7 @@ export function RateLimitDisplay({ data, onReset }: Props) {
 
       <div className="mt-6 flex items-center gap-3 border-t pt-4">
         <select
+          aria-label="Reset scope"
           value={resetWeekly ? "both" : "daily"}
           onChange={(e) => setResetWeekly(e.target.value === "both")}
           className="rounded-md border bg-white px-3 py-1.5 text-sm"

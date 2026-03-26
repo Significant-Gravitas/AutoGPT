@@ -125,7 +125,7 @@ export function RateLimitModal({
           <DialogHeader>
             <DialogTitle>Rate Limits</DialogTitle>
             <DialogDescription>
-              CoPilot rate limits for {userEmail}
+              CoPilot rate limits for {userEmail || userId}
             </DialogDescription>
           </DialogHeader>
 
@@ -160,6 +160,7 @@ export function RateLimitModal({
 
               <div className="flex items-center gap-3 border-t pt-4">
                 <select
+                  aria-label="Reset scope"
                   value={resetWeekly ? "both" : "daily"}
                   onChange={(e) => setResetWeekly(e.target.value === "both")}
                   className="rounded-md border bg-white px-3 py-1.5 text-sm"

@@ -219,7 +219,7 @@ export function RateLimitManager() {
 
       {/* User selection list -- always require explicit selection */}
       {searchResults.length >= 1 && !selectedUser && (
-        <div className="rounded-md border bg-white p-4 dark:bg-gray-900">
+        <div className="rounded-md border bg-white p-4">
           <h3 className="mb-2 text-sm font-medium text-gray-700">
             Select a user ({searchResults.length}{" "}
             {searchResults.length === 1 ? "result" : "results"})
