@@ -21,7 +21,6 @@ from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.blocks.mcp.block import MCPToolBlock
-from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.credit import UsageTransactionMetadata
@@ -286,9 +285,7 @@ async def execute_node(
     # validate_exec() in dry-run mode wipes missing credential fields to None,
     # which would prevent credential acquisition.  Restore them from node defaults
     # so the block can run.
-    _dry_run_passthrough = execution_context.dry_run and isinstance(
-        node_block, (OrchestratorBlock, AgentExecutorBlock)
-    )
+    _dry_run_passthrough = execution_context.dry_run and node_block.dry_run_passthrough
     if _dry_run_passthrough:
         for field_name in cast(
             type[BlockSchema], node_block.input_schema
@@ -301,7 +298,7 @@ async def execute_node(
         # LLM calls when tool outputs are simulated and may never satisfy the
         # orchestrator's "finished" condition.
         _DRY_RUN_MAX_ITERATIONS = 5
-        if isinstance(node_block, OrchestratorBlock):
+        if "agent_mode_max_iterations" in input_data:
             current = input_data.get("agent_mode_max_iterations", 0)
             if current < 0 or current > _DRY_RUN_MAX_ITERATIONS:
                 log_metadata.info(

@@ -261,7 +261,12 @@ def _build_mcp_simulation_prompt(
     tool_arguments = input_data.get("tool_arguments", {})
     server_url = input_data.get("server_url", "")
 
-    schema_text = json.dumps(tool_schema, indent=2) if tool_schema else "(none)"
+    if tool_schema:
+        schema_text = json.dumps(tool_schema, indent=2)
+        if len(schema_text) > _MAX_INPUT_VALUE_CHARS:
+            schema_text = schema_text[:_MAX_INPUT_VALUE_CHARS] + "... [TRUNCATED]"
+    else:
+        schema_text = "(none)"
     desc_line = f"\n- Description: {tool_description}" if tool_description else ""
 
     system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.

@@ -437,6 +437,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         block_type: BlockType = BlockType.STANDARD,
         webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
         is_sensitive_action: bool = False,
+        dry_run_passthrough: bool = False,
     ):
         """
         Initialize the block with the given schema.
@@ -454,6 +455,10 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             test_mock: function names on the block implementation to mock on test run.
             disabled: If the block is disabled, it will not be available for execution.
             static_output: Whether the output links of the block are static by default.
+            dry_run_passthrough: If True, this block executes for real during
+                dry-run instead of being LLM-simulated. Used by blocks that
+                orchestrate child executions (e.g. OrchestratorBlock,
+                AgentExecutorBlock).
         """
         from backend.data.model import NodeExecutionStats
 
@@ -472,6 +477,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.block_type = block_type
         self.webhook_config = webhook_config
         self.is_sensitive_action = is_sensitive_action
+        self.dry_run_passthrough = dry_run_passthrough
         # Read from ClassVar set by initialize_blocks()
         self.optimized_description: str | None = type(self)._optimized_description
         self.execution_stats: "NodeExecutionStats" = NodeExecutionStats()
