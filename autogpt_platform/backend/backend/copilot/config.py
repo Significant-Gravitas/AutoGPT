@@ -7,6 +7,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.settings import Settings
 
 
 class ChatConfig(BaseSettings):
@@ -171,7 +172,12 @@ class ChatConfig(BaseSettings):
         base = (self.base_url or "").rstrip("/")
         if base.endswith("/v1"):
             base = base[:-3]
-        return bool(self.api_key and base and base.startswith("http"))
+        return bool(self.autopilot_api_key and base and base.startswith("http"))
+
+    @property
+    def autopilot_api_key(self) -> str | None:
+        """Return the dedicated AutoPilot OpenRouter API key, falling back to api_key."""
+        return Settings().secrets.autopilot_open_router_api_key or self.api_key
 
     @property
     def e2b_active(self) -> bool:

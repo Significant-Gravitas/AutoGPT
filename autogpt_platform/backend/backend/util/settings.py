@@ -619,6 +619,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    autopilot_open_router_api_key: str = Field(
+        default="",
+        description="Dedicated Open Router API Key for AutoPilot. "
+        "When set, autopilot uses this key instead of the shared open_router_api_key.",
+    )
     llama_api_key: str = Field(default="", description="Llama API Key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(

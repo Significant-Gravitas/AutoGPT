@@ -524,9 +524,10 @@ def _build_sdk_env(
     base = (config.base_url or "").rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
+
     env: dict[str, str] = {
         "ANTHROPIC_BASE_URL": base,
-        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
+        "ANTHROPIC_AUTH_TOKEN": config.autopilot_api_key or "",
         "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
     }
 
@@ -1776,10 +1777,10 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
-        if not config.api_key and not config.use_claude_code_subscription:
+        if not config.autopilot_api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
-                "No API key configured. Set OPEN_ROUTER_API_KEY, "
-                "CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
+                "No API key configured. Set AUTOPILOT_OPEN_ROUTER_API_KEY, "
+                "OPEN_ROUTER_API_KEY, CHAT_API_KEY, or ANTHROPIC_API_KEY for API access, "
                 "or CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use "
                 "Claude Code CLI subscription (requires `claude login`)."
             )
