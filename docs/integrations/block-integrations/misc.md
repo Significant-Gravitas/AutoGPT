@@ -62,6 +62,7 @@ Tool and block identifiers provided in `tools` and `blocks` are validated at run
 | tools_exclude | Controls how the 'tools' list is interpreted. True (default): 'tools' is a deny-list — listed tools are blocked, all others are allowed. An empty 'tools' list means allow everything. False: 'tools' is an allow-list — only listed tools are permitted. | bool | No |
 | blocks | Block identifiers to filter when the copilot uses run_block. Each entry can be: a block name (e.g. 'HTTP Request'), a full block UUID, or the first 8 hex characters of the UUID (e.g. 'c069dc6b'). Works with blocks_exclude. Leave empty to apply no block filter. | List[str] | No |
 | blocks_exclude | Controls how the 'blocks' list is interpreted. True (default): 'blocks' is a deny-list — listed blocks are blocked, all others are allowed. An empty 'blocks' list means allow everything. False: 'blocks' is an allow-list — only listed blocks are permitted. | bool | No |
+| dry_run | When enabled, ALL tool calls (run_block and run_agent) in this autopilot session are forced to use dry-run simulation mode. No real API calls, side effects, or credits are consumed. Useful for testing agent wiring and previewing outputs. Only applies when creating a new session (session_id is empty). When reusing an existing session_id, the session's original dry_run setting is preserved. | bool | No |
 
 ### Outputs
 

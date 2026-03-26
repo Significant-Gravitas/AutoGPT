@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "platform"."ChatSession" ADD COLUMN "dryRun" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "ChatSession" ADD COLUMN "dryRun" BOOLEAN NOT NULL DEFAULT false;
