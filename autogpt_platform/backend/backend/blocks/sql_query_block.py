@@ -249,6 +249,8 @@ class SQLQueryBlock(Block):
             else:
                 yield "error", f"Database error: {error_msg}"
         except psycopg2.ProgrammingError as e:
-            yield "error", f"SQL error: {_sanitize_error(str(e).strip(), connection_string)}"
+            msg = _sanitize_error(str(e).strip(), connection_string)
+            yield "error", f"SQL error: {msg}"
         except psycopg2.Error as e:
-            yield "error", f"Database error: {_sanitize_error(str(e).strip(), connection_string)}"
+            msg = _sanitize_error(str(e).strip(), connection_string)
+            yield "error", f"Database error: {msg}"
