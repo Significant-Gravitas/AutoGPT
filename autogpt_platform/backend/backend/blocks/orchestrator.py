@@ -1231,9 +1231,11 @@ class OrchestratorBlock(Block):
                 last_iteration_message=last_iter_msg,
             ):
                 # Yield intermediate tool calls so the UI can show progress.
-                # Skip the final conversation yield here — it is emitted once
-                # after "finished" to avoid duplicate data.
-                if not loop_result.finished_naturally:
+                # Only yield conversations when there are tool calls to report;
+                # the final conversation state is always emitted once after the
+                # loop (line below) to avoid duplicate yields when max_iterations
+                # is reached.
+                if loop_result.last_tool_calls:
                     yield "conversations", loop_result.messages
                 for tc in loop_result.last_tool_calls:
                     yield "tool_calls", {
