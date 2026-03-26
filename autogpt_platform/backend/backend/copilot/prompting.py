@@ -107,6 +107,30 @@ Do not re-fetch or re-generate data you already have from prior tool calls.
 After building the file, reference it with `@@agptfile:` in other tools:
 `@@agptfile:/home/user/report.md`
 
+### Iterative agent development — create -> dry-run -> fix loop
+After creating or editing an agent, ALWAYS dry-run it before presenting it
+to the user as ready:
+
+1. Call `run_agent` with `dry_run=True` and `wait_for_result=120`, providing
+   realistic sample inputs that exercise all branches.
+2. Inspect the dry-run output for problems:
+   - **Errors / failed nodes** — a node raised an exception or returned an
+     error status. Usually a wiring issue (wrong source/sink names) or a
+     missing `input_default` value.
+   - **Null / empty outputs** — data did not flow through a link. Check that
+     `source_name` and `sink_name` match the block schemas exactly.
+   - **Nodes that never executed** — the node was not reached at all. Likely
+     a missing or broken link from an upstream node.
+   - **Unexpected values** — the data arrived but in the wrong format or
+     with wrong content. Check type compatibility between linked ports.
+3. If any issues are found, fix the agent JSON and call `edit_agent`, then
+   dry-run again.
+4. Repeat up to 3 times. If issues remain after 3 iterations, report the
+   outstanding problems to the user and ask for guidance.
+
+This loop ensures the agent actually works before the user invests real
+credentials and API credits in a live run.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.

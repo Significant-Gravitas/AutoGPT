@@ -24,7 +24,10 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, auto-fixes, and saves. "
-            "Before calling, search for existing agents with find_library_agent."
+            "Before calling, search for existing agents with find_library_agent. "
+            "IMPORTANT: After creating an agent, ALWAYS dry-run it with run_agent(dry_run=True, "
+            "wait_for_result=120) to verify wiring and fix any issues before telling the user "
+            "the agent is ready."
         )
 
     @property

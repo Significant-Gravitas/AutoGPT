@@ -24,7 +24,10 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Before calling, search for existing agents with find_library_agent."
+            "Before calling, search for existing agents with find_library_agent. "
+            "Use this to fix issues discovered during dry-run testing (e.g. wiring errors, "
+            "missing inputs, incorrect node configuration). After editing, ALWAYS dry-run "
+            "again with run_agent(dry_run=True, wait_for_result=120) to verify the fix."
         )
 
     @property
