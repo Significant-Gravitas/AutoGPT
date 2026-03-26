@@ -1425,6 +1425,40 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/usage/reset": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Reset Copilot Usage",
+        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily token limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.",
+        "operationId": "postV2ResetCopilotUsage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitResetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request (feature disabled or daily limit not reached)"
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": { "description": "Payment Required (insufficient credits)" },
+          "429": {
+            "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
+          },
+          "503": {
+            "description": "Service Unavailable (Redis reset failed; credits refunded or support needed)"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/copilot/admin/rate_limit": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
@@ -8389,7 +8423,13 @@
       "CoPilotUsageStatus": {
         "properties": {
           "daily": { "$ref": "#/components/schemas/UsageWindow" },
-          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
+          "weekly": { "$ref": "#/components/schemas/UsageWindow" },
+          "reset_cost": {
+            "type": "integer",
+            "title": "Reset Cost",
+            "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+            "default": 0
+          }
         },
         "type": "object",
         "required": ["daily", "weekly"],
@@ -11706,6 +11746,34 @@
         "type": "object",
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
+      },
+      "RateLimitResetResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "credits_charged": {
+            "type": "integer",
+            "title": "Credits Charged",
+            "description": "Credits charged (in cents)"
+          },
+          "remaining_balance": {
+            "type": "integer",
+            "title": "Remaining Balance",
+            "description": "Credit balance after charge (in cents)"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/CoPilotUsageStatus",
+            "description": "Updated usage status after reset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "credits_charged",
+          "remaining_balance",
+          "usage"
+        ],
+        "title": "RateLimitResetResponse",
+        "description": "Response from resetting the daily rate limit."
       },
       "RecentExecution": {
         "properties": {
