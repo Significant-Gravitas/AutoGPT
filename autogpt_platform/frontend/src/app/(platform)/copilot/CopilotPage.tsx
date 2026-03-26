@@ -1,9 +1,14 @@
 "use client";
 
+import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import useCredits from "@/hooks/useCredits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { UploadSimple } from "@phosphor-icons/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
@@ -11,6 +16,7 @@ import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
+import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
@@ -89,7 +95,44 @@ export function CopilotPage() {
     isDeleting,
     handleConfirmDelete,
     handleCancelDelete,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotPage();
+
+  const {
+    data: usage,
+    isSuccess: hasUsage,
+    isError: usageError,
+  } = useGetV2GetCopilotUsage({
+    query: {
+      select: (res) => res.data as CoPilotUsageStatus,
+      refetchInterval: 30000,
+      staleTime: 10000,
+    },
+  });
+  const resetCost = usage?.reset_cost;
+
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
+  const hasInsufficientCredits =
+    credits !== null && resetCost != null && credits < resetCost;
+
+  // Fall back to a toast when the credit-based reset feature is disabled or
+  // when the usage query fails (so the user still gets feedback).
+  useEffect(() => {
+    if (
+      rateLimitMessage &&
+      (usageError || (hasUsage && (resetCost ?? 0) <= 0))
+    ) {
+      toast({
+        title: "Usage limit reached",
+        description: rateLimitMessage,
+        variant: "destructive",
+      });
+      dismissRateLimit();
+    }
+  }, [rateLimitMessage, resetCost, hasUsage, usageError, dismissRateLimit]);
 
   if (isUserLoading || !isLoggedIn) {
     return (
@@ -168,6 +211,20 @@ export function CopilotPage() {
         />
       )}
       <NotificationDialog />
+      <RateLimitResetDialog
+        isOpen={!!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0}
+        onClose={dismissRateLimit}
+        resetCost={resetCost ?? 0}
+        resetMessage={rateLimitMessage ?? ""}
+        isWeeklyExhausted={
+          hasUsage &&
+          usage.weekly.limit > 0 &&
+          usage.weekly.used >= usage.weekly.limit
+        }
+        hasInsufficientCredits={hasInsufficientCredits}
+        isBillingEnabled={isBillingEnabled}
+        onCreditChange={fetchCredits}
+      />
     </SidebarProvider>
   );
 }
