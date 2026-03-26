@@ -919,10 +919,32 @@ async def add_graph_execution(
         nodes_to_skip: set[str] = set()
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
+
+        # For resumed executions, simulation_context comes from the existing
+        # execution_context (if any) or is gated behind dry_run.
+        safe_simulation_context = simulation_context if dry_run else None
     else:
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
+
+        # Validate simulation_context *before* creating any DB records so we
+        # don't leave orphaned INCOMPLETE graph_execution rows on failure.
+        _SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
+        safe_simulation_context = simulation_context if dry_run else None
+        if safe_simulation_context is not None:
+            import json as _json
+
+            try:
+                encoded = _json.dumps(safe_simulation_context).encode("utf-8")
+            except (TypeError, ValueError) as e:
+                raise ValueError(
+                    f"simulation_context must be JSON-serializable: {e}"
+                ) from e
+            if len(encoded) > _SIMULATION_CONTEXT_MAX_BYTES:
+                raise ValueError(
+                    f"simulation_context exceeds {_SIMULATION_CONTEXT_MAX_BYTES} bytes"
+                )
 
         # Create new execution
         graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
@@ -955,23 +977,6 @@ async def add_graph_execution(
             f"Created graph execution #{graph_exec.id} for graph "
             f"#{graph_id} with {len(starting_nodes_input)} starting nodes"
         )
-
-    # Validate simulation_context: only used with dry_run, bounded size.
-    _SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
-    safe_simulation_context = simulation_context if dry_run else None
-    if safe_simulation_context is not None:
-        import json as _json
-
-        try:
-            encoded = _json.dumps(safe_simulation_context).encode("utf-8")
-        except (TypeError, ValueError) as e:
-            raise ValueError(
-                f"simulation_context must be JSON-serializable: {e}"
-            ) from e
-        if len(encoded) > _SIMULATION_CONTEXT_MAX_BYTES:
-            raise ValueError(
-                f"simulation_context exceeds {_SIMULATION_CONTEXT_MAX_BYTES} bytes"
-            )
 
     # Generate execution context if it's not provided
     if execution_context is None:
