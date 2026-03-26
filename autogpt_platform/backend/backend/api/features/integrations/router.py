@@ -882,7 +882,10 @@ async def _ensure_agentmail_pod(user_id: str) -> str | None:
             pod_id = existing_pod_id
 
             if not pod_id:
-                pod = await client.pods.create(client_id=user_id)
+                pod = await client.pods.create(
+                    client_id=user_id,
+                    name=f"{user_id}-pod",
+                )
                 pod_id = pod.pod_id
 
             # Clean up any orphaned keys before creating a fresh one
