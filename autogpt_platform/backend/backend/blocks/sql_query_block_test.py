@@ -234,6 +234,22 @@ class TestSanitizeError:
         assert "analytics_ro" not in result
         assert "<user>" in result
 
+    def test_username_single_quoted_scrubbed(self):
+        """Single-quoted usernames (MySQL/MSSQL) must be scrubbed."""
+        conn = "mysql+pymysql://app_user:pass@1.2.3.4:3306/db"
+        error = "Access denied for user 'app_user'@'1.2.3.4'"
+        result = _sanitize_error(error, conn, username="app_user", host="1.2.3.4")
+        assert "app_user" not in result
+        assert "<user>" in result
+
+    def test_username_mssql_login_failed_scrubbed(self):
+        """MSSQL 'Login failed for user' with single quotes must be scrubbed."""
+        conn = "mssql+pymssql://sa:pass@1.2.3.4:1433/db"
+        error = "Login failed for user 'sa'. Reason: Password did not match."
+        result = _sanitize_error(error, conn, username="sa")
+        assert "'sa'" not in result
+        assert "<user>" in result
+
     def test_port_scrubbed(self):
         """Database port must be replaced with <port>."""
         conn = "postgresql://user:pass@1.2.3.4:6543/db"
