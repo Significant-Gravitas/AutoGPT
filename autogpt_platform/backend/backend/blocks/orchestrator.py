@@ -1273,8 +1273,8 @@ class OrchestratorBlock(Block):
             # Preserve additionalProperties to prevent hallucinated arguments.
             input_schema: dict[str, Any] = {
                 "type": "object",
-                "properties": tool_params.get("properties", {}),
-                "required": tool_params.get("required", []),
+                "properties": dict(tool_params.get("properties", {})),
+                "required": list(tool_params.get("required", [])),
             }
             if "additionalProperties" in tool_params:
                 input_schema["additionalProperties"] = tool_params[
@@ -1661,6 +1661,9 @@ class OrchestratorBlock(Block):
             # Validate — SDK mode only works with Claude models
             provider = input_data.model.metadata.provider
             model_name = input_data.model.value
+            # All Claude models have metadata.provider == "anthropic", but
+            # "open_router" is included defensively in case future models
+            # use a different metadata provider for the same Anthropic API.
             if provider not in ("anthropic", "open_router"):
                 raise ValueError(
                     f"SDK mode requires an Anthropic-compatible provider (got provider={provider}). "
