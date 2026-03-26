@@ -285,6 +285,9 @@ async def get_user_tier(user_id: str) -> RateLimitTier:
 async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
+    Also invalidates the ``get_user_tier`` cache for this user so that
+    subsequent rate-limit checks immediately see the new tier.
+
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
     """
@@ -292,6 +295,8 @@ async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
         where={"id": user_id},
         data={"rateLimitTier": tier.value},
     )
+    # Invalidate cached tier so rate-limit checks pick up the change immediately.
+    get_user_tier.cache_delete(user_id)
 
 
 async def get_global_rate_limits(
