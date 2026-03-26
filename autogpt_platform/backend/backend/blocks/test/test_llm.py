@@ -815,14 +815,17 @@ class TestLlmModelMissing:
     """Test that LlmModel handles provider-prefixed model names."""
 
     def test_provider_prefixed_model_resolves(self):
+        """Provider-prefixed model string should resolve to the correct enum member."""
         assert (
             llm.LlmModel("anthropic/claude-sonnet-4-6")
             == llm.LlmModel.CLAUDE_4_6_SONNET
         )
 
     def test_bare_model_still_works(self):
+        """Bare (non-prefixed) model string should still resolve correctly."""
         assert llm.LlmModel("claude-sonnet-4-6") == llm.LlmModel.CLAUDE_4_6_SONNET
 
     def test_invalid_prefixed_model_raises(self):
+        """Unknown provider-prefixed model string should raise ValueError."""
         with pytest.raises(ValueError):
             llm.LlmModel("invalid/nonexistent-model")
