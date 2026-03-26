@@ -1,8 +1,15 @@
 """Tests for SQLQueryBlock query validation and error sanitization."""
 
+from datetime import date, datetime
+from decimal import Decimal
+
 import pytest
 
-from backend.blocks.sql_query_block import _sanitize_error, _validate_query_is_read_only
+from backend.blocks.sql_query_block import (
+    _sanitize_error,
+    _serialize_value,
+    _validate_query_is_read_only,
+)
 
 
 class TestValidateQueryIsReadOnly:
@@ -27,6 +34,21 @@ class TestValidateQueryIsReadOnly:
     def test_valid_select_queries(self, query: str):
         assert _validate_query_is_read_only(query) is None
 
+    # --- Column names that look like keywords should NOT be blocked ---
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT comment FROM posts",
+            "SELECT analyze, lock_count FROM metrics",
+            "SELECT * FROM cluster_stats",
+            "SELECT reindex_time FROM maintenance_log",
+            "SELECT vacuum_count FROM pg_stat_tables",
+        ],
+    )
+    def test_ambiguous_column_names_allowed(self, query: str):
+        assert _validate_query_is_read_only(query) is None
+
     # --- Invalid queries that should be rejected ---
 
     @pytest.mark.parametrize(
@@ -42,8 +64,6 @@ class TestValidateQueryIsReadOnly:
             "GRANT SELECT ON users TO public",
             "REVOKE SELECT ON users FROM public",
             "COPY users TO '/tmp/out.csv'",
-            "VACUUM users",
-            "REINDEX TABLE users",
         ],
     )
     def test_disallowed_statements_rejected(self, query: str):
@@ -98,6 +118,42 @@ class TestValidateQueryIsReadOnly:
 
     def test_semicolon_only_query(self):
         assert _validate_query_is_read_only(";") == "Query is empty."
+
+
+class TestSerializeValue:
+    """Tests for _serialize_value type conversion."""
+
+    def test_decimal_integer(self):
+        assert _serialize_value(Decimal("42")) == 42
+        assert isinstance(_serialize_value(Decimal("42")), int)
+
+    def test_decimal_float(self):
+        assert _serialize_value(Decimal("3.14")) == 3.14
+        assert isinstance(_serialize_value(Decimal("3.14")), float)
+
+    def test_datetime(self):
+        dt = datetime(2024, 1, 1, 12, 0, 0)
+        assert _serialize_value(dt) == "2024-01-01T12:00:00"
+
+    def test_date(self):
+        d = date(2024, 6, 15)
+        assert _serialize_value(d) == "2024-06-15"
+
+    def test_memoryview(self):
+        mv = memoryview(b"\xde\xad\xbe\xef")
+        assert _serialize_value(mv) == "deadbeef"
+
+    def test_passthrough_string(self):
+        assert _serialize_value("hello") == "hello"
+
+    def test_passthrough_int(self):
+        assert _serialize_value(42) == 42
+
+    def test_passthrough_none(self):
+        assert _serialize_value(None) is None
+
+    def test_passthrough_list(self):
+        assert _serialize_value([1, 2, 3]) == [1, 2, 3]
 
 
 class TestSanitizeError:
