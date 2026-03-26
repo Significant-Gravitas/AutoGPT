@@ -7,10 +7,16 @@ import pytest
 from redis.exceptions import RedisError
 
 from .rate_limit import (
+    DEFAULT_TIER,
+    TIER_MULTIPLIERS,
     CoPilotUsageStatus,
     RateLimitExceeded,
+    RateLimitTier,
+    UsageWindow,
     check_rate_limit,
+    get_global_rate_limits,
     get_usage_status,
+    get_user_tier,
     record_token_usage,
 )
 
@@ -332,3 +338,205 @@ class TestRecordTokenUsage:
         ):
             # Should not raise — fail-open
             await record_token_usage(_USER, prompt_tokens=100, completion_tokens=50)
+
+
+# ---------------------------------------------------------------------------
+# RateLimitTier and tier multipliers
+# ---------------------------------------------------------------------------
+
+
+class TestRateLimitTier:
+    def test_tier_values(self):
+        assert RateLimitTier.STANDARD.value == "standard"
+        assert RateLimitTier.PRO.value == "pro"
+        assert RateLimitTier.MAX.value == "max"
+
+    def test_tier_multipliers(self):
+        assert TIER_MULTIPLIERS[RateLimitTier.STANDARD] == 1
+        assert TIER_MULTIPLIERS[RateLimitTier.PRO] == 5
+        assert TIER_MULTIPLIERS[RateLimitTier.MAX] == 25
+
+    def test_default_tier_is_standard(self):
+        assert DEFAULT_TIER == RateLimitTier.STANDARD
+
+    def test_usage_status_includes_tier(self):
+        now = datetime.now(UTC)
+        status = CoPilotUsageStatus(
+            daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
+            weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
+        )
+        # Default tier should be STANDARD
+        assert status.tier == RateLimitTier.STANDARD
+
+    def test_usage_status_with_custom_tier(self):
+        now = datetime.now(UTC)
+        status = CoPilotUsageStatus(
+            daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
+            weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
+            tier=RateLimitTier.PRO,
+        )
+        assert status.tier == RateLimitTier.PRO
+
+
+# ---------------------------------------------------------------------------
+# get_user_tier
+# ---------------------------------------------------------------------------
+
+
+class TestGetUserTier:
+    @pytest.mark.asyncio
+    async def test_returns_tier_from_db(self):
+        """Should return the tier stored in the user record."""
+        mock_user = MagicMock()
+        mock_user.rateLimitTier = "pro"
+
+        mock_prisma = AsyncMock()
+        mock_prisma.find_unique = AsyncMock(return_value=mock_user)
+
+        with patch(
+            "prisma.models.User.prisma",
+            return_value=mock_prisma,
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == RateLimitTier.PRO
+
+    @pytest.mark.asyncio
+    async def test_returns_default_when_user_not_found(self):
+        """Should return DEFAULT_TIER when user is not in the DB."""
+        mock_prisma = AsyncMock()
+        mock_prisma.find_unique = AsyncMock(return_value=None)
+
+        with patch(
+            "prisma.models.User.prisma",
+            return_value=mock_prisma,
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == DEFAULT_TIER
+
+    @pytest.mark.asyncio
+    async def test_returns_default_when_tier_is_none(self):
+        """Should return DEFAULT_TIER when rateLimitTier is None."""
+        mock_user = MagicMock()
+        mock_user.rateLimitTier = None
+
+        mock_prisma = AsyncMock()
+        mock_prisma.find_unique = AsyncMock(return_value=mock_user)
+
+        with patch(
+            "prisma.models.User.prisma",
+            return_value=mock_prisma,
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == DEFAULT_TIER
+
+    @pytest.mark.asyncio
+    async def test_returns_default_on_db_error(self):
+        """Should fall back to DEFAULT_TIER when DB raises."""
+        mock_prisma = AsyncMock()
+        mock_prisma.find_unique = AsyncMock(side_effect=Exception("DB down"))
+
+        with patch(
+            "prisma.models.User.prisma",
+            return_value=mock_prisma,
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == DEFAULT_TIER
+
+    @pytest.mark.asyncio
+    async def test_returns_default_on_invalid_tier_value(self):
+        """Should fall back to DEFAULT_TIER when stored value is invalid."""
+        mock_user = MagicMock()
+        mock_user.rateLimitTier = "invalid-tier"
+
+        mock_prisma = AsyncMock()
+        mock_prisma.find_unique = AsyncMock(return_value=mock_user)
+
+        with patch(
+            "prisma.models.User.prisma",
+            return_value=mock_prisma,
+        ):
+            tier = await get_user_tier(_USER)
+
+        assert tier == DEFAULT_TIER
+
+
+# ---------------------------------------------------------------------------
+# get_global_rate_limits with tiers
+# ---------------------------------------------------------------------------
+
+
+class TestGetGlobalRateLimitsWithTiers:
+    @staticmethod
+    def _ld_side_effect(daily: int, weekly: int):
+        """Return an async side_effect that returns daily on first call, weekly on second."""
+        call_count = 0
+
+        async def _side_effect(flag_key, user_id, default):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return daily
+            return weekly
+
+        return _side_effect
+
+    @pytest.mark.asyncio
+    async def test_standard_tier_no_multiplier(self):
+        """Standard tier should not change limits."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=RateLimitTier.STANDARD,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(2_500_000, 12_500_000),
+            ),
+        ):
+            daily, weekly = await get_global_rate_limits(_USER, 2_500_000, 12_500_000)
+
+        assert daily == 2_500_000
+        assert weekly == 12_500_000
+
+    @pytest.mark.asyncio
+    async def test_pro_tier_5x_multiplier(self):
+        """Pro tier should multiply limits by 5."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=RateLimitTier.PRO,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(2_500_000, 12_500_000),
+            ),
+        ):
+            daily, weekly = await get_global_rate_limits(_USER, 2_500_000, 12_500_000)
+
+        assert daily == 12_500_000
+        assert weekly == 62_500_000
+
+    @pytest.mark.asyncio
+    async def test_max_tier_25x_multiplier(self):
+        """Max tier should multiply limits by 25."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=RateLimitTier.MAX,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(2_500_000, 12_500_000),
+            ),
+        ):
+            daily, weekly = await get_global_rate_limits(_USER, 2_500_000, 12_500_000)
+
+        assert daily == 62_500_000
+        assert weekly == 312_500_000

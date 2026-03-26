@@ -8,9 +8,12 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
+    RateLimitTier,
     get_global_rate_limits,
     get_usage_status,
+    get_user_tier,
     reset_user_usage,
+    set_user_tier,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,6 +33,17 @@ class UserRateLimitResponse(BaseModel):
     weekly_token_limit: int
     daily_tokens_used: int
     weekly_tokens_used: int
+    tier: RateLimitTier
+
+
+class UserTierResponse(BaseModel):
+    user_id: str
+    tier: RateLimitTier
+
+
+class SetUserTierRequest(BaseModel):
+    user_id: str
+    tier: RateLimitTier
 
 
 @router.get(
@@ -48,6 +62,7 @@ async def get_user_rate_limit(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
+    tier = await get_user_tier(user_id)
 
     return UserRateLimitResponse(
         user_id=user_id,
@@ -55,6 +70,7 @@ async def get_user_rate_limit(
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
         weekly_tokens_used=usage.weekly.used,
+        tier=tier,
     )
 
 
@@ -84,6 +100,7 @@ async def reset_user_rate_limit(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
+    tier = await get_user_tier(user_id)
 
     return UserRateLimitResponse(
         user_id=user_id,
@@ -91,4 +108,43 @@ async def reset_user_rate_limit(
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
         weekly_tokens_used=usage.weekly.used,
+        tier=tier,
     )
+
+
+@router.get(
+    "/rate_limit/tier",
+    response_model=UserTierResponse,
+    summary="Get User Rate Limit Tier",
+)
+async def get_user_rate_limit_tier(
+    user_id: str,
+    admin_user_id: str = Security(get_user_id),
+) -> UserTierResponse:
+    """Get a user's current rate-limit tier. Admin-only."""
+    logger.info(f"Admin {admin_user_id} checking tier for user {user_id}")
+    tier = await get_user_tier(user_id)
+    return UserTierResponse(user_id=user_id, tier=tier)
+
+
+@router.post(
+    "/rate_limit/tier",
+    response_model=UserTierResponse,
+    summary="Set User Rate Limit Tier",
+)
+async def set_user_rate_limit_tier(
+    request: SetUserTierRequest,
+    admin_user_id: str = Security(get_user_id),
+) -> UserTierResponse:
+    """Set a user's rate-limit tier. Admin-only."""
+    logger.info(
+        f"Admin {admin_user_id} setting tier for user {request.user_id} "
+        f"to {request.tier.value}"
+    )
+    try:
+        await set_user_tier(request.user_id, request.tier)
+    except Exception as e:
+        logger.exception("Failed to set user tier")
+        raise HTTPException(status_code=500, detail="Failed to set tier") from e
+
+    return UserTierResponse(user_id=request.user_id, tier=request.tier)

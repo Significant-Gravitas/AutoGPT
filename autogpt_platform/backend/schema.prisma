@@ -40,6 +40,10 @@ model User {
 
   timezone String @default("not-set")
 
+  // CoPilot rate-limit tier: "standard" (default), "pro", or "max".
+  // Multipliers applied in get_global_rate_limits(): standard=1x, pro=5x, max=25x.
+  rateLimitTier String @default("standard")
+
   // Relations
 
   AgentGraphs          AgentGraph[]

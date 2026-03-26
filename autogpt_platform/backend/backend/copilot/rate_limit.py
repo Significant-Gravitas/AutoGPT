@@ -9,7 +9,9 @@ UTC). Fails open when Redis is unavailable to avoid blocking users.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 
+from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
@@ -19,6 +21,29 @@ logger = logging.getLogger(__name__)
 
 # Redis key prefixes
 _USAGE_KEY_PREFIX = "copilot:usage"
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit tier definitions
+# ---------------------------------------------------------------------------
+
+
+class RateLimitTier(str, Enum):
+    """Rate-limit tiers with increasing token allowances."""
+
+    STANDARD = "standard"
+    PRO = "pro"
+    MAX = "max"
+
+
+# Multiplier applied to the base limits (from LD / config) for each tier.
+TIER_MULTIPLIERS: dict[RateLimitTier, int] = {
+    RateLimitTier.STANDARD: 1,
+    RateLimitTier.PRO: 5,
+    RateLimitTier.MAX: 25,
+}
+
+DEFAULT_TIER = RateLimitTier.STANDARD
 
 
 class UsageWindow(BaseModel):
@@ -36,6 +61,7 @@ class CoPilotUsageStatus(BaseModel):
 
     daily: UsageWindow
     weekly: UsageWindow
+    tier: RateLimitTier = DEFAULT_TIER
 
 
 class RateLimitExceeded(Exception):
@@ -231,12 +257,44 @@ async def record_token_usage(
         )
 
 
+async def get_user_tier(user_id: str) -> RateLimitTier:
+    """Look up the user's rate-limit tier from the database.
+
+    Falls back to ``DEFAULT_TIER`` when the user record is missing,
+    the field is ``None``, or the stored value is unrecognised.
+    """
+    try:
+        user = await PrismaUser.prisma().find_unique(where={"id": user_id})
+        if user and user.rateLimitTier:
+            return RateLimitTier(user.rateLimitTier)
+    except (ValueError, Exception) as exc:
+        logger.warning(
+            "Failed to resolve rate-limit tier for user %s, defaulting to %s: %s",
+            user_id[:8],
+            DEFAULT_TIER.value,
+            exc,
+        )
+    return DEFAULT_TIER
+
+
+async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
+    """Persist the user's rate-limit tier to the database."""
+    await PrismaUser.prisma().update(
+        where={"id": user_id},
+        data={"rateLimitTier": tier.value},
+    )
+
+
 async def get_global_rate_limits(
     user_id: str,
     config_daily: int,
     config_weekly: int,
 ) -> tuple[int, int]:
     """Resolve global rate limits from LaunchDarkly, falling back to config.
+
+    The base limits (from LD or config) are multiplied by the user's
+    tier multiplier so that higher tiers receive proportionally larger
+    allowances.
 
     Args:
         user_id: User ID for LD flag evaluation context.
@@ -266,6 +324,14 @@ async def get_global_rate_limits(
     except (TypeError, ValueError):
         logger.warning("Invalid LD value for weekly token limit: %r", weekly_raw)
         weekly = config_weekly
+
+    # Apply tier multiplier
+    tier = await get_user_tier(user_id)
+    multiplier = TIER_MULTIPLIERS.get(tier, 1)
+    if multiplier != 1:
+        daily = daily * multiplier
+        weekly = weekly * multiplier
+
     return daily, weekly
 
 
