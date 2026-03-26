@@ -22,7 +22,7 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
         <span>{formatTokens(used)} used</span>
-        <span>{limit === 0 ? "Unlimited" : formatTokens(limit)} limit</span>
+        <span>{formatTokens(limit)} limit</span>
       </div>
       <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700">
         <div
@@ -47,6 +47,11 @@ export function RateLimitDisplay({ data, onReset }: Props) {
   const [resetWeekly, setResetWeekly] = useState(false);
 
   async function handleReset() {
+    const msg = resetWeekly
+      ? "Reset both daily and weekly usage counters to zero?"
+      : "Reset daily usage counter to zero?";
+    if (!window.confirm(msg)) return;
+
     setIsResetting(true);
     try {
       await onReset(resetWeekly);
