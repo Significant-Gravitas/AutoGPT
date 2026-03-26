@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from backend.copilot.context import (
+    _current_permissions,
     _current_project_dir,
     _current_sandbox,
     _current_sdk_cwd,
@@ -41,6 +42,8 @@ from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
 
+    from backend.copilot.permissions import CopilotPermissions
+
 logger = logging.getLogger(__name__)
 
 # Max MCP response size in chars — keeps tool output under the SDK's 10 MB JSON buffer.
@@ -49,6 +52,14 @@ _MCP_MAX_CHARS = 500_000
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
+
+# Map from tool_name -> Queue of pre-launched (task, args) pairs.
+# Initialised per-session in set_execution_context() so concurrent sessions
+# never share the same dict.
+_TaskQueueItem = tuple[asyncio.Task[dict[str, Any]], dict[str, Any]]
+_tool_task_queues: ContextVar[dict[str, asyncio.Queue[_TaskQueueItem]] | None] = (
+    ContextVar("_tool_task_queues", default=None)
+)
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -66,12 +77,23 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
     "_stash_event", default=None
 )
 
+# Circuit breaker: tracks consecutive tool failures to detect infinite retry loops.
+# When a tool is called repeatedly with empty/identical args and keeps failing,
+# this counter is incremented.  After _MAX_CONSECUTIVE_TOOL_FAILURES identical
+# failures the tool handler returns a hard-stop message instead of the raw error.
+_MAX_CONSECUTIVE_TOOL_FAILURES = 3
+_consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
+    "_consecutive_tool_failures",
+    default=None,  # type: ignore[arg-type]
+)
+
 
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
+    permissions: "CopilotPermissions | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -83,14 +105,83 @@ def set_execution_context(
         session: Current chat session.
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
+        permissions: Optional capability filter restricting tools/blocks.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _current_sandbox.set(sandbox)
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
+    _current_permissions.set(permissions)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
+    _tool_task_queues.set({})
+    _consecutive_tool_failures.set({})
+
+
+def reset_stash_event() -> None:
+    """Clear any stale stash signal left over from a previous stream attempt.
+
+    ``_stash_event`` is set once per session in ``set_execution_context`` and
+    reused across retry attempts.  A PostToolUse hook from a failed attempt may
+    leave the event set; calling this at the start of each retry prevents
+    ``wait_for_stash`` from returning prematurely on a stale signal.
+    """
+    event = _stash_event.get(None)
+    if event is not None:
+        event.clear()
+
+
+async def cancel_pending_tool_tasks() -> None:
+    """Cancel all queued pre-launched tasks for the current execution context.
+
+    Call this when a stream attempt aborts (error, cancellation) to prevent
+    pre-launched tasks from continuing to execute against a rolled-back session.
+    Tasks that are already done are skipped; in-flight tasks are cancelled and
+    awaited so that any cleanup (``finally`` blocks, DB rollbacks) completes
+    before the next retry starts.
+    """
+    queues = _tool_task_queues.get()
+    if not queues:
+        return
+    cancelled_tasks: list[asyncio.Task] = []
+    for tool_name, queue in list(queues.items()):
+        cancelled = 0
+        while not queue.empty():
+            task, _args = queue.get_nowait()
+            if not task.done():
+                task.cancel()
+                cancelled_tasks.append(task)
+                cancelled += 1
+        if cancelled:
+            logger.debug(
+                "Cancelled %d pre-launched task(s) for tool '%s'", cancelled, tool_name
+            )
+    queues.clear()
+    # Await all cancelled tasks so their cleanup (finally blocks, DB rollbacks)
+    # completes before the next retry attempt starts new pre-launches.
+    # Use a timeout to prevent hanging indefinitely if a task's cleanup is stuck.
+    if cancelled_tasks:
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*cancelled_tasks, return_exceptions=True),
+                timeout=5.0,
+            )
+        except TimeoutError:
+            logger.warning(
+                "Timed out waiting for %d cancelled task(s) to clean up",
+                len(cancelled_tasks),
+            )
+
+
+def reset_tool_failure_counters() -> None:
+    """Reset all tool-level circuit breaker counters.
+
+    Called at the start of each SDK retry attempt so that failure counts
+    from a previous (rolled-back) attempt do not carry over and prematurely
+    trip the breaker on a fresh attempt with different context.
+    """
+    _consecutive_tool_failures.set({})
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -155,12 +246,13 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
     by waiting on the ``_stash_event``, which is signaled by
     :func:`stash_pending_tool_output`.
 
-    Returns ``True`` if a stash signal was received, ``False`` on timeout.
+    Uses ``asyncio.Event.wait()`` so it returns the instant the hook signals —
+    the timeout is purely a safety net for the case where the hook never fires.
+    Returns ``True`` if the stash signal was received, ``False`` on timeout.
 
-    The 2.0 s default was chosen based on production metrics: the original
-    0.5 s caused frequent timeouts under load (parallel tool calls, large
-    outputs).  2.0 s gives a comfortable margin while still failing fast
-    when the hook genuinely will not fire.
+    The 2.0 s default was chosen to accommodate slower tool startup in cloud
+    sandboxes while still failing fast when the hook genuinely will not fire.
+    With the parallel pre-launch path, hooks typically fire well under 1 ms.
     """
     event = _stash_event.get(None)
     if event is None:
@@ -169,7 +261,7 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
     if event.is_set():
         event.clear()
         return True
-    # Slow path: wait for the hook to signal.
+    # Slow path: block until the hook signals or the safety timeout expires.
     try:
         async with asyncio.timeout(timeout):
             await event.wait()
@@ -177,6 +269,82 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
         return True
     except TimeoutError:
         return False
+
+
+async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
+    """Pre-launch a tool as a background task so parallel calls run concurrently.
+
+    Called when an AssistantMessage with ToolUseBlocks is received, before the
+    SDK dispatches the MCP tool/call requests. The tool_handler will await the
+    pre-launched task instead of executing fresh.
+
+    The tool_name may include an MCP prefix (e.g. ``mcp__copilot__run_block``);
+    the prefix is stripped automatically before looking up the tool.
+
+    Ordering guarantee: the Claude Agent SDK dispatches MCP ``tools/call`` requests
+    in the same order as the ToolUseBlocks appear in the AssistantMessage.
+    Pre-launched tasks are queued FIFO per tool name, so the N-th handler for a
+    given tool name dequeues the N-th pre-launched task — result and args always
+    correspond when the SDK preserves order (which it does in the current SDK).
+    """
+    queues = _tool_task_queues.get()
+    if queues is None:
+        return
+
+    # Strip the MCP server prefix (e.g. "mcp__copilot__") to get the bare tool name.
+    # Use removeprefix so tool names that themselves contain "__" are handled correctly.
+    bare_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
+
+    base_tool = TOOL_REGISTRY.get(bare_name)
+    if base_tool is None:
+        return
+
+    user_id, session = get_execution_context()
+    if session is None:
+        return
+
+    # Expand @@agptfile: references before launching the task.
+    # The _truncating wrapper (which normally handles expansion) runs AFTER
+    # pre_launch_tool_call — the pre-launched task would otherwise receive raw
+    # @@agptfile: tokens and fail to resolve them inside _execute_tool_sync.
+    # Use _build_input_schema (same path as _truncating) for schema-aware expansion.
+    input_schema: dict[str, Any] | None
+    try:
+        input_schema = _build_input_schema(base_tool)
+    except Exception:
+        input_schema = None  # schema unavailable — skip schema-aware expansion
+    try:
+        args = await expand_file_refs_in_args(
+            args, user_id, session, input_schema=input_schema
+        )
+    except FileRefExpansionError as exc:
+        logger.warning(
+            "pre_launch_tool_call: @@agptfile expansion failed for %s: %s — skipping pre-launch",
+            bare_name,
+            exc,
+        )
+        return
+
+    task = asyncio.create_task(_execute_tool_sync(base_tool, user_id, session, args))
+    # Log unhandled exceptions so "Task exception was never retrieved" warnings
+    # do not pollute stderr when a task is pre-launched but never dequeued.
+    task.add_done_callback(
+        lambda t, name=bare_name: (
+            logger.warning(
+                "Pre-launched task for %s raised unhandled: %s",
+                name,
+                t.exception(),
+            )
+            if not t.cancelled() and t.exception()
+            else None
+        )
+    )
+
+    if bare_name not in queues:
+        queues[bare_name] = asyncio.Queue[_TaskQueueItem]()
+    # Store (task, args) so the handler can log a warning if the SDK dispatches
+    # calls in a different order than the ToolUseBlocks appeared in the message.
+    queues[bare_name].put_nowait((task, args))
 
 
 async def _execute_tool_sync(
@@ -187,8 +355,10 @@ async def _execute_tool_sync(
 ) -> dict[str, Any]:
     """Execute a tool synchronously and return MCP-formatted response.
 
-    Note: ``@@agptfile:`` expansion is handled upstream in the ``_truncating`` wrapper
-    so all registered handlers (BaseTool, E2B, Read) expand uniformly.
+    Note: ``@@agptfile:`` expansion should be performed by the caller before
+    invoking this function.  For the normal (non-parallel) path it is handled
+    by the ``_truncating`` wrapper; for the pre-launched parallel path it is
+    handled in :func:`pre_launch_tool_call` before the task is created.
     """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
@@ -217,6 +387,66 @@ def _mcp_error(message: str) -> dict[str, Any]:
     }
 
 
+def _failure_key(tool_name: str, args: dict[str, Any]) -> str:
+    """Compute a stable fingerprint for (tool_name, args) used by the circuit breaker."""
+    args_key = json.dumps(args, sort_keys=True, default=str)
+    return f"{tool_name}:{args_key}"
+
+
+def _check_circuit_breaker(tool_name: str, args: dict[str, Any]) -> str | None:
+    """Check if a tool has hit the consecutive failure limit.
+
+    Tracks failures keyed by (tool_name, args_fingerprint). Returns an error
+    message if the circuit breaker has tripped, or None if the call should proceed.
+    """
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return None
+
+    key = _failure_key(tool_name, args)
+    count = tracker.get(key, 0)
+    if count >= _MAX_CONSECUTIVE_TOOL_FAILURES:
+        logger.warning(
+            "Circuit breaker tripped for tool %s after %d consecutive "
+            "identical failures (args=%s)",
+            tool_name,
+            count,
+            key[len(tool_name) + 1 :][:200],
+        )
+        return (
+            f"STOP: Tool '{tool_name}' has failed {count} consecutive times with "
+            f"the same arguments. Do NOT retry this tool call. "
+            f"If you were trying to write content to a file, instead respond with "
+            f"the content directly as a text message to the user."
+        )
+    return None
+
+
+def _record_tool_failure(tool_name: str, args: dict[str, Any]) -> None:
+    """Record a tool failure for circuit breaker tracking."""
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return
+    key = _failure_key(tool_name, args)
+    tracker[key] = tracker.get(key, 0) + 1
+
+
+def _clear_tool_failures(tool_name: str) -> None:
+    """Clear failure tracking for a tool on success.
+
+    Clears ALL args variants for the tool, not just the successful call's args.
+    This gives the tool a "fresh start" on any success, which is appropriate for
+    the primary use case (detecting infinite loops with identical failing args).
+    """
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return
+    # Clear all entries for this tool name
+    keys_to_remove = [k for k in tracker if k.startswith(f"{tool_name}:")]
+    for k in keys_to_remove:
+        del tracker[k]
+
+
 def create_tool_handler(base_tool: BaseTool):
     """Create an async handler function for a BaseTool.
 
@@ -225,7 +455,83 @@ def create_tool_handler(base_tool: BaseTool):
     """
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
-        """Execute the wrapped tool and return MCP-formatted response."""
+        """Execute the wrapped tool and return MCP-formatted response.
+
+        If a pre-launched task exists (from parallel tool pre-launch in the
+        message loop), await it instead of executing fresh.
+        """
+        queues = _tool_task_queues.get()
+        if queues and base_tool.name in queues:
+            queue = queues[base_tool.name]
+            if not queue.empty():
+                task, launch_args = queue.get_nowait()
+                # Sanity-check: warn if the args don't match — this can happen
+                # if the SDK dispatches tool calls in a different order than the
+                # ToolUseBlocks appeared in the AssistantMessage (unlikely but
+                # could occur in future SDK versions or with SDK bugs).
+                # We compare full values (not just keys) so that two run_block
+                # calls with different block_id values are caught even though
+                # both have the same key set.
+                if launch_args != args:
+                    logger.warning(
+                        "Pre-launched task for %s: arg mismatch "
+                        "(launch_keys=%s, call_keys=%s) — cancelling "
+                        "pre-launched task and falling back to direct execution",
+                        base_tool.name,
+                        (
+                            sorted(launch_args.keys())
+                            if isinstance(launch_args, dict)
+                            else type(launch_args).__name__
+                        ),
+                        (
+                            sorted(args.keys())
+                            if isinstance(args, dict)
+                            else type(args).__name__
+                        ),
+                    )
+                    if not task.done():
+                        task.cancel()
+                        # Await cancellation to prevent duplicate concurrent
+                        # execution for blocks with side effects.
+                        try:
+                            await task
+                        except (asyncio.CancelledError, Exception):
+                            pass
+                    # Fall through to the direct-execution path below.
+                else:
+                    # Args match — await the pre-launched task.
+                    try:
+                        result = await task
+                    except asyncio.CancelledError:
+                        # Re-raise: CancelledError may be propagating from the
+                        # outer streaming loop being cancelled — swallowing it
+                        # would mask the cancellation and prevent proper cleanup.
+                        logger.warning(
+                            "Pre-launched tool %s was cancelled — re-raising",
+                            base_tool.name,
+                        )
+                        raise
+                    except Exception as e:
+                        logger.error(
+                            "Pre-launched tool %s failed: %s",
+                            base_tool.name,
+                            e,
+                            exc_info=True,
+                        )
+                        return _mcp_error(
+                            f"Failed to execute {base_tool.name}. "
+                            "Check server logs for details."
+                        )
+
+                    # Pre-truncate the result so the _truncating wrapper (which
+                    # wraps this handler) receives an already-within-budget
+                    # value. _truncating handles stashing — we must NOT stash
+                    # here or the output will be appended twice to the FIFO
+                    # queue and pop_pending_tool_output would return a duplicate
+                    # entry on the second call for the same tool.
+                    return truncate(result, _MCP_MAX_CHARS)
+
+        # No pre-launched task — execute directly (fallback for non-parallel calls).
         user_id, session = get_execution_context()
 
         if session is None:
@@ -234,8 +540,12 @@ def create_tool_handler(base_tool: BaseTool):
         try:
             return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:
-            logger.error(f"Error executing tool {base_tool.name}: {e}", exc_info=True)
-            return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+            logger.error(
+                "Error executing tool %s: %s", base_tool.name, e, exc_info=True
+            )
+            return _mcp_error(
+                f"Failed to execute {base_tool.name}. Check server logs for details."
+            )
 
     return tool_handler
 
@@ -358,6 +668,15 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            # Circuit breaker: stop infinite retry loops with identical args.
+            # Use the original (pre-expansion) args for fingerprinting so
+            # check and record always use the same key — @@agptfile:
+            # expansion mutates args, which would cause a key mismatch.
+            original_args = args
+            stop_msg = _check_circuit_breaker(tool_name, original_args)
+            if stop_msg:
+                return _mcp_error(stop_msg)
+
             user_id, session = get_execution_context()
             if session is not None:
                 try:
@@ -365,6 +684,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                         args, user_id, session, input_schema=input_schema
                     )
                 except FileRefExpansionError as exc:
+                    _record_tool_failure(tool_name, original_args)
                     return _mcp_error(
                         f"@@agptfile: reference could not be resolved: {exc}. "
                         "Ensure the file exists before referencing it. "
@@ -373,6 +693,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                     )
             result = await fn(args)
             truncated = truncate(result, _MCP_MAX_CHARS)
+
+            # Track consecutive failures for circuit breaker
+            if truncated.get("isError"):
+                _record_tool_failure(tool_name, original_args)
+            else:
+                _clear_tool_failures(tool_name)
 
             # Stash the text so the response adapter can forward our
             # middle-out truncated version to the frontend instead of the

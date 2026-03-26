@@ -181,6 +181,7 @@ def validate_exec(
     node: Node,
     data: BlockInput,
     resolve_input: bool = True,
+    dry_run: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -189,6 +190,9 @@ def validate_exec(
         node: The node to execute.
         data: The input data for the node execution.
         resolve_input: Whether to resolve dynamic pins into dict/list/object.
+        dry_run: When True, credential fields are allowed to be missing — they
+            will be substituted with a sentinel so the node can be queued and
+            later executed via simulate_block.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -207,6 +211,14 @@ def validate_exec(
     if missing_links := schema.get_missing_links(data, node.input_links):
         return None, f"{error_prefix} unpopulated links {missing_links}"
 
+    # For dry runs, supply sentinel values for any missing credential fields so
+    # the node can be queued — simulate_block never calls the real API anyway.
+    if dry_run:
+        cred_field_names = set(schema.get_credentials_fields().keys())
+        for field_name in cred_field_names:
+            if field_name not in data:
+                data = {**data, field_name: None}
+
     # Merge input data with default values and resolve dynamic dict/list/object pins.
     input_default = schema.get_input_defaults(node.input_default)
     data = {**input_default, **data}
@@ -218,13 +230,21 @@ def validate_exec(
 
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
-        return None, f"{error_prefix} missing input {missing_input}"
+        if dry_run:
+            # In dry-run mode all missing inputs are tolerated — simulate_block()
+            # generates synthetic outputs without needing real input values.
+            pass
+        else:
+            return None, f"{error_prefix} missing input {missing_input}"
 
     # Last validation: Validate the input values against the schema.
-    if error := schema.get_mismatch_error(data):
-        error_message = f"{error_prefix} {error}"
-        logger.warning(error_message)
-        return None, error_message
+    # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
+    # credential values (None) would fail JSON-schema type/required checks.
+    if not dry_run:
+        if error := schema.get_mismatch_error(data):
+            error_message = f"{error_prefix} {error}"
+            logger.warning(error_message)
+            return None, error_message
 
     return data, node_block.name
 
@@ -427,6 +447,7 @@ async def _construct_starting_node_execution_input(
     user_id: str,
     graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
+    dry_run: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -439,6 +460,7 @@ async def _construct_starting_node_execution_input(
         user_id (str): The ID of the user executing the graph.
         data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
+        dry_run: When True, skip credential validation errors (simulation needs no real creds).
 
     Returns:
         tuple[
@@ -451,6 +473,32 @@ async def _construct_starting_node_execution_input(
     validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
+    # Dry runs simulate every block — missing credentials are irrelevant.
+    # Strip credential-only errors so the graph can proceed.
+    if dry_run and validation_errors:
+
+        def _is_credential_error(msg: str) -> bool:
+            """Match errors produced by _validate_node_input_credentials."""
+            m = msg.lower()
+            return (
+                m == "these credentials are required"
+                or m.startswith("invalid credentials:")
+                or m.startswith("credentials not available:")
+                or m.startswith("unknown credentials #")
+            )
+
+        validation_errors = {
+            node_id: {
+                field: msg
+                for field, msg in errors.items()
+                if not _is_credential_error(msg)
+            }
+            for node_id, errors in validation_errors.items()
+        }
+        # Remove nodes that have no remaining errors
+        validation_errors = {
+            node_id: errors for node_id, errors in validation_errors.items() if errors
+        }
     n_error_nodes = len(validation_errors)
     n_errors = sum(len(errors) for errors in validation_errors.values())
     if validation_errors:
@@ -494,7 +542,7 @@ async def _construct_starting_node_execution_input(
                 "Please use the appropriate trigger to run this agent."
             )
 
-        input_data, error = validate_exec(node, input_data)
+        input_data, error = validate_exec(node, input_data, dry_run=dry_run)
         if input_data is None:
             raise ValueError(error)
         else:
@@ -516,6 +564,7 @@ async def validate_and_construct_node_execution_input(
     graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     is_sub_graph: bool = False,
+    dry_run: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -581,6 +630,7 @@ async def validate_and_construct_node_execution_input(
             user_id=user_id,
             graph_inputs=graph_inputs,
             nodes_input_masks=nodes_input_masks,
+            dry_run=dry_run,
         )
     )
 
@@ -818,6 +868,7 @@ async def add_graph_execution(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
+    dry_run: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -882,6 +933,7 @@ async def add_graph_execution(
                 graph_credentials_inputs=graph_credentials_inputs,
                 nodes_input_masks=nodes_input_masks,
                 is_sub_graph=parent_exec_id is not None,
+                dry_run=dry_run,
             )
         )
 
@@ -895,6 +947,7 @@ async def add_graph_execution(
             starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
             parent_graph_exec_id=parent_exec_id,
+            is_dry_run=dry_run,
         )
 
         logger.info(
@@ -917,6 +970,7 @@ async def add_graph_execution(
             # Safety settings
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            dry_run=dry_run,
             # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"

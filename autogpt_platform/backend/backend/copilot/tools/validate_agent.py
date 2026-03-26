@@ -22,17 +22,9 @@ class ValidateAgentGraphTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Validate an agent JSON graph for correctness. Checks:\n"
-            "- All block_ids reference real blocks\n"
-            "- All links reference valid source/sink nodes and fields\n"
-            "- Required input fields are wired or have defaults\n"
-            "- Data types are compatible across links\n"
-            "- Nested sink links use correct notation\n"
-            "- Prompt templates use proper curly brace escaping\n"
-            "- AgentExecutorBlock configurations are valid\n\n"
-            "Call this after generating agent JSON to verify correctness. "
-            "If validation fails, either fix issues manually based on the error "
-            "descriptions, or call fix_agent_graph to auto-fix common problems."
+            "Validate agent JSON for correctness: block_ids, links, required fields, "
+            "type compatibility, nested sink notation, prompt brace escaping, "
+            "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix."
         )
 
     @property
@@ -46,11 +38,7 @@ class ValidateAgentGraphTool(BaseTool):
             "properties": {
                 "agent_json": {
                     "type": "object",
-                    "description": (
-                        "The agent JSON to validate. Must contain 'nodes' and 'links' arrays. "
-                        "Each node needs: id (UUID), block_id, input_default, metadata. "
-                        "Each link needs: id (UUID), source_id, source_name, sink_id, sink_name."
-                    ),
+                    "description": "Agent JSON with 'nodes' and 'links' arrays.",
                 },
             },
             "required": ["agent_json"],

@@ -53,8 +53,10 @@ AutoGPT Platform is a monorepo containing:
 ### Creating Pull Requests
 
 - Create the PR against the `dev` branch of the repository.
+- **Split PRs by concern** — each PR should have a single clear purpose. For example, "usage tracking" and "credit charging" should be separate PRs even if related. Combining multiple concerns makes it harder for reviewers to understand what belongs to what.
 - Ensure the branch name is descriptive (e.g., `feature/add-new-block`)
 - Use conventional commit messages (see below)
+- **Structure the PR description with Why / What / How** — Why: the motivation (what problem it solves, what's broken/missing without it); What: high-level summary of changes; How: approach, key implementation details, or architecture decisions. Reviewers need all three to judge whether the approach fits the problem.
 - Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description
 - Always use `--body-file` to pass PR body — avoids shell interpretation of backticks and special characters:
   ```bash

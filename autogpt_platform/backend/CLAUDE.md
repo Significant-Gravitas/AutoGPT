@@ -61,6 +61,7 @@ poetry run pytest path/to/test.py --snapshot-update
 ## Code Style
 
 - **Top-level imports only** — no local/inner imports (lazy imports only for heavy optional deps like `openpyxl`)
+- **Absolute imports** — use `from backend.module import ...` for cross-package imports. Single-dot relative (`from .sibling import ...`) is acceptable for sibling modules within the same package (e.g., blocks). Avoid double-dot relative imports (`from ..parent import ...`) — use the absolute path instead
 - **No duck typing** — no `hasattr`/`getattr`/`isinstance` for type dispatch; use typed interfaces/unions/protocols
 - **Pydantic models** over dataclass/namedtuple/dict for structured data
 - **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code

@@ -231,6 +231,67 @@ async def record_token_usage(
         )
 
 
+async def get_global_rate_limits(
+    user_id: str,
+    config_daily: int,
+    config_weekly: int,
+) -> tuple[int, int]:
+    """Resolve global rate limits from LaunchDarkly, falling back to config.
+
+    Args:
+        user_id: User ID for LD flag evaluation context.
+        config_daily: Fallback daily limit from ChatConfig.
+        config_weekly: Fallback weekly limit from ChatConfig.
+
+    Returns:
+        (daily_token_limit, weekly_token_limit) tuple.
+    """
+    # Lazy import to avoid circular dependency:
+    # rate_limit -> feature_flag -> settings -> ... -> rate_limit
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    daily_raw = await get_feature_flag_value(
+        Flag.COPILOT_DAILY_TOKEN_LIMIT.value, user_id, config_daily
+    )
+    weekly_raw = await get_feature_flag_value(
+        Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value, user_id, config_weekly
+    )
+    try:
+        daily = max(0, int(daily_raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid LD value for daily token limit: %r", daily_raw)
+        daily = config_daily
+    try:
+        weekly = max(0, int(weekly_raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid LD value for weekly token limit: %r", weekly_raw)
+        weekly = config_weekly
+    return daily, weekly
+
+
+async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
+    """Reset a user's usage counters.
+
+    Always deletes the daily Redis key.  When *reset_weekly* is ``True``,
+    the weekly key is deleted as well.
+
+    Unlike read paths (``get_usage_status``, ``check_rate_limit``) which
+    fail-open on Redis errors, resets intentionally re-raise so the caller
+    knows the operation did not succeed.  A silent failure here would leave
+    the admin believing the counters were zeroed when they were not.
+    """
+    now = datetime.now(UTC)
+    keys_to_delete = [_daily_key(user_id, now=now)]
+    if reset_weekly:
+        keys_to_delete.append(_weekly_key(user_id, now=now))
+    try:
+        redis = await get_redis_async()
+        await redis.delete(*keys_to_delete)
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for resetting user usage")
+        raise
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------

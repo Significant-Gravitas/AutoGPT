@@ -23,12 +23,8 @@ class CreateAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create a new agent workflow. Pass `agent_json` with the complete "
-            "agent graph JSON you generated using block schemas from find_block. "
-            "The tool validates, auto-fixes, and saves.\n\n"
-            "IMPORTANT: Before calling this tool, search for relevant existing agents "
-            "using find_library_agent that could be used as building blocks. "
-            "Pass their IDs in the library_agent_ids parameter."
+            "Create a new agent from JSON (nodes + links). Validates, auto-fixes, and saves. "
+            "Before calling, search for existing agents with find_library_agent."
         )
 
     @property
@@ -42,34 +38,21 @@ class CreateAgentTool(BaseTool):
             "properties": {
                 "agent_json": {
                     "type": "object",
-                    "description": (
-                        "The agent JSON to validate and save. "
-                        "Must contain 'nodes' and 'links' arrays, and optionally "
-                        "'name' and 'description'."
-                    ),
+                    "description": "Agent graph with 'nodes' and 'links' arrays.",
                 },
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "List of library agent IDs to use as building blocks."
-                    ),
+                    "description": "Library agent IDs as building blocks.",
                 },
                 "save": {
                     "type": "boolean",
-                    "description": (
-                        "Whether to save the agent. Default is true. "
-                        "Set to false for preview only."
-                    ),
+                    "description": "Save the agent (default: true). False for preview.",
                     "default": True,
                 },
                 "folder_id": {
                     "type": "string",
-                    "description": (
-                        "Optional folder ID to save the agent into. "
-                        "If not provided, the agent is saved at root level. "
-                        "Use list_folders to find available folders."
-                    ),
+                    "description": "Folder ID to save into (default: root).",
                 },
             },
             "required": ["agent_json"],
