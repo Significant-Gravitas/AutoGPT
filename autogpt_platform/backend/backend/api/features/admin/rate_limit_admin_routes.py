@@ -41,7 +41,7 @@ async def get_user_rate_limit(
     user_id: str,
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
-    """Get a user's current usage and effective rate limits."""
+    """Get a user's current usage and effective rate limits. Admin-only."""
     logger.info(f"Admin {admin_user_id} checking rate limit for user {user_id}")
 
     daily_limit, weekly_limit = await get_global_rate_limits(
@@ -67,7 +67,7 @@ async def reset_user_rate_limit(
     user_id: str = Body(embed=True),
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
-    """Reset a user's daily and weekly usage counters to zero."""
+    """Reset a user's daily and weekly usage counters to zero. Admin-only."""
     logger.info(f"Admin {admin_user_id} resetting rate limit for user {user_id}")
 
     try:

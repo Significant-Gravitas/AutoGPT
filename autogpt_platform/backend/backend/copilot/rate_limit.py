@@ -250,13 +250,23 @@ async def get_global_rate_limits(
     # rate_limit -> feature_flag -> settings -> ... -> rate_limit
     from backend.util.feature_flag import Flag, get_feature_flag_value
 
-    daily = await get_feature_flag_value(
+    daily_raw = await get_feature_flag_value(
         Flag.COPILOT_DAILY_TOKEN_LIMIT.value, user_id, config_daily
     )
-    weekly = await get_feature_flag_value(
+    weekly_raw = await get_feature_flag_value(
         Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value, user_id, config_weekly
     )
-    return int(daily), int(weekly)
+    try:
+        daily = max(0, int(daily_raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid LD value for daily token limit: %r", daily_raw)
+        daily = config_daily
+    try:
+        weekly = max(0, int(weekly_raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid LD value for weekly token limit: %r", weekly_raw)
+        weekly = config_weekly
+    return daily, weekly
 
 
 async def reset_user_usage(user_id: str) -> None:

@@ -108,7 +108,7 @@ def test_reset_user_usage(
     assert data["daily_tokens_used"] == 0
     assert data["weekly_tokens_used"] == 0
 
-    mock_reset.assert_called_once_with(target_user_id)
+    mock_reset.assert_awaited_once_with(target_user_id)
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",

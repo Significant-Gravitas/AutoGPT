@@ -1384,7 +1384,7 @@
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Get User Rate Limit",
-        "description": "Get a user's current usage and effective rate limits.",
+        "description": "Get a user's current usage and effective rate limits. Admin-only.",
         "operationId": "getV2Get user rate limit",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1424,7 +1424,7 @@
       "post": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Reset User Rate Limit Usage",
-        "description": "Reset a user's daily and weekly usage counters to zero.",
+        "description": "Reset a user's daily and weekly usage counters to zero. Admin-only.",
         "operationId": "postV2Reset user rate limit usage",
         "requestBody": {
           "content": {
