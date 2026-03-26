@@ -240,6 +240,40 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 
 ---
 
+## SQL Query
+
+### What it is
+Executes a read-only SQL query against a PostgreSQL database and returns the results. Only SELECT queries are allowed.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+_Add technical explanation here._
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| query | SQL SELECT query to execute | str | Yes |
+| timeout | Query timeout in seconds (max 120) | int | No |
+| max_rows | Maximum number of rows to return (max 10000) | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the query failed | str |
+| results | Query results as a list of row dictionaries | List[Dict[str, Any]] |
+| columns | Column names from the query result | List[str] |
+| row_count | Number of rows returned | int |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+_Add practical use case examples here._
+<!-- END MANUAL -->
+
+---
+
 ## Screenshot Web Page
 
 ### What it is
