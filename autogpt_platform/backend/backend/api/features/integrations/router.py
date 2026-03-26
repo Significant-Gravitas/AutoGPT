@@ -892,7 +892,7 @@ async def _ensure_agentmail_pod(user_id: str) -> str | None:
             try:
                 existing_keys = await client.pods.api_keys.list(pod_id=pod_id)
                 for k in existing_keys.api_keys:
-                    if k.name == "autogpt-managed":
+                    if k.name in ("autogpt-managed", f"{user_id}-agpt-managed"):
                         await client.pods.api_keys.delete(
                             pod_id=pod_id, api_key=k.api_key_id
                         )
@@ -900,7 +900,7 @@ async def _ensure_agentmail_pod(user_id: str) -> str | None:
                 logger.warning("Failed to clean up AgentMail API keys: %s", e)
 
             api_key_obj = await client.pods.api_keys.create(
-                pod_id=pod_id, name="autogpt-managed"
+                pod_id=pod_id, name=f"{user_id}-agpt-managed"
             )
 
             user_integrations.managed_credentials.agentmail_pod_id = pod_id
