@@ -227,10 +227,13 @@ class AppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                logger.error(
-                    f"{request.method} {request.url.path} failed: {exc}",
-                    exc_info=exc if status_code == 500 else None,
-                )
+                if status_code >= 500:
+                    logger.error(
+                        f"{request.method} {request.url.path} failed: {exc}",
+                        exc_info=exc,
+                    )
+                else:
+                    logger.warning(f"{request.method} {request.url.path} failed: {exc}")
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
@@ -563,7 +566,6 @@ def get_service_client(
                 self._connection_failure_count >= 3
                 and current_time - self._last_client_reset > 30
             ):
-
                 logger.warning(
                     f"Connection failures detected ({self._connection_failure_count}), recreating HTTP clients"
                 )

@@ -76,20 +76,24 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
+    Uses upsert to atomically handle concurrent creation attempts.
+
     Args:
         user_id: The user's ID
 
     Returns:
         Workspace instance
     """
-    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
-    if workspace:
-        return Workspace.from_db(workspace)
-
     try:
-        workspace = await UserWorkspace.prisma().create(data={"userId": user_id})
+        workspace = await UserWorkspace.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id},
+                "update": {},  # No-op update; workspace already exists
+            },
+        )
     except UniqueViolationError:
-        # Concurrent request already created it
+        # Defense-in-depth: should not happen with upsert, but handle gracefully
         workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
         if workspace is None:
             raise
@@ -123,7 +127,11 @@ async def create_workspace_file(
     metadata: Optional[dict] = None,
 ) -> WorkspaceFile:
     """
-    Create a new workspace file record.
+    Create or update a workspace file record.
+
+    Uses upsert on the (workspaceId, path) composite unique constraint to
+    atomically handle concurrent requests for the same path. If a record
+    already exists, the mutable fields are updated in place.
 
     Args:
         workspace_id: The workspace ID
@@ -137,29 +145,57 @@ async def create_workspace_file(
         metadata: Optional additional metadata
 
     Returns:
-        Created WorkspaceFile instance
+        Created or updated WorkspaceFile instance
     """
     # Normalize path to start with /
     if not path.startswith("/"):
         path = f"/{path}"
 
-    file = await UserWorkspaceFile.prisma().create(
-        data={
-            "id": file_id,
-            "workspaceId": workspace_id,
-            "name": name,
-            "path": path,
-            "storagePath": storage_path,
-            "mimeType": mime_type,
-            "sizeBytes": size_bytes,
-            "checksum": checksum,
-            "metadata": SafeJson(metadata or {}),
-        }
-    )
+    try:
+        file = await UserWorkspaceFile.prisma().upsert(
+            where={
+                "workspaceId_path": {
+                    "workspaceId": workspace_id,
+                    "path": path,
+                }
+            },
+            data={
+                "create": {
+                    "id": file_id,
+                    "workspaceId": workspace_id,
+                    "name": name,
+                    "path": path,
+                    "storagePath": storage_path,
+                    "mimeType": mime_type,
+                    "sizeBytes": size_bytes,
+                    "checksum": checksum,
+                    "metadata": SafeJson(metadata or {}),
+                },
+                "update": {
+                    "name": name,
+                    "storagePath": storage_path,
+                    "mimeType": mime_type,
+                    "sizeBytes": size_bytes,
+                    "checksum": checksum,
+                    "metadata": SafeJson(metadata or {}),
+                    "isDeleted": False,
+                    "deletedAt": None,
+                },
+            },
+        )
+    except UniqueViolationError:
+        # Defense-in-depth: upsert can still race under high concurrency;
+        # fall back to fetching the existing record.
+        existing = await UserWorkspaceFile.prisma().find_first(
+            where={"workspaceId": workspace_id, "path": path}
+        )
+        if existing is None:
+            raise
+        logger.info(f"Workspace file at {path} already exists, returning existing")
+        return WorkspaceFile.from_db(existing)
 
     logger.info(
-        f"Created workspace file {file.id} at path {path} "
-        f"in workspace {workspace_id}"
+        f"Upserted workspace file {file.id} at path {path} in workspace {workspace_id}"
     )
     return WorkspaceFile.from_db(file)
 

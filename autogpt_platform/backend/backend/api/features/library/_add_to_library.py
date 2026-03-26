@@ -17,7 +17,7 @@ from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
-from .db import get_library_agent_by_graph_id, update_library_agent
+from .db import get_library_agent_by_graph_id
 
 logger = logging.getLogger(__name__)
 
@@ -61,60 +61,57 @@ async def add_graph_to_library(
     graph_model: GraphModel,
     user_id: str,
 ) -> library_model.LibraryAgent:
-    """Check existing / restore soft-deleted / create new LibraryAgent."""
-    if existing := await get_library_agent_by_graph_id(
-        user_id, graph_model.id, graph_model.version
-    ):
-        return existing
+    """Check existing / restore soft-deleted / create new LibraryAgent.
 
-    deleted_agent = await prisma.models.LibraryAgent.prisma().find_unique(
-        where={
-            "userId_agentGraphId_agentGraphVersion": {
-                "userId": user_id,
-                "agentGraphId": graph_model.id,
-                "agentGraphVersion": graph_model.version,
-            }
-        },
-    )
-    if deleted_agent and (deleted_agent.isDeleted or deleted_agent.isArchived):
-        return await update_library_agent(
-            deleted_agent.id,
-            user_id,
-            is_deleted=False,
-            is_archived=False,
-        )
+    Uses upsert on the (userId, agentGraphId, agentGraphVersion) composite
+    unique constraint to atomically handle concurrent additions, avoiding
+    UniqueViolationError race conditions.
+    """
+    settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
 
     try:
-        added_agent = await prisma.models.LibraryAgent.prisma().create(
+        added_agent = await prisma.models.LibraryAgent.prisma().upsert(
+            where={
+                "userId_agentGraphId_agentGraphVersion": {
+                    "userId": user_id,
+                    "agentGraphId": graph_model.id,
+                    "agentGraphVersion": graph_model.version,
+                }
+            },
             data={
-                "User": {"connect": {"id": user_id}},
-                "AgentGraph": {
-                    "connect": {
-                        "graphVersionId": {
-                            "id": graph_model.id,
-                            "version": graph_model.version,
+                "create": {
+                    "User": {"connect": {"id": user_id}},
+                    "AgentGraph": {
+                        "connect": {
+                            "graphVersionId": {
+                                "id": graph_model.id,
+                                "version": graph_model.version,
+                            }
                         }
-                    }
+                    },
+                    "isCreatedByUser": False,
+                    "useGraphIsActiveVersion": False,
+                    "settings": settings_json,
                 },
-                "isCreatedByUser": False,
-                "useGraphIsActiveVersion": False,
-                "settings": SafeJson(
-                    GraphSettings.from_graph(graph_model).model_dump()
-                ),
+                "update": {
+                    # Restore if previously soft-deleted or archived
+                    "isDeleted": False,
+                    "isArchived": False,
+                    "settings": settings_json,
+                },
             },
             include=library_agent_include(
                 user_id, include_nodes=False, include_executions=False
             ),
         )
     except prisma.errors.UniqueViolationError:
-        # Race condition: concurrent request created the row between our
-        # check and create.  Re-read instead of crashing.
+        # Defense-in-depth: should not happen with upsert, but handle gracefully
         existing = await get_library_agent_by_graph_id(
             user_id, graph_model.id, graph_model.version
         )
         if existing:
             return existing
-        raise  # Shouldn't happen, but don't swallow unexpected errors
+        raise
 
     logger.debug(
         f"Added graph #{graph_model.id} v{graph_model.version} "
