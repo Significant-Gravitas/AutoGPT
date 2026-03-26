@@ -246,6 +246,8 @@ async def get_global_rate_limits(
     Returns:
         (daily_token_limit, weekly_token_limit) tuple.
     """
+    # Lazy import to avoid circular dependency:
+    # rate_limit -> feature_flag -> settings -> ... -> rate_limit
     from backend.util.feature_flag import Flag, get_feature_flag_value
 
     daily = await get_feature_flag_value(
