@@ -260,7 +260,7 @@ Supported database types: PostgreSQL, MySQL, and MSSQL. The connection URL must 
 |-------|-------------|------|----------|
 | database_type | Database engine | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
 | host | Database hostname or IP address | str (password) | Yes |
-| port | Database port (PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
+| port | Database port (leave empty for default: PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
 | database | Name of the database to connect to | str | Yes |
 | query | SQL query to execute | str | Yes |
 | read_only | When enabled (default), only SELECT queries are allowed and the database session is set to read-only mode. Disable to allow write operations (INSERT, UPDATE, DELETE, etc.). | bool | No |
