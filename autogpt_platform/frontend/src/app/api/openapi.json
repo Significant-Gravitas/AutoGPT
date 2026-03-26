@@ -2919,6 +2919,30 @@
         }
       }
     },
+    "/api/integrations/agentmail/connect": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Connect Agentmail",
+        "description": "Provision an AgentMail pod for the current user.\n\nCreates a pod via the org-level API key, generates a pod-scoped API key,\nand stores both in ``ManagedCredentials``.  The pod key then appears\nautomatically in the credential dropdown for AgentMail blocks.\n\nIdempotent: if a pod already exists for this user, returns its ID without\ncreating a duplicate.",
+        "operationId": "postV1ConnectAgentmail",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMailConnectResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -7207,6 +7231,12 @@
         "required": ["id", "name", "description", "source"],
         "title": "AgentInfo",
         "description": "Information about an agent."
+      },
+      "AgentMailConnectResponse": {
+        "properties": { "pod_id": { "type": "string", "title": "Pod Id" } },
+        "type": "object",
+        "required": ["pod_id"],
+        "title": "AgentMailConnectResponse"
       },
       "AgentOutputResponse": {
         "properties": {
