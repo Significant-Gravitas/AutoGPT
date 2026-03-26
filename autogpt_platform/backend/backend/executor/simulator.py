@@ -184,7 +184,24 @@ async def _call_llm_for_simulation(
 # ---------------------------------------------------------------------------
 
 
-def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str, str]:
+def _format_simulation_context(simulation_context: dict[str, Any] | None) -> str:
+    """Format optional simulation context as a prompt section."""
+    if not simulation_context:
+        return ""
+    ctx_json = json.dumps(_truncate_input_values(simulation_context), indent=2)
+    return (
+        "\n## Simulation Context\n"
+        "The user provided the following scenario context. Use it to produce "
+        "outputs that match this scenario:\n"
+        f"{ctx_json}\n"
+    )
+
+
+def build_simulation_prompt(
+    block: Any,
+    input_data: dict[str, Any],
+    simulation_context: dict[str, Any] | None = None,
+) -> tuple[str, str]:
     """Build (system_prompt, user_prompt) for block simulation."""
     input_schema = block.input_schema.jsonschema()
     output_schema = block.output_schema.jsonschema()
@@ -217,7 +234,7 @@ Rules:
 - Do not include any extra keys beyond the output pins.
 
 Output pin names you MUST include: {json.dumps(output_properties)}
-"""
+{_format_simulation_context(simulation_context)}"""
 
     safe_inputs = _truncate_input_values(input_data)
     user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
@@ -227,6 +244,7 @@ Output pin names you MUST include: {json.dumps(output_properties)}
 
 def _build_mcp_simulation_prompt(
     input_data: dict[str, Any],
+    simulation_context: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Build (system_prompt, user_prompt) for MCP tool simulation.
 
@@ -234,16 +252,18 @@ def _build_mcp_simulation_prompt(
     LLM generate a realistic response.
     """
     tool_name = input_data.get("selected_tool", "unknown_tool")
+    tool_description = input_data.get("tool_description", "")
     tool_schema = input_data.get("tool_input_schema", {})
     tool_arguments = input_data.get("tool_arguments", {})
     server_url = input_data.get("server_url", "")
 
     schema_text = json.dumps(tool_schema, indent=2) if tool_schema else "(none)"
+    desc_line = f"\n- Description: {tool_description}" if tool_description else ""
 
     system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.
 
 ## Tool Details
-- Tool name: {tool_name}
+- Tool name: {tool_name}{desc_line}
 - MCP server: {server_url}
 
 ## Tool Input Schema
@@ -258,7 +278,7 @@ Rules:
 - "error" should be "" (empty string) unless you are simulating a logical error.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Base your response on what a tool named "{tool_name}" with the given schema would realistically return.
-"""
+{_format_simulation_context(simulation_context)}"""
 
     safe_args = _truncate_input_values(tool_arguments)
     user_prompt = f"## Tool Arguments\n{json.dumps(safe_args, indent=2)}"
@@ -274,6 +294,7 @@ Rules:
 async def simulate_mcp_block(
     _block: Any,
     input_data: dict[str, Any],
+    simulation_context: dict[str, Any] | None = None,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Simulate MCP tool execution using an LLM.
 
@@ -284,7 +305,9 @@ async def simulate_mcp_block(
     Yields ``(output_name, output_data)`` tuples matching the Block.execute()
     interface.
     """
-    system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
+    system_prompt, user_prompt = _build_mcp_simulation_prompt(
+        input_data, simulation_context=simulation_context
+    )
     label = input_data.get("selected_tool", "mcp_tool")
 
     try:
@@ -298,6 +321,7 @@ async def simulate_mcp_block(
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
+    simulation_context: dict[str, Any] | None = None,
 ) -> AsyncIterator[tuple[str, Any]]:
     """Simulate block execution using an LLM.
 
@@ -307,7 +331,9 @@ async def simulate_block(
     output_schema = block.output_schema.jsonschema()
     output_properties: dict[str, Any] = output_schema.get("properties", {})
 
-    system_prompt, user_prompt = build_simulation_prompt(block, input_data)
+    system_prompt, user_prompt = build_simulation_prompt(
+        block, input_data, simulation_context=simulation_context
+    )
     label = getattr(block, "name", "?")
 
     try:

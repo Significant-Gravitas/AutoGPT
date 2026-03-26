@@ -869,6 +869,7 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    simulation_context: Optional[dict] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -971,6 +972,7 @@ async def add_graph_execution(
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
             dry_run=dry_run,
+            simulation_context=simulation_context,
             # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"

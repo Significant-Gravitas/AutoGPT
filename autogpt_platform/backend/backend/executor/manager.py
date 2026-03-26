@@ -406,11 +406,16 @@ async def execute_node(
 
     try:
         if execution_context.dry_run and not _dry_run_passthrough:
+            sim_ctx = execution_context.simulation_context
             # MCPToolBlock gets a specialised simulation that uses its tool schema.
             if isinstance(node_block, MCPToolBlock):
-                block_iter = simulate_mcp_block(node_block, input_data)
+                block_iter = simulate_mcp_block(
+                    node_block, input_data, simulation_context=sim_ctx
+                )
             else:
-                block_iter = simulate_block(node_block, input_data)
+                block_iter = simulate_block(
+                    node_block, input_data, simulation_context=sim_ctx
+                )
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 
