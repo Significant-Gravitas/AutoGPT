@@ -84,6 +84,15 @@ def _before_send(event, hint):
         ):
             return None
 
+        # Workspace file unique-constraint race — handled by WorkspaceManager retry
+        if (
+            exc_type
+            and exc_type.__name__ == "UniqueViolationError"
+            and "workspaceid" in exc_msg
+            and "path" in exc_msg
+        ):
+            return None
+
         # Google metadata DNS errors — expected in non-GCP environments
         if (
             "metadata.google.internal" in exc_msg
