@@ -17,8 +17,10 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from backend.util.clients import get_openai_client
 
@@ -78,6 +80,67 @@ def _truncate_value(value: Any) -> Any:
 def _truncate_input_values(input_data: dict[str, Any]) -> dict[str, Any]:
     """Recursively truncate long string values so the prompt doesn't blow up."""
     return {k: _truncate_value(v) for k, v in input_data.items()}
+
+
+# ---------------------------------------------------------------------------
+# Credential redaction & URL sanitization
+# ---------------------------------------------------------------------------
+
+# Keys whose values should be masked regardless of nesting depth.
+_SECRET_KEY_PATTERN = re.compile(
+    r"(api_?key|token|password|secret|access_?token|private_?key|auth|credential)",
+    re.IGNORECASE,
+)
+
+_REDACTED = "<REDACTED>"
+
+
+def _sanitize_url(url: str) -> str:
+    """Strip userinfo, query, and fragment from a URL string."""
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return url  # not a real URL, return as-is
+        sanitized = urlunparse(
+            (parsed.scheme, parsed.hostname or "", parsed.path, "", "", "")
+        )
+        if parsed.port:
+            sanitized = urlunparse(
+                (
+                    parsed.scheme,
+                    f"{parsed.hostname or ''}:{parsed.port}",
+                    parsed.path,
+                    "",
+                    "",
+                    "",
+                )
+            )
+        return sanitized
+    except Exception:
+        return url
+
+
+def _looks_like_url(value: str) -> bool:
+    """Return True if the string looks like a URL."""
+    return bool(re.match(r"^https?://", value, re.IGNORECASE))
+
+
+def _redact_value(key: str, value: Any) -> Any:
+    """Redact credential-bearing values and sanitize URLs recursively."""
+    if _SECRET_KEY_PATTERN.search(key):
+        return _REDACTED
+    if isinstance(value, str) and _looks_like_url(value):
+        return _sanitize_url(value)
+    if isinstance(value, dict):
+        return {k: _redact_value(k, v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(key, item) for item in value]
+    return value
+
+
+def _redact_inputs(input_data: dict[str, Any]) -> dict[str, Any]:
+    """Redact secret fields and sanitize URLs in input data for prompt safety."""
+    return {k: _redact_value(k, v) for k, v in input_data.items()}
 
 
 def _describe_schema_pins(schema: dict[str, Any]) -> str:
@@ -233,11 +296,11 @@ Rules:
 - If there is an "error" pin, set it to "" (empty string) unless you are simulating a logical error.
 - Do not include any extra keys beyond the output pins.
 
-Output pin names you MUST include: {json.dumps(output_properties)}
-{_format_simulation_context(simulation_context)}"""
+Output pin names you MUST include: {json.dumps(output_properties)}"""
 
-    safe_inputs = _truncate_input_values(input_data)
+    safe_inputs = _redact_inputs(_truncate_input_values(input_data))
     user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
+    user_prompt += _format_simulation_context(simulation_context)
 
     return system_prompt, user_prompt
 
@@ -265,11 +328,14 @@ def _build_mcp_simulation_prompt(
         schema_text = "(none)"
     desc_line = f"\n- Description: {tool_description}" if tool_description else ""
 
+    # Sanitize server_url to strip credentials / query params.
+    safe_server_url = _sanitize_url(server_url) if server_url else ""
+
     system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.
 
 ## Tool Details
 - Tool name: {tool_name}{desc_line}
-- MCP server: {server_url}
+- MCP server: {safe_server_url}
 
 ## Tool Input Schema
 {schema_text}
@@ -282,11 +348,11 @@ Rules:
 - "result" should contain realistic output data that the tool would return.
 - "error" should be "" (empty string) unless you are simulating a logical error.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
-- Base your response on what a tool named "{tool_name}" with the given schema would realistically return.
-{_format_simulation_context(simulation_context)}"""
+- Base your response on what a tool named "{tool_name}" with the given schema would realistically return."""
 
-    safe_args = _truncate_input_values(tool_arguments)
+    safe_args = _redact_inputs(_truncate_input_values(tool_arguments))
     user_prompt = f"## Tool Arguments\n{json.dumps(safe_args, indent=2)}"
+    user_prompt += _format_simulation_context(simulation_context)
 
     return system_prompt, user_prompt
 
