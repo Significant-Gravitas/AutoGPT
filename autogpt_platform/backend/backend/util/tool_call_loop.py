@@ -228,6 +228,9 @@ async def tool_call_loop(
 
         # Execute tools in parallel — independent tool calls can run concurrently.
         # This mirrors the SDK mode behaviour where the SDK manages parallelism.
+        # NOTE: asyncio.gather does not cancel sibling tasks when one raises.
+        # Callers should handle errors inside execute_tool (return error
+        # ToolCallResult) rather than letting exceptions propagate.
         tool_results: list[ToolCallResult] = list(
             await asyncio.gather(
                 *(execute_tool(tc, tools) for tc in response.tool_calls)

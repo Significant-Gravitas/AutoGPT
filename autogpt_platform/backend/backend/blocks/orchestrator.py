@@ -15,6 +15,7 @@ from claude_agent_sdk import (
     ClaudeSDKClient,
     ResultMessage,
     TextBlock,
+    ToolUseBlock,
     create_sdk_mcp_server,
 )
 from claude_agent_sdk import tool as sdk_tool
@@ -864,7 +865,12 @@ class OrchestratorBlock(Block):
         response: Any,
         tool_outputs: list[dict[str, Any]] | None = None,
     ):
-        """Update conversation history with response and tool outputs."""
+        """Update conversation history with response and tool outputs.
+
+        ``response`` must be an ``LLMResponse`` (from ``backend.blocks.llm``),
+        **not** an ``LLMLoopResponse``. The method accesses ``.raw_response``
+        and ``.reasoning`` attributes on the passed object.
+        """
         converted = _convert_raw_response_to_dict(response.raw_response)
 
         if isinstance(converted, list):
@@ -1349,7 +1355,10 @@ class OrchestratorBlock(Block):
             f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
         ]
 
-        # Disable ALL SDK built-in tools — only graph tools available
+        # Disable ALL SDK built-in tools — only graph tools available.
+        # NOTE: This list must be kept in sync with the Claude Agent SDK's
+        # built-in tools. `allowed_tools` (above) is the primary restriction;
+        # this blocklist is a defense-in-depth measure.
         disallowed_tools = [
             "Bash",
             "WebFetch",
@@ -1471,15 +1480,36 @@ class OrchestratorBlock(Block):
 
                         if isinstance(sdk_msg, AssistantMessage):
                             text_parts = []
+                            tool_use_parts = []
                             for content_block in sdk_msg.content:
                                 if isinstance(content_block, TextBlock):
                                     text_parts.append(content_block.text)
                                     response_parts.append(content_block.text)
-                            if text_parts:
+                                elif isinstance(content_block, ToolUseBlock):
+                                    tool_use_parts.append(
+                                        {
+                                            "tool": getattr(
+                                                content_block, "name", "unknown"
+                                            ),
+                                            "id": getattr(
+                                                content_block, "id", "unknown"
+                                            ),
+                                        }
+                                    )
+                            if text_parts or tool_use_parts:
+                                msg_content = "".join(text_parts)
+                                if tool_use_parts:
+                                    tool_summary = ", ".join(
+                                        t["tool"] for t in tool_use_parts
+                                    )
+                                    if msg_content:
+                                        msg_content += f"\n[Tool calls: {tool_summary}]"
+                                    else:
+                                        msg_content = f"[Tool calls: {tool_summary}]"
                                 conversation.append(
                                     {
                                         "role": "assistant",
-                                        "content": "".join(text_parts),
+                                        "content": msg_content,
                                     }
                                 )
                         elif isinstance(sdk_msg, ResultMessage):
