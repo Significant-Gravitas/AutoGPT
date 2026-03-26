@@ -3,11 +3,10 @@
 import os
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
-from backend.util.settings import Settings
 
 
 class ChatConfig(BaseSettings):
@@ -22,6 +21,11 @@ class ChatConfig(BaseSettings):
         description="Model to use for generating session titles (should be fast/cheap)",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
+    autopilot_api_key: str | None = Field(
+        default=None,
+        description="Dedicated OpenRouter API key for AutoPilot. "
+        "Falls back to api_key when not set.",
+    )
     base_url: str | None = Field(
         default=OPENROUTER_BASE_URL,
         description="Base URL for API (e.g., for OpenRouter)",
@@ -174,10 +178,20 @@ class ChatConfig(BaseSettings):
             base = base[:-3]
         return bool(self.autopilot_api_key and base and base.startswith("http"))
 
-    @property
-    def autopilot_api_key(self) -> str | None:
-        """Return the dedicated AutoPilot OpenRouter API key, falling back to api_key."""
-        return Settings().secrets.autopilot_open_router_api_key or self.api_key
+    @field_validator("autopilot_api_key", mode="before")
+    @classmethod
+    def get_autopilot_api_key(cls, v):
+        """Get dedicated autopilot OpenRouter key from environment if not provided."""
+        if not v:
+            v = os.getenv("AUTOPILOT_OPEN_ROUTER_API_KEY")
+        return v
+
+    @model_validator(mode="after")
+    def _fallback_autopilot_api_key(self):
+        """Fall back autopilot_api_key to api_key when not explicitly set."""
+        if not self.autopilot_api_key:
+            self.autopilot_api_key = self.api_key
+        return self
 
     @property
     def e2b_active(self) -> bool:
