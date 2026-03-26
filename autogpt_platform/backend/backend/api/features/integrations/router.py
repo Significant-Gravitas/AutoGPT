@@ -915,7 +915,7 @@ async def connect_agentmail(
             for k in existing_keys.api_keys:
                 if k.name == "autogpt-managed":
                     await client.pods.api_keys.delete(
-                        pod_id=pod_id, api_key_id=k.api_key_id
+                        pod_id=pod_id, api_key=k.api_key_id
                     )
         except Exception as e:
             logger.warning(f"Failed to clean up AgentMail API keys: {e}")
