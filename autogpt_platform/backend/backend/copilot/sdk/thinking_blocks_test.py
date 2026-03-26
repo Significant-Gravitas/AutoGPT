@@ -468,6 +468,10 @@ class TestCompactTranscriptThinkingBlocks:
 
         assert result is not None
         assert validate_transcript(result)
+        # Verify last assistant content is preserved even without thinking blocks
+        last_content = _last_assistant_content(result)
+        assert last_content is not None
+        assert last_content == [{"type": "text", "text": "Details"}]
 
 
 # ---------------------------------------------------------------------------
