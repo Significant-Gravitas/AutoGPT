@@ -11,6 +11,7 @@ import { PaginationControls } from "../../../../../components/__legacy__/ui/pagi
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./AddMoneyButton";
+import { RateLimitModal } from "./RateLimitModal";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 
 export async function AdminUserGrantHistory({
@@ -147,25 +148,33 @@ export async function AdminUserGrantHistory({
                     ${transaction.current_balance / 100}
                   </TableCell> */}
                   <TableCell className="text-right">
-                    <AdminAddMoneyButton
-                      userId={transaction.user_id}
-                      userEmail={
-                        transaction.user_email ?? "User Email wasn't attached"
-                      }
-                      currentBalance={transaction.current_balance}
-                      defaultAmount={
-                        transaction.transaction_type ===
-                        CreditTransactionType.USAGE
-                          ? -transaction.amount
-                          : undefined
-                      }
-                      defaultComments={
-                        transaction.transaction_type ===
-                        CreditTransactionType.USAGE
-                          ? "Refund for usage"
-                          : undefined
-                      }
-                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <RateLimitModal
+                        userId={transaction.user_id}
+                        userEmail={
+                          transaction.user_email ?? "User Email wasn't attached"
+                        }
+                      />
+                      <AdminAddMoneyButton
+                        userId={transaction.user_id}
+                        userEmail={
+                          transaction.user_email ?? "User Email wasn't attached"
+                        }
+                        currentBalance={transaction.current_balance}
+                        defaultAmount={
+                          transaction.transaction_type ===
+                          CreditTransactionType.USAGE
+                            ? -transaction.amount
+                            : undefined
+                        }
+                        defaultComments={
+                          transaction.transaction_type ===
+                          CreditTransactionType.USAGE
+                            ? "Refund for usage"
+                            : undefined
+                        }
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
