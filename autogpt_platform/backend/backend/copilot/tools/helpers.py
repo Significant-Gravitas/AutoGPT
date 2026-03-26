@@ -626,8 +626,10 @@ def _resolve_discriminated_credentials(
                         )
                 else:
                     # URL/host-based discrimination (e.g. url -> host matching).
-                    # Copy to avoid mutating the cached schema-level field_info.
-                    effective_field_info = field_info.model_copy()
+                    # Deep copy to avoid mutating the cached schema-level
+                    # field_info (model_copy() is shallow — the mutable set
+                    # would be shared).
+                    effective_field_info = field_info.model_copy(deep=True)
                     effective_field_info.discriminator_values.add(discriminator_value)
                     logger.debug(
                         "Added discriminator value for host matching on %s: %s",

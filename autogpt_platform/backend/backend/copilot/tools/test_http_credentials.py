@@ -62,12 +62,18 @@ class TestResolveDiscriminatedCredentials:
         """The original block schema field_info must not be mutated."""
         block = self._get_auth_block()
 
-        # First call with a URL
+        # Grab a reference to the original schema-level field_info
+        original_info = block.input_schema.get_credentials_fields_info()["credentials"]
+
+        # Call with a URL, which adds to discriminator_values on the copy
         _resolve_discriminated_credentials(
             block, {"url": "https://api.example.com/v1/data"}
         )
 
-        # Second call without URL - original should still have empty discriminator_values
+        # The original object must remain unchanged
+        assert len(original_info.discriminator_values) == 0
+
+        # And a fresh call without URL should also return empty values
         result = _resolve_discriminated_credentials(block, {})
         field_info = result["credentials"]
         assert len(field_info.discriminator_values) == 0
