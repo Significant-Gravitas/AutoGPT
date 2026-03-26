@@ -33,6 +33,7 @@ from .conftest import build_structured_transcript
 from .response_adapter import SDKResponseAdapter
 from .service import _format_sdk_content_blocks
 from .transcript import (
+    _find_last_assistant_entry,
     _flatten_assistant_content,
     _transcript_to_messages,
     compact_transcript,
@@ -106,6 +107,70 @@ def _make_thinking_transcript() -> str:
             ),
         ]
     )
+
+
+def _last_assistant_content(transcript_jsonl: str) -> list[dict] | None:
+    """Extract the content blocks of the last assistant entry in a transcript."""
+    last_content = None
+    for line in transcript_jsonl.strip().split("\n"):
+        entry = json.loads(line)
+        msg = entry.get("message", {})
+        if msg.get("role") == "assistant":
+            last_content = msg.get("content")
+    return last_content
+
+
+# ---------------------------------------------------------------------------
+# _find_last_assistant_entry — unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestFindLastAssistantEntry:
+    def test_splits_at_last_assistant(self):
+        """Prefix contains everything before last assistant; tail starts at it."""
+        transcript = build_structured_transcript(
+            [
+                ("user", "Hello"),
+                ("assistant", [{"type": "text", "text": "Hi"}]),
+                ("user", "More"),
+                ("assistant", [{"type": "text", "text": "Details"}]),
+            ]
+        )
+        prefix, tail = _find_last_assistant_entry(transcript)
+        # 3 entries in prefix (user, assistant, user), 1 in tail (last assistant)
+        assert len(prefix) == 3
+        assert len(tail) == 1
+
+    def test_no_assistant_returns_all_in_prefix(self):
+        """When there's no assistant, all lines are in prefix, tail is empty."""
+        transcript = build_structured_transcript(
+            [("user", "Hello"), ("user", "Another question")]
+        )
+        prefix, tail = _find_last_assistant_entry(transcript)
+        assert len(prefix) == 2
+        assert tail == []
+
+    def test_assistant_at_index_zero(self):
+        """When assistant is the first entry, prefix is empty."""
+        transcript = build_structured_transcript(
+            [("assistant", [{"type": "text", "text": "Start"}])]
+        )
+        prefix, tail = _find_last_assistant_entry(transcript)
+        assert prefix == []
+        assert len(tail) == 1
+
+    def test_trailing_user_included_in_tail(self):
+        """User message after last assistant is part of the tail."""
+        transcript = build_structured_transcript(
+            [
+                ("user", "Q1"),
+                ("assistant", [{"type": "text", "text": "A1"}]),
+                ("user", "Q2"),
+            ]
+        )
+        prefix, tail = _find_last_assistant_entry(transcript)
+        assert len(prefix) == 1  # first user
+        assert len(tail) == 2  # last assistant + trailing user
 
 
 # ---------------------------------------------------------------------------
@@ -198,19 +263,12 @@ class TestCompactTranscriptThinkingBlocks:
         assert result is not None
         assert validate_transcript(result)
 
-        # Parse the compacted transcript and find the last assistant entry
-        last_assistant_content = None
-        for line in result.strip().split("\n"):
-            entry = json.loads(line)
-            msg = entry.get("message", {})
-            if msg.get("role") == "assistant":
-                last_assistant_content = msg.get("content")
-
-        assert last_assistant_content is not None, "No assistant entry found"
-        assert isinstance(last_assistant_content, list)
+        last_content = _last_assistant_content(result)
+        assert last_content is not None, "No assistant entry found"
+        assert isinstance(last_content, list)
 
         # The last assistant must have the thinking blocks preserved
-        block_types = [b["type"] for b in last_assistant_content]
+        block_types = [b["type"] for b in last_content]
         assert (
             "thinking" in block_types
         ), "thinking block missing from last assistant message"
@@ -220,14 +278,12 @@ class TestCompactTranscriptThinkingBlocks:
         assert "text" in block_types
 
         # Verify the thinking block content is byte-for-byte identical
-        thinking_blocks = [b for b in last_assistant_content if b["type"] == "thinking"]
+        thinking_blocks = [b for b in last_content if b["type"] == "thinking"]
         assert len(thinking_blocks) == 1
         assert thinking_blocks[0]["thinking"] == THINKING_BLOCK["thinking"]
         assert thinking_blocks[0]["signature"] == THINKING_BLOCK["signature"]
 
-        redacted_blocks = [
-            b for b in last_assistant_content if b["type"] == "redacted_thinking"
-        ]
+        redacted_blocks = [b for b in last_content if b["type"] == "redacted_thinking"]
         assert len(redacted_blocks) == 1
         assert redacted_blocks[0]["data"] == REDACTED_THINKING_BLOCK["data"]
 
@@ -318,17 +374,10 @@ class TestCompactTranscriptThinkingBlocks:
 
         assert result is not None
 
-        # Find the last assistant entry in the compacted transcript
-        last_assistant_content = None
-        for line in result.strip().split("\n"):
-            entry = json.loads(line)
-            msg = entry.get("message", {})
-            if msg.get("role") == "assistant":
-                last_assistant_content = msg.get("content")
-
-        assert last_assistant_content is not None
-        assert isinstance(last_assistant_content, list)
-        block_types = [b["type"] for b in last_assistant_content]
+        last_content = _last_assistant_content(result)
+        assert last_content is not None
+        assert isinstance(last_content, list)
+        block_types = [b["type"] for b in last_content]
         assert (
             "thinking" in block_types
         ), "thinking block lost from last assistant despite trailing user msg"
@@ -375,16 +424,10 @@ class TestCompactTranscriptThinkingBlocks:
 
         assert result is not None
 
-        last_assistant_content = None
-        for line in result.strip().split("\n"):
-            entry = json.loads(line)
-            msg = entry.get("message", {})
-            if msg.get("role") == "assistant":
-                last_assistant_content = msg.get("content")
-
-        assert last_assistant_content is not None
-        assert isinstance(last_assistant_content, list)
-        block_types = [b["type"] for b in last_assistant_content]
+        last_content = _last_assistant_content(result)
+        assert last_content is not None
+        assert isinstance(last_content, list)
+        block_types = [b["type"] for b in last_content]
         assert "thinking" in block_types
 
     @pytest.mark.asyncio

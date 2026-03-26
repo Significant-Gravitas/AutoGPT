@@ -912,6 +912,19 @@ async def compact_transcript(
         tail_part = _rechain_tail(compressed_part, tail_lines)
         compacted = compressed_part + tail_part
 
+        if len(compacted) >= len(content):
+            # Byte count can increase due to preserved tail entries
+            # (thinking blocks, JSON overhead) even when token count
+            # decreased.  Log a warning but still return — the API
+            # validates tokens not bytes, and the caller falls through
+            # to DB fallback if the transcript is still too large.
+            logger.warning(
+                "%s Compacted transcript (%d bytes) is not smaller than "
+                "original (%d bytes) — may still reduce token count",
+                log_prefix,
+                len(compacted),
+                len(content),
+            )
         if not validate_transcript(compacted):
             logger.warning("%s Compacted transcript failed validation", log_prefix)
             return None
