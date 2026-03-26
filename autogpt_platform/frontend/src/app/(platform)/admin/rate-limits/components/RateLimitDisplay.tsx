@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/atoms/Button/Button";
-import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 
 function formatTokens(tokens: number): string {
@@ -45,15 +44,11 @@ interface Props {
 
 export function RateLimitDisplay({ data, onReset }: Props) {
   const [isResetting, setIsResetting] = useState(false);
-  const { toast } = useToast();
 
   async function handleReset() {
     setIsResetting(true);
     try {
       await onReset();
-      toast({ title: "Usage reset successfully" });
-    } catch (_error) {
-      toast({ title: "Failed to reset usage", variant: "destructive" });
     } finally {
       setIsResetting(false);
     }
