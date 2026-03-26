@@ -704,8 +704,19 @@ def get_service_client(
             return kwargs
 
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
+            """Validate and coerce the RPC result to the expected return type.
+
+            Falls back to the raw result with a warning if validation fails.
+            """
             if expected_return:
-                return expected_return.validate_python(result)
+                try:
+                    return expected_return.validate_python(result)
+                except Exception as e:
+                    logger.warning(
+                        "RPC return type validation failed, using raw result: %s",
+                        type(e).__name__,
+                    )
+                    return result
             return result
 
         def __getattr__(self, name: str) -> Callable[..., Any]:

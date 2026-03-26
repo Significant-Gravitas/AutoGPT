@@ -32,9 +32,9 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
-from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
@@ -548,7 +548,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    SmartDecisionMakerBlock: LLM_COST,
     SearchOrganizationsBlock: [
         BlockCost(
             cost_amount=2,
@@ -700,6 +699,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
     ],
+    OrchestratorBlock: LLM_COST,
     VideoNarrationBlock: [
         BlockCost(
             cost_amount=5,  # ElevenLabs TTS cost

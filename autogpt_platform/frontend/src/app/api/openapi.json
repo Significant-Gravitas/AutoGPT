@@ -1358,11 +1358,35 @@
         }
       }
     },
+    "/api/chat/suggested-prompts": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Suggested Prompts",
+        "description": "Get LLM-generated suggested prompts grouped by theme.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns empty themes list if no custom\nprompts are available.",
+        "operationId": "getV2GetSuggestedPrompts",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestedPromptsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/usage": {
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -1375,6 +1399,88 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/admin/rate_limit": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Get User Rate Limit",
+        "description": "Get a user's current usage and effective rate limits. Admin-only.",
+        "operationId": "getV2Get user rate limit",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRateLimitResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/admin/rate_limit/reset": {
+      "post": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Reset User Rate Limit Usage",
+        "description": "Reset a user's daily usage counter (and optionally weekly). Admin-only.",
+        "operationId": "postV2Reset user rate limit usage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Reset_user_rate_limit_usage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRateLimitResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1579,6 +1685,7 @@
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
+        "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
         "requestBody": {
           "content": {
@@ -3227,7 +3334,7 @@
                   { "$ref": "#/components/schemas/OAuth2Credentials" },
                   { "$ref": "#/components/schemas/APIKeyCredentials" },
                   { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
+                  { "$ref": "#/components/schemas/HostScopedCredentials" }
                 ],
                 "discriminator": {
                   "propertyName": "type",
@@ -3235,7 +3342,7 @@
                     "oauth2": "#/components/schemas/OAuth2Credentials",
                     "api_key": "#/components/schemas/APIKeyCredentials",
                     "user_password": "#/components/schemas/UserPasswordCredentials",
-                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
+                    "host_scoped": "#/components/schemas/HostScopedCredentials"
                   }
                 },
                 "title": "Credentials"
@@ -3249,24 +3356,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Postv1Create Credentials"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -3386,24 +3476,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Getv1Get Specific Credential By Id"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -5713,6 +5786,82 @@
         }
       }
     },
+    "/api/store/admin/submissions/{store_listing_version_id}/add-to-library": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Add Pending Agent to Library",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
+        "operationId": "postV2Admin add pending agent to library",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/submissions/{store_listing_version_id}/preview": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Preview Submission Listing",
+        "description": "Preview a marketplace submission as it would appear on the listing page.\nBypasses the APPROVED-only StoreAgent view so admins can preview pending\nsubmissions before approving.",
+        "operationId": "getV2Admin preview submission listing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/submissions/{store_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
@@ -6683,6 +6832,16 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "overwrite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Overwrite"
             }
           }
         ],
@@ -7860,7 +8019,12 @@
             "type": "object",
             "title": "Outputs"
           },
-          "success": { "type": "boolean", "title": "Success", "default": true }
+          "success": { "type": "boolean", "title": "Success", "default": true },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["message", "block_id", "block_name", "outputs"],
@@ -8014,7 +8178,8 @@
               { "type": "null" }
             ],
             "title": "Source"
-          }
+          },
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
         "type": "object",
         "title": "Body_postV1Execute graph agent"
@@ -8071,6 +8236,19 @@
         },
         "type": "object",
         "title": "Body_postV2Execute a preset"
+      },
+      "Body_postV2Reset_user_rate_limit_usage": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "reset_weekly": {
+            "type": "boolean",
+            "title": "Reset Weekly",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "Body_postV2Reset user rate limit usage"
       },
       "Body_postV2Upload_submission_media": {
         "properties": {
@@ -8816,6 +8994,16 @@
               { "type": "null" }
             ],
             "title": "Inputs Summary"
+          },
+          "node_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Node Executions"
           }
         },
         "type": "object",
@@ -9056,6 +9244,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9201,6 +9394,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9288,6 +9486,11 @@
           "share_token": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
+          },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
           },
           "stats": {
             "anyOf": [
@@ -9629,7 +9832,7 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "HostScopedCredentials-Input": {
+      "HostScopedCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "provider": { "type": "string", "title": "Provider" },
@@ -9654,36 +9857,6 @@
               "format": "password",
               "writeOnly": true
             },
-            "type": "object",
-            "title": "Headers",
-            "description": "Key-value header map to add to matching requests"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "host"],
-        "title": "HostScopedCredentials"
-      },
-      "HostScopedCredentials-Output": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "provider": { "type": "string", "title": "Provider" },
-          "title": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Title"
-          },
-          "type": {
-            "type": "string",
-            "const": "host_scoped",
-            "title": "Type",
-            "default": "host_scoped"
-          },
-          "host": {
-            "type": "string",
-            "title": "Host",
-            "description": "The host/URI pattern to match against request URLs"
-          },
-          "headers": {
-            "additionalProperties": { "type": "string" },
             "type": "object",
             "title": "Headers",
             "description": "Key-value header map to add to matching requests"
@@ -12700,6 +12873,33 @@
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
       },
+      "SuggestedPromptsResponse": {
+        "properties": {
+          "themes": {
+            "items": { "$ref": "#/components/schemas/SuggestedTheme" },
+            "type": "array",
+            "title": "Themes"
+          }
+        },
+        "type": "object",
+        "required": ["themes"],
+        "title": "SuggestedPromptsResponse",
+        "description": "Response model for user-specific suggested prompts grouped by theme."
+      },
+      "SuggestedTheme": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "prompts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Prompts"
+          }
+        },
+        "type": "object",
+        "required": ["name", "prompts"],
+        "title": "SuggestedTheme",
+        "description": "A themed group of suggested prompts."
+      },
       "SuggestionsResponse": {
         "properties": {
           "recent_searches": {
@@ -14427,6 +14627,36 @@
         "type": "object",
         "required": ["provider", "username", "password"],
         "title": "UserPasswordCredentials"
+      },
+      "UserRateLimitResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "daily_token_limit": {
+            "type": "integer",
+            "title": "Daily Token Limit"
+          },
+          "weekly_token_limit": {
+            "type": "integer",
+            "title": "Weekly Token Limit"
+          },
+          "daily_tokens_used": {
+            "type": "integer",
+            "title": "Daily Tokens Used"
+          },
+          "weekly_tokens_used": {
+            "type": "integer",
+            "title": "Weekly Tokens Used"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "daily_token_limit",
+          "weekly_token_limit",
+          "daily_tokens_used",
+          "weekly_tokens_used"
+        ],
+        "title": "UserRateLimitResponse"
       },
       "UserReadiness": {
         "properties": {

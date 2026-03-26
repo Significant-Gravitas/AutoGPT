@@ -23,9 +23,7 @@ class CustomizeAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Customize a marketplace or template agent. Pass `agent_json` "
-            "with the complete customized agent JSON. The tool validates, "
-            "auto-fixes, and saves."
+            "Customize a marketplace/template agent. Validates, auto-fixes, and saves."
         )
 
     @property
@@ -39,32 +37,21 @@ class CustomizeAgentTool(BaseTool):
             "properties": {
                 "agent_json": {
                     "type": "object",
-                    "description": (
-                        "Complete customized agent JSON to validate and save. "
-                        "Optionally include 'name' and 'description'."
-                    ),
+                    "description": "Customized agent JSON with nodes and links.",
                 },
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "List of library agent IDs to use as building blocks."
-                    ),
+                    "description": "Library agent IDs as building blocks.",
                 },
                 "save": {
                     "type": "boolean",
-                    "description": (
-                        "Whether to save the customized agent. Default is true."
-                    ),
+                    "description": "Save the agent (default: true). False for preview.",
                     "default": True,
                 },
                 "folder_id": {
                     "type": "string",
-                    "description": (
-                        "Optional folder ID to save the agent into. "
-                        "If not provided, the agent is saved at root level. "
-                        "Use list_folders to find available folders."
-                    ),
+                    "description": "Folder ID to save into (default: root).",
                 },
             },
             "required": ["agent_json"],

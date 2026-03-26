@@ -143,7 +143,7 @@ export function MainCreatorPage({ params }: Props) {
           <div className="hidden lg:block lg:w-3/5" />
         </div>
 
-        <div className="my-6" />
+        <div className="my-18" />
 
         {creatorAgents && (
           <AgentsSection

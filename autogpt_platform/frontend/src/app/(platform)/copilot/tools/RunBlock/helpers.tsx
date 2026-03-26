@@ -42,6 +42,7 @@ export interface RunBlockInput {
   block_id?: string;
   block_name?: string;
   input_data?: Record<string, unknown>;
+  dry_run?: boolean;
 }
 
 export type RunBlockToolOutput =
@@ -142,6 +143,7 @@ export function getAnimationText(part: {
   const input = part.input as RunBlockInput | undefined;
   const blockName = input?.block_name?.trim();
   const blockId = input?.block_id?.trim();
+  const isDryRun = input?.dry_run === true;
   // Prefer block_name if available, otherwise fall back to block_id
   const blockText = blockName
     ? ` "${blockName}"`
@@ -152,11 +154,16 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return `Running${blockText}`;
+      return isDryRun ? `Simulating${blockText}` : `Running${blockText}`;
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return `Running${blockText}`;
-      if (isRunBlockBlockOutput(output)) return `Ran "${output.block_name}"`;
+      if (!output)
+        return isDryRun ? `Simulating${blockText}` : `Running${blockText}`;
+      if (isRunBlockBlockOutput(output)) {
+        return output.is_dry_run
+          ? `Simulated "${output.block_name}"`
+          : `Ran "${output.block_name}"`;
+      }
       if (isRunBlockDetailsOutput(output))
         return `Details for "${output.block.name}"`;
       if (isRunBlockSetupRequirementsOutput(output)) {
@@ -170,7 +177,7 @@ export function getAnimationText(part: {
     case "output-error":
       return "Action failed";
     default:
-      return "Running";
+      return isDryRun ? "Simulating" : "Running";
   }
 }
 
@@ -215,13 +222,16 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
 
   if (isRunBlockBlockOutput(output)) {
     const keys = Object.keys(output.outputs ?? {});
+    const outputCount =
+      keys.length > 0
+        ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
+        : output.message;
     return {
       icon,
       title: output.block_name,
-      description:
-        keys.length > 0
-          ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`
-          : output.message,
+      description: output.is_dry_run
+        ? `Simulated · ${outputCount}`
+        : outputCount,
     };
   }
 

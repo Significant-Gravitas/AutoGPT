@@ -1,7 +1,7 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
 import fastapi.testclient
@@ -400,3 +400,69 @@ def test_usage_rejects_unauthenticated_request() -> None:
     response = unauthenticated_client.get("/usage")
 
     assert response.status_code == 401
+
+
+# ─── Suggested prompts endpoint ──────────────────────────────────────
+
+
+def _mock_get_business_understanding(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    return_value=None,
+):
+    """Mock get_business_understanding."""
+    return mocker.patch(
+        "backend.api.features.chat.routes.get_business_understanding",
+        new_callable=AsyncMock,
+        return_value=return_value,
+    )
+
+
+def test_suggested_prompts_returns_themes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """User with themed prompts gets them back as themes list."""
+    mock_understanding = MagicMock()
+    mock_understanding.suggested_prompts = {
+        "Learn": ["L1", "L2"],
+        "Create": ["C1"],
+    }
+    _mock_get_business_understanding(mocker, return_value=mock_understanding)
+
+    response = client.get("/suggested-prompts")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "themes" in data
+    themes_by_name = {t["name"]: t["prompts"] for t in data["themes"]}
+    assert themes_by_name["Learn"] == ["L1", "L2"]
+    assert themes_by_name["Create"] == ["C1"]
+
+
+def test_suggested_prompts_no_understanding(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """User with no understanding gets empty themes list."""
+    _mock_get_business_understanding(mocker, return_value=None)
+
+    response = client.get("/suggested-prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"themes": []}
+
+
+def test_suggested_prompts_empty_prompts(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """User with understanding but empty prompts gets empty themes list."""
+    mock_understanding = MagicMock()
+    mock_understanding.suggested_prompts = {}
+    _mock_get_business_understanding(mocker, return_value=mock_understanding)
+
+    response = client.get("/suggested-prompts")
+
+    assert response.status_code == 200
+    assert response.json() == {"themes": []}

@@ -25,8 +25,7 @@ class GetDocPageTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Get the full content of a documentation page by its path. "
-            "Use this after search_docs to read the complete content of a relevant page."
+            "Read full documentation page content by path (from search_docs results)."
         )
 
     @property
@@ -36,10 +35,7 @@ class GetDocPageTool(BaseTool):
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": (
-                        "The path to the documentation file, as returned by search_docs. "
-                        "Example: 'platform/block-sdk-guide.md'"
-                    ),
+                    "description": "Doc file path (e.g. 'platform/block-sdk-guide.md').",
                 },
             },
             "required": ["path"],

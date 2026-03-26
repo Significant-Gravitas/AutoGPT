@@ -31,6 +31,7 @@ from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
     check_rate_limit,
+    get_global_rate_limits,
     get_usage_status,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
@@ -60,16 +61,17 @@ from backend.copilot.tools.models import (
 )
 from backend.copilot.tracking import track_user_message
 from backend.data.redis_client import get_redis_async
+from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
+
+logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
-
-logger = logging.getLogger(__name__)
 
 
 async def _validate_and_get_session(
@@ -421,11 +423,15 @@ async def get_copilot_usage(
     """Get CoPilot usage status for the authenticated user.
 
     Returns current token usage vs limits for daily and weekly windows.
+    Global defaults sourced from LaunchDarkly (falling back to config).
     """
+    daily_limit, weekly_limit = await get_global_rate_limits(
+        user_id, config.daily_token_limit, config.weekly_token_limit
+    )
     return await get_usage_status(
         user_id=user_id,
-        daily_token_limit=config.daily_token_limit,
-        weekly_token_limit=config.weekly_token_limit,
+        daily_token_limit=daily_limit,
+        weekly_token_limit=weekly_limit,
     )
 
 
@@ -526,12 +532,16 @@ async def stream_chat_post(
 
     # Pre-turn rate limit check (token-based).
     # check_rate_limit short-circuits internally when both limits are 0.
+    # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
+            daily_limit, weekly_limit = await get_global_rate_limits(
+                user_id, config.daily_token_limit, config.weekly_token_limit
+            )
             await check_rate_limit(
                 user_id=user_id,
-                daily_token_limit=config.daily_token_limit,
-                weekly_token_limit=config.weekly_token_limit,
+                daily_token_limit=daily_limit,
+                weekly_token_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
@@ -892,6 +902,47 @@ async def session_assign_user(
     """
     await chat_service.assign_user_to_session(session_id, user_id)
     return {"status": "ok"}
+
+
+# ========== Suggested Prompts ==========
+
+
+class SuggestedTheme(BaseModel):
+    """A themed group of suggested prompts."""
+
+    name: str
+    prompts: list[str]
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts grouped by theme."""
+
+    themes: list[SuggestedTheme]
+
+
+@router.get(
+    "/suggested-prompts",
+    dependencies=[Security(auth.requires_user)],
+)
+async def get_suggested_prompts(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> SuggestedPromptsResponse:
+    """
+    Get LLM-generated suggested prompts grouped by theme.
+
+    Returns personalized quick-action prompts based on the user's
+    business understanding. Returns empty themes list if no custom
+    prompts are available.
+    """
+    understanding = await get_business_understanding(user_id)
+    if understanding is None or not understanding.suggested_prompts:
+        return SuggestedPromptsResponse(themes=[])
+
+    themes = [
+        SuggestedTheme(name=name, prompts=prompts)
+        for name, prompts in understanding.suggested_prompts.items()
+    ]
+    return SuggestedPromptsResponse(themes=themes)
 
 
 # ========== Configuration ==========

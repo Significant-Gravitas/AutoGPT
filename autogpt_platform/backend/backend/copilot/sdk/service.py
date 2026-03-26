@@ -2,19 +2,20 @@
 
 import asyncio
 import base64
-import functools
 import json
 import logging
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
+
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -31,6 +32,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
+from backend.copilot.permissions import apply_tool_permissions
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -77,10 +79,15 @@ from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
+from .subscription import validate_subscription as _validate_claude_code_subscription
 from .tool_adapter import (
+    cancel_pending_tool_tasks,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
+    pre_launch_tool_call,
+    reset_stash_event,
+    reset_tool_failure_counters,
     set_execution_context,
     wait_for_stash,
 )
@@ -105,6 +112,20 @@ config = ChatConfig()
 # (3) no transcript (DB messages only).
 # Non-context errors (network, auth, rate-limit) are NOT retried.
 _MAX_STREAM_ATTEMPTS = 3
+
+# Hard circuit breaker: abort the stream if the model sends this many
+# consecutive tool calls with empty parameters (a sign of context
+# saturation or serialization failure).  Empty input ({}) is never
+# legitimate — even one is suspicious, three is conclusive.
+_EMPTY_TOOL_CALL_LIMIT = 3
+
+# User-facing error shown when the empty-tool-call circuit breaker trips.
+_CIRCUIT_BREAKER_ERROR_MSG = (
+    "AutoPilot was unable to complete the tool call "
+    "— this usually happens when the response is "
+    "too large to fit in a single tool call. "
+    "Try breaking your request into smaller parts."
+)
 
 # Patterns that indicate the prompt/request exceeds the model's context limit.
 # Matched case-insensitively against the full exception chain.
@@ -162,6 +183,19 @@ def _is_prompt_too_long(err: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
+
+
+def _is_tool_only_message(sdk_msg: object) -> bool:
+    """Return True if *sdk_msg* is an AssistantMessage containing only ToolUseBlocks.
+
+    Such a message represents a parallel tool-call batch (no text output yet).
+    The ``bool(…content)`` guard prevents vacuous-truth evaluation on an empty list.
+    """
+    return (
+        isinstance(sdk_msg, AssistantMessage)
+        and bool(sdk_msg.content)
+        and all(isinstance(b, ToolUseBlock) for b in sdk_msg.content)
+    )
 
 
 class ReducedContext(NamedTuple):
@@ -456,37 +490,6 @@ def _resolve_sdk_model() -> str | None:
     if not config.openrouter_active:
         model = model.replace(".", "-")
     return model
-
-
-@functools.cache
-def _validate_claude_code_subscription() -> None:
-    """Validate Claude CLI is installed and responds to `--version`.
-
-    Cached so the blocking subprocess check runs at most once per process
-    lifetime.  A failure (CLI not installed) is a config error that requires
-    a process restart anyway.
-    """
-    claude_path = shutil.which("claude")
-    if not claude_path:
-        raise RuntimeError(
-            "Claude Code CLI not found. Install it with: "
-            "npm install -g @anthropic-ai/claude-code"
-        )
-    result = subprocess.run(
-        [claude_path, "--version"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"Claude CLI check failed (exit {result.returncode}): "
-            f"{result.stderr.strip()}"
-        )
-    logger.info(
-        "Claude Code subscription mode: CLI version %s",
-        result.stdout.strip(),
-    )
 
 
 def _build_sdk_env(
@@ -1028,14 +1031,121 @@ def _dispatch_response(
     return response
 
 
-class _TransientErrorHandled(Exception):
+class _HandledStreamError(Exception):
     """Raised by `_run_stream_attempt` after it has already yielded a
-    `StreamError` for a transient API error.
+    `StreamError` to the client (e.g. transient API error, circuit breaker).
 
     This signals the outer retry loop that the attempt failed so it can
     perform session-message rollback and set the `ended_with_stream_error`
     flag, **without** yielding a duplicate `StreamError` to the client.
+
+    Attributes:
+        error_msg: The user-facing error message to persist.
+        code: Machine-readable error code (e.g. ``circuit_breaker_empty_tool_calls``).
+        retryable: Whether the frontend should offer a retry button.
     """
+
+    def __init__(
+        self,
+        message: str,
+        error_msg: str | None = None,
+        code: str | None = None,
+        retryable: bool = True,
+    ):
+        super().__init__(message)
+        self.error_msg = error_msg
+        self.code = code
+        self.retryable = retryable
+
+
+@dataclass
+class _EmptyToolBreakResult:
+    """Result of checking for empty tool calls in a single AssistantMessage."""
+
+    count: int  # Updated consecutive counter
+    tripped: bool  # Whether the circuit breaker fired
+    error: StreamError | None  # StreamError to yield (if tripped)
+    error_msg: str | None  # Error message (if tripped)
+    error_code: str | None  # Error code (if tripped)
+
+
+def _check_empty_tool_breaker(
+    sdk_msg: object,
+    consecutive: int,
+    ctx: _StreamContext,
+    state: _RetryState,
+) -> _EmptyToolBreakResult:
+    """Detect consecutive empty tool calls and trip the circuit breaker.
+
+    Returns an ``_EmptyToolBreakResult`` with the updated counter and, if the
+    breaker tripped, the ``StreamError`` to yield plus the error metadata.
+    """
+    if not isinstance(sdk_msg, AssistantMessage):
+        return _EmptyToolBreakResult(consecutive, False, None, None, None)
+
+    empty_tools = [
+        b.name for b in sdk_msg.content if isinstance(b, ToolUseBlock) and not b.input
+    ]
+    if not empty_tools:
+        # Reset on any non-empty-tool AssistantMessage (including text-only
+        # messages — any() over empty content is False).
+        return _EmptyToolBreakResult(0, False, None, None, None)
+
+    consecutive += 1
+
+    # Log full diagnostics on first occurrence only; subsequent hits just
+    # log the counter to reduce noise.
+    if consecutive == 1:
+        logger.warning(
+            "%s Empty tool call detected (%d/%d): "
+            "tools=%s, model=%s, error=%s, "
+            "block_types=%s, cumulative_usage=%s",
+            ctx.log_prefix,
+            consecutive,
+            _EMPTY_TOOL_CALL_LIMIT,
+            empty_tools,
+            sdk_msg.model,
+            sdk_msg.error,
+            [type(b).__name__ for b in sdk_msg.content],
+            {
+                "prompt": state.usage.prompt_tokens,
+                "completion": state.usage.completion_tokens,
+                "cache_read": state.usage.cache_read_tokens,
+            },
+        )
+    else:
+        logger.warning(
+            "%s Empty tool call detected (%d/%d): tools=%s",
+            ctx.log_prefix,
+            consecutive,
+            _EMPTY_TOOL_CALL_LIMIT,
+            empty_tools,
+        )
+
+    if consecutive < _EMPTY_TOOL_CALL_LIMIT:
+        return _EmptyToolBreakResult(consecutive, False, None, None, None)
+
+    logger.error(
+        "%s Circuit breaker: aborting stream after %d "
+        "consecutive empty tool calls. "
+        "This is likely caused by the model attempting "
+        "to write content too large for a single tool "
+        "call's output token limit. The model should "
+        "write large files in chunks using bash_exec "
+        "with cat >> (append).",
+        ctx.log_prefix,
+        consecutive,
+    )
+    error_msg = _CIRCUIT_BREAKER_ERROR_MSG
+    error_code = "circuit_breaker_empty_tool_calls"
+    _append_error_marker(ctx.session, error_msg, retryable=True)
+    return _EmptyToolBreakResult(
+        count=consecutive,
+        tripped=True,
+        error=StreamError(errorText=error_msg, code=error_code),
+        error_msg=error_msg,
+        error_code=error_code,
+    )
 
 
 async def _run_stream_attempt(
@@ -1071,6 +1181,12 @@ async def _run_stream_attempt(
         accumulated_tool_calls=[],
     )
     ended_with_stream_error = False
+    # Stores the error message used by _append_error_marker so the outer
+    # retry loop can re-append the correct message after session rollback.
+    stream_error_msg: str | None = None
+    stream_error_code: str | None = None
+
+    consecutive_empty_tool_calls = 0
 
     async with ClaudeSDKClient(options=state.options) as client:
         logger.info(
@@ -1161,17 +1277,42 @@ async def _run_stream_attempt(
                         "suppressing raw error text",
                         ctx.log_prefix,
                     )
+                    stream_error_msg = FRIENDLY_TRANSIENT_MSG
+                    stream_error_code = "transient_api_error"
                     _append_error_marker(
                         ctx.session,
-                        FRIENDLY_TRANSIENT_MSG,
+                        stream_error_msg,
                         retryable=True,
                     )
                     yield StreamError(
-                        errorText=FRIENDLY_TRANSIENT_MSG,
-                        code="transient_api_error",
+                        errorText=stream_error_msg,
+                        code=stream_error_code,
                     )
                     ended_with_stream_error = True
                     break
+
+            # Parallel tool execution: pre-launch every ToolUseBlock as an
+            # asyncio.Task the moment its AssistantMessage arrives.  The SDK
+            # sends one AssistantMessage per tool call when issuing parallel
+            # calls, so each message is pre-launched independently.  The MCP
+            # handlers will await the already-running task instead of executing
+            # fresh, making all concurrent tool calls run in parallel.
+            #
+            # Also determine if the message is a tool-only batch (all content
+            # items are ToolUseBlocks) — such messages have no text output yet,
+            # so we skip the wait_for_stash flush below.
+            is_tool_only = False
+            if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
+                is_tool_only = True
+                # NOTE: Pre-launches are sequential (each await completes
+                # file-ref expansion before the next starts).  This is fine
+                # since expansion is typically sub-ms; a future optimisation
+                # could gather all pre-launches concurrently.
+                for tool_use in sdk_msg.content:
+                    if isinstance(tool_use, ToolUseBlock):
+                        await pre_launch_tool_call(tool_use.name, tool_use.input)
+                    else:
+                        is_tool_only = False
 
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next
@@ -1186,15 +1327,12 @@ async def _run_stream_attempt(
             # AssistantMessages (each containing only
             # ToolUseBlocks), we must NOT wait/flush — the prior
             # tools are still executing concurrently.
-            is_parallel_continuation = isinstance(sdk_msg, AssistantMessage) and all(
-                isinstance(b, ToolUseBlock) for b in sdk_msg.content
-            )
             if (
                 state.adapter.has_unresolved_tool_calls
                 and isinstance(sdk_msg, (AssistantMessage, ResultMessage))
-                and not is_parallel_continuation
+                and not is_tool_only
             ):
-                if await wait_for_stash(timeout=0.5):
+                if await wait_for_stash():
                     await asyncio.sleep(0)
                 else:
                     logger.warning(
@@ -1209,13 +1347,17 @@ async def _run_stream_attempt(
             if isinstance(sdk_msg, ResultMessage):
                 logger.info(
                     "%s Received: ResultMessage %s "
-                    "(unresolved=%d, current=%d, resolved=%d)",
+                    "(unresolved=%d, current=%d, resolved=%d, "
+                    "num_turns=%d, cost_usd=%s, result=%s)",
                     ctx.log_prefix,
                     sdk_msg.subtype,
                     len(state.adapter.current_tool_calls)
                     - len(state.adapter.resolved_tool_calls),
                     len(state.adapter.current_tool_calls),
                     len(state.adapter.resolved_tool_calls),
+                    sdk_msg.num_turns,
+                    sdk_msg.total_cost_usd,
+                    (sdk_msg.result or "")[:200],
                 )
                 if sdk_msg.subtype in (
                     "error",
@@ -1271,6 +1413,18 @@ async def _run_stream_attempt(
                         compacted, log_prefix=ctx.log_prefix
                     )
                     entries_replaced = True
+
+            # --- Hard circuit breaker for empty tool calls ---
+            breaker = _check_empty_tool_breaker(
+                sdk_msg, consecutive_empty_tool_calls, ctx, state
+            )
+            consecutive_empty_tool_calls = breaker.count
+            if breaker.tripped and breaker.error is not None:
+                stream_error_msg = breaker.error_msg
+                stream_error_code = breaker.error_code
+                yield breaker.error
+                ended_with_stream_error = True
+                break
 
             # --- Dispatch adapter responses ---
             for response in state.adapter.convert_message(sdk_msg):
@@ -1352,8 +1506,10 @@ async def _run_stream_attempt(
     # to the client (StreamError yielded above), raise so the outer retry
     # loop can rollback session messages and set its error flags properly.
     if ended_with_stream_error:
-        raise _TransientErrorHandled(
-            "Transient API error handled — StreamError already yielded"
+        raise _HandledStreamError(
+            "Stream error handled — StreamError already yielded",
+            error_msg=stream_error_msg,
+            code=stream_error_code,
         )
 
 
@@ -1364,6 +1520,7 @@ async def stream_chat_completion_sdk(
     user_id: str | None = None,
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
+    permissions: "CopilotPermissions | None" = None,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -1609,7 +1766,13 @@ async def stream_chat_completion_sdk(
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
-        set_execution_context(user_id, session, sandbox=e2b_sandbox, sdk_cwd=sdk_cwd)
+        set_execution_context(
+            user_id,
+            session,
+            sandbox=e2b_sandbox,
+            sdk_cwd=sdk_cwd,
+            permissions=permissions,
+        )
 
         # Fail fast when no API credentials are available at all.
         sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
@@ -1635,8 +1798,11 @@ async def stream_chat_completion_sdk(
             on_compact=compaction.on_compact,
         )
 
-        allowed = get_copilot_tool_names(use_e2b=use_e2b)
-        disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
+        if permissions is not None:
+            allowed, disallowed = apply_tool_permissions(permissions, use_e2b=use_e2b)
+        else:
+            allowed = get_copilot_tool_names(use_e2b=use_e2b)
+            disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
@@ -1746,6 +1912,12 @@ async def stream_chat_completion_sdk(
         )
 
         for attempt in range(_MAX_STREAM_ATTEMPTS):
+            # Clear any stale stash signal from the previous attempt so
+            # wait_for_stash() doesn't fire prematurely on a leftover event.
+            reset_stash_event()
+            # Reset tool-level circuit breaker so failures from a previous
+            # (rolled-back) attempt don't carry over to the fresh attempt.
+            reset_tool_failure_counters()
             if attempt > 0:
                 logger.info(
                     "%s Retrying with reduced context (%d/%d)",
@@ -1801,6 +1973,10 @@ async def stream_chat_completion_sdk(
                     if not isinstance(event, StreamHeartbeat):
                         events_yielded += 1
                     yield event
+                # Cancel any pre-launched tasks that were never dispatched
+                # by the SDK (e.g. edge-case SDK behaviour changes). Symmetric
+                # with the three error-path await cancel_pending_tool_tasks() calls.
+                await cancel_pending_tool_tasks()
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
                 logger.warning(
@@ -1809,26 +1985,42 @@ async def stream_chat_completion_sdk(
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
+                # Cancel any pre-launched tasks so they don't continue executing
+                # against a rolled-back or abandoned session.
+                await cancel_pending_tool_tasks()
                 raise
-            except _TransientErrorHandled:
+            except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
                 # appended an error marker.  We only need to rollback
                 # session messages and set the error flag — do NOT set
                 # stream_err so the post-loop code won't emit a
                 # duplicate StreamError.
                 logger.warning(
-                    "%s Transient error handled in stream attempt "
-                    "(attempt %d/%d, events_yielded=%d)",
+                    "%s Stream error handled in attempt "
+                    "(attempt %d/%d, code=%s, events_yielded=%d)",
                     log_prefix,
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
+                    exc.code or "transient",
                     events_yielded,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # transcript_builder still contains entries from the aborted
+                # attempt that no longer match session.messages.  Skip upload
+                # so a future --resume doesn't replay rolled-back content.
+                skip_transcript_upload = True
                 # Re-append the error marker so it survives the rollback
                 # and is persisted by the finally block (see #2947655365).
-                _append_error_marker(session, FRIENDLY_TRANSIENT_MSG, retryable=True)
+                # Use the specific error message from the attempt (e.g.
+                # circuit breaker msg) rather than always the generic one.
+                _append_error_marker(
+                    session,
+                    exc.error_msg or FRIENDLY_TRANSIENT_MSG,
+                    retryable=True,
+                )
                 ended_with_stream_error = True
+                # Cancel any pre-launched tasks from the failed attempt.
+                await cancel_pending_tool_tasks()
                 break
             except Exception as e:
                 stream_err = e
@@ -1845,6 +2037,9 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # Cancel any pre-launched tasks from the failed attempt so they
+                # don't continue executing against the rolled-back session.
+                await cancel_pending_tool_tasks()
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
@@ -1854,11 +2049,13 @@ async def stream_chat_completion_sdk(
                         log_prefix,
                         events_yielded,
                     )
+                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
                 if not is_context_error:
                     # Non-context errors (network, auth, rate-limit) should
                     # not trigger compaction — surface the error immediately.
+                    skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
                 continue
@@ -1954,6 +2151,16 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(session.messages),
             )
+    except GeneratorExit:
+        # GeneratorExit is raised when the async generator is closed by the
+        # caller (e.g. client disconnect, page refresh).  We MUST release the
+        # stream lock here because the ``finally`` block at the end of this
+        # function may not execute when GeneratorExit propagates through nested
+        # async generators.  Without this, the lock stays held for its full TTL
+        # and the user sees "Another stream is already active" on every retry.
+        logger.warning("%s GeneratorExit — releasing stream lock", log_prefix)
+        await lock.release()
+        raise
     except BaseException as e:
         # Catch BaseException to handle both Exception and CancelledError
         # (CancelledError inherits from BaseException in Python 3.8+)
