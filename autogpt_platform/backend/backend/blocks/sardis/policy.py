@@ -17,6 +17,7 @@ from backend.blocks.sardis._auth import (
     SardisCredentialsField,
     SardisCredentialsInput,
     validate_amount,
+    validate_destination,
     validate_wallet_id,
 )
 from backend.data.model import SchemaField
@@ -52,6 +53,11 @@ class SardisPolicyCheckBlock(Block):
         @classmethod
         def _validate_wallet_id(cls, v: str) -> str:
             return validate_wallet_id(v)
+
+        @field_validator("destination")
+        @classmethod
+        def _validate_destination(cls, v: str) -> str:
+            return validate_destination(v)
 
         @field_validator("amount")
         @classmethod

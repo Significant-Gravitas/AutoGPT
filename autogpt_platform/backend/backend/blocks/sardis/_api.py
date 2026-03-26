@@ -50,24 +50,26 @@ class SardisClient:
           operations (balance queries, policy checks).
         * ``_requests_no_retry`` -- **no** retries, used exclusively for
           ``send_payment`` to avoid duplicate financial transactions.
+
+        The API key is kept behind ``SecretStr`` and extracted only at
+        request time via ``_auth_headers`` to avoid long-lived plaintext
+        copies in memory.
         """
-        self.credentials = credentials
+        self._credentials = credentials
         self._requests_safe = Requests(
             raise_for_status=False,
             retry_max_attempts=3,
-            extra_headers={
-                "X-API-Key": credentials.api_key.get_secret_value(),
-                "Content-Type": "application/json",
-            },
+            extra_headers={"Content-Type": "application/json"},
         )
         self._requests_no_retry = Requests(
             raise_for_status=False,
             retry_max_attempts=1,
-            extra_headers={
-                "X-API-Key": credentials.api_key.get_secret_value(),
-                "Content-Type": "application/json",
-            },
+            extra_headers={"Content-Type": "application/json"},
         )
+
+    def _auth_headers(self) -> dict[str, str]:
+        """Return auth headers, extracting the secret at call time."""
+        return {"X-API-Key": self._credentials.api_key.get_secret_value()}
 
     async def send_payment(
         self,
@@ -92,7 +94,7 @@ class SardisClient:
         key = idempotency_key or str(uuid.uuid4())
         response = await self._requests_no_retry.post(
             f"{self.API_URL}/wallets/{wallet_id}/transfer",
-            headers={"Idempotency-Key": key},
+            headers={**self._auth_headers(), "Idempotency-Key": key},
             json={
                 "destination": to,
                 "amount": amount,
@@ -114,6 +116,7 @@ class SardisClient:
         """Get wallet balance."""
         response = await self._requests_safe.get(
             f"{self.API_URL}/wallets/{wallet_id}/balance",
+            headers=self._auth_headers(),
             params={"token": token},
         )
         return self._normalize_response(
@@ -134,6 +137,7 @@ class SardisClient:
         """
         response = await self._requests_safe.post(
             f"{self.API_URL}/policies/check",
+            headers=self._auth_headers(),
             json={
                 "wallet_id": wallet_id,
                 "amount": amount,

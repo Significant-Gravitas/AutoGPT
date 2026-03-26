@@ -44,6 +44,25 @@ def validate_wallet_id(v: str) -> str:
     return v
 
 
+_MAX_DESTINATION_LEN = 256
+_DESTINATION_RE = re.compile(r"^[a-zA-Z0-9_.\-@:]+$")
+
+
+def validate_destination(v: str) -> str:
+    """Validate destination is a reasonable address/ID (alphanumeric + common separators)."""
+    if len(v) > _MAX_DESTINATION_LEN:
+        raise ValueError(
+            f"destination must be at most {_MAX_DESTINATION_LEN} characters, "
+            f"got {len(v)}"
+        )
+    if not _DESTINATION_RE.match(v):
+        raise ValueError(
+            "destination must contain only alphanumeric characters "
+            f"and . _ - @ : separators, got '{v[:50]}'"
+        )
+    return v
+
+
 def validate_amount(v: str) -> str:
     """Validate that an amount is a finite decimal string >= 0.01."""
     try:
