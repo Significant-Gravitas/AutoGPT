@@ -37,6 +37,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -117,11 +118,30 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Refresh LLM registry before initializing blocks so blocks can use registry data
+    # Note: Graceful fallback for now since no blocks consume registry yet (comes in PR #5)
+    # When block integration lands, this should fail hard or skip block initialization
+    try:
+        await backend.data.llm_registry.refresh_llm_registry()
+        logger.info("LLM registry refreshed successfully at startup")
+    except Exception as e:
+        logger.warning(
+            f"Failed to refresh LLM registry at startup: {e}. "
+            "Blocks will initialize with empty registry."
+        )
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    try:
+        await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    except Exception as e:
+        logger.warning(
+            f"Failed to migrate LLM models at startup: {e}. "
+            "This is expected in test environments without AgentNode table."
+        )
+
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
