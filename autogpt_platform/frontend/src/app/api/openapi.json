@@ -1362,7 +1362,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nRespects per-user rate limit overrides set by admins, with global\ndefaults sourced from LaunchDarkly (falling back to config).",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {

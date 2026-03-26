@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/__legacy__/ui/button";
 import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
-import { Search } from "lucide-react";
+import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/lib/autogpt-server-api/types";
 import { getUserRateLimit, resetUserRateLimit } from "../actions";
@@ -77,7 +77,7 @@ export function RateLimitManager() {
             onClick={handleLookup}
             disabled={isLoading || !userIdInput.trim()}
           >
-            {isLoading ? "Loading..." : <Search className="h-4 w-4" />}
+            {isLoading ? "Loading..." : <MagnifyingGlass size={16} />}
           </Button>
         </div>
       </div>

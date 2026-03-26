@@ -1,4 +1,4 @@
-"""Admin endpoints for checking and resetting per-user CoPilot rate limits."""
+"""Admin endpoints for checking and resetting user CoPilot rate limit usage."""
 
 import logging
 
@@ -7,8 +7,11 @@ from fastapi import APIRouter, Body, HTTPException, Security
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.rate_limit import get_usage_status, reset_user_usage
-from backend.util.feature_flag import Flag, get_feature_flag_value
+from backend.copilot.rate_limit import (
+    get_global_rate_limits,
+    get_usage_status,
+    reset_user_usage,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +32,6 @@ class UserRateLimitResponse(BaseModel):
     weekly_tokens_used: int
 
 
-async def _get_global_limits(user_id: str) -> tuple[int, int]:
-    """Resolve global rate limits from LaunchDarkly, falling back to config."""
-    daily = await get_feature_flag_value(
-        Flag.COPILOT_DAILY_TOKEN_LIMIT.value,
-        user_id,
-        config.daily_token_limit,
-    )
-    weekly = await get_feature_flag_value(
-        Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value,
-        user_id,
-        config.weekly_token_limit,
-    )
-    return int(daily), int(weekly)
-
-
 @router.get(
     "/rate_limit",
     response_model=UserRateLimitResponse,
@@ -56,7 +44,9 @@ async def get_user_rate_limit(
     """Get a user's current usage and effective rate limits."""
     logger.info(f"Admin {admin_user_id} checking rate limit for user {user_id}")
 
-    daily_limit, weekly_limit = await _get_global_limits(user_id)
+    daily_limit, weekly_limit = await get_global_rate_limits(
+        user_id, config.daily_token_limit, config.weekly_token_limit
+    )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
 
     return UserRateLimitResponse(
@@ -86,7 +76,9 @@ async def reset_user_rate_limit(
         logger.exception(f"Failed to reset user usage: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
 
-    daily_limit, weekly_limit = await _get_global_limits(user_id)
+    daily_limit, weekly_limit = await get_global_rate_limits(
+        user_id, config.daily_token_limit, config.weekly_token_limit
+    )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
 
     return UserRateLimitResponse(

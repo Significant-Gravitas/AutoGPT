@@ -51,7 +51,7 @@ def test_get_rate_limit(
 ) -> None:
     """Test getting rate limit and usage for a user."""
     mocker.patch(
-        f"{_MOCK_MODULE}._get_global_limits",
+        f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
         return_value=(2_500_000, 12_500_000),
     )
@@ -72,7 +72,7 @@ def test_get_rate_limit(
     assert data["weekly_tokens_used"] == 3_000_000
 
     configured_snapshot.assert_match(
-        json.dumps(data, indent=2, sort_keys=True),
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
         "get_rate_limit",
     )
 
@@ -88,7 +88,7 @@ def test_reset_user_usage(
         new_callable=AsyncMock,
     )
     mocker.patch(
-        f"{_MOCK_MODULE}._get_global_limits",
+        f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
         return_value=(2_500_000, 12_500_000),
     )
@@ -111,7 +111,7 @@ def test_reset_user_usage(
     mock_reset.assert_called_once_with(target_user_id)
 
     configured_snapshot.assert_match(
-        json.dumps(data, indent=2, sort_keys=True),
+        json.dumps(data, indent=2, sort_keys=True) + "\n",
         "reset_user_usage",
     )
 

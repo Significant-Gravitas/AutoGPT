@@ -231,6 +231,32 @@ async def record_token_usage(
         )
 
 
+async def get_global_rate_limits(
+    user_id: str,
+    config_daily: int,
+    config_weekly: int,
+) -> tuple[int, int]:
+    """Resolve global rate limits from LaunchDarkly, falling back to config.
+
+    Args:
+        user_id: User ID for LD flag evaluation context.
+        config_daily: Fallback daily limit from ChatConfig.
+        config_weekly: Fallback weekly limit from ChatConfig.
+
+    Returns:
+        (daily_token_limit, weekly_token_limit) tuple.
+    """
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    daily = await get_feature_flag_value(
+        Flag.COPILOT_DAILY_TOKEN_LIMIT.value, user_id, config_daily
+    )
+    weekly = await get_feature_flag_value(
+        Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value, user_id, config_weekly
+    )
+    return int(daily), int(weekly)
+
+
 async def reset_user_usage(user_id: str) -> None:
     """Reset a user's daily and weekly usage counters.
 
