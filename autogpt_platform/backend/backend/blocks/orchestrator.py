@@ -1486,11 +1486,13 @@ class OrchestratorBlock(Block):
                                     text_parts.append(content_block.text)
                                     response_parts.append(content_block.text)
                                 elif isinstance(content_block, ToolUseBlock):
+                                    raw_name = getattr(content_block, "name", "unknown")
+                                    # Strip MCP prefix for readability in
+                                    # conversation history.
+                                    clean_name = raw_name.removeprefix(MCP_PREFIX)
                                     tool_use_parts.append(
                                         {
-                                            "tool": getattr(
-                                                content_block, "name", "unknown"
-                                            ),
+                                            "tool": clean_name,
                                             "id": getattr(
                                                 content_block, "id", "unknown"
                                             ),
