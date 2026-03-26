@@ -11,18 +11,23 @@ import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from pydantic import ValidationError
 
+import backend.blocks.oixa_protocol as oixa_mod
 from backend.blocks.oixa_protocol import (
     OIXA_BASE_URL,
     OIXA_BLOCKS,
+    CheckBalanceBlock,
     CreateAuctionBlock,
     DeliverOutputBlock,
     ListAuctionsBlock,
     PlaceBidBlock,
+    RegisterOfferBlock,
 )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _mock_response(payload: dict):
     """Return an AsyncMock for _call that yields payload."""
@@ -43,21 +48,21 @@ def _block_name(block) -> str:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
+
 def test_base_url_from_env(monkeypatch):
     monkeypatch.setenv("OIXA_BASE_URL", "https://oixa.io")
-    import backend.blocks.oixa_protocol as mod
-    importlib.reload(mod)
-    assert mod.OIXA_BASE_URL == "https://oixa.io"
+    importlib.reload(oixa_mod)
+    assert oixa_mod.OIXA_BASE_URL == "https://oixa.io"
 
 
 def test_base_url_override(monkeypatch):
     monkeypatch.setenv("OIXA_BASE_URL", "http://localhost:8000")
-    import backend.blocks.oixa_protocol as mod
-    importlib.reload(mod)
-    assert mod.OIXA_BASE_URL == "http://localhost:8000"
+    importlib.reload(oixa_mod)
+    assert oixa_mod.OIXA_BASE_URL == "http://localhost:8000"
 
 
 # ── Block identity ─────────────────────────────────────────────────────────────
+
 
 def test_block_ids_are_unique():
     ids = [b.id for b in OIXA_BLOCKS]
@@ -76,10 +81,23 @@ def test_all_blocks_have_name_and_categories():
         assert block.categories, f"{_block_name(block)} missing categories"
 
 
+def test_oixa_blocks_contains_all_six():
+    expected = {
+        "ListAuctionsBlock",
+        "PlaceBidBlock",
+        "CreateAuctionBlock",
+        "DeliverOutputBlock",
+        "RegisterOfferBlock",
+        "CheckBalanceBlock",
+    }
+    actual = {b.__name__ for b in OIXA_BLOCKS}
+    assert actual == expected
+
+
 # ── Validators ────────────────────────────────────────────────────────────────
 
+
 def test_place_bid_amount_must_be_positive():
-    from pydantic import ValidationError
     with pytest.raises((ValidationError, ValueError)):
         PlaceBidBlock.Input(
             auction_id="oixa_auction_test",
@@ -90,7 +108,6 @@ def test_place_bid_amount_must_be_positive():
 
 
 def test_place_bid_zero_amount_rejected():
-    from pydantic import ValidationError
     with pytest.raises((ValidationError, ValueError)):
         PlaceBidBlock.Input(
             auction_id="oixa_auction_test",
@@ -101,12 +118,23 @@ def test_place_bid_zero_amount_rejected():
 
 
 def test_create_auction_max_budget_must_be_positive():
-    from pydantic import ValidationError
     with pytest.raises((ValidationError, ValueError)):
         CreateAuctionBlock.Input(
             rfi_description="Test task",
             max_budget=0.0,
             requester_id="agent_1",
+        )
+
+
+def test_register_offer_price_must_be_positive():
+    with pytest.raises((ValidationError, ValueError)):
+        RegisterOfferBlock.Input(
+            agent_id="agent_1",
+            agent_name="Agent One",
+            capability="web_scraping",
+            input_required="URL",
+            output_guaranteed="Markdown text",
+            price_usdc=0.0,
         )
 
 
@@ -121,6 +149,7 @@ def test_valid_bid_input_accepted():
 
 
 # ── ListAuctionsBlock ─────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_list_auctions_success():
@@ -149,6 +178,7 @@ async def test_list_auctions_api_error():
 
 
 # ── PlaceBidBlock ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_place_bid_accepted():
@@ -179,6 +209,7 @@ async def test_place_bid_outbid():
 
 # ── CreateAuctionBlock ────────────────────────────────────────────────────────
 
+
 @pytest.mark.asyncio
 async def test_create_auction_success():
     payload = {"data": {"id": "oixa_auction_new", "status": "open"}}
@@ -194,6 +225,7 @@ async def test_create_auction_success():
 
 
 # ── DeliverOutputBlock ────────────────────────────────────────────────────────
+
 
 @pytest.mark.asyncio
 async def test_deliver_output_verified():
@@ -218,5 +250,86 @@ async def test_deliver_output_failed_verification():
         inp = DeliverOutputBlock.Input(auction_id="oixa_auction_001", agent_id="agent_1", output="ok")
         result = await collect(block.run(inp))
 
-    assert result["passed"] is False
+    assert "passed" not in result
     assert result["error"] == "output too short"
+
+
+# ── RegisterOfferBlock ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_register_offer_success():
+    payload = {
+        "data": {
+            "id": "oixa_cap_abc123",
+            "discovery_url": "/api/v1/capabilities?need=web_scraping",
+        }
+    }
+
+    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
+        block = RegisterOfferBlock()
+        inp = RegisterOfferBlock.Input(
+            agent_id="agent_1",
+            agent_name="Agent One",
+            capability="web_scraping",
+            input_required="URL string",
+            output_guaranteed="Markdown text",
+            price_usdc=0.02,
+        )
+        result = await collect(block.run(inp))
+
+    assert result["capability_id"] == "oixa_cap_abc123"
+    assert "web_scraping" in result["discovery_url"]
+    assert result.get("error", "") == ""
+
+
+@pytest.mark.asyncio
+async def test_register_offer_api_error():
+    with patch("backend.blocks.oixa_protocol._call", _mock_response({"error": "duplicate capability"})):
+        block = RegisterOfferBlock()
+        inp = RegisterOfferBlock.Input(
+            agent_id="agent_1",
+            agent_name="Agent One",
+            capability="web_scraping",
+            input_required="URL string",
+            output_guaranteed="Markdown text",
+            price_usdc=0.02,
+        )
+        result = await collect(block.run(inp))
+
+    assert result["error"] == "duplicate capability"
+
+
+# ── CheckBalanceBlock ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_check_balance_success():
+    payload = {
+        "data": {
+            "agent_id": "agent_1",
+            "score": 75.0,
+            "transactions_completed": 7,
+            "rank": 3,
+        }
+    }
+
+    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
+        block = CheckBalanceBlock()
+        inp = CheckBalanceBlock.Input(agent_id="agent_1")
+        result = await collect(block.run(inp))
+
+    assert result["score"] == 75.0
+    assert result["transactions_completed"] == 7
+    assert result["rank"] == 3
+    assert result.get("error", "") == ""
+
+
+@pytest.mark.asyncio
+async def test_check_balance_agent_not_found():
+    with patch("backend.blocks.oixa_protocol._call", _mock_response({"error": "Agent has no reputation record yet"})):
+        block = CheckBalanceBlock()
+        inp = CheckBalanceBlock.Input(agent_id="unknown_agent")
+        result = await collect(block.run(inp))
+
+    assert result["error"] == "Agent has no reputation record yet"
