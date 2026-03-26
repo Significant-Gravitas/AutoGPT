@@ -907,6 +907,19 @@ async def connect_agentmail(
             # Persist pod_id immediately so retries reuse it (avoids orphaned pods)
             await creds_manager.store.set_agentmail_pod_id(user_id, pod_id)
 
+        # Idempotency guard: delete any orphaned "autogpt-managed" key before
+        # creating a fresh one.  Listed keys don't expose the secret, so we
+        # can't reuse them — but cleaning up prevents resource leaks on retry.
+        try:
+            existing_keys = await client.pods.api_keys.list(pod_id=pod_id)
+            for k in existing_keys.api_keys:
+                if k.name == "autogpt-managed":
+                    await client.pods.api_keys.delete(
+                        pod_id=pod_id, api_key_id=k.api_key_id
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to clean up AgentMail API keys: {e}")
+
         try:
             api_key = await client.pods.api_keys.create(
                 pod_id=pod_id, name="autogpt-managed"
