@@ -821,29 +821,49 @@ def _find_last_assistant_entry(
 ) -> tuple[list[str], list[str]]:
     """Split JSONL lines into (compressible_prefix, preserved_tail).
 
-    The tail starts at the last assistant entry — it and everything after
-    it (typically one trailing user message) are returned verbatim so that
-    ``compact_transcript`` can re-append them without modification.
+    The tail starts at the **first** entry of the last assistant turn and
+    includes everything after it (typically trailing user messages).  An
+    assistant turn can span multiple consecutive JSONL entries sharing the
+    same ``message.id`` (e.g., a thinking entry followed by a tool_use
+    entry).  All entries of the turn are preserved verbatim.
 
     The Anthropic API requires that ``thinking`` and ``redacted_thinking``
     blocks in the **last** assistant message remain byte-for-byte identical
-    to the original response.  By excluding the tail from compression we
-    guarantee those blocks are never altered.
+    to the original response.  By excluding the entire turn from
+    compression we guarantee those blocks are never altered.
 
     Returns ``(all_lines, [])`` when no assistant entry is found.
     """
     lines = [ln for ln in content.strip().split("\n") if ln.strip()]
-    last_asst_idx: int | None = None
-    for i, line in enumerate(lines):
+
+    # First pass: find the message.id of the last assistant entry.
+    last_asst_msg_id: str | None = None
+    for line in reversed(lines):
         entry = json.loads(line, fallback=None)
         if not isinstance(entry, dict):
             continue
         msg = entry.get("message", {})
         if msg.get("role") == "assistant":
-            last_asst_idx = i
-    if last_asst_idx is None:
+            last_asst_msg_id = msg.get("id")
+            break
+
+    if last_asst_msg_id is None:
         return lines, []
-    return lines[:last_asst_idx], lines[last_asst_idx:]
+
+    # Second pass: find the first entry of this turn (same message.id).
+    first_turn_idx: int | None = None
+    for i, line in enumerate(lines):
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            continue
+        msg = entry.get("message", {})
+        if msg.get("role") == "assistant" and msg.get("id") == last_asst_msg_id:
+            first_turn_idx = i
+            break
+
+    if first_turn_idx is None:
+        return lines, []
+    return lines[:first_turn_idx], lines[first_turn_idx:]
 
 
 async def compact_transcript(

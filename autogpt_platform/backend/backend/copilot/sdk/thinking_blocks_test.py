@@ -174,6 +174,63 @@ class TestFindLastAssistantEntry:
         assert len(prefix) == 1  # first user
         assert len(tail) == 2  # last assistant + trailing user
 
+    def test_multi_entry_turn_fully_preserved(self):
+        """An assistant turn spanning multiple JSONL entries (same message.id)
+        must be entirely in the tail, not split across prefix and tail."""
+        # Build manually because build_structured_transcript generates unique ids
+        lines = [
+            json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "u1",
+                    "parentUuid": "",
+                    "message": {"role": "user", "content": "Hello"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "a1-think",
+                    "parentUuid": "u1",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_same_turn",
+                        "type": "message",
+                        "content": [THINKING_BLOCK],
+                        "stop_reason": None,
+                        "stop_sequence": None,
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "a1-tool",
+                    "parentUuid": "u1",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_same_turn",
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "tu1",
+                                "name": "Bash",
+                                "input": {},
+                            },
+                        ],
+                        "stop_reason": "tool_use",
+                        "stop_sequence": None,
+                    },
+                }
+            ),
+        ]
+        transcript = "\n".join(lines) + "\n"
+        prefix, tail = _find_last_assistant_entry(transcript)
+        # Both assistant entries share msg_same_turn → both in tail
+        assert len(prefix) == 1  # only the user entry
+        assert len(tail) == 2  # both assistant entries (thinking + tool_use)
+
 
 # ---------------------------------------------------------------------------
 # _rechain_tail — UUID chain patching
