@@ -176,9 +176,7 @@ class HeyGenCreateVideoBlock(Block):
         video_id = response["video_id"]
 
         for _ in range(input_data.max_polling_attempts):
-            status_response = await self.get_video_status(
-                credentials.api_key, video_id
-            )
+            status_response = await self.get_video_status(credentials.api_key, video_id)
             status = status_response.get("status")
 
             if status == "completed":
