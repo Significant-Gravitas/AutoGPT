@@ -9,6 +9,7 @@ import pytest
 import pytest_mock
 
 from backend.api.features.chat import routes as chat_routes
+from backend.copilot.rate_limit import RateLimitTier
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -369,6 +370,7 @@ def test_usage_returns_daily_and_weekly(
         daily_token_limit=10000,
         weekly_token_limit=50000,
         rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
+        tier=RateLimitTier.STANDARD,
     )
 
 
@@ -391,6 +393,7 @@ def test_usage_uses_config_limits(
         daily_token_limit=99999,
         weekly_token_limit=77777,
         rate_limit_reset_cost=500,
+        tier=RateLimitTier.STANDARD,
     )
 
 
