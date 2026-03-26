@@ -150,8 +150,13 @@ async def test_add_agent_to_library(mocker):
     )
 
     # Mock graph_db.get_graph function that's called to check for HITL blocks
-    mock_graph_db = mocker.patch("backend.api.features.library.db.graph_db")
+    # (lives in _add_to_library.py after refactor, not db.py)
+    mock_graph_db = mocker.patch(
+        "backend.api.features.library._add_to_library.graph_db"
+    )
     mock_graph_model = mocker.Mock()
+    mock_graph_model.id = "agent1"
+    mock_graph_model.version = 1
     mock_graph_model.nodes = (
         []
     )  # Empty list so _has_human_in_the_loop_blocks returns False
@@ -224,3 +229,94 @@ async def test_add_agent_to_library_not_found(mocker):
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"AgentGraph": True}
     )
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_by_graph_id_excludes_archived(mocker):
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
+
+    result = await db.get_library_agent_by_graph_id("test-user", "agent1", 7)
+
+    assert result is None
+    mock_library_agent.return_value.find_first.assert_called_once()
+    where = mock_library_agent.return_value.find_first.call_args.kwargs["where"]
+    assert where == {
+        "agentGraphId": "agent1",
+        "userId": "test-user",
+        "isDeleted": False,
+        "isArchived": False,
+        "agentGraphVersion": 7,
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_library_agent_by_graph_id_can_include_archived(mocker):
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
+
+    result = await db.get_library_agent_by_graph_id(
+        "test-user",
+        "agent1",
+        7,
+        include_archived=True,
+    )
+
+    assert result is None
+    mock_library_agent.return_value.find_first.assert_called_once()
+    where = mock_library_agent.return_value.find_first.call_args.kwargs["where"]
+    assert where == {
+        "agentGraphId": "agent1",
+        "userId": "test-user",
+        "isDeleted": False,
+        "agentGraphVersion": 7,
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_graph_in_library_allows_archived_library_agent(mocker):
+    graph = mocker.Mock(id="graph-id")
+    existing_version = mocker.Mock(version=1, is_active=True)
+    graph_model = mocker.Mock()
+    created_graph = mocker.Mock(id="graph-id", version=2, is_active=False)
+    current_library_agent = mocker.Mock()
+    updated_library_agent = mocker.Mock()
+
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.get_graph_all_versions",
+        new=mocker.AsyncMock(return_value=[existing_version]),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.make_graph_model",
+        return_value=graph_model,
+    )
+    mocker.patch(
+        "backend.api.features.library.db.graph_db.create_graph",
+        new=mocker.AsyncMock(return_value=created_graph),
+    )
+    mock_get_library_agent = mocker.patch(
+        "backend.api.features.library.db.get_library_agent_by_graph_id",
+        new=mocker.AsyncMock(return_value=current_library_agent),
+    )
+    mock_update_library_agent = mocker.patch(
+        "backend.api.features.library.db.update_library_agent_version_and_settings",
+        new=mocker.AsyncMock(return_value=updated_library_agent),
+    )
+
+    result_graph, result_library_agent = await db.update_graph_in_library(
+        graph,
+        "test-user",
+    )
+
+    assert result_graph is created_graph
+    assert result_library_agent is updated_library_agent
+    assert graph.version == 2
+    graph_model.reassign_ids.assert_called_once_with(
+        user_id="test-user", reassign_graph_id=False
+    )
+    mock_get_library_agent.assert_awaited_once_with(
+        "test-user",
+        "graph-id",
+        include_archived=True,
+    )
+    mock_update_library_agent.assert_awaited_once_with("test-user", created_graph)

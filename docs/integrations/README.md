@@ -230,10 +230,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
+| [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
 | [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
 | [Replicate Model](block-integrations/replicate/replicate_block.md#replicate-model) | Run Replicate models synchronously |
-| [Smart Decision Maker](block-integrations/llm.md#smart-decision-maker) | Uses AI to intelligently decide what tool to use |
 | [Stagehand Act](block-integrations/stagehand/blocks.md#stagehand-act) | Interact with a web page by performing actions on a web page |
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |
@@ -342,7 +342,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
 | [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
-| [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads messages from a Discord channel using a bot token |
+| [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
