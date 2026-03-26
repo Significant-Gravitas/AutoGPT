@@ -76,7 +76,7 @@ export function CredentialTypeSelector({
                   className="inline-flex items-center gap-1.5"
                 >
                   <Icon size={16} />
-                  {getCredentialTypeLabel(type)}
+                  {getCredentialTypeLabel(type, provider)}
                 </TabsLineTrigger>
               );
             })}
@@ -98,6 +98,7 @@ export function CredentialTypeSelector({
             <TabsLineContent value="api_key">
               <APIKeyTabContent
                 schema={schema}
+                provider={provider}
                 siblingInputs={siblingInputs}
                 onCredentialsCreate={(creds) => {
                   onCredentialsCreate(creds);
@@ -163,12 +164,14 @@ function OAuthTabContent({ providerName, onOAuthLogin }: OAuthTabContentProps) {
 
 type APIKeyTabContentProps = {
   schema: BlockIOCredentialsSubSchema;
+  provider: string;
   siblingInputs?: Record<string, unknown>;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
 };
 
 function APIKeyTabContent({
   schema,
+  provider,
   siblingInputs,
   onCredentialsCreate,
 }: APIKeyTabContentProps) {
@@ -180,6 +183,17 @@ function APIKeyTabContent({
     schemaDescription,
     onSubmit,
   } = useAPIKeyCredentialsModal({ schema, siblingInputs, onCredentialsCreate });
+
+  // Use provider-specific labels for non-API-key secrets (e.g. database URLs)
+  const isDatabase = provider === "database";
+  const secretLabel = isDatabase ? "Connection URL" : "API Key";
+  const namePlaceholder = isDatabase
+    ? "Enter a name for this credential..."
+    : "Enter a name for this API Key...";
+  const secretPlaceholder = isDatabase
+    ? "Enter connection URL..."
+    : "Enter API Key...";
+  const submitLabel = isDatabase ? "Add Credential" : "Add API Key";
 
   if (!supportsApiKey && !isLoading) {
     return null;
@@ -215,7 +229,7 @@ function APIKeyTabContent({
                 id="title"
                 label="Name"
                 type="text"
-                placeholder="Enter a name for this API Key..."
+                placeholder={namePlaceholder}
                 {...field}
               />
             )}
@@ -226,9 +240,9 @@ function APIKeyTabContent({
             render={({ field }) => (
               <Input
                 id="apiKey"
-                label="API Key"
+                label={secretLabel}
                 type="password"
-                placeholder="Enter API Key..."
+                placeholder={secretPlaceholder}
                 hint={
                   schema.credentials_scopes ? (
                     <FormDescription>
@@ -268,7 +282,7 @@ function APIKeyTabContent({
             loading={isSubmitting}
             disabled={isSubmitting}
           >
-            Add API Key
+            {submitLabel}
           </Button>
         </form>
       </Form>

@@ -49,13 +49,7 @@ DatabaseCredentialsInput = CredentialsMetaInput[
 
 def DatabaseCredentialsField() -> DatabaseCredentialsInput:
     return CredentialsField(
-        description=(
-            "SQLAlchemy connection URL for your database. Examples: "
-            "postgresql://user:pass@host:5432/db, "
-            "mysql://user:pass@host:3306/db, "
-            "sqlite:///path/to/db, "
-            "mssql+pyodbc://user:pass@host/db?driver=..."
-        ),
+        description="Database connection URL (e.g., postgresql://user:pass@host:5432/db)",
     )
 
 
