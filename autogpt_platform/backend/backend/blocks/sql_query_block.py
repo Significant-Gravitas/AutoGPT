@@ -436,6 +436,9 @@ class SQLQueryBlock(Block):
                     if read_only:
                         conn.execute(text("SET default_transaction_read_only = ON"))
                 elif engine.dialect.name == "mysql":
+                    # NOTE: MAX_EXECUTION_TIME only applies to SELECT statements.
+                    # Write queries (INSERT/UPDATE/DELETE) are not bounded by this
+                    # setting; they rely on the database's wait_timeout instead.
                     conn.execute(
                         text(f"SET SESSION MAX_EXECUTION_TIME = {timeout * 1000}")
                     )
