@@ -243,11 +243,13 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 ## SQL Query
 
 ### What it is
-Executes a read-only SQL query against a PostgreSQL database and returns the results. Only SELECT queries are allowed.
+Executes a read-only SQL query against a database and returns the results. Supports PostgreSQL, MySQL, SQLite, and MSSQL via SQLAlchemy. Only SELECT queries are allowed.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-_Add technical explanation here._
+This block connects to a database using a SQLAlchemy connection URL and executes a read-only SQL query. It validates that the query is a single SELECT statement (using sqlparse), enforces SSRF protections on the database host, and returns results as a list of row dictionaries.
+
+Supported database types: PostgreSQL, MySQL, SQLite, and MSSQL. The connection URL must match the selected database type (e.g., `postgresql://...` for PostgreSQL, `mysql://...` for MySQL).
 <!-- END MANUAL -->
 
 ### Inputs
@@ -255,6 +257,7 @@ _Add technical explanation here._
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | query | SQL SELECT query to execute | str | Yes |
+| database_type | Type of database to connect to | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
 | timeout | Query timeout in seconds (max 120) | int | No |
 | max_rows | Maximum number of rows to return (max 10000) | int | No |
 
@@ -269,7 +272,11 @@ _Add technical explanation here._
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-_Add practical use case examples here._
+**Analytics Dashboards**: Query your PostgreSQL or MySQL analytics database to pull daily active user counts, revenue metrics, or funnel data directly into your workflow.
+
+**Data Validation**: Run SELECT queries against production databases to verify data integrity, check row counts, or compare values across tables.
+
+**Cross-Database Reporting**: Connect to multiple database types (PostgreSQL, MySQL, SQLite) within a single workflow to aggregate data from different sources.
 <!-- END MANUAL -->
 
 ---

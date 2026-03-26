@@ -1,4 +1,4 @@
-"""Tests for SQLQueryBlock query validation and error sanitization."""
+"""Tests for SQLQueryBlock query validation, URL validation, and error sanitization."""
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -6,8 +6,10 @@ from decimal import Decimal
 import pytest
 
 from backend.blocks.sql_query_block import (
+    DatabaseType,
     _sanitize_error,
     _serialize_value,
+    _validate_connection_url,
     _validate_query_is_read_only,
 )
 
@@ -151,6 +153,51 @@ class TestValidateQueryIsReadOnly:
         assert _validate_query_is_read_only(";") == "Query is empty."
 
 
+class TestValidateConnectionUrl:
+    """Tests for _validate_connection_url database type matching."""
+
+    def test_postgres_url_matches_postgres_type(self):
+        url = "postgresql://user:pass@host:5432/db"
+        assert _validate_connection_url(url, DatabaseType.POSTGRES) is None
+
+    def test_postgres_with_driver_matches(self):
+        url = "postgresql+psycopg2://user:pass@host:5432/db"
+        assert _validate_connection_url(url, DatabaseType.POSTGRES) is None
+
+    def test_mysql_url_matches_mysql_type(self):
+        url = "mysql://user:pass@host:3306/db"
+        assert _validate_connection_url(url, DatabaseType.MYSQL) is None
+
+    def test_mysql_with_driver_matches(self):
+        url = "mysql+pymysql://user:pass@host:3306/db"
+        assert _validate_connection_url(url, DatabaseType.MYSQL) is None
+
+    def test_sqlite_url_matches_sqlite_type(self):
+        url = "sqlite:///path/to/db.sqlite"
+        assert _validate_connection_url(url, DatabaseType.SQLITE) is None
+
+    def test_mssql_url_matches_mssql_type(self):
+        url = "mssql+pyodbc://user:pass@host/db?driver=ODBC+Driver+17"
+        assert _validate_connection_url(url, DatabaseType.MSSQL) is None
+
+    def test_postgres_url_rejects_mysql_type(self):
+        url = "postgresql://user:pass@host:5432/db"
+        result = _validate_connection_url(url, DatabaseType.MYSQL)
+        assert result is not None
+        assert "does not match" in result
+
+    def test_mysql_url_rejects_postgres_type(self):
+        url = "mysql://user:pass@host:3306/db"
+        result = _validate_connection_url(url, DatabaseType.POSTGRES)
+        assert result is not None
+        assert "does not match" in result
+
+    def test_invalid_url_returns_error(self):
+        result = _validate_connection_url("not a url at all", DatabaseType.POSTGRES)
+        assert result is not None
+        assert "Invalid" in result
+
+
 class TestSerializeValue:
     """Tests for _serialize_value type conversion."""
 
@@ -181,6 +228,9 @@ class TestSerializeValue:
     def test_memoryview(self):
         mv = memoryview(b"\xde\xad\xbe\xef")
         assert _serialize_value(mv) == "deadbeef"
+
+    def test_bytes(self):
+        assert _serialize_value(b"\xca\xfe") == "cafe"
 
     def test_passthrough_string(self):
         assert _serialize_value("hello") == "hello"
@@ -224,3 +274,10 @@ class TestSanitizeError:
         error = "relation 'foo' does not exist"
         result = _sanitize_error(error, conn)
         assert result == error
+
+    def test_mysql_connection_string_replaced(self):
+        conn = "mysql://admin:s3cret@db.example.com:3306/mydb"
+        error = f"Can't connect to MySQL server: {conn}"
+        result = _sanitize_error(error, conn)
+        assert "s3cret" not in result
+        assert "<connection_string>" in result
