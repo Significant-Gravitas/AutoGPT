@@ -1,5 +1,4 @@
 import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { okData } from "@/app/api/helpers";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
@@ -22,7 +21,12 @@ type AgentInfo = {
 const SEVENTY_TWO_HOURS_IN_MS = 72 * 60 * 60 * 1000;
 const MAX_AGENT_INFO_LOOKUPS = 25;
 
-function toAgentInfo(agent: LibraryAgent): AgentInfo {
+function toAgentInfo(agent: {
+  name: string;
+  graph_id: string;
+  description: string;
+  id: string;
+}): AgentInfo {
   return {
     name:
       agent.name ||
