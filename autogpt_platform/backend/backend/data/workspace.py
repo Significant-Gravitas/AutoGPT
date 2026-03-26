@@ -143,34 +143,19 @@ async def create_workspace_file(
     if not path.startswith("/"):
         path = f"/{path}"
 
-    try:
-        file = await UserWorkspaceFile.prisma().create(
-            data={
-                "id": file_id,
-                "workspaceId": workspace_id,
-                "name": name,
-                "path": path,
-                "storagePath": storage_path,
-                "mimeType": mime_type,
-                "sizeBytes": size_bytes,
-                "checksum": checksum,
-                "metadata": SafeJson(metadata or {}),
-            }
-        )
-    except UniqueViolationError:
-        # A file already exists at this (workspaceId, path).  This can happen
-        # when two concurrent requests try to create the same file.  Return
-        # the existing record instead of crashing with a 500.
-        logger.warning(
-            f"UniqueViolationError creating workspace file at path {path} "
-            f"in workspace {workspace_id} — returning existing record"
-        )
-        existing = await UserWorkspaceFile.prisma().find_first(
-            where={"workspaceId": workspace_id, "path": path}
-        )
-        if existing is None:
-            raise  # should not happen; re-raise if it does
-        return WorkspaceFile.from_db(existing)
+    file = await UserWorkspaceFile.prisma().create(
+        data={
+            "id": file_id,
+            "workspaceId": workspace_id,
+            "name": name,
+            "path": path,
+            "storagePath": storage_path,
+            "mimeType": mime_type,
+            "sizeBytes": size_bytes,
+            "checksum": checksum,
+            "metadata": SafeJson(metadata or {}),
+        }
+    )
 
     logger.info(
         f"Created workspace file {file.id} at path {path} "
