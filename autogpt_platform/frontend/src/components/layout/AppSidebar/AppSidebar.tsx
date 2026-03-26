@@ -47,7 +47,9 @@ export function AppSidebar({ dynamicContent }: Props) {
   const homeHref = isChatEnabled === true ? "/copilot" : "/library";
 
   const navLinks = [
-    { name: "Copilot", href: homeHref, icon: Sparkle },
+    isChatEnabled === true
+      ? { name: "Copilot", href: "/copilot", icon: Sparkle }
+      : { name: "Library", href: "/library", icon: TreeStructure },
     ...(isChatEnabled === true
       ? [{ name: "Workflow", href: "/library", icon: TreeStructure }]
       : []),

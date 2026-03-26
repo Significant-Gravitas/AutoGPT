@@ -17,6 +17,7 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { CheckCircle, DotsThree, PlusIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
@@ -39,8 +40,14 @@ export function ChatSessionList() {
 
   const queryClient = useQueryClient();
 
-  const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
+  const {
+    data: sessionsResponse,
+    isLoading: isLoadingSessions,
+    isError: isSessionsError,
+  } = useGetV2ListSessions(
+    { limit: 50 },
+    { query: { refetchInterval: 10_000 } },
+  );
 
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({
@@ -97,12 +104,6 @@ export function ChatSessionList() {
       renameInputRef.current.select();
     }
   }, [editingSessionId]);
-
-  useEffect(() => {
-    queryClient.invalidateQueries({
-      queryKey: getGetV2ListSessionsQueryKey(),
-    });
-  }, [sessionId, queryClient]);
 
   useEffect(() => {
     if (!sessionId || !completedSessionIDs.has(sessionId)) return;
@@ -219,6 +220,10 @@ export function ChatSessionList() {
         {isLoadingSessions ? (
           <div className="flex min-h-[30rem] items-center justify-center py-4">
             <LoadingSpinner size="small" className="text-neutral-600" />
+          </div>
+        ) : isSessionsError ? (
+          <div className="px-3 py-4">
+            <ErrorCard context="chat sessions" />
           </div>
         ) : sessions.length === 0 ? (
           <p className="py-4 text-center text-sm text-neutral-500">

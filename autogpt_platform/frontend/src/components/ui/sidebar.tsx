@@ -280,18 +280,22 @@ Sidebar.displayName = "Sidebar";
 const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
   React.ComponentProps<typeof Button>
->(({ onClick }, ref) => {
+>(({ className, onClick, ...props }, ref) => {
   const { toggleSidebar } = useSidebar();
 
   return (
     <button
       ref={ref}
       data-sidebar="trigger"
-      className="rounded-md p-1.5 text-neutral-600 transition-colors hover:bg-zinc-100"
+      className={cn(
+        "rounded-md p-1.5 text-neutral-600 transition-colors hover:bg-zinc-100",
+        className,
+      )}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
       }}
+      {...props}
     >
       <SidebarSimpleIcon className="h-5 w-5" />
       <span className="sr-only">Toggle Sidebar</span>
