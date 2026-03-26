@@ -1,6 +1,8 @@
+import asyncio
 import re
 from decimal import Decimal
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import psycopg2
 import psycopg2.extras
@@ -20,6 +22,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.request import resolve_and_check_blocked
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -60,12 +63,23 @@ _DISALLOWED_SQL_PATTERNS = re.compile(
 )
 
 
+def _sanitize_error(error_msg: str, connection_string: str) -> str:
+    """Remove connection string and credentials from error messages."""
+    sanitized = error_msg.replace(connection_string, "<connection_string>")
+    sanitized = re.sub(r"password=[^\s&]+", "password=***", sanitized)
+    sanitized = re.sub(r"://[^@]+@", "://***:***@", sanitized)
+    return sanitized
+
+
 def _validate_query_is_read_only(query: str) -> str | None:
     """Validate that a SQL query is read-only (SELECT/WITH only).
 
     Returns an error message if the query is not read-only, None otherwise.
     """
-    # Strip comments (-- and /* */)
+    # Strip SQL comments (-- and /* */).
+    # NOTE: This also strips comment-like patterns inside string literals
+    # (e.g. SELECT '--text' becomes SELECT ''). This is intentional —
+    # we prefer false positives over allowing bypass via string-embedded comments.
     stripped = re.sub(r"--[^\n]*", "", query)
     stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
     stripped = stripped.strip().rstrip(";").strip()
@@ -200,8 +214,18 @@ class SQLQueryBlock(Block):
 
         connection_string = credentials.api_key.get_secret_value()
 
+        # SSRF protection: validate the database host is not internal
+        parsed = urlparse(connection_string)
+        if parsed.hostname:
+            try:
+                await resolve_and_check_blocked(parsed.hostname)
+            except ValueError as e:
+                yield "error", f"Blocked host: {str(e).strip()}"
+                return
+
         try:
-            results, columns = self.execute_query(
+            results, columns = await asyncio.to_thread(
+                self.execute_query,
                 connection_string=connection_string,
                 query=input_data.query,
                 timeout=input_data.timeout,
@@ -211,7 +235,7 @@ class SQLQueryBlock(Block):
             yield "columns", columns
             yield "row_count", len(results)
         except psycopg2.OperationalError as e:
-            error_msg = str(e).strip()
+            error_msg = _sanitize_error(str(e).strip(), connection_string)
             if "timeout" in error_msg.lower() or "cancel" in error_msg.lower():
                 yield "error", f"Query timed out after {input_data.timeout}s."
             elif "connect" in error_msg.lower():
@@ -219,6 +243,6 @@ class SQLQueryBlock(Block):
             else:
                 yield "error", f"Database error: {error_msg}"
         except psycopg2.ProgrammingError as e:
-            yield "error", f"SQL error: {str(e).strip()}"
+            yield "error", f"SQL error: {_sanitize_error(str(e).strip(), connection_string)}"
         except psycopg2.Error as e:
-            yield "error", f"Database error: {str(e).strip()}"
+            yield "error", f"Database error: {_sanitize_error(str(e).strip(), connection_string)}"
