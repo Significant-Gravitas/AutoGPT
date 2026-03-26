@@ -858,10 +858,16 @@ async def get_ayrshare_sso_url(
 # ========== MANAGED CREDENTIAL AUTO-PROVISIONING ========== #
 #
 # To add a new managed credential:
-# 1. Add a provisioning function like _provision_agentmail
-# 2. Add an entry to _MANAGED_CREDENTIAL_PROVISIONERS
-# 3. Add synthesis logic in credentials_store._get_all_creds_unlocked
+# 1. Add a check function (cheap DB read — returns True if already provisioned)
+# 2. Add a provisioning function (expensive — creates external resources)
+# 3. Add an entry to _MANAGED_CREDENTIAL_PROVISIONERS
+# 4. Add synthesis logic in credentials_store._get_all_creds_unlocked
 #
+
+
+async def _has_agentmail_credentials(user_integrations: UserIntegrations) -> bool:
+    mc = user_integrations.managed_credentials
+    return bool(mc.agentmail_pod_id and mc.agentmail_pod_api_key)
 
 
 async def _provision_agentmail(user_id: str) -> None:
@@ -875,7 +881,7 @@ async def _provision_agentmail(user_id: str) -> None:
     if not org_api_key:
         return
 
-    # Check for existing pod under lock (fast path)
+    # Re-check under lock to prevent concurrent duplicate creation
     async with await creds_manager.store.locked_user_integrations(user_id):
         user_integrations: UserIntegrations = await get_user_integrations(user_id)
         existing_pod_id = user_integrations.managed_credentials.agentmail_pod_id
@@ -913,21 +919,37 @@ async def _provision_agentmail(user_id: str) -> None:
     )
 
 
-# Registry: each entry is a provisioning function.
-# To auto-provision a new managed credential, just append to this list.
+# Registry: (name, check_fn, provision_fn)
+# check_fn receives UserIntegrations and returns True if already provisioned.
+# provision_fn is only called when check_fn returns False.
 _MANAGED_CREDENTIAL_PROVISIONERS: list[
-    tuple[str, Callable[[str], Any]]  # (name, async fn(user_id) -> None)
+    tuple[
+        str,
+        Callable[[UserIntegrations], Any],  # check(user_integrations) -> bool
+        Callable[[str], Any],  # provision(user_id) -> None
+    ]
 ] = [
-    ("agentmail", _provision_agentmail),
+    ("agentmail", _has_agentmail_credentials, _provision_agentmail),
 ]
 
 
 async def _ensure_managed_credentials(user_id: str) -> None:
-    """Auto-provision all managed credentials for *user_id*.
+    """Auto-provision any missing managed credentials for *user_id*.
 
-    Runs all provisioners concurrently. Failures are logged and swallowed
-    so that one broken provider doesn't block the credential listing.
+    Does a single cheap DB read to check which credentials are missing,
+    then only runs provisioners for those that are needed.
+    Failures are logged and swallowed so one broken provider doesn't
+    block the credential listing.
     """
+    user_integrations = await get_user_integrations(user_id)
+
+    needed = [
+        (name, provisioner)
+        for name, check, provisioner in _MANAGED_CREDENTIAL_PROVISIONERS
+        if not await check(user_integrations)
+    ]
+    if not needed:
+        return
 
     async def _safe_provision(name: str, provisioner, uid: str) -> None:
         try:
@@ -936,10 +958,7 @@ async def _ensure_managed_credentials(user_id: str) -> None:
             logger.error("Auto-provisioning %s failed for user %s: %s", name, uid, e)
 
     await asyncio.gather(
-        *[
-            _safe_provision(name, provisioner, user_id)
-            for name, provisioner in _MANAGED_CREDENTIAL_PROVISIONERS
-        ]
+        *[_safe_provision(name, provisioner, user_id) for name, provisioner in needed]
     )
 
 
