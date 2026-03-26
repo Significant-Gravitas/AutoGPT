@@ -515,6 +515,18 @@ class IntegrationCredentialsStore:
 
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
 
+    async def set_agentmail_pod_id(self, user_id: str, pod_id: str) -> None:
+        """Persist the AgentMail pod ID immediately after pod creation.
+
+        Called before API key creation so that retries can reuse the pod
+        instead of creating orphans.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        user_integrations = await self._get_user_integrations(user_id)
+        user_integrations.managed_credentials.agentmail_pod_id = pod_id
+        await self.db_manager.update_user_integrations(user_id, user_integrations)
+
     async def set_agentmail_pod_credentials(
         self, user_id: str, pod_id: str, pod_api_key: str
     ) -> None:
@@ -522,12 +534,15 @@ class IntegrationCredentialsStore:
 
         Called by the ``/integrations/agentmail/connect`` endpoint after
         provisioning a pod via the AgentMail API.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
         """
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.managed_credentials.agentmail_pod_id = pod_id
-            user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
-                pod_api_key
-            )
+        user_integrations = await self._get_user_integrations(user_id)
+        user_integrations.managed_credentials.agentmail_pod_id = pod_id
+        user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
+            pod_api_key
+        )
+        await self.db_manager.update_user_integrations(user_id, user_integrations)
 
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         """Set the Ayrshare profile key for a user.
