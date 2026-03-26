@@ -111,6 +111,14 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
     ``session_id`` is used as a fallback for ``turn_id`` when the meta hash
     pre-dates the turn_id field (backward compat for in-flight sessions).
     """
+    created_at = datetime.now(timezone.utc)
+    created_at_raw = meta.get("created_at")
+    if created_at_raw:
+        try:
+            created_at = datetime.fromisoformat(str(created_at_raw))
+        except (ValueError, TypeError):
+            pass
+
     return ActiveSession(
         session_id=meta.get("session_id", "") or session_id,
         user_id=meta.get("user_id", "") or None,
@@ -119,6 +127,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
+        created_at=created_at,
     )
 
 
@@ -801,6 +810,22 @@ async def mark_session_completed(
             logger.warning(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
+
+    # Compute wall-clock duration from session created_at
+    duration_ms: int | None = None
+    if meta:
+        parsed_meta = _parse_session_meta(meta, session_id)
+        elapsed = datetime.now(timezone.utc) - parsed_meta.created_at
+        duration_ms = max(0, int(elapsed.total_seconds() * 1000))
+
+    # Persist duration on the last assistant message
+    if duration_ms is not None:
+        try:
+            from backend.data.db_accessors import chat_db
+
+            await chat_db().set_turn_duration(session_id, duration_ms)
+        except Exception as e:
+            logger.warning(f"Failed to save turn duration for {session_id}: {e}")
 
     # Publish StreamFinish AFTER status is set to "completed"/"failed".
     # This is the SINGLE place that publishes StreamFinish — services and

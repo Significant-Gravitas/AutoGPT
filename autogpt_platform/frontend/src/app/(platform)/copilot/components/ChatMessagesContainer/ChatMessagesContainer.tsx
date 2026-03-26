@@ -38,6 +38,7 @@ interface Props {
   isLoading: boolean;
   sessionID?: string | null;
   onRetry?: () => void;
+  historicalDurations?: Map<string, number>;
 }
 
 function renderSegments(
@@ -112,6 +113,7 @@ export function ChatMessagesContainer({
   isLoading,
   sessionID,
   onRetry,
+  historicalDurations,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
@@ -262,6 +264,7 @@ export function ChatMessagesContainer({
                         ? frozenElapsedRef.current
                         : undefined
                     }
+                    durationMs={historicalDurations?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (

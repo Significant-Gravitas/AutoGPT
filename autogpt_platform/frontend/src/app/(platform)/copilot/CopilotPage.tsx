@@ -89,6 +89,8 @@ export function CopilotPage() {
     isDeleting,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
   } = useCopilotPage();
 
   if (isUserLoading || !isLoggedIn) {
@@ -143,6 +145,7 @@ export function CopilotPage() {
             isUploadingFiles={isUploadingFiles}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
+            historicalDurations={historicalDurations}
           />
         </div>
       </div>

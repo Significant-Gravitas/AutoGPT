@@ -5,11 +5,25 @@ import { getWorkDoneCounters } from "./useWorkDoneCounters";
 interface Props {
   turnMessages: UIMessage<unknown, UIDataTypes, UITools>[];
   elapsedSeconds?: number;
+  durationMs?: number;
 }
 
-export function TurnStatsBar({ turnMessages, elapsedSeconds }: Props) {
+export function TurnStatsBar({
+  turnMessages,
+  elapsedSeconds,
+  durationMs,
+}: Props) {
   const { counters } = getWorkDoneCounters(turnMessages);
-  const hasTime = elapsedSeconds !== undefined && elapsedSeconds > 0;
+
+  // Prefer live elapsedSeconds, fall back to persisted durationMs
+  const displaySeconds =
+    elapsedSeconds !== undefined && elapsedSeconds > 0
+      ? elapsedSeconds
+      : durationMs !== undefined
+        ? Math.round(durationMs / 1000)
+        : undefined;
+
+  const hasTime = displaySeconds !== undefined && displaySeconds > 0;
 
   if (counters.length === 0 && !hasTime) return null;
 
@@ -17,7 +31,7 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds }: Props) {
     <div className="mt-2 flex items-center gap-1.5">
       {hasTime && (
         <span className="text-[11px] tabular-nums text-neutral-500">
-          Thought for {formatElapsed(elapsedSeconds)}
+          Thought for {formatElapsed(displaySeconds)}
         </span>
       )}
       {counters.map(function renderCounter(counter, index) {

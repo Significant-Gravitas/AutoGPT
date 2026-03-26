@@ -39,6 +39,7 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    historicalDurations,
     hasActiveStream,
     isLoadingSession,
     isSessionError,
@@ -375,5 +376,7 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
   };
 }

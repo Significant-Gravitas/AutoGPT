@@ -344,6 +344,7 @@ class DatabaseManager(AppService):
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    set_turn_duration = _(chat_db.set_turn_duration)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -540,3 +541,4 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
     update_chat_session_title = d.update_chat_session_title
+    set_turn_duration = d.set_turn_duration
