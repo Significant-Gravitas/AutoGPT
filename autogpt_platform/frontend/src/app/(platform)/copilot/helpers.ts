@@ -1,5 +1,24 @@
 import type { UIMessage } from "ai";
 
+/**
+ * Check whether a refetchSession result indicates the backend still has an
+ * active SSE stream for this session.
+ */
+export function hasActiveBackendStream(result: { data?: unknown }): boolean {
+  const d = result.data;
+  return (
+    d != null &&
+    typeof d === "object" &&
+    "status" in d &&
+    d.status === 200 &&
+    "data" in d &&
+    d.data != null &&
+    typeof d.data === "object" &&
+    "active_stream" in d.data &&
+    !!d.data.active_stream
+  );
+}
+
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 export function resolveInProgressTools(
   messages: UIMessage[],

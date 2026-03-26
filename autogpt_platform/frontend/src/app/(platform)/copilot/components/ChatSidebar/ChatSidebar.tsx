@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   CheckCircle,
+  CircleNotch,
   DotsThree,
   PlusCircleIcon,
   PlusIcon,
@@ -36,7 +37,6 @@ import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
-import { PulseLoader } from "../PulseLoader/PulseLoader";
 import { UsageLimits } from "../UsageLimits/UsageLimits";
 
 export function ChatSidebar() {
@@ -290,12 +290,12 @@ export function ChatSidebar() {
                 <div className="flex min-h-[30rem] items-center justify-center py-4">
                   <LoadingSpinner size="small" className="text-neutral-600" />
                 </div>
-              ) : sessions.length === 0 ? (
+              ) : !sessions?.length ? (
                 <p className="py-4 text-center text-sm text-neutral-500">
                   No conversations yet
                 </p>
               ) : (
-                sessions.map((session) => (
+                sessions?.map((session) => (
                   <div
                     key={session.id}
                     className={cn(
@@ -367,7 +367,10 @@ export function ChatSidebar() {
                           {session.is_processing &&
                             session.id !== sessionId &&
                             !completedSessionIDs.has(session.id) && (
-                              <PulseLoader size={16} className="shrink-0" />
+                              <CircleNotch
+                                className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
+                                weight="bold"
+                              />
                             )}
                           {completedSessionIDs.has(session.id) &&
                             session.id !== sessionId && (
