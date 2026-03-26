@@ -280,27 +280,29 @@ _DATABASE_TYPE_DEFAULT_PORT = {
 
 class SQLQueryBlock(Block):
     class Input(BlockSchemaInput):
-        query: str = SchemaField(
-            description="SQL query to execute",
-            placeholder="SELECT * FROM analytics.daily_active_users LIMIT 10",
-        )
         database_type: DatabaseType = SchemaField(
             default=DatabaseType.POSTGRES,
-            description="Type of database to connect to",
+            description="Database engine",
+            advanced=False,
         )
         host: SecretStr = SchemaField(
-            description="Database host (e.g., db.example.com)",
+            description="Database hostname or IP address",
+            placeholder="db.example.com",
+            secret=True,
         )
         port: int = SchemaField(
-            default=0,
+            default=5432,
             description=(
-                "Database port. Leave at 0 to use the default for the selected "
-                "database type (5432 for PostgreSQL, 3306 for MySQL, 1433 for MSSQL)"
+                "Database port " "(PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433)"
             ),
         )
         database: str = SchemaField(
-            description="Database name",
-            placeholder="postgres",
+            description="Name of the database to connect to",
+            placeholder="my_database",
+        )
+        query: str = SchemaField(
+            description="SQL query to execute",
+            placeholder="SELECT * FROM analytics.daily_active_users LIMIT 10",
         )
         read_only: bool = SchemaField(
             default=True,
