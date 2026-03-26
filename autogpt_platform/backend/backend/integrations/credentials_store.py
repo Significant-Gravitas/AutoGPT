@@ -372,8 +372,11 @@ class IntegrationCredentialsStore:
         user_integrations = await self._get_user_integrations(user_id)
         all_credentials = list(user_integrations.credentials)
 
-        # --- AgentMail managed credential (provisioned via /agentmail/connect) ---
+        # --- AgentMail managed credential ---
         agentmail_key = user_integrations.managed_credentials.agentmail_pod_api_key
+        if not agentmail_key and settings.secrets.agentmail_api_key:
+            # Auto-provision pod if org-level key is configured
+            agentmail_key = await self._ensure_agentmail_pod(user_id, user_integrations)
         if agentmail_key:
             all_credentials.append(
                 APIKeyCredentials(
@@ -514,6 +517,60 @@ class IntegrationCredentialsStore:
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    async def _ensure_agentmail_pod(
+        self, user_id: str, user_integrations: "UserIntegrations"
+    ) -> SecretStr | None:
+        """Auto-provision an AgentMail pod if not already present.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+
+        Returns the pod API key on success, ``None`` on failure.
+        Failures are logged but never raised — the credential simply won't
+        appear in the dropdown until provisioning succeeds on a later call.
+        """
+        from agentmail import AsyncAgentMail
+
+        org_api_key = settings.secrets.agentmail_api_key
+        if not org_api_key:
+            return None
+
+        client = AsyncAgentMail(api_key=org_api_key)
+        pod_id = user_integrations.managed_credentials.agentmail_pod_id
+
+        if not pod_id:
+            try:
+                pod = await client.pods.create(client_id=user_id)
+                pod_id = pod.pod_id
+            except Exception as e:
+                logger.error(f"Failed to create AgentMail pod for user {user_id}: {e}")
+                return None
+            # Persist pod_id immediately so retries reuse it
+            await self.set_agentmail_pod_id(user_id, pod_id)
+
+        # Clean up any orphaned keys before creating a fresh one
+        try:
+            existing_keys = await client.pods.api_keys.list(pod_id=pod_id)
+            for k in existing_keys.api_keys:
+                if k.name == "autogpt-managed":
+                    await client.pods.api_keys.delete(
+                        pod_id=pod_id, api_key=k.api_key_id
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to clean up AgentMail API keys: {e}")
+
+        try:
+            api_key_obj = await client.pods.api_keys.create(
+                pod_id=pod_id, name="autogpt-managed"
+            )
+        except Exception as e:
+            logger.error(f"Failed to create AgentMail API key for user {user_id}: {e}")
+            return None
+
+        pod_api_key = api_key_obj.api_key
+        await self.set_agentmail_pod_credentials(user_id, pod_id, pod_api_key)
+        logger.info(f"Auto-provisioned AgentMail pod {pod_id} for user {user_id}")
+        return SecretStr(pod_api_key)
 
     async def set_agentmail_pod_id(self, user_id: str, pod_id: str) -> None:
         """Persist the AgentMail pod ID immediately after pod creation.

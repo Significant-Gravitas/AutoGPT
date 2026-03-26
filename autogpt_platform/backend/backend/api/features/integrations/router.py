@@ -878,9 +878,6 @@ async def connect_agentmail(
             detail="AgentMail integration is not configured",
         )
 
-    from agentmail import AsyncAgentMail
-
-    # Acquire lock to prevent concurrent requests from creating duplicate pods
     async with await creds_manager.store.locked_user_integrations(user_id):
         user_integrations: UserIntegrations = await get_user_integrations(user_id)
         existing_pod_id = user_integrations.managed_credentials.agentmail_pod_id
@@ -890,52 +887,24 @@ async def connect_agentmail(
         if existing_pod_id and existing_key:
             return AgentMailConnectResponse(pod_id=existing_pod_id)
 
-        client = AsyncAgentMail(api_key=org_api_key)
-
-        if existing_pod_id:
-            pod_id = existing_pod_id
-        else:
-            try:
-                pod = await client.pods.create(client_id=user_id)
-                pod_id = pod.pod_id
-            except Exception as e:
-                logger.error(f"Failed to create AgentMail pod for user {user_id}: {e}")
-                raise HTTPException(
-                    status_code=HTTP_502_BAD_GATEWAY,
-                    detail="Failed to create AgentMail pod",
-                )
-            # Persist pod_id immediately so retries reuse it (avoids orphaned pods)
-            await creds_manager.store.set_agentmail_pod_id(user_id, pod_id)
-
-        # Idempotency guard: delete any orphaned "autogpt-managed" key before
-        # creating a fresh one.  Listed keys don't expose the secret, so we
-        # can't reuse them — but cleaning up prevents resource leaks on retry.
-        try:
-            existing_keys = await client.pods.api_keys.list(pod_id=pod_id)
-            for k in existing_keys.api_keys:
-                if k.name == "autogpt-managed":
-                    await client.pods.api_keys.delete(
-                        pod_id=pod_id, api_key=k.api_key_id
-                    )
-        except Exception as e:
-            logger.warning(f"Failed to clean up AgentMail API keys: {e}")
-
-        try:
-            api_key = await client.pods.api_keys.create(
-                pod_id=pod_id, name="autogpt-managed"
-            )
-        except Exception as e:
-            logger.error(f"Failed to create AgentMail API key for user {user_id}: {e}")
+        result = await creds_manager.store._ensure_agentmail_pod(
+            user_id, user_integrations
+        )
+        if not result:
             raise HTTPException(
                 status_code=HTTP_502_BAD_GATEWAY,
-                detail="Failed to create AgentMail API key",
+                detail="Failed to provision AgentMail pod",
             )
 
-        await creds_manager.store.set_agentmail_pod_credentials(
-            user_id, pod_id, api_key.api_key
-        )
+        # Re-read to get the persisted pod_id
+        updated = await get_user_integrations(user_id)
+        pod_id = updated.managed_credentials.agentmail_pod_id
+        if not pod_id:
+            raise HTTPException(
+                status_code=HTTP_502_BAD_GATEWAY,
+                detail="Failed to provision AgentMail pod",
+            )
 
-    logger.info(f"Provisioned AgentMail pod {pod_id} for user {user_id}")
     return AgentMailConnectResponse(pod_id=pod_id)
 
 
