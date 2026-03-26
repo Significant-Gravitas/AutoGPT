@@ -513,10 +513,25 @@ async def stream_chat_completion_baseline(
         _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # Close any open text before emitting error
+        # Close any open text block.  The llm_caller's finally block
+        # already appended StreamFinishStep to pending_events, so we must
+        # insert StreamTextEnd *before* StreamFinishStep to preserve the
+        # protocol ordering:
+        #   StreamStartStep -> StreamTextStart -> ...deltas... ->
+        #   StreamTextEnd -> StreamFinishStep
+        # Appending (or yielding directly) would place it after
+        # StreamFinishStep, violating the protocol.
         if state.text_started:
-            yield StreamTextEnd(id=state.text_block_id)
-        # Drain pending events (e.g. StreamFinishStep from the LLM caller)
+            # Find the last StreamFinishStep and insert before it.
+            insert_pos = len(state.pending_events)
+            for i in range(len(state.pending_events) - 1, -1, -1):
+                if isinstance(state.pending_events[i], StreamFinishStep):
+                    insert_pos = i
+                    break
+            state.pending_events.insert(
+                insert_pos, StreamTextEnd(id=state.text_block_id)
+            )
+        # Drain pending events in correct order
         for evt in state.pending_events:
             yield evt
         state.pending_events.clear()
