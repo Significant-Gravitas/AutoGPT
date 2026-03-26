@@ -258,6 +258,12 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
+# Field names to exclude from hardcoded-defaults descriptions (case-insensitive).
+_SENSITIVE_FIELD_NAMES: frozenset[str] = frozenset(
+    {"credentials", "api_key", "password", "secret", "token", "auth"}
+)
+
+
 def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     """Ensure all tool names are unique (Anthropic API requires this).
 
@@ -266,7 +272,8 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     so the LLM can distinguish them. Mutates the list in place.
     """
     names = [t["function"]["name"] for t in tools]
-    duplicates = {n for n in names if names.count(n) > 1}
+    name_counts = Counter(names)
+    duplicates = {n for n, c in name_counts.items() if c > 1}
     if not duplicates:
         for t in tools:
             t["function"].pop("_hardcoded_defaults", None)
@@ -295,7 +302,13 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
         taken.add(candidate)
 
         if defaults:
-            summary = ", ".join(f"{k}={json.dumps(v)}" for k, v in defaults.items())
+            parts: list[str] = []
+            for k, v in defaults.items():
+                rendered = json.dumps(v)
+                if len(rendered) > 100:
+                    rendered = rendered[:97] + "..."
+                parts.append(f"{k}={rendered}")
+            summary = ", ".join(parts)
             func["description"] = (
                 f"{func.get('description', '')} [Pre-configured: {summary}]"
             )
@@ -554,7 +567,7 @@ class OrchestratorBlock(Block):
         # Exclude linked fields, private fields, and credential/auth fields
         # to avoid leaking sensitive data into tool descriptions.
         linked_fields = {link.sink_name for link in links}
-        _skip = {"credentials", "api_key", "password", "secret", "token", "auth"}
+        _skip = _SENSITIVE_FIELD_NAMES
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
             {
@@ -646,7 +659,7 @@ class OrchestratorBlock(Block):
         # Exclude linked fields, private fields, agent meta fields, and
         # credential/auth fields to avoid leaking sensitive data.
         linked_fields = {link.sink_name for link in links}
-        _skip = {"credentials", "api_key", "password", "secret", "token", "auth"}
+        _skip = _SENSITIVE_FIELD_NAMES
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
             {
