@@ -1386,7 +1386,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -1399,6 +1399,88 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/admin/rate_limit": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Get User Rate Limit",
+        "description": "Get a user's current usage and effective rate limits. Admin-only.",
+        "operationId": "getV2Get user rate limit",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRateLimitResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/admin/rate_limit/reset": {
+      "post": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Reset User Rate Limit Usage",
+        "description": "Reset a user's daily usage counter (and optionally weekly). Admin-only.",
+        "operationId": "postV2Reset user rate limit usage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Reset_user_rate_limit_usage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRateLimitResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -8155,6 +8237,19 @@
         "type": "object",
         "title": "Body_postV2Execute a preset"
       },
+      "Body_postV2Reset_user_rate_limit_usage": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "reset_weekly": {
+            "type": "boolean",
+            "title": "Reset Weekly",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "Body_postV2Reset user rate limit usage"
+      },
       "Body_postV2Upload_submission_media": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -14532,6 +14627,36 @@
         "type": "object",
         "required": ["provider", "username", "password"],
         "title": "UserPasswordCredentials"
+      },
+      "UserRateLimitResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "daily_token_limit": {
+            "type": "integer",
+            "title": "Daily Token Limit"
+          },
+          "weekly_token_limit": {
+            "type": "integer",
+            "title": "Weekly Token Limit"
+          },
+          "daily_tokens_used": {
+            "type": "integer",
+            "title": "Daily Tokens Used"
+          },
+          "weekly_tokens_used": {
+            "type": "integer",
+            "title": "Weekly Tokens Used"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "daily_token_limit",
+          "weekly_token_limit",
+          "daily_tokens_used",
+          "weekly_tokens_used"
+        ],
+        "title": "UserRateLimitResponse"
       },
       "UserReadiness": {
         "properties": {
