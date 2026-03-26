@@ -399,7 +399,7 @@ class TestGetUserTier:
         mock_prisma.find_unique = AsyncMock(return_value=mock_user)
 
         with patch(
-            "prisma.models.User.prisma",
+            "backend.copilot.rate_limit.PrismaUser.prisma",
             return_value=mock_prisma,
         ):
             tier = await get_user_tier(_USER)
@@ -413,7 +413,7 @@ class TestGetUserTier:
         mock_prisma.find_unique = AsyncMock(return_value=None)
 
         with patch(
-            "prisma.models.User.prisma",
+            "backend.copilot.rate_limit.PrismaUser.prisma",
             return_value=mock_prisma,
         ):
             tier = await get_user_tier(_USER)
@@ -430,7 +430,7 @@ class TestGetUserTier:
         mock_prisma.find_unique = AsyncMock(return_value=mock_user)
 
         with patch(
-            "prisma.models.User.prisma",
+            "backend.copilot.rate_limit.PrismaUser.prisma",
             return_value=mock_prisma,
         ):
             tier = await get_user_tier(_USER)
@@ -444,7 +444,7 @@ class TestGetUserTier:
         mock_prisma.find_unique = AsyncMock(side_effect=Exception("DB down"))
 
         with patch(
-            "prisma.models.User.prisma",
+            "backend.copilot.rate_limit.PrismaUser.prisma",
             return_value=mock_prisma,
         ):
             tier = await get_user_tier(_USER)
@@ -461,7 +461,7 @@ class TestGetUserTier:
         mock_prisma.find_unique = AsyncMock(return_value=mock_user)
 
         with patch(
-            "prisma.models.User.prisma",
+            "backend.copilot.rate_limit.PrismaUser.prisma",
             return_value=mock_prisma,
         ):
             tier = await get_user_tier(_USER)
