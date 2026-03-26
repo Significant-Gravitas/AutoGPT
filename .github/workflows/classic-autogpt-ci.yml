@@ -127,12 +127,12 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}  # Run even if tests fail
-        uses: codecov/test-results-action@v1
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: autogpt-agent,${{ runner.os }}

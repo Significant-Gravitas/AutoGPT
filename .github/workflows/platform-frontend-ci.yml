@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Check for component changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3
         id: filter
         with:
           filters: |
@@ -112,7 +112,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run Chromatic
-        uses: chromaui/action@latest
+        uses: chromaui/action@f191a0224b10e1a38b2091cefb7b7a2337009116 # latest
         with:
           projectToken: chpt_9e7c1a76478c9c8
           onlyChanged: true

@@ -45,7 +45,7 @@ jobs:
           fetch-depth: 1
 
       - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@v1.3.1
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
           large-packages: false  # slow
           docker-images: false  # limited benefit
@@ -115,7 +115,7 @@ jobs:
 
       # Docker setup for development environment
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Copy default environment files
         working-directory: autogpt_platform
@@ -177,7 +177,7 @@ jobs:
             wait
             
             # Only save cache on main branches (not PRs) to avoid cache pollution
-            if [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            if [[ "${GIT_REF}" == "refs/heads/master" ]] || [[ "${GIT_REF}" == "refs/heads/dev" ]]; then
               echo "Saving Docker images to cache in parallel..."
               for image in "${IMAGES[@]}"; do
                 # Convert image name to filename (replace : and / with -)
@@ -194,6 +194,8 @@ jobs:
           
           echo "Docker images ready for use"
 
+        env:
+          GIT_REF: ${{ github.ref }}
       # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
         working-directory: autogpt_platform
@@ -309,7 +311,7 @@ jobs:
 
       - name: Run Claude Code
         id: claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@3ac52d0da9f8ec9ca7b4dc23bb477e36ef9c77a9 # v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: |

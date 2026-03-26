@@ -41,7 +41,7 @@ jobs:
         echo version=$(poetry version --short) >> $GITHUB_OUTPUT
 
     - name: Create Release
-      uses: ncipollo/release-action@v1
+      uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1
       with:
         artifacts: "classic/benchmark/dist/*"
         token: ${{ secrets.GITHUB_TOKEN }}
@@ -52,4 +52,6 @@ jobs:
 
     - name: Build and publish
       working-directory: ./classic/benchmark/
-      run: poetry publish -u __token__ -p ${{ secrets.PYPI_API_TOKEN }}
+      run: poetry publish -u __token__ -p ${PYPI_API_TOKEN}
+      env:
+        PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

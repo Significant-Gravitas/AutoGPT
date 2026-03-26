@@ -119,7 +119,7 @@ jobs:
           df -h
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Copy default environment files
         working-directory: autogpt_platform
@@ -181,7 +181,7 @@ jobs:
             wait
             
             # Only save cache on main branches (not PRs) to avoid cache pollution
-            if [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            if [[ "${GIT_REF}" == "refs/heads/master" ]] || [[ "${GIT_REF}" == "refs/heads/dev" ]]; then
               echo "Saving Docker images to cache in parallel..."
               for image in "${IMAGES[@]}"; do
                 # Convert image name to filename (replace : and / with -)
@@ -198,6 +198,8 @@ jobs:
           
           echo "Docker images ready for use"
 
+        env:
+          GIT_REF: ${{ github.ref }}
       # Phase 2: Build migrate service with GitHub Actions cache
       - name: Build migrate Docker image with cache
         working-directory: autogpt_platform

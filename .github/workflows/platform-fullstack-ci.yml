@@ -159,19 +159,20 @@ jobs:
       - name: Set up Platform - Copy backend .env and set OpenAI API key
         run: |
           cp ../backend/.env.default ../backend/.env
-          echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+          echo "OPENAI_INTERNAL_API_KEY=${OPENAI_API_KEY}" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Set up Platform - Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         with:
           driver: docker-container
           driver-opts: network=host
 
       - name: Set up Platform - Expose GHA cache to docker buildx CLI
-        uses: crazy-max/ghaction-github-runtime@v4
+        uses: crazy-max/ghaction-github-runtime@04d248b84655b509d8c44dc1d6f990c879747487 # v4
 
       - name: Set up Platform - Build Docker images (with cache)
         working-directory: autogpt_platform
@@ -188,12 +189,13 @@ jobs:
             --cache-to "type=gha,mode=max" \
             --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend/**') }}" \
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}" \
-            --git-ref "${{ github.ref }}"
+            --git-ref "${GIT_REF}"
 
           # Build with bake using the resolved compose file (now includes cache config)
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
         env:
           NEXT_PUBLIC_PW_TEST: true
+          GIT_REF: ${{ github.ref }}
 
       - name: Set up tests - Cache E2E test data
         id: e2e-data-cache
