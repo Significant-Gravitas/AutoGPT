@@ -66,7 +66,7 @@ class TestToolDescriptionsDryRunLoop:
         dry_run_desc = params["properties"]["dry_run"]["description"]
         assert "create_agent" in dry_run_desc or "edit_agent" in dry_run_desc
         assert "wait_for_result" in dry_run_desc
-        assert "3 iterations" in dry_run_desc or "max " in dry_run_desc
+        assert "3 iterations" in dry_run_desc
 
     def test_get_agent_building_guide_mentions_workflow(self):
         tool = TOOL_REGISTRY["get_agent_building_guide"]

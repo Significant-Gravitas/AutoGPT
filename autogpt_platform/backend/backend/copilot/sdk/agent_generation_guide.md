@@ -236,7 +236,7 @@ call in a loop until the task is complete:
 Regular blocks work exactly like sub-agents as tools — wire each input
 field from `source_name: "tools"` on the Orchestrator side.
 
-### REQUIRED: Dry-Run Verification Loop (create -> test -> fix)
+### REQUIRED: Dry-Run Verification Loop (create -> dry-run -> fix)
 
 After creating or editing an agent, you MUST dry-run it before telling the
 user the agent is ready. NEVER skip this step.
@@ -252,15 +252,15 @@ user the agent is ready. NEVER skip this step.
    `wait_for_result` returns only a summary, call
    `view_agent_output(execution_id=..., show_execution_details=True)` to
    see the full node-by-node execution trace. Look for:
-   - **Errors or failed nodes** — a node raised an exception or returned an
+   - **Errors / failed nodes** — a node raised an exception or returned an
      error status. Common causes: wrong `source_name`/`sink_name` in links,
      missing `input_default` values, or referencing a nonexistent block output.
-   - **Null / empty values** — data did not flow through a link. Verify that
+   - **Null / empty outputs** — data did not flow through a link. Verify that
      `source_name` and `sink_name` match the block schemas exactly (case-
      sensitive, including nested `_#_` notation).
    - **Nodes that never executed** — the node was not reached. Likely a
      missing or broken link from an upstream node.
-   - **Unexpected data format** — data arrived but in the wrong type or
+   - **Unexpected values** — data arrived but in the wrong type or
      structure. Check type compatibility between linked ports.
 4. **Fix**: If any issues are found, call `edit_agent` with the corrected
    agent JSON, then go back to step 2.
