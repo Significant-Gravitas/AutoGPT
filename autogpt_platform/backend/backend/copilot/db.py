@@ -74,27 +74,25 @@ async def get_chat_messages_paginated(
     if user_id is not None:
         session_where["userId"] = user_id
 
-    # Build message query
-    msg_where: dict[str, Any] = {"sessionId": session_id}
+    # Build message include — fetch paginated messages in the same query
+    msg_include: dict[str, Any] = {
+        "order_by": {"sequence": "desc"},
+        "take": limit + 1,
+    }
     if before_sequence is not None:
-        msg_where["sequence"] = {"lt": before_sequence}
-    if user_id is not None:
-        msg_where["Session"] = {"is": {"userId": user_id}}
+        msg_include["where"] = {"sequence": {"lt": before_sequence}}
 
-    # Run session check and message fetch in parallel
-    session, results = await asyncio.gather(
-        PrismaChatSession.prisma().find_first(where=session_where),
-        PrismaChatMessage.prisma().find_many(
-            where=msg_where,
-            order={"sequence": "desc"},
-            take=limit + 1,
-        ),
+    # Single query: session existence/ownership + paginated messages
+    session = await PrismaChatSession.prisma().find_first(
+        where=session_where,
+        include={"Messages": msg_include},
     )
 
     if session is None:
         return None
 
     session_info = ChatSessionInfo.from_db(session)
+    results = list(session.Messages) if session.Messages else []
 
     has_more = len(results) > limit
     results = results[:limit]

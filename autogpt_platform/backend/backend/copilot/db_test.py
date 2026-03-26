@@ -38,10 +38,11 @@ def _make_msg(
 def _make_session(
     session_id: str = "sess-1",
     user_id: str = "user-1",
+    messages: list[PrismaChatMessage] | None = None,
 ) -> PrismaChatSession:
     """Build a minimal PrismaChatSession for testing."""
     now = datetime.now(UTC)
-    return PrismaChatSession.model_construct(
+    session = PrismaChatSession.model_construct(
         id=session_id,
         createdAt=now,
         updatedAt=now,
@@ -52,7 +53,9 @@ def _make_session(
         totalPromptTokens=0,
         totalCompletionTokens=0,
         title=None,
+        Messages=messages or [],
     )
+    return session
 
 
 SESSION_ID = "sess-1"
@@ -60,18 +63,22 @@ SESSION_ID = "sess-1"
 
 @pytest.fixture()
 def mock_db():
-    """Patch both ChatSession.prisma().find_first and ChatMessage.prisma().find_many."""
+    """Patch ChatSession.prisma().find_first and ChatMessage.prisma().find_many.
+
+    find_first is used for the main query (session + included messages).
+    find_many is used only for boundary expansion queries.
+    """
     with (
         patch.object(PrismaChatSession, "prisma") as mock_session_prisma,
         patch.object(PrismaChatMessage, "prisma") as mock_msg_prisma,
     ):
-        find_first = AsyncMock(return_value=_make_session())
+        find_first = AsyncMock()
         mock_session_prisma.return_value.find_first = find_first
 
-        find_many = AsyncMock()
+        find_many = AsyncMock(return_value=[])
         mock_msg_prisma.return_value.find_many = find_many
 
-        yield find_many, find_first
+        yield find_first, find_many
 
 
 # ---------- Basic pagination ----------
@@ -82,8 +89,10 @@ async def test_basic_page_returns_messages_ascending(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """Messages are returned in ascending sequence order."""
-    find_many, _ = mock_db
-    find_many.return_value = [_make_msg(3), _make_msg(2), _make_msg(1)]
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(3), _make_msg(2), _make_msg(1)],
+    )
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=5)
 
@@ -98,8 +107,10 @@ async def test_has_more_when_results_exceed_limit(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """has_more is True when DB returns more than limit items."""
-    find_many, _ = mock_db
-    find_many.return_value = [_make_msg(3), _make_msg(2), _make_msg(1)]
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(3), _make_msg(2), _make_msg(1)],
+    )
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=2)
 
@@ -113,8 +124,8 @@ async def test_has_more_when_results_exceed_limit(
 async def test_empty_session_returns_no_messages(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    find_many, _ = mock_db
-    find_many.return_value = []
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(messages=[])
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=50)
 
@@ -128,30 +139,47 @@ async def test_empty_session_returns_no_messages(
 async def test_before_sequence_filters_correctly(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """before_sequence is passed as a lt filter to Prisma."""
-    find_many, _ = mock_db
-    find_many.return_value = [_make_msg(2), _make_msg(1)]
+    """before_sequence is passed as a where filter inside the Messages include."""
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(2), _make_msg(1)],
+    )
 
     await get_chat_messages_paginated(SESSION_ID, limit=50, before_sequence=5)
 
-    call_kwargs = find_many.call_args
-    where = call_kwargs.kwargs.get("where") or call_kwargs[1].get("where")
-    assert where["sequence"] == {"lt": 5}
+    call_kwargs = find_first.call_args
+    include = call_kwargs.kwargs.get("include") or call_kwargs[1].get("include")
+    assert include["Messages"]["where"] == {"sequence": {"lt": 5}}
 
 
 @pytest.mark.asyncio
-async def test_user_id_filter_applied_to_where(
+async def test_no_where_on_messages_without_before_sequence(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """user_id adds a Session.userId filter to the Prisma query."""
-    find_many, _ = mock_db
-    find_many.return_value = [_make_msg(1)]
+    """Without before_sequence, the Messages include has no where clause."""
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(messages=[_make_msg(1)])
+
+    await get_chat_messages_paginated(SESSION_ID, limit=50)
+
+    call_kwargs = find_first.call_args
+    include = call_kwargs.kwargs.get("include") or call_kwargs[1].get("include")
+    assert "where" not in include["Messages"]
+
+
+@pytest.mark.asyncio
+async def test_user_id_filter_applied_to_session_where(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """user_id adds a userId filter to the session-level where clause."""
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(messages=[_make_msg(1)])
 
     await get_chat_messages_paginated(SESSION_ID, limit=50, user_id="user-abc")
 
-    call_kwargs = find_many.call_args
+    call_kwargs = find_first.call_args
     where = call_kwargs.kwargs.get("where") or call_kwargs[1].get("where")
-    assert where["Session"] == {"is": {"userId": "user-abc"}}
+    assert where["userId"] == "user-abc"
 
 
 @pytest.mark.asyncio
@@ -159,9 +187,8 @@ async def test_session_not_found_returns_none(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """Returns None when session doesn't exist or user doesn't own it."""
-    find_many, find_first = mock_db
+    find_first, _ = mock_db
     find_first.return_value = None
-    find_many.return_value = []
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=50)
 
@@ -173,8 +200,8 @@ async def test_session_info_included_in_result(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """PaginatedMessages includes session metadata."""
-    find_many, _ = mock_db
-    find_many.return_value = [_make_msg(1)]
+    find_first, _ = mock_db
+    find_first.return_value = _make_session(messages=[_make_msg(1)])
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=50)
 
@@ -191,11 +218,11 @@ async def test_boundary_expansion_includes_assistant(
 ):
     """When page starts with a tool message, expand backward to include
     the owning assistant message."""
-    find_many, _ = mock_db
-    find_many.side_effect = [
-        [_make_msg(5, role="tool"), _make_msg(4, role="tool")],
-        [_make_msg(3, role="assistant")],
-    ]
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(5, role="tool"), _make_msg(4, role="tool")],
+    )
+    find_many.return_value = [_make_msg(3, role="assistant")]
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=5)
 
@@ -211,14 +238,14 @@ async def test_boundary_expansion_includes_multiple_tool_msgs(
 ):
     """Boundary expansion scans past consecutive tool messages to find
     the owning assistant."""
-    find_many, _ = mock_db
-    find_many.side_effect = [
-        [_make_msg(7, role="tool")],
-        [
-            _make_msg(6, role="tool"),
-            _make_msg(5, role="tool"),
-            _make_msg(4, role="assistant"),
-        ],
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(7, role="tool")],
+    )
+    find_many.return_value = [
+        _make_msg(6, role="tool"),
+        _make_msg(5, role="tool"),
+        _make_msg(4, role="assistant"),
     ]
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=5)
@@ -233,11 +260,11 @@ async def test_boundary_expansion_sets_has_more_when_not_at_start(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """After boundary expansion, has_more=True if expanded msgs aren't at seq 0."""
-    find_many, _ = mock_db
-    find_many.side_effect = [
-        [_make_msg(3, role="tool")],
-        [_make_msg(2, role="assistant")],
-    ]
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(3, role="tool")],
+    )
+    find_many.return_value = [_make_msg(2, role="assistant")]
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=5)
 
@@ -250,11 +277,11 @@ async def test_boundary_expansion_no_has_more_at_conversation_start(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """has_more stays False when boundary expansion reaches seq 0."""
-    find_many, _ = mock_db
-    find_many.side_effect = [
-        [_make_msg(1, role="tool")],
-        [_make_msg(0, role="assistant")],
-    ]
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(1, role="tool")],
+    )
+    find_many.return_value = [_make_msg(0, role="assistant")]
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=5)
 
@@ -268,16 +295,15 @@ async def test_no_boundary_expansion_when_first_msg_not_tool(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
     """No boundary expansion when the first message is not a tool message."""
-    find_many, _ = mock_db
-    find_many.return_value = [
-        _make_msg(3, role="user"),
-        _make_msg(2, role="assistant"),
-    ]
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(3, role="user"), _make_msg(2, role="assistant")],
+    )
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=5)
 
     assert page is not None
-    assert find_many.call_count == 1
+    assert find_many.call_count == 0
     assert [m.sequence for m in page.messages] == [2, 3]
 
 
@@ -287,11 +313,11 @@ async def test_boundary_expansion_warns_when_no_owner_found(
 ):
     """When boundary scan doesn't find a non-tool message, a warning is logged
     and the boundary messages are still included."""
-    find_many, _ = mock_db
-    find_many.side_effect = [
-        [_make_msg(10, role="tool")],
-        [_make_msg(i, role="tool") for i in range(9, -1, -1)],
-    ]
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(10, role="tool")],
+    )
+    find_many.return_value = [_make_msg(i, role="tool") for i in range(9, -1, -1)]
 
     with patch("backend.copilot.db.logger") as mock_logger:
         page = await get_chat_messages_paginated(SESSION_ID, limit=5)
