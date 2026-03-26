@@ -205,6 +205,18 @@ class RunAgentTool(BaseTool):
         # Determine if this is a schedule request
         is_schedule = bool(params.schedule_name or params.cron)
 
+        # Session-level dry-run blocks scheduling — schedules create real
+        # side effects that cannot be simulated.
+        if params.dry_run and is_schedule:
+            return ErrorResponse(
+                message=(
+                    "Scheduling is disabled in dry-run mode because it creates "
+                    "real side effects. Remove cron/schedule_name to simulate "
+                    "a run, or disable dry-run to create a real schedule."
+                ),
+                session_id=session_id,
+            )
+
         try:
             # Step 1: Fetch agent details
             graph: GraphModel | None = None

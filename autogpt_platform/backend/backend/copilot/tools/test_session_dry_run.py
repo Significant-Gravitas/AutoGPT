@@ -17,6 +17,7 @@ from backend.copilot.context import (
     set_execution_context,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
 from backend.copilot.tools.run_block import RunBlockTool
 
@@ -89,21 +90,29 @@ class TestSetExecutionContextDryRun:
     """Test that set_execution_context propagates dry_run."""
 
     def test_sets_dry_run_true(self):
-        session = _make_session(dry_run=True)
-        set_execution_context(
-            user_id="test-user",
-            session=session,
-            dry_run=True,
-        )
-        assert is_session_dry_run() is True
+        token = _session_dry_run.set(False)
+        try:
+            session = _make_session(dry_run=True)
+            set_execution_context(
+                user_id="test-user",
+                session=session,
+                dry_run=True,
+            )
+            assert is_session_dry_run() is True
+        finally:
+            _session_dry_run.reset(token)
 
     def test_sets_dry_run_false_by_default(self):
-        session = _make_session(dry_run=False)
-        set_execution_context(
-            user_id="test-user",
-            session=session,
-        )
-        assert is_session_dry_run() is False
+        token = _session_dry_run.set(True)
+        try:
+            session = _make_session(dry_run=False)
+            set_execution_context(
+                user_id="test-user",
+                session=session,
+            )
+            assert is_session_dry_run() is False
+        finally:
+            _session_dry_run.reset(token)
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +297,32 @@ class TestRunAgentToolSessionDryRun:
                 mock_exec_utils.add_graph_execution.assert_called_once()
                 call_kwargs = mock_exec_utils.add_graph_execution.call_args
                 assert call_kwargs.kwargs.get("dry_run") is True
+        finally:
+            _session_dry_run.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_session_dry_run_blocks_scheduling(self):
+        """When session dry_run is True, scheduling requests should be rejected."""
+        token = _session_dry_run.set(True)
+        try:
+            tool = RunAgentTool()
+            session = _make_session(dry_run=True)
+
+            result = await tool._execute(
+                user_id="test-user",
+                session=session,
+                username_agent_slug="user/test-agent",
+                schedule_name="daily-run",
+                cron="0 9 * * *",
+                dry_run=False,  # Session overrides to True
+            )
+
+            assert isinstance(result, ErrorResponse)
+            assert "dry-run" in result.message.lower()
+            assert (
+                "scheduling" in result.message.lower()
+                or "schedule" in result.message.lower()
+            )
         finally:
             _session_dry_run.reset(token)
 
