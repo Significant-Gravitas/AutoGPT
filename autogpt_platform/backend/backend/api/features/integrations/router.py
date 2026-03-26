@@ -927,10 +927,16 @@ async def connect_agentmail(
                 detail="Failed to create AgentMail API key",
             )
 
-    # Persist pod_id + api_key (acquires its own lock)
-    await creds_manager.store.set_agentmail_pod_credentials(
-        user_id, pod_id, api_key_obj.api_key
-    )
+        # Persist pod_id + api_key inside the lock to avoid race conditions.
+        # We write directly instead of calling set_agentmail_pod_credentials()
+        # because that method acquires its own lock, which would deadlock here.
+        user_integrations.managed_credentials.agentmail_pod_id = pod_id
+        user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
+            api_key_obj.api_key
+        )
+        await creds_manager.store.db_manager.update_user_integrations(
+            user_id=user_id, data=user_integrations
+        )
 
     return AgentMailConnectResponse(pod_id=pod_id)
 
