@@ -293,7 +293,7 @@ A block that accepts and processes user input values within a workflow, supporti
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-It accepts a value from the user, along with metadata such as name, description, and optional placeholder values. The block then outputs the provided value.
+It accepts a value from the user, along with metadata such as name and description. The block then outputs the provided value.
 <!-- END MANUAL -->
 
 ### Inputs
