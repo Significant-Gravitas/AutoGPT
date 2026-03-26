@@ -151,12 +151,12 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() }}  # Run even if tests fail
-        uses: codecov/test-results-action@v1
+        uses: codecov/test-results-action@0fa95f0e1eeaafde2c782583b36b28ad0d8c77d3 # v1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: forge,${{ runner.os }}
@@ -168,9 +168,9 @@ jobs:
         run: |
           config_key="http.${{ github.server_url }}/.extraheader"
           if [ "${{ runner.os }}" = 'macOS' ]; then
-            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64)
+            base64_pat=$(echo -n "pat:${PAT_REVIEW}" | base64)
           else
-            base64_pat=$(echo -n "pat:${{ secrets.PAT_REVIEW }}" | base64 -w0)
+            base64_pat=$(echo -n "pat:${PAT_REVIEW}" | base64 -w0)
           fi
 
           git config "$config_key" \
@@ -182,6 +182,8 @@ jobs:
 
           echo "config_key=$config_key" >> $GITHUB_OUTPUT
 
+        env:
+          PAT_REVIEW: ${{ secrets.PAT_REVIEW }}
       - id: push_cassettes
         name: Push updated cassettes
         # For pull requests, push updated cassettes even when tests fail
@@ -189,12 +191,13 @@ jobs:
         env:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           if [ "${{ startsWith(github.event_name, 'pull_request') }}" = "true" ]; then
             is_pull_request=true
             cassette_branch="${PR_AUTHOR}-${PR_BRANCH}"
           else
-            cassette_branch="${{ github.ref_name }}"
+            cassette_branch="${REF_NAME}"
           fi
 
           cd tests/vcr_cassettes
@@ -225,7 +228,7 @@ jobs:
         if: ${{ startsWith(github.event_name, 'pull_request') }}
         run: |
           PR_NUMBER="${{ github.event.pull_request.number }}"
-          TOKEN="${{ secrets.PAT_REVIEW }}"
+          TOKEN="${PAT_REVIEW}"
           REPO="${{ github.repository }}"
 
           if [[ "${{ steps.push_cassettes.outputs.updated }}" == "true" ]]; then
@@ -235,6 +238,8 @@ jobs:
             gh issue comment $PR_NUMBER --body "You changed AutoGPT's behaviour on ${{ runner.os }}. The cassettes have been updated and will be merged to the submodule when this Pull Request gets merged."
           fi
 
+        env:
+          PAT_REVIEW: ${{ secrets.PAT_REVIEW }}
       - name: Upload logs to artifact
         if: always()
         uses: actions/upload-artifact@v4
