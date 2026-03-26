@@ -960,8 +960,9 @@ def _rechain_tail(compressed_prefix: str, tail_lines: list[str]) -> str:
     """Patch tail entries so their parentUuid chain links to the compressed prefix.
 
     The first tail entry's ``parentUuid`` is set to the ``uuid`` of the
-    last entry in the compressed prefix.  Subsequent tail entries keep
-    their original parent→child relationships.
+    last entry in the compressed prefix.  Subsequent tail entries are
+    rechained to point to their predecessor in the tail — their original
+    ``parentUuid`` values may reference entries that were compressed away.
     """
     if not tail_lines:
         return ""
