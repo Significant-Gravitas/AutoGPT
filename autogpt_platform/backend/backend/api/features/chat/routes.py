@@ -533,6 +533,7 @@ async def reset_copilot_usage(
             user_id=user_id,
             daily_token_limit=daily_limit,
             weekly_token_limit=weekly_limit,
+            tier=_tier,
         )
         if daily_limit > 0 and usage_status.daily.used < daily_limit:
             raise HTTPException(
@@ -608,6 +609,7 @@ async def reset_copilot_usage(
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
+        tier=_tier,
     )
 
     return RateLimitResetResponse(
