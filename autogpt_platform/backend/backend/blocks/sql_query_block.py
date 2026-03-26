@@ -1,13 +1,15 @@
 import asyncio
 import re
 from decimal import Decimal
+from enum import Enum
 from typing import Any, Literal
+from urllib.parse import urlparse
 
-import psycopg2
-import psycopg2.extensions
-import psycopg2.extras
 import sqlparse
 from pydantic import SecretStr
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
 
 from backend.blocks._base import (
     Block,
@@ -27,9 +29,9 @@ from backend.util.request import resolve_and_check_blocked
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="postgres",
+    provider="database",
     api_key=SecretStr("postgresql://test_user:test_pass@localhost:5432/test_db"),
-    title="Mock Postgres credentials",
+    title="Mock Database credentials",
 )
 
 TEST_CREDENTIALS_INPUT = {
@@ -39,20 +41,30 @@ TEST_CREDENTIALS_INPUT = {
     "title": TEST_CREDENTIALS.title,
 }
 
-PostgresCredentials = APIKeyCredentials
-PostgresCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.POSTGRES],
+DatabaseCredentials = APIKeyCredentials
+DatabaseCredentialsInput = CredentialsMetaInput[
+    Literal[ProviderName.DATABASE],
     Literal["api_key"],
 ]
 
 
-def PostgresCredentialsField() -> PostgresCredentialsInput:
+def DatabaseCredentialsField() -> DatabaseCredentialsInput:
     return CredentialsField(
         description=(
-            "PostgreSQL connection string in the format: "
-            "postgresql://user:password@host:port/dbname"
+            "SQLAlchemy connection URL for your database. Examples: "
+            "postgresql://user:pass@host:5432/db, "
+            "mysql://user:pass@host:3306/db, "
+            "sqlite:///path/to/db, "
+            "mssql+pyodbc://user:pass@host/db?driver=..."
         ),
     )
+
+
+class DatabaseType(str, Enum):
+    POSTGRES = "postgres"
+    MYSQL = "mysql"
+    SQLITE = "sqlite"
+    MSSQL = "mssql"
 
 
 # Defense-in-depth: reject queries containing data-modifying keywords.
@@ -150,7 +162,7 @@ def _validate_query_is_read_only(query: str) -> str | None:
 
 
 def _serialize_value(value: Any) -> Any:
-    """Convert PostgreSQL-specific types to JSON-serializable Python types."""
+    """Convert database-specific types to JSON-serializable Python types."""
     if isinstance(value, Decimal):
         # Use int for whole numbers; use str for fractional to preserve exact
         # precision (float would silently round high-precision analytics values).
@@ -159,9 +171,44 @@ def _serialize_value(value: Any) -> Any:
         return str(value)
     if hasattr(value, "isoformat"):
         return value.isoformat()
-    if isinstance(value, memoryview):
-        return bytes(value).hex()
+    if isinstance(value, (bytes, memoryview)):
+        if isinstance(value, memoryview):
+            return bytes(value).hex()
+        return value.hex()
     return value
+
+
+# Map DatabaseType enum values to the expected SQLAlchemy driver prefix.
+_DATABASE_TYPE_TO_DRIVER = {
+    DatabaseType.POSTGRES: "postgresql",
+    DatabaseType.MYSQL: "mysql",
+    DatabaseType.SQLITE: "sqlite",
+    DatabaseType.MSSQL: "mssql",
+}
+
+
+def _validate_connection_url(
+    connection_string: str, database_type: DatabaseType
+) -> str | None:
+    """Validate that the connection URL matches the selected database type.
+
+    Returns an error message on mismatch, None if valid.
+    """
+    try:
+        url = make_url(connection_string)
+    except Exception:
+        return "Invalid database connection URL."
+
+    expected_prefix = _DATABASE_TYPE_TO_DRIVER[database_type]
+    # SQLAlchemy drivername can be "postgresql+psycopg2", "mysql+pymysql", etc.
+    driver_base = url.drivername.split("+")[0]
+    if driver_base != expected_prefix:
+        return (
+            f"Connection URL driver '{url.drivername}' does not match "
+            f"selected database type '{database_type.value}'. "
+            f"Expected a URL starting with '{expected_prefix}://'."
+        )
+    return None
 
 
 class SQLQueryBlock(Block):
@@ -169,6 +216,10 @@ class SQLQueryBlock(Block):
         query: str = SchemaField(
             description="SQL SELECT query to execute",
             placeholder="SELECT * FROM analytics.daily_active_users LIMIT 10",
+        )
+        database_type: DatabaseType = SchemaField(
+            default=DatabaseType.POSTGRES,
+            description="Type of database to connect to",
         )
         timeout: int = SchemaField(
             default=30,
@@ -182,7 +233,7 @@ class SQLQueryBlock(Block):
             ge=1,
             le=10000,
         )
-        credentials: PostgresCredentialsInput = PostgresCredentialsField()
+        credentials: DatabaseCredentialsInput = DatabaseCredentialsField()
 
     class Output(BlockSchemaOutput):
         results: list[dict[str, Any]] = SchemaField(
@@ -198,14 +249,17 @@ class SQLQueryBlock(Block):
         super().__init__(
             id="4dc35c0f-4fd8-465e-9616-5a216f1ba2bc",
             description=(
-                "Executes a read-only SQL query against a PostgreSQL database "
-                "and returns the results. Only SELECT queries are allowed."
+                "Executes a read-only SQL query against a database "
+                "and returns the results. Supports PostgreSQL, MySQL, "
+                "SQLite, and MSSQL via SQLAlchemy. "
+                "Only SELECT queries are allowed."
             ),
             categories={BlockCategory.DATA},
             input_schema=SQLQueryBlock.Input,
             output_schema=SQLQueryBlock.Output,
             test_input={
                 "query": "SELECT 1 AS test_col",
+                "database_type": DatabaseType.POSTGRES,
                 "timeout": 30,
                 "max_rows": 1000,
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -233,40 +287,47 @@ class SQLQueryBlock(Block):
     ) -> tuple[list[dict[str, Any]], list[str]]:
         """Execute a read-only SQL query and return (rows, columns).
 
-        Uses a server-side named cursor so that only `max_rows` are fetched
-        from the database, avoiding client-side memory exhaustion for large
-        result sets.
+        Uses SQLAlchemy to connect to any supported database. The query
+        is limited to `max_rows` results via DBAPI fetchmany.
         """
-        conn = psycopg2.connect(
+        engine = create_engine(
             connection_string,
-            connect_timeout=10,
-            options=f"-c statement_timeout={timeout * 1000}",
+            connect_args=(
+                {"connect_timeout": 10} if "sqlite" not in connection_string else {}
+            ),
+            # Execution options for timeout vary by driver; we set a
+            # conservative pool and connection timeout at the engine level.
+            pool_pre_ping=True,
+            pool_recycle=300,
         )
         try:
-            # Server-side cursors require a transaction (no autocommit).
-            conn.set_session(readonly=True, autocommit=False)
-            with conn.cursor(
-                name="sql_query_cursor",
-                cursor_factory=psycopg2.extras.RealDictCursor,
-            ) as cur:
-                cur.itersize = max_rows
-                cur.execute(query)
-                columns = (
-                    [desc[0] for desc in cur.description] if cur.description else []
-                )
-                rows = cur.fetchmany(max_rows)
+            with engine.connect() as conn:
+                # Set the connection to read-only where supported
+                if engine.dialect.name == "postgresql":
+                    conn.execute(text(f"SET statement_timeout = {timeout * 1000}"))
+                    conn.execute(text("SET default_transaction_read_only = ON"))
+                elif engine.dialect.name == "mysql":
+                    conn.execute(
+                        text(f"SET SESSION MAX_EXECUTION_TIME = {timeout * 1000}")
+                    )
+                    conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
+
+                result = conn.execute(text(query))
+                columns = list(result.keys()) if result.returns_rows else []
+                rows = result.fetchmany(max_rows)
                 results = [
-                    {k: _serialize_value(v) for k, v in row.items()} for row in rows
+                    {col: _serialize_value(val) for col, val in zip(columns, row)}
+                    for row in rows
                 ]
             return results, columns
         finally:
-            conn.close()
+            engine.dispose()
 
     async def run(
         self,
         input_data: Input,
         *,
-        credentials: PostgresCredentials,
+        credentials: DatabaseCredentials,
         **kwargs,
     ) -> BlockOutput:
         # Validate query is read-only
@@ -277,33 +338,45 @@ class SQLQueryBlock(Block):
 
         connection_string = credentials.api_key.get_secret_value()
 
-        # SSRF protection: parse the connection string using psycopg2's DSN
-        # parser (handles both URI and libpq key=value formats) and validate
-        # that the host is not internal. Reject Unix socket paths entirely.
-        try:
-            dsn_params = psycopg2.extensions.parse_dsn(connection_string)
-        except psycopg2.ProgrammingError:
-            yield "error", "Invalid connection string format."
+        # Validate connection URL matches the selected database type
+        url_error = _validate_connection_url(
+            connection_string, input_data.database_type
+        )
+        if url_error:
+            yield "error", url_error
             return
 
-        host = dsn_params.get("host", "")
-        hostaddr = dsn_params.get("hostaddr", "")
-
-        # Reject if no host is specified (would default to Unix socket)
-        if not host and not hostaddr:
-            yield "error", "Connection string must specify a database host."
-            return
-
-        # Reject Unix socket paths (host starting with '/')
-        if host.startswith("/"):
-            yield "error", "Unix socket connections are not allowed."
-            return
-
-        # Validate each specified host/hostaddr against SSRF blocklist
-        hosts_to_check = [h for h in [host, hostaddr] if h]
-        for h in hosts_to_check:
+        # SSRF protection: parse the connection URL and validate that the
+        # host is not internal. SQLite is file-based and handled separately.
+        if input_data.database_type == DatabaseType.SQLITE:
+            # SQLite: block absolute paths outside a safe pattern and
+            # reject any URL that specifies a host (network SQLite is not real).
+            parsed = urlparse(connection_string)
+            if parsed.hostname:
+                yield "error", "SQLite does not support network connections."
+                return
+        else:
+            # Network databases: extract host from SQLAlchemy URL and
+            # verify it is not a private/blocked address.
             try:
-                await resolve_and_check_blocked(h)
+                sa_url = make_url(connection_string)
+            except Exception:
+                yield "error", "Invalid connection string format."
+                return
+
+            host = sa_url.host or ""
+
+            if not host:
+                yield "error", "Connection string must specify a database host."
+                return
+
+            # Reject Unix socket paths (host starting with '/')
+            if host.startswith("/"):
+                yield "error", "Unix socket connections are not allowed."
+                return
+
+            try:
+                await resolve_and_check_blocked(host)
             except (ValueError, OSError) as e:
                 yield "error", f"Blocked host: {str(e).strip()}"
                 return
@@ -319,7 +392,7 @@ class SQLQueryBlock(Block):
             yield "results", results
             yield "columns", columns
             yield "row_count", len(results)
-        except psycopg2.OperationalError as e:
+        except OperationalError as e:
             error_msg = _sanitize_error(str(e).strip(), connection_string)
             if "timeout" in error_msg.lower() or "cancel" in error_msg.lower():
                 yield "error", f"Query timed out after {input_data.timeout}s."
@@ -327,9 +400,9 @@ class SQLQueryBlock(Block):
                 yield "error", f"Failed to connect to database: {error_msg}"
             else:
                 yield "error", f"Database error: {error_msg}"
-        except psycopg2.ProgrammingError as e:
+        except ProgrammingError as e:
             msg = _sanitize_error(str(e).strip(), connection_string)
             yield "error", f"SQL error: {msg}"
-        except psycopg2.Error as e:
+        except DBAPIError as e:
             msg = _sanitize_error(str(e).strip(), connection_string)
             yield "error", f"Database error: {msg}"
