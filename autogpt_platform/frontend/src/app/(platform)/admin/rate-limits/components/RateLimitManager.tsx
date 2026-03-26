@@ -18,6 +18,24 @@ interface UserOption {
   user_email: string;
 }
 
+/**
+ * Returns true when the input looks like a complete email address.
+ * Used to decide whether to call the direct email lookup endpoint
+ * vs. the broader user-history search.
+ */
+function looksLikeEmail(input: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
+}
+
+/**
+ * Returns true when the input looks like a UUID (user ID).
+ */
+function looksLikeUuid(input: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    input,
+  );
+}
+
 export function RateLimitManager() {
   const { toast } = useToast();
   const [isSearching, setIsSearching] = useState(false);
@@ -27,10 +45,46 @@ export function RateLimitManager() {
   const [rateLimitData, setRateLimitData] =
     useState<UserRateLimitResponse | null>(null);
 
-  async function handleSearch(query: string) {
-    const trimmed = query.trim();
-    if (!trimmed) return;
+  /** Direct lookup by email or user ID via the rate-limit endpoint. */
+  async function handleDirectLookup(trimmed: string) {
+    setIsSearching(true);
+    setSearchResults([]);
+    setSelectedUser(null);
+    setRateLimitData(null);
 
+    try {
+      const params = looksLikeEmail(trimmed)
+        ? { email: trimmed }
+        : { user_id: trimmed };
+      const response = await getV2GetUserRateLimit(params);
+      if (response.status !== 200) {
+        throw new Error("Failed to fetch rate limit");
+      }
+      setRateLimitData(response.data);
+      if (response.data.user_email) {
+        setSelectedUser({
+          user_id: response.data.user_id,
+          user_email: response.data.user_email,
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching rate limit:", error);
+      const hint = looksLikeEmail(trimmed)
+        ? "No user found with that email address."
+        : "Check the user ID and try again.";
+      toast({
+        title: "Error",
+        description: `Failed to fetch rate limits. ${hint}`,
+        variant: "destructive",
+      });
+      setRateLimitData(null);
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  /** Fuzzy name/email search via the spending-history endpoint. */
+  async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
     setSelectedUser(null);
@@ -82,6 +136,20 @@ export function RateLimitManager() {
       });
     } finally {
       setIsSearching(false);
+    }
+  }
+
+  async function handleSearch(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+
+    // Direct lookup when the input is a full email or UUID.
+    // This avoids the spending-history indirection and works even for
+    // users who have no credit transaction history.
+    if (looksLikeEmail(trimmed) || looksLikeUuid(trimmed)) {
+      await handleDirectLookup(trimmed);
+    } else {
+      await handleFuzzySearch(trimmed);
     }
   }
 
@@ -146,9 +214,13 @@ export function RateLimitManager() {
         <Label className="mb-2 block text-sm font-medium">Search User</Label>
         <AdminUserSearch
           onSearch={handleSearch}
-          placeholder="Search by name or email to look up rate limits..."
+          placeholder="Search by name, email, or user ID..."
           isLoading={isSearching}
         />
+        <p className="mt-1.5 text-xs text-gray-500">
+          Exact email or user ID does a direct lookup. Partial text searches
+          user history.
+        </p>
       </div>
 
       {/* User selection list when multiple results are found */}

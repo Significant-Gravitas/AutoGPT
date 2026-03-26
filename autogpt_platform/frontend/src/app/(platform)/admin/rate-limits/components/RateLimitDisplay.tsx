@@ -66,9 +66,13 @@ export function RateLimitDisplay({ data, onReset }: Props) {
 
   return (
     <div className="rounded-md border bg-white p-6 dark:bg-gray-900">
-      <h2 className="mb-4 text-lg font-semibold">
-        Rate Limits for {data.user_id}
+      <h2 className="mb-1 text-lg font-semibold">
+        Rate Limits for {data.user_email ?? data.user_id}
       </h2>
+      {data.user_email && (
+        <p className="mb-4 text-xs text-gray-500">User ID: {data.user_id}</p>
+      )}
+      {!data.user_email && <div className="mb-4" />}
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">

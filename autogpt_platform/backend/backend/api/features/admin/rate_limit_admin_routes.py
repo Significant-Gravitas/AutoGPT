@@ -1,6 +1,7 @@
 """Admin endpoints for checking and resetting user CoPilot rate limit usage."""
 
 import logging
+from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
@@ -12,6 +13,7 @@ from backend.copilot.rate_limit import (
     get_usage_status,
     reset_user_usage,
 )
+from backend.data.user import get_user_by_email, get_user_email_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +28,38 @@ router = APIRouter(
 
 class UserRateLimitResponse(BaseModel):
     user_id: str
+    user_email: Optional[str] = None
     daily_token_limit: int
     weekly_token_limit: int
     daily_tokens_used: int
     weekly_tokens_used: int
+
+
+async def _resolve_user_id(
+    user_id: Optional[str], email: Optional[str]
+) -> tuple[str, Optional[str]]:
+    """Resolve a user_id and email from the provided parameters.
+
+    Returns (user_id, email). Accepts either user_id or email; at least one
+    must be provided.
+    """
+    if email:
+        user = await get_user_by_email(email)
+        if not user:
+            raise HTTPException(
+                status_code=404, detail=f"No user found with email: {email}"
+            )
+        return user.id, email
+
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Either user_id or email query parameter is required.",
+        )
+
+    # We have a user_id; try to look up their email for display purposes.
+    resolved_email = await get_user_email_by_id(user_id)
+    return user_id, resolved_email
 
 
 @router.get(
@@ -38,19 +68,27 @@ class UserRateLimitResponse(BaseModel):
     summary="Get User Rate Limit",
 )
 async def get_user_rate_limit(
-    user_id: str,
+    user_id: Optional[str] = None,
+    email: Optional[str] = None,
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
-    """Get a user's current usage and effective rate limits. Admin-only."""
-    logger.info(f"Admin {admin_user_id} checking rate limit for user {user_id}")
+    """Get a user's current usage and effective rate limits. Admin-only.
+
+    Accepts either ``user_id`` or ``email`` as a query parameter.
+    When ``email`` is provided the user is looked up by email first.
+    """
+    resolved_id, resolved_email = await _resolve_user_id(user_id, email)
+
+    logger.info(f"Admin {admin_user_id} checking rate limit for user {resolved_id}")
 
     daily_limit, weekly_limit = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        resolved_id, config.daily_token_limit, config.weekly_token_limit
     )
-    usage = await get_usage_status(user_id, daily_limit, weekly_limit)
+    usage = await get_usage_status(resolved_id, daily_limit, weekly_limit)
 
     return UserRateLimitResponse(
-        user_id=user_id,
+        user_id=resolved_id,
+        user_email=resolved_email,
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
@@ -85,8 +123,11 @@ async def reset_user_rate_limit(
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
 
+    resolved_email = await get_user_email_by_id(user_id)
+
     return UserRateLimitResponse(
         user_id=user_id,
+        user_email=resolved_email,
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
