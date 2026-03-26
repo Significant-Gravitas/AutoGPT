@@ -133,6 +133,129 @@ Output pin names you MUST include: {json.dumps(required_output_properties)}
     return system_prompt, user_prompt
 
 
+def _build_mcp_simulation_prompt(
+    input_data: dict[str, Any],
+) -> tuple[str, str]:
+    """Build (system_prompt, user_prompt) for MCP tool simulation.
+
+    Uses the tool name, its JSON Schema, and the supplied arguments to let the
+    LLM generate a realistic response.
+    """
+    tool_name = input_data.get("selected_tool", "unknown_tool")
+    tool_schema = input_data.get("tool_input_schema", {})
+    tool_arguments = input_data.get("tool_arguments", {})
+    server_url = input_data.get("server_url", "")
+
+    schema_text = json.dumps(tool_schema, indent=2) if tool_schema else "(none)"
+
+    system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.
+
+## Tool Details
+- Tool name: {tool_name}
+- MCP server: {server_url}
+
+## Tool Input Schema
+{schema_text}
+
+Your task: given the tool arguments below, produce a realistic simulated output
+for this MCP tool call.
+
+Rules:
+- Respond with a single JSON object with exactly two keys: "result" and "error".
+- "result" should contain realistic output data that the tool would return.
+- "error" should be "" (empty string) unless you are simulating a logical error.
+- Assume all credentials and authentication are present and valid. Never simulate authentication failures.
+- Base your response on what a tool named "{tool_name}" with the given schema would realistically return.
+"""
+
+    safe_args = _truncate_input_values(tool_arguments)
+    user_prompt = f"## Tool Arguments\n{json.dumps(safe_args, indent=2)}"
+
+    return system_prompt, user_prompt
+
+
+async def simulate_mcp_block(
+    _block: Any,
+    input_data: dict[str, Any],
+) -> AsyncIterator[tuple[str, Any]]:
+    """Simulate MCP tool execution using an LLM.
+
+    Unlike the generic ``simulate_block``, this builds a prompt grounded in
+    the selected MCP tool's name and JSON Schema so the LLM can produce a
+    realistic response for that specific tool.
+
+    Yields ``(output_name, output_data)`` tuples matching the Block.execute()
+    interface.
+    """
+    client = get_openai_client()
+    if client is None:
+        yield (
+            "error",
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
+            "(missing OpenAI/OpenRouter API key).",
+        )
+        return
+
+    system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
+
+    model = _simulator_model()
+    last_error: Exception | None = None
+    for attempt in range(_MAX_JSON_RETRIES):
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=_TEMPERATURE,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            if not response.choices:
+                raise ValueError("LLM returned empty choices array")
+            raw = response.choices[0].message.content or ""
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
+
+            logger.debug(
+                "simulate_mcp_block: tool=%s attempt=%d tokens=%s/%s",
+                input_data.get("selected_tool", "?"),
+                attempt + 1,
+                getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
+                getattr(getattr(response, "usage", None), "completion_tokens", "?"),
+            )
+
+            yield "result", parsed.get("result", None)
+            yield "error", parsed.get("error", "")
+            return
+
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
+            logger.warning(
+                "simulate_mcp_block: JSON parse error on attempt %d/%d: %s",
+                attempt + 1,
+                _MAX_JSON_RETRIES,
+                e,
+            )
+        except Exception as e:
+            last_error = e
+            logger.error("simulate_mcp_block: LLM call failed: %s", e, exc_info=True)
+            break
+
+    logger.error(
+        "simulate_mcp_block: all %d retries exhausted for tool=%s; last_error=%s",
+        _MAX_JSON_RETRIES,
+        input_data.get("selected_tool", "?"),
+        last_error,
+    )
+    yield (
+        "error",
+        f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
+        f"attempts: {last_error}",
+    )
+
+
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],

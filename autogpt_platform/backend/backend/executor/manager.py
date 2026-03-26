@@ -21,6 +21,7 @@ from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentOutputBlock
 from backend.blocks.mcp.block import MCPToolBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.credit import UsageTransactionMetadata
@@ -81,7 +82,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
-from .simulator import simulate_block
+from .simulator import simulate_block, simulate_mcp_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -279,6 +280,23 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
+    # OrchestratorBlock and AgentExecutorBlock execute for real even in dry-run
+    # mode so that the orchestrator can make LLM calls and the agent executor can
+    # create child graph executions (whose blocks are then simulated).
+    # validate_exec() in dry-run mode wipes missing credential fields to None,
+    # which would prevent credential acquisition.  Restore them from node defaults
+    # so the block can run.
+    _dry_run_passthrough = execution_context.dry_run and isinstance(
+        node_block, (OrchestratorBlock, AgentExecutorBlock)
+    )
+    if _dry_run_passthrough:
+        for field_name in cast(
+            type[BlockSchema], node_block.input_schema
+        ).get_credentials_fields():
+            default_value = node.input_default.get(field_name)
+            if default_value is not None and not input_data.get(field_name):
+                input_data[field_name] = default_value
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -375,8 +393,12 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        if execution_context.dry_run:
-            block_iter = simulate_block(node_block, input_data)
+        if execution_context.dry_run and not _dry_run_passthrough:
+            # MCPToolBlock gets a specialised simulation that uses its tool schema.
+            if isinstance(node_block, MCPToolBlock):
+                block_iter = simulate_mcp_block(node_block, input_data)
+            else:
+                block_iter = simulate_block(node_block, input_data)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 
