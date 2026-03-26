@@ -123,7 +123,7 @@ async def execute_block(
             clean_outputs = {
                 k: v
                 for k, v in outputs.items()
-                if not (k == "error" and all(val == "" for val in v))
+                if not (k == "error" and v and all(val == "" for val in v))
             }
 
             return BlockOutputResponse(

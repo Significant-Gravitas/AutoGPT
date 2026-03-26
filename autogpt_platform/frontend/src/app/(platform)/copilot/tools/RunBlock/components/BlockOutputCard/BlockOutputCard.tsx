@@ -8,6 +8,7 @@ import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
+import { isEmptyErrorPin } from "../../helpers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
 import {
@@ -115,12 +116,12 @@ function OutputKeySection({
 }
 
 export function BlockOutputCard({ output }: Props) {
-  // Filter out empty "error" pins from simulated outputs.  The simulator
+  // For dry-run outputs, filter out empty "error" pins.  The simulator
   // always includes an "error" pin set to "" (meaning "no error"), which
-  // is confusing when rendered as an output section in the UI.
+  // is confusing when rendered as an output section.  For real executions
+  // the empty error pin is a meaningful signal (block reported no error).
   const displayOutputs = Object.entries(output.outputs ?? {}).filter(
-    ([key, items]) =>
-      !(key === "error" && items.every((v) => v === "" || v == null)),
+    ([key, items]) => !(output.is_dry_run && isEmptyErrorPin(key, items)),
   );
 
   return (
