@@ -357,7 +357,6 @@ export function useCredentialsInput({
       supportsUserPassword,
       supportsHostScoped,
       userCredentials.length > 0,
-      provider,
     ),
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,

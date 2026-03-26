@@ -104,20 +104,10 @@ const CREDENTIAL_TYPE_LABELS: Record<CredentialsType, string> = {
   host_scoped: "Headers",
 };
 
-// Providers where api_key credentials represent a connection URL, not an API key
-const CONNECTION_URL_PROVIDERS = new Set(["database"]);
-
 export function getCredentialTypeLabel(
   type: CredentialsType,
   provider?: string,
 ): string {
-  if (
-    type === "api_key" &&
-    provider &&
-    CONNECTION_URL_PROVIDERS.has(provider)
-  ) {
-    return "Connection URL";
-  }
   return CREDENTIAL_TYPE_LABELS[type] ?? type;
 }
 
@@ -144,9 +134,7 @@ export function getActionButtonText(
   supportsUserPassword: boolean,
   supportsHostScoped: boolean,
   hasExistingCredentials: boolean,
-  provider?: string,
 ): string {
-  const isConnectionUrl = provider && CONNECTION_URL_PROVIDERS.has(provider);
   const multipleTypes =
     countSupportedTypes(
       supportsOAuth2,
@@ -161,15 +149,13 @@ export function getActionButtonText(
 
   if (hasExistingCredentials) {
     if (supportsOAuth2) return "Connect another account";
-    if (supportsApiKey)
-      return isConnectionUrl ? "Use a new connection URL" : "Use a new API key";
+    if (supportsApiKey) return "Use a new API key";
     if (supportsUserPassword) return "Add a new username and password";
     if (supportsHostScoped) return "Add new headers";
     return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
-    if (supportsApiKey)
-      return isConnectionUrl ? "Add connection URL" : "Add API key";
+    if (supportsApiKey) return "Add API key";
     if (supportsUserPassword) return "Add username and password";
     if (supportsHostScoped) return "Add headers";
     return "Add credentials";

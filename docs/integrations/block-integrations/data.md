@@ -243,21 +243,24 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 ## SQL Query
 
 ### What it is
-Executes a read-only SQL query against a database and returns the results. Supports PostgreSQL, MySQL, SQLite, and MSSQL via SQLAlchemy. Only SELECT queries are allowed.
+Executes a SQL query against a user-provided database and returns the results. Supports PostgreSQL, MySQL, and MSSQL via SQLAlchemy. Optionally enable read-only mode for safety.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block connects to a database using a SQLAlchemy connection URL and executes a read-only SQL query. It validates that the query is a single SELECT statement (using sqlparse), enforces SSRF protections on the database host, and returns results as a list of row dictionaries.
+This block connects to a database using a SQLAlchemy connection URL and executes a SQL query. It validates that the query is a single statement (using sqlparse to prevent SQL injection via multi-statement attacks), enforces SSRF protections on the database host, and returns results as a list of row dictionaries.
 
-Supported database types: PostgreSQL, MySQL, SQLite, and MSSQL. The connection URL must match the selected database type (e.g., `postgresql://...` for PostgreSQL, `mysql://...` for MySQL).
+By default, all query types are allowed (SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, etc.). Enable the `read_only` option to restrict the session to read-only mode -- the database session will be set to read-only and the transaction is always rolled back.
+
+Supported database types: PostgreSQL, MySQL, and MSSQL. The connection URL must match the selected database type (e.g., `postgresql://...` for PostgreSQL, `mysql://...` for MySQL).
 <!-- END MANUAL -->
 
 ### Inputs
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| query | SQL SELECT query to execute | str | Yes |
+| query | SQL query to execute | str | Yes |
 | database_type | Type of database to connect to | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
+| read_only | When enabled, sets the session to read-only mode and rolls back the transaction | bool | No |
 | timeout | Query timeout in seconds (max 120) | int | No |
 | max_rows | Maximum number of rows to return (max 10000) | int | No |
 
@@ -269,14 +272,17 @@ Supported database types: PostgreSQL, MySQL, SQLite, and MSSQL. The connection U
 | results | Query results as a list of row dictionaries | List[Dict[str, Any]] |
 | columns | Column names from the query result | List[str] |
 | row_count | Number of rows returned | int |
+| affected_rows | Number of rows affected by a write query (INSERT/UPDATE/DELETE) | int |
 
 ### Possible use case
 <!-- MANUAL: use_case -->
 **Analytics Dashboards**: Query your PostgreSQL or MySQL analytics database to pull daily active user counts, revenue metrics, or funnel data directly into your workflow.
 
-**Data Validation**: Run SELECT queries against production databases to verify data integrity, check row counts, or compare values across tables.
+**Data Management**: Run INSERT, UPDATE, or DELETE queries to manage data in your databases as part of automated workflows.
 
-**Cross-Database Reporting**: Connect to multiple database types (PostgreSQL, MySQL, SQLite) within a single workflow to aggregate data from different sources.
+**Schema Management**: Create or modify database tables and indexes as part of provisioning or migration workflows.
+
+**Cross-Database Reporting**: Connect to multiple database types (PostgreSQL, MySQL) within a single workflow to aggregate data from different sources.
 <!-- END MANUAL -->
 
 ---
