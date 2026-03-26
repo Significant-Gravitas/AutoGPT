@@ -231,6 +231,35 @@ class TestFindLastAssistantEntry:
         assert len(prefix) == 1  # only the user entry
         assert len(tail) == 2  # both assistant entries (thinking + tool_use)
 
+    def test_no_message_id_preserves_last_assistant(self):
+        """When the last assistant entry has no message.id, it should still
+        be preserved in the tail (fail closed) rather than being compressed."""
+        lines = [
+            json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "u1",
+                    "parentUuid": "",
+                    "message": {"role": "user", "content": "Hello"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "a1",
+                    "parentUuid": "u1",
+                    "message": {
+                        "role": "assistant",
+                        "content": [THINKING_BLOCK, {"type": "text", "text": "Hi"}],
+                    },
+                }
+            ),
+        ]
+        transcript = "\n".join(lines) + "\n"
+        prefix, tail = _find_last_assistant_entry(transcript)
+        assert len(prefix) == 1  # user entry
+        assert len(tail) == 1  # assistant entry preserved
+
 
 # ---------------------------------------------------------------------------
 # _rechain_tail — UUID chain patching

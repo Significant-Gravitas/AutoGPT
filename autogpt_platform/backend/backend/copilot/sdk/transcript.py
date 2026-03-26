@@ -836,19 +836,26 @@ def _find_last_assistant_entry(
     """
     lines = [ln for ln in content.strip().split("\n") if ln.strip()]
 
-    # First pass: find the message.id of the last assistant entry.
+    # First pass: find the message.id and index of the last assistant entry.
     last_asst_msg_id: str | None = None
-    for line in reversed(lines):
-        entry = json.loads(line, fallback=None)
+    last_asst_idx: int | None = None
+    for i in range(len(lines) - 1, -1, -1):
+        entry = json.loads(lines[i], fallback=None)
         if not isinstance(entry, dict):
             continue
         msg = entry.get("message", {})
         if msg.get("role") == "assistant":
+            last_asst_idx = i
             last_asst_msg_id = msg.get("id")
             break
 
-    if last_asst_msg_id is None:
+    if last_asst_idx is None:
         return lines, []
+
+    # If the assistant entry has no message.id, fall back to preserving
+    # from that single entry onward — safer than compressing everything.
+    if last_asst_msg_id is None:
+        return lines[:last_asst_idx], lines[last_asst_idx:]
 
     # Second pass: find the first entry of this turn (same message.id).
     first_turn_idx: int | None = None
