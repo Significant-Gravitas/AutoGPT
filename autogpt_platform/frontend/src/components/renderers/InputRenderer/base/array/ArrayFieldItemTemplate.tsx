@@ -16,15 +16,13 @@ export default function ArrayFieldItemTemplate(
   );
 
   return (
-    <div>
-      <div className="mb-4 flex flex-col">
-        <div className="w-full">{children}</div>
-        {hasToolbar && (
-          <div className="-mt-2 flex justify-start gap-2">
-            <ArrayFieldItemButtonsTemplate {...buttonsProps} />
-          </div>
-        )}
-      </div>
+    <div className="mb-4 flex flex-col">
+      <div className="w-full">{children}</div>
+      {hasToolbar && (
+        <div className="-mt-2 flex justify-start gap-2">
+          <ArrayFieldItemButtonsTemplate {...buttonsProps} />
+        </div>
+      )}
     </div>
   );
 }
