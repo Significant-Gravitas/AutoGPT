@@ -174,8 +174,16 @@ def _validate_single_statement(
     # Parse the SQL using sqlparse for proper tokenization
     statements = sqlparse.parse(stripped)
 
-    # Filter out empty statements (e.g. from trailing semicolons)
-    statements = [s for s in statements if s.tokens and str(s).strip()]
+    # Filter out empty statements and comment-only statements
+    statements = [
+        s
+        for s in statements
+        if s.tokens
+        and str(s).strip()
+        and not all(
+            t.is_whitespace or t.ttype in sqlparse.tokens.Comment for t in s.flatten()
+        )
+    ]
 
     if not statements:
         return "Query is empty.", None
@@ -308,12 +316,12 @@ class SQLQueryBlock(Block):
                 ("row_count", 1),
             ],
             test_mock={
-                "execute_query": lambda *args, **kwargs: (
+                "execute_query": lambda *_args, **_kwargs: (
                     [{"test_col": 1}],
                     ["test_col"],
                     -1,
                 ),
-                "check_host_allowed": lambda *args, **kwargs: None,
+                "check_host_allowed": lambda *_args, **_kwargs: None,
             },
         )
 
@@ -397,7 +405,7 @@ class SQLQueryBlock(Block):
         input_data: Input,
         *,
         credentials: DatabaseCredentials,
-        **kwargs: Any,
+        **_kwargs: Any,
     ) -> BlockOutput:
         # Multi-statement prevention applies in both modes (security against injection)
         stmt_error, _ = _validate_single_statement(input_data.query)
@@ -438,6 +446,9 @@ class SQLQueryBlock(Block):
         # URL.create() accepts the raw password without URL-encoding,
         # so special characters like @, #, ! work correctly.
         drivername = _DATABASE_TYPE_TO_DRIVER[input_data.database_type]
+        port = input_data.port or _DATABASE_TYPE_DEFAULT_PORT.get(
+            input_data.database_type, input_data.port
+        )
         username = credentials.username.get_secret_value()
         password = credentials.password.get_secret_value()
         connection_url = URL.create(
@@ -445,7 +456,7 @@ class SQLQueryBlock(Block):
             username=username,
             password=password,
             host=host,
-            port=input_data.port,
+            port=port,
             database=input_data.database,
         )
         connection_string = connection_url.render_as_string(hide_password=False)

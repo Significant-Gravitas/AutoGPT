@@ -243,7 +243,7 @@ Use within_agent scope for agent-specific data or across_agents for data shared 
 ## SQL Query
 
 ### What it is
-Executes a SQL query against a user-provided database and returns the results. Supports PostgreSQL, MySQL, and MSSQL via SQLAlchemy. Optionally enable read-only mode for safety.
+Execute a SQL query. Read-only by default for safety -- disable to allow write operations. Supports PostgreSQL, MySQL, and MSSQL via SQLAlchemy.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -260,7 +260,10 @@ Supported database types: PostgreSQL, MySQL, and MSSQL. The connection URL must 
 |-------|-------------|------|----------|
 | query | SQL query to execute | str | Yes |
 | database_type | Type of database to connect to | "postgres" \| "mysql" \| "sqlite" \| "mssql" | No |
-| read_only | When enabled, sets the session to read-only mode and rolls back the transaction | bool | No |
+| host | Database host | str | Yes |
+| port | Database port (default: 5432 for PostgreSQL, 3306 for MySQL, 1433 for MSSQL) | int | No |
+| database | Database name | str | Yes |
+| read_only | When enabled (default), only SELECT queries are allowed and the database session is set to read-only mode. Disable to allow write operations (INSERT, UPDATE, DELETE, etc.). | bool | No |
 | timeout | Query timeout in seconds (max 120) | int | No |
 | max_rows | Maximum number of rows to return (max 10000) | int | No |
 
