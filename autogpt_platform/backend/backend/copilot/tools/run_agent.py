@@ -72,6 +72,7 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
     dry_run: bool
+    simulation_context: dict[str, Any] | None = None
 
     @field_validator(
         "username_agent_slug",
@@ -154,6 +155,15 @@ class RunAgentTool(BaseTool):
                 "dry_run": {
                     "type": "boolean",
                     "description": "Execute in preview mode.",
+                },
+                "simulation_context": {
+                    "type": "object",
+                    "description": (
+                        "Optional context hints for the dry-run simulator. "
+                        "Provide scenario details (e.g. expected emails, tickets, "
+                        "customer data) so the LLM produces realistic simulated "
+                        "outputs. Only used when dry_run=true."
+                    ),
                 },
             },
             "required": ["dry_run"],
@@ -285,6 +295,7 @@ class RunAgentTool(BaseTool):
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
                     dry_run=params.dry_run,
+                    simulation_context=params.simulation_context,
                 )
 
         except NotFoundError as e:
@@ -476,6 +487,7 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         dry_run: bool,
         wait_for_result: int = 0,
+        simulation_context: dict[str, Any] | None = None,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
@@ -500,6 +512,7 @@ class RunAgentTool(BaseTool):
             inputs=inputs,
             graph_credentials_inputs=graph_credentials,
             dry_run=dry_run,
+            simulation_context=simulation_context,
         )
 
         # Track successful run (dry runs don't count against the session limit)

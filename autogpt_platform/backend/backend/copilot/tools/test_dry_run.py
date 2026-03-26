@@ -541,6 +541,55 @@ def test_build_mcp_simulation_prompt_handles_empty_schema():
     assert "(none)" in system_prompt
 
 
+def test_build_mcp_simulation_prompt_includes_description():
+    """MCP prompt includes tool_description when present."""
+    input_data = {
+        "selected_tool": "search_tickets",
+        "tool_description": "Search Linear tickets by query. Returns matching issues.",
+        "tool_input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+        },
+        "tool_arguments": {"query": "login bug"},
+    }
+    system_prompt, _ = _build_mcp_simulation_prompt(input_data)
+    assert "Search Linear tickets" in system_prompt
+    assert "search_tickets" in system_prompt
+
+
+def test_simulation_context_injected_into_block_prompt():
+    """simulation_context appears in the block simulation prompt."""
+    mock_block = make_mock_block()
+    ctx = {"expected_emails": ["From: alice@example.com, Subject: Order delayed"]}
+    system_prompt, _ = build_simulation_prompt(
+        mock_block, {"query": "hi"}, simulation_context=ctx
+    )
+    assert "Simulation Context" in system_prompt
+    assert "Order delayed" in system_prompt
+
+
+def test_simulation_context_injected_into_mcp_prompt():
+    """simulation_context appears in the MCP simulation prompt."""
+    input_data = {
+        "selected_tool": "get_inbox",
+        "tool_input_schema": {},
+        "tool_arguments": {},
+    }
+    ctx = {"inbox_contents": [{"from": "bob@test.com", "subject": "Meeting tomorrow"}]}
+    system_prompt, _ = _build_mcp_simulation_prompt(input_data, simulation_context=ctx)
+    assert "Simulation Context" in system_prompt
+    assert "Meeting tomorrow" in system_prompt
+
+
+def test_simulation_context_none_adds_nothing():
+    """When simulation_context is None, no context section is added."""
+    mock_block = make_mock_block()
+    system_prompt, _ = build_simulation_prompt(
+        mock_block, {"query": "hi"}, simulation_context=None
+    )
+    assert "Simulation Context" not in system_prompt
+
+
 @pytest.mark.asyncio
 async def test_simulate_mcp_block_basic():
     """simulate_mcp_block returns result and error tuples."""
