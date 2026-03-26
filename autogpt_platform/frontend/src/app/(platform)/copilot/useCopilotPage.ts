@@ -54,6 +54,7 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isSyncing,
     isUserStoppingRef,
   } = useCopilotStream({
     sessionId,
@@ -349,6 +350,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
