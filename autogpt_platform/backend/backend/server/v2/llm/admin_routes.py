@@ -1,10 +1,11 @@
-"""Admin write API for LLM registry management.
+"""Admin API for LLM registry management.
 
-Provides endpoints for creating, updating, and deleting:
-- Models
-- Providers
+Provides endpoints for:
+- Reading creators (GET)
+- Creating, updating, and deleting models
+- Creating, updating, and deleting providers
 
-All endpoints require admin authentication and refresh the registry cache after mutations.
+All endpoints require admin authentication. Mutations refresh the registry cache.
 """
 
 import logging
@@ -64,6 +65,21 @@ def _map_model_response(model: Any) -> dict[str, Any]:
         "metadata": dict(model.metadata or {}),
         "created_at": model.createdAt.isoformat() if model.createdAt else None,
         "updated_at": model.updatedAt.isoformat() if model.updatedAt else None,
+    }
+
+
+def _map_creator_response(creator: Any) -> dict[str, Any]:
+    """Map Prisma creator model to response dict."""
+    return {
+        "id": creator.id,
+        "name": creator.name,
+        "display_name": creator.displayName,
+        "description": creator.description,
+        "website_url": creator.websiteUrl,
+        "logo_url": creator.logoUrl,
+        "metadata": dict(creator.metadata or {}),
+        "created_at": creator.createdAt.isoformat() if creator.createdAt else None,
+        "updated_at": creator.updatedAt.isoformat() if creator.updatedAt else None,
     }
 
 
@@ -307,3 +323,25 @@ async def delete_provider(
     except Exception as e:
         logger.exception(f"Failed to delete provider: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete provider")
+
+
+@router.get(
+    "/llm/creators",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def list_creators() -> dict[str, Any]:
+    """List all LLM model creators.
+
+    Requires admin authentication.
+    """
+    try:
+        import prisma.models
+
+        creators = await prisma.models.LlmModelCreator.prisma().find_many(
+            order={"name": "asc"}
+        )
+        logger.info(f"Retrieved {len(creators)} creators")
+        return {"creators": [_map_creator_response(c) for c in creators]}
+    except Exception as e:
+        logger.exception(f"Failed to list creators: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list creators")

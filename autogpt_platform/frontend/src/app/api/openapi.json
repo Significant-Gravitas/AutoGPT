@@ -4603,6 +4603,32 @@
         }
       }
     },
+    "/api/llm/creators": {
+      "get": {
+        "tags": ["v2", "llm", "admin"],
+        "summary": "List Creators",
+        "description": "List all LLM model creators.\n\nRequires admin authentication.",
+        "operationId": "getV2ListCreators",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Getv2Listcreators"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/llm/models": {
       "get": {
         "tags": ["v2", "llm", "llm"],
