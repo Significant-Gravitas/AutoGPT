@@ -274,9 +274,19 @@ class SQLQueryBlock(Block):
                 "execute_query": lambda *args, **kwargs: (
                     [{"test_col": 1}],
                     ["test_col"],
-                )
+                ),
+                "check_host_allowed": lambda *args, **kwargs: None,
             },
         )
+
+    @staticmethod
+    async def check_host_allowed(host: str) -> None:
+        """Validate that the given host is not a private/blocked address.
+
+        Raises ValueError or OSError if the host is blocked.
+        Extracted as a method so it can be mocked during block tests.
+        """
+        await resolve_and_check_blocked(host)
 
     @staticmethod
     def execute_query(
@@ -376,7 +386,7 @@ class SQLQueryBlock(Block):
                 return
 
             try:
-                await resolve_and_check_blocked(host)
+                await self.check_host_allowed(host)
             except (ValueError, OSError) as e:
                 yield "error", f"Blocked host: {str(e).strip()}"
                 return
