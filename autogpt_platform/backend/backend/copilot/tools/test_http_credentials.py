@@ -14,7 +14,11 @@ import pytest
 from pydantic import SecretStr
 
 from backend.blocks.http import SendAuthenticatedWebRequestBlock
-from backend.data.model import CredentialsFieldInfo, HostScopedCredentials
+from backend.data.model import (
+    CredentialsFieldInfo,
+    CredentialsType,
+    HostScopedCredentials,
+)
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
@@ -24,6 +28,9 @@ from .run_block import RunBlockTool
 from .utils import find_matching_credential
 
 _TEST_USER_ID = "test-user-http-cred"
+
+# Properly typed constant to avoid type: ignore on CredentialsFieldInfo construction.
+_HOST_SCOPED_TYPES: frozenset[CredentialsType] = frozenset(["host_scoped"])
 
 # ---------------------------------------------------------------------------
 # _resolve_discriminated_credentials tests
@@ -114,7 +121,7 @@ class TestFindMatchingHostScopedCredential:
     ) -> CredentialsFieldInfo:
         return CredentialsFieldInfo(
             credentials_provider=frozenset([ProviderName.HTTP]),
-            credentials_types=frozenset(["host_scoped"]),  # type: ignore
+            credentials_types=_HOST_SCOPED_TYPES,
             credentials_scopes=None,
             discriminator="url",
             discriminator_values=discriminator_values or set(),

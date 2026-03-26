@@ -632,9 +632,8 @@ def _resolve_discriminated_credentials(
                     effective_field_info = field_info.model_copy(deep=True)
                     effective_field_info.discriminator_values.add(discriminator_value)
                     logger.debug(
-                        "Added discriminator value for host matching on %s: %s",
+                        "Added discriminator value for host matching on %s",
                         field_name,
-                        discriminator_value,
                     )
 
         resolved[field_name] = effective_field_info
