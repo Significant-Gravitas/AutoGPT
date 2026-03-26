@@ -116,14 +116,11 @@ export function RateLimitManager() {
           title: "No results",
           description: "No users found matching your search.",
         });
-      } else if (users.length === 1) {
-        // Auto-select if only one match
-        setSelectedUser(users[0]);
-        setSearchResults(users);
-        await fetchRateLimit(users[0].user_id);
-        return;
       }
 
+      // Always show the result list so the user explicitly picks a match.
+      // The history endpoint paginates transactions, not users, so a single
+      // page may not be authoritative -- avoid auto-selecting.
       setSearchResults(users);
     } catch (error) {
       console.error("Error searching users:", error);
@@ -221,11 +218,12 @@ export function RateLimitManager() {
         </p>
       </div>
 
-      {/* User selection list when multiple results are found */}
-      {searchResults.length > 1 && !selectedUser && (
+      {/* User selection list -- always require explicit selection */}
+      {searchResults.length >= 1 && !selectedUser && (
         <div className="rounded-md border bg-white p-4 dark:bg-gray-900">
           <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Select a user ({searchResults.length} results)
+            Select a user ({searchResults.length}{" "}
+            {searchResults.length === 1 ? "result" : "results"})
           </h3>
           <ul className="divide-y">
             {searchResults.map((user) => (
@@ -246,7 +244,7 @@ export function RateLimitManager() {
       )}
 
       {/* Show selected user */}
-      {selectedUser && searchResults.length > 1 && (
+      {selectedUser && searchResults.length >= 1 && (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm dark:border-blue-800 dark:bg-blue-950">
           Selected:{" "}
           <span className="font-medium">{selectedUser.user_email}</span>
