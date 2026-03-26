@@ -31,7 +31,7 @@ export function CopyButton({ text }: Props) {
 
   return (
     <MessageAction
-      tooltip={copied ? "Copied!" : "Copy to clipboard"}
+      tooltip={copied ? "Copied!" : "Copy"}
       onClick={handleCopy}
     >
       {copied ? <Check size={16} /> : <Copy size={16} />}
