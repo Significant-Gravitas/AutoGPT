@@ -163,7 +163,7 @@ class TestSerializeValue:
 
 
 class TestSanitizeError:
-    """Tests for _sanitize_error credential scrubbing."""
+    """Tests for _sanitize_error credential and infrastructure scrubbing."""
 
     def test_connection_string_replaced(self):
         conn = "postgresql://user:secret@host:5432/db"
@@ -199,6 +199,74 @@ class TestSanitizeError:
         assert "s3cret" not in result
         assert "<connection_string>" in result
 
+    def test_hostname_scrubbed(self):
+        """Database hostname must be replaced with <host>."""
+        conn = "postgresql://user:pass@52.73.47.72:5432/db"
+        error = (
+            'connection to server at "db.adfjtextkuilwuhzdjpf.supabase.co" '
+            "(52.73.47.72), port 5432 failed: FATAL: "
+            'password authentication failed for user "postgres"'
+        )
+        result = _sanitize_error(
+            error, conn, host="52.73.47.72", username="postgres", port=5432
+        )
+        assert "52.73.47.72" not in result
+        assert "postgres" not in result
+        assert "5432" not in result
+        assert "<host>" in result
+        assert "<user>" in result
+        assert "password authentication failed" in result
+
+    def test_ip_addresses_scrubbed(self):
+        """Any IPv4 address in the error must be replaced with <ip>."""
+        conn = "postgresql://user:pass@10.0.0.5:5432/db"
+        error = "could not connect to 10.0.0.5 (192.168.1.100): Connection refused"
+        result = _sanitize_error(error, conn, host="10.0.0.5")
+        assert "10.0.0.5" not in result
+        assert "192.168.1.100" not in result
+        assert "<host>" in result or "<ip>" in result
+
+    def test_username_scrubbed(self):
+        """Database username must be replaced with <user>."""
+        conn = "postgresql://analytics_ro:pass@1.2.3.4:5432/db"
+        error = 'FATAL: role "analytics_ro" does not exist'
+        result = _sanitize_error(error, conn, username="analytics_ro")
+        assert "analytics_ro" not in result
+        assert "<user>" in result
+
+    def test_port_scrubbed(self):
+        """Database port must be replaced with <port>."""
+        conn = "postgresql://user:pass@1.2.3.4:6543/db"
+        error = "could not connect to <host> (<ip>), port 6543 failed"
+        result = _sanitize_error(error, conn, port=6543)
+        assert "6543" not in result
+        assert "<port>" in result
+
+    def test_realistic_postgres_error_fully_sanitized(self):
+        """Full realistic Postgres connection error must not leak any infra details."""
+        conn = "postgresql://postgres:mypass@52.73.47.72:5432/postgres"
+        error = (
+            "(psycopg2.OperationalError) connection to server at "
+            '"db.adfjtextkuilwuhzdjpf.supabase.co" (52.73.47.72), '
+            "port 5432 failed: FATAL: "
+            'password authentication failed for user "postgres"'
+        )
+        result = _sanitize_error(
+            error,
+            conn,
+            host="52.73.47.72",
+            original_host="db.adfjtextkuilwuhzdjpf.supabase.co",
+            username="postgres",
+            port=5432,
+        )
+        assert "52.73.47.72" not in result
+        assert "adfjtextkuilwuhzdjpf" not in result
+        assert "supabase" not in result
+        assert "postgres" not in result
+        assert "5432" not in result
+        # The actual error type is preserved for the LLM
+        assert "password authentication failed" in result
+
 
 # ---------------------------------------------------------------------------
 # Helpers for run()-level integration tests
@@ -231,7 +299,7 @@ def _make_input(
     return SQLQueryBlock.Input(
         query=query,
         database_type=database_type,
-        host=host,
+        host=SecretStr(host),
         port=port,
         database=database,
         read_only=read_only,
@@ -386,6 +454,31 @@ class TestSQLQueryBlockRunErrorHandling:
         assert "error" in outputs
         assert "supersecret" not in outputs["error"]
         assert "connect" in str(outputs["error"]).lower()
+
+    async def test_connection_error_no_hostname_or_ip_leak(self):
+        """Connection error output must not leak hostname, IP, username, or port."""
+        block = SQLQueryBlock()
+        creds = _make_credentials(username="postgres", password="secret")
+        input_data = _make_input(
+            creds, host="db.prod.supabase.co", port=5432, database="mydb"
+        )
+        block.check_host_allowed = AsyncMock(return_value=["52.73.47.72"])  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
+            OperationalError(
+                'connection to server at "db.prod.supabase.co" (52.73.47.72), '
+                "port 5432 failed: FATAL: "
+                'password authentication failed for user "postgres"',
+                params=None,
+                orig=Exception("auth failed"),
+            )
+        )
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        error = outputs["error"]
+        assert "db.prod.supabase.co" not in error
+        assert "52.73.47.72" not in error
+        assert '"postgres"' not in error
+        assert "password authentication failed" in error
 
     async def test_query_timeout_clean_error(self):
         """Timeout yields clean user-facing message."""
@@ -654,7 +747,7 @@ class TestSQLQueryBlockReadOnlyMode:
         input_data = SQLQueryBlock.Input(
             query="SELECT 1",
             database_type=DatabaseType.POSTGRES,
-            host="db.example.com",
+            host=SecretStr("db.example.com"),
             port=5432,
             database="db",
             timeout=30,
