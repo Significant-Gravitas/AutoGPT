@@ -333,12 +333,109 @@ def test_run_block_tool_dry_run_calls_execute():
 
 
 @pytest.mark.asyncio
+async def test_execute_block_dry_run_filters_empty_error_pin():
+    """Dry-run should strip the empty 'error' pin from outputs.
+
+    The simulator always includes an 'error' pin set to '' (empty string) for
+    blocks that define one. This confuses the frontend (renders a misleading
+    'error' section) and the LLM (misinterprets as failure). Filtering it out
+    ensures only meaningful output pins are included in the response.
+    """
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", "simulated output"
+        yield "error", ""
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.success is True
+    assert response.is_dry_run is True
+    # The empty "error" pin should be filtered out
+    assert "error" not in response.outputs
+    assert response.outputs == {"result": ["simulated output"]}
+
+
+@pytest.mark.asyncio
+async def test_execute_block_dry_run_keeps_nonempty_error_pin():
+    """Dry-run should keep the 'error' pin when it contains a real error message."""
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", ""
+        yield "error", "API rate limit exceeded"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.success is True
+    # Non-empty error should be preserved
+    assert "error" in response.outputs
+    assert response.outputs["error"] == ["API rate limit exceeded"]
+
+
+@pytest.mark.asyncio
+async def test_execute_block_dry_run_message_includes_completed_status():
+    """Dry-run message should clearly indicate COMPLETED status."""
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", "simulated"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert "COMPLETED" in response.message
+    assert "[DRY RUN]" in response.message
+
+
+@pytest.mark.asyncio
 async def test_execute_block_dry_run_simulator_error_returns_error_response():
     """When simulate_block yields a SIMULATOR ERROR tuple, execute_block returns ErrorResponse."""
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
-        yield "error", "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key)."
+        yield (
+            "error",
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
+        )
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error

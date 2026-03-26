@@ -115,6 +115,14 @@ function OutputKeySection({
 }
 
 export function BlockOutputCard({ output }: Props) {
+  // Filter out empty "error" pins from simulated outputs.  The simulator
+  // always includes an "error" pin set to "" (meaning "no error"), which
+  // is confusing when rendered as an output section in the UI.
+  const displayOutputs = Object.entries(output.outputs ?? {}).filter(
+    ([key, items]) =>
+      !(key === "error" && items.every((v) => v === "" || v == null)),
+  );
+
   return (
     <ContentGrid>
       {output.is_dry_run && (
@@ -125,7 +133,7 @@ export function BlockOutputCard({ output }: Props) {
       )}
       <ContentMessage>{output.message}</ContentMessage>
 
-      {Object.entries(output.outputs ?? {}).map(([key, items]) => (
+      {displayOutputs.map(([key, items]) => (
         <OutputKeySection key={key} outputKey={key} items={items} />
       ))}
     </ContentGrid>

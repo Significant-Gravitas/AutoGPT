@@ -114,14 +114,27 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
+            # Strip empty "error" pins that the simulator always includes for
+            # blocks with an error output.  An empty error means "no error" —
+            # leaving it in the response confuses both the frontend (renders a
+            # misleading "error" output section) and the LLM (interprets the
+            # presence of "error" as a failure, reporting INCOMPLETE status).
+            clean_outputs = {
+                k: v
+                for k, v in outputs.items()
+                if not (k == "error" and all(val == "" for val in v))
+            }
+
             return BlockOutputResponse(
                 message=(
                     f"[DRY RUN] Block '{block.name}' simulated successfully "
-                    "— no real execution occurred."
+                    "(no real API calls or side effects occurred). "
+                    "Status: COMPLETED."
                 ),
                 block_id=block_id,
                 block_name=block.name,
-                outputs=dict(outputs),
+                outputs=clean_outputs,
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
@@ -537,7 +550,7 @@ async def check_hitl_review(
         )
 
     synthetic_node_exec_id = (
-        f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}" f"{uuid.uuid4().hex[:8]}"
+        f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"
     )
 
     review_context = ExecutionContext(
