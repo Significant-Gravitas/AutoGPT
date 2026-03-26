@@ -438,14 +438,13 @@ async def get_copilot_usage(
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
-    status = await get_usage_status(
+    return await get_usage_status(
         user_id=user_id,
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
+        tier=tier,
     )
-    status.tier = tier
-    return status
 
 
 class RateLimitResetResponse(BaseModel):

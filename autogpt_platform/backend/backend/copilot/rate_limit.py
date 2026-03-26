@@ -93,6 +93,7 @@ async def get_usage_status(
     daily_token_limit: int,
     weekly_token_limit: int,
     rate_limit_reset_cost: int = 0,
+    tier: RateLimitTier = DEFAULT_TIER,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -101,6 +102,7 @@ async def get_usage_status(
         daily_token_limit: Max tokens per day (0 = unlimited).
         weekly_token_limit: Max tokens per week (0 = unlimited).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
+        tier: The user's rate-limit tier (included in the response).
 
     Returns:
         CoPilotUsageStatus with current usage and limits.
@@ -130,6 +132,7 @@ async def get_usage_status(
             limit=weekly_token_limit,
             resets_at=_weekly_reset_time(now=now),
         ),
+        tier=tier,
         reset_cost=rate_limit_reset_cost,
     )
 
