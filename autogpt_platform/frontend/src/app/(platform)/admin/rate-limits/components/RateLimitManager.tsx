@@ -1,32 +1,94 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/__legacy__/ui/input";
 import { Label } from "@/components/__legacy__/ui/label";
-import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
+import type { UserTransaction } from "@/app/api/__generated__/models/userTransaction";
 import {
   getV2GetUserRateLimit,
+  getV2GetAllUsersHistory,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
+import { AdminUserSearch } from "../../components/AdminUserSearch";
 import { RateLimitDisplay } from "./RateLimitDisplay";
+
+interface UserOption {
+  user_id: string;
+  user_email: string;
+}
 
 export function RateLimitManager() {
   const { toast } = useToast();
-  const [userIdInput, setUserIdInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingRateLimit, setIsLoadingRateLimit] = useState(false);
+  const [searchResults, setSearchResults] = useState<UserOption[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserOption | null>(null);
   const [rateLimitData, setRateLimitData] =
     useState<UserRateLimitResponse | null>(null);
 
-  async function handleLookup() {
-    const trimmed = userIdInput.trim();
+  async function handleSearch(query: string) {
+    const trimmed = query.trim();
     if (!trimmed) return;
 
-    setIsLoading(true);
+    setIsSearching(true);
+    setSearchResults([]);
+    setSelectedUser(null);
+    setRateLimitData(null);
+
     try {
-      const response = await getV2GetUserRateLimit({ user_id: trimmed });
+      const response = await getV2GetAllUsersHistory({
+        search: trimmed,
+        page: 1,
+        page_size: 50,
+      });
+      if (response.status !== 200) {
+        throw new Error("Failed to search users");
+      }
+
+      // Deduplicate by user_id to get unique users
+      const seen = new Set<string>();
+      const users: UserOption[] = [];
+      for (const tx of response.data.history as UserTransaction[]) {
+        if (!seen.has(tx.user_id)) {
+          seen.add(tx.user_id);
+          users.push({
+            user_id: tx.user_id,
+            user_email: String(tx.user_email ?? tx.user_id),
+          });
+        }
+      }
+
+      if (users.length === 0) {
+        toast({
+          title: "No results",
+          description: "No users found matching your search.",
+        });
+      } else if (users.length === 1) {
+        // Auto-select if only one match
+        setSelectedUser(users[0]);
+        setSearchResults(users);
+        await fetchRateLimit(users[0].user_id);
+        return;
+      }
+
+      setSearchResults(users);
+    } catch (error) {
+      console.error("Error searching users:", error);
+      toast({
+        title: "Error",
+        description: "Failed to search users.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  async function fetchRateLimit(userId: string) {
+    setIsLoadingRateLimit(true);
+    try {
+      const response = await getV2GetUserRateLimit({ user_id: userId });
       if (response.status !== 200) {
         throw new Error("Failed to fetch rate limit");
       }
@@ -35,13 +97,19 @@ export function RateLimitManager() {
       console.error("Error fetching rate limit:", error);
       toast({
         title: "Error",
-        description: "Failed to fetch user rate limit. Check the user ID.",
+        description: "Failed to fetch user rate limit.",
         variant: "destructive",
       });
       setRateLimitData(null);
     } finally {
-      setIsLoading(false);
+      setIsLoadingRateLimit(false);
     }
+  }
+
+  async function handleSelectUser(user: UserOption) {
+    setSelectedUser(user);
+    setRateLimitData(null);
+    await fetchRateLimit(user.user_id);
   }
 
   async function handleReset(resetWeekly: boolean) {
@@ -75,26 +143,54 @@ export function RateLimitManager() {
   return (
     <div className="space-y-6">
       <div className="rounded-md border bg-white p-6 dark:bg-gray-900">
-        <Label htmlFor="userId" className="mb-2 block text-sm font-medium">
-          User ID
-        </Label>
-        <div className="flex items-center gap-2">
-          <Input
-            id="userId"
-            placeholder="Enter user ID to look up rate limits..."
-            value={userIdInput}
-            onChange={(e) => setUserIdInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleLookup()}
-          />
-          <Button
-            variant="outline"
-            onClick={handleLookup}
-            disabled={isLoading || !userIdInput.trim()}
-          >
-            {isLoading ? "Loading..." : <MagnifyingGlass size={16} />}
-          </Button>
-        </div>
+        <Label className="mb-2 block text-sm font-medium">Search User</Label>
+        <AdminUserSearch
+          onSearch={handleSearch}
+          placeholder="Search by name or email to look up rate limits..."
+          isLoading={isSearching}
+        />
       </div>
+
+      {/* User selection list when multiple results are found */}
+      {searchResults.length > 1 && !selectedUser && (
+        <div className="rounded-md border bg-white p-4 dark:bg-gray-900">
+          <h3 className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+            Select a user ({searchResults.length} results)
+          </h3>
+          <ul className="divide-y">
+            {searchResults.map((user) => (
+              <li key={user.user_id}>
+                <button
+                  className="w-full px-2 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+                  onClick={() => handleSelectUser(user)}
+                >
+                  <span className="font-medium">{user.user_email}</span>
+                  <span className="ml-2 text-xs text-gray-500">
+                    {user.user_id}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Show selected user */}
+      {selectedUser && searchResults.length > 1 && (
+        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm dark:border-blue-800 dark:bg-blue-950">
+          Selected:{" "}
+          <span className="font-medium">{selectedUser.user_email}</span>
+          <span className="ml-2 text-xs text-gray-500">
+            {selectedUser.user_id}
+          </span>
+        </div>
+      )}
+
+      {isLoadingRateLimit && (
+        <div className="py-4 text-center text-sm text-gray-500">
+          Loading rate limits...
+        </div>
+      )}
 
       {rateLimitData && (
         <RateLimitDisplay data={rateLimitData} onReset={handleReset} />
