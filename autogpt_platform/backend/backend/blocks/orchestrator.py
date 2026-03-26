@@ -658,7 +658,6 @@ class OrchestratorBlock(Block):
         # Exclude linked fields, private fields, agent meta fields, and
         # credential/auth fields to avoid leaking sensitive data.
         linked_fields = {link.sink_name for link in links}
-        _skip = _SENSITIVE_FIELD_NAMES
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
             {
@@ -667,7 +666,7 @@ class OrchestratorBlock(Block):
                 if k not in linked_fields
                 and k not in ("graph_id", "graph_version", "input_schema")
                 and not k.startswith("_")
-                and k.lower() not in _skip
+                and k.lower() not in _SENSITIVE_FIELD_NAMES
             }
             if isinstance(defaults, dict)
             else {}
