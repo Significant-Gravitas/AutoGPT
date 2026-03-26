@@ -77,7 +77,7 @@ async def reset_user_rate_limit(
     try:
         await reset_user_usage(user_id, reset_weekly=reset_weekly)
     except Exception as e:
-        logger.exception(f"Failed to reset user usage: {e}")
+        logger.exception("Failed to reset user usage")
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
 
     daily_limit, weekly_limit = await get_global_rate_limits(
