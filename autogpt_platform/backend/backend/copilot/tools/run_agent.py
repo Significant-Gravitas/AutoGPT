@@ -108,7 +108,11 @@ class RunAgentTool(BaseTool):
         return (
             "Run or schedule an agent. Automatically checks inputs and credentials. "
             "Identify by username_agent_slug ('user/agent') or library_agent_id. "
-            "For scheduling, provide schedule_name + cron."
+            "For scheduling, provide schedule_name + cron. "
+            "Use dry_run=True with wait_for_result=120 to test agent wiring after "
+            "create_agent or edit_agent — this simulates execution without real API calls, "
+            "credentials, or charges. Inspect the output for errors or unexpected values, "
+            "then fix with edit_agent if needed."
         )
 
     @property
@@ -153,7 +157,16 @@ class RunAgentTool(BaseTool):
                 },
                 "dry_run": {
                     "type": "boolean",
-                    "description": "Execute in preview mode.",
+                    "description": (
+                        "When true, simulates the entire agent execution using an LLM "
+                        "for each block — no real API calls, no credentials needed, "
+                        "no credits charged. ALWAYS use this after create_agent or "
+                        "edit_agent to verify the agent works correctly before telling "
+                        "the user it is ready. Set wait_for_result=120 to get the "
+                        "output inline. Inspect the results for errors or unexpected "
+                        "values, then fix with edit_agent and re-test if needed (max "
+                        "3 iterations)."
+                    ),
                 },
             },
             "required": ["dry_run"],
