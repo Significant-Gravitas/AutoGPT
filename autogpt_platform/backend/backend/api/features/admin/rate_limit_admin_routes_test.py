@@ -53,17 +53,12 @@ def test_get_rate_limit(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, RateLimitTier.STANDARD),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
         new_callable=AsyncMock,
         return_value=_mock_usage_status(),
-    )
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_user_tier",
-        new_callable=AsyncMock,
-        return_value=RateLimitTier.STANDARD,
     )
 
     response = client.get("/admin/rate_limit", params={"user_id": target_user_id})
@@ -96,17 +91,12 @@ def test_reset_user_usage_daily_only(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, RateLimitTier.STANDARD),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
         new_callable=AsyncMock,
         return_value=_mock_usage_status(daily_used=0, weekly_used=3_000_000),
-    )
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_user_tier",
-        new_callable=AsyncMock,
-        return_value=RateLimitTier.STANDARD,
     )
 
     response = client.post(
@@ -142,17 +132,12 @@ def test_reset_user_usage_daily_and_weekly(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, RateLimitTier.STANDARD),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
         new_callable=AsyncMock,
         return_value=_mock_usage_status(daily_used=0, weekly_used=0),
-    )
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_user_tier",
-        new_callable=AsyncMock,
-        return_value=RateLimitTier.STANDARD,
     )
 
     response = client.post(
@@ -263,6 +248,27 @@ def test_set_user_tier_invalid_tier(
     )
 
     assert response.status_code == 422
+
+
+def test_set_user_tier_user_not_found(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that setting tier for nonexistent user returns 404."""
+    import prisma.errors
+
+    mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+        side_effect=prisma.errors.RecordNotFoundError({"error": "Record not found"}),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "pro"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_set_user_tier_db_failure(

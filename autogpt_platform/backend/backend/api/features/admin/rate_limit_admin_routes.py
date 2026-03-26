@@ -2,6 +2,7 @@
 
 import logging
 
+import prisma.errors
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
 from pydantic import BaseModel
@@ -58,11 +59,10 @@ async def get_user_rate_limit(
     """Get a user's current usage and effective rate limits. Admin-only."""
     logger.info(f"Admin {admin_user_id} checking rate limit for user {user_id}")
 
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
-    tier = await get_user_tier(user_id)
 
     return UserRateLimitResponse(
         user_id=user_id,
@@ -96,11 +96,10 @@ async def reset_user_rate_limit(
         logger.exception("Failed to reset user usage")
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
 
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit)
-    tier = await get_user_tier(user_id)
 
     return UserRateLimitResponse(
         user_id=user_id,
@@ -143,6 +142,10 @@ async def set_user_rate_limit_tier(
     )
     try:
         await set_user_tier(request.user_id, request.tier)
+    except prisma.errors.RecordNotFoundError as e:
+        raise HTTPException(
+            status_code=404, detail=f"User {request.user_id} not found"
+        ) from e
     except Exception as e:
         logger.exception("Failed to set user tier")
         raise HTTPException(status_code=500, detail="Failed to set tier") from e

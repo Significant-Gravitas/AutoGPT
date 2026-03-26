@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -257,8 +258,12 @@ async def record_token_usage(
         )
 
 
+@cached(maxsize=1000, ttl_seconds=300)
 async def get_user_tier(user_id: str) -> RateLimitTier:
     """Look up the user's rate-limit tier from the database.
+
+    Results are cached for 5 minutes to avoid a DB round-trip on every
+    rate-limit check (called on every chat turn).
 
     Falls back to ``DEFAULT_TIER`` when the user record is missing,
     the field is ``None``, or the stored value is unrecognised.
@@ -267,7 +272,7 @@ async def get_user_tier(user_id: str) -> RateLimitTier:
         user = await PrismaUser.prisma().find_unique(where={"id": user_id})
         if user and user.rateLimitTier:
             return RateLimitTier(user.rateLimitTier)
-    except (ValueError, Exception) as exc:
+    except Exception as exc:
         logger.warning(
             "Failed to resolve rate-limit tier for user %s, defaulting to %s: %s",
             user_id[:8],
@@ -278,7 +283,11 @@ async def get_user_tier(user_id: str) -> RateLimitTier:
 
 
 async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
-    """Persist the user's rate-limit tier to the database."""
+    """Persist the user's rate-limit tier to the database.
+
+    Raises:
+        prisma.errors.RecordNotFoundError: If the user does not exist.
+    """
     await PrismaUser.prisma().update(
         where={"id": user_id},
         data={"rateLimitTier": tier.value},
@@ -289,7 +298,7 @@ async def get_global_rate_limits(
     user_id: str,
     config_daily: int,
     config_weekly: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, RateLimitTier]:
     """Resolve global rate limits from LaunchDarkly, falling back to config.
 
     The base limits (from LD or config) are multiplied by the user's
@@ -302,7 +311,7 @@ async def get_global_rate_limits(
         config_weekly: Fallback weekly limit from ChatConfig.
 
     Returns:
-        (daily_token_limit, weekly_token_limit) tuple.
+        (daily_token_limit, weekly_token_limit, tier) 3-tuple.
     """
     # Lazy import to avoid circular dependency:
     # rate_limit -> feature_flag -> settings -> ... -> rate_limit
@@ -332,7 +341,7 @@ async def get_global_rate_limits(
         daily = daily * multiplier
         weekly = weekly * multiplier
 
-    return daily, weekly
+    return daily, weekly, tier
 
 
 async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:

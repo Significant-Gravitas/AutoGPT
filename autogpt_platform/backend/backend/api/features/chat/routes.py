@@ -33,7 +33,6 @@ from backend.copilot.rate_limit import (
     check_rate_limit,
     get_global_rate_limits,
     get_usage_status,
-    get_user_tier,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -427,10 +426,9 @@ async def get_copilot_usage(
     Global defaults sourced from LaunchDarkly (falling back to config).
     Includes the user's rate-limit tier.
     """
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
-    tier = await get_user_tier(user_id)
     status = await get_usage_status(
         user_id=user_id,
         daily_token_limit=daily_limit,
@@ -540,7 +538,7 @@ async def stream_chat_post(
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
-            daily_limit, weekly_limit = await get_global_rate_limits(
+            daily_limit, weekly_limit, _tier = await get_global_rate_limits(
                 user_id, config.daily_token_limit, config.weekly_token_limit
             )
             await check_rate_limit(

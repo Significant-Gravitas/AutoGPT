@@ -384,6 +384,11 @@ class TestRateLimitTier:
 
 
 class TestGetUserTier:
+    @pytest.fixture(autouse=True)
+    def _clear_tier_cache(self):
+        """Clear the get_user_tier cache before each test."""
+        get_user_tier.cache_clear()
+
     @pytest.mark.asyncio
     async def test_returns_tier_from_db(self):
         """Should return the tier stored in the user record."""
@@ -498,10 +503,13 @@ class TestGetGlobalRateLimitsWithTiers:
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
-            daily, weekly = await get_global_rate_limits(_USER, 2_500_000, 12_500_000)
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 2_500_000, 12_500_000
+            )
 
         assert daily == 2_500_000
         assert weekly == 12_500_000
+        assert tier == RateLimitTier.STANDARD
 
     @pytest.mark.asyncio
     async def test_pro_tier_5x_multiplier(self):
@@ -517,10 +525,13 @@ class TestGetGlobalRateLimitsWithTiers:
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
-            daily, weekly = await get_global_rate_limits(_USER, 2_500_000, 12_500_000)
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 2_500_000, 12_500_000
+            )
 
         assert daily == 12_500_000
         assert weekly == 62_500_000
+        assert tier == RateLimitTier.PRO
 
     @pytest.mark.asyncio
     async def test_max_tier_25x_multiplier(self):
@@ -536,7 +547,10 @@ class TestGetGlobalRateLimitsWithTiers:
                 side_effect=self._ld_side_effect(2_500_000, 12_500_000),
             ),
         ):
-            daily, weekly = await get_global_rate_limits(_USER, 2_500_000, 12_500_000)
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 2_500_000, 12_500_000
+            )
 
         assert daily == 62_500_000
         assert weekly == 312_500_000
+        assert tier == RateLimitTier.MAX
