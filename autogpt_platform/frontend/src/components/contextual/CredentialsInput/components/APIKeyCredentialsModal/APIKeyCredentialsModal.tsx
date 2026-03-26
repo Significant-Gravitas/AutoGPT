@@ -32,6 +32,7 @@ export function APIKeyCredentialsModal({
     isLoading,
     isSubmitting,
     supportsApiKey,
+    provider,
     providerName,
     schemaDescription,
     onSubmit,
@@ -41,9 +42,23 @@ export function APIKeyCredentialsModal({
     return null;
   }
 
+  // Use provider-specific labels for non-API-key secrets (e.g. database URLs)
+  const isDatabase = provider === "database";
+  const dialogTitle = isDatabase
+    ? `Add new credential for ${providerName ?? ""}`
+    : `Add new API key for ${providerName ?? ""}`;
+  const secretLabel = isDatabase ? "Connection URL" : "API Key";
+  const namePlaceholder = isDatabase
+    ? "Enter a name for this credential..."
+    : "Enter a name for this API Key...";
+  const secretPlaceholder = isDatabase
+    ? "Enter connection URL..."
+    : "Enter API Key...";
+  const submitLabel = isDatabase ? "Add Credential" : "Add API Key";
+
   return (
     <Dialog
-      title={`Add new API key for ${providerName ?? ""}`}
+      title={dialogTitle}
       controlled={{
         isOpen: open,
         set: (isOpen) => {
@@ -73,7 +88,7 @@ export function APIKeyCredentialsModal({
                   id="title"
                   label="Name"
                   type="text"
-                  placeholder="Enter a name for this API Key..."
+                  placeholder={namePlaceholder}
                   {...field}
                 />
               )}
@@ -85,9 +100,9 @@ export function APIKeyCredentialsModal({
                 <>
                   <Input
                     id="apiKey"
-                    label="API Key"
+                    label={secretLabel}
                     type="password"
-                    placeholder="Enter API Key..."
+                    placeholder={secretPlaceholder}
                     hint={
                       schema.credentials_scopes ? (
                         <FormDescription>
@@ -145,7 +160,7 @@ export function APIKeyCredentialsModal({
               loading={isSubmitting}
               disabled={isSubmitting}
             >
-              Add API Key
+              {submitLabel}
             </Button>
           </form>
         </Form>
