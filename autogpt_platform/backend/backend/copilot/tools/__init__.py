@@ -12,6 +12,7 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
@@ -84,6 +85,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "browser_screenshot": BrowserScreenshotTool(),
     # Sandboxed code execution (bubblewrap)
     "bash_exec": BashExecTool(),
+    "connect_integration": ConnectIntegrationTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),

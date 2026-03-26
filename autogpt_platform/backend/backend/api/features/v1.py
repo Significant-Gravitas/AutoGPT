@@ -55,7 +55,6 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.graph import GraphSettings
-from backend.data.invited_user import get_or_activate_user
 from backend.data.model import CredentialsMetaInput, UserOnboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
@@ -71,6 +70,7 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.user import (
+    get_or_create_user,
     get_user_by_id,
     get_user_notification_preference,
     update_user_email,
@@ -136,10 +136,12 @@ _tally_background_tasks: set[asyncio.Task] = set()
     dependencies=[Security(requires_user)],
 )
 async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
-    user = await get_or_activate_user(user_data)
+    user = await get_or_create_user(user_data)
 
-    # Fire-and-forget: backfill Tally understanding when invite pre-seeding did
-    # not produce a stored result before first activation.
+    # Fire-and-forget: populate business understanding from Tally form.
+    # We use created_at proximity instead of an is_new flag because
+    # get_or_create_user is cached — a separate is_new return value would be
+    # unreliable on repeated calls within the cache TTL.
     age_seconds = (datetime.now(timezone.utc) - user.created_at).total_seconds()
     if age_seconds < 30:
         try:
@@ -163,8 +165,7 @@ async def get_or_create_user_route(user_data: dict = Security(get_jwt_payload)):
     dependencies=[Security(requires_user)],
 )
 async def update_user_email_route(
-    user_id: Annotated[str, Security(get_user_id)],
-    email: str = Body(...),
+    user_id: Annotated[str, Security(get_user_id)], email: str = Body(...)
 ) -> dict[str, str]:
     await update_user_email(user_id, email)
 
@@ -178,16 +179,10 @@ async def update_user_email_route(
     dependencies=[Security(requires_user)],
 )
 async def get_user_timezone_route(
-    user_id: Annotated[str, Security(get_user_id)],
+    user_data: dict = Security(get_jwt_payload),
 ) -> TimezoneResponse:
     """Get user timezone setting."""
-    try:
-        user = await get_user_by_id(user_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail="User not found. Please complete activation via /auth/user first.",
-        )
+    user = await get_or_create_user(user_data)
     return TimezoneResponse(timezone=user.timezone)
 
 
@@ -198,8 +193,7 @@ async def get_user_timezone_route(
     dependencies=[Security(requires_user)],
 )
 async def update_user_timezone_route(
-    user_id: Annotated[str, Security(get_user_id)],
-    request: UpdateTimezoneRequest,
+    user_id: Annotated[str, Security(get_user_id)], request: UpdateTimezoneRequest
 ) -> TimezoneResponse:
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
@@ -598,6 +592,11 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
+    """Configure auto top-up settings and perform an immediate top-up if needed.
+
+    Raises HTTPException(422) if the request parameters are invalid or if
+    the credit top-up fails.
+    """
     if request.threshold < 0:
         raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
@@ -612,10 +611,20 @@ async def configure_user_auto_top_up(
     user_credit_model = await get_user_credit_model(user_id)
     current_balance = await user_credit_model.get_credits(user_id)
 
-    if current_balance < request.threshold:
-        await user_credit_model.top_up_credits(user_id, request.amount)
-    else:
-        await user_credit_model.top_up_credits(user_id, 0)
+    try:
+        if current_balance < request.threshold:
+            await user_credit_model.top_up_credits(user_id, request.amount)
+        else:
+            await user_credit_model.top_up_credits(user_id, 0)
+    except ValueError as e:
+        known_messages = (
+            "must not be negative",
+            "already exists for user",
+            "No payment method found",
+        )
+        if any(msg in str(e) for msg in known_messages):
+            raise HTTPException(status_code=422, detail=str(e))
+        raise
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
@@ -971,14 +980,16 @@ async def execute_graph(
     source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
+    dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
-    user_credit_model = await get_user_credit_model(user_id)
-    current_balance = await user_credit_model.get_credits(user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
-        )
+    if not dry_run:
+        user_credit_model = await get_user_credit_model(user_id)
+        current_balance = await user_credit_model.get_credits(user_id)
+        if current_balance <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient balance to execute the agent. Please top up your account.",
+            )
 
     try:
         result = await execution_utils.add_graph_execution(
@@ -988,6 +999,7 @@ async def execute_graph(
             preset_id=preset_id,
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
+            dry_run=dry_run,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)

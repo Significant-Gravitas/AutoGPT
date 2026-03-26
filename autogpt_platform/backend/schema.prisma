@@ -65,45 +65,12 @@ model User {
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
-  ClaimedInvite         InvitedUser?            @relation("InvitedUserAuthUser")
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
-}
-
-enum InvitedUserStatus {
-  INVITED
-  CLAIMED
-  REVOKED
-}
-
-enum TallyComputationStatus {
-  PENDING
-  RUNNING
-  READY
-  FAILED
-}
-
-model InvitedUser {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  email      String            @unique
-  status     InvitedUserStatus @default(INVITED)
-  authUserId String?           @unique
-  AuthUser   User?             @relation("InvitedUserAuthUser", fields: [authUserId], references: [id], onDelete: SetNull)
-  name       String?
-
-  tallyUnderstanding Json?
-  tallyStatus        TallyComputationStatus @default(PENDING)
-  tallyComputedAt    DateTime?
-  tallyError         String?
-
-  @@index([createdAt])
 }
 
 enum OnboardingStep {
@@ -1027,7 +994,7 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId String @unique
+  agentGraphId String       @unique
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])

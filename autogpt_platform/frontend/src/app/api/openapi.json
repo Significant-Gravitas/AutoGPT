@@ -1267,7 +1267,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Optional authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1362,7 +1362,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Suggested Prompts",
-        "description": "Get LLM-generated suggested prompts for the authenticated user.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns an empty list if no custom prompts\nare available.",
+        "description": "Get LLM-generated suggested prompts grouped by theme.\n\nReturns personalized quick-action prompts based on the user's\nbusiness understanding. Returns empty themes list if no custom\nprompts are available.",
         "operationId": "getV2GetSuggestedPrompts",
         "responses": {
           "200": {
@@ -1377,6 +1377,110 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/usage": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Copilot Usage",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).",
+        "operationId": "getV2GetCopilotUsage",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CoPilotUsageStatus" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/admin/rate_limit": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Get User Rate Limit",
+        "description": "Get a user's current usage and effective rate limits. Admin-only.",
+        "operationId": "getV2Get user rate limit",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRateLimitResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/admin/rate_limit/reset": {
+      "post": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Reset User Rate Limit Usage",
+        "description": "Reset a user's daily usage counter (and optionally weekly). Admin-only.",
+        "operationId": "postV2Reset user rate limit usage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_postV2Reset_user_rate_limit_usage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserRateLimitResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -1581,6 +1685,7 @@
       "post": {
         "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
+        "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
         "requestBody": {
           "content": {
@@ -3229,7 +3334,7 @@
                   { "$ref": "#/components/schemas/OAuth2Credentials" },
                   { "$ref": "#/components/schemas/APIKeyCredentials" },
                   { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
+                  { "$ref": "#/components/schemas/HostScopedCredentials" }
                 ],
                 "discriminator": {
                   "propertyName": "type",
@@ -3237,7 +3342,7 @@
                     "oauth2": "#/components/schemas/OAuth2Credentials",
                     "api_key": "#/components/schemas/APIKeyCredentials",
                     "user_password": "#/components/schemas/UserPasswordCredentials",
-                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
+                    "host_scoped": "#/components/schemas/HostScopedCredentials"
                   }
                 },
                 "title": "Credentials"
@@ -3251,24 +3356,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Postv1Create Credentials"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -3388,24 +3476,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    { "$ref": "#/components/schemas/OAuth2Credentials" },
-                    { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
-                    {
-                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  ],
-                  "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                      "oauth2": "#/components/schemas/OAuth2Credentials",
-                      "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials",
-                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
-                    }
-                  },
-                  "title": "Response Getv1Get Specific Credential By Id"
+                  "$ref": "#/components/schemas/CredentialsMetaResponse"
                 }
               }
             }
@@ -5715,6 +5786,82 @@
         }
       }
     },
+    "/api/store/admin/submissions/{store_listing_version_id}/add-to-library": {
+      "post": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Add Pending Agent to Library",
+        "description": "Add a pending marketplace agent to the admin's library for review.\nUses admin-level access to bypass marketplace APPROVED-only checks.\n\nThe builder can load the graph because get_graph() checks library\nmembership as a fallback: \"you added it, you keep it.\"",
+        "operationId": "postV2Admin add pending agent to library",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/store/admin/submissions/{store_listing_version_id}/preview": {
+      "get": {
+        "tags": ["v2", "admin", "store", "admin"],
+        "summary": "Admin Preview Submission Listing",
+        "description": "Preview a marketplace submission as it would appear on the listing page.\nBypasses the APPROVED-only StoreAgent view so admins can preview pending\nsubmissions before approving.",
+        "operationId": "getV2Admin preview submission listing",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "store_listing_version_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Store Listing Version Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StoreAgentDetails" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/store/admin/submissions/{store_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
@@ -6670,214 +6817,6 @@
         }
       }
     },
-    "/api/users/admin/invited-users": {
-      "get": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "List Invited Users",
-        "operationId": "getV2List invited users",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Page Size"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InvitedUsersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Create Invited User",
-        "operationId": "postV2Create invited user",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateInvitedUserRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/users/admin/invited-users/bulk": {
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Bulk Create Invited Users",
-        "operationId": "postV2BulkCreateInvitedUsers",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postV2BulkCreateInvitedUsers"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BulkInvitedUsersResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/users/admin/invited-users/{invited_user_id}/retry-tally": {
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Retry Invited User Tally",
-        "operationId": "postV2Retry invited user tally",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "invited_user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Invited User Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/users/admin/invited-users/{invited_user_id}/revoke": {
-      "post": {
-        "tags": ["v2", "admin", "users", "admin"],
-        "summary": "Revoke Invited User",
-        "operationId": "postV2Revoke invited user",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "invited_user_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Invited User Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/InvitedUserResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
@@ -6893,6 +6832,16 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Session Id"
+            }
+          },
+          {
+            "name": "overwrite",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Overwrite"
             }
           }
         ],
@@ -8070,7 +8019,12 @@
             "type": "object",
             "title": "Outputs"
           },
-          "success": { "type": "boolean", "title": "Success", "default": true }
+          "success": { "type": "boolean", "title": "Success", "default": true },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          }
         },
         "type": "object",
         "required": ["message", "block_id", "block_name", "outputs"],
@@ -8224,7 +8178,8 @@
               { "type": "null" }
             ],
             "title": "Source"
-          }
+          },
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
         "type": "object",
         "title": "Body_postV1Execute graph agent"
@@ -8264,14 +8219,6 @@
         "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
       },
-      "Body_postV2BulkCreateInvitedUsers": {
-        "properties": {
-          "file": { "type": "string", "format": "binary", "title": "File" }
-        },
-        "type": "object",
-        "required": ["file"],
-        "title": "Body_postV2BulkCreateInvitedUsers"
-      },
       "Body_postV2Execute_a_preset": {
         "properties": {
           "inputs": {
@@ -8290,6 +8237,19 @@
         "type": "object",
         "title": "Body_postV2Execute a preset"
       },
+      "Body_postV2Reset_user_rate_limit_usage": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "reset_weekly": {
+            "type": "boolean",
+            "title": "Reset Weekly",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "Body_postV2Reset user rate limit usage"
+      },
       "Body_postV2Upload_submission_media": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
@@ -8305,56 +8265,6 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postWorkspaceUpload file to workspace"
-      },
-      "BulkInvitedUserRowResponse": {
-        "properties": {
-          "row_number": { "type": "integer", "title": "Row Number" },
-          "email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Email"
-          },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["CREATED", "SKIPPED", "ERROR"],
-            "title": "Status"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "invited_user": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/InvitedUserResponse" },
-              { "type": "null" }
-            ]
-          }
-        },
-        "type": "object",
-        "required": ["row_number", "status", "message"],
-        "title": "BulkInvitedUserRowResponse"
-      },
-      "BulkInvitedUsersResponse": {
-        "properties": {
-          "created_count": { "type": "integer", "title": "Created Count" },
-          "skipped_count": { "type": "integer", "title": "Skipped Count" },
-          "error_count": { "type": "integer", "title": "Error Count" },
-          "results": {
-            "items": {
-              "$ref": "#/components/schemas/BulkInvitedUserRowResponse"
-            },
-            "type": "array",
-            "title": "Results"
-          }
-        },
-        "type": "object",
-        "required": [
-          "created_count",
-          "skipped_count",
-          "error_count",
-          "results"
-        ],
-        "title": "BulkInvitedUsersResponse"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -8455,6 +8365,16 @@
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
       },
+      "CoPilotUsageStatus": {
+        "properties": {
+          "daily": { "$ref": "#/components/schemas/UsageWindow" },
+          "weekly": { "$ref": "#/components/schemas/UsageWindow" }
+        },
+        "type": "object",
+        "required": ["daily", "weekly"],
+        "title": "CoPilotUsageStatus",
+        "description": "Current usage status for a user across all windows."
+      },
       "ContentType": {
         "type": "string",
         "enum": [
@@ -8531,18 +8451,6 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
-      },
-      "CreateInvitedUserRequest": {
-        "properties": {
-          "email": { "type": "string", "format": "email", "title": "Email" },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          }
-        },
-        "type": "object",
-        "required": ["email"],
-        "title": "CreateInvitedUserRequest"
       },
       "CreateSessionResponse": {
         "properties": {
@@ -9086,6 +8994,16 @@
               { "type": "null" }
             ],
             "title": "Inputs Summary"
+          },
+          "node_executions": {
+            "anyOf": [
+              {
+                "items": { "additionalProperties": true, "type": "object" },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Node Executions"
           }
         },
         "type": "object",
@@ -9326,6 +9244,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9471,6 +9394,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
           },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
+          },
           "stats": {
             "anyOf": [
               { "$ref": "#/components/schemas/Stats" },
@@ -9558,6 +9486,11 @@
           "share_token": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Share Token"
+          },
+          "is_dry_run": {
+            "type": "boolean",
+            "title": "Is Dry Run",
+            "default": false
           },
           "stats": {
             "anyOf": [
@@ -9899,7 +9832,7 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
-      "HostScopedCredentials-Input": {
+      "HostScopedCredentials": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "provider": { "type": "string", "title": "Provider" },
@@ -9924,36 +9857,6 @@
               "format": "password",
               "writeOnly": true
             },
-            "type": "object",
-            "title": "Headers",
-            "description": "Key-value header map to add to matching requests"
-          }
-        },
-        "type": "object",
-        "required": ["provider", "host"],
-        "title": "HostScopedCredentials"
-      },
-      "HostScopedCredentials-Output": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "provider": { "type": "string", "title": "Provider" },
-          "title": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Title"
-          },
-          "type": {
-            "type": "string",
-            "const": "host_scoped",
-            "title": "Type",
-            "default": "host_scoped"
-          },
-          "host": {
-            "type": "string",
-            "title": "Host",
-            "description": "The host/URI pattern to match against request URLs"
-          },
-          "headers": {
-            "additionalProperties": { "type": "string" },
             "type": "object",
             "title": "Headers",
             "description": "Key-value header map to add to matching requests"
@@ -10007,80 +9910,6 @@
         "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
-      },
-      "InvitedUserResponse": {
-        "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "email": { "type": "string", "title": "Email" },
-          "status": { "$ref": "#/components/schemas/InvitedUserStatus" },
-          "auth_user_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Auth User Id"
-          },
-          "name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Name"
-          },
-          "tally_understanding": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Tally Understanding"
-          },
-          "tally_status": {
-            "$ref": "#/components/schemas/TallyComputationStatus"
-          },
-          "tally_computed_at": {
-            "anyOf": [
-              { "type": "string", "format": "date-time" },
-              { "type": "null" }
-            ],
-            "title": "Tally Computed At"
-          },
-          "tally_error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Tally Error"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "email",
-          "status",
-          "tally_status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "InvitedUserResponse"
-      },
-      "InvitedUserStatus": {
-        "type": "string",
-        "enum": ["INVITED", "CLAIMED", "REVOKED"],
-        "title": "InvitedUserStatus"
-      },
-      "InvitedUsersResponse": {
-        "properties": {
-          "invited_users": {
-            "items": { "$ref": "#/components/schemas/InvitedUserResponse" },
-            "type": "array",
-            "title": "Invited Users"
-          },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
-        },
-        "type": "object",
-        "required": ["invited_users", "pagination"],
-        "title": "InvitedUsersResponse"
       },
       "LibraryAgent": {
         "properties": {
@@ -10195,6 +10024,14 @@
             "title": "Recommended Schedule Cron"
           },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
+          "top_integrations": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Top Integrations"
+          },
           "marketplace_listing": {
             "anyOf": [
               { "$ref": "#/components/schemas/MarketplaceListing" },
@@ -12190,6 +12027,16 @@
               { "$ref": "#/components/schemas/ActiveStreamInfo" },
               { "type": "null" }
             ]
+          },
+          "total_prompt_tokens": {
+            "type": "integer",
+            "title": "Total Prompt Tokens",
+            "default": 0
+          },
+          "total_completion_tokens": {
+            "type": "integer",
+            "title": "Total Completion Tokens",
+            "default": 0
           }
         },
         "type": "object",
@@ -13036,6 +12883,20 @@
       },
       "SuggestedPromptsResponse": {
         "properties": {
+          "themes": {
+            "items": { "$ref": "#/components/schemas/SuggestedTheme" },
+            "type": "array",
+            "title": "Themes"
+          }
+        },
+        "type": "object",
+        "required": ["themes"],
+        "title": "SuggestedPromptsResponse",
+        "description": "Response model for user-specific suggested prompts grouped by theme."
+      },
+      "SuggestedTheme": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
           "prompts": {
             "items": { "type": "string" },
             "type": "array",
@@ -13043,9 +12904,9 @@
           }
         },
         "type": "object",
-        "required": ["prompts"],
-        "title": "SuggestedPromptsResponse",
-        "description": "Response model for user-specific suggested prompts."
+        "required": ["name", "prompts"],
+        "title": "SuggestedTheme",
+        "description": "A themed group of suggested prompts."
       },
       "SuggestionsResponse": {
         "properties": {
@@ -13071,11 +12932,6 @@
         "type": "object",
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
-      },
-      "TallyComputationStatus": {
-        "type": "string",
-        "enum": ["PENDING", "RUNNING", "READY", "FAILED"],
-        "title": "TallyComputationStatus"
       },
       "TimezoneResponse": {
         "properties": {
@@ -14587,6 +14443,25 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
+      "UsageWindow": {
+        "properties": {
+          "used": { "type": "integer", "title": "Used" },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "description": "Maximum tokens allowed in this window. 0 means unlimited."
+          },
+          "resets_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Resets At"
+          }
+        },
+        "type": "object",
+        "required": ["used", "limit", "resets_at"],
+        "title": "UsageWindow",
+        "description": "Usage within a single time window."
+      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -14760,6 +14635,36 @@
         "type": "object",
         "required": ["provider", "username", "password"],
         "title": "UserPasswordCredentials"
+      },
+      "UserRateLimitResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "daily_token_limit": {
+            "type": "integer",
+            "title": "Daily Token Limit"
+          },
+          "weekly_token_limit": {
+            "type": "integer",
+            "title": "Weekly Token Limit"
+          },
+          "daily_tokens_used": {
+            "type": "integer",
+            "title": "Daily Tokens Used"
+          },
+          "weekly_tokens_used": {
+            "type": "integer",
+            "title": "Weekly Tokens Used"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "daily_token_limit",
+          "weekly_token_limit",
+          "daily_tokens_used",
+          "weekly_tokens_used"
+        ],
+        "title": "UserRateLimitResponse"
       },
       "UserReadiness": {
         "properties": {

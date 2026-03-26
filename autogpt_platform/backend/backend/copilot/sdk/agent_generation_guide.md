@@ -67,9 +67,17 @@ These define the agent's interface — what it accepts and what it produces.
 **AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
 - Defines a user-facing input field on the agent
 - Required `input_default` fields: `name` (str), `value` (default: null)
-- Optional: `title`, `description`, `placeholder_values` (for dropdowns)
+- Optional: `title`, `description`
 - Output: `result` — the user-provided value at runtime
 - Create one AgentInputBlock per distinct input the agent needs
+- For dropdown/select inputs, use **AgentDropdownInputBlock** instead (see below)
+
+**AgentDropdownInputBlock** (ID: `655d6fdf-a334-421c-b733-520549c07cd1`):
+- Specialized input block that presents a dropdown/select to the user
+- Required `input_default` fields: `name` (str), `placeholder_values` (list of options, must have at least one)
+- Optional: `title`, `description`, `value` (default selection)
+- Output: `result` — the user-selected value at runtime
+- Use this instead of AgentInputBlock when the user should pick from a fixed set of options
 
 **AgentOutputBlock** (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`):
 - Defines a user-facing output displayed after the agent runs
@@ -142,6 +150,85 @@ To use an MCP (Model Context Protocol) tool as a node in the agent:
    automatically collects top-level fields matching tool_input_schema into
    tool_arguments.
 6. Output: `result` (the tool's return value) and `error` (error message)
+
+### Using OrchestratorBlock (AI Orchestrator with Agent Mode)
+
+To create an agent where AI autonomously decides which tools or sub-agents to
+call in a loop until the task is complete:
+1. Create a `OrchestratorBlock` node
+   (ID: `3b191d9f-356f-482d-8238-ba04b6d18381`)
+2. Set `input_default`:
+   - `agent_mode_max_iterations`: Choose based on task complexity:
+     - `1` for single-step tool calls (AI picks one tool, calls it, done)
+     - `3`–`10` for multi-step tasks (AI calls tools iteratively)
+     - `-1` for open-ended orchestration (AI loops until it decides it's done).
+       **Use with caution** — prefer bounded iterations (3–10) unless
+       genuinely needed, as unbounded loops risk runaway cost and execution.
+     Do NOT use `0` (traditional mode) — it requires complex external
+     conversation-history loop wiring that the agent generator does not
+     produce.
+   - `conversation_compaction`: `true` (recommended to avoid context overflow)
+   - `retry`: Number of retries on tool-call failure (default `3`).
+     Set to `0` to disable retries.
+   - `multiple_tool_calls`: Whether the AI can invoke multiple tools in a
+     single turn (default `false`). Enable when tools are independent and
+     can run concurrently.
+   - Optional: `sys_prompt` for extra LLM context about how to orchestrate
+3. Wire the `prompt` input from an `AgentInputBlock` (the user's task)
+4. Create downstream tool blocks — regular blocks **or** `AgentExecutorBlock`
+   nodes that call sub-agents
+5. Link each tool to the Orchestrator: set `source_name: "tools"` on
+   the Orchestrator side and `sink_name: <input_field>` on each tool
+   block's input. Create one link per input field the tool needs.
+6. Wire the `finished` output to an `AgentOutputBlock` for the final result
+7. Credentials (LLM API key) are configured by the user in the platform UI
+   after saving — do NOT require them upfront
+
+**Example — Orchestrator calling two sub-agents:**
+- Node 1: `AgentInputBlock` (input_default: `{"name": "task"}`)
+- Node 2: `OrchestratorBlock` (input_default:
+  `{"agent_mode_max_iterations": 10, "conversation_compaction": true}`)
+- Node 3: `AgentExecutorBlock` (sub-agent A — set `graph_id`, `graph_version`,
+  `input_schema`, `output_schema` from library agent)
+- Node 4: `AgentExecutorBlock` (sub-agent B — same pattern)
+- Node 5: `AgentOutputBlock` (input_default: `{"name": "result"}`)
+- Links:
+  - Input→Orchestrator: `source_name: "result"`, `sink_name: "prompt"`
+  - Orchestrator→Agent A (per input field): `source_name: "tools"`,
+    `sink_name: "<agent_a_input_field>"`
+  - Orchestrator→Agent B (per input field): `source_name: "tools"`,
+    `sink_name: "<agent_b_input_field>"`
+  - Orchestrator→Output: `source_name: "finished"`, `sink_name: "value"`
+
+**Example — Orchestrator calling regular blocks as tools:**
+- Node 1: `AgentInputBlock` (input_default: `{"name": "task"}`)
+- Node 2: `OrchestratorBlock` (input_default:
+  `{"agent_mode_max_iterations": 5, "conversation_compaction": true}`)
+- Node 3: `GetWebpageBlock` (regular block — the AI calls it as a tool)
+- Node 4: `AITextGeneratorBlock` (another regular block as a tool)
+- Node 5: `AgentOutputBlock` (input_default: `{"name": "result"}`)
+- Links:
+  - Input→Orchestrator: `source_name: "result"`, `sink_name: "prompt"`
+  - Orchestrator→GetWebpage: `source_name: "tools"`, `sink_name: "url"`
+  - Orchestrator→AITextGenerator: `source_name: "tools"`, `sink_name: "prompt"`
+  - Orchestrator→Output: `source_name: "finished"`, `sink_name: "value"`
+
+Regular blocks work exactly like sub-agents as tools — wire each input
+field from `source_name: "tools"` on the Orchestrator side.
+
+### Testing with Dry Run
+
+After saving an agent, suggest a dry run to validate wiring without consuming
+real API calls, credentials, or credits:
+
+1. **Run**: Call `run_agent` or `run_block` with `dry_run=True` and provide
+   sample inputs. This executes the graph with mock outputs, verifying that
+   links resolve correctly and required inputs are satisfied.
+2. **Check results**: Call `view_agent_output` with `show_execution_details=True`
+   to inspect the full node-by-node execution trace. This shows what each node
+   received as input and produced as output, making it easy to spot wiring issues.
+3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
+   the agent JSON and re-save before suggesting a real execution.
 
 ### Example: Simple AI Text Processor
 

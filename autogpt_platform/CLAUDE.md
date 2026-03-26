@@ -53,18 +53,40 @@ AutoGPT Platform is a monorepo containing:
 ### Creating Pull Requests
 
 - Create the PR against the `dev` branch of the repository.
+- **Split PRs by concern** — each PR should have a single clear purpose. For example, "usage tracking" and "credit charging" should be separate PRs even if related. Combining multiple concerns makes it harder for reviewers to understand what belongs to what.
 - Ensure the branch name is descriptive (e.g., `feature/add-new-block`)
 - Use conventional commit messages (see below)
+- **Structure the PR description with Why / What / How** — Why: the motivation (what problem it solves, what's broken/missing without it); What: high-level summary of changes; How: approach, key implementation details, or architecture decisions. Reviewers need all three to judge whether the approach fits the problem.
 - Fill out the .github/PULL_REQUEST_TEMPLATE.md template as the PR description
+- Always use `--body-file` to pass PR body — avoids shell interpretation of backticks and special characters:
+  ```bash
+  PR_BODY=$(mktemp)
+  cat > "$PR_BODY" << 'PREOF'
+  ## Summary
+  - use `backticks` freely here
+  PREOF
+  gh pr create --title "..." --body-file "$PR_BODY" --base dev
+  rm "$PR_BODY"
+  ```
 - Run the github pre-commit hooks to ensure code quality.
+
+### Test-Driven Development (TDD)
+
+When fixing a bug or adding a feature, follow a test-first approach:
+
+1. **Write a failing test first** — create a test that reproduces the bug or validates the new behavior, marked with `@pytest.mark.xfail` (backend) or `.fixme` (Playwright). Run it to confirm it fails for the right reason.
+2. **Implement the fix/feature** — write the minimal code to make the test pass.
+3. **Remove the xfail marker** — once the test passes, remove the `xfail`/`.fixme` annotation and run the full test suite to confirm nothing else broke.
+
+This ensures every change is covered by a test and that the test actually validates the intended behavior.
 
 ### Reviewing/Revising Pull Requests
 
 Use `/pr-review` to review a PR or `/pr-address` to address comments.
 
 When fetching comments manually:
-- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews` — top-level reviews
-- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments` — inline review comments
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate` — top-level reviews
+- `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate` — inline review comments (always paginate to avoid missing comments beyond page 1)
 - `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments` — PR conversation comments
 
 ### Conventional Commits

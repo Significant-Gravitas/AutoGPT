@@ -40,8 +40,11 @@ _MAX_PAGES = 100
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
 
+SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
+PROMPTS_PER_THEME = 5
 
-def mask_email(email: str) -> str:
+
+def _mask_email(email: str) -> str:
     """Mask an email for safe logging: 'alice@example.com' -> 'a***e@example.com'."""
     try:
         local, domain = email.rsplit("@", 1)
@@ -196,7 +199,8 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
 
     Returns (email_index, questions).
     """
-    client = _make_tally_client(_settings.secrets.tally_api_key)
+    settings = Settings()
+    client = _make_tally_client(settings.secrets.tally_api_key)
 
     redis = await get_redis_async()
     last_fetch_key = _LAST_FETCH_KEY.format(form_id=form_id)
@@ -331,9 +335,11 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
-- suggested_prompts (list of 5 strings): short action prompts (each under 20 words) that would help \
-this person get started with automating their work. Should be specific to their industry, role, and \
-pain points; actionable and conversational in tone; focused on automation opportunities.
+- suggested_prompts (object with keys "Learn", "Create", "Automate", "Organize"): for each key, \
+provide a list of 5 short action prompts (each under 20 words) that would help this person. \
+"Learn" = questions about AutoGPT features; "Create" = content/document generation tasks; \
+"Automate" = recurring workflow automation ideas; "Organize" = structuring/prioritizing tasks. \
+Should be specific to their industry, role, and pain points; actionable and conversational in tone.
 
 Form data:
 """
@@ -341,21 +347,21 @@ Form data:
 _EXTRACTION_SUFFIX = "\n\nReturn ONLY valid JSON."
 
 
-async def extract_business_understanding_from_tally(
+async def extract_business_understanding(
     formatted_text: str,
 ) -> BusinessUnderstandingInput:
-    """
-    Use an LLM to extract structured business understanding from form text.
+    """Use an LLM to extract structured business understanding from form text.
 
     Raises on timeout or unparseable response so the caller can handle it.
     """
-    api_key = _settings.secrets.open_router_api_key
+    settings = Settings()
+    api_key = settings.secrets.open_router_api_key
     client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
 
     try:
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model=_settings.config.tally_extraction_llm_model,
+                model="openai/gpt-4o-mini",
                 messages=[
                     {
                         "role": "user",
@@ -381,54 +387,29 @@ async def extract_business_understanding_from_tally(
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
 
-    # Validate suggested_prompts: filter >20 words, keep top 3
-    raw_prompts = cleaned.get("suggested_prompts", [])
-    if isinstance(raw_prompts, list):
-        valid = [
-            p.strip()
-            for p in raw_prompts
-            if isinstance(p, str) and len(p.strip().split()) <= 20
-        ]
-        # This will keep up to 3 suggestions
-        short_prompts = valid[:3] if valid else None
-        if short_prompts:
-            cleaned["suggested_prompts"] = short_prompts
+    # Validate suggested_prompts: themed dict, filter >20 words, cap at 5 per theme
+    raw_prompts = cleaned.get("suggested_prompts", {})
+    if isinstance(raw_prompts, dict):
+        themed: dict[str, list[str]] = {}
+        for theme in SUGGESTION_THEMES:
+            theme_prompts = raw_prompts.get(theme, [])
+            if not isinstance(theme_prompts, list):
+                continue
+            valid = [
+                s
+                for p in theme_prompts
+                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
+            ]
+            if valid:
+                themed[theme] = valid[:PROMPTS_PER_THEME]
+        if themed:
+            cleaned["suggested_prompts"] = themed
         else:
-            # We dont want to add a None value suggested_prompts field
             cleaned.pop("suggested_prompts", None)
     else:
-        # suggested_prompts must be a list - removing it as its not here
         cleaned.pop("suggested_prompts", None)
 
     return BusinessUnderstandingInput(**cleaned)
-
-
-async def get_business_understanding_input_from_tally(
-    email: str,
-    *,
-    require_api_key: bool = False,
-) -> Optional[BusinessUnderstandingInput]:
-    if not _settings.secrets.tally_api_key:
-        if require_api_key:
-            raise RuntimeError("Tally API key is not configured")
-        logger.debug("Tally: no API key configured, skipping")
-        return None
-
-    masked = mask_email(email)
-    result = await find_submission_by_email(TALLY_FORM_ID, email)
-    if result is None:
-        logger.debug(f"Tally: no submission found for {masked}")
-        return None
-
-    submission, questions = result
-    logger.info(f"Tally: found submission for {masked}, extracting understanding")
-
-    formatted = format_submission_for_llm(submission, questions)
-    if not formatted.strip():
-        logger.warning("Tally: formatted submission was empty, skipping")
-        return None
-
-    return await extract_business_understanding_from_tally(formatted)
 
 
 async def populate_understanding_from_tally(user_id: str, email: str) -> None:
@@ -445,9 +426,32 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             )
             return
 
-        understanding_input = await get_business_understanding_input_from_tally(email)
-        if understanding_input is None:
+        # Check required config is present
+        settings = Settings()
+        if not settings.secrets.tally_api_key or not settings.secrets.tally_form_id:
+            logger.debug("Tally: Tally config incomplete, skipping")
             return
+        if not settings.secrets.open_router_api_key:
+            logger.debug("Tally: no OpenRouter API key configured, skipping")
+            return
+
+        # Look up submission by email
+        masked = _mask_email(email)
+        result = await find_submission_by_email(settings.secrets.tally_form_id, email)
+        if result is None:
+            logger.debug(f"Tally: no submission found for {masked}")
+            return
+
+        submission, questions = result
+        logger.info(f"Tally: found submission for {masked}, extracting understanding")
+
+        # Format and extract
+        formatted = format_submission_for_llm(submission, questions)
+        if not formatted.strip():
+            logger.warning("Tally: formatted submission was empty, skipping")
+            return
+
+        understanding_input = await extract_business_understanding(formatted)
 
         # Upsert into database
         await upsert_business_understanding(user_id, understanding_input)

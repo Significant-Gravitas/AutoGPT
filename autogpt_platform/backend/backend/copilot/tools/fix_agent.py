@@ -22,20 +22,10 @@ class FixAgentGraphTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Auto-fix common issues in an agent JSON graph. Applies fixes for:\n"
-            "- Missing or invalid UUIDs on nodes and links\n"
-            "- StoreValueBlock prerequisites for ConditionBlock\n"
-            "- Double curly brace escaping in prompt templates\n"
-            "- AddToList/AddToDictionary prerequisite blocks\n"
-            "- CodeExecutionBlock output field naming\n"
-            "- Missing credentials configuration\n"
-            "- Node X coordinate spacing (800+ units apart)\n"
-            "- AI model default parameters\n"
-            "- Link static properties based on input schema\n"
-            "- Type mismatches (inserts conversion blocks)\n\n"
-            "Returns the fixed agent JSON plus a list of fixes applied. "
-            "After fixing, the agent is re-validated. If still invalid, "
-            "the remaining errors are included in the response."
+            "Auto-fix common agent JSON issues: missing/invalid UUIDs, StoreValueBlock prerequisites, "
+            "double curly brace escaping, AddToList/AddToDictionary prerequisites, credentials, "
+            "node spacing, AI model defaults, link static properties, and type mismatches. "
+            "Returns fixed JSON and list of fixes applied."
         )
 
     @property

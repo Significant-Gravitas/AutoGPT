@@ -165,11 +165,10 @@ def sanitize_json(data: Any) -> Any:
         # Log the failure and fall back to string representation
         logger.error(
             "SafeJson fallback to string representation due to serialization error: %s (%s). "
-            "Data type: %s, Data preview: %s",
+            "Data type: %s",
             type(e).__name__,
             truncate(str(e), 200),
             type(data).__name__,
-            truncate(str(data), 100),
         )
 
         # Ultimate fallback: convert to string representation and sanitize

@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, Field, field_validator
@@ -26,6 +26,13 @@ from backend.copilot.model import (
     get_chat_session,
     get_user_sessions,
     update_session_title,
+)
+from backend.copilot.rate_limit import (
+    CoPilotUsageStatus,
+    RateLimitExceeded,
+    check_rate_limit,
+    get_global_rate_limits,
+    get_usage_status,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -58,13 +65,13 @@ from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
+logger = logging.getLogger(__name__)
+
 config = ChatConfig()
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
-
-logger = logging.getLogger(__name__)
 
 
 async def _validate_and_get_session(
@@ -120,6 +127,8 @@ class SessionDetailResponse(BaseModel):
     user_id: str | None
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
 
 
 class SessionSummaryResponse(BaseModel):
@@ -207,7 +216,7 @@ async def list_sessions(
             }
         except Exception:
             logger.warning(
-                "Failed to fetch processing status from Redis; " "defaulting to empty"
+                "Failed to fetch processing status from Redis; defaulting to empty"
             )
 
     return ListSessionsResponse(
@@ -229,7 +238,7 @@ async def list_sessions(
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -348,7 +357,7 @@ async def update_session_title_route(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -389,6 +398,10 @@ async def get_session(
             last_message_id=last_message_id,
         )
 
+    # Sum token usage from session
+    total_prompt = sum(u.prompt_tokens for u in session.usage)
+    total_completion = sum(u.completion_tokens for u in session.usage)
+
     return SessionDetailResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
@@ -396,6 +409,29 @@ async def get_session(
         user_id=session.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+    )
+
+
+@router.get(
+    "/usage",
+)
+async def get_copilot_usage(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> CoPilotUsageStatus:
+    """Get CoPilot usage status for the authenticated user.
+
+    Returns current token usage vs limits for daily and weekly windows.
+    Global defaults sourced from LaunchDarkly (falling back to config).
+    """
+    daily_limit, weekly_limit = await get_global_rate_limits(
+        user_id, config.daily_token_limit, config.weekly_token_limit
+    )
+    return await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=daily_limit,
+        weekly_token_limit=weekly_limit,
     )
 
 
@@ -405,7 +441,7 @@ async def get_session(
 )
 async def cancel_session_task(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
@@ -450,7 +486,7 @@ async def cancel_session_task(
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -467,7 +503,7 @@ async def stream_chat_post(
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
-        user_id: Optional authenticated user ID.
+        user_id: Authenticated user ID.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -476,9 +512,7 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
-    log_meta = {"component": "ChatStream", "session_id": session_id}
-    if user_id:
-        log_meta["user_id"] = user_id
+    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
         f"[TIMING] stream_chat_post STARTED, session={session_id}, "
@@ -495,6 +529,22 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Pre-turn rate limit check (token-based).
+    # check_rate_limit short-circuits internally when both limits are 0.
+    # Global defaults sourced from LaunchDarkly, falling back to config.
+    if user_id:
+        try:
+            daily_limit, weekly_limit = await get_global_rate_limits(
+                user_id, config.daily_token_limit, config.weekly_token_limit
+            )
+            await check_rate_limit(
+                user_id=user_id,
+                daily_token_limit=daily_limit,
+                weekly_token_limit=weekly_limit,
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(status_code=429, detail=str(e)) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -730,7 +780,7 @@ async def stream_chat_post(
 )
 async def resume_session_stream(
     session_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Resume an active stream for a session.
@@ -857,10 +907,17 @@ async def session_assign_user(
 # ========== Suggested Prompts ==========
 
 
-class SuggestedPromptsResponse(BaseModel):
-    """Response model for user-specific suggested prompts."""
+class SuggestedTheme(BaseModel):
+    """A themed group of suggested prompts."""
 
+    name: str
     prompts: list[str]
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts grouped by theme."""
+
+    themes: list[SuggestedTheme]
 
 
 @router.get(
@@ -871,17 +928,21 @@ async def get_suggested_prompts(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SuggestedPromptsResponse:
     """
-    Get LLM-generated suggested prompts for the authenticated user.
+    Get LLM-generated suggested prompts grouped by theme.
 
     Returns personalized quick-action prompts based on the user's
-    business understanding. Returns an empty list if no custom prompts
-    are available.
+    business understanding. Returns empty themes list if no custom
+    prompts are available.
     """
     understanding = await get_business_understanding(user_id)
-    if understanding is None:
-        return SuggestedPromptsResponse(prompts=[])
+    if understanding is None or not understanding.suggested_prompts:
+        return SuggestedPromptsResponse(themes=[])
 
-    return SuggestedPromptsResponse(prompts=understanding.suggested_prompts)
+    themes = [
+        SuggestedTheme(name=name, prompts=prompts)
+        for name, prompts in understanding.suggested_prompts.items()
+    ]
+    return SuggestedPromptsResponse(themes=themes)
 
 
 # ========== Configuration ==========

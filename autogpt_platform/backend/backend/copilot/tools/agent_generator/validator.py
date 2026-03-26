@@ -5,11 +5,14 @@ import logging
 import re
 from typing import Any
 
+from backend.data.dynamic_fields import DICT_SPLIT
+
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     AGENT_INPUT_BLOCK_ID,
     AGENT_OUTPUT_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
+    TOOL_ORCHESTRATOR_BLOCK_ID,
     AgentDict,
     are_types_compatible,
     get_defined_property_type,
@@ -181,15 +184,23 @@ class AgentValidator:
 
         return valid
 
+    def _build_node_lookup(self, agent: AgentDict) -> dict[str, dict[str, Any]]:
+        """Build a node-id → node dict from the agent's nodes."""
+        return {node.get("id", ""): node for node in agent.get("nodes", [])}
+
     def validate_data_type_compatibility(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """
         Validate that linked data types are compatible between source and sink.
         Returns True if all data types are compatible, False otherwise.
         """
         valid = True
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
         block_lookup = {block.get("id", ""): block for block in blocks}
 
         for link in agent.get("links", []):
@@ -209,8 +220,8 @@ class AgentValidator:
                 valid = False
                 continue
 
-            source_node = node_lookup.get(source_id, "")
-            sink_node = node_lookup.get(sink_id, "")
+            source_node = node_lookup.get(source_id)
+            sink_node = node_lookup.get(sink_id)
 
             if not source_node or not sink_node:
                 continue
@@ -244,91 +255,6 @@ class AgentValidator:
                     f"properly."
                 )
                 valid = False
-
-        return valid
-
-    def validate_nested_sink_links(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
-    ) -> bool:
-        """
-        Validate nested sink links (links with _#_ notation).
-        Returns True if all nested links are valid, False otherwise.
-        """
-        valid = True
-        block_input_schemas = {
-            block.get("id", ""): block.get("inputSchema", {}).get("properties", {})
-            for block in blocks
-        }
-        block_names = {
-            block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
-        }
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
-
-        for link in agent.get("links", []):
-            sink_name = link.get("sink_name", "")
-            sink_id = link.get("sink_id")
-
-            if not sink_name or not sink_id:
-                continue
-
-            if "_#_" in sink_name:
-                parent, child = sink_name.split("_#_", 1)
-
-                sink_node = node_lookup.get(sink_id)
-                if not sink_node:
-                    continue
-
-                block_id = sink_node.get("block_id")
-                input_props = block_input_schemas.get(block_id, {})
-
-                parent_schema = input_props.get(parent)
-                if not parent_schema:
-                    block_name = block_names.get(block_id, "Unknown Block")
-                    self.add_error(
-                        f"Invalid nested sink link '{sink_name}' for "
-                        f"node '{sink_id}' (block "
-                        f"'{block_name}' - {block_id}): Parent property "
-                        f"'{parent}' does not exist in the block's "
-                        f"input schema."
-                    )
-                    valid = False
-                    continue
-
-                # Check if additionalProperties is allowed either directly
-                # or via anyOf
-                allows_additional_properties = parent_schema.get(
-                    "additionalProperties", False
-                )
-
-                # Check anyOf for additionalProperties
-                if not allows_additional_properties and "anyOf" in parent_schema:
-                    any_of_schemas = parent_schema.get("anyOf", [])
-                    if isinstance(any_of_schemas, list):
-                        for schema_option in any_of_schemas:
-                            if isinstance(schema_option, dict) and schema_option.get(
-                                "additionalProperties"
-                            ):
-                                allows_additional_properties = True
-                                break
-
-                if not allows_additional_properties:
-                    if not (
-                        isinstance(parent_schema, dict)
-                        and "properties" in parent_schema
-                        and isinstance(parent_schema["properties"], dict)
-                        and child in parent_schema["properties"]
-                    ):
-                        block_name = block_names.get(block_id, "Unknown Block")
-                        self.add_error(
-                            f"Invalid nested sink link '{sink_name}' "
-                            f"for node '{link.get('sink_id', '')}' (block "
-                            f"'{block_name}' - {block_id}): Child "
-                            f"property '{child}' does not exist in "
-                            f"parent '{parent}' schema. Available "
-                            f"properties: "
-                            f"{list(parent_schema.get('properties', {}).keys())}"
-                        )
-                        valid = False
 
         return valid
 
@@ -388,7 +314,10 @@ class AgentValidator:
         return valid
 
     def validate_source_output_existence(
-        self, agent: AgentDict, blocks: list[dict[str, Any]]
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
     ) -> bool:
         """
         Validate that all source_names in links exist in the corresponding
@@ -401,6 +330,7 @@ class AgentValidator:
         Args:
             agent: The agent dictionary to validate
             blocks: List of available blocks with their schemas
+            node_lookup: Optional pre-built node-id → node dict
 
         Returns:
             True if all source output fields exist, False otherwise
@@ -415,7 +345,8 @@ class AgentValidator:
         block_names = {
             block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
         }
-        node_lookup = {node.get("id", ""): node for node in agent.get("nodes", [])}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
 
         for link in agent.get("links", []):
             source_id = link.get("source_id")
@@ -453,8 +384,8 @@ class AgentValidator:
                 output_props = block_output_schemas.get(block_id, {})
 
             # Handle nested source names (with _#_ notation)
-            if "_#_" in source_name:
-                parent, child = source_name.split("_#_", 1)
+            if DICT_SPLIT in source_name:
+                parent, child = source_name.split(DICT_SPLIT, 1)
 
                 parent_schema = output_props.get(parent)
                 if not parent_schema:
@@ -532,6 +463,195 @@ class AgentValidator:
                         f"{available_outputs}"
                     )
                     valid = False
+
+        return valid
+
+    def validate_sink_input_existence(
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
+    ) -> bool:
+        """
+        Validate that all sink_names in links and input_default keys in nodes
+        exist in the corresponding block's input schema.
+
+        Checks that for each link the sink_name references a valid input
+        property in the sink block's inputSchema, and that every key in a
+        node's input_default is a recognised input property. Also handles
+        nested inputs with _#_ notation and dynamic schemas for
+        AgentExecutorBlock.
+
+        Args:
+            agent: The agent dictionary to validate
+            blocks: List of available blocks with their schemas
+            node_lookup: Optional pre-built node-id → node dict
+
+        Returns:
+            True if all sink input fields exist, False otherwise
+        """
+        valid = True
+
+        block_input_schemas = {
+            block.get("id", ""): block.get("inputSchema", {}).get("properties", {})
+            for block in blocks
+        }
+        block_names = {
+            block.get("id", ""): block.get("name", "Unknown Block") for block in blocks
+        }
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
+
+        def get_input_props(node: dict[str, Any]) -> dict[str, Any]:
+            block_id = node.get("block_id", "")
+            if block_id == AGENT_EXECUTOR_BLOCK_ID:
+                input_default = node.get("input_default", {})
+                dynamic_input_schema = input_default.get("input_schema", {})
+                if not isinstance(dynamic_input_schema, dict):
+                    dynamic_input_schema = {}
+                dynamic_props = dynamic_input_schema.get("properties", {})
+                if not isinstance(dynamic_props, dict):
+                    dynamic_props = {}
+                static_props = block_input_schemas.get(block_id, {})
+                return {**static_props, **dynamic_props}
+            return block_input_schemas.get(block_id, {})
+
+        def check_nested_input(
+            input_props: dict[str, Any],
+            field_name: str,
+            context: str,
+            block_name: str,
+            block_id: str,
+        ) -> bool:
+            parent, child = field_name.split(DICT_SPLIT, 1)
+            parent_schema = input_props.get(parent)
+            if not parent_schema:
+                self.add_error(
+                    f"{context}: Parent property '{parent}' does not "
+                    f"exist in block '{block_name}' ({block_id}) input "
+                    f"schema."
+                )
+                return False
+
+            allows_additional = parent_schema.get("additionalProperties", False)
+            # Only anyOf is checked here because Pydantic's JSON schema
+            # emits optional/union fields via anyOf. allOf and oneOf are
+            # not currently used by any block's dict-typed inputs, so
+            # false positives from them are not a concern in practice.
+            if not allows_additional and "anyOf" in parent_schema:
+                for schema_option in parent_schema.get("anyOf", []):
+                    if not isinstance(schema_option, dict):
+                        continue
+                    if schema_option.get("additionalProperties"):
+                        allows_additional = True
+                        break
+                    items_schema = schema_option.get("items")
+                    if isinstance(items_schema, dict) and items_schema.get(
+                        "additionalProperties"
+                    ):
+                        allows_additional = True
+                        break
+
+            if not allows_additional:
+                if not (
+                    isinstance(parent_schema, dict)
+                    and "properties" in parent_schema
+                    and isinstance(parent_schema["properties"], dict)
+                    and child in parent_schema["properties"]
+                ):
+                    available = (
+                        list(parent_schema.get("properties", {}).keys())
+                        if isinstance(parent_schema, dict)
+                        else []
+                    )
+                    self.add_error(
+                        f"{context}: Child property '{child}' does not "
+                        f"exist in parent '{parent}' of block "
+                        f"'{block_name}' ({block_id}) input schema. "
+                        f"Available properties: {available}"
+                    )
+                    return False
+            return True
+
+        for link in agent.get("links", []):
+            sink_id = link.get("sink_id")
+            sink_name = link.get("sink_name", "")
+            link_id = link.get("id", "Unknown")
+
+            if not sink_name:
+                # Missing sink_name is caught by validate_data_type_compatibility
+                continue
+
+            sink_node = node_lookup.get(sink_id)
+            if not sink_node:
+                # Already caught by validate_link_node_references
+                continue
+
+            block_id = sink_node.get("block_id", "")
+            block_name = block_names.get(block_id, "Unknown Block")
+            input_props = get_input_props(sink_node)
+
+            context = (
+                f"Invalid sink input field '{sink_name}' in link "
+                f"'{link_id}' to node '{sink_id}'"
+            )
+
+            if DICT_SPLIT in sink_name:
+                if not check_nested_input(
+                    input_props, sink_name, context, block_name, block_id
+                ):
+                    valid = False
+            else:
+                if sink_name not in input_props:
+                    available_inputs = list(input_props.keys())
+                    self.add_error(
+                        f"{context} (block '{block_name}' - {block_id}): "
+                        f"Input property '{sink_name}' does not exist in "
+                        f"the block's input schema. "
+                        f"Available inputs: {available_inputs}"
+                    )
+                    valid = False
+
+        for node in agent.get("nodes", []):
+            node_id = node.get("id")
+            block_id = node.get("block_id", "")
+            block_name = block_names.get(block_id, "Unknown Block")
+            input_default = node.get("input_default", {})
+
+            if not isinstance(input_default, dict) or not input_default:
+                continue
+
+            if (
+                block_id not in block_input_schemas
+                and block_id != AGENT_EXECUTOR_BLOCK_ID
+            ):
+                continue
+
+            input_props = get_input_props(node)
+
+            for key in input_default:
+                if key == "credentials":
+                    continue
+
+                context = (
+                    f"Node '{node_id}' (block '{block_name}' - {block_id}) "
+                    f"has unknown input_default key '{key}'"
+                )
+
+                if DICT_SPLIT in key:
+                    if not check_nested_input(
+                        input_props, key, context, block_name, block_id
+                    ):
+                        valid = False
+                else:
+                    if key not in input_props:
+                        available_inputs = list(input_props.keys())
+                        self.add_error(
+                            f"{context} which does not exist in the "
+                            f"block's input schema. "
+                            f"Available inputs: {available_inputs}"
+                        )
+                        valid = False
 
         return valid
 
@@ -809,6 +929,96 @@ class AgentValidator:
 
         return valid
 
+    def validate_orchestrator_blocks(
+        self,
+        agent: AgentDict,
+        node_lookup: dict[str, dict[str, Any]] | None = None,
+    ) -> bool:
+        """Validate that OrchestratorBlock nodes have downstream tools.
+
+        Checks that each OrchestratorBlock node has at least one link
+        with ``source_name == "tools"`` connecting to a downstream block.
+        Without tools, the block has nothing to call and will error at runtime.
+
+        Returns True if all OrchestratorBlock nodes are valid.
+        """
+        valid = True
+        nodes = agent.get("nodes", [])
+        links = agent.get("links", [])
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
+        non_tool_block_ids = {AGENT_INPUT_BLOCK_ID, AGENT_OUTPUT_BLOCK_ID}
+
+        for node in nodes:
+            if node.get("block_id") != TOOL_ORCHESTRATOR_BLOCK_ID:
+                continue
+
+            node_id = node.get("id", "unknown")
+            customized_name = (node.get("metadata") or {}).get(
+                "customized_name", node_id
+            )
+
+            # Warn if agent_mode_max_iterations is 0 (traditional mode) —
+            # requires complex external conversation-history loop wiring
+            # that the agent generator does not produce.
+            input_default = node.get("input_default", {})
+            max_iter = input_default.get("agent_mode_max_iterations")
+            if max_iter is not None and not isinstance(max_iter, int):
+                self.add_error(
+                    f"OrchestratorBlock node '{customized_name}' "
+                    f"({node_id}) has non-integer "
+                    f"agent_mode_max_iterations={max_iter!r}. "
+                    f"This field must be an integer."
+                )
+                valid = False
+            elif isinstance(max_iter, int) and max_iter < -1:
+                self.add_error(
+                    f"OrchestratorBlock node '{customized_name}' "
+                    f"({node_id}) has invalid "
+                    f"agent_mode_max_iterations={max_iter}. "
+                    f"Use -1 for infinite or a positive number for "
+                    f"bounded iterations."
+                )
+                valid = False
+            elif isinstance(max_iter, int) and max_iter > 100:
+                self.add_error(
+                    f"OrchestratorBlock node '{customized_name}' "
+                    f"({node_id}) has agent_mode_max_iterations="
+                    f"{max_iter} which is unusually high. Values above "
+                    f"100 risk excessive cost and long execution times. "
+                    f"Consider using a lower value (3-10) or -1 for "
+                    f"genuinely open-ended tasks."
+                )
+                valid = False
+            elif max_iter == 0:
+                self.add_error(
+                    f"OrchestratorBlock node '{customized_name}' "
+                    f"({node_id}) has agent_mode_max_iterations=0 "
+                    f"(traditional mode). The agent generator only supports "
+                    f"agent mode (set to -1 for infinite or a positive "
+                    f"number for bounded iterations)."
+                )
+                valid = False
+
+            has_tools = any(
+                link.get("source_id") == node_id
+                and link.get("source_name") == "tools"
+                and node_lookup.get(link.get("sink_id", ""), {}).get("block_id")
+                not in non_tool_block_ids
+                for link in links
+            )
+
+            if not has_tools:
+                self.add_error(
+                    f"OrchestratorBlock node '{customized_name}' "
+                    f"({node_id}) has no downstream tool blocks connected. "
+                    f"Connect at least one block to its 'tools' output so "
+                    f"the AI has tools to call."
+                )
+                valid = False
+
+        return valid
+
     def validate_mcp_tool_blocks(self, agent: AgentDict) -> bool:
         """Validate that MCPToolBlock nodes have required fields.
 
@@ -870,6 +1080,9 @@ class AgentValidator:
         logger.info("Validating agent...")
         self.errors = []
 
+        # Build node lookup once and share across validation methods
+        node_lookup = self._build_node_lookup(agent)
+
         checks = [
             (
                 "Block existence",
@@ -885,15 +1098,15 @@ class AgentValidator:
             ),
             (
                 "Data type compatibility",
-                self.validate_data_type_compatibility(agent, blocks),
-            ),
-            (
-                "Nested sink links",
-                self.validate_nested_sink_links(agent, blocks),
+                self.validate_data_type_compatibility(agent, blocks, node_lookup),
             ),
             (
                 "Source output existence",
-                self.validate_source_output_existence(agent, blocks),
+                self.validate_source_output_existence(agent, blocks, node_lookup),
+            ),
+            (
+                "Sink input existence",
+                self.validate_sink_input_existence(agent, blocks, node_lookup),
             ),
             (
                 "Prompt double curly braces spaces",
@@ -912,6 +1125,10 @@ class AgentValidator:
             (
                 "MCP tool blocks",
                 self.validate_mcp_tool_blocks(agent),
+            ),
+            (
+                "Orchestrator blocks",
+                self.validate_orchestrator_blocks(agent, node_lookup),
             ),
         ]
 

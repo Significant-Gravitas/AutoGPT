@@ -3,13 +3,11 @@
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
-import { LibraryActionSubHeader } from "../LibraryActionSubHeader/LibraryActionSubHeader";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
 import { LibraryFolder } from "../LibraryFolder/LibraryFolder";
 import { LibrarySubSection } from "../LibrarySubSection/LibrarySubSection";
 import { ArrowLeftIcon, HeartIcon } from "@phosphor-icons/react";
 import { Text } from "@/components/atoms/Text/Text";
-import { Tab } from "../LibraryTabs/LibraryTabs";
 import {
   AnimatePresence,
   LayoutGroup,
@@ -18,6 +16,7 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
+import { LibraryTab } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
 
 // cancels the current spring and starts a new one from current state.
@@ -68,7 +67,7 @@ interface Props {
   setLibrarySort: (value: LibraryAgentSort) => void;
   selectedFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
-  tabs: Tab[];
+  tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
 }
@@ -96,7 +95,8 @@ export function LibraryAgentList({
   const {
     isFavoritesTab,
     agentLoading,
-    agentCount,
+    allAgentsCount,
+    favoritesCount,
     agents,
     hasNextPage,
     isFetchingNextPage,
@@ -120,19 +120,18 @@ export function LibraryAgentList({
 
   return (
     <>
-      <LibraryActionSubHeader
-        agentCount={agentCount}
-        setLibrarySort={setLibrarySort}
-      />
       {!selectedFolderId && (
         <LibrarySubSection
           tabs={tabs}
           activeTab={activeTab}
           onTabChange={onTabChange}
+          allCount={allAgentsCount}
+          favoritesCount={favoritesCount}
+          setLibrarySort={setLibrarySort}
         />
       )}
 
-      <div>
+      <div className="pt-4">
         {selectedFolderId && (
           <div className="mb-4 flex items-center gap-2">
             <button
