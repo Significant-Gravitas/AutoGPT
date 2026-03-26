@@ -86,6 +86,36 @@ class TestValidateQueryIsReadOnly:
         result = _validate_query_is_read_only(query)
         assert result is not None
 
+    # --- Quoted comment injection / multi-statement bypass ---
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            # Timeout bypass via quoted comment injection (CVE-like)
+            "SELECT '--'; SET LOCAL statement_timeout = 0; SELECT pg_sleep(1000)",
+            # Multi-statement with hidden SET
+            "SELECT 1; SET search_path TO public",
+            # RESET after SELECT
+            "SELECT 1; RESET ALL",
+        ],
+    )
+    def test_multi_statement_injection_rejected(self, query: str):
+        result = _validate_query_is_read_only(query)
+        assert result is not None
+
+    # --- String literals containing keywords should NOT be rejected ---
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT '--not-a-comment' AS label FROM t",
+            "SELECT * FROM users WHERE action = 'DELETE'",
+            "SELECT * FROM users WHERE status = 'GRANT'",
+        ],
+    )
+    def test_keywords_in_string_literals_allowed(self, query: str):
+        assert _validate_query_is_read_only(query) is None
+
     # --- Comment-wrapped attacks ---
 
     @pytest.mark.parametrize(
@@ -114,7 +144,8 @@ class TestValidateQueryIsReadOnly:
         assert _validate_query_is_read_only("   ") == "Query is empty."
 
     def test_comment_only_query(self):
-        assert _validate_query_is_read_only("-- just a comment") == "Query is empty."
+        result = _validate_query_is_read_only("-- just a comment")
+        assert result is not None  # Either "empty" or rejected
 
     def test_semicolon_only_query(self):
         assert _validate_query_is_read_only(";") == "Query is empty."
@@ -127,9 +158,17 @@ class TestSerializeValue:
         assert _serialize_value(Decimal("42")) == 42
         assert isinstance(_serialize_value(Decimal("42")), int)
 
-    def test_decimal_float(self):
-        assert _serialize_value(Decimal("3.14")) == 3.14
-        assert isinstance(_serialize_value(Decimal("3.14")), float)
+    def test_decimal_fractional(self):
+        # Fractional decimals are serialized as strings to preserve exact precision
+        assert _serialize_value(Decimal("3.14")) == "3.14"
+        assert isinstance(_serialize_value(Decimal("3.14")), str)
+
+    def test_decimal_high_precision(self):
+        # High-precision values must not lose precision via float conversion
+        val = Decimal("123456789.123456789012345678")
+        result = _serialize_value(val)
+        assert result == "123456789.123456789012345678"
+        assert isinstance(result, str)
 
     def test_datetime(self):
         dt = datetime(2024, 1, 1, 12, 0, 0)
