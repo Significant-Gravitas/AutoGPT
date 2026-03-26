@@ -90,6 +90,20 @@ class ChatConfig(BaseSettings):
         description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
     )
 
+    # Cost (in credits / cents) to reset the daily rate limit using credits.
+    # When a user hits their daily limit, they can spend this amount to reset
+    # the daily counter and keep working.  Set to 0 to disable the feature.
+    rate_limit_reset_cost: int = Field(
+        default=500,
+        ge=0,
+        description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
+    )
+    max_daily_resets: int = Field(
+        default=5,
+        ge=0,
+        description="Maximum number of credit-based rate limit resets per user per day. 0 = unlimited.",
+    )
+
     # Claude Agent SDK Configuration
     use_claude_agent_sdk: bool = Field(
         default=True,

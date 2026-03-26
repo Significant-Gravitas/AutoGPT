@@ -13,11 +13,13 @@ from .rate_limit import (
     RateLimitExceeded,
     RateLimitTier,
     UsageWindow,
+    _fetch_user_tier,
     check_rate_limit,
     get_global_rate_limits,
     get_usage_status,
     get_user_tier,
     record_token_usage,
+    reset_daily_usage,
 )
 
 _USER = "test-user-rl"
@@ -386,8 +388,8 @@ class TestRateLimitTier:
 class TestGetUserTier:
     @pytest.fixture(autouse=True)
     def _clear_tier_cache(self):
-        """Clear the get_user_tier cache before each test."""
-        get_user_tier.cache_clear()
+        """Clear the _fetch_user_tier cache before each test."""
+        _fetch_user_tier.cache_clear()
 
     @pytest.mark.asyncio
     async def test_returns_tier_from_db(self):
@@ -450,6 +452,38 @@ class TestGetUserTier:
             tier = await get_user_tier(_USER)
 
         assert tier == DEFAULT_TIER
+
+    @pytest.mark.asyncio
+    async def test_db_error_is_not_cached(self):
+        """Transient DB errors should NOT cache the default tier.
+
+        Regression test: a transient DB failure previously cached DEFAULT_TIER
+        for 5 minutes, incorrectly downgrading higher-tier users until expiry.
+        """
+        failing_prisma = AsyncMock()
+        failing_prisma.find_unique = AsyncMock(side_effect=Exception("DB down"))
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=failing_prisma,
+        ):
+            tier1 = await get_user_tier(_USER)
+        assert tier1 == DEFAULT_TIER
+
+        # Now DB recovers and returns PRO
+        mock_user = MagicMock()
+        mock_user.rateLimitTier = "pro"
+        ok_prisma = AsyncMock()
+        ok_prisma.find_unique = AsyncMock(return_value=mock_user)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=ok_prisma,
+        ):
+            tier2 = await get_user_tier(_USER)
+
+        # Should get PRO now — the error result was not cached
+        assert tier2 == RateLimitTier.PRO
 
     @pytest.mark.asyncio
     async def test_returns_default_on_invalid_tier_value(self):
@@ -554,3 +588,91 @@ class TestGetGlobalRateLimitsWithTiers:
         assert daily == 62_500_000
         assert weekly == 312_500_000
         assert tier == RateLimitTier.MAX
+
+
+# ---------------------------------------------------------------------------
+# reset_daily_usage
+# ---------------------------------------------------------------------------
+
+
+class TestResetDailyUsage:
+    @staticmethod
+    def _make_pipeline_mock(decrby_result: int = 0) -> MagicMock:
+        """Create a pipeline mock that returns [delete_result, decrby_result]."""
+        pipe = MagicMock()
+        pipe.execute = AsyncMock(return_value=[1, decrby_result])
+        return pipe
+
+    @pytest.mark.asyncio
+    async def test_deletes_daily_key(self):
+        mock_pipe = self._make_pipeline_mock(decrby_result=0)
+        mock_redis = AsyncMock()
+        mock_redis.pipeline = lambda **_kw: mock_pipe
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            result = await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        assert result is True
+        mock_pipe.delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_reduces_weekly_usage_via_decrby(self):
+        """Weekly counter should be reduced via DECRBY in the pipeline."""
+        mock_pipe = self._make_pipeline_mock(decrby_result=35000)
+        mock_redis = AsyncMock()
+        mock_redis.pipeline = lambda **_kw: mock_pipe
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        mock_pipe.decrby.assert_called_once()
+        mock_redis.set.assert_not_called()  # 35000 > 0, no clamp needed
+
+    @pytest.mark.asyncio
+    async def test_clamps_negative_weekly_to_zero(self):
+        """If DECRBY goes negative, SET to 0 (outside the pipeline)."""
+        mock_pipe = self._make_pipeline_mock(decrby_result=-5000)
+        mock_redis = AsyncMock()
+        mock_redis.pipeline = lambda **_kw: mock_pipe
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        mock_pipe.decrby.assert_called_once()
+        mock_redis.set.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_weekly_reduction_when_daily_limit_zero(self):
+        """When daily_token_limit is 0, weekly counter should not be touched."""
+        mock_pipe = self._make_pipeline_mock()
+        mock_pipe.execute = AsyncMock(return_value=[1])  # only delete result
+        mock_redis = AsyncMock()
+        mock_redis.pipeline = lambda **_kw: mock_pipe
+
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            await reset_daily_usage(_USER, daily_token_limit=0)
+
+        mock_pipe.delete.assert_called_once()
+        mock_pipe.decrby.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_false_when_redis_unavailable(self):
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ):
+            result = await reset_daily_usage(_USER, daily_token_limit=10000)
+
+        assert result is False
