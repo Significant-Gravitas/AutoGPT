@@ -146,9 +146,7 @@ class RecentExecution(pydantic.BaseModel):
     activity_summary: str | None = None
 
 
-def _parse_top_integrations(
-    raw: object, graph: GraphModel
-) -> list[dict[str, str]]:
+def _parse_top_integrations(raw: object, graph: GraphModel) -> list[dict[str, str]]:
     """Parse topIntegrations from database, falling back to on-the-fly computation."""
     if raw and isinstance(raw, list) and len(raw) > 0:
         return [dict(item) for item in raw]
@@ -423,9 +421,7 @@ class LibraryAgent(pydantic.BaseModel):
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
             settings=_parse_settings(agent.settings),
-            top_integrations=_parse_top_integrations(
-                agent.topIntegrations, graph
-            ),
+            top_integrations=_parse_top_integrations(agent.topIntegrations, graph),
             marketplace_listing=marketplace_listing_data,
         )
 
