@@ -119,7 +119,7 @@ class ChatConfig(BaseSettings):
     use_openrouter: bool = Field(
         default=True,
         description="Enable routing API calls through the OpenRouter proxy. "
-        "The actual decision also requires ``api_key`` and ``base_url`` — "
+        "The actual decision also requires ``autopilot_api_key`` and ``base_url`` — "
         "use the ``openrouter_active`` property for the final answer.",
     )
     use_claude_code_subscription: bool = Field(
@@ -164,7 +164,7 @@ class ChatConfig(BaseSettings):
         """True when OpenRouter is enabled AND credentials are usable.
 
         Single source of truth for "will the SDK route through OpenRouter?".
-        Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
+        Checks the flag *and* that ``autopilot_api_key`` + a valid ``base_url`` are
         present — mirrors the fallback logic in ``_build_sdk_env``.
         """
         if not self.use_openrouter:
