@@ -3,7 +3,7 @@ error sanitization, SSRF protection, and read/write mode behavior."""
 
 from datetime import date, datetime, time
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import AsyncMock
 
 import pytest
@@ -298,7 +298,7 @@ def _make_input(
     query: str = "SELECT 1",
     database_type: DatabaseType = DatabaseType.POSTGRES,
     host: str = "db.example.com",
-    port: int = 5432,
+    port: Optional[int] = 5432,
     database: str = "db",
     read_only: bool = False,
     timeout: int = 30,

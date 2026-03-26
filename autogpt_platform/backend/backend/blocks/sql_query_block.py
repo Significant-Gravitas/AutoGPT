@@ -2,7 +2,7 @@ import asyncio
 import re
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import sqlparse
 from pydantic import SecretStr
@@ -265,9 +265,9 @@ def _serialize_value(value: Any) -> Any:
 # Map DatabaseType enum values to the expected SQLAlchemy driver prefix.
 _DATABASE_TYPE_TO_DRIVER = {
     DatabaseType.POSTGRES: "postgresql",
-    DatabaseType.MYSQL: "mysql",
+    DatabaseType.MYSQL: "mysql+pymysql",
     DatabaseType.SQLITE: "sqlite",
-    DatabaseType.MSSQL: "mssql",
+    DatabaseType.MSSQL: "mssql+pymssql",
 }
 
 # Default ports for each database type.
@@ -290,10 +290,11 @@ class SQLQueryBlock(Block):
             placeholder="db.example.com",
             secret=True,
         )
-        port: int = SchemaField(
-            default=5432,
+        port: Optional[int] = SchemaField(
+            default=None,
             description=(
-                "Database port " "(PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433)"
+                "Database port (leave empty for default: "
+                "PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433)"
             ),
         )
         database: str = SchemaField(
@@ -354,7 +355,6 @@ class SQLQueryBlock(Block):
                 "query": "SELECT 1 AS test_col",
                 "database_type": DatabaseType.POSTGRES,
                 "host": "localhost",
-                "port": 5432,
                 "database": "test_db",
                 "timeout": 30,
                 "max_rows": 1000,
@@ -409,7 +409,7 @@ class SQLQueryBlock(Block):
         if database_type == DatabaseType.SQLITE:
             connect_args: dict[str, Any] = {}
         elif database_type == DatabaseType.MSSQL:
-            connect_args = {"timeout": 10}
+            connect_args = {"login_timeout": 10}
         else:
             connect_args = {"connect_timeout": 10}
 
@@ -591,3 +591,9 @@ class SQLQueryBlock(Block):
                 port=port,
             )
             yield "error", f"Database error: {msg}"
+        except ModuleNotFoundError:
+            yield "error", (
+                f"Database driver not available for "
+                f"{input_data.database_type.value}. "
+                f"Please contact the platform administrator."
+            )
