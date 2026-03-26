@@ -290,12 +290,12 @@ export function ChatSidebar() {
                 <div className="flex min-h-[30rem] items-center justify-center py-4">
                   <LoadingSpinner size="small" className="text-neutral-600" />
                 </div>
-              ) : sessions.length === 0 ? (
+              ) : !sessions?.length ? (
                 <p className="py-4 text-center text-sm text-neutral-500">
                   No conversations yet
                 </p>
               ) : (
-                sessions.map((session) => (
+                sessions?.map((session) => (
                   <div
                     key={session.id}
                     className={cn(

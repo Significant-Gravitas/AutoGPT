@@ -28,7 +28,7 @@ export function UsageLimits() {
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
 
-  if (isLoading || !usage) return null;
+  if (isLoading || !usage?.daily || !usage?.weekly) return null;
   if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
 
   return (
