@@ -8,7 +8,6 @@ import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
-import { isEmptyErrorPin } from "../../helpers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
 import {
@@ -18,6 +17,7 @@ import {
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
+import { isEmptyErrorPin } from "../../helpers";
 
 interface Props {
   output: BlockOutputResponse;
