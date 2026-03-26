@@ -62,7 +62,7 @@ async def get_user_rate_limit(
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
-    usage = await get_usage_status(user_id, daily_limit, weekly_limit)
+    usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
 
     return UserRateLimitResponse(
         user_id=user_id,
@@ -99,7 +99,7 @@ async def reset_user_rate_limit(
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
-    usage = await get_usage_status(user_id, daily_limit, weekly_limit)
+    usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
 
     return UserRateLimitResponse(
         user_id=user_id,
