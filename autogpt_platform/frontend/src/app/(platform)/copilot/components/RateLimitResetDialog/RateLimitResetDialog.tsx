@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 interface Props {
@@ -36,6 +37,12 @@ export function RateLimitResetDialog({
     onCreditChange,
   });
   const router = useRouter();
+
+  // Refresh the credit balance each time the dialog opens so we never
+  // block a valid reset due to a stale client-side balance.
+  useEffect(() => {
+    if (isOpen) onCreditChange?.();
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Whether to hide the reset button entirely
   const cannotReset = isWeeklyExhausted || hasInsufficientCredits;
