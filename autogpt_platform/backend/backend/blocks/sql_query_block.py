@@ -135,11 +135,12 @@ def _sanitize_error(
         # Catch remaining bare occurrences (e.g. "FATAL:  role "myuser" does not exist")
         sanitized = sanitized.replace(f'"{username}"', "<user>")
 
-    # Replace the port number (only when it looks like a port reference)
+    # Replace the port number (handles "port 5432" and ":5432" formats)
     if port:
+        port_str = re.escape(str(port))
         sanitized = re.sub(
-            r"port " + re.escape(str(port)),
-            "port <port>",
+            r"(?:port |:)" + port_str + r"(?![0-9])",
+            lambda m: ("port " if m.group().startswith("p") else ":") + "<port>",
             sanitized,
         )
 
@@ -391,6 +392,7 @@ class SQLQueryBlock(Block):
         timeout: int,
         max_rows: int,
         read_only: bool = True,
+        database_type: DatabaseType = DatabaseType.POSTGRES,
     ) -> tuple[list[dict[str, Any]], list[str], int]:
         """Execute a SQL query and return (rows, columns, affected_rows).
 
@@ -402,9 +404,9 @@ class SQLQueryBlock(Block):
         """
         # Determine driver-specific connection timeout argument.
         # pyodbc (MSSQL) uses "timeout", while PostgreSQL/MySQL use "connect_timeout".
-        if "sqlite" in connection_string:
+        if database_type == DatabaseType.SQLITE:
             connect_args: dict[str, Any] = {}
-        elif "mssql" in connection_string:
+        elif database_type == DatabaseType.MSSQL:
             connect_args = {"timeout": 10}
         else:
             connect_args = {"connect_timeout": 10}
@@ -436,7 +438,11 @@ class SQLQueryBlock(Block):
 
                 # Execute the user query inside an explicit transaction so
                 # the read-only setting (if enabled) applies to it.
-                conn.execute(text("BEGIN"))
+                # MSSQL uses T-SQL "BEGIN TRANSACTION"; others use "BEGIN".
+                if engine.dialect.name == "mssql":
+                    conn.execute(text("BEGIN TRANSACTION"))
+                else:
+                    conn.execute(text("BEGIN"))
                 try:
                     result = conn.execute(text(query))
 
@@ -532,6 +538,7 @@ class SQLQueryBlock(Block):
                 timeout=input_data.timeout,
                 max_rows=input_data.max_rows,
                 read_only=input_data.read_only,
+                database_type=input_data.database_type,
             )
             yield "results", results
             yield "columns", columns

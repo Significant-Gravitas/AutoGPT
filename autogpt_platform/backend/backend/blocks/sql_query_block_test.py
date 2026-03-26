@@ -242,6 +242,14 @@ class TestSanitizeError:
         assert "6543" not in result
         assert "<port>" in result
 
+    def test_port_colon_format_scrubbed(self):
+        """Port in host:port format must also be replaced."""
+        conn = "postgresql://user:pass@1.2.3.4:6543/db"
+        error = "could not connect to <host>:6543"
+        result = _sanitize_error(error, conn, port=6543)
+        assert "6543" not in result
+        assert ":<port>" in result
+
     def test_realistic_postgres_error_fully_sanitized(self):
         """Full realistic Postgres connection error must not leak any infra details."""
         conn = "postgresql://postgres:mypass@52.73.47.72:5432/postgres"
