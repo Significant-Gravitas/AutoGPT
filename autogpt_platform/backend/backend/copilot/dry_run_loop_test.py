@@ -16,30 +16,23 @@ from backend.copilot.tools import TOOL_REGISTRY
 
 
 class TestSystemPromptDryRunLoop:
-    """Verify the system prompt includes dry-run loop instructions."""
+    """Verify the system prompt includes a brief dry-run loop reference.
+
+    The detailed workflow lives in the supplement (_SHARED_TOOL_NOTES);
+    the system prompt only carries a short pointer to keep it minimal.
+    """
 
     def test_system_prompt_mentions_dry_run(self):
-        assert (
-            "dry-run" in DEFAULT_SYSTEM_PROMPT.lower()
-            or "dry_run" in DEFAULT_SYSTEM_PROMPT
-        )
-
-    def test_system_prompt_mentions_create_edit_loop(self):
-        prompt_lower = DEFAULT_SYSTEM_PROMPT.lower()
-        assert "create" in prompt_lower
-        assert "edit_agent" in DEFAULT_SYSTEM_PROMPT or "edit" in prompt_lower
-        assert "loop" in prompt_lower or "repeat" in prompt_lower
-
-    def test_system_prompt_mentions_max_iterations(self):
-        assert "3" in DEFAULT_SYSTEM_PROMPT
-        assert "iteration" in DEFAULT_SYSTEM_PROMPT.lower()
-
-    def test_system_prompt_mentions_inspect_output(self):
-        prompt_lower = DEFAULT_SYSTEM_PROMPT.lower()
-        assert "inspect" in prompt_lower or "check" in prompt_lower
+        assert "dry-run" in DEFAULT_SYSTEM_PROMPT.lower()
 
     def test_system_prompt_mentions_never_skip(self):
         assert "NEVER skip" in DEFAULT_SYSTEM_PROMPT
+
+    def test_system_prompt_references_tool_notes(self):
+        assert "tool notes" in DEFAULT_SYSTEM_PROMPT.lower()
+
+    def test_system_prompt_mentions_iterations(self):
+        assert "3 iteration" in DEFAULT_SYSTEM_PROMPT.lower()
 
 
 class TestToolDescriptionsDryRunLoop:
@@ -55,13 +48,15 @@ class TestToolDescriptionsDryRunLoop:
         tool = TOOL_REGISTRY["edit_agent"]
         desc = tool.description
         assert "dry_run" in desc or "dry-run" in desc.lower()
-        assert "fix" in desc.lower() or "issues" in desc.lower()
+        assert "dry-run testing" in desc.lower() or "wiring errors" in desc.lower()
 
     def test_run_agent_mentions_dry_run_for_testing(self):
         tool = TOOL_REGISTRY["run_agent"]
         desc = tool.description
-        assert "dry_run" in desc or "dry-run" in desc.lower()
-        assert "test" in desc.lower() or "verify" in desc.lower()
+        assert "dry_run=True" in desc
+        assert (
+            "test agent wiring" in desc.lower() or "simulates execution" in desc.lower()
+        )
 
     def test_run_agent_dry_run_param_mentions_workflow(self):
         tool = TOOL_REGISTRY["run_agent"]
@@ -71,12 +66,12 @@ class TestToolDescriptionsDryRunLoop:
         dry_run_desc = params["properties"]["dry_run"]["description"]
         assert "create_agent" in dry_run_desc or "edit_agent" in dry_run_desc
         assert "wait_for_result" in dry_run_desc
-        assert "3" in dry_run_desc  # max iterations
+        assert "3 iterations" in dry_run_desc or "max " in dry_run_desc
 
     def test_get_agent_building_guide_mentions_workflow(self):
         tool = TOOL_REGISTRY["get_agent_building_guide"]
         desc = tool.description
-        assert "dry-run" in desc.lower() or "dry_run" in desc
+        assert "dry-run" in desc.lower()
 
     def test_run_agent_dry_run_param_exists(self):
         tool = TOOL_REGISTRY["run_agent"]
@@ -90,26 +85,24 @@ class TestToolDescriptionsDryRunLoop:
 class TestPromptingSupplementDryRunLoop:
     """Verify the prompting supplement includes the iterative workflow."""
 
-    def test_shared_tool_notes_include_dry_run_section(self):
-        assert (
-            "dry-run" in _SHARED_TOOL_NOTES.lower() or "dry_run" in _SHARED_TOOL_NOTES
-        )
+    def test_shared_tool_notes_include_dry_run_section_header(self):
+        assert "Iterative agent development" in _SHARED_TOOL_NOTES
 
-    def test_shared_tool_notes_include_loop_workflow(self):
-        notes_lower = _SHARED_TOOL_NOTES.lower()
-        assert "create" in notes_lower
-        assert "fix" in notes_lower
-        assert "iteration" in notes_lower or "repeat" in notes_lower
+    def test_shared_tool_notes_include_create_dry_run_fix_workflow(self):
+        assert "create -> dry-run -> fix" in _SHARED_TOOL_NOTES.lower()
 
     def test_shared_tool_notes_include_error_patterns(self):
         notes_lower = _SHARED_TOOL_NOTES.lower()
-        assert "error" in notes_lower
-        assert "null" in notes_lower or "empty" in notes_lower
+        assert "errors / failed nodes" in notes_lower
+        assert "null / empty outputs" in notes_lower
+        assert "nodes that never executed" in notes_lower
+
+    def test_shared_tool_notes_include_max_iterations(self):
+        assert "3 times" in _SHARED_TOOL_NOTES or "3 iterations" in _SHARED_TOOL_NOTES
 
     def test_sdk_supplement_includes_dry_run_section(self):
         supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
-        supplement_lower = supplement.lower()
-        assert "dry-run" in supplement_lower or "dry_run" in supplement_lower
+        assert "Iterative agent development" in supplement
 
 
 class TestAgentBuildingGuideDryRunLoop:
@@ -121,21 +114,23 @@ class TestAgentBuildingGuideDryRunLoop:
         return guide_path.read_text(encoding="utf-8")
 
     def test_guide_has_dry_run_verification_section(self, guide_content):
-        assert "Dry-Run Verification Loop" in guide_content
+        assert "REQUIRED: Dry-Run Verification Loop" in guide_content
 
     def test_guide_workflow_includes_dry_run_step(self, guide_content):
-        # Check the workflow section mentions dry-run as a step
-        assert "dry_run=True" in guide_content or "dry_run" in guide_content
+        assert "dry_run=True" in guide_content
 
     def test_guide_mentions_good_vs_bad_output(self, guide_content):
-        assert "Good output" in guide_content or "good" in guide_content.lower()
-        assert "Bad output" in guide_content or "bad" in guide_content.lower()
+        assert "**Good output**" in guide_content
+        assert "**Bad output**" in guide_content
 
     def test_guide_mentions_max_iterations(self, guide_content):
-        assert "3 times" in guide_content or "3 iterations" in guide_content
+        assert "**3 times**" in guide_content
 
     def test_guide_mentions_wait_for_result(self, guide_content):
-        assert "wait_for_result" in guide_content
+        assert "wait_for_result=120" in guide_content
+
+    def test_guide_mentions_view_agent_output(self, guide_content):
+        assert "view_agent_output" in guide_content
 
     def test_guide_workflow_has_steps_8_and_9(self, guide_content):
         assert "8. **Dry-run**" in guide_content
