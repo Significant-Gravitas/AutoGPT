@@ -872,3 +872,238 @@ async def test_tool_name_collision_with_existing_suffix():
     # The two colliding nodes must skip _1 (taken) and use _2, _3
     assert f"{base}_2" in names
     assert f"{base}_3" in names
+
+
+# ---------------------------------------------------------------------------
+# Edge-case tests added to address reviewer feedback (ntindle)
+# ---------------------------------------------------------------------------
+
+
+def test_disambiguate_empty_list():
+    """An empty tool list should be a no-op without errors."""
+    tools: list[dict] = []
+    _disambiguate_tool_names(tools)
+    assert tools == []
+
+
+def test_disambiguate_single_tool_no_change():
+    """A single tool should never be modified (no duplicates to resolve)."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "only_tool",
+                "description": "Solo tool",
+                "_hardcoded_defaults": {"key": "val"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+    assert tools[0]["function"]["name"] == "only_tool"
+    # _hardcoded_defaults should be cleaned up even for non-duplicates
+    assert "_hardcoded_defaults" not in tools[0]["function"]
+    # Description should NOT have Pre-configured (no duplicates)
+    assert "[Pre-configured:" not in tools[0]["function"]["description"]
+
+
+def test_disambiguate_all_same_name_ten_tools():
+    """Ten tools all sharing the same name should produce _1 through _10."""
+    tools: list[dict] = [
+        {"function": {"name": "searcher", "description": f"Tool {i}"}}
+        for i in range(10)
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 10, f"Tool names are not unique: {names}"
+    for i in range(1, 11):
+        assert f"searcher_{i}" in names, f"Missing searcher_{i} in {names}"
+
+
+def test_disambiguate_multiple_distinct_duplicate_groups():
+    """Two groups of duplicates (group_a x2 and group_b x2) should each get suffixed."""
+    tools: list[dict] = [
+        {"function": {"name": "group_a", "description": "A1"}},
+        {"function": {"name": "group_a", "description": "A2"}},
+        {"function": {"name": "group_b", "description": "B1"}},
+        {"function": {"name": "group_b", "description": "B2"}},
+        {"function": {"name": "unique_c", "description": "C1"}},
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 5, f"Tool names are not unique: {names}"
+    assert "group_a_1" in names
+    assert "group_a_2" in names
+    assert "group_b_1" in names
+    assert "group_b_2" in names
+    # unique tool is untouched
+    assert "unique_c" in names
+
+
+def test_disambiguate_large_default_value_truncated_in_description():
+    """Default values exceeding 100 chars should be truncated in description."""
+    long_value = "x" * 200
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "tool",
+                "description": "Base desc",
+                "_hardcoded_defaults": {"data": long_value},
+            }
+        },
+        {
+            "function": {
+                "name": "tool",
+                "description": "Base desc",
+                "_hardcoded_defaults": {"data": "short"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    tool_with_long = next(
+        t for t in tools if "truncated" in t["function"].get("description", "")
+    )
+    desc = tool_with_long["function"]["description"]
+    assert "...<truncated>" in desc
+    # The full 200-char value should NOT appear untruncated
+    assert long_value not in desc
+
+
+def test_disambiguate_suffix_collision_cascade():
+    """When user-named tools occupy _1 through _4, new duplicates skip to _5, _6."""
+    tools: list[dict] = [
+        # User-named tools that look like suffixed names
+        {"function": {"name": "search_1", "description": "User 1"}},
+        {"function": {"name": "search_2", "description": "User 2"}},
+        {"function": {"name": "search_3", "description": "User 3"}},
+        {"function": {"name": "search_4", "description": "User 4"}},
+        # Two actual duplicates that need dedup
+        {"function": {"name": "search", "description": "Dup A"}},
+        {"function": {"name": "search", "description": "Dup B"}},
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 6, f"Tool names are not unique: {names}"
+    # User-named tools stay unchanged
+    for i in range(1, 5):
+        assert f"search_{i}" in names
+    # The two duplicates must skip 1-4 and use 5, 6
+    assert "search_5" in names
+    assert "search_6" in names
+
+
+def test_disambiguate_preserves_original_description():
+    """The original description should be preserved as a prefix before [Pre-configured:]."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "my_tool",
+                "description": "This is the original description.",
+                "_hardcoded_defaults": {"mode": "fast"},
+            }
+        },
+        {
+            "function": {
+                "name": "my_tool",
+                "description": "This is the original description.",
+                "_hardcoded_defaults": {"mode": "slow"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    for tool in tools:
+        desc = tool["function"]["description"]
+        assert desc.startswith("This is the original description.")
+        assert "[Pre-configured:" in desc
+
+
+def test_disambiguate_empty_string_names():
+    """Tools with empty string names should still be disambiguated without errors."""
+    tools: list[dict] = [
+        {"function": {"name": "", "description": "Empty 1"}},
+        {"function": {"name": "", "description": "Empty 2"}},
+        {"function": {"name": "valid_tool", "description": "OK"}},
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 3, f"Tool names are not unique: {names}"
+    assert "valid_tool" in names
+
+
+@pytest.mark.asyncio
+async def test_cleanup_special_characters_in_tool_name():
+    """Tool names with special characters should be sanitised by cleanup()."""
+    # cleanup replaces non-alphanumeric (except _ and -) with _
+    result = OrchestratorBlock.cleanup("My Tool! @#$% v2.0")
+    assert result == "my_tool______v2_0"
+    # Only [a-zA-Z0-9_-] should remain
+    import re
+
+    assert re.fullmatch(r"[a-zA-Z0-9_-]+", result)
+
+
+def test_disambiguate_tools_with_boolean_and_numeric_defaults():
+    """Boolean and numeric default values should serialize correctly in description."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "processor",
+                "description": "Proc",
+                "_hardcoded_defaults": {
+                    "enabled": True,
+                    "count": 42,
+                    "ratio": 3.14,
+                },
+            }
+        },
+        {
+            "function": {
+                "name": "processor",
+                "description": "Proc",
+                "_hardcoded_defaults": {"enabled": False, "count": 0},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 2
+
+    tool_1 = next(t for t in tools if t["function"]["name"] == "processor_1")
+    desc = tool_1["function"]["description"]
+    assert "enabled=true" in desc
+    assert "count=42" in desc
+    assert "ratio=3.14" in desc
+
+
+def test_disambiguate_preserves_non_duplicate_hardcoded_defaults_cleanup():
+    """Non-duplicate tools should have _hardcoded_defaults removed but desc untouched."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "unique_a",
+                "description": "A desc",
+                "_hardcoded_defaults": {"key": "val"},
+            }
+        },
+        {
+            "function": {
+                "name": "unique_b",
+                "description": "B desc",
+                "_hardcoded_defaults": {"key": "val2"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    for tool in tools:
+        assert "_hardcoded_defaults" not in tool["function"]
+        # Descriptions should NOT have Pre-configured (no duplicates)
+        assert "[Pre-configured:" not in tool["function"]["description"]
+
+    assert tools[0]["function"]["name"] == "unique_a"
+    assert tools[1]["function"]["name"] == "unique_b"
