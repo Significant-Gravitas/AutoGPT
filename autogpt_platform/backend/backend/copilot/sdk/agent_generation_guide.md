@@ -74,8 +74,8 @@ These define the agent's interface — what it accepts and what it produces.
 
 **AgentDropdownInputBlock** (ID: `655d6fdf-a334-421c-b733-520549c07cd1`):
 - Specialized input block that presents a dropdown/select to the user
-- Required `input_default` fields: `name` (str), `placeholder_values` (list of options, must have at least one)
-- Optional: `title`, `description`, `value` (default selection)
+- Required `input_default` fields: `name` (str)
+- Optional: `options` (list of dropdown values; when omitted/empty, input behaves as free-text), `title`, `description`, `value` (default selection)
 - Output: `result` — the user-selected value at runtime
 - Use this instead of AgentInputBlock when the user should pick from a fixed set of options
 
