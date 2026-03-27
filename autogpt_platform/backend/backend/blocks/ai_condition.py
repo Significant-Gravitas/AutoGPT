@@ -20,6 +20,33 @@ from backend.blocks.llm import (
 )
 from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaField
 
+# Minimum max_output_tokens accepted by OpenAI-compatible APIs.
+# A true/false answer fits comfortably within this budget.
+MIN_LLM_OUTPUT_TOKENS = 16
+
+
+def _parse_boolean_response(response_text: str) -> tuple[bool, str | None]:
+    """Parse an LLM response into a boolean result.
+
+    Returns a ``(result, error)`` tuple.  *error* is ``None`` when the
+    response is unambiguous; otherwise it contains a diagnostic message
+    and *result* defaults to ``False``.
+    """
+    text = response_text.strip().lower()
+    if text == "true":
+        return True, None
+    if text == "false":
+        return False, None
+
+    # Fuzzy match – use word boundaries to avoid false positives like "untrue".
+    tokens = set(re.findall(r"\b(true|false|yes|no|1|0)\b", text))
+    if tokens == {"true"} or tokens == {"yes"} or tokens == {"1"}:
+        return True, None
+    if tokens == {"false"} or tokens == {"no"} or tokens == {"0"}:
+        return False, None
+
+    return False, f"Unclear AI response: '{response_text}'"
+
 
 class AIConditionBlock(AIBlockBase):
     """
@@ -167,28 +194,13 @@ class AIConditionBlock(AIBlockBase):
             credentials=credentials,
             llm_model=input_data.model,
             prompt=prompt,
-            max_tokens=16,  # We only expect a true/false response
+            max_tokens=MIN_LLM_OUTPUT_TOKENS,
         )
 
         # Extract the boolean result from the response
-        response_text = response.response.strip().lower()
-        if response_text == "true":
-            result = True
-        elif response_text == "false":
-            result = False
-        else:
-            # If the response is not clear, try to interpret it using word boundaries.
-            # Use word boundaries to avoid false positives like 'untrue' or '10'.
-            tokens = set(re.findall(r"\b(true|false|yes|no|1|0)\b", response_text))
-
-            if tokens == {"true"} or tokens == {"yes"} or tokens == {"1"}:
-                result = True
-            elif tokens == {"false"} or tokens == {"no"} or tokens == {"0"}:
-                result = False
-            else:
-                # Unclear or conflicting response - default to False and yield error
-                result = False
-                yield "error", f"Unclear AI response: '{response.response}'"
+        result, error = _parse_boolean_response(response.response)
+        if error:
+            yield "error", error
 
         # Update internal stats
         self.merge_stats(
