@@ -597,9 +597,17 @@ class TestSafeCloseSdkClient:
         await _safe_close_sdk_client(client, "[test]")
 
     @pytest.mark.asyncio
-    async def test_unrelated_runtime_error_suppressed(self):
-        """Non-cancel-scope RuntimeError is also caught (generic handler)."""
+    async def test_unrelated_runtime_error_propagates(self):
+        """Non-cancel-scope RuntimeError should propagate (not suppressed)."""
         client = AsyncMock()
         client.__aexit__ = AsyncMock(side_effect=RuntimeError("something unrelated"))
-        # Caught by the (ValueError, RuntimeError) handler
-        await _safe_close_sdk_client(client, "[test]")
+        with pytest.raises(RuntimeError, match="something unrelated"):
+            await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unrelated_value_error_propagates(self):
+        """Non-disconnect ValueError should propagate (not suppressed)."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=ValueError("invalid argument"))
+        with pytest.raises(ValueError, match="invalid argument"):
+            await _safe_close_sdk_client(client, "[test]")

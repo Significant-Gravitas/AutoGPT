@@ -456,13 +456,16 @@ async def _safe_close_sdk_client(
     try:
         await sdk_client.__aexit__(None, None, None)
     except (ValueError, RuntimeError) as exc:
-        # Expected during client disconnect — suppress to avoid Sentry noise.
-        logger.debug(
-            "%s SDK client cleanup error suppressed (client disconnect): %s: %s",
-            log_prefix,
-            type(exc).__name__,
-            exc,
-        )
+        if _is_sdk_disconnect_error(exc):
+            # Expected during client disconnect — suppress to avoid Sentry noise.
+            logger.debug(
+                "%s SDK client cleanup error suppressed (client disconnect): %s: %s",
+                log_prefix,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            raise
     except GeneratorExit:
         # GeneratorExit can propagate through __aexit__ — suppress it here
         # since the generator is already being torn down.

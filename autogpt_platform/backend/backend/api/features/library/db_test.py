@@ -139,7 +139,7 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
-    mock_library_agent.return_value.upsert = mocker.AsyncMock(
+    mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
     )
 
@@ -169,21 +169,12 @@ async def test_add_agent_to_library(mocker):
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"AgentGraph": True}
     )
-    # Check that upsert was called with the expected data including settings
-    upsert_call_args = mock_library_agent.return_value.upsert.call_args
-    assert upsert_call_args is not None
-
-    # Verify the where clause (composite unique key)
-    assert upsert_call_args.kwargs["where"] == {
-        "userId_agentGraphId_agentGraphVersion": {
-            "userId": "test-user",
-            "agentGraphId": "agent1",
-            "agentGraphVersion": 1,
-        }
-    }
+    # Check that create was called with the expected data including settings
+    create_call_args = mock_library_agent.return_value.create.call_args
+    assert create_call_args is not None
 
     # Verify the create data structure
-    create_data = upsert_call_args.kwargs["data"]["create"]
+    create_data = create_call_args.kwargs["data"]
     expected_create = {
         "User": {"connect": {"id": "test-user"}},
         "AgentGraph": {"connect": {"graphVersionId": {"id": "agent1", "version": 1}}},
@@ -197,14 +188,8 @@ async def test_add_agent_to_library(mocker):
     assert "settings" in create_data
     assert hasattr(create_data["settings"], "__class__")  # Should be a SafeJson object
 
-    # Verify the update data restores soft-deleted/archived agents
-    update_data = upsert_call_args.kwargs["data"]["update"]
-    assert update_data["isDeleted"] is False
-    assert update_data["isArchived"] is False
-    assert "settings" in update_data
-
     # Check include parameter
-    assert upsert_call_args.kwargs["include"] == library_agent_include(
+    assert create_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
 

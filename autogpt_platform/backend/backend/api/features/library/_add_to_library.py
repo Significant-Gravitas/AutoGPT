@@ -17,8 +17,6 @@ from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
-from .db import get_library_agent_by_graph_id
-
 logger = logging.getLogger(__name__)
 
 
@@ -63,14 +61,37 @@ async def add_graph_to_library(
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
 
-    Uses upsert on the (userId, agentGraphId, agentGraphVersion) composite
-    unique constraint to atomically handle concurrent additions, avoiding
-    UniqueViolationError race conditions.
+    Uses a create-then-catch-UniqueViolationError-then-update pattern on
+    the (userId, agentGraphId, agentGraphVersion) composite unique constraint.
+    This is more robust than ``upsert`` because Prisma's upsert atomicity
+    guarantees are not well-documented for all versions.
     """
     settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
+    _include = library_agent_include(
+        user_id, include_nodes=False, include_executions=False
+    )
 
     try:
-        added_agent = await prisma.models.LibraryAgent.prisma().upsert(
+        added_agent = await prisma.models.LibraryAgent.prisma().create(
+            data={
+                "User": {"connect": {"id": user_id}},
+                "AgentGraph": {
+                    "connect": {
+                        "graphVersionId": {
+                            "id": graph_model.id,
+                            "version": graph_model.version,
+                        }
+                    }
+                },
+                "isCreatedByUser": False,
+                "useGraphIsActiveVersion": False,
+                "settings": settings_json,
+            },
+            include=_include,
+        )
+    except prisma.errors.UniqueViolationError:
+        # Already exists — update to restore if previously soft-deleted/archived
+        added_agent = await prisma.models.LibraryAgent.prisma().update(
             where={
                 "userId_agentGraphId_agentGraphVersion": {
                     "userId": user_id,
@@ -79,39 +100,17 @@ async def add_graph_to_library(
                 }
             },
             data={
-                "create": {
-                    "User": {"connect": {"id": user_id}},
-                    "AgentGraph": {
-                        "connect": {
-                            "graphVersionId": {
-                                "id": graph_model.id,
-                                "version": graph_model.version,
-                            }
-                        }
-                    },
-                    "isCreatedByUser": False,
-                    "useGraphIsActiveVersion": False,
-                    "settings": settings_json,
-                },
-                "update": {
-                    # Restore if previously soft-deleted or archived
-                    "isDeleted": False,
-                    "isArchived": False,
-                    "settings": settings_json,
-                },
+                "isDeleted": False,
+                "isArchived": False,
+                "settings": settings_json,
             },
-            include=library_agent_include(
-                user_id, include_nodes=False, include_executions=False
-            ),
+            include=_include,
         )
-    except prisma.errors.UniqueViolationError:
-        # Defense-in-depth: should not happen with upsert, but handle gracefully
-        existing = await get_library_agent_by_graph_id(
-            user_id, graph_model.id, graph_model.version
-        )
-        if existing:
-            return existing
-        raise
+        if added_agent is None:
+            raise NotFoundError(
+                f"LibraryAgent for graph #{graph_model.id} "
+                f"v{graph_model.version} not found after UniqueViolationError"
+            )
 
     logger.debug(
         f"Added graph #{graph_model.id} v{graph_model.version} "
