@@ -37,41 +37,18 @@ If you cannot run the full test suite locally, note which tests you ran and whic
 
 ## Step 3: Create the PR using the repo template
 
-The repo has a PR template at `.github/PULL_REQUEST_TEMPLATE.md`. Your PR body **must** follow this template structure:
+Read the canonical PR template at `.github/PULL_REQUEST_TEMPLATE.md` and use it **verbatim** as your PR body. Fill in the content under each section but **do not** pre-check any checkbox — leave all boxes as `- [ ]` until each step is actually completed.
 
-```markdown
-### Why / What / How
+Key rules:
+- Preserve exact section titles (e.g. `### Why / What / How`, `### Changes 🏗️`, `### Checklist 📋`)
+- Replace HTML comment prompts (`<!-- ... -->`) with the actual content; do not leave them in
+- Leave all checkboxes unchecked (`- [ ]`) unless the step is already done
 
-**Why:** <Why does this PR exist? What problem does it solve?>
-**What:** <What does this PR change at a high level?>
-**How:** <How does it work? Key implementation details.>
-
-### Changes
-
-- <List key changes, higher level than the diff but specific>
-
-### Checklist
-
-#### For code changes:
-- [x] I have clearly listed my changes in the PR description
-- [x] I have made a test plan
-- [x] I have tested my changes according to the test plan:
-  - [x] <specific test step 1>
-  - [x] <specific test step 2>
-  - [ ] <test step that needs review bot — see below>
-
-#### For configuration changes:
-- [x] `.env.default` is updated or already compatible with my changes
-- [x] `docker-compose.yml` is updated or already compatible with my changes
-- [x] I have included a list of my configuration changes in the PR description
-```
-
-Fill in the template completely. Do not leave placeholder text.
-
-Use `gh pr create` with the base branch (default: `dev`):
+Use `gh pr create` with the base branch (defaults to `dev` if no `[base-branch]` was provided):
 
 ```bash
-gh pr create --base dev --title "<short title>" --body "$(cat <<'EOF'
+BASE_BRANCH="${BASE_BRANCH:-dev}"
+gh pr create --base "$BASE_BRANCH" --title "<short title>" --body "$(cat <<'EOF'
 <filled-in template>
 EOF
 )"
