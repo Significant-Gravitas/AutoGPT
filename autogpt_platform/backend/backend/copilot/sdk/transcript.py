@@ -837,7 +837,9 @@ def _find_last_assistant_entry(
     lines = [ln for ln in content.strip().split("\n") if ln.strip()]
 
     # Parse all lines once to avoid double JSON deserialization.
-    parsed: list[dict | None] = [json.loads(ln, fallback=None) for ln in lines]
+    # json.loads with fallback=None returns Any; non-dict entries are
+    # safely skipped by the isinstance(entry, dict) guards below.
+    parsed: list = [json.loads(ln, fallback=None) for ln in lines]
 
     # Reverse scan: find the message.id and index of the last assistant entry.
     last_asst_msg_id: str | None = None
