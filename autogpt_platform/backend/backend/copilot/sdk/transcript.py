@@ -689,6 +689,9 @@ COMPACT_MSG_ID_PREFIX = "msg_compact_"
 ENTRY_TYPE_MESSAGE = "message"
 
 
+_THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+
+
 def _flatten_assistant_content(blocks: list) -> str:
     """Flatten assistant content blocks into a single plain-text string.
 
