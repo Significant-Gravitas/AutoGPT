@@ -616,8 +616,8 @@ def _flatten_assistant_content(blocks: list) -> str:
     silently dropped — they carry no useful context for compression
     summaries and must not leak into compacted transcripts (the Anthropic
     API requires thinking blocks in the last assistant message to be
-    byte-for-byte identical to the original response; including stale
-    thinking text would violate that constraint).
+    value-identical to the original response; including stale thinking
+    text would violate that constraint).
 
     This is intentional: ``compress_context`` requires plain text for
     token counting and LLM summarization.  The structural loss is
@@ -828,9 +828,10 @@ def _find_last_assistant_entry(
     entry).  All entries of the turn are preserved verbatim.
 
     The Anthropic API requires that ``thinking`` and ``redacted_thinking``
-    blocks in the **last** assistant message remain byte-for-byte identical
-    to the original response.  By excluding the entire turn from
-    compression we guarantee those blocks are never altered.
+    blocks in the **last** assistant message remain value-identical to the
+    original response (the API validates parsed signature values, not raw
+    JSON bytes).  By excluding the entire turn from compression we
+    guarantee those blocks are never altered.
 
     Returns ``(all_lines, [])`` when no assistant entry is found.
     """
@@ -891,8 +892,9 @@ async def compact_transcript(
     The **last assistant entry** (and any entries after it) are preserved
     verbatim — never flattened or compressed.  The Anthropic API requires
     ``thinking`` and ``redacted_thinking`` blocks in the latest assistant
-    message to be byte-for-byte identical to the original response;
-    compressing them would destroy the cryptographic signatures and cause
+    message to be value-identical to the original response (the API
+    validates parsed signature values, not raw JSON bytes); compressing
+    them would destroy the cryptographic signatures and cause
     ``invalid_request_error``.
 
     Structured content in *older* assistant entries (``tool_use`` blocks,
@@ -959,6 +961,9 @@ async def compact_transcript(
                 len(compacted),
                 len(content),
             )
+        # Authoritative validation — the caller (_reduce_context) also
+        # validates, but this is the canonical check that guarantees we
+        # never return a malformed transcript from this function.
         if not validate_transcript(compacted):
             logger.warning("%s Compacted transcript failed validation", log_prefix)
             return None
@@ -995,6 +1000,10 @@ def _rechain_tail(compressed_prefix: str, tail_lines: list[str]) -> str:
     for i, line in enumerate(tail_lines):
         entry = json.loads(line, fallback=None)
         if not isinstance(entry, dict):
+            # Safety guard: _find_last_assistant_entry already filters empty
+            # lines, and well-formed JSONL always parses to dicts.  Non-dict
+            # lines are passed through unchanged; prev_uuid is intentionally
+            # NOT updated so the next dict entry chains to the last known uuid.
             result_lines.append(line)
             continue
         if i == 0:
