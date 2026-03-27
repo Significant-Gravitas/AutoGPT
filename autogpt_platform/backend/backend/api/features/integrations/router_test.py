@@ -301,9 +301,7 @@ class TestAutogptManagedCredentials:
             "backend.api.features.integrations.router.creds_manager"
         ) as mock_mgr:
             mock_mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
-            resp = client.request(
-                "DELETE", "/agent_mail/credentials/managed-cred-1"
-            )
+            resp = client.request("DELETE", "/agent_mail/credentials/managed-cred-1")
 
         assert resp.status_code == 403
         assert "AutoGPT-managed" in resp.json()["detail"]
