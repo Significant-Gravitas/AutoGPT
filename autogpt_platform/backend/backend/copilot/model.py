@@ -563,7 +563,6 @@ async def _save_session_to_db(
                     "refusal": msg.refusal,
                     "tool_calls": msg.tool_calls,
                     "function_call": msg.function_call,
-                    "duration_ms": msg.duration_ms,
                 }
             )
         logger.info(

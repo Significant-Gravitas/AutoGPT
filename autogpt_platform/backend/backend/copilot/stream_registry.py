@@ -30,6 +30,7 @@ from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
@@ -811,18 +812,30 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # Compute wall-clock duration from session created_at
+    # Compute wall-clock duration from session created_at.
+    # Only persist when (a) the session completed successfully and
+    # (b) created_at was actually present in Redis meta (not a fallback).
     duration_ms: int | None = None
-    if meta:
-        parsed_meta = _parse_session_meta(meta, session_id)
-        elapsed = datetime.now(timezone.utc) - parsed_meta.created_at
-        duration_ms = max(0, int(elapsed.total_seconds() * 1000))
+    if meta and not error_message:
+        created_at_raw = meta.get("created_at")
+        if created_at_raw:
+            try:
+                created_at = datetime.fromisoformat(str(created_at_raw))
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                elapsed = datetime.now(timezone.utc) - created_at
+                duration_ms = max(0, int(elapsed.total_seconds() * 1000))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Failed to compute session duration for %s "
+                    "(created_at=%r)",
+                    session_id,
+                    created_at_raw,
+                )
 
     # Persist duration on the last assistant message
     if duration_ms is not None:
         try:
-            from backend.data.db_accessors import chat_db
-
             await chat_db().set_turn_duration(session_id, duration_ms)
         except Exception as e:
             logger.warning(f"Failed to save turn duration for {session_id}: {e}")

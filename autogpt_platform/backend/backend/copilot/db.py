@@ -15,6 +15,7 @@ from prisma.types import (
     ChatSessionWhereInput,
 )
 
+from backend.copilot.model import invalidate_session_cache
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
@@ -380,6 +381,4 @@ async def set_turn_duration(session_id: str, duration_ms: int) -> None:
             data={"durationMs": duration_ms},
         )
         # Invalidate cache so the session is re-fetched from DB with durationMs
-        from backend.copilot.model import invalidate_session_cache
-
         await invalidate_session_cache(session_id)

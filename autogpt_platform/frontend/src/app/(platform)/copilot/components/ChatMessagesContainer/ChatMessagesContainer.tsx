@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -149,15 +149,17 @@ export function ChatMessagesContainer({
   // Reset when a new streaming turn begins.
   const frozenElapsedRef = useRef(0);
   const wasStreamingRef = useRef(false);
-  if (isActivelyStreaming) {
-    if (!wasStreamingRef.current) {
-      frozenElapsedRef.current = 0;
+  useEffect(() => {
+    if (isActivelyStreaming) {
+      if (!wasStreamingRef.current) {
+        frozenElapsedRef.current = 0;
+      }
+      if (elapsedSeconds > 0) {
+        frozenElapsedRef.current = elapsedSeconds;
+      }
     }
-    if (elapsedSeconds > 0) {
-      frozenElapsedRef.current = elapsedSeconds;
-    }
-  }
-  wasStreamingRef.current = isActivelyStreaming;
+    wasStreamingRef.current = isActivelyStreaming;
+  });
 
   return (
     <Conversation className="min-h-0 flex-1">
