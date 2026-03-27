@@ -186,6 +186,24 @@ def _is_prompt_too_long(err: BaseException) -> bool:
     return False
 
 
+def _is_sdk_disconnect_error(exc: BaseException) -> bool:
+    """Return True if *exc* is an expected SDK cleanup error from client disconnect.
+
+    Two known patterns occur when ``GeneratorExit`` tears down the async
+    generator and the SDK's ``__aexit__`` runs in a different context/task:
+
+    * ``RuntimeError``: cancel scope exited in wrong task (anyio)
+    * ``ValueError``: ContextVar token created in a different Context (OTEL)
+
+    These are suppressed to avoid polluting Sentry with non-actionable noise.
+    """
+    if isinstance(exc, RuntimeError) and "cancel scope" in str(exc):
+        return True
+    if isinstance(exc, ValueError) and "was created in a different Context" in str(exc):
+        return True
+    return False
+
+
 def _is_tool_only_message(sdk_msg: object) -> bool:
     """Return True if *sdk_msg* is an AssistantMessage containing only ToolUseBlocks.
 
@@ -408,6 +426,63 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 
 
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
+
+
+async def _safe_close_sdk_client(
+    sdk_client: ClaudeSDKClient,
+    log_prefix: str,
+) -> None:
+    """Close a ClaudeSDKClient, suppressing errors from client disconnect.
+
+    When the SSE client disconnects mid-stream, ``GeneratorExit`` propagates
+    through the async generator stack and causes ``ClaudeSDKClient.__aexit__``
+    to run in a different async context or task than where the client was
+    opened.  This triggers two known error classes:
+
+    * ``ValueError``: ``<Token var=<ContextVar name='current_context'>>
+      was created in a different Context`` — OpenTelemetry's
+      ``context.detach()`` fails because the OTEL context token was
+      created in the original generator coroutine but detach runs in
+      the GC / cleanup coroutine (Sentry: AUTOGPT-SERVER-8BT).
+
+    * ``RuntimeError``: ``Attempted to exit cancel scope in a different
+      task than it was entered in`` — anyio's ``TaskGroup.__aexit__``
+      detects that the cancel scope was entered in one task but is
+      being exited in another (Sentry: AUTOGPT-SERVER-8BW).
+
+    Both are harmless — the TCP connection is already dead and no
+    resources leak.  Logging them at ``debug`` level keeps observability
+    without polluting Sentry.
+    """
+    try:
+        await sdk_client.__aexit__(None, None, None)
+    except (ValueError, RuntimeError) as exc:
+        if _is_sdk_disconnect_error(exc):
+            # Expected during client disconnect — suppress to avoid Sentry noise.
+            logger.debug(
+                "%s SDK client cleanup error suppressed (client disconnect): %s: %s",
+                log_prefix,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            raise
+    except GeneratorExit:
+        # GeneratorExit can propagate through __aexit__ — suppress it here
+        # since the generator is already being torn down.
+        logger.debug(
+            "%s SDK client cleanup GeneratorExit suppressed (client disconnect)",
+            log_prefix,
+        )
+    except Exception:
+        # Unexpected cleanup error — log at error level so Sentry captures it
+        # (via its logging integration), but don't propagate since we're in
+        # teardown and the caller cannot meaningfully handle this.
+        logger.error(
+            "%s Unexpected SDK client cleanup error",
+            log_prefix,
+            exc_info=True,
+        )
 
 
 async def _iter_sdk_messages(
@@ -1189,7 +1264,17 @@ async def _run_stream_attempt(
 
     consecutive_empty_tool_calls = 0
 
-    async with ClaudeSDKClient(options=state.options) as client:
+    # Use manual __aenter__/__aexit__ instead of ``async with`` so we can
+    # suppress SDK cleanup errors that occur when the SSE client disconnects
+    # mid-stream.  GeneratorExit causes the SDK's ``__aexit__`` to run in a
+    # different async context/task than where the client was opened, which
+    # triggers:
+    #   - ValueError: ContextVar token mismatch (AUTOGPT-SERVER-8BT)
+    #   - RuntimeError: cancel scope in wrong task  (AUTOGPT-SERVER-8BW)
+    # Both are harmless — the TCP connection is already dead.
+    sdk_client = ClaudeSDKClient(options=state.options)
+    client = await sdk_client.__aenter__()
+    try:
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
             "query_len=%d, attached_files=%d, image_blocks=%d",
@@ -1449,6 +1534,8 @@ async def _run_stream_attempt(
 
             if acc.stream_completed:
                 break
+    finally:
+        await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
 
     # --- Post-stream processing (only on success) ---
     if state.adapter.has_unresolved_tool_calls:
@@ -2175,9 +2262,16 @@ async def stream_chat_completion_sdk(
             error_msg = "Operation cancelled"
         else:
             error_msg = str(e) or type(e).__name__
-            # SDK cleanup RuntimeError is expected during cancellation, log as warning
-            if isinstance(e, RuntimeError) and "cancel scope" in str(e):
-                logger.warning("%s SDK cleanup error: %s", log_prefix, error_msg)
+            # SDK cleanup errors are expected during client disconnect —
+            # log as warning rather than error to reduce Sentry noise.
+            # These are normally caught by _safe_close_sdk_client but
+            # can escape in edge cases (e.g. GeneratorExit timing).
+            if _is_sdk_disconnect_error(e):
+                logger.warning(
+                    "%s SDK cleanup error (client disconnect): %s",
+                    log_prefix,
+                    error_msg,
+                )
             else:
                 logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
@@ -2199,10 +2293,11 @@ async def stream_chat_completion_sdk(
             )
 
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
-        # Skip for CancelledError and RuntimeError cleanup issues (both are cancellations)
-        is_cancellation = isinstance(e, asyncio.CancelledError) or (
-            isinstance(e, RuntimeError) and "cancel scope" in str(e)
-        )
+        # Skip for CancelledError and SDK disconnect cleanup errors — these
+        # are not actionable by the user and the SSE connection is already dead.
+        is_cancellation = isinstance(
+            e, asyncio.CancelledError
+        ) or _is_sdk_disconnect_error(e)
         if not is_cancellation:
             yield StreamError(errorText=display_msg, code=code)
 
