@@ -355,6 +355,65 @@ async def test_parallel_tool_execution():
 
 
 @pytest.mark.asyncio
+async def test_sequential_tool_execution():
+    """With parallel_tool_calls=False, tools execute in order regardless of speed."""
+    execution_order: list[str] = []
+
+    async def llm_call(
+        messages: list[dict[str, Any]], tools: Sequence[Any]
+    ) -> LLMLoopResponse:
+        if len(messages) == 1:
+            return _make_response(
+                tool_calls=[
+                    LLMToolCall(id="tc_a", name="tool_a", arguments="{}"),
+                    LLMToolCall(id="tc_b", name="tool_b", arguments="{}"),
+                ]
+            )
+        return _make_response(text="Done")
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        # tool_b would finish first if parallel, but sequential should keep order
+        if tool_call.name == "tool_a":
+            await asyncio.sleep(0.05)
+        execution_order.append(tool_call.name)
+        return ToolCallResult(
+            tool_call_id=tool_call.id, tool_name=tool_call.name, content="ok"
+        )
+
+    def update_conversation(
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+    ) -> None:
+        messages.append({"role": "assistant", "content": "called tools"})
+        if tool_results:
+            for tr in tool_results:
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tr.tool_call_id,
+                        "content": tr.content,
+                    }
+                )
+
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Run both"}]
+    async for _ in tool_call_loop(
+        messages=msgs,
+        tools=TOOL_DEFS,
+        llm_call=llm_call,
+        execute_tool=execute_tool,
+        update_conversation=update_conversation,
+        parallel_tool_calls=False,
+    ):
+        pass
+
+    # With sequential execution, tool_a runs first despite being slower
+    assert execution_order == ["tool_a", "tool_b"]
+
+
+@pytest.mark.asyncio
 async def test_last_iteration_message_appended():
     """On the final iteration, last_iteration_message should be appended."""
     captured_messages: list[list[dict[str, Any]]] = []

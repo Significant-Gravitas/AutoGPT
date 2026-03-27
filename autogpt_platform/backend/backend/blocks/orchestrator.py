@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import re
+import shutil
 import types
 import uuid as uuid_mod
 from collections import Counter
@@ -1277,11 +1278,7 @@ class OrchestratorBlock(Block):
                     "additionalProperties"
                 ]
 
-            # Capture variables for closure
-            _tf = tf
-            _block = self
-
-            def _make_handler(_tool_func=_tf, _self=_block):
+            def _make_handler(_tool_func=tf, _self=self):
                 async def handler(args: dict[str, Any]) -> dict[str, Any]:
                     func = _tool_func["function"]
 
@@ -1569,6 +1566,8 @@ class OrchestratorBlock(Block):
                         llm_call_count=1,
                     )
                 )
+            # Clean up execution-specific working directory.
+            shutil.rmtree(sdk_cwd, ignore_errors=True)
 
         if sdk_error is not None:
             yield "error", str(sdk_error)
