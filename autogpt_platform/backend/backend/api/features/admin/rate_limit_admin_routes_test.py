@@ -9,7 +9,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
-from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
 
@@ -57,7 +57,7 @@ def _patch_rate_limit_deps(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.FREE),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
@@ -89,6 +89,7 @@ def test_get_rate_limit(
     assert data["weekly_token_limit"] == 12_500_000
     assert data["daily_tokens_used"] == 500_000
     assert data["weekly_tokens_used"] == 3_000_000
+    assert data["tier"] == "FREE"
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
@@ -162,6 +163,7 @@ def test_reset_user_usage_daily_only(
     assert data["daily_tokens_used"] == 0
     # Weekly is untouched
     assert data["weekly_tokens_used"] == 3_000_000
+    assert data["tier"] == "FREE"
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
 
@@ -192,6 +194,7 @@ def test_reset_user_usage_daily_and_weekly(
     data = response.json()
     assert data["daily_tokens_used"] == 0
     assert data["weekly_tokens_used"] == 0
+    assert data["tier"] == "FREE"
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=True)
 
@@ -228,7 +231,7 @@ def test_get_rate_limit_email_lookup_failure(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.FREE),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
@@ -259,5 +262,117 @@ def test_admin_endpoints_require_admin_role(mock_jwt_user) -> None:
     response = client.post(
         "/admin/rate_limit/reset",
         json={"user_id": "test"},
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Tier management endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_tier(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test getting a user's rate-limit tier."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
+    )
+
+    response = client.get("/admin/rate_limit/tier", params={"user_id": target_user_id})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == target_user_id
+    assert data["tier"] == "PRO"
+
+
+def test_set_user_tier(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test setting a user's rate-limit tier."""
+    mock_set = mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "ENTERPRISE"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == target_user_id
+    assert data["tier"] == "ENTERPRISE"
+    mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.ENTERPRISE)
+
+
+def test_set_user_tier_invalid_tier(
+    target_user_id: str,
+) -> None:
+    """Test that setting an invalid tier returns 422."""
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "invalid"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_set_user_tier_user_not_found(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that setting tier for nonexistent user returns 404."""
+    import prisma.errors
+
+    mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+        side_effect=prisma.errors.RecordNotFoundError({"error": "Record not found"}),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_set_user_tier_db_failure(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that DB failure on set tier returns 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+        side_effect=Exception("DB connection refused"),
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 500
+
+
+def test_tier_endpoints_require_admin_role(mock_jwt_user) -> None:
+    """Test that tier admin endpoints require admin role."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    response = client.get("/admin/rate_limit/tier", params={"user_id": "test"})
+    assert response.status_code == 403
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": "test", "tier": "PRO"},
     )
     assert response.status_code == 403
