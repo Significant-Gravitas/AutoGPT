@@ -164,7 +164,13 @@ class TestFindMatchingHostScopedCredential:
         assert result is None
 
     def test_matches_any_when_no_discriminator_values(self):
-        """With empty discriminator_values, any host-scoped credential matches."""
+        """With empty discriminator_values, any host-scoped credential matches.
+
+        Note: this tests the current fallback behavior in _credential_is_for_host()
+        where empty discriminator_values means "no host constraint" and any
+        host-scoped credential is accepted. This is by design for the case where
+        the target URL is not yet known (e.g. schema preview with empty input).
+        """
         cred = self._make_host_scoped_cred("api.anything.com")
         field_info = self._make_field_info(set())
 

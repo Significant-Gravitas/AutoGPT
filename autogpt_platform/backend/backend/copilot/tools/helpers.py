@@ -608,7 +608,7 @@ def _resolve_discriminated_credentials(
                 if field and field.default is not PydanticUndefined:
                     discriminator_value = field.default
 
-            if discriminator_value:
+            if discriminator_value is not None:
                 if field_info.discriminator_mapping:
                     # Provider-based discrimination (e.g. model -> provider)
                     if discriminator_value in field_info.discriminator_mapping:
@@ -618,6 +618,8 @@ def _resolve_discriminated_credentials(
                         effective_field_info.discriminator_values.add(
                             discriminator_value
                         )
+                        # Model names are safe to log (not PII); URLs are
+                        # intentionally omitted in the host-based branch below.
                         logger.debug(
                             "Discriminated provider for %s: %s -> %s",
                             field_name,
