@@ -41,10 +41,14 @@ class FindLibraryAgentTool(BaseTool):
         return True
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        query: str = "",
+        **kwargs,
     ) -> ToolResponseBase:
         return await search_agents(
-            query=(kwargs.get("query") or "").strip(),
+            query=query.strip(),
             source="library",
             session_id=session.session_id,
             user_id=user_id,

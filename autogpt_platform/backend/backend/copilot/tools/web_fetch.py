@@ -87,10 +87,11 @@ class WebFetchTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        url: str = "",
+        extract_text: bool = True,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        url: str = (kwargs.get("url") or "").strip()
-        extract_text: bool = kwargs.get("extract_text", True)
+        url = url.strip()
         session_id = session.session_id if session else None
 
         if not url:

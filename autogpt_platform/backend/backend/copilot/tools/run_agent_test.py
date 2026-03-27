@@ -53,6 +53,7 @@ async def test_run_agent(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={"test_input": "Hello World"},
+        dry_run=False,
         session=session,
     )
 
@@ -93,6 +94,7 @@ async def test_run_agent_missing_inputs(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={},  # Missing required input
+        dry_run=False,
         session=session,
     )
 
@@ -125,6 +127,7 @@ async def test_run_agent_invalid_agent_id(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="invalid/agent-id",
         inputs={"test_input": "Hello World"},
+        dry_run=False,
         session=session,
     )
 
@@ -165,6 +168,7 @@ async def test_run_agent_with_llm_credentials(setup_llm_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={"user_prompt": "What is 2+2?"},
+        dry_run=False,
         session=session,
     )
 
@@ -203,6 +207,7 @@ async def test_run_agent_shows_available_inputs_when_none_provided(setup_test_da
         username_agent_slug=agent_marketplace_id,
         inputs={},
         use_defaults=False,
+        dry_run=False,
         session=session,
     )
 
@@ -238,6 +243,7 @@ async def test_run_agent_with_use_defaults(setup_test_data):
         username_agent_slug=agent_marketplace_id,
         inputs={},
         use_defaults=True,
+        dry_run=False,
         session=session,
     )
 
@@ -268,6 +274,7 @@ async def test_run_agent_missing_credentials(setup_firecrawl_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug=agent_marketplace_id,
         inputs={"url": "https://example.com"},
+        dry_run=False,
         session=session,
     )
 
@@ -300,6 +307,7 @@ async def test_run_agent_invalid_slug_format(setup_test_data):
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="no-slash-here",
         inputs={},
+        dry_run=False,
         session=session,
     )
 
@@ -327,6 +335,7 @@ async def test_run_agent_unauthenticated():
         tool_call_id=str(uuid.uuid4()),
         username_agent_slug="test/test-agent",
         inputs={},
+        dry_run=False,
         session=session,
     )
 
@@ -359,6 +368,7 @@ async def test_run_agent_schedule_without_cron(setup_test_data):
         inputs={"test_input": "test"},
         schedule_name="My Schedule",
         cron="",  # Empty cron
+        dry_run=False,
         session=session,
     )
 
@@ -391,6 +401,7 @@ async def test_run_agent_schedule_without_name(setup_test_data):
         inputs={"test_input": "test"},
         schedule_name="",  # Empty name
         cron="0 9 * * *",
+        dry_run=False,
         session=session,
     )
 
@@ -424,6 +435,7 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
             "unknown_field": "some value",
             "another_unknown": "another value",
         },
+        dry_run=False,
         session=session,
     )
 
