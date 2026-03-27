@@ -279,6 +279,10 @@ class OrchestratorBlock(Block):
     single-shot and iterative agent mode execution.
     """
 
+    # MCP server name used by SDK mode.  Keep in sync with _create_graph_mcp_server
+    # and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
+    _SDK_MCP_SERVER_NAME = "graph_tools"
+
     class Input(BlockSchemaInput):
         prompt: str = SchemaField(
             description="The prompt to send to the language model.",
@@ -1240,7 +1244,13 @@ class OrchestratorBlock(Block):
             yield "error", str(e)
             return
 
-        yield "finished", loop_result.response_text
+        if loop_result.finished_naturally:
+            yield "finished", loop_result.response_text
+        else:
+            yield "finished", (
+                f"Agent mode completed after {loop_result.iterations} "
+                "iterations (limit reached)"
+            )
         yield "conversations", loop_result.messages
 
     def _create_graph_mcp_server(
@@ -1323,7 +1333,7 @@ class OrchestratorBlock(Block):
             sdk_tools.append(decorated)
 
         return create_sdk_mcp_server(
-            name="graph_tools",
+            name=OrchestratorBlock._SDK_MCP_SERVER_NAME,
             version="1.0.0",
             tools=sdk_tools,
         )
@@ -1358,8 +1368,9 @@ class OrchestratorBlock(Block):
             tool_functions, execution_params, execution_processor
         )
 
-        # Build allowed tools list (MCP-prefixed names)
-        MCP_PREFIX = "mcp__graph_tools__"
+        # Build allowed tools list (MCP-prefixed names).
+        # Derive the prefix from the class-level server name constant.
+        MCP_PREFIX = f"mcp__{self._SDK_MCP_SERVER_NAME}__"
         allowed_tools = [
             f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
         ]
@@ -1430,7 +1441,7 @@ class OrchestratorBlock(Block):
         # Build SDK options
         options = ClaudeAgentOptions(
             system_prompt=input_data.sys_prompt or "",
-            mcp_servers={"graph_tools": mcp_server},
+            mcp_servers={self._SDK_MCP_SERVER_NAME: mcp_server},
             allowed_tools=allowed_tools,
             disallowed_tools=disallowed_tools,
             cwd=sdk_cwd,
