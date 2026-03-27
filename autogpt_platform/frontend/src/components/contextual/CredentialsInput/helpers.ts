@@ -18,6 +18,7 @@ export const providerIcons: Partial<
   aiml_api: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
+  database: fallbackIcon,
   e2b: fallbackIcon,
   github: FaGithub,
   google: FaGoogle,
