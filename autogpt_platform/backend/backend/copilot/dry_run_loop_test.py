@@ -31,8 +31,8 @@ class TestSystemPromptDryRunLoop:
     def test_system_prompt_references_tool_notes(self):
         assert "tool notes" in DEFAULT_SYSTEM_PROMPT.lower()
 
-    def test_system_prompt_mentions_iterations(self):
-        assert "3 iteration" in DEFAULT_SYSTEM_PROMPT.lower()
+    def test_system_prompt_mentions_repeat_until_pass(self):
+        assert "repeat until" in DEFAULT_SYSTEM_PROMPT.lower()
 
 
 class TestToolDescriptionsDryRunLoop:
@@ -66,7 +66,7 @@ class TestToolDescriptionsDryRunLoop:
         dry_run_desc = params["properties"]["dry_run"]["description"]
         assert "create_agent" in dry_run_desc or "edit_agent" in dry_run_desc
         assert "wait_for_result" in dry_run_desc
-        assert "3 iterations" in dry_run_desc
+        assert "repeat" in dry_run_desc.lower()
 
     def test_get_agent_building_guide_mentions_workflow(self):
         tool = TOOL_REGISTRY["get_agent_building_guide"]
@@ -97,8 +97,8 @@ class TestPromptingSupplementDryRunLoop:
         assert "null / empty outputs" in notes_lower
         assert "nodes that never executed" in notes_lower
 
-    def test_shared_tool_notes_include_max_iterations(self):
-        assert "3 iterations" in _SHARED_TOOL_NOTES
+    def test_shared_tool_notes_include_repeat_until_pass(self):
+        assert "repeat until" in _SHARED_TOOL_NOTES.lower()
 
     def test_sdk_supplement_includes_dry_run_section(self):
         supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
@@ -126,8 +126,9 @@ class TestAgentBuildingGuideDryRunLoop:
         assert "**Good output**" in guide_content
         assert "**Bad output**" in guide_content
 
-    def test_guide_mentions_max_iterations(self, guide_content):
-        assert "**3 iterations**" in guide_content
+    def test_guide_mentions_repeat_until_pass(self, guide_content):
+        assert "repeat" in guide_content.lower()
+        assert "clearly unfixable" in guide_content.lower()
 
     def test_guide_mentions_wait_for_result(self, guide_content):
         assert "wait_for_result=120" in guide_content
