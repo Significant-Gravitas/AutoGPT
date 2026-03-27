@@ -83,7 +83,7 @@ The AutoGPT frontend is where users interact with our powerful AI automation pla
 
    **Agent Builder:** For those who want to customize, our intuitive, low-code interface allows you to design and configure your own AI agents. 
    
-   **Workflow Management:** Build, modify, and optimize your automation workflows with ease. You build your agent by connecting blocks, where each block     performs a single action.
+   **Workflow Management:** Build, modify, and optimize your automation workflows with ease. You build your agent by connecting blocks, where each block performs a single action.
    
    **Deployment Controls:** Manage the lifecycle of your agents, from testing to production.
    
