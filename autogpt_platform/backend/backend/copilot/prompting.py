@@ -120,24 +120,14 @@ to the user as ready:
 
 1. Call `run_agent` with `dry_run=True` and `wait_for_result=120`, providing
    realistic sample inputs that exercise all branches.
-2. Inspect the dry-run output for problems:
-   - **Errors / failed nodes** — a node raised an exception or returned an
-     error status. Usually a wiring issue (wrong source/sink names) or a
-     missing `input_default` value.
-   - **Null / empty outputs** — data did not flow through a link. Check that
-     `source_name` and `sink_name` match the block schemas exactly.
-   - **Nodes that never executed** — the node was not reached at all. Likely
-     a missing or broken link from an upstream node.
-   - **Unexpected values** — the data arrived but in the wrong format or
-     with wrong content. Check type compatibility between linked ports.
+2. Inspect the dry-run output for errors, null outputs, or nodes that never
+   executed. Call `get_agent_building_guide` for the full list of error
+   patterns to check.
 3. If any issues are found, fix the agent JSON and call `edit_agent`, then
    dry-run again.
 4. Repeat until the simulation passes or the problems are clearly unfixable.
    If you stop making progress, report the outstanding problems to the user
    and ask for guidance.
-
-This loop ensures the agent actually works before the user invests real
-credentials and API credits in a live run.
 
 ### Tool Discovery Priority
 
