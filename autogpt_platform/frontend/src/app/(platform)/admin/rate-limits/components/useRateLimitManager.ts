@@ -199,6 +199,29 @@ export function useRateLimitManager() {
     }
   }
 
+  async function handleTierChange(newTier: string) {
+    if (!rateLimitData) return;
+
+    const response = await fetch(
+      `/api/copilot/admin/rate_limit/tier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: rateLimitData.user_id,
+          tier: newTier,
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to update tier");
+    }
+
+    // Re-fetch rate limit data to reflect new tier limits
+    await fetchRateLimit(rateLimitData.user_id);
+  }
+
   return {
     isSearching,
     isLoadingRateLimit,
@@ -208,5 +231,6 @@ export function useRateLimitManager() {
     handleSearch,
     handleSelectUser,
     handleReset,
+    handleTierChange,
   };
 }
