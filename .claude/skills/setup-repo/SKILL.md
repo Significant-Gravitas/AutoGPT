@@ -25,12 +25,13 @@ REPO_NAME=$(basename "$ROOT")
 PARENT=$(dirname "$ROOT")
 ```
 
-Detect if the repo is already inside a worktree layout:
+Detect if the repo is already inside a worktree layout by counting sibling worktrees (not just checking the directory name, which could be anything):
 
 ```bash
-# Check if this is already a worktree-based layout
-if [ "$(basename "$ROOT")" = "main" ] && git worktree list 2>/dev/null | grep -q "$PARENT/"; then
-  echo "INFO: Existing worktree layout detected at $PARENT"
+# Count worktrees that are siblings (live under $PARENT but aren't $ROOT itself)
+SIBLING_COUNT=$(git worktree list --porcelain 2>/dev/null | grep "^worktree " | grep -c "$PARENT/" || echo 0)
+if [ "$SIBLING_COUNT" -gt 1 ]; then
+  echo "INFO: Existing worktree layout detected at $PARENT ($SIBLING_COUNT worktrees)"
   # Use $ROOT as-is; skip renaming/restructuring
 else
   echo "INFO: Fresh clone detected, proceeding with setup"
