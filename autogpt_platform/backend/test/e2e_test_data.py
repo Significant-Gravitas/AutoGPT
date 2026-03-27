@@ -34,7 +34,7 @@ from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
 from backend.data.graph import Graph, Link, Node, create_graph
-from backend.data.invited_user import get_or_activate_user
+from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
 
 faker = Faker()
@@ -151,7 +151,7 @@ class TestDataCreator:
                 }
 
                 # Use the API function to create user in local database
-                user = await get_or_activate_user(user_data)
+                user = await get_or_create_user(user_data)
                 users.append(user.model_dump())
 
             except Exception as e:
@@ -254,7 +254,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1012, "y": 674}},
                     )
@@ -274,7 +273,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1117, "y": 78}},
                     )

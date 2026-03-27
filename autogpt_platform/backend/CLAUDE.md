@@ -61,6 +61,7 @@ poetry run pytest path/to/test.py --snapshot-update
 ## Code Style
 
 - **Top-level imports only** — no local/inner imports (lazy imports only for heavy optional deps like `openpyxl`)
+- **Absolute imports** — use `from backend.module import ...` for cross-package imports. Single-dot relative (`from .sibling import ...`) is acceptable for sibling modules within the same package (e.g., blocks). Avoid double-dot relative imports (`from ..parent import ...`) — use the absolute path instead
 - **No duck typing** — no `hasattr`/`getattr`/`isinstance` for type dispatch; use typed interfaces/unions/protocols
 - **Pydantic models** over dataclass/namedtuple/dict for structured data
 - **No linter suppressors** — no `# type: ignore`, `# noqa`, `# pyright: ignore`; fix the type/code
@@ -84,6 +85,30 @@ poetry run pytest path/to/test.py --snapshot-update
 - Mock at boundaries — mock where the symbol is **used**, not where it's **defined**
 - After refactoring, update mock targets to match new module paths
 - Use `AsyncMock` for async functions (`from unittest.mock import AsyncMock`)
+
+### Test-Driven Development (TDD)
+
+When fixing a bug or adding a feature, write the test **before** the implementation:
+
+```python
+# 1. Write a failing test marked xfail
+@pytest.mark.xfail(reason="Bug #1234: widget crashes on empty input")
+def test_widget_handles_empty_input():
+    result = widget.process("")
+    assert result == Widget.EMPTY_RESULT
+
+# 2. Run it — confirm it fails (XFAIL)
+# poetry run pytest path/to/test.py::test_widget_handles_empty_input -xvs
+
+# 3. Implement the fix
+
+# 4. Remove xfail, run again — confirm it passes
+def test_widget_handles_empty_input():
+    result = widget.process("")
+    assert result == Widget.EMPTY_RESULT
+```
+
+This catches regressions and proves the fix actually works. **Every bug fix should include a test that would have caught it.**
 
 ## Database Schema
 

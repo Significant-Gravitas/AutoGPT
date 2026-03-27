@@ -1,4 +1,4 @@
-"""Tests for chat API routes: session title update, file attachment validation, usage, rate limiting, and suggested prompts."""
+"""Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
@@ -368,6 +368,7 @@ def test_usage_returns_daily_and_weekly(
         user_id=test_user_id,
         daily_token_limit=10000,
         weekly_token_limit=50000,
+        rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
     )
 
 
@@ -380,6 +381,7 @@ def test_usage_uses_config_limits(
 
     mocker.patch.object(chat_routes.config, "daily_token_limit", 99999)
     mocker.patch.object(chat_routes.config, "weekly_token_limit", 77777)
+    mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 500)
 
     response = client.get("/usage")
 
@@ -388,6 +390,7 @@ def test_usage_uses_config_limits(
         user_id=test_user_id,
         daily_token_limit=99999,
         weekly_token_limit=77777,
+        rate_limit_reset_cost=500,
     )
 
 
@@ -418,44 +421,51 @@ def _mock_get_business_understanding(
     )
 
 
-def test_suggested_prompts_returns_prompts(
+def test_suggested_prompts_returns_themes(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """User with understanding and prompts gets them back."""
+    """User with themed prompts gets them back as themes list."""
     mock_understanding = MagicMock()
-    mock_understanding.suggested_prompts = ["Do X", "Do Y", "Do Z"]
+    mock_understanding.suggested_prompts = {
+        "Learn": ["L1", "L2"],
+        "Create": ["C1"],
+    }
     _mock_get_business_understanding(mocker, return_value=mock_understanding)
 
     response = client.get("/suggested-prompts")
 
     assert response.status_code == 200
-    assert response.json() == {"prompts": ["Do X", "Do Y", "Do Z"]}
+    data = response.json()
+    assert "themes" in data
+    themes_by_name = {t["name"]: t["prompts"] for t in data["themes"]}
+    assert themes_by_name["Learn"] == ["L1", "L2"]
+    assert themes_by_name["Create"] == ["C1"]
 
 
 def test_suggested_prompts_no_understanding(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """User with no understanding gets empty list."""
+    """User with no understanding gets empty themes list."""
     _mock_get_business_understanding(mocker, return_value=None)
 
     response = client.get("/suggested-prompts")
 
     assert response.status_code == 200
-    assert response.json() == {"prompts": []}
+    assert response.json() == {"themes": []}
 
 
 def test_suggested_prompts_empty_prompts(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """User with understanding but no prompts gets empty list."""
+    """User with understanding but empty prompts gets empty themes list."""
     mock_understanding = MagicMock()
-    mock_understanding.suggested_prompts = []
+    mock_understanding.suggested_prompts = {}
     _mock_get_business_understanding(mocker, return_value=mock_understanding)
 
     response = client.get("/suggested-prompts")
 
     assert response.status_code == 200
-    assert response.json() == {"prompts": []}
+    assert response.json() == {"themes": []}

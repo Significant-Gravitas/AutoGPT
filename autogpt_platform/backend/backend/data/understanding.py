@@ -23,12 +23,49 @@ def _cache_key(user_id: str) -> str:
 
 
 def _json_to_list(value: Any) -> list[str]:
-    """Convert Json field to list[str], handling None."""
+    """Convert Json field to list[str], handling None.
+
+    Also handles legacy dict-format rows (e.g. ``{"Learn": [...], "Create": [...]}``
+    from the reverted themed-prompts feature) by flattening all values into a single
+    list so existing personalised data isn't silently lost.
+    """
     if value is None:
         return []
     if isinstance(value, list):
         return cast(list[str], value)
+    if isinstance(value, dict):
+        # Legacy themed-prompt format: flatten all string values from all categories.
+        logger.debug(
+            "_json_to_list: flattening legacy dict-format value (keys=%s)",
+            list(value.keys()),
+        )
+        return [
+            item
+            for vals in value.values()
+            if isinstance(vals, list)
+            for item in vals
+            if isinstance(item, str)
+        ]
     return []
+
+
+def _json_to_themed_prompts(value: Any) -> dict[str, list[str]]:
+    """Convert Json field to themed prompts dict.
+
+    Handles both the new ``dict[str, list[str]]`` format and the legacy
+    ``list[str]`` format.  Legacy rows are placed under a ``"General"`` key so
+    existing personalised prompts remain readable until a backfill regenerates
+    them into the proper themed shape.
+    """
+    if isinstance(value, dict):
+        return {
+            k: [i for i in v if isinstance(i, str)]
+            for k, v in value.items()
+            if isinstance(k, str) and isinstance(v, list)
+        }
+    if isinstance(value, list) and value:
+        return {"General": [str(p) for p in value if isinstance(p, str)]}
+    return {}
 
 
 class BusinessUnderstandingInput(pydantic.BaseModel):
@@ -87,8 +124,8 @@ class BusinessUnderstandingInput(pydantic.BaseModel):
     )
 
     # Suggested prompts (UI-only, not included in system prompt)
-    suggested_prompts: Optional[list[str]] = pydantic.Field(
-        None, description="LLM-generated suggested prompts based on business context"
+    suggested_prompts: Optional[dict[str, list[str]]] = pydantic.Field(
+        None, description="LLM-generated suggested prompts grouped by theme"
     )
 
 
@@ -128,7 +165,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
     additional_notes: Optional[str] = None
 
     # Suggested prompts (UI-only, not included in system prompt)
-    suggested_prompts: list[str] = pydantic.Field(default_factory=list)
+    suggested_prompts: dict[str, list[str]] = pydantic.Field(default_factory=dict)
 
     @classmethod
     def from_db(cls, db_record: CoPilotUnderstanding) -> "BusinessUnderstanding":
@@ -157,7 +194,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
             current_software=_json_to_list(business.get("current_software")),
             existing_automation=_json_to_list(business.get("existing_automation")),
             additional_notes=business.get("additional_notes"),
-            suggested_prompts=_json_to_list(data.get("suggested_prompts")),
+            suggested_prompts=_json_to_themed_prompts(data.get("suggested_prompts")),
         )
 
 
@@ -173,62 +210,6 @@ def _merge_lists(existing: list | None, new: list | None) -> list | None:
         if item not in merged:
             merged.append(item)
     return merged
-
-
-def merge_business_understanding_data(
-    existing_data: dict[str, Any],
-    input_data: BusinessUnderstandingInput,
-) -> dict[str, Any]:
-    merged_data = dict(existing_data)
-
-    merged_business: dict[str, Any] = {}
-    if isinstance(merged_data.get("business"), dict):
-        merged_business = dict(merged_data["business"])
-
-    business_string_fields = [
-        "job_title",
-        "business_name",
-        "industry",
-        "business_size",
-        "user_role",
-        "additional_notes",
-    ]
-    business_list_fields = [
-        "key_workflows",
-        "daily_activities",
-        "pain_points",
-        "bottlenecks",
-        "manual_tasks",
-        "automation_goals",
-        "current_software",
-        "existing_automation",
-    ]
-
-    if input_data.user_name is not None:
-        merged_data["name"] = input_data.user_name
-
-    for field in business_string_fields:
-        value = getattr(input_data, field)
-        if value is not None:
-            merged_business[field] = value
-
-    for field in business_list_fields:
-        value = getattr(input_data, field)
-        if value is not None:
-            existing_list = _json_to_list(merged_business.get(field))
-            merged_list = _merge_lists(existing_list, value)
-            merged_business[field] = merged_list
-
-    merged_business["version"] = 1
-    merged_data["business"] = merged_business
-
-    # suggested_prompts lives at the top level (not under `business`) because
-    # it's a UI-only artifact consumed by the frontend, not business understanding
-    # data. The `business` sub-dict feeds the system prompt.
-    if input_data.suggested_prompts is not None:
-        merged_data["suggested_prompts"] = input_data.suggested_prompts
-
-    return merged_data
 
 
 async def _get_from_cache(user_id: str) -> Optional[BusinessUnderstanding]:
@@ -293,6 +274,70 @@ async def get_business_understanding(
     return understanding
 
 
+def merge_business_understanding_data(
+    existing_data: dict[str, Any],
+    input_data: BusinessUnderstandingInput,
+) -> dict[str, Any]:
+    """Merge new input into existing data dict using incremental strategy.
+
+    - String fields: new value overwrites if provided (not None)
+    - List fields: new items are appended to existing (deduplicated)
+    - suggested_prompts: fully replaced if provided (not None)
+
+    Returns the merged data dict (mutates and returns *existing_data*).
+    """
+    existing_business: dict[str, Any] = {}
+    if isinstance(existing_data.get("business"), dict):
+        existing_business = dict(existing_data["business"])
+
+    business_string_fields = [
+        "job_title",
+        "business_name",
+        "industry",
+        "business_size",
+        "user_role",
+        "additional_notes",
+    ]
+    business_list_fields = [
+        "key_workflows",
+        "daily_activities",
+        "pain_points",
+        "bottlenecks",
+        "manual_tasks",
+        "automation_goals",
+        "current_software",
+        "existing_automation",
+    ]
+
+    # Handle top-level name field
+    if input_data.user_name is not None:
+        existing_data["name"] = input_data.user_name
+
+    # Business string fields - overwrite if provided
+    for field in business_string_fields:
+        value = getattr(input_data, field)
+        if value is not None:
+            existing_business[field] = value
+
+    # Business list fields - merge with existing
+    for field in business_list_fields:
+        value = getattr(input_data, field)
+        if value is not None:
+            existing_list = _json_to_list(existing_business.get(field))
+            merged = _merge_lists(existing_list, value)
+            existing_business[field] = merged
+
+    # Suggested prompts - fully replace if provided
+    if input_data.suggested_prompts is not None:
+        existing_data["suggested_prompts"] = input_data.suggested_prompts
+
+    # Set version and nest business data
+    existing_business["version"] = 1
+    existing_data["business"] = existing_business
+
+    return existing_data
+
+
 async def upsert_business_understanding(
     user_id: str,
     input_data: BusinessUnderstandingInput,
@@ -302,6 +347,7 @@ async def upsert_business_understanding(
 
     - String fields: new value overwrites if provided (not None)
     - List fields: new items are appended to existing (deduplicated)
+    - suggested_prompts: fully replaced if provided (not None)
 
     Data is stored as: {name: ..., business: {version: 1, ...}}
     """
@@ -310,6 +356,7 @@ async def upsert_business_understanding(
         where={"userId": user_id}
     )
 
+    # Get existing data structure or start fresh
     existing_data: dict[str, Any] = {}
     if existing and isinstance(existing.data, dict):
         existing_data = dict(existing.data)

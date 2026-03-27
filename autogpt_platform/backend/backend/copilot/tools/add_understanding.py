@@ -22,13 +22,12 @@ class AddUnderstandingTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Capture and store information about the user's business context,
-workflows, pain points, and automation goals. Call this tool whenever the user
-shares information about their business. Each call incrementally adds to the
-existing understanding - you don't need to provide all fields at once.
-
-Use this to build a comprehensive profile that helps recommend better agents
-and automations for the user's specific needs."""
+        return (
+            "Store user's business context, workflows, pain points, and automation goals. "
+            "Call whenever the user shares business info. Each call incrementally merges "
+            "with existing data — provide only the fields you have. "
+            "Builds a profile that helps recommend better agents for the user's needs."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:

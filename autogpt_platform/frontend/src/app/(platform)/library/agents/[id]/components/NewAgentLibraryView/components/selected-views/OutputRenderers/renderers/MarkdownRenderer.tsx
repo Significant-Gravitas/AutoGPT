@@ -169,7 +169,7 @@ function renderMarkdown(
           [remarkMath, { singleDollarTextMath: false }], // Math support for LaTeX
         ]}
         rehypePlugins={[
-          rehypeKatex, // Render math with KaTeX
+          [rehypeKatex, { strict: false }], // Render math with KaTeX
           rehypeHighlight, // Syntax highlighting for code blocks
           rehypeSlug, // Add IDs to headings
           [rehypeAutolinkHeadings, { behavior: "wrap" }], // Make headings clickable

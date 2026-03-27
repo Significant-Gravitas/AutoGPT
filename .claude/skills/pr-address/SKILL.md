@@ -17,18 +17,70 @@ gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoG
 gh pr view {N}
 ```
 
-## Fetch comments (all sources)
+## Read the PR description
+
+Understand the **Why / What / How** before addressing comments — you need context to make good fixes:
 
 ```bash
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
-gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
+gh pr view {N} --json body --jq '.body'
 ```
 
-**Bots to watch for:**
-- `autogpt-reviewer` — posts "Blockers", "Should Fix", "Nice to Have". Address ALL of them.
-- `sentry[bot]` — bug predictions. Fix real bugs, explain false positives.
-- `coderabbitai[bot]` — automated review. Address actionable items.
+## Fetch comments (all sources)
+
+### 1. Inline review threads — GraphQL (primary source of actionable items)
+
+Use GraphQL to fetch inline threads. It natively exposes `isResolved`, returns threads already grouped with all replies, and paginates via cursor — no manual thread reconstruction needed.
+
+```bash
+gh api graphql -f query='
+{
+  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
+    pullRequest(number: {N}) {
+      reviewThreads(first: 100) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          path
+          comments(last: 1) {
+            nodes { databaseId body author { login } createdAt }
+          }
+        }
+      }
+    }
+  }
+}'
+```
+
+If `pageInfo.hasNextPage` is true, fetch subsequent pages by adding `after: "<endCursor>"` to `reviewThreads(first: 100, after: "...")` and repeat until `hasNextPage` is false.
+
+**Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
+
+### 2. Top-level reviews — REST (MUST paginate)
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
+```
+
+**CRITICAL — always `--paginate`.** Reviews default to 30 per page. PRs can have 80–170+ reviews (mostly empty resolution events). Without pagination you miss reviews past position 30 — including `autogpt-reviewer`'s structured review which is typically posted after several CI runs and sits well beyond the first page.
+
+Two things to extract:
+- **Overall state**: look for `CHANGES_REQUESTED` or `APPROVED` reviews.
+- **Actionable feedback**: non-empty bodies only. Empty-body reviews are thread-resolution events — they indicate progress but have no feedback to act on.
+
+**Where each reviewer posts:**
+- `autogpt-reviewer` — posts detailed structured reviews ("Blockers", "Should Fix", "Nice to Have") as **top-level reviews**. Not present on every PR. Address ALL items.
+- `sentry[bot]` — posts bug predictions as **inline threads**. Fix real bugs, explain false positives.
+- `coderabbitai[bot]` — posts summaries as **top-level reviews** AND actionable items as **inline threads**. Address actionable items.
+- Human reviewers — can post in any source. Address ALL non-empty feedback.
+
+### 3. PR conversation comments — REST
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
+```
+
+Mostly contains: bot summaries (`coderabbitai[bot]`), CI/conflict detection (`github-actions[bot]`), and author status updates. Scan for non-empty messages from non-bot human reviewers that aren't the PR author — those are the ones that need a response.
 
 ## For each unaddressed comment
 
@@ -61,7 +113,9 @@ kill $REST_PID 2>/dev/null; trap - EXIT
 ```
 Never manually edit files in `src/app/api/__generated__/`.
 
-Then commit and **push immediately** — never batch commits without pushing.
+Then commit and **push immediately** — never batch commits without pushing. Each fix should be visible on GitHub right away so CI can start and reviewers can see progress.
+
+**Never push empty commits** (`git commit --allow-empty`) to re-trigger CI or bot checks. When a check fails, investigate the root cause (unchecked PR checklist, unaddressed review comments, code issues) and fix those directly. Empty commits add noise to git history.
 
 For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 
@@ -94,13 +148,23 @@ gh pr view {N} --repo Significant-Gravitas/AutoGPT --json mergeable --jq '.merge
 ```
    If the result is `"CONFLICTING"`, the PR has a merge conflict — see "Resolving merge conflicts" below. If `"UNKNOWN"`, GitHub is still computing mergeability — wait and re-check next poll.
 
-3. Check for new comments (all three sources):
-```bash
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments      # inline review comments
-gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments     # PR conversation comments
-gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews       # top-level reviews
-```
-   Compare against previously seen comments to detect new ones.
+3. Check for new/changed comments (all three sources):
+
+   **Inline threads** — re-run the GraphQL query from "Fetch comments". For each unresolved thread, record `{thread_id, last_comment_databaseId}` as your baseline. On each poll, action is needed if:
+   - A new thread `id` appears that wasn't in the baseline (new thread), OR
+   - An existing thread's `last_comment_databaseId` has changed (new reply on existing thread)
+
+   **Conversation comments:**
+   ```bash
+   gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments --paginate
+   ```
+   Compare total count and newest `id` against baseline. Filter to non-empty, non-bot, non-author-update messages.
+
+   **Top-level reviews:**
+   ```bash
+   gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate
+   ```
+   Watch for new non-empty reviews (`CHANGES_REQUESTED` or `COMMENTED` with body). Compare total count and newest `id` against baseline.
 
 4. **React in this precedence order (first match wins):**
 

@@ -17,11 +17,13 @@ Subscribers:
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
 import orjson
+from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
 from backend.data.notification_bus import (
@@ -33,12 +35,21 @@ from backend.data.redis_client import get_redis_async
 from .config import ChatConfig
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
 from .response_model import (
+    ResponseType,
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
+    StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
     StreamTextStart,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+    StreamUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -278,6 +289,56 @@ async def publish_chunk(
         )
 
     return message_id
+
+
+async def stream_and_publish(
+    session_id: str,
+    turn_id: str,
+    stream: AsyncIterator[StreamBaseResponse],
+) -> AsyncIterator[StreamBaseResponse]:
+    """Wrap an async stream iterator with registry publishing.
+
+    Publishes each chunk to the stream registry for frontend SSE consumption,
+    skipping ``StreamFinish`` and ``StreamError`` (which are published by
+    :func:`mark_session_completed`).
+
+    This is a pass-through: every event from *stream* is yielded unchanged so
+    the caller can still consume and aggregate them.  The caller is responsible
+    for calling :func:`create_session` before and :func:`mark_session_completed`
+    after iterating.
+
+    Args:
+        session_id: Chat session ID (for logging only).
+        turn_id: Turn UUID that identifies the Redis stream to publish to.
+            If empty, publishing is silently skipped (graceful degradation).
+        stream: The underlying async iterator of stream events.
+
+    Yields:
+        Every event from *stream*, unchanged.
+    """
+    publish_failed_once = False
+
+    async for event in stream:
+        if turn_id and not isinstance(event, (StreamFinish, StreamError)):
+            try:
+                await publish_chunk(turn_id, event)
+            except (RedisError, ConnectionError, OSError):
+                if not publish_failed_once:
+                    publish_failed_once = True
+                    logger.warning(
+                        "[stream_and_publish] Failed to publish chunk %s for %s "
+                        "(further failures logged at DEBUG)",
+                        type(event).__name__,
+                        session_id[:12],
+                        exc_info=True,
+                    )
+                else:
+                    logger.debug(
+                        "[stream_and_publish] Failed to publish chunk %s",
+                        type(event).__name__,
+                        exc_info=True,
+                    )
+        yield event
 
 
 async def subscribe_to_session(
@@ -693,6 +754,8 @@ async def _stream_listener(
 async def mark_session_completed(
     session_id: str,
     error_message: str | None = None,
+    *,
+    skip_error_publish: bool = False,
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -708,6 +771,10 @@ async def mark_session_completed(
         session_id: Session ID to mark as completed
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
+        skip_error_publish: If True, still marks the session as "failed" but
+            does NOT publish a StreamError event. Use this when the error has
+            already been published to the stream (e.g. via stream_and_publish)
+            to avoid duplicate error delivery to the frontend.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -727,7 +794,7 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
-    if error_message:
+    if error_message and not skip_error_publish:
         try:
             await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
@@ -913,21 +980,6 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     Returns:
         Reconstructed response object, or None if unknown type
     """
-    from .response_model import (
-        ResponseType,
-        StreamError,
-        StreamFinish,
-        StreamFinishStep,
-        StreamHeartbeat,
-        StreamStart,
-        StreamStartStep,
-        StreamTextEnd,
-        StreamToolInputAvailable,
-        StreamToolInputStart,
-        StreamToolOutputAvailable,
-        StreamUsage,
-    )
-
     # Map response types to their corresponding classes
     type_to_class: dict[str, type[StreamBaseResponse]] = {
         ResponseType.START.value: StreamStart,
