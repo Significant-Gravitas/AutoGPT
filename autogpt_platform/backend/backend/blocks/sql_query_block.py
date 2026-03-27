@@ -285,6 +285,8 @@ class SQLQueryBlock(Block):
                 "Database port (leave empty for default: "
                 "PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433)"
             ),
+            ge=1,
+            le=65535,
         )
         database: str = SchemaField(
             description="Name of the database to connect to",
@@ -394,7 +396,7 @@ class SQLQueryBlock(Block):
         mode and the transaction is always rolled back.
         """
         # Determine driver-specific connection timeout argument.
-        # pyodbc (MSSQL) uses "timeout", while PostgreSQL/MySQL use "connect_timeout".
+        # pymssql uses "login_timeout", while PostgreSQL/MySQL use "connect_timeout".
         if database_type == DatabaseType.MSSQL:
             connect_args = {"login_timeout": 10}
         else:
@@ -511,9 +513,7 @@ class SQLQueryBlock(Block):
         # URL.create() accepts the raw password without URL-encoding,
         # so special characters like @, #, ! work correctly.
         drivername = _DATABASE_TYPE_TO_DRIVER[input_data.database_type]
-        port = input_data.port or _DATABASE_TYPE_DEFAULT_PORT.get(
-            input_data.database_type, 5432
-        )
+        port = input_data.port or _DATABASE_TYPE_DEFAULT_PORT[input_data.database_type]
         username = credentials.username.get_secret_value()
         password = credentials.password.get_secret_value()
         connection_url = URL.create(

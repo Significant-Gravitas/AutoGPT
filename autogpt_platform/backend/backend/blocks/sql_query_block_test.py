@@ -775,14 +775,14 @@ class TestSQLQueryBlockDefaultPort:
     """Port should default based on the selected database_type."""
 
     async def test_mysql_default_port_3306(self):
-        """MySQL should default to port 3306 when port is 0."""
+        """MySQL should default to port 3306 when port is None."""
         block = SQLQueryBlock()
         creds = _make_credentials()
         input_data = _make_input(
             creds,
             query="SELECT 1",
             database_type=DatabaseType.MYSQL,
-            port=0,
+            port=None,
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
@@ -798,14 +798,14 @@ class TestSQLQueryBlockDefaultPort:
         assert ":3306/" in captured_conn_str["value"]
 
     async def test_mssql_default_port_1433(self):
-        """MSSQL should default to port 1433 when port is 0."""
+        """MSSQL should default to port 1433 when port is None."""
         block = SQLQueryBlock()
         creds = _make_credentials()
         input_data = _make_input(
             creds,
             query="SELECT 1",
             database_type=DatabaseType.MSSQL,
-            port=0,
+            port=None,
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
@@ -821,14 +821,14 @@ class TestSQLQueryBlockDefaultPort:
         assert ":1433/" in captured_conn_str["value"]
 
     async def test_postgres_default_port_5432(self):
-        """PostgreSQL should default to port 5432 when port is 0."""
+        """PostgreSQL should default to port 5432 when port is None."""
         block = SQLQueryBlock()
         creds = _make_credentials()
         input_data = _make_input(
             creds,
             query="SELECT 1",
             database_type=DatabaseType.POSTGRES,
-            port=0,
+            port=None,
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
