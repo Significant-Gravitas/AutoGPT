@@ -125,6 +125,9 @@ def _sanitize_error(
     # Replace any remaining IPv4 addresses (e.g. resolved IPs the driver logs)
     sanitized = re.sub(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", "<ip>", sanitized)
 
+    # Replace bracketed IPv6 addresses (e.g. "[::1]", "[fe80::1%eth0]")
+    sanitized = re.sub(r"\[[0-9a-fA-F:]+(?:%[^\]]+)?\]", "<ip>", sanitized)
+
     # Replace the database username (handles double-quoted, single-quoted,
     # and unquoted formats across PostgreSQL, MySQL, and MSSQL error messages).
     if username:
@@ -171,37 +174,18 @@ def _extract_keyword_tokens(parsed: sqlparse.sql.Statement) -> list[str]:
     return keywords
 
 
-def _validate_query_is_read_only(query: str) -> str | None:
-    """Validate that a SQL query is read-only (SELECT/WITH only).
+def _validate_query_is_read_only(stmt: sqlparse.sql.Statement) -> str | None:
+    """Validate that a parsed SQL statement is read-only (SELECT/WITH only).
 
-    Uses sqlparse to properly tokenize the query, distinguishing keywords
-    from string literals, comments, and identifiers. This prevents bypass
-    via quoted comment injection or multi-statement attacks.
+    Accepts an already-parsed statement from ``_validate_single_statement``
+    to avoid re-parsing. Checks:
+    1. Statement type must be SELECT (sqlparse classifies WITH...SELECT as SELECT)
+    2. No disallowed keywords (INSERT, UPDATE, DELETE, DROP, INTO, etc.)
 
     Returns an error message if the query is not read-only, None otherwise.
     """
-    stripped = query.strip().rstrip(";").strip()
-    if not stripped:
-        return "Query is empty."
-
-    # Parse the SQL using sqlparse for proper tokenization
-    statements = sqlparse.parse(stripped)
-
-    # Filter out empty statements (e.g. from trailing semicolons)
-    statements = [s for s in statements if s.tokens and str(s).strip()]
-
-    if not statements:
-        return "Query is empty."
-
-    # Reject multiple statements -- prevents injection via semicolons
-    if len(statements) > 1:
-        return "Only single statements are allowed."
-
-    stmt = statements[0]
-    stmt_type = stmt.get_type()
-
     # sqlparse returns 'SELECT' for SELECT and WITH...SELECT queries
-    if stmt_type != "SELECT":
+    if stmt.get_type() != "SELECT":
         return "Only SELECT queries are allowed."
 
     # Defense-in-depth: check parsed keyword tokens for disallowed keywords
@@ -395,7 +379,7 @@ class SQLQueryBlock(Block):
 
     @staticmethod
     def execute_query(
-        connection_string: str,
+        connection_url: URL | str,
         query: str,
         timeout: int,
         max_rows: int,
@@ -420,7 +404,7 @@ class SQLQueryBlock(Block):
             connect_args = {"connect_timeout": 10}
 
         engine = create_engine(
-            connection_string,
+            connection_url,
             connect_args=connect_args,
         )
         try:
@@ -489,14 +473,16 @@ class SQLQueryBlock(Block):
         **_kwargs: Any,
     ) -> BlockOutput:
         # Multi-statement prevention applies in both modes (security against injection)
-        stmt_error, _ = _validate_single_statement(input_data.query)
+        stmt_error, parsed_stmt = _validate_single_statement(input_data.query)
         if stmt_error:
             yield "error", stmt_error
             return
 
-        # When read_only (default), enforce SELECT-only queries
+        # When read_only (default), enforce SELECT-only queries.
+        # Reuse the already-parsed statement to avoid duplicate sqlparse.parse().
+        assert parsed_stmt is not None  # guaranteed by stmt_error check above
         if input_data.read_only:
-            ro_error = _validate_query_is_read_only(input_data.query)
+            ro_error = _validate_query_is_read_only(parsed_stmt)
             if ro_error:
                 yield "error", ro_error
                 return
@@ -546,12 +532,15 @@ class SQLQueryBlock(Block):
             port=port,
             database=input_data.database,
         )
+        # Render the connection string for error sanitization only.
+        # The URL object is passed directly to create_engine() to prevent
+        # database name injection (e.g. "db?options=-c statement_timeout=0").
         connection_string = connection_url.render_as_string(hide_password=False)
 
         try:
             results, columns, affected = await asyncio.to_thread(
                 self.execute_query,
-                connection_string=connection_string,
+                connection_url=connection_url,
                 query=input_data.query,
                 timeout=input_data.timeout,
                 max_rows=input_data.max_rows,
