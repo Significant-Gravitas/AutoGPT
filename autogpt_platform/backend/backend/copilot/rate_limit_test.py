@@ -13,7 +13,6 @@ from .rate_limit import (
     RateLimitExceeded,
     RateLimitTier,
     UsageWindow,
-    _fetch_user_tier,
     check_rate_limit,
     get_global_rate_limits,
     get_usage_status,
@@ -388,8 +387,8 @@ class TestRateLimitTier:
 class TestGetUserTier:
     @pytest.fixture(autouse=True)
     def _clear_tier_cache(self):
-        """Clear the _fetch_user_tier cache before each test."""
-        _fetch_user_tier.cache_clear()
+        """Clear the get_user_tier cache before each test."""
+        get_user_tier.cache_clear()  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_returns_tier_from_db(self):

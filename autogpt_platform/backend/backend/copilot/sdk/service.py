@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
+from backend.copilot.rate_limit import get_user_tier
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -1834,8 +1835,6 @@ async def stream_chat_completion_sdk(
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
-        from backend.copilot.rate_limit import get_user_tier
-
         _user_tier = await get_user_tier(user_id) if user_id else None
         _otel_metadata: dict[str, str] = {
             "resume": str(use_resume),

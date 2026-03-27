@@ -407,10 +407,16 @@ async def get_user_tier(user_id: str) -> RateLimitTier:
     return DEFAULT_TIER
 
 
+# Expose cache management on the public function so callers (including tests)
+# never need to reach into the private ``_fetch_user_tier``.
+get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-defined]
+get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
+
+
 async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
-    Also invalidates the ``_fetch_user_tier`` cache for this user so that
+    Also invalidates the ``get_user_tier`` cache for this user so that
     subsequent rate-limit checks immediately see the new tier.
 
     Raises:
@@ -421,7 +427,7 @@ async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
         data={"rateLimitTier": tier.value},
     )
     # Invalidate cached tier so rate-limit checks pick up the change immediately.
-    _fetch_user_tier.cache_delete(user_id)
+    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
 
 
 async def get_global_rate_limits(
