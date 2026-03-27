@@ -442,8 +442,11 @@ class TestCompactTranscript:
         assert result is not None
         assert validate_transcript(result)
         msgs = _transcript_to_messages(result)
-        assert len(msgs) == 2
+        # 3 messages: compressed prefix (2) + preserved last assistant (1)
+        assert len(msgs) == 3
         assert msgs[1]["content"] == "Summarized response"
+        # The last assistant entry is preserved verbatim from original
+        assert msgs[2]["content"] == "Details"
 
     @pytest.mark.asyncio
     async def test_returns_none_on_compression_failure(self, mock_chat_config):
