@@ -5,11 +5,20 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRef } from "react";
 
 export function useResetRateLimit(options?: {
   onSuccess?: () => void;
   onCreditChange?: () => void;
 }) {
+  // Use refs so mutation callbacks always see the latest options,
+  // avoiding stale-closure issues when the caller re-renders with
+  // different callback references.
+  const onSuccessRef = useRef(options?.onSuccess);
+  onSuccessRef.current = options?.onSuccess;
+  const onCreditChangeRef = useRef(options?.onCreditChange);
+  onCreditChangeRef.current = options?.onCreditChange;
+
   const queryClient = useQueryClient();
   const { mutate: resetUsage, isPending } = usePostV2ResetCopilotUsage({
     mutation: {
@@ -20,13 +29,13 @@ export function useResetRateLimit(options?: {
         await queryClient.invalidateQueries({
           queryKey: getGetV2GetCopilotUsageQueryKey(),
         });
-        options?.onCreditChange?.();
+        onCreditChangeRef.current?.();
         toast({
           title: "Rate limit reset",
           description:
             "Your daily usage limit has been reset. You can continue working.",
         });
-        options?.onSuccess?.();
+        onSuccessRef.current?.();
       },
       onError: (error: unknown) => {
         const message =

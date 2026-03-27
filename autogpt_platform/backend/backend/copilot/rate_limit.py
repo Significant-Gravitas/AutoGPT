@@ -161,8 +161,9 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
         daily_token_limit: The configured daily token limit. When positive,
             the weekly counter is reduced by this amount.
 
-    Fails open: returns False if Redis is unavailable (consistent with
-    the fail-open design of this module).
+    Returns False if Redis is unavailable so the caller can handle
+    compensation (fail-closed for billed operations, unlike the read-only
+    rate-limit checks which fail-open).
     """
     now = datetime.now(UTC)
     try:
