@@ -105,7 +105,7 @@ The block sends the entire conversation history to the chosen LLM, including sys
 | messages | List of messages in the conversation. | List[Any] | Yes |
 | model | The language model to use for the conversation. | "o3-mini" \| "o3-2025-04-16" \| "o1" \| "o1-mini" \| "gpt-5.2-2025-12-11" \| "gpt-5.1-2025-11-13" \| "gpt-5-2025-08-07" \| "gpt-5-mini-2025-08-07" \| "gpt-5-nano-2025-08-07" \| "gpt-5-chat-latest" \| "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "gpt-4o-mini" \| "gpt-4o" \| "gpt-4-turbo" \| "claude-opus-4-1-20250805" \| "claude-opus-4-20250514" \| "claude-sonnet-4-20250514" \| "claude-opus-4-5-20251101" \| "claude-sonnet-4-5-20250929" \| "claude-haiku-4-5-20251001" \| "claude-opus-4-6" \| "claude-sonnet-4-6" \| "claude-3-haiku-20240307" \| "Qwen/Qwen2.5-72B-Instruct-Turbo" \| "nvidia/llama-3.1-nemotron-70b-instruct" \| "meta-llama/Llama-3.3-70B-Instruct-Turbo" \| "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo" \| "meta-llama/Llama-3.2-3B-Instruct-Turbo" \| "llama-3.3-70b-versatile" \| "llama-3.1-8b-instant" \| "llama3.3" \| "llama3.2" \| "llama3" \| "llama3.1:405b" \| "dolphin-mistral:latest" \| "openai/gpt-oss-120b" \| "openai/gpt-oss-20b" \| "google/gemini-2.5-pro-preview-03-25" \| "google/gemini-2.5-pro" \| "google/gemini-3.1-pro-preview" \| "google/gemini-3-flash-preview" \| "google/gemini-2.5-flash" \| "google/gemini-2.0-flash-001" \| "google/gemini-3.1-flash-lite-preview" \| "google/gemini-2.5-flash-lite-preview-06-17" \| "google/gemini-2.0-flash-lite-001" \| "mistralai/mistral-nemo" \| "mistralai/mistral-large-2512" \| "mistralai/mistral-medium-3.1" \| "mistralai/mistral-small-3.2-24b-instruct" \| "mistralai/codestral-2508" \| "cohere/command-r-08-2024" \| "cohere/command-r-plus-08-2024" \| "cohere/command-a-03-2025" \| "cohere/command-a-translate-08-2025" \| "cohere/command-a-reasoning-08-2025" \| "cohere/command-a-vision-07-2025" \| "deepseek/deepseek-chat" \| "deepseek/deepseek-r1-0528" \| "perplexity/sonar" \| "perplexity/sonar-pro" \| "perplexity/sonar-reasoning-pro" \| "perplexity/sonar-deep-research" \| "nousresearch/hermes-3-llama-3.1-405b" \| "nousresearch/hermes-3-llama-3.1-70b" \| "amazon/nova-lite-v1" \| "amazon/nova-micro-v1" \| "amazon/nova-pro-v1" \| "microsoft/wizardlm-2-8x22b" \| "microsoft/phi-4" \| "gryphe/mythomax-l2-13b" \| "meta-llama/llama-4-scout" \| "meta-llama/llama-4-maverick" \| "x-ai/grok-3" \| "x-ai/grok-4" \| "x-ai/grok-4-fast" \| "x-ai/grok-4.1-fast" \| "x-ai/grok-code-fast-1" \| "moonshotai/kimi-k2" \| "qwen/qwen3-235b-a22b-thinking-2507" \| "qwen/qwen3-coder" \| "Llama-4-Scout-17B-16E-Instruct-FP8" \| "Llama-4-Maverick-17B-128E-Instruct-FP8" \| "Llama-3.3-8B-Instruct" \| "Llama-3.3-70B-Instruct" \| "v0-1.5-md" \| "v0-1.5-lg" \| "v0-1.0-md" | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
-| ollama_host | Ollama host for local models | str | No |
+| ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
 
@@ -261,7 +261,7 @@ The block formulates a prompt based on the given focus or source data, sends it 
 | max_retries | Maximum number of retries for generating a valid list. | int | No |
 | force_json_output | Whether to force the LLM to produce a JSON-only response. This can increase the block's reliability, but may also reduce the quality of the response because it prohibits the LLM from reasoning before providing its JSON response. | bool | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
-| ollama_host | Ollama host for local models | str | No |
+| ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
 
@@ -432,7 +432,7 @@ The block sends the input prompt to a chosen LLM, along with any system prompts 
 | prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 | compress_prompt_to_fit | Whether to compress the prompt to fit within the model's context window. | bool | No |
-| ollama_host | Ollama host for local models | str | No |
+| ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
 
@@ -468,7 +468,7 @@ The block sends the input prompt to a chosen LLM, processes the response, and re
 | sys_prompt | The system prompt to provide additional context to the model. | str | No |
 | retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
 | prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
-| ollama_host | Ollama host for local models | str | No |
+| ollama_host | Ollama host for local  models | str | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 
 ### Outputs
@@ -506,7 +506,7 @@ The block splits the input text into smaller chunks, sends each chunk to an LLM 
 | style | The style of the summary to generate. | "concise" \| "detailed" \| "bullet points" \| "numbered list" | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
 | chunk_overlap | The number of overlapping tokens between chunks to maintain context. | int | No |
-| ollama_host | Ollama host for local models | str | No |
+| ollama_host | Ollama host for local  models | str | No |
 
 ### Outputs
 
@@ -729,7 +729,7 @@ _Add technical explanation here._
 | retry | Number of times to retry the LLM call if the response does not match the expected format. | int | No |
 | prompt_values | Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}. | Dict[str, str] | No |
 | max_tokens | The maximum number of tokens to generate in the chat completion. | int | No |
-| ollama_host | Ollama host for local models | str | No |
+| ollama_host | Ollama host for local  models | str | No |
 | agent_mode_max_iterations | Maximum iterations for agent mode. 0 = traditional mode (single LLM call, yield tool calls for external execution), -1 = infinite agent mode (loop until finished), 1+ = agent mode with max iterations limit. | int | No |
 | conversation_compaction | Automatically compact the context window once it hits the limit | bool | No |
 
