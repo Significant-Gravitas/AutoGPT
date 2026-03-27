@@ -283,10 +283,16 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
     block should be LLM-simulated instead.
     """
     if isinstance(block, OrchestratorBlock):
+        # Preserve the user's configured mode: 0 means traditional (single
+        # LLM call, no agent loop). Only override to 1 when the user chose
+        # agent mode (non-zero) so the dry run still exercises the loop once
+        # without running away.
+        original = input_data.get("agent_mode_max_iterations", 0)
+        max_iters = 1 if original != 0 else 0
         return {
             **input_data,
             "model": DRY_RUN_MODEL,
-            "agent_mode_max_iterations": 1,
+            "agent_mode_max_iterations": max_iters,
         }
     return None
 
