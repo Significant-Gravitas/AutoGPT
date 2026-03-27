@@ -569,6 +569,28 @@ class TestGetGlobalRateLimitsWithTiers:
         assert tier == SubscriptionTier.STANDARD
 
     @pytest.mark.asyncio
+    async def test_pro_tier_10x_multiplier(self):
+        """Pro tier should multiply limits by 10."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.PRO,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(2_500_000, 12_500_000),
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 2_500_000, 12_500_000
+            )
+
+        assert daily == 25_000_000
+        assert weekly == 125_000_000
+        assert tier == SubscriptionTier.PRO
+
+    @pytest.mark.asyncio
     async def test_enterprise_tier_25x_multiplier(self):
         """Enterprise tier should multiply limits by 25."""
         with (
