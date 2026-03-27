@@ -1191,7 +1191,7 @@ async def health_check() -> dict:
     )
 
     # Create and retrieve session to verify full data layer
-    session = await create_chat_session(health_check_user_id)
+    session = await create_chat_session(health_check_user_id, dry_run=False)
     await get_chat_session(session.session_id, health_check_user_id)
 
     return {

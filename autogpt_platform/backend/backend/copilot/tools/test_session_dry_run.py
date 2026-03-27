@@ -253,7 +253,7 @@ class TestChatSessionDryRun:
     """Test the dry_run field on ChatSession model."""
 
     def test_new_session_default_dry_run_false(self):
-        session = ChatSession.new("test-user")
+        session = ChatSession.new("test-user", dry_run=False)
         assert session.dry_run is False
 
     def test_new_session_dry_run_true(self):

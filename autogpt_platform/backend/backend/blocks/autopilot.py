@@ -247,7 +247,7 @@ class AutoPilotBlock(Block):
             },
         )
 
-    async def create_session(self, user_id: str, *, dry_run: bool = False) -> str:
+    async def create_session(self, user_id: str, *, dry_run: bool) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
 

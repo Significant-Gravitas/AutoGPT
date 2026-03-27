@@ -154,7 +154,7 @@ class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
 
     @classmethod
-    def new(cls, user_id: str, *, dry_run: bool = False) -> Self:
+    def new(cls, user_id: str, *, dry_run: bool) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -630,7 +630,7 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
         return session
 
 
-async def create_chat_session(user_id: str, *, dry_run: bool = False) -> ChatSession:
+async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
     """Create a new chat session and persist it.
 
     Args:
