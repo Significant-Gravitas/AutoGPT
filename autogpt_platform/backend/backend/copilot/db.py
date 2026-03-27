@@ -18,7 +18,7 @@ from prisma.types import (
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSession, ChatSessionInfo
+from .model import ChatMessage, ChatSession, ChatSessionInfo, ChatSessionMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
 async def create_chat_session(
     session_id: str,
     user_id: str,
-    dry_run: bool = False,
+    metadata: ChatSessionMetadata | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
@@ -44,7 +44,7 @@ async def create_chat_session(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
-        dryRun=dry_run,
+        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
     return ChatSessionInfo.from_db(prisma_session)

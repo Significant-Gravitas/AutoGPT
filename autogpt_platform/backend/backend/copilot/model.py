@@ -46,6 +46,16 @@ def _get_session_cache_key(session_id: str) -> str:
 # ===================== Chat data models ===================== #
 
 
+class ChatSessionMetadata(BaseModel):
+    """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
+
+    Add new session-level flags here instead of adding DB columns —
+    no migration required for new fields as long as a default is provided.
+    """
+
+    dry_run: bool = False
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str | None = None
@@ -88,7 +98,12 @@ class ChatSessionInfo(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
-    dry_run: bool = False
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
+
+    @property
+    def dry_run(self) -> bool:
+        """Convenience accessor for ``metadata.dry_run``."""
+        return self.metadata.dry_run
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:
@@ -101,6 +116,10 @@ class ChatSessionInfo(BaseModel):
         successful_agent_schedules = _parse_json_field(
             prisma_session.successfulAgentSchedules, default={}
         )
+
+        # Parse typed metadata from the JSON column.
+        raw_metadata = _parse_json_field(prisma_session.metadata, default={})
+        metadata = ChatSessionMetadata.model_validate(raw_metadata or {})
 
         # Calculate usage from token counts.
         # NOTE: Per-turn cache_read_tokens / cache_creation_tokens breakdown
@@ -127,7 +146,7 @@ class ChatSessionInfo(BaseModel):
             updated_at=prisma_session.updatedAt,
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
-            dry_run=prisma_session.dryRun,
+            metadata=metadata,
         )
 
 
@@ -145,7 +164,7 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
-            dry_run=dry_run,
+            metadata=ChatSessionMetadata(dry_run=dry_run),
         )
 
     @classmethod
@@ -533,7 +552,7 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
-                dry_run=session.dry_run,
+                metadata=session.metadata,
             )
             existing_message_count = 0
 
@@ -631,7 +650,7 @@ async def create_chat_session(user_id: str, *, dry_run: bool = False) -> ChatSes
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
-            dry_run=dry_run,
+            metadata=session.metadata,
         )
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")

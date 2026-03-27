@@ -20,6 +20,7 @@ from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
     append_and_save_message,
     create_chat_session,
     delete_chat_session,
@@ -124,7 +125,7 @@ class CreateSessionResponse(BaseModel):
     id: str
     created_at: str
     user_id: str | None
-    dry_run: bool = False
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
 
 
 class ActiveStreamInfo(BaseModel):
@@ -145,7 +146,7 @@ class SessionDetailResponse(BaseModel):
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
-    dry_run: bool = False
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
 
 
 class SessionSummaryResponse(BaseModel):
@@ -286,7 +287,7 @@ async def create_session(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
-        dry_run=session.dry_run,
+        metadata=session.metadata,
     )
 
 
@@ -435,7 +436,7 @@ async def get_session(
         active_stream=active_stream_info,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
-        dry_run=session.dry_run,
+        metadata=session.metadata,
     )
 
 
