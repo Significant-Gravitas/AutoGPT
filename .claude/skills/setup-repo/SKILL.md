@@ -42,16 +42,22 @@ Use AskUserQuestion to gather setup preferences:
 cd "$ROOT"
 git fetch origin
 
-# Create the reviews branch from base
-git branch reviews <base-branch>
+# Create the reviews branch from base (skip if it already exists)
+if git rev-parse --verify --quiet "refs/heads/reviews" >/dev/null 2>&1; then
+  echo "INFO: Branch 'reviews' already exists, skipping creation"
+else
+  git branch reviews <base-branch>
+fi
 
-# Create numbered work branches from base
+# Create numbered work branches from base (skip existing)
 for i in $(seq 1 $COUNT); do
-  git branch "branch$i" <base-branch>
+  if git rev-parse --verify --quiet "refs/heads/branch$i" >/dev/null 2>&1; then
+    echo "INFO: Branch 'branch$i' already exists, skipping creation"
+  else
+    git branch "branch$i" <base-branch>
+  fi
 done
 ```
-
-If any branch name already exists, skip it and inform the user.
 
 ## Step 4: Create worktrees
 
@@ -81,7 +87,10 @@ Env file locations to check:
 
 ```bash
 SOURCE="$ROOT"
-for wt in reviews branch{1..$COUNT}; do
+WORKTREES="reviews"
+for i in $(seq 1 $COUNT); do WORKTREES="$WORKTREES branch$i"; done
+
+for wt in $WORKTREES; do
   TARGET="$PARENT/$wt"
   for envpath in autogpt_platform autogpt_platform/backend autogpt_platform/frontend autogpt_platform/db/docker; do
     if [ -f "$SOURCE/$envpath/.env" ]; then
@@ -107,7 +116,7 @@ Copy `.branchlet.json` from main to each worktree so branchlet can manage sub-wo
 
 ```bash
 if [ -f "$ROOT/.branchlet.json" ]; then
-  for wt in reviews branch{1..$COUNT}; do
+  for wt in $WORKTREES; do
     cp "$ROOT/.branchlet.json" "$PARENT/$wt/.branchlet.json"
   done
 fi
@@ -118,13 +127,14 @@ fi
 Install deps in all worktrees. Run these sequentially per worktree:
 
 ```bash
-for wt in reviews branch{1..$COUNT}; do
+for wt in $WORKTREES; do
   TARGET="$PARENT/$wt"
   echo "=== Installing deps for $wt ==="
   (cd "$TARGET/autogpt_platform/autogpt_libs" && poetry install) &&
   (cd "$TARGET/autogpt_platform/backend" && poetry install && poetry run prisma generate) &&
-  (cd "$TARGET/autogpt_platform/frontend" && pnpm install)
-  echo "=== Done: $wt ==="
+  (cd "$TARGET/autogpt_platform/frontend" && pnpm install) &&
+  echo "=== Done: $wt ===" ||
+  echo "=== FAILED: $wt ==="
 done
 ```
 

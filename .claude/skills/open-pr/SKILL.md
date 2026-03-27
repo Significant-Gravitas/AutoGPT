@@ -37,42 +37,24 @@ If you cannot run the full test suite locally, note which tests you ran and whic
 
 ## Step 3: Create the PR using the repo template
 
-The repo has a PR template at `.github/PULL_REQUEST_TEMPLATE.md`. Your PR body **must** follow this template structure:
+The repo has a PR template at `.github/PULL_REQUEST_TEMPLATE.md`. Your PR body **must** use this template exactly:
 
-```markdown
-### Why / What / How
+1. Read the template: `cat .github/PULL_REQUEST_TEMPLATE.md`
+2. Preserve the exact section titles and formatting, including:
+   - `### Why / What / How`
+   - `### Changes 🏗️`
+   - `### Checklist 📋`
+3. Fill in the placeholder comments (`<!-- ... -->`) with actual content
+4. **Do not pre-check boxes** — leave checkboxes unchecked (`- [ ]`) until you have actually completed that step. Check them off (`- [x]`) only as you verify each item.
+5. Do not alter the template structure, rename sections, or remove any checklist items
+6. Fill in the template completely. Do not leave placeholder comments in the final PR body.
 
-**Why:** <Why does this PR exist? What problem does it solve?>
-**What:** <What does this PR change at a high level?>
-**How:** <How does it work? Key implementation details.>
-
-### Changes
-
-- <List key changes, higher level than the diff but specific>
-
-### Checklist
-
-#### For code changes:
-- [x] I have clearly listed my changes in the PR description
-- [x] I have made a test plan
-- [x] I have tested my changes according to the test plan:
-  - [x] <specific test step 1>
-  - [x] <specific test step 2>
-  - [ ] <test step that needs review bot — see below>
-
-#### For configuration changes:
-- [x] `.env.default` is updated or already compatible with my changes
-- [x] `docker-compose.yml` is updated or already compatible with my changes
-- [x] I have included a list of my configuration changes in the PR description
-```
-
-Fill in the template completely. Do not leave placeholder text.
-
-Use `gh pr create` with the base branch (default: `dev`):
+Use `gh pr create` with the base branch (uses the `[base-branch]` argument if provided, defaults to `dev`):
 
 ```bash
-gh pr create --base dev --title "<short title>" --body "$(cat <<'EOF'
-<filled-in template>
+BASE_BRANCH="${1:-dev}"  # Use provided base-branch argument, default to dev
+gh pr create --base "$BASE_BRANCH" --title "<short title>" --body "$(cat <<'EOF'
+<filled-in template from .github/PULL_REQUEST_TEMPLATE.md>
 EOF
 )"
 ```
