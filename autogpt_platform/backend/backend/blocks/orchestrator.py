@@ -8,6 +8,7 @@ import uuid as uuid_mod
 from collections import Counter
 from collections.abc import AsyncIterable, Sequence
 from concurrent.futures import Future
+from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +50,17 @@ if TYPE_CHECKING:
     from backend.executor.manager import ExecutionProcessor
 
 logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    """How the OrchestratorBlock executes tool calls."""
+
+    BUILT_IN = "built_in"
+    """Default built-in tool-call loop (supports all LLM providers)."""
+
+    CLAUDE_CODE_SDK = "claude_code_sdk"
+    """Use the Claude Agent SDK for tool orchestration.
+    Only supports Anthropic-compatible providers (anthropic / open_router)."""
 
 
 class ToolInfo(BaseModel):
@@ -346,14 +358,14 @@ class OrchestratorBlock(Block):
             advanced=True,
             default=0,
         )
-        use_sdk_mode: bool = SchemaField(
-            title="Use Claude Agent SDK",
-            default=False,
-            description="Use Claude Agent SDK for tool orchestration. "
-            "Only supports Claude models via 'anthropic' or 'open_router' providers. "
-            "Requires valid API credentials (subscription mode not supported). "
-            "The SDK manages the conversation loop natively, "
-            "so 'Agent Mode Max Iterations' is ignored when this is enabled.",
+        execution_mode: ExecutionMode = SchemaField(
+            title="Execution Mode",
+            default=ExecutionMode.BUILT_IN,
+            description="How tool calls are executed. "
+            "'built_in' uses the default tool-call loop (all providers). "
+            "'claude_code_sdk' delegates to the Claude Agent SDK "
+            "(Anthropic / OpenRouter only, requires API credentials, "
+            "ignores 'Agent Mode Max Iterations').",
             advanced=True,
         )
         conversation_compaction: bool = SchemaField(
@@ -1234,10 +1246,13 @@ class OrchestratorBlock(Block):
                 if loop_result.last_tool_calls:
                     yield "conversations", loop_result.messages
                 for tc in loop_result.last_tool_calls:
-                    yield "tool_calls", {
-                        "name": tc.name,
-                        "arguments": tc.arguments,
-                    }
+                    yield (
+                        "tool_calls",
+                        {
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                        },
+                    )
         except Exception as e:
             # Catch all errors (validation, network, API) so that the block
             # surfaces them as user-visible output instead of crashing.
@@ -1247,9 +1262,12 @@ class OrchestratorBlock(Block):
         if loop_result.finished_naturally:
             yield "finished", loop_result.response_text
         else:
-            yield "finished", (
-                f"Agent mode completed after {loop_result.iterations} "
-                "iterations (limit reached)"
+            yield (
+                "finished",
+                (
+                    f"Agent mode completed after {loop_result.iterations} "
+                    "iterations (limit reached)"
+                ),
             )
         yield "conversations", loop_result.messages
 
@@ -1404,9 +1422,12 @@ class OrchestratorBlock(Block):
         # because a user may select an Anthropic model but route through OpenRouter.
         provider = credentials.provider
         if not credentials.api_key:
-            yield "error", (
-                "SDK mode requires direct API credentials and does not support "
-                "subscription mode. Please provide an Anthropic or OpenRouter API key."
+            yield (
+                "error",
+                (
+                    "SDK mode requires direct API credentials and does not support "
+                    "subscription mode. Please provide an Anthropic or OpenRouter API key."
+                ),
             )
             return
         api_key = credentials.api_key.get_secret_value()
@@ -1730,7 +1751,7 @@ class OrchestratorBlock(Block):
             )
 
         # Execute tools based on the selected mode
-        if input_data.use_sdk_mode:
+        if input_data.execution_mode == ExecutionMode.CLAUDE_CODE_SDK:
             # Validate — SDK mode only works with Claude models
             provider = input_data.model.metadata.provider
             model_name = input_data.model.value
@@ -1739,16 +1760,20 @@ class OrchestratorBlock(Block):
             # use a different metadata provider for the same Anthropic API.
             if provider not in ("anthropic", "open_router"):
                 raise ValueError(
-                    f"SDK mode requires an Anthropic-compatible provider (got provider={provider}). "
-                    "Please select an Anthropic or OpenRouter provider, or disable SDK mode."
+                    f"Claude Code SDK mode requires an Anthropic-compatible provider "
+                    f"(got provider={provider}). "
+                    "Please select an Anthropic or OpenRouter provider, "
+                    "or switch execution mode to 'built_in'."
                 )
             # Safety-net: all Claude models have .value starting with "claude-".
             # This guards against non-Claude models that happen to use the
             # "anthropic" metadata provider (if any are added in the future).
             if not model_name.startswith("claude"):
                 raise ValueError(
-                    f"SDK mode only supports Claude models (got model={model_name}). "
-                    "Please select a Claude model, or disable SDK mode."
+                    f"Claude Code SDK mode only supports Claude models "
+                    f"(got model={model_name}). "
+                    "Please select a Claude model, "
+                    "or switch execution mode to 'built_in'."
                 )
             # SDK mode: Claude Agent SDK manages conversation + tool calling
             execution_params = ExecutionParams(
