@@ -85,10 +85,6 @@ async def test_get_library_agents(mocker):
 async def test_add_agent_to_library(mocker):
     await connect()
 
-    # Mock the transaction context
-    mock_transaction = mocker.patch("backend.api.features.library.db.transaction")
-    mock_transaction.return_value.__aenter__ = mocker.AsyncMock(return_value=None)
-    mock_transaction.return_value.__aexit__ = mocker.AsyncMock(return_value=None)
     # Mock data
     mock_store_listing_data = prisma.models.StoreListingVersion(
         id="version123",
@@ -143,13 +139,11 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
-    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
-    mock_library_agent.return_value.find_unique = mocker.AsyncMock(return_value=None)
-    mock_library_agent.return_value.create = mocker.AsyncMock(
+    mock_library_agent.return_value.upsert = mocker.AsyncMock(
         return_value=mock_library_agent_data
     )
 
-    # Mock graph_db.get_graph function that's called to check for HITL blocks
+    # Mock graph_db.get_graph function that's called in resolve_graph_for_library
     # (lives in _add_to_library.py after refactor, not db.py)
     mock_graph_db = mocker.patch(
         "backend.api.features.library._add_to_library.graph_db"
@@ -175,37 +169,42 @@ async def test_add_agent_to_library(mocker):
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"AgentGraph": True}
     )
-    mock_library_agent.return_value.find_unique.assert_called_once_with(
-        where={
-            "userId_agentGraphId_agentGraphVersion": {
-                "userId": "test-user",
-                "agentGraphId": "agent1",
-                "agentGraphVersion": 1,
-            }
-        },
-    )
-    # Check that create was called with the expected data including settings
-    create_call_args = mock_library_agent.return_value.create.call_args
-    assert create_call_args is not None
+    # Check that upsert was called with the expected data including settings
+    upsert_call_args = mock_library_agent.return_value.upsert.call_args
+    assert upsert_call_args is not None
 
-    # Verify the main structure
-    expected_data = {
+    # Verify the where clause (composite unique key)
+    assert upsert_call_args.kwargs["where"] == {
+        "userId_agentGraphId_agentGraphVersion": {
+            "userId": "test-user",
+            "agentGraphId": "agent1",
+            "agentGraphVersion": 1,
+        }
+    }
+
+    # Verify the create data structure
+    create_data = upsert_call_args.kwargs["data"]["create"]
+    expected_create = {
         "User": {"connect": {"id": "test-user"}},
         "AgentGraph": {"connect": {"graphVersionId": {"id": "agent1", "version": 1}}},
         "isCreatedByUser": False,
+        "useGraphIsActiveVersion": False,
     }
-
-    actual_data = create_call_args[1]["data"]
-    # Check that all expected fields are present
-    for key, value in expected_data.items():
-        assert actual_data[key] == value
+    for key, value in expected_create.items():
+        assert create_data[key] == value
 
     # Check that settings field is present and is a SafeJson object
-    assert "settings" in actual_data
-    assert hasattr(actual_data["settings"], "__class__")  # Should be a SafeJson object
+    assert "settings" in create_data
+    assert hasattr(create_data["settings"], "__class__")  # Should be a SafeJson object
+
+    # Verify the update data restores soft-deleted/archived agents
+    update_data = upsert_call_args.kwargs["data"]["update"]
+    assert update_data["isDeleted"] is False
+    assert update_data["isArchived"] is False
+    assert "settings" in update_data
 
     # Check include parameter
-    assert create_call_args[1]["include"] == library_agent_include(
+    assert upsert_call_args.kwargs["include"] == library_agent_include(
         "test-user", include_nodes=False, include_executions=False
     )
 
