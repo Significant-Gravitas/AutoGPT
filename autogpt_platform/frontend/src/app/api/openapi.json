@@ -1059,7 +1059,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces all tool calls in the session to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces run_block and run_agent calls to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {

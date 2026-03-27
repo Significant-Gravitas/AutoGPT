@@ -148,10 +148,11 @@ class AutoPilotBlock(Block):
 
         dry_run: bool = SchemaField(
             description=(
-                "When enabled, ALL tool calls (run_block and run_agent) in this "
+                "When enabled, run_block and run_agent tool calls in this "
                 "autopilot session are forced to use dry-run simulation mode. "
-                "No real API calls, side effects, or credits are consumed. "
-                "Useful for testing agent wiring and previewing outputs. "
+                "No real API calls, side effects, or credits are consumed "
+                "by those tools. Useful for testing agent wiring and "
+                "previewing outputs. "
                 "Only applies when creating a new session (session_id is empty). "
                 "When reusing an existing session_id, the session's original "
                 "dry_run setting is preserved."

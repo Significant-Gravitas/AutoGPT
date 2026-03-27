@@ -635,8 +635,8 @@ async def create_chat_session(user_id: str, *, dry_run: bool = False) -> ChatSes
 
     Args:
         user_id: The authenticated user ID.
-        dry_run: When True, all tool calls in this session are forced to
-            use dry-run simulation mode (no real API calls or side effects).
+        dry_run: When True, run_block and run_agent tool calls in this
+            session are forced to use dry-run simulation mode.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure

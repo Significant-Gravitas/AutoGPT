@@ -204,8 +204,7 @@ async def stream_chat_completion_baseline(
 
     tools = get_available_tools()
 
-    # Propagate execution context so tool handlers can read session-level
-    # flags.  dry_run is read directly from session.dry_run by each tool.
+    # Propagate execution context so tool handlers can read session-level flags.
     set_execution_context(user_id, session)
 
     yield StreamStart(messageId=message_id, sessionId=session_id)

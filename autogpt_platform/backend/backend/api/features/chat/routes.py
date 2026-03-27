@@ -267,7 +267,7 @@ async def create_session(
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
         request: Optional request body. When provided, ``dry_run=True``
-            forces all tool calls in the session to use dry-run simulation.
+            forces run_block and run_agent calls to use dry-run simulation.
 
     Returns:
         CreateSessionResponse: Details of the created session.
