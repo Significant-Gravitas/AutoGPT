@@ -273,7 +273,7 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     valid_tools: list[tuple[int, dict[str, Any]]] = []
     for idx, tool in enumerate(tools):
         func = tool.get("function") if isinstance(tool, dict) else None
-        if not isinstance(func, dict) or "name" not in func:
+        if not isinstance(func, dict) or not isinstance(func.get("name"), str):
             # Strip internal metadata even from malformed entries.
             if isinstance(func, dict):
                 func.pop("_hardcoded_defaults", None)
