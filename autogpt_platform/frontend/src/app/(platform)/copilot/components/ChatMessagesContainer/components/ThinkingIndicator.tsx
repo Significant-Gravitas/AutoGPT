@@ -95,7 +95,9 @@ export function ThinkingIndicator({ active, elapsedSeconds }: Props) {
         </span>
       </span>
       {showTime && (
-        <span className="tabular-nums">• {formatElapsed(elapsedSeconds)}</span>
+        <span className="animate-pulse tabular-nums [animation-duration:1.5s]">
+          • {formatElapsed(elapsedSeconds)}
+        </span>
       )}
     </span>
   );
