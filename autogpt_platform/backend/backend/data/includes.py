@@ -110,8 +110,6 @@ def library_agent_include(
     - Listing optimization (no nodes/executions): ~2s for 15 agents vs potential timeouts
     - Unlimited executions: varies by user (thousands of executions = timeouts)
     """
-    if not user_id:
-        raise ValueError("user_id is required")
     result: prisma.types.LibraryAgentInclude = {
         "Creator": True,  # Always needed for creator info
         "Folder": True,  # Always needed for folder info
