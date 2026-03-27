@@ -125,8 +125,8 @@ to the user as ready:
      with wrong content. Check type compatibility between linked ports.
 3. If any issues are found, fix the agent JSON and call `edit_agent`, then
    dry-run again.
-4. Repeat up to 3 iterations. If issues remain after 3 iterations, report the
-   outstanding problems to the user and ask for guidance.
+4. Repeat up to 3 iterations. If issues persist, report the outstanding
+   problems to the user and ask for guidance.
 
 This loop ensures the agent actually works before the user invests real
 credentials and API credits in a live run.
