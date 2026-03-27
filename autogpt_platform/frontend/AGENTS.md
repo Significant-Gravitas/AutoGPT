@@ -1,6 +1,6 @@
-# CLAUDE.md - Frontend
+# Frontend
 
-This file provides guidance to Claude Code when working with the frontend.
+This file provides guidance to coding agents when working with the frontend.
 
 ## Essential Commands
 

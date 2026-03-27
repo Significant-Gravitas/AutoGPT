@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AutoGPT Platform
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Repository Overview
 
@@ -12,8 +12,8 @@ AutoGPT Platform is a monorepo containing:
 
 ## Component Documentation
 
-- **Backend**: See @backend/CLAUDE.md for backend-specific commands, architecture, and development tasks
-- **Frontend**: See @frontend/CLAUDE.md for frontend-specific commands, architecture, and development patterns
+- **Backend**: See @backend/AGENTS.md for backend-specific commands, architecture, and development tasks
+- **Frontend**: See @frontend/AGENTS.md for frontend-specific commands, architecture, and development patterns
 
 ## Key Concepts
 

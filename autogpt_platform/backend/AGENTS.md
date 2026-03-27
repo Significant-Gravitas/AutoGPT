@@ -1,6 +1,6 @@
-# CLAUDE.md - Backend
+# Backend
 
-This file provides guidance to Claude Code when working with the backend.
+This file provides guidance to coding agents when working with the backend.
 
 ## Essential Commands
 
@@ -128,7 +128,7 @@ Key models (defined in `schema.prisma`):
 
 ### Adding a new block
 
-Follow the comprehensive [Block SDK Guide](@../../docs/content/platform/block-sdk-guide.md) which covers:
+Follow the comprehensive [Block SDK Guide](@../../docs/platform/block-sdk-guide.md) which covers:
 
 - Provider configuration with `ProviderBuilder`
 - Block schema definition
