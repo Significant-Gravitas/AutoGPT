@@ -273,8 +273,8 @@ class TestChatSessionDryRun:
 class TestRunAgentInputDryRunOverride:
     """Test that RunAgentInput.dry_run can be mutated by session-level override."""
 
-    def test_default_dry_run_false(self):
-        params = RunAgentInput(username_agent_slug="user/agent")
+    def test_explicit_dry_run_false(self):
+        params = RunAgentInput(username_agent_slug="user/agent", dry_run=False)
         assert params.dry_run is False
 
     def test_session_override(self):

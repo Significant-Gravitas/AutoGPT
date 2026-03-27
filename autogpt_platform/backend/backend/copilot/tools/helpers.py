@@ -81,7 +81,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -337,7 +337,7 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 

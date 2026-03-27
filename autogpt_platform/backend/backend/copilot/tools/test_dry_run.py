@@ -307,11 +307,12 @@ async def test_execute_block_real_execution_unchanged():
 
 
 def test_run_block_tool_dry_run_param():
-    """RunBlockTool parameters should include 'dry_run'."""
+    """RunBlockTool parameters should include 'dry_run' as a required field."""
     tool = RunBlockTool()
     params = tool.parameters
     assert "dry_run" in params["properties"]
     assert params["properties"]["dry_run"]["type"] == "boolean"
+    assert "dry_run" in params["required"]
 
 
 def test_run_block_tool_dry_run_calls_execute():

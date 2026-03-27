@@ -54,11 +54,11 @@ class RunBlockTool(BaseTool):
                     "description": (
                         "When true, simulates block execution using an LLM without making any "
                         "real API calls or producing side effects. Useful for testing agent "
-                        "wiring and previewing outputs. Default: false."
+                        "wiring and previewing outputs."
                     ),
                 },
             },
-            "required": ["block_id", "input_data"],
+            "required": ["block_id", "input_data", "dry_run"],
         }
 
     @property
@@ -69,9 +69,10 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        *,
         block_id: str = "",
         input_data: dict | None = None,
-        dry_run: bool = False,
+        dry_run: bool,
         **kwargs,
     ) -> ToolResponseBase:
         """Execute a block with the given input data.

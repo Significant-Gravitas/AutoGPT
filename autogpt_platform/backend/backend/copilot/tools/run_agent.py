@@ -71,7 +71,7 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
-    dry_run: bool = False
+    dry_run: bool
 
     @field_validator(
         "username_agent_slug",
@@ -160,7 +160,7 @@ class RunAgentTool(BaseTool):
                     ),
                 },
             },
-            "required": [],
+            "required": ["dry_run"],
         }
 
     @property
@@ -478,8 +478,8 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
+        dry_run: bool,
         wait_for_result: int = 0,
-        dry_run: bool = False,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
