@@ -264,7 +264,7 @@ user the agent is ready. NEVER skip this step.
      structure. Check type compatibility between linked ports.
 4. **Fix**: If any issues are found, call `edit_agent` with the corrected
    agent JSON, then go back to step 2.
-5. **Max iterations**: Repeat the dry-run -> fix cycle up to **3 times**.
+5. **Max iterations**: Repeat the dry-run -> fix cycle up to **3 iterations**.
    If problems persist after 3 attempts, report the remaining issues to
    the user and ask for guidance rather than looping indefinitely.
 

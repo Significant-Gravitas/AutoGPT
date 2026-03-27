@@ -28,8 +28,8 @@ Each result includes a `remotes` array with the exact server URL to use.
 
 ### Important: Check blocks first
 
-Always follow the **Tool Discovery Priority** (see shared supplement): call `find_block`
-before resorting to `run_mcp_tool`.
+Always follow the **Tool Discovery Priority** (defined in `_SHARED_TOOL_NOTES`,
+`prompting.py`): call `find_block` before resorting to `run_mcp_tool`.
 
 Only use `run_mcp_tool` when:
 - You searched `find_block` first and found no matching blocks, AND
