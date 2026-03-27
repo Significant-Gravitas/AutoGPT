@@ -414,24 +414,31 @@ class SQLQueryBlock(Block):
 
                 # Set session-level timeout (always) and read-only
                 # (when read_only=True) before starting the transaction.
+                # Compute timeout in milliseconds once.  The value is
+                # Pydantic-validated (ge=1, le=120) so it is always a safe
+                # integer, but we use an explicit int() cast as
+                # defense-in-depth to guarantee no SQL injection even if
+                # upstream validation changes.
+                # NOTE: SET commands do not support bind parameters in most
+                # databases, so we use str(int(...)) for safe interpolation.
+                timeout_ms = str(int(timeout * 1000))
+
                 if engine.dialect.name == "postgresql":
-                    conn.execute(text(f"SET statement_timeout = {timeout * 1000}"))
+                    conn.execute(text("SET statement_timeout = " + timeout_ms))
                     if read_only:
                         conn.execute(text("SET default_transaction_read_only = ON"))
                 elif engine.dialect.name == "mysql":
                     # NOTE: MAX_EXECUTION_TIME only applies to SELECT statements.
                     # Write queries (INSERT/UPDATE/DELETE) are not bounded by this
                     # setting; they rely on the database's wait_timeout instead.
-                    conn.execute(
-                        text(f"SET SESSION MAX_EXECUTION_TIME = {timeout * 1000}")
-                    )
+                    conn.execute(text("SET SESSION MAX_EXECUTION_TIME = " + timeout_ms))
                     if read_only:
                         conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
                 elif engine.dialect.name == "mssql":
                     # MSSQL: SET LOCK_TIMEOUT limits lock-wait time (ms).
                     # pymssql's connect_args "login_timeout" handles the connection
                     # timeout, but LOCK_TIMEOUT covers in-query lock waits.
-                    conn.execute(text(f"SET LOCK_TIMEOUT {timeout * 1000}"))
+                    conn.execute(text("SET LOCK_TIMEOUT " + timeout_ms))
                     # MSSQL lacks a session-level read-only mode like
                     # PostgreSQL/MySQL.  Read-only enforcement is handled by
                     # the SQL validation layer (_validate_query_is_read_only)
@@ -580,8 +587,11 @@ class SQLQueryBlock(Block):
             )
             yield "error", f"Database error: {msg}"
         except ModuleNotFoundError:
-            yield "error", (
-                f"Database driver not available for "
-                f"{input_data.database_type.value}. "
-                f"Please contact the platform administrator."
+            yield (
+                "error",
+                (
+                    f"Database driver not available for "
+                    f"{input_data.database_type.value}. "
+                    f"Please contact the platform administrator."
+                ),
             )
