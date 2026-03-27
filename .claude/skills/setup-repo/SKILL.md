@@ -29,7 +29,7 @@ Detect if the repo is already inside a worktree layout by counting sibling workt
 
 ```bash
 # Count worktrees that are siblings (live under $PARENT but aren't $ROOT itself)
-SIBLING_COUNT=$(git worktree list --porcelain 2>/dev/null | grep "^worktree " | grep -c "$PARENT/" || echo 0)
+SIBLING_COUNT=$(git worktree list --porcelain 2>/dev/null | grep "^worktree " | grep -c "$PARENT/" || true)
 if [ "$SIBLING_COUNT" -gt 1 ]; then
   echo "INFO: Existing worktree layout detected at $PARENT ($SIBLING_COUNT worktrees)"
   # Use $ROOT as-is; skip renaming/restructuring
