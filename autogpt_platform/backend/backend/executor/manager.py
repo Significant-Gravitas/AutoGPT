@@ -286,6 +286,7 @@ async def execute_node(
     if execution_context.dry_run:
         _dry_run_input = prepare_dry_run(node_block, input_data)
     if _dry_run_input is not None:
+        pre_dry_run_input = input_data  # Save in case we need to fall back
         input_data = _dry_run_input
         # Restore credential fields from node defaults so the block can
         # acquire credentials during dry-run.
@@ -295,6 +296,25 @@ async def execute_node(
             default_value = node.input_default.get(field_name)
             if default_value is not None and not input_data.get(field_name):
                 input_data[field_name] = default_value
+
+        # If any required credentials fields are still missing after restoring
+        # from node defaults, fall back to LLM simulation instead of attempting
+        # real execution that would fail with "credentials is a required property".
+        creds_fields = cast(
+            type[BlockSchema], node_block.input_schema
+        ).get_credentials_fields()
+        if creds_fields:
+            missing_creds = any(
+                not input_data.get(f)
+                or (isinstance(input_data.get(f), dict) and not input_data[f].get("id"))
+                for f in creds_fields
+            )
+            if missing_creds:
+                log_metadata.info(
+                    "Dry-run: credentials not configured, falling back to simulation"
+                )
+                _dry_run_input = None
+                input_data = pre_dry_run_input
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
