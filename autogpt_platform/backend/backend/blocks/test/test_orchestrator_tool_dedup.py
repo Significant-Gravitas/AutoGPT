@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from backend.blocks.orchestrator import OrchestratorBlock
+from backend.blocks.orchestrator import OrchestratorBlock, _disambiguate_tool_names
 from backend.blocks.text import MatchTextPatternBlock
 
 
@@ -401,3 +401,55 @@ async def test_suffix_collision_with_user_named_tool():
     # The duplicates should skip _1 (taken) and use _2, _3
     assert f"{base}_2" in names
     assert f"{base}_3" in names
+
+
+def test_disambiguate_skips_malformed_tools():
+    """Malformed tools (missing function/name) should not crash disambiguation."""
+    tools: list[dict] = [
+        {"function": {"name": "good_tool", "description": "A tool"}},
+        {"function": {"name": "good_tool", "description": "Another tool"}},
+        # Missing 'function' key entirely
+        {"type": "function"},
+        # 'function' present but missing 'name'
+        {"function": {"description": "no name"}},
+        # Not even a dict
+    ]
+    # Should not raise
+    _disambiguate_tool_names(tools)
+
+    # The two good tools should be disambiguated
+    names = [
+        t.get("function", {}).get("name")
+        for t in tools
+        if isinstance(t, dict)
+        and isinstance(t.get("function"), dict)
+        and "name" in t.get("function", {})
+    ]
+    assert "good_tool_1" in names
+    assert "good_tool_2" in names
+
+
+def test_disambiguate_handles_missing_description():
+    """Tools with no description key should still get Pre-configured appended."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "my_tool",
+                "_hardcoded_defaults": {"key": "val1"},
+            }
+        },
+        {
+            "function": {
+                "name": "my_tool",
+                "description": "Has desc",
+                "_hardcoded_defaults": {"key": "val2"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    tool_1 = next(t for t in tools if t["function"]["name"] == "my_tool_1")
+    tool_2 = next(t for t in tools if t["function"]["name"] == "my_tool_2")
+    # Both should have Pre-configured
+    assert "[Pre-configured:" in tool_1["function"].get("description", "")
+    assert "[Pre-configured:" in tool_2["function"].get("description", "")
