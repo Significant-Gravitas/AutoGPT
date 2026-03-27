@@ -108,6 +108,7 @@ def _sanitize_error(
     - The database hostname / IP used for the connection
     - The original (pre-resolution) hostname provided by the user
     - Any IPv4 addresses that appear in the message
+    - Any bracketed IPv6 addresses (e.g. ``[::1]``, ``[fe80::1%eth0]``)
     - The database username
     - The database port number
     """
