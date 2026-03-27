@@ -64,10 +64,10 @@ async def test_duplicate_block_names_get_suffixed():
     names = [t["function"]["name"] for t in tools]
     assert len(names) == 2
     assert len(set(names)) == 2, f"Tool names are not unique: {names}"
-    # Descriptive suffixes derived from the first default key/value
+    # Should be suffixed with _1, _2
     base = OrchestratorBlock.cleanup(block.name)
-    assert f"{base}_match_foo" in names
-    assert f"{base}_match_bar" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
 
 
 @pytest.mark.asyncio
@@ -96,20 +96,15 @@ async def test_duplicate_tools_include_defaults_in_description():
     ):
         tools = await OrchestratorBlock._create_tool_node_signatures("orch")
 
-    # Find each tool by descriptive suffix
-    base = OrchestratorBlock.cleanup(block.name)
-    tool_error = next(
-        t for t in tools if t["function"]["name"] == f"{base}_match_error"
-    )
-    tool_warning = next(
-        t for t in tools if t["function"]["name"] == f"{base}_match_warning"
-    )
+    # Find each tool by suffix
+    tool_1 = next(t for t in tools if t["function"]["name"].endswith("_1"))
+    tool_2 = next(t for t in tools if t["function"]["name"].endswith("_2"))
 
     # Descriptions should contain the hardcoded defaults (not the linked 'text' field)
-    assert "[Pre-configured:" in tool_error["function"]["description"]
-    assert "[Pre-configured:" in tool_warning["function"]["description"]
-    assert '"error"' in tool_error["function"]["description"]
-    assert '"warning"' in tool_warning["function"]["description"]
+    assert "[Pre-configured:" in tool_1["function"]["description"]
+    assert "[Pre-configured:" in tool_2["function"]["description"]
+    assert '"error"' in tool_1["function"]["description"]
+    assert '"warning"' in tool_2["function"]["description"]
 
 
 @pytest.mark.asyncio
@@ -217,11 +212,10 @@ async def test_three_duplicates_all_get_unique_names():
     names = [t["function"]["name"] for t in tools]
     assert len(names) == 3
     assert len(set(names)) == 3, f"Tool names are not unique: {names}"
-    # Descriptive suffixes derived from match=error/warning/info
     base = OrchestratorBlock.cleanup(block.name)
-    assert f"{base}_match_error" in names
-    assert f"{base}_match_warning" in names
-    assert f"{base}_match_info" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
+    assert f"{base}_3" in names
 
 
 @pytest.mark.asyncio
@@ -254,11 +248,8 @@ async def test_linked_fields_excluded_from_defaults():
     ):
         tools = await OrchestratorBlock._create_tool_node_signatures("orch")
 
-    base = OrchestratorBlock.cleanup(block.name)
-    tool_error = next(
-        t for t in tools if t["function"]["name"] == f"{base}_match_error"
-    )
-    desc = tool_error["function"]["description"]
+    tool_1 = next(t for t in tools if t["function"]["name"].endswith("_1"))
+    desc = tool_1["function"]["description"]
     # 'text' is linked so should NOT appear in Pre-configured
     assert "text=" not in desc
     # 'match' is hardcoded so should appear
@@ -297,10 +288,9 @@ async def test_mixed_unique_and_duplicate_names():
     names = [t["function"]["name"] for t in tools]
     assert len(set(names)) == 3
     assert "unique_tool" in names
-    # Duplicates get descriptive suffixes from their defaults
     base = OrchestratorBlock.cleanup(block_a.name)
-    assert f"{base}_match_foo" in names
-    assert f"{base}_match_bar" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
 
 
 @pytest.mark.asyncio
@@ -377,19 +367,15 @@ async def test_long_tool_name_truncated():
 
 @pytest.mark.asyncio
 async def test_suffix_collision_with_user_named_tool():
-    """If a user-named tool matches a descriptive suffix, dedup should handle it."""
+    """If a user-named tool is 'my_tool_1', dedup of 'my_tool' should skip to _2."""
     block = MatchTextPatternBlock()
-    base = OrchestratorBlock.cleanup(block.name)
-
-    # Two nodes with same block name and same first default -> same descriptive suffix
-    # Both have match="foo", so they would both try _match_foo -> collision
+    # Two nodes with same block name (will collide)
     node_a = _make_mock_node(block, "node_a", input_default={"match": "foo"})
-    node_b = _make_mock_node(block, "node_b", input_default={"match": "foo"})
+    node_b = _make_mock_node(block, "node_b", input_default={"match": "bar"})
 
-    # A third node that a user has customized to match the descriptive suffix
-    node_c = _make_mock_node(
-        block, "node_c", metadata={"customized_name": f"{base}_match_foo"}
-    )
+    # A third node that a user has customized to match the _1 suffix pattern
+    base = OrchestratorBlock.cleanup(block.name)
+    node_c = _make_mock_node(block, "node_c", metadata={"customized_name": f"{base}_1"})
 
     link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
     link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
@@ -411,7 +397,10 @@ async def test_suffix_collision_with_user_named_tool():
     names = [t["function"]["name"] for t in tools]
     assert len(set(names)) == len(names), f"Tool names are not unique: {names}"
     # The user-named tool keeps its name
-    assert f"{base}_match_foo" in names
+    assert f"{base}_1" in names
+    # The duplicates should skip _1 (taken) and use _2, _3
+    assert f"{base}_2" in names
+    assert f"{base}_3" in names
 
 
 def test_disambiguate_skips_malformed_tools():
@@ -460,12 +449,11 @@ def test_disambiguate_handles_missing_description():
     ]
     _disambiguate_tool_names(tools)
 
-    # Descriptive suffixes derived from key=val1 and key=val2
-    tool_val1 = next(t for t in tools if t["function"]["name"] == "my_tool_key_val1")
-    tool_val2 = next(t for t in tools if t["function"]["name"] == "my_tool_key_val2")
+    tool_1 = next(t for t in tools if t["function"]["name"] == "my_tool_1")
+    tool_2 = next(t for t in tools if t["function"]["name"] == "my_tool_2")
     # Both should have Pre-configured
-    assert "[Pre-configured:" in tool_val1["function"].get("description", "")
-    assert "[Pre-configured:" in tool_val2["function"].get("description", "")
+    assert "[Pre-configured:" in tool_1["function"].get("description", "")
+    assert "[Pre-configured:" in tool_2["function"].get("description", "")
 
 
 # ---------------------------------------------------------------------------
@@ -603,10 +591,9 @@ async def test_mixed_duplicates_and_custom_named_same_type():
     assert len(set(names)) == 3, f"Tool names are not unique: {names}"
     # Custom-named tool keeps its name
     assert "summarizer" in names
-    # The two duplicates get descriptive suffixes from defaults
     base = OrchestratorBlock.cleanup(block.name)
-    assert f"{base}_match_alpha" in names
-    assert f"{base}_match_beta" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
     # "summarizer" should NOT have a numeric suffix
     assert not any(n.startswith("summarizer_") and n[-1].isdigit() for n in names)
 
@@ -787,10 +774,10 @@ def test_disambiguate_unicode_in_defaults_description():
 
 
 def test_disambiguate_numeric_fallback_skips_taken_suffix():
-    """When descriptive suffix collides, the while-loop should skip taken names.
+    """The while-loop should skip taken names when assigning numeric suffixes.
 
     If a tool is already named 'my_tool_1', and two other 'my_tool' tools
-    need numeric fallback, they should use _2 and _3 (skipping _1).
+    need suffixing, they should use _2 and _3 (skipping _1).
     """
     tools: list[dict] = [
         # A tool already named with what looks like a numeric suffix

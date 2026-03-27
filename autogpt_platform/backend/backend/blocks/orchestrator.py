@@ -259,36 +259,12 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
-def _derive_suffix_from_defaults(defaults: dict[str, Any]) -> str:
-    """Derive a short, descriptive suffix from hardcoded defaults.
-
-    Returns a cleaned string like ``_topic_sports`` derived from the first
-    default's key and value, giving the LLM a meaningful hint about how
-    this tool variant differs from its siblings.  Falls back to ``""`` if
-    no usable label can be derived.
-    """
-    if not defaults:
-        return ""
-    key, val = next(iter(defaults.items()))
-    # Use the value as a label when it's a short string; otherwise use the key.
-    if isinstance(val, str) and 1 <= len(val) <= 30:
-        label = f"{key}_{val}"
-    else:
-        label = key
-    # Sanitise to [a-zA-Z0-9_] and trim
-    label = re.sub(r"[^a-zA-Z0-9]+", "_", label).strip("_").lower()
-    return f"_{label}" if label else ""
-
-
 def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     """Ensure all tool names are unique (Anthropic API requires this).
 
     When multiple nodes use the same block type, they get the same tool name.
-    This derives a descriptive suffix from hardcoded defaults (e.g.
-    ``search_topic_sports``) so the LLM can distinguish tool variants by name.
-    Falls back to numeric suffixes (``_1``, ``_2``) when defaults don't
-    provide a useful label.  Also enriches descriptions with the full
-    pre-configured values.  Mutates the list in place.
+    This appends _1, _2, etc. and enriches descriptions with hardcoded defaults
+    so the LLM can distinguish them. Mutates the list in place.
 
     Malformed tools (missing ``function`` or ``function.name``) are silently
     skipped so the caller never crashes on unexpected input.
@@ -325,26 +301,13 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
             continue
 
         counters[name] = counters.get(name, 0) + 1
-
-        # Try a descriptive suffix first; fall back to numeric.
-        desc_suffix = _derive_suffix_from_defaults(defaults)
-        if desc_suffix:
-            candidate = f"{name[: 64 - len(desc_suffix)]}{desc_suffix}"
-            if candidate in taken:
-                # Descriptive suffix collided — append counter to de-dup
-                num_suffix = f"{desc_suffix}_{counters[name]}"
-                candidate = f"{name[: 64 - len(num_suffix)]}{num_suffix}"
-        else:
-            candidate = None
-
-        if not candidate or candidate in taken:
-            # Pure numeric fallback
-            while True:
-                suffix = f"_{counters[name]}"
-                candidate = f"{name[: 64 - len(suffix)]}{suffix}"
-                if candidate not in taken:
-                    break
-                counters[name] += 1
+        # Skip suffixes that collide with existing (e.g. user-named) tools
+        while True:
+            suffix = f"_{counters[name]}"
+            candidate = f"{name[: 64 - len(suffix)]}{suffix}"
+            if candidate not in taken:
+                break
+            counters[name] += 1
 
         func["name"] = candidate
         taken.add(candidate)
