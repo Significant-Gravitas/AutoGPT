@@ -51,8 +51,6 @@ from backend.util.type import coerce_inputs_to_schema
 config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
-_SIMULATION_CONTEXT_MAX_BYTES = 16 * 1024
-
 # ============ Resource Helpers ============ #
 
 
@@ -871,7 +869,6 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
-    simulation_context: Optional[dict] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -921,44 +918,15 @@ async def add_graph_execution(
         nodes_to_skip: set[str] = set()
 
         logger.info(f"Resuming graph execution #{graph_exec.id} for graph #{graph_id}")
-
-        # For resumed executions, simulation_context comes from the existing
-        # execution_context (if any) or is gated behind dry_run.
-        safe_simulation_context = simulation_context if dry_run else None
-
-        # Apply simulation_context to an already-provided execution_context
-        # so that resumed dry-run executions propagate hints to simulated blocks.
-        if execution_context is not None and safe_simulation_context is not None:
-            execution_context.simulation_context = safe_simulation_context
     else:
         parent_exec_id = (
             execution_context.parent_execution_id if execution_context else None
         )
 
         # When execution_context is provided (e.g. from AgentExecutorBlock),
-        # inherit dry_run and simulation_context so child-graph validation
-        # skips credential checks and simulated blocks get the same hints.
+        # inherit dry_run so child-graph validation skips credential checks.
         if execution_context and execution_context.dry_run:
             dry_run = True
-            if simulation_context is None and execution_context.simulation_context:
-                simulation_context = execution_context.simulation_context
-
-        # Validate simulation_context *before* creating any DB records so we
-        # don't leave orphaned INCOMPLETE graph_execution rows on failure.
-        safe_simulation_context = simulation_context if dry_run else None
-        if safe_simulation_context is not None:
-            import json as _json
-
-            try:
-                encoded = _json.dumps(safe_simulation_context).encode("utf-8")
-            except (TypeError, ValueError) as e:
-                raise ValueError(
-                    f"simulation_context must be JSON-serializable: {e}"
-                ) from e
-            if len(encoded) > _SIMULATION_CONTEXT_MAX_BYTES:
-                raise ValueError(
-                    f"simulation_context exceeds {_SIMULATION_CONTEXT_MAX_BYTES} bytes"
-                )
 
         # Create new execution
         graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
@@ -1008,7 +976,6 @@ async def add_graph_execution(
             human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
             sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
             dry_run=dry_run,
-            simulation_context=safe_simulation_context,
             # User settings
             user_timezone=(
                 user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"

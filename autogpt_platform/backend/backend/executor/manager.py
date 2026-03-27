@@ -81,7 +81,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
-from .simulator import simulate_block, simulate_mcp_block
+from .simulator import can_simulate, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -279,13 +279,10 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
-    # OrchestratorBlock and AgentExecutorBlock execute for real even in dry-run
-    # mode so that the orchestrator can make LLM calls and the agent executor can
-    # create child graph executions (whose blocks are then simulated).
-    # validate_exec() in dry-run mode wipes missing credential fields to None,
-    # which would prevent credential acquisition.  Restore them from node defaults
-    # so the block can run.
-    _dry_run_passthrough = execution_context.dry_run and node_block.dry_run_passthrough
+    # For passthrough blocks in dry-run (OrchestratorBlock, AgentExecutorBlock),
+    # restore credential fields from node defaults so they can acquire credentials,
+    # and cap agent-mode iterations to prevent unbounded loops.
+    _dry_run_passthrough = execution_context.dry_run and not can_simulate(node_block)
     if _dry_run_passthrough:
         for field_name in cast(
             type[BlockSchema], node_block.input_schema
@@ -294,16 +291,12 @@ async def execute_node(
             if default_value is not None and not input_data.get(field_name):
                 input_data[field_name] = default_value
 
-        # Cap agent-mode iterations in dry-run to avoid unbounded loops of real
-        # LLM calls when tool outputs are simulated and may never satisfy the
-        # orchestrator's "finished" condition.  Inject the key unconditionally
-        # so the cap applies even if the field gets a default later in model
-        # validation.
         _DRY_RUN_MAX_ITERATIONS = 5
         current = input_data.get("agent_mode_max_iterations")
         if current is None or current < 0 or current > _DRY_RUN_MAX_ITERATIONS:
             log_metadata.info(
-                f"Dry-run: capping agent_mode_max_iterations from {current} to {_DRY_RUN_MAX_ITERATIONS}"
+                f"Dry-run: capping agent_mode_max_iterations from {current} "
+                f"to {_DRY_RUN_MAX_ITERATIONS}"
             )
             input_data["agent_mode_max_iterations"] = _DRY_RUN_MAX_ITERATIONS
 
@@ -384,22 +377,6 @@ async def execute_node(
                     f"Please re-select the file to authenticate with {provider.capitalize()}."
                 )
 
-    # For passthrough blocks in dry-run: if required credentials were not
-    # acquired (e.g. user hasn't configured them), fall back to simulation
-    # instead of failing with a credentials error.
-    if _dry_run_passthrough:
-        required_cred_fields = {
-            f
-            for f, field_info in input_model.model_fields.items()
-            if f in input_model.get_credentials_fields() and field_info.is_required()
-        }
-        acquired_cred_fields = set(extra_exec_kwargs.keys()) & required_cred_fields
-        if required_cred_fields and not acquired_cred_fields:
-            log_metadata.info(
-                "Dry-run passthrough: credentials not available, falling back to simulation"
-            )
-            _dry_run_passthrough = False
-
     output_size = 0
 
     # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
@@ -420,16 +397,7 @@ async def execute_node(
 
     try:
         if execution_context.dry_run and not _dry_run_passthrough:
-            sim_ctx = execution_context.simulation_context
-            # MCPToolBlock gets a specialised simulation that uses its tool schema.
-            if isinstance(node_block, MCPToolBlock):
-                block_iter = simulate_mcp_block(
-                    node_block, input_data, simulation_context=sim_ctx
-                )
-            else:
-                block_iter = simulate_block(
-                    node_block, input_data, simulation_context=sim_ctx
-                )
+            block_iter = simulate_block(node_block, input_data)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 

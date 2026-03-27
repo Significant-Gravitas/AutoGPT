@@ -67,7 +67,6 @@ class AgentExecutorBlock(Block):
             output_schema=AgentExecutorBlock.Output,
             block_type=BlockType.AGENT,
             categories={BlockCategory.AGENT},
-            dry_run_passthrough=True,
         )
 
     async def run(

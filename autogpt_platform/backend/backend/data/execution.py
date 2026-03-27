@@ -90,7 +90,6 @@ class ExecutionContext(BaseModel):
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
     dry_run: bool = False  # When True, blocks are LLM-simulated, no real execution
-    simulation_context: Optional[dict] = None  # Optional hints for the simulator
 
     # User settings
     user_timezone: str = "UTC"

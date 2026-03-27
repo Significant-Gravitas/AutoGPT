@@ -17,6 +17,9 @@ from backend.executor.simulator import (
     simulate_mcp_block,
 )
 
+# NOTE: simulate_block delegates to simulate_mcp_block internally for
+# MCPToolBlock, but we keep the direct import for targeted tests.
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -418,46 +421,6 @@ def test_build_mcp_simulation_prompt_includes_description():
     system_prompt, _ = _build_mcp_simulation_prompt(input_data)
     assert "Search Linear tickets" in system_prompt
     assert "search_tickets" in system_prompt
-
-
-def test_simulation_context_injected_into_block_prompt():
-    """simulation_context appears in the user prompt (not system prompt)."""
-    mock_block = make_mock_block()
-    ctx = {"expected_emails": ["From: alice@example.com, Subject: Order delayed"]}
-    system_prompt, user_prompt = build_simulation_prompt(
-        mock_block, {"query": "hi"}, simulation_context=ctx
-    )
-    # simulation_context must be in the user message, not the system message
-    assert "Simulation Context" not in system_prompt
-    assert "Simulation Context" in user_prompt
-    assert "Order delayed" in user_prompt
-
-
-def test_simulation_context_injected_into_mcp_prompt():
-    """simulation_context appears in the MCP user prompt (not system prompt)."""
-    input_data = {
-        "selected_tool": "get_inbox",
-        "tool_input_schema": {},
-        "tool_arguments": {},
-    }
-    ctx = {"inbox_contents": [{"from": "bob@test.com", "subject": "Meeting tomorrow"}]}
-    system_prompt, user_prompt = _build_mcp_simulation_prompt(
-        input_data, simulation_context=ctx
-    )
-    # simulation_context must be in the user message, not the system message
-    assert "Simulation Context" not in system_prompt
-    assert "Simulation Context" in user_prompt
-    assert "Meeting tomorrow" in user_prompt
-
-
-def test_simulation_context_none_adds_nothing():
-    """When simulation_context is None, no context section is added."""
-    mock_block = make_mock_block()
-    system_prompt, user_prompt = build_simulation_prompt(
-        mock_block, {"query": "hi"}, simulation_context=None
-    )
-    assert "Simulation Context" not in system_prompt
-    assert "Simulation Context" not in user_prompt
 
 
 @pytest.mark.asyncio
