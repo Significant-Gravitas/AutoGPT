@@ -248,7 +248,7 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should contain [DRY RUN] in message and success=True."""
+    """Dry-run response message should look like real output (no dry-run markers)."""
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
@@ -269,7 +269,9 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "[DRY RUN]" in response.message
+    assert "executed successfully" in response.message
+    assert "DRY RUN" not in response.message
+    assert "simulated" not in response.message.lower()
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
 
@@ -348,7 +350,10 @@ async def test_execute_block_dry_run_simulator_error_returns_error_response():
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
-        yield "error", "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key)."
+        yield (
+            "error",
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
+        )
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error
