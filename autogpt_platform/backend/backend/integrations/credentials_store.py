@@ -25,9 +25,6 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 
-AGENTMAIL_MANAGED_CREDENTIAL_ID = "00000000-0000-0000-0000-000000000008"
-
-
 def provider_matches(stored: str, expected: str) -> bool:
     """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
 
@@ -290,14 +287,14 @@ DEFAULT_CREDENTIALS = [
 ]
 
 
-_MANAGED_CREDENTIAL_IDS = {AGENTMAIL_MANAGED_CREDENTIAL_ID}
+_MANAGED_CREDENTIAL_IDS: set[str] = set()
 
 SYSTEM_CREDENTIAL_IDS = {
     cred.id for cred in DEFAULT_CREDENTIALS
 } | _MANAGED_CREDENTIAL_IDS
 
 # Set of providers that have system credentials available
-SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS} | {"agent_mail"}
+SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
 
 
 def is_system_credential(credential_id: str) -> bool:
@@ -371,19 +368,6 @@ class IntegrationCredentialsStore:
         """
         user_integrations = await self._get_user_integrations(user_id)
         all_credentials = list(user_integrations.credentials)
-
-        # --- AgentMail managed credential (provisioned via /agentmail/connect) ---
-        agentmail_key = user_integrations.managed_credentials.agentmail_pod_api_key
-        if agentmail_key:
-            all_credentials.append(
-                APIKeyCredentials(
-                    id=AGENTMAIL_MANAGED_CREDENTIAL_ID,
-                    provider="agent_mail",
-                    title="AgentMail (managed by AutoGPT)",
-                    api_key=agentmail_key,
-                    expires_at=None,
-                )
-            )
 
         # These will always be added
         all_credentials.append(ollama_credentials)
@@ -477,6 +461,10 @@ class IntegrationCredentialsStore:
                     f"Credentials with ID {updated.id} "
                     f"for user with ID {user_id} not found"
                 )
+            if current.autogpt_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{updated.id} cannot be updated"
+                )
             if type(current) is not type(updated):
                 raise TypeError(
                     f"Can not update credentials with ID {updated.id} "
@@ -506,28 +494,58 @@ class IntegrationCredentialsStore:
         if credentials_id in SYSTEM_CREDENTIAL_IDS:
             raise ValueError(f"System credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
-            filtered_credentials = [
-                c
-                for c in await self._get_persisted_user_creds_unlocked(user_id)
-                if c.id != credentials_id
-            ]
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            target = next((c for c in persisted if c.id == credentials_id), None)
+            if target and target.autogpt_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{credentials_id} cannot be deleted"
+                )
+            filtered_credentials = [c for c in persisted if c.id != credentials_id]
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
 
+    async def has_managed_credential(self, user_id: str, provider: str) -> bool:
+        """Check if an autogpt_managed credential exists for *provider*."""
+        user_integrations = await self._get_user_integrations(user_id)
+        return any(
+            c.provider == provider and c.autogpt_managed
+            for c in user_integrations.credentials
+        )
+
+    async def add_managed_credential(
+        self, user_id: str, credential: Credentials
+    ) -> None:
+        """Upsert an autogpt_managed credential.
+
+        Removes any existing autogpt_managed credential for the same provider,
+        then appends the new one. The credential MUST have autogpt_managed=True.
+        """
+        if not credential.autogpt_managed:
+            raise ValueError("credential.autogpt_managed must be True")
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.credentials = [
+                c
+                for c in user_integrations.credentials
+                if not (c.provider == credential.provider and c.autogpt_managed)
+            ]
+            user_integrations.credentials.append(credential)
+
     async def set_agentmail_pod_credentials(
         self, user_id: str, pod_id: str, pod_api_key: str
     ) -> None:
-        """Store the AgentMail pod ID and API key for a user.
-
-        Called by the ``/integrations/agentmail/connect`` endpoint after
-        provisioning a pod via the AgentMail API.
-        """
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.managed_credentials.agentmail_pod_id = pod_id
-            user_integrations.managed_credentials.agentmail_pod_api_key = SecretStr(
-                pod_api_key
-            )
+        """Store AgentMail pod credentials for a user."""
+        await self.add_managed_credential(
+            user_id,
+            APIKeyCredentials(
+                provider="agent_mail",
+                title="AgentMail (managed by AutoGPT)",
+                api_key=SecretStr(pod_api_key),
+                expires_at=None,
+                autogpt_managed=True,
+                metadata={"pod_id": pod_id},
+            ),
+        )
 
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         """Set the Ayrshare profile key for a user.
