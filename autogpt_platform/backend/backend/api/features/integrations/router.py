@@ -113,6 +113,7 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    autogpt_managed: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -151,6 +152,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        autogpt_managed=cred.autogpt_managed,
     )
 
 
@@ -350,6 +352,11 @@ async def delete_credentials(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Credentials not found",
+        )
+    if creds.autogpt_managed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AutoGPT-managed credentials cannot be deleted",
         )
 
     try:
@@ -866,8 +873,10 @@ async def get_ayrshare_sso_url(
 
 
 async def _has_agentmail_credentials(user_integrations: UserIntegrations) -> bool:
-    mc = user_integrations.managed_credentials
-    return bool(mc.agentmail_pod_id and mc.agentmail_pod_api_key)
+    return any(
+        c.provider == "agent_mail" and c.autogpt_managed
+        for c in user_integrations.credentials
+    )
 
 
 async def _provision_agentmail(user_id: str) -> None:
@@ -884,10 +893,19 @@ async def _provision_agentmail(user_id: str) -> None:
     # Re-check under lock to prevent concurrent duplicate creation
     async with await creds_manager.store.locked_user_integrations(user_id):
         user_integrations: UserIntegrations = await get_user_integrations(user_id)
-        existing_pod_id = user_integrations.managed_credentials.agentmail_pod_id
-        existing_key = user_integrations.managed_credentials.agentmail_pod_api_key
+        existing_cred = next(
+            (
+                c
+                for c in user_integrations.credentials
+                if c.provider == "agent_mail" and c.autogpt_managed
+            ),
+            None,
+        )
+        existing_pod_id = (
+            existing_cred.metadata.get("pod_id") if existing_cred else None
+        )
 
-        if existing_pod_id and existing_key:
+        if existing_pod_id and existing_cred:
             return
 
     # External API calls outside the lock to avoid blocking other operations
@@ -973,7 +991,7 @@ async def connect_agentmail(
     """Provision an AgentMail pod for the current user.
 
     Creates a pod via the org-level API key, generates a pod-scoped API key,
-    and stores both in ``ManagedCredentials``.  The pod key then appears
+    and stores it as an autogpt_managed credential. The pod key then appears
     automatically in the credential dropdown for AgentMail blocks.
 
     Idempotent: if a pod already exists for this user, returns its ID without
@@ -991,7 +1009,15 @@ async def connect_agentmail(
     # Read back the pod_id to return it
     async with await creds_manager.store.locked_user_integrations(user_id):
         user_integrations: UserIntegrations = await get_user_integrations(user_id)
-        pod_id = user_integrations.managed_credentials.agentmail_pod_id
+        cred = next(
+            (
+                c
+                for c in user_integrations.credentials
+                if c.provider == "agent_mail" and c.autogpt_managed
+            ),
+            None,
+        )
+        pod_id = cred.metadata.get("pod_id") if cred else None
 
     if not pod_id:
         raise HTTPException(
