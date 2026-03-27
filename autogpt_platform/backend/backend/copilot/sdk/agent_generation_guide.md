@@ -230,6 +230,17 @@ real API calls, credentials, or credits:
 3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
    the agent JSON and re-save before suggesting a real execution.
 
+**Special block behaviour in dry-run mode:**
+- **OrchestratorBlock** and **AgentExecutorBlock** execute for real so the
+  orchestrator can make LLM calls and agent executors can spawn child graphs.
+  Their downstream tool blocks and child-graph blocks are still simulated.
+  Note: real LLM inference calls are made (consuming API quota), even though
+  platform credits are not charged. Agent-mode iterations are capped at 5 in
+  dry-run to prevent unbounded loops.
+- **MCPToolBlock** is simulated using the selected tool's name and JSON Schema
+  so the LLM can produce a realistic mock response without connecting to the
+  MCP server.
+
 ### Example: Simple AI Text Processor
 
 A minimal agent with input, processing, and output:

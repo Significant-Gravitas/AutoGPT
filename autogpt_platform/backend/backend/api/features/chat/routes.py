@@ -527,6 +527,8 @@ async def reset_copilot_usage(
 
     try:
         # Verify the user is actually at or over their daily limit.
+        # (rate_limit_reset_cost intentionally omitted — this object is only
+        # used for limit checks, not returned to the client.)
         usage_status = await get_usage_status(
             user_id=user_id,
             daily_token_limit=daily_limit,

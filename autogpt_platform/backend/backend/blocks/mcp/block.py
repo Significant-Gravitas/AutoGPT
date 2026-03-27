@@ -89,6 +89,12 @@ class MCPToolBlock(Block):
             default={},
             hidden=True,
         )
+        tool_description: str = SchemaField(
+            description="Description of the selected MCP tool. "
+            "Populated automatically when a tool is selected.",
+            default="",
+            hidden=True,
+        )
 
         tool_arguments: dict[str, Any] = SchemaField(
             description="Arguments to pass to the selected MCP tool. "
