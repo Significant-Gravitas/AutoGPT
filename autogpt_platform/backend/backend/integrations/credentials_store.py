@@ -531,22 +531,6 @@ class IntegrationCredentialsStore:
             ]
             user_integrations.credentials.append(credential)
 
-    async def set_agentmail_pod_credentials(
-        self, user_id: str, pod_id: str, pod_api_key: str
-    ) -> None:
-        """Store AgentMail pod credentials for a user."""
-        await self.add_managed_credential(
-            user_id,
-            APIKeyCredentials(
-                provider="agent_mail",
-                title="AgentMail (managed by AutoGPT)",
-                api_key=SecretStr(pod_api_key),
-                expires_at=None,
-                autogpt_managed=True,
-                metadata={"pod_id": pod_id},
-            ),
-        )
-
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         """Set the Ayrshare profile key for a user.
 

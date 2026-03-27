@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Callable, List, Literal
+from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
 from autogpt_libs.auth import get_user_id
 from fastapi import (
@@ -29,6 +29,7 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
@@ -229,7 +230,6 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    await _ensure_managed_credentials(user_id)
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -862,124 +862,6 @@ async def get_ayrshare_sso_url(
     return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
 
 
-# ========== MANAGED CREDENTIAL AUTO-PROVISIONING ========== #
-#
-# To add a new managed credential:
-# 1. Add a check function (cheap DB read — returns True if already provisioned)
-# 2. Add a provisioning function (expensive — creates external resources)
-# 3. Add an entry to _MANAGED_CREDENTIAL_PROVISIONERS
-# 4. Add synthesis logic in credentials_store._get_all_creds_unlocked
-#
-
-
-async def _has_agentmail_credentials(user_integrations: UserIntegrations) -> bool:
-    return any(
-        c.provider == "agent_mail" and c.autogpt_managed
-        for c in user_integrations.credentials
-    )
-
-
-async def _provision_agentmail(user_id: str) -> None:
-    """Provision an AgentMail pod + API key for *user_id*.
-
-    Idempotent: reuses an existing pod if one was already created.
-    """
-    from agentmail import AsyncAgentMail
-
-    org_api_key = settings.secrets.agentmail_api_key
-    if not org_api_key:
-        return
-
-    # Re-check under lock to prevent concurrent duplicate creation
-    async with await creds_manager.store.locked_user_integrations(user_id):
-        user_integrations: UserIntegrations = await get_user_integrations(user_id)
-        existing_cred = next(
-            (
-                c
-                for c in user_integrations.credentials
-                if c.provider == "agent_mail" and c.autogpt_managed
-            ),
-            None,
-        )
-        existing_pod_id = (
-            existing_cred.metadata.get("pod_id") if existing_cred else None
-        )
-
-        if existing_pod_id and existing_cred:
-            return
-
-    # External API calls outside the lock to avoid blocking other operations
-    client = AsyncAgentMail(api_key=org_api_key)
-    pod_id = existing_pod_id
-
-    if not pod_id:
-        pod = await client.pods.create(
-            client_id=user_id,
-            name=f"{user_id}-pod",
-        )
-        pod_id = pod.pod_id
-
-    # Clean up any orphaned keys before creating a fresh one
-    try:
-        existing_keys = await client.pods.api_keys.list(pod_id=pod_id)
-        for k in existing_keys.api_keys:
-            if k.name in ("autogpt-managed", f"{user_id}-agpt-managed"):
-                await client.pods.api_keys.delete(pod_id=pod_id, api_key=k.api_key_id)
-    except Exception as e:
-        logger.warning("Failed to clean up AgentMail API keys: %s", e)
-
-    api_key_obj = await client.pods.api_keys.create(
-        pod_id=pod_id, name=f"{user_id}-agpt-managed"
-    )
-
-    await creds_manager.store.set_agentmail_pod_credentials(
-        user_id, pod_id, api_key_obj.api_key
-    )
-
-
-# Registry: (name, check_fn, provision_fn)
-# check_fn receives UserIntegrations and returns True if already provisioned.
-# provision_fn is only called when check_fn returns False.
-_MANAGED_CREDENTIAL_PROVISIONERS: list[
-    tuple[
-        str,
-        Callable[[UserIntegrations], Any],  # check(user_integrations) -> bool
-        Callable[[str], Any],  # provision(user_id) -> None
-    ]
-] = [
-    ("agentmail", _has_agentmail_credentials, _provision_agentmail),
-]
-
-
-async def _ensure_managed_credentials(user_id: str) -> None:
-    """Auto-provision any missing managed credentials for *user_id*.
-
-    Does a single cheap DB read to check which credentials are missing,
-    then only runs provisioners for those that are needed.
-    Failures are logged and swallowed so one broken provider doesn't
-    block the credential listing.
-    """
-    user_integrations = await get_user_integrations(user_id)
-
-    needed = [
-        (name, provisioner)
-        for name, check, provisioner in _MANAGED_CREDENTIAL_PROVISIONERS
-        if not await check(user_integrations)
-    ]
-    if not needed:
-        return
-
-    async def _safe_provision(name: str, provisioner, uid: str) -> None:
-        try:
-            await provisioner(uid)
-        except Exception as e:
-            logger.error("Auto-provisioning %s failed for user %s: %s", name, uid, e)
-
-    await asyncio.gather(
-        *[_safe_provision(name, provisioner, user_id) for name, provisioner in needed]
-    )
-
-
 class AgentMailConnectResponse(BaseModel):
     pod_id: str
 
@@ -997,6 +879,8 @@ async def connect_agentmail(
     Idempotent: if a pod already exists for this user, returns its ID without
     creating a duplicate.
     """
+    from agentmail import AsyncAgentMail
+
     org_api_key = settings.secrets.agentmail_api_key
     if not org_api_key:
         raise HTTPException(
@@ -1004,27 +888,36 @@ async def connect_agentmail(
             detail="AgentMail API key is not configured",
         )
 
-    await _provision_agentmail(user_id)
-
-    # Read back the pod_id to return it
-    async with await creds_manager.store.locked_user_integrations(user_id):
-        user_integrations: UserIntegrations = await get_user_integrations(user_id)
+    # Check if already provisioned
+    if await creds_manager.store.has_managed_credential(user_id, "agent_mail"):
+        user_integrations = await get_user_integrations(user_id)
         cred = next(
-            (
-                c
-                for c in user_integrations.credentials
-                if c.provider == "agent_mail" and c.autogpt_managed
-            ),
-            None,
+            c
+            for c in user_integrations.credentials
+            if c.provider == "agent_mail" and c.autogpt_managed
         )
-        pod_id = cred.metadata.get("pod_id") if cred else None
+        return AgentMailConnectResponse(pod_id=cred.metadata["pod_id"])
 
-    if not pod_id:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision AgentMail pod",
-        )
-    return AgentMailConnectResponse(pod_id=pod_id)
+    # Provision pod + API key via org-level key
+    client = AsyncAgentMail(api_key=org_api_key)
+    pod = await client.pods.create(client_id=user_id, name=f"{user_id}-pod")
+    api_key_obj = await client.pods.api_keys.create(
+        pod_id=pod.pod_id, name=f"{user_id}-agpt-managed"
+    )
+
+    await creds_manager.store.add_managed_credential(
+        user_id,
+        APIKeyCredentials(
+            provider="agent_mail",
+            title="AgentMail (managed by AutoGPT)",
+            api_key=SecretStr(api_key_obj.api_key),
+            expires_at=None,
+            autogpt_managed=True,
+            metadata={"pod_id": pod.pod_id},
+        ),
+    )
+
+    return AgentMailConnectResponse(pod_id=pod.pod_id)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
