@@ -131,7 +131,7 @@ class CreateFolderTool(BaseTool):
     ) -> ToolResponseBase:
         """Create a folder with the given name and optional parent/icon/color."""
         assert user_id is not None  # guaranteed by requires_auth
-        name = name.strip()
+        name = (name or "").strip()
         session_id = session.session_id if session else None
 
         if not name:
@@ -311,7 +311,7 @@ class UpdateFolderTool(BaseTool):
     ) -> ToolResponseBase:
         """Update a folder's name, icon, or color."""
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = folder_id.strip()
+        folder_id = (folder_id or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:
@@ -385,7 +385,7 @@ class MoveFolderTool(BaseTool):
     ) -> ToolResponseBase:
         """Move a folder to a new parent or to root level."""
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = folder_id.strip()
+        folder_id = (folder_id or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:
@@ -454,7 +454,7 @@ class DeleteFolderTool(BaseTool):
     ) -> ToolResponseBase:
         """Soft-delete a folder; agents inside are moved to root level."""
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = folder_id.strip()
+        folder_id = (folder_id or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:
