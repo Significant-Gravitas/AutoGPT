@@ -588,12 +588,13 @@ class TestSafeCloseSdkClient:
         await _safe_close_sdk_client(client, "[test]")
 
     @pytest.mark.asyncio
-    async def test_unexpected_exception_suppressed_with_warning(self):
-        """Unexpected exceptions should be caught (not propagated) but logged."""
+    async def test_unexpected_exception_suppressed_with_error_log(self):
+        """Unexpected exceptions should be caught (not propagated) but logged at error."""
         client = AsyncMock()
         client.__aexit__ = AsyncMock(side_effect=OSError("unexpected"))
         # Should NOT raise — unexpected errors are also suppressed to
-        # avoid crashing the generator during teardown.
+        # avoid crashing the generator during teardown.  Logged at error
+        # level so Sentry captures them via its logging integration.
         await _safe_close_sdk_client(client, "[test]")
 
     @pytest.mark.asyncio

@@ -1526,26 +1526,27 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
 
 
 async def __create_graph(tx, graph: Graph, user_id: str):
-    # Auto-increment version if a record with (id, version) already exists.
-    # This prevents UniqueViolationError when the copilot re-saves an agent
-    # that already exists at the requested version.
-    existing = await AgentGraph.prisma(tx).find_first(
-        where={"id": graph.id},
-        order={"version": "desc"},
-    )
-    if existing and existing.version >= graph.version:
-        old_version = graph.version
-        graph.version = existing.version + 1
-        logger.warning(
-            "Auto-incremented graph %s version from %d to %d "
-            "(version %d already exists)",
-            graph.id,
-            old_version,
-            graph.version,
-            existing.version,
-        )
-
     graphs = [graph] + graph.sub_graphs
+
+    # Auto-increment version for any graph entry (parent or sub-graph) whose
+    # (id, version) already exists.  This prevents UniqueViolationError when
+    # the copilot re-saves an agent that already exists at the requested version.
+    for g in graphs:
+        existing = await AgentGraph.prisma(tx).find_first(
+            where={"id": g.id},
+            order={"version": "desc"},
+        )
+        if existing and existing.version >= g.version:
+            old_version = g.version
+            g.version = existing.version + 1
+            logger.warning(
+                "Auto-incremented graph %s version from %d to %d "
+                "(version %d already exists)",
+                g.id,
+                old_version,
+                g.version,
+                existing.version,
+            )
 
     await AgentGraph.prisma(tx).create_many(
         data=[

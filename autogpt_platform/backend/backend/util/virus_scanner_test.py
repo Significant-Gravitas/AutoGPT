@@ -299,5 +299,8 @@ class TestHelperFunctions:
                 await scan_content_safe(b"test", filename="screenshot.png")
 
             mock_logger.warning.assert_called_once()
-            assert "range()" in mock_logger.warning.call_args[0][0]
+            # Check the formatted log message contains the error text.
+            # Use str() to handle both f-string and %-style logging formats.
+            log_msg = str(mock_logger.warning.call_args)
+            assert "range()" in log_msg
             mock_logger.error.assert_not_called()

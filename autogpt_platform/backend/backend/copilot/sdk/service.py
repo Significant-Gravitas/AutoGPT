@@ -474,8 +474,10 @@ async def _safe_close_sdk_client(
             log_prefix,
         )
     except Exception:
-        # Unexpected cleanup error — log but don't propagate.
-        logger.warning(
+        # Unexpected cleanup error — log at error level so Sentry captures it
+        # (via its logging integration), but don't propagate since we're in
+        # teardown and the caller cannot meaningfully handle this.
+        logger.error(
             "%s Unexpected SDK client cleanup error",
             log_prefix,
             exc_info=True,
