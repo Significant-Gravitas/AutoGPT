@@ -98,11 +98,14 @@ class TestPromptingSupplementDryRunLoop:
         assert "nodes that never executed" in notes_lower
 
     def test_shared_tool_notes_include_max_iterations(self):
-        assert "3 times" in _SHARED_TOOL_NOTES or "3 iterations" in _SHARED_TOOL_NOTES
+        assert "3 iterations" in _SHARED_TOOL_NOTES
 
     def test_sdk_supplement_includes_dry_run_section(self):
         supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
         assert "Iterative agent development" in supplement
+
+    def test_shared_tool_notes_include_tool_discovery_priority(self):
+        assert "Tool Discovery Priority" in _SHARED_TOOL_NOTES
 
 
 class TestAgentBuildingGuideDryRunLoop:
@@ -124,7 +127,7 @@ class TestAgentBuildingGuideDryRunLoop:
         assert "**Bad output**" in guide_content
 
     def test_guide_mentions_max_iterations(self, guide_content):
-        assert "**3 times**" in guide_content
+        assert "**3 iterations**" in guide_content
 
     def test_guide_mentions_wait_for_result(self, guide_content):
         assert "wait_for_result=120" in guide_content
