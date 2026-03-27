@@ -233,7 +233,10 @@ class AppService(BaseAppService, ABC):
                         exc_info=exc,
                     )
                 else:
-                    logger.warning(f"{request.method} {request.url.path} failed: {exc}")
+                    logger.warning(
+                        f"{request.method} {request.url.path} failed: {exc}",
+                        exc_info=exc,
+                    )
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(

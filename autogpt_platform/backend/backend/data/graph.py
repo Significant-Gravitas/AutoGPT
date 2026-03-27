@@ -1531,6 +1531,8 @@ async def __create_graph(tx, graph: Graph, user_id: str):
     # Auto-increment version for any graph entry (parent or sub-graph) whose
     # (id, version) already exists.  This prevents UniqueViolationError when
     # the copilot re-saves an agent that already exists at the requested version.
+    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
+    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
     for g in graphs:
         existing = await AgentGraph.prisma(tx).find_first(
             where={"id": g.id},
