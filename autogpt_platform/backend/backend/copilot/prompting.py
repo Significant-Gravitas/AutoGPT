@@ -138,6 +138,20 @@ to the user as ready:
 This loop ensures the agent actually works before the user invests real
 credentials and API credits in a live run.
 
+### Tool Discovery Priority
+
+When the user asks to interact with a service or API, follow this order:
+
+1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+
+2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+
+3. **Authenticated web request** — If no block or MCP server exists, check if we have existing credentials (OAuth tokens, API keys) for the service via `connect_integration`, then use authenticated HTTP requests.
+
+4. **Manual API call** — As a last resort, guide the user to set up credentials and use direct API calls.
+
+**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
