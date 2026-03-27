@@ -8,6 +8,7 @@ import uuid as uuid_mod
 from collections import Counter
 from collections.abc import AsyncIterable, Sequence
 from concurrent.futures import Future
+from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
@@ -49,6 +50,17 @@ if TYPE_CHECKING:
     from backend.executor.manager import ExecutionProcessor
 
 logger = logging.getLogger(__name__)
+
+
+class ExecutionMode(str, Enum):
+    """How the OrchestratorBlock executes tool calls."""
+
+    BUILT_IN = "built_in"
+    """Default built-in tool-call loop (supports all LLM providers)."""
+
+    EXTENDED_THINKING = "extended_thinking"
+    """Use extended thinking via Claude Agent SDK.
+    Only supports Anthropic-compatible providers (anthropic / open_router)."""
 
 
 class ToolInfo(BaseModel):
@@ -346,14 +358,14 @@ class OrchestratorBlock(Block):
             advanced=True,
             default=0,
         )
-        use_extended_thinking: bool = SchemaField(
-            title="Enable Extended Thinking",
-            default=False,
-            description="Enable extended thinking for deeper reasoning. "
-            "Only supports Claude models via 'anthropic' or 'open_router' providers. "
-            "Requires valid API credentials (subscription mode not supported). "
-            "The SDK manages the conversation loop natively, "
-            "so 'Agent Mode Max Iterations' is ignored when this is enabled.",
+        execution_mode: ExecutionMode = SchemaField(
+            title="Execution Mode",
+            default=ExecutionMode.BUILT_IN,
+            description="How tool calls are executed. "
+            "'built_in' uses the default tool-call loop (all providers). "
+            "'extended_thinking' delegates to the Claude Agent SDK "
+            "(Anthropic / OpenRouter only, requires API credentials, "
+            "ignores 'Agent Mode Max Iterations').",
             advanced=True,
         )
         conversation_compaction: bool = SchemaField(
@@ -1739,7 +1751,7 @@ class OrchestratorBlock(Block):
             )
 
         # Execute tools based on the selected mode
-        if input_data.use_extended_thinking:
+        if input_data.execution_mode == ExecutionMode.EXTENDED_THINKING:
             # Validate — extended thinking only works with Claude models
             provider = input_data.model.metadata.provider
             model_name = input_data.model.value
@@ -1751,7 +1763,7 @@ class OrchestratorBlock(Block):
                     f"Extended thinking requires an Anthropic-compatible provider "
                     f"(got provider={provider}). "
                     "Please select an Anthropic or OpenRouter provider, "
-                    "or disable extended thinking."
+                    "or switch execution mode to 'built_in'."
                 )
             # Safety-net: all Claude models have .value starting with "claude-".
             # This guards against non-Claude models that happen to use the
@@ -1761,7 +1773,7 @@ class OrchestratorBlock(Block):
                     f"Extended thinking only supports Claude models "
                     f"(got model={model_name}). "
                     "Please select a Claude model, "
-                    "or disable extended thinking."
+                    "or switch execution mode to 'built_in'."
                 )
             # Extended thinking: Claude Agent SDK manages conversation + tool calling
             execution_params = ExecutionParams(
