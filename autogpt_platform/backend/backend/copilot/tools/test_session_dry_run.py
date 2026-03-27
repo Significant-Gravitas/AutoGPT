@@ -1,7 +1,7 @@
 """Tests for session-level dry_run flag propagation.
 
-Verifies that when a session has dry_run=True, all tool calls (run_block,
-run_agent) are forced to use dry-run mode, regardless of what the individual
+Verifies that when a session has dry_run=True, run_block and run_agent tool
+calls are forced to use dry-run mode, regardless of what the individual
 tool call specifies.  The single source of truth is ``session.dry_run``.
 """
 
