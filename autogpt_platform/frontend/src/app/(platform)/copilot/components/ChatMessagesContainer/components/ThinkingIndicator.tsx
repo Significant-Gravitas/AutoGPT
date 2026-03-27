@@ -95,9 +95,7 @@ export function ThinkingIndicator({ active, elapsedSeconds }: Props) {
         </span>
       </span>
       {showTime && (
-        <span className="font-mono text-sm tabular-nums">
-          • {formatElapsed(elapsedSeconds)}
-        </span>
+        <span className="tabular-nums">• {formatElapsed(elapsedSeconds)}</span>
       )}
     </span>
   );
