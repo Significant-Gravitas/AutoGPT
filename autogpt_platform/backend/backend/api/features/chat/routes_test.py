@@ -332,14 +332,28 @@ def _mock_usage(
     *,
     daily_used: int = 500,
     weekly_used: int = 2000,
+    daily_limit: int = 10000,
+    weekly_limit: int = 50000,
+    tier: "SubscriptionTier" = SubscriptionTier.FREE,
 ) -> AsyncMock:
-    """Mock get_usage_status to return a predictable CoPilotUsageStatus."""
+    """Mock get_usage_status and get_global_rate_limits for usage endpoint tests.
+
+    Mocks both ``get_global_rate_limits`` (returns the given limits + tier) and
+    ``get_usage_status`` so that tests exercise the endpoint without hitting
+    LaunchDarkly or Prisma.
+    """
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(daily_limit, weekly_limit, tier),
+    )
 
     resets_at = datetime.now(UTC) + timedelta(days=1)
     status = CoPilotUsageStatus(
-        daily=UsageWindow(used=daily_used, limit=10000, resets_at=resets_at),
-        weekly=UsageWindow(used=weekly_used, limit=50000, resets_at=resets_at),
+        daily=UsageWindow(used=daily_used, limit=daily_limit, resets_at=resets_at),
+        weekly=UsageWindow(used=weekly_used, limit=weekly_limit, resets_at=resets_at),
     )
     return mocker.patch(
         "backend.api.features.chat.routes.get_usage_status",
@@ -378,11 +392,9 @@ def test_usage_uses_config_limits(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """The endpoint forwards daily_token_limit and weekly_token_limit from config."""
-    mock_get = _mock_usage(mocker)
+    """The endpoint forwards resolved limits from get_global_rate_limits to get_usage_status."""
+    mock_get = _mock_usage(mocker, daily_limit=99999, weekly_limit=77777)
 
-    mocker.patch.object(chat_routes.config, "daily_token_limit", 99999)
-    mocker.patch.object(chat_routes.config, "weekly_token_limit", 77777)
     mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 500)
 
     response = client.get("/usage")

@@ -19,6 +19,7 @@ from .rate_limit import (
     get_user_tier,
     record_token_usage,
     reset_daily_usage,
+    set_user_tier,
 )
 
 _USER = "test-user-rl"
@@ -502,6 +503,94 @@ class TestGetUserTier:
             tier = await get_user_tier(_USER)
 
         assert tier == DEFAULT_TIER
+
+
+# ---------------------------------------------------------------------------
+# set_user_tier
+# ---------------------------------------------------------------------------
+
+
+class TestSetUserTier:
+    @pytest.fixture(autouse=True)
+    def _clear_tier_cache(self):
+        """Clear the get_user_tier cache before each test."""
+        get_user_tier.cache_clear()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_updates_db_and_invalidates_cache(self):
+        """set_user_tier should persist to DB and invalidate the tier cache."""
+        mock_prisma = AsyncMock()
+        mock_prisma.update = AsyncMock(return_value=None)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=mock_prisma,
+        ):
+            await set_user_tier(_USER, SubscriptionTier.PRO)
+
+        mock_prisma.update.assert_awaited_once_with(
+            where={"id": _USER},
+            data={"subscriptionTier": "PRO"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_record_not_found_propagates(self):
+        """RecordNotFoundError from Prisma should propagate to callers."""
+        import prisma.errors
+
+        mock_prisma = AsyncMock()
+        mock_prisma.update = AsyncMock(
+            side_effect=prisma.errors.RecordNotFoundError(
+                {"error": "Record not found"}
+            ),
+        )
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=mock_prisma,
+        ):
+            with pytest.raises(prisma.errors.RecordNotFoundError):
+                await set_user_tier(_USER, SubscriptionTier.ENTERPRISE)
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidated_after_set(self):
+        """After set_user_tier, get_user_tier should query DB again (not cache)."""
+        # First, populate the cache with STANDARD
+        mock_user_std = MagicMock()
+        mock_user_std.subscriptionTier = "STANDARD"
+        mock_prisma_get = AsyncMock()
+        mock_prisma_get.find_unique = AsyncMock(return_value=mock_user_std)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=mock_prisma_get,
+        ):
+            tier_before = await get_user_tier(_USER)
+        assert tier_before == SubscriptionTier.STANDARD
+
+        # Now set tier to ENTERPRISE (this should invalidate the cache)
+        mock_prisma_set = AsyncMock()
+        mock_prisma_set.update = AsyncMock(return_value=None)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=mock_prisma_set,
+        ):
+            await set_user_tier(_USER, SubscriptionTier.ENTERPRISE)
+
+        # Now get_user_tier should hit DB again (cache was invalidated)
+        mock_user_ent = MagicMock()
+        mock_user_ent.subscriptionTier = "ENTERPRISE"
+        mock_prisma_get2 = AsyncMock()
+        mock_prisma_get2.find_unique = AsyncMock(return_value=mock_user_ent)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=mock_prisma_get2,
+        ):
+            tier_after = await get_user_tier(_USER)
+
+        assert tier_after == SubscriptionTier.ENTERPRISE
 
 
 # ---------------------------------------------------------------------------

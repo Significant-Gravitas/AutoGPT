@@ -39,6 +39,9 @@ class SubscriptionTier(str, Enum):
 
 
 # Multiplier applied to the base limits (from LD / config) for each tier.
+# Intentionally int (not float): keeps limits as whole token counts and avoids
+# floating-point rounding.  If fractional multipliers are ever needed, change
+# the type and round the result in get_global_rate_limits().
 TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
     SubscriptionTier.FREE: 1,
     SubscriptionTier.STANDARD: 5,
@@ -380,6 +383,12 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
 
     Only successful DB lookups are cached.  Raises on DB errors so the
     ``@cached`` decorator does **not** store a fallback value.
+
+    Note: when the user is not found or ``subscriptionTier`` is ``None``,
+    ``DEFAULT_TIER`` is returned and **cached**.  This is acceptable because
+    the Prisma schema enforces ``@default(FREE)`` on the column, so ``None``
+    only occurs in edge cases (e.g. partial row creation) and caching FREE
+    for 5 minutes is safe.
     """
     user = await PrismaUser.prisma().find_unique(where={"id": user_id})
     if user and user.subscriptionTier:
