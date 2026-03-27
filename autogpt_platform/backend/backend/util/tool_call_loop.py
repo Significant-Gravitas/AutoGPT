@@ -163,6 +163,7 @@ async def tool_call_loop(
     update_conversation: ConversationUpdater,
     max_iterations: int = -1,
     last_iteration_message: str | None = None,
+    parallel_tool_calls: bool = True,
 ) -> AsyncGenerator[ToolCallLoopResult, None]:
     """Run a tool-calling conversation loop as an async generator.
 
@@ -182,9 +183,14 @@ async def tool_call_loop(
         execute_tool: Async function to execute a tool call.
         update_conversation: Function to update messages with LLM
             response and tool results.
-        max_iterations: Max iterations. -1 = infinite, 0 would not loop.
+        max_iterations: Max iterations. -1 = infinite, 0 = no loop
+            (immediately yields a "max reached" result).
         last_iteration_message: Optional message to append on the last
             iteration to encourage the model to finish.
+        parallel_tool_calls: If True (default), execute multiple tool
+            calls from a single LLM response concurrently via
+            ``asyncio.gather``.  Set to False when tool calls may have
+            ordering dependencies or mutate shared state.
 
     Yields:
         ToolCallLoopResult after each iteration. Check ``finished_naturally``
@@ -226,21 +232,24 @@ async def tool_call_loop(
             )
             return
 
-        # Execute tools in parallel — independent tool calls can run concurrently.
-        # This mirrors the SDK mode behaviour where the SDK manages parallelism.
+        # Execute tools — parallel or sequential depending on caller preference.
         # NOTE: asyncio.gather does not cancel sibling tasks when one raises.
         # Callers should handle errors inside execute_tool (return error
         # ToolCallResult) rather than letting exceptions propagate.
-        # BEHAVIOR NOTE: Parallel execution means side-effects from different
-        # tool executors (e.g. streaming events appended to a shared list)
-        # may interleave nondeterministically.  Each event carries its own
-        # tool-call identifier, so consumers must correlate by ID rather
-        # than relying on sequential ordering within a batch.
-        tool_results: list[ToolCallResult] = list(
-            await asyncio.gather(
-                *(execute_tool(tc, tools) for tc in response.tool_calls)
+        if parallel_tool_calls and len(response.tool_calls) > 1:
+            # Parallel: side-effects from different tool executors (e.g.
+            # streaming events appended to a shared list) may interleave
+            # nondeterministically.  Each event carries its own tool-call
+            # identifier, so consumers must correlate by ID.
+            tool_results: list[ToolCallResult] = list(
+                await asyncio.gather(
+                    *(execute_tool(tc, tools) for tc in response.tool_calls)
+                )
             )
-        )
+        else:
+            # Sequential: preserves ordering guarantees for callers that
+            # need deterministic execution order.
+            tool_results = [await execute_tool(tc, tools) for tc in response.tool_calls]
 
         # Update conversation with response + tool results
         update_conversation(messages, response, tool_results)

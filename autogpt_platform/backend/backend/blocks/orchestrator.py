@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import re
 import types
 import uuid as uuid_mod
@@ -9,16 +10,6 @@ from concurrent.futures import Future
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ResultMessage,
-    TextBlock,
-    ToolUseBlock,
-    create_sdk_mcp_server,
-)
-from claude_agent_sdk import tool as sdk_tool
 from pydantic import BaseModel
 
 import backend.blocks.llm as llm
@@ -1262,6 +1253,9 @@ class OrchestratorBlock(Block):
         Converts the OpenAI-format tool signatures (from _create_tool_node_signatures)
         into MCP tools that execute downstream blocks via _execute_single_tool_with_manager.
         """
+        from claude_agent_sdk import create_sdk_mcp_server
+        from claude_agent_sdk import tool as sdk_tool
+
         sdk_tools = []
         for tf in tool_functions:
             func_def = tf["function"]
@@ -1346,6 +1340,15 @@ class OrchestratorBlock(Block):
         The SDK manages the conversation loop and tool calling natively.
         Graph-connected blocks are exposed as MCP tools.
         """
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ClaudeAgentOptions,
+            ClaudeSDKClient,
+            ResultMessage,
+            TextBlock,
+            ToolUseBlock,
+        )
+
         # Build MCP server from graph-connected tools
         mcp_server = self._create_graph_mcp_server(
             tool_functions, execution_params, execution_processor
@@ -1357,10 +1360,14 @@ class OrchestratorBlock(Block):
             f"{MCP_PREFIX}{tf['function']['name']}" for tf in tool_functions
         ]
 
-        # Disable ALL SDK built-in tools — only graph tools available.
-        # NOTE: This list must be kept in sync with the Claude Agent SDK's
-        # built-in tools. `allowed_tools` (above) is the primary restriction;
-        # this blocklist is a defense-in-depth measure.
+        # Disable ALL known SDK built-in tools — only graph MCP tools available.
+        # `allowed_tools` (above) is the primary restriction: the SDK only
+        # enables tools explicitly listed there.  This blocklist is a
+        # defense-in-depth measure in case the SDK's allowlist logic changes.
+        # IMPORTANT: Keep this list in sync with the Claude Agent SDK.
+        # If a new built-in tool is added in a future SDK version, it will
+        # still be blocked by `allowed_tools` (only MCP-prefixed names are
+        # allowed), but adding it here provides an extra safety layer.
         disallowed_tools = [
             "Bash",
             "WebFetch",
@@ -1373,6 +1380,7 @@ class OrchestratorBlock(Block):
             "Task",
             "WebSearch",
             "TodoWrite",
+            "NotebookEdit",
         ]
 
         # Build SDK env — provider-aware credential routing.
@@ -1390,6 +1398,10 @@ class OrchestratorBlock(Block):
         if provider == "open_router":
             # Route through OpenRouter proxy: set base URL + auth token,
             # clear API key so the SDK uses AUTH_TOKEN instead.
+            # NOTE: We use the platform's global OpenRouter base URL from
+            # ChatConfig.  Per-credential base URLs are not yet supported;
+            # if the user's credential targets a custom proxy, the SDK will
+            # still route through the platform's configured endpoint.
             or_base = (copilot_config.base_url or "https://openrouter.ai/api").rstrip(
                 "/"
             )
@@ -1404,13 +1416,18 @@ class OrchestratorBlock(Block):
             # Direct Anthropic key
             sdk_env = {"ANTHROPIC_API_KEY": api_key}
 
+        # Use an execution-specific working directory to prevent concurrent
+        # SDK executions from colliding in a shared /tmp.
+        sdk_cwd = f"/tmp/orchestrator-sdk-{execution_params.graph_exec_id}"
+        os.makedirs(sdk_cwd, exist_ok=True)
+
         # Build SDK options
         options = ClaudeAgentOptions(
             system_prompt=input_data.sys_prompt or "",
             mcp_servers={"graph_tools": mcp_server},
             allowed_tools=allowed_tools,
             disallowed_tools=disallowed_tools,
-            cwd="/tmp",
+            cwd=sdk_cwd,
             env=sdk_env,
             model=input_data.model.value or None,
         )
