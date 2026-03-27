@@ -40,9 +40,9 @@ model User {
 
   timezone String @default("not-set")
 
-  // CoPilot rate-limit tier: "standard" (default), "pro", or "max".
-  // Multipliers applied in get_global_rate_limits(): standard=1x, pro=5x, max=25x.
-  rateLimitTier String @default("standard")
+  // CoPilot subscription tier — controls rate-limit multipliers.
+  // Multipliers applied in get_global_rate_limits(): FREE=1x, STANDARD=5x, PRO=10x, ENTERPRISE=25x.
+  subscriptionTier SubscriptionTier @default(FREE)
 
   // Relations
 
@@ -75,6 +75,13 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+}
+
+enum SubscriptionTier {
+  FREE
+  STANDARD
+  PRO
+  ENTERPRISE
 }
 
 enum OnboardingStep {

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
-    RateLimitTier,
+    SubscriptionTier,
     get_global_rate_limits,
     get_usage_status,
     get_user_tier,
@@ -34,17 +34,17 @@ class UserRateLimitResponse(BaseModel):
     weekly_token_limit: int
     daily_tokens_used: int
     weekly_tokens_used: int
-    tier: RateLimitTier
+    tier: SubscriptionTier
 
 
 class UserTierResponse(BaseModel):
     user_id: str
-    tier: RateLimitTier
+    tier: SubscriptionTier
 
 
 class SetUserTierRequest(BaseModel):
     user_id: str
-    tier: RateLimitTier
+    tier: SubscriptionTier
 
 
 @router.get(

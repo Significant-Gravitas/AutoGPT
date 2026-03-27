@@ -1841,7 +1841,7 @@ async def stream_chat_completion_sdk(
             "conversation_turn": str(turn),
         }
         if _user_tier:
-            _otel_metadata["rate_limit_tier"] = _user_tier.value
+            _otel_metadata["subscription_tier"] = _user_tier.value
 
         _otel_ctx = propagate_attributes(
             user_id=user_id,

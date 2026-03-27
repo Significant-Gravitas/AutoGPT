@@ -25,26 +25,28 @@ _USAGE_KEY_PREFIX = "copilot:usage"
 
 
 # ---------------------------------------------------------------------------
-# Rate-limit tier definitions
+# Subscription tier definitions
 # ---------------------------------------------------------------------------
 
 
-class RateLimitTier(str, Enum):
-    """Rate-limit tiers with increasing token allowances."""
+class SubscriptionTier(str, Enum):
+    """Subscription tiers with increasing token allowances."""
 
-    STANDARD = "standard"
-    PRO = "pro"
-    MAX = "max"
+    FREE = "FREE"
+    STANDARD = "STANDARD"
+    PRO = "PRO"
+    ENTERPRISE = "ENTERPRISE"
 
 
 # Multiplier applied to the base limits (from LD / config) for each tier.
-TIER_MULTIPLIERS: dict[RateLimitTier, int] = {
-    RateLimitTier.STANDARD: 1,
-    RateLimitTier.PRO: 5,
-    RateLimitTier.MAX: 25,
+TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
+    SubscriptionTier.FREE: 1,
+    SubscriptionTier.STANDARD: 5,
+    SubscriptionTier.PRO: 10,
+    SubscriptionTier.ENTERPRISE: 25,
 }
 
-DEFAULT_TIER = RateLimitTier.STANDARD
+DEFAULT_TIER = SubscriptionTier.FREE
 
 
 class UsageWindow(BaseModel):
@@ -62,7 +64,7 @@ class CoPilotUsageStatus(BaseModel):
 
     daily: UsageWindow
     weekly: UsageWindow
-    tier: RateLimitTier = DEFAULT_TIER
+    tier: SubscriptionTier = DEFAULT_TIER
     reset_cost: int = Field(
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
@@ -93,7 +95,7 @@ async def get_usage_status(
     daily_token_limit: int,
     weekly_token_limit: int,
     rate_limit_reset_cost: int = 0,
-    tier: RateLimitTier = DEFAULT_TIER,
+    tier: SubscriptionTier = DEFAULT_TIER,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -373,19 +375,19 @@ async def record_token_usage(
 
 
 @cached(maxsize=1000, ttl_seconds=300)
-async def _fetch_user_tier(user_id: str) -> RateLimitTier:
+async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     """Fetch the user's rate-limit tier from the database (cached).
 
     Only successful DB lookups are cached.  Raises on DB errors so the
     ``@cached`` decorator does **not** store a fallback value.
     """
     user = await PrismaUser.prisma().find_unique(where={"id": user_id})
-    if user and user.rateLimitTier:
-        return RateLimitTier(user.rateLimitTier)
+    if user and user.subscriptionTier:
+        return SubscriptionTier(user.subscriptionTier)
     return DEFAULT_TIER
 
 
-async def get_user_tier(user_id: str) -> RateLimitTier:
+async def get_user_tier(user_id: str) -> SubscriptionTier:
     """Look up the user's rate-limit tier from the database.
 
     Successful results are cached for 5 minutes (via ``_fetch_user_tier``)
@@ -413,7 +415,7 @@ get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-de
 get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
 
 
-async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
+async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
     Also invalidates the ``get_user_tier`` cache for this user so that
@@ -424,7 +426,7 @@ async def set_user_tier(user_id: str, tier: RateLimitTier) -> None:
     """
     await PrismaUser.prisma().update(
         where={"id": user_id},
-        data={"rateLimitTier": tier.value},
+        data={"subscriptionTier": tier.value},
     )
     # Invalidate cached tier so rate-limit checks pick up the change immediately.
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
@@ -434,7 +436,7 @@ async def get_global_rate_limits(
     user_id: str,
     config_daily: int,
     config_weekly: int,
-) -> tuple[int, int, RateLimitTier]:
+) -> tuple[int, int, SubscriptionTier]:
     """Resolve global rate limits from LaunchDarkly, falling back to config.
 
     The base limits (from LD or config) are multiplied by the user's

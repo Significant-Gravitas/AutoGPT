@@ -8478,8 +8478,8 @@
           "daily": { "$ref": "#/components/schemas/UsageWindow" },
           "weekly": { "$ref": "#/components/schemas/UsageWindow" },
           "tier": {
-            "$ref": "#/components/schemas/RateLimitTier",
-            "default": "standard"
+            "$ref": "#/components/schemas/SubscriptionTier",
+            "default": "FREE"
           },
           "reset_cost": {
             "type": "integer",
@@ -11823,12 +11823,6 @@
         "title": "RateLimitResetResponse",
         "description": "Response from resetting the daily rate limit."
       },
-      "RateLimitTier": {
-        "type": "string",
-        "enum": ["standard", "pro", "max"],
-        "title": "RateLimitTier",
-        "description": "Rate-limit tiers with increasing token allowances."
-      },
       "RecentExecution": {
         "properties": {
           "status": { "type": "string", "title": "Status" },
@@ -12218,7 +12212,7 @@
       "SetUserTierRequest": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/RateLimitTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": ["user_id", "tier"],
@@ -12992,6 +12986,12 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SubscriptionTier": {
+        "type": "string",
+        "enum": ["FREE", "STANDARD", "PRO", "ENTERPRISE"],
+        "title": "SubscriptionTier",
+        "description": "Subscription tiers with increasing token allowances."
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -14808,7 +14808,7 @@
             "type": "integer",
             "title": "Weekly Tokens Used"
           },
-          "tier": { "$ref": "#/components/schemas/RateLimitTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": [
@@ -14847,7 +14847,7 @@
       "UserTierResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/RateLimitTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": ["user_id", "tier"],

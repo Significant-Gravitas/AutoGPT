@@ -11,7 +11,7 @@ from .rate_limit import (
     TIER_MULTIPLIERS,
     CoPilotUsageStatus,
     RateLimitExceeded,
-    RateLimitTier,
+    SubscriptionTier,
     UsageWindow,
     check_rate_limit,
     get_global_rate_limits,
@@ -342,23 +342,25 @@ class TestRecordTokenUsage:
 
 
 # ---------------------------------------------------------------------------
-# RateLimitTier and tier multipliers
+# SubscriptionTier and tier multipliers
 # ---------------------------------------------------------------------------
 
 
-class TestRateLimitTier:
+class TestSubscriptionTier:
     def test_tier_values(self):
-        assert RateLimitTier.STANDARD.value == "standard"
-        assert RateLimitTier.PRO.value == "pro"
-        assert RateLimitTier.MAX.value == "max"
+        assert SubscriptionTier.FREE.value == "FREE"
+        assert SubscriptionTier.STANDARD.value == "STANDARD"
+        assert SubscriptionTier.PRO.value == "PRO"
+        assert SubscriptionTier.ENTERPRISE.value == "ENTERPRISE"
 
     def test_tier_multipliers(self):
-        assert TIER_MULTIPLIERS[RateLimitTier.STANDARD] == 1
-        assert TIER_MULTIPLIERS[RateLimitTier.PRO] == 5
-        assert TIER_MULTIPLIERS[RateLimitTier.MAX] == 25
+        assert TIER_MULTIPLIERS[SubscriptionTier.FREE] == 1
+        assert TIER_MULTIPLIERS[SubscriptionTier.STANDARD] == 5
+        assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 10
+        assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 25
 
-    def test_default_tier_is_standard(self):
-        assert DEFAULT_TIER == RateLimitTier.STANDARD
+    def test_default_tier_is_free(self):
+        assert DEFAULT_TIER == SubscriptionTier.FREE
 
     def test_usage_status_includes_tier(self):
         now = datetime.now(UTC)
@@ -366,17 +368,17 @@ class TestRateLimitTier:
             daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
             weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
         )
-        # Default tier should be STANDARD
-        assert status.tier == RateLimitTier.STANDARD
+        # Default tier should be FREE
+        assert status.tier == SubscriptionTier.FREE
 
     def test_usage_status_with_custom_tier(self):
         now = datetime.now(UTC)
         status = CoPilotUsageStatus(
             daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
             weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
-            tier=RateLimitTier.PRO,
+            tier=SubscriptionTier.PRO,
         )
-        assert status.tier == RateLimitTier.PRO
+        assert status.tier == SubscriptionTier.PRO
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +396,7 @@ class TestGetUserTier:
     async def test_returns_tier_from_db(self):
         """Should return the tier stored in the user record."""
         mock_user = MagicMock()
-        mock_user.rateLimitTier = "pro"
+        mock_user.subscriptionTier = "PRO"
 
         mock_prisma = AsyncMock()
         mock_prisma.find_unique = AsyncMock(return_value=mock_user)
@@ -405,7 +407,7 @@ class TestGetUserTier:
         ):
             tier = await get_user_tier(_USER)
 
-        assert tier == RateLimitTier.PRO
+        assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
     async def test_returns_default_when_user_not_found(self):
@@ -423,9 +425,9 @@ class TestGetUserTier:
 
     @pytest.mark.asyncio
     async def test_returns_default_when_tier_is_none(self):
-        """Should return DEFAULT_TIER when rateLimitTier is None."""
+        """Should return DEFAULT_TIER when subscriptionTier is None."""
         mock_user = MagicMock()
-        mock_user.rateLimitTier = None
+        mock_user.subscriptionTier = None
 
         mock_prisma = AsyncMock()
         mock_prisma.find_unique = AsyncMock(return_value=mock_user)
@@ -471,7 +473,7 @@ class TestGetUserTier:
 
         # Now DB recovers and returns PRO
         mock_user = MagicMock()
-        mock_user.rateLimitTier = "pro"
+        mock_user.subscriptionTier = "PRO"
         ok_prisma = AsyncMock()
         ok_prisma.find_unique = AsyncMock(return_value=mock_user)
 
@@ -482,13 +484,13 @@ class TestGetUserTier:
             tier2 = await get_user_tier(_USER)
 
         # Should get PRO now — the error result was not cached
-        assert tier2 == RateLimitTier.PRO
+        assert tier2 == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
     async def test_returns_default_on_invalid_tier_value(self):
         """Should fall back to DEFAULT_TIER when stored value is invalid."""
         mock_user = MagicMock()
-        mock_user.rateLimitTier = "invalid-tier"
+        mock_user.subscriptionTier = "invalid-tier"
 
         mock_prisma = AsyncMock()
         mock_prisma.find_unique = AsyncMock(return_value=mock_user)
@@ -523,13 +525,13 @@ class TestGetGlobalRateLimitsWithTiers:
         return _side_effect
 
     @pytest.mark.asyncio
-    async def test_standard_tier_no_multiplier(self):
-        """Standard tier should not change limits."""
+    async def test_free_tier_no_multiplier(self):
+        """Free tier should not change limits."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=RateLimitTier.STANDARD,
+                return_value=SubscriptionTier.FREE,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -542,16 +544,16 @@ class TestGetGlobalRateLimitsWithTiers:
 
         assert daily == 2_500_000
         assert weekly == 12_500_000
-        assert tier == RateLimitTier.STANDARD
+        assert tier == SubscriptionTier.FREE
 
     @pytest.mark.asyncio
-    async def test_pro_tier_5x_multiplier(self):
-        """Pro tier should multiply limits by 5."""
+    async def test_standard_tier_5x_multiplier(self):
+        """Standard tier should multiply limits by 5."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=RateLimitTier.PRO,
+                return_value=SubscriptionTier.STANDARD,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -564,16 +566,16 @@ class TestGetGlobalRateLimitsWithTiers:
 
         assert daily == 12_500_000
         assert weekly == 62_500_000
-        assert tier == RateLimitTier.PRO
+        assert tier == SubscriptionTier.STANDARD
 
     @pytest.mark.asyncio
-    async def test_max_tier_25x_multiplier(self):
-        """Max tier should multiply limits by 25."""
+    async def test_enterprise_tier_25x_multiplier(self):
+        """Enterprise tier should multiply limits by 25."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=RateLimitTier.MAX,
+                return_value=SubscriptionTier.ENTERPRISE,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -586,7 +588,7 @@ class TestGetGlobalRateLimitsWithTiers:
 
         assert daily == 62_500_000
         assert weekly == 312_500_000
-        assert tier == RateLimitTier.MAX
+        assert tier == SubscriptionTier.ENTERPRISE
 
 
 # ---------------------------------------------------------------------------

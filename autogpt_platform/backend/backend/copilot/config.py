@@ -77,10 +77,11 @@ class ChatConfig(BaseSettings):
     # allows ~70-100 turns/day.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # These are base limits for the "standard" tier. Higher tiers (pro, max)
-    # multiply these by their tier multiplier (see rate_limit.TIER_MULTIPLIERS).
-    # User tier is stored in the User.rateLimitTier DB column and resolved
-    # inside get_global_rate_limits().
+    # These are base limits for the FREE tier. Higher tiers (STANDARD, PRO,
+    # ENTERPRISE) multiply these by their tier multiplier (see
+    # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
+    # User.subscriptionTier DB column and resolved inside
+    # get_global_rate_limits().
     daily_token_limit: int = Field(
         default=2_500_000,
         description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
