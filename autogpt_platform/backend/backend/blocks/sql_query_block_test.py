@@ -324,6 +324,9 @@ def _make_input(
     timeout: int = 30,
     max_rows: int = 100,
 ) -> SQLQueryBlock.Input:
+    """Build a test input. Note: ``read_only`` defaults to ``False`` here (unlike the
+    block's default of ``True``) so write-mode tests don't need to specify it.
+    Set ``read_only=True`` explicitly when testing read-only behaviour."""
     return SQLQueryBlock.Input(
         query=query,
         database_type=database_type,
@@ -355,7 +358,7 @@ async def _collect_outputs(
 
 
 # ---------------------------------------------------------------------------
-# Integration tests: SQLQueryBlock.run() -- SSRF, SQLite, error handling
+# Integration tests: SQLQueryBlock.run() -- SSRF, error handling
 # ---------------------------------------------------------------------------
 
 
@@ -441,20 +444,6 @@ class TestSQLQueryBlockRunSSRF:
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "Blocked host" in outputs["error"]
-
-
-@pytest.mark.asyncio
-class TestSQLQueryBlockRunSQLite:
-    """SQLite must be explicitly disabled (scenario 13)."""
-
-    async def test_sqlite_disabled_with_clear_error(self):
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(creds, database_type=DatabaseType.SQLITE)
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "SQLite" in outputs["error"]
-        assert "not supported" in outputs["error"]
 
 
 @pytest.mark.asyncio
@@ -680,20 +669,6 @@ class TestSQLQueryBlockWriteMode:
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         assert "Blocked host" in outputs["error"]
-
-    async def test_sqlite_blocked_in_write_mode(self):
-        """SQLite remains disabled regardless of read_only setting."""
-        block = SQLQueryBlock()
-        creds = _make_credentials()
-        input_data = _make_input(
-            creds,
-            query="INSERT INTO t VALUES (1)",
-            database_type=DatabaseType.SQLITE,
-            read_only=False,
-        )
-        outputs = await _collect_outputs(block, input_data, creds)
-        assert "error" in outputs
-        assert "SQLite" in outputs["error"]
 
     async def test_affected_rows_returned_for_write(self):
         """Write queries return affected_rows count."""

@@ -57,7 +57,6 @@ def DatabaseCredentialsField() -> DatabaseCredentialsInput:
 class DatabaseType(str, Enum):
     POSTGRES = "postgres"
     MYSQL = "mysql"
-    SQLITE = "sqlite"
     MSSQL = "mssql"
 
 
@@ -257,7 +256,6 @@ def _serialize_value(value: Any) -> Any:
 _DATABASE_TYPE_TO_DRIVER = {
     DatabaseType.POSTGRES: "postgresql",
     DatabaseType.MYSQL: "mysql+pymysql",
-    DatabaseType.SQLITE: "sqlite",
     DatabaseType.MSSQL: "mssql+pymssql",
 }
 
@@ -397,9 +395,7 @@ class SQLQueryBlock(Block):
         """
         # Determine driver-specific connection timeout argument.
         # pyodbc (MSSQL) uses "timeout", while PostgreSQL/MySQL use "connect_timeout".
-        if database_type == DatabaseType.SQLITE:
-            connect_args: dict[str, Any] = {}
-        elif database_type == DatabaseType.MSSQL:
+        if database_type == DatabaseType.MSSQL:
             connect_args = {"login_timeout": 10}
         else:
             connect_args = {"connect_timeout": 10}
@@ -488,11 +484,6 @@ class SQLQueryBlock(Block):
                 yield "error", ro_error
                 return
 
-        # SQLite is not supported for remote execution
-        if input_data.database_type == DatabaseType.SQLITE:
-            yield "error", "SQLite is not supported for remote execution."
-            return
-
         host = input_data.host.get_secret_value().strip()
         if not host:
             yield "error", "Database host is required."
@@ -514,7 +505,7 @@ class SQLQueryBlock(Block):
             return
 
         # Pin the connection to the first resolved IP to prevent DNS rebinding.
-        pinned_host = resolved_ips[0] if resolved_ips else host
+        pinned_host = resolved_ips[0]
 
         # Build the SQLAlchemy connection URL from discrete fields.
         # URL.create() accepts the raw password without URL-encoding,
@@ -536,7 +527,7 @@ class SQLQueryBlock(Block):
         # Render the connection string for error sanitization only.
         # The URL object is passed directly to create_engine() to prevent
         # database name injection (e.g. "db?options=-c statement_timeout=0").
-        connection_string = connection_url.render_as_string(hide_password=False)
+        connection_string = connection_url.render_as_string(hide_password=True)
 
         try:
             results, columns, affected = await asyncio.to_thread(
