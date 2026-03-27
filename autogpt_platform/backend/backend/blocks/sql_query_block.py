@@ -429,7 +429,7 @@ class SQLQueryBlock(Block):
                         conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
                 elif engine.dialect.name == "mssql":
                     # MSSQL: SET LOCK_TIMEOUT limits lock-wait time (ms).
-                    # pyodbc's connect_args "timeout" handles the connection
+                    # pymssql's connect_args "login_timeout" handles the connection
                     # timeout, but LOCK_TIMEOUT covers in-query lock waits.
                     conn.execute(text(f"SET LOCK_TIMEOUT {timeout * 1000}"))
                     # MSSQL lacks a session-level read-only mode like
