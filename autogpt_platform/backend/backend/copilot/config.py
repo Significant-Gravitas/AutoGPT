@@ -77,7 +77,7 @@ class ChatConfig(BaseSettings):
     # allows ~70-100 turns/day.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # These are base limits for the FREE tier. Higher tiers (STANDARD, PRO,
+    # These are base limits for the FREE tier. Higher tiers (PRO, BUSINESS,
     # ENTERPRISE) multiply these by their tier multiplier (see
     # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
     # User.subscriptionTier DB column and resolved inside

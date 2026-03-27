@@ -33,8 +33,8 @@ class SubscriptionTier(str, Enum):
     """Subscription tiers with increasing token allowances."""
 
     FREE = "FREE"
-    STANDARD = "STANDARD"
     PRO = "PRO"
+    BUSINESS = "BUSINESS"
     ENTERPRISE = "ENTERPRISE"
 
 
@@ -44,12 +44,12 @@ class SubscriptionTier(str, Enum):
 # the type and round the result in get_global_rate_limits().
 TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
     SubscriptionTier.FREE: 1,
-    SubscriptionTier.STANDARD: 5,
-    SubscriptionTier.PRO: 10,
-    SubscriptionTier.ENTERPRISE: 25,
+    SubscriptionTier.PRO: 5,
+    SubscriptionTier.BUSINESS: 20,
+    SubscriptionTier.ENTERPRISE: 50,
 }
 
-DEFAULT_TIER = SubscriptionTier.FREE
+DEFAULT_TIER = SubscriptionTier.PRO
 
 
 class UsageWindow(BaseModel):
@@ -386,8 +386,8 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
 
     Note: when the user is not found or ``subscriptionTier`` is ``None``,
     ``DEFAULT_TIER`` is returned and **cached**.  This is acceptable because
-    the Prisma schema enforces ``@default(FREE)`` on the column, so ``None``
-    only occurs in edge cases (e.g. partial row creation) and caching FREE
+    the Prisma schema enforces ``@default(PRO)`` on the column, so ``None``
+    only occurs in edge cases (e.g. partial row creation) and caching PRO
     for 5 minutes is safe.
     """
     user = await PrismaUser.prisma().find_unique(where={"id": user_id})

@@ -8479,7 +8479,7 @@
           "weekly": { "$ref": "#/components/schemas/UsageWindow" },
           "tier": {
             "$ref": "#/components/schemas/SubscriptionTier",
-            "default": "FREE"
+            "default": "PRO"
           },
           "reset_cost": {
             "type": "integer",
@@ -12989,7 +12989,7 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["FREE", "STANDARD", "PRO", "ENTERPRISE"],
+        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing token allowances."
       },
