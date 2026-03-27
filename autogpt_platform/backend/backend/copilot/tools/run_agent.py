@@ -164,8 +164,9 @@ class RunAgentTool(BaseTool):
                         "edit_agent to verify the agent works correctly before telling "
                         "the user it is ready. Set wait_for_result=120 to get the "
                         "output inline. Inspect the results for errors or unexpected "
-                        "values, then fix with edit_agent and re-test if needed (max "
-                        "3 iterations)."
+                        "values, then fix with edit_agent and re-simulate. Repeat "
+                        "until the simulation passes or the problems are clearly "
+                        "unfixable."
                     ),
                 },
             },

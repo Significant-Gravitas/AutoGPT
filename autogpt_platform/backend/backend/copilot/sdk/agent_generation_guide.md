@@ -41,7 +41,8 @@ or trigger. If so:
 8. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
    `wait_for_result=120` to verify the agent works end-to-end.
 9. **Inspect & fix**: Check the dry-run output for errors. If issues are
-   found, call `edit_agent` to fix and dry-run again (max 3 iterations).
+   found, call `edit_agent` to fix and dry-run again. Repeat until the
+   simulation passes or the problems are clearly unfixable.
    See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 ### Agent JSON Structure
@@ -264,9 +265,9 @@ user the agent is ready. NEVER skip this step.
      structure. Check type compatibility between linked ports.
 4. **Fix**: If any issues are found, call `edit_agent` with the corrected
    agent JSON, then go back to step 2.
-5. **Max iterations**: Repeat the dry-run -> fix cycle up to **3 iterations**.
-   If problems persist after 3 attempts, report the remaining issues to
-   the user and ask for guidance rather than looping indefinitely.
+5. **Repeat**: Continue the dry-run -> fix cycle until the simulation passes
+   or the problems are clearly unfixable. If you stop making progress,
+   report the remaining issues to the user and ask for guidance.
 
 #### Good vs bad dry-run output
 
