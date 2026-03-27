@@ -13,7 +13,7 @@ export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
     className={cn("relative flex-1 overflow-y-hidden", className)}
     initial="instant"
-    resize="instant"
+    resize="smooth"
     role="log"
     {...props}
   />
