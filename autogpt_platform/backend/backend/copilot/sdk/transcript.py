@@ -836,11 +836,14 @@ def _find_last_assistant_entry(
     """
     lines = [ln for ln in content.strip().split("\n") if ln.strip()]
 
-    # First pass: find the message.id and index of the last assistant entry.
+    # Parse all lines once to avoid double JSON deserialization.
+    parsed: list[dict | None] = [json.loads(ln, fallback=None) for ln in lines]
+
+    # Reverse scan: find the message.id and index of the last assistant entry.
     last_asst_msg_id: str | None = None
     last_asst_idx: int | None = None
-    for i in range(len(lines) - 1, -1, -1):
-        entry = json.loads(lines[i], fallback=None)
+    for i in range(len(parsed) - 1, -1, -1):
+        entry = parsed[i]
         if not isinstance(entry, dict):
             continue
         msg = entry.get("message", {})
@@ -857,10 +860,9 @@ def _find_last_assistant_entry(
     if last_asst_msg_id is None:
         return lines[:last_asst_idx], lines[last_asst_idx:]
 
-    # Second pass: find the first entry of this turn (same message.id).
+    # Forward scan: find the first entry of this turn (same message.id).
     first_turn_idx: int | None = None
-    for i, line in enumerate(lines):
-        entry = json.loads(line, fallback=None)
+    for i, entry in enumerate(parsed):
         if not isinstance(entry, dict):
             continue
         msg = entry.get("message", {})
@@ -923,6 +925,9 @@ async def compact_transcript(
                 "signalling failure",
                 log_prefix,
             )
+            return None
+        if not result.messages:
+            logger.warning("%s Compressor returned empty messages", log_prefix)
             return None
         logger.info(
             "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",

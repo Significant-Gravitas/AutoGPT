@@ -25,33 +25,16 @@ def build_test_transcript(pairs: list[tuple[str, str]]) -> str:
 
     Use this helper in any copilot SDK test that needs a well-formed
     transcript without hitting the real storage layer.
+
+    Delegates to ``build_structured_transcript`` — plain content strings
+    are automatically wrapped in ``[{"type": "text", "text": ...}]`` for
+    assistant messages.
     """
-    lines: list[str] = []
-    last_uuid: str | None = None
-    for role, content in pairs:
-        uid = str(uuid4())
-        entry_type = "assistant" if role == "assistant" else "user"
-        msg: dict = {"role": role, "content": content}
-        if role == "assistant":
-            msg.update(
-                {
-                    "model": "",
-                    "id": f"msg_{uid[:8]}",
-                    "type": "message",
-                    "content": [{"type": "text", "text": content}],
-                    "stop_reason": "end_turn",
-                    "stop_sequence": None,
-                }
-            )
-        entry = {
-            "type": entry_type,
-            "uuid": uid,
-            "parentUuid": last_uuid,
-            "message": msg,
-        }
-        lines.append(json.dumps(entry, separators=(",", ":")))
-        last_uuid = uid
-    return "\n".join(lines) + "\n"
+    # Cast widening: tuple[str, str] is structurally compatible with
+    # tuple[str, str | list[dict]] but list invariance requires explicit
+    # annotation.
+    widened: list[tuple[str, str | list[dict]]] = list(pairs)
+    return build_structured_transcript(widened)
 
 
 def build_structured_transcript(
