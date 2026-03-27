@@ -1,8 +1,7 @@
 """
 Tests for OIXA Protocol AutoGPT blocks.
 
-Run with:
-    poetry run test
+Run with:  poetry run pytest backend/blocks/test_oixa_protocol.py -v
 """
 
 import importlib
@@ -15,7 +14,6 @@ from pydantic import ValidationError
 
 import backend.blocks.oixa_protocol as oixa_mod
 from backend.blocks.oixa_protocol import (
-    OIXA_BASE_URL,
     OIXA_BLOCKS,
     CheckBalanceBlock,
     CreateAuctionBlock,
@@ -29,56 +27,30 @@ from backend.blocks.oixa_protocol import (
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _mock_response(payload: dict):
-    """Return an AsyncMock for _call that yields payload."""
-    return AsyncMock(return_value=payload)
-
-
 async def collect(gen) -> dict:
-    """Collect all (key, value) yields from an async generator into a dict."""
+    """Drain an async generator into a dict of {output_name: value}."""
     result = {}
     async for key, value in gen:
         result[key] = value
     return result
 
 
-def _block_name(block) -> str:
-    return getattr(block, "__name__", block.__class__.__name__)
-
-
 # ── Config ────────────────────────────────────────────────────────────────────
 
 
-def test_base_url_from_env(monkeypatch):
-    monkeypatch.setenv("OIXA_BASE_URL", "https://oixa.io")
-    importlib.reload(oixa_mod)
+def test_base_url_default():
     assert oixa_mod.OIXA_BASE_URL == "https://oixa.io"
 
 
-def test_base_url_override(monkeypatch):
+def test_base_url_from_env(monkeypatch):
     monkeypatch.setenv("OIXA_BASE_URL", "http://localhost:8000")
     importlib.reload(oixa_mod)
     assert oixa_mod.OIXA_BASE_URL == "http://localhost:8000"
+    monkeypatch.setenv("OIXA_BASE_URL", "https://oixa.io")
+    importlib.reload(oixa_mod)
 
 
 # ── Block identity ─────────────────────────────────────────────────────────────
-
-
-def test_block_ids_are_unique():
-    ids = [b.id for b in OIXA_BLOCKS]
-    assert len(ids) == len(set(ids)), "Block IDs must be unique"
-
-
-def test_block_ids_are_valid_uuids():
-    uuid_re = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
-    for block in OIXA_BLOCKS:
-        assert uuid_re.match(block.id), f"{_block_name(block)} has invalid UUID: {block.id}"
-
-
-def test_all_blocks_have_name_and_categories():
-    for block in OIXA_BLOCKS:
-        assert block.name, f"{_block_name(block)} missing name"
-        assert block.categories, f"{_block_name(block)} missing categories"
 
 
 def test_oixa_blocks_contains_all_six():
@@ -94,58 +66,65 @@ def test_oixa_blocks_contains_all_six():
     assert actual == expected
 
 
-# ── Validators ────────────────────────────────────────────────────────────────
+def test_block_ids_are_unique():
+    ids = [b().id for b in OIXA_BLOCKS]
+    assert len(ids) == len(set(ids)), "Block IDs must be unique"
 
 
-def test_place_bid_amount_must_be_positive():
-    with pytest.raises((ValidationError, ValueError)):
-        PlaceBidBlock.Input(
-            auction_id="oixa_auction_test",
-            bidder_id="agent_1",
-            bidder_name="Agent One",
-            amount=-1.0,
-        )
+def test_block_ids_are_valid_uuids():
+    uuid_re = re.compile(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    )
+    for cls in OIXA_BLOCKS:
+        block = cls()
+        assert uuid_re.match(block.id), f"{cls.__name__} has invalid UUID: {block.id}"
+
+
+def test_all_blocks_have_test_metadata():
+    for cls in OIXA_BLOCKS:
+        block = cls()
+        assert block.test_input is not None, f"{cls.__name__} missing test_input"
+        assert block.test_output is not None, f"{cls.__name__} missing test_output"
+        assert block.test_mock is not None, f"{cls.__name__} missing test_mock"
+
+
+# ── Input validators ──────────────────────────────────────────────────────────
 
 
 def test_place_bid_zero_amount_rejected():
     with pytest.raises((ValidationError, ValueError)):
         PlaceBidBlock.Input(
-            auction_id="oixa_auction_test",
-            bidder_id="agent_1",
-            bidder_name="Agent One",
-            amount=0.0,
+            auction_id="oixa_auction_001", bidder_id="a", bidder_name="A", amount=0.0
         )
 
 
-def test_create_auction_max_budget_must_be_positive():
+def test_place_bid_negative_amount_rejected():
     with pytest.raises((ValidationError, ValueError)):
-        CreateAuctionBlock.Input(
-            rfi_description="Test task",
-            max_budget=0.0,
-            requester_id="agent_1",
+        PlaceBidBlock.Input(
+            auction_id="oixa_auction_001", bidder_id="a", bidder_name="A", amount=-1.0
         )
 
 
-def test_register_offer_price_must_be_positive():
-    with pytest.raises((ValidationError, ValueError)):
-        RegisterOfferBlock.Input(
-            agent_id="agent_1",
-            agent_name="Agent One",
-            capability="web_scraping",
-            input_required="URL",
-            output_guaranteed="Markdown text",
-            price_usdc=0.0,
-        )
-
-
-def test_valid_bid_input_accepted():
+def test_place_bid_positive_amount_accepted():
     inp = PlaceBidBlock.Input(
-        auction_id="oixa_auction_abc",
-        bidder_id="agent_1",
-        bidder_name="Agent One",
-        amount=0.05,
+        auction_id="oixa_auction_001", bidder_id="a", bidder_name="A", amount=0.05
     )
     assert inp.amount == 0.05
+
+
+def test_create_auction_zero_budget_rejected():
+    with pytest.raises((ValidationError, ValueError)):
+        CreateAuctionBlock.Input(
+            rfi_description="task", max_budget=0.0, requester_id="a"
+        )
+
+
+def test_register_offer_zero_price_rejected():
+    with pytest.raises((ValidationError, ValueError)):
+        RegisterOfferBlock.Input(
+            agent_id="a", agent_name="A", capability="x",
+            input_required="y", output_guaranteed="z", price_usdc=0.0,
+        )
 
 
 # ── ListAuctionsBlock ─────────────────────────────────────────────────────────
@@ -154,27 +133,30 @@ def test_valid_bid_input_accepted():
 @pytest.mark.asyncio
 async def test_list_auctions_success():
     auctions = [{"id": "oixa_auction_001", "status": "open", "max_budget": 1.0}]
-    payload = {"data": {"auctions": auctions}}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = ListAuctionsBlock()
-        inp = ListAuctionsBlock.Input(status="open", limit=10)
+    block = ListAuctionsBlock()
+    inp = ListAuctionsBlock.Input(status="open", limit=10)
+    with patch.object(block, "fetch_auctions", new=AsyncMock(return_value=auctions)):
         result = await collect(block.run(inp))
-
     assert result["count"] == 1
-    assert result.get("error", "") == ""
-    parsed = json.loads(result["auctions_json"])
-    assert parsed[0]["id"] == "oixa_auction_001"
+    assert json.loads(result["auctions_json"])[0]["id"] == "oixa_auction_001"
 
 
 @pytest.mark.asyncio
-async def test_list_auctions_api_error():
-    with patch("backend.blocks.oixa_protocol._call", _mock_response({"error": "server error"})):
-        block = ListAuctionsBlock()
-        inp = ListAuctionsBlock.Input()
+async def test_list_auctions_empty():
+    block = ListAuctionsBlock()
+    inp = ListAuctionsBlock.Input()
+    with patch.object(block, "fetch_auctions", new=AsyncMock(return_value=[])):
         result = await collect(block.run(inp))
+    assert result["count"] == 0
+    assert json.loads(result["auctions_json"]) == []
 
-    assert result["error"] == "server error"
+
+@pytest.mark.asyncio
+async def test_list_auctions_raises_on_error():
+    block = ListAuctionsBlock()
+    with patch.object(block, "fetch_auctions", new=AsyncMock(side_effect=RuntimeError("API down"))):
+        with pytest.raises(RuntimeError, match="API down"):
+            await collect(block.run(ListAuctionsBlock.Input()))
 
 
 # ── PlaceBidBlock ─────────────────────────────────────────────────────────────
@@ -182,27 +164,23 @@ async def test_list_auctions_api_error():
 
 @pytest.mark.asyncio
 async def test_place_bid_accepted():
-    payload = {"data": {"accepted": True, "current_winner": "agent_1", "current_best": 0.05, "bid_id": "oixa_bid_xyz"}}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = PlaceBidBlock()
-        inp = PlaceBidBlock.Input(auction_id="oixa_auction_001", bidder_id="agent_1", bidder_name="Agent One", amount=0.05)
+    mock_data = {"accepted": True, "current_winner": "agent_1", "current_best": 0.05, "bid_id": "oixa_bid_xyz"}
+    block = PlaceBidBlock()
+    inp = PlaceBidBlock.Input(auction_id="oixa_auction_001", bidder_id="agent_1", bidder_name="Agent One", amount=0.05)
+    with patch.object(block, "place_bid", new=AsyncMock(return_value=mock_data)):
         result = await collect(block.run(inp))
-
     assert result["accepted"] is True
     assert result["bid_id"] == "oixa_bid_xyz"
-    assert result.get("error", "") == ""
+    assert result["current_best"] == 0.05
 
 
 @pytest.mark.asyncio
 async def test_place_bid_outbid():
-    payload = {"data": {"accepted": False, "current_winner": "agent_2", "current_best": 0.03}}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = PlaceBidBlock()
-        inp = PlaceBidBlock.Input(auction_id="oixa_auction_001", bidder_id="agent_1", bidder_name="Agent One", amount=0.05)
+    mock_data = {"accepted": False, "current_winner": "agent_2", "current_best": 0.03, "bid_id": ""}
+    block = PlaceBidBlock()
+    inp = PlaceBidBlock.Input(auction_id="oixa_auction_001", bidder_id="agent_1", bidder_name="Agent One", amount=0.05)
+    with patch.object(block, "place_bid", new=AsyncMock(return_value=mock_data)):
         result = await collect(block.run(inp))
-
     assert result["accepted"] is False
     assert result["current_winner"] == "agent_2"
 
@@ -212,16 +190,21 @@ async def test_place_bid_outbid():
 
 @pytest.mark.asyncio
 async def test_create_auction_success():
-    payload = {"data": {"id": "oixa_auction_new", "status": "open"}}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = CreateAuctionBlock()
-        inp = CreateAuctionBlock.Input(rfi_description="Analyze DeFi trends", max_budget=1.0, requester_id="agent_ceo")
+    block = CreateAuctionBlock()
+    inp = CreateAuctionBlock.Input(rfi_description="Analyze DeFi", max_budget=1.0, requester_id="agent_ceo")
+    with patch.object(block, "create_auction", new=AsyncMock(return_value={"id": "oixa_auction_new", "status": "open"})):
         result = await collect(block.run(inp))
-
     assert result["auction_id"] == "oixa_auction_new"
     assert result["status"] == "open"
-    assert result.get("error", "") == ""
+
+
+@pytest.mark.asyncio
+async def test_create_auction_raises_on_error():
+    block = CreateAuctionBlock()
+    inp = CreateAuctionBlock.Input(rfi_description="Test", max_budget=1.0, requester_id="a")
+    with patch.object(block, "create_auction", new=AsyncMock(side_effect=RuntimeError("timeout"))):
+        with pytest.raises(RuntimeError, match="timeout"):
+            await collect(block.run(inp))
 
 
 # ── DeliverOutputBlock ────────────────────────────────────────────────────────
@@ -229,29 +212,22 @@ async def test_create_auction_success():
 
 @pytest.mark.asyncio
 async def test_deliver_output_verified():
-    payload = {"data": {"passed": True, "payment_usdc": 0.95}}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = DeliverOutputBlock()
-        inp = DeliverOutputBlock.Input(auction_id="oixa_auction_001", agent_id="agent_1", output="Analysis complete.")
+    block = DeliverOutputBlock()
+    inp = DeliverOutputBlock.Input(auction_id="oixa_auction_001", agent_id="agent_1", output="Analysis complete.")
+    with patch.object(block, "deliver_output", new=AsyncMock(return_value={"passed": True, "payment_usdc": 0.95})):
         result = await collect(block.run(inp))
-
     assert result["passed"] is True
     assert result["payment_usdc"] == 0.95
-    assert result.get("error", "") == ""
 
 
 @pytest.mark.asyncio
-async def test_deliver_output_failed_verification():
-    payload = {"data": {"passed": False}, "error": "output too short"}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = DeliverOutputBlock()
-        inp = DeliverOutputBlock.Input(auction_id="oixa_auction_001", agent_id="agent_1", output="ok")
+async def test_deliver_output_failed():
+    block = DeliverOutputBlock()
+    inp = DeliverOutputBlock.Input(auction_id="oixa_auction_001", agent_id="agent_1", output="too short")
+    with patch.object(block, "deliver_output", new=AsyncMock(return_value={"passed": False, "payment_usdc": 0.0})):
         result = await collect(block.run(inp))
-
-    assert "passed" not in result
-    assert result["error"] == "output too short"
+    assert result["passed"] is False
+    assert result["payment_usdc"] == 0.0
 
 
 # ── RegisterOfferBlock ────────────────────────────────────────────────────────
@@ -259,45 +235,28 @@ async def test_deliver_output_failed_verification():
 
 @pytest.mark.asyncio
 async def test_register_offer_success():
-    payload = {
-        "data": {
-            "id": "oixa_cap_abc123",
-            "discovery_url": "/api/v1/capabilities?need=web_scraping",
-        }
-    }
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = RegisterOfferBlock()
-        inp = RegisterOfferBlock.Input(
-            agent_id="agent_1",
-            agent_name="Agent One",
-            capability="web_scraping",
-            input_required="URL string",
-            output_guaranteed="Markdown text",
-            price_usdc=0.02,
-        )
+    mock_data = {"id": "oixa_cap_abc123", "discovery_url": "/api/v1/capabilities?need=web_scraping"}
+    block = RegisterOfferBlock()
+    inp = RegisterOfferBlock.Input(
+        agent_id="agent_1", agent_name="Agent One", capability="web_scraping",
+        input_required="URL string", output_guaranteed="Markdown text", price_usdc=0.02,
+    )
+    with patch.object(block, "register_offer", new=AsyncMock(return_value=mock_data)):
         result = await collect(block.run(inp))
-
     assert result["capability_id"] == "oixa_cap_abc123"
     assert "web_scraping" in result["discovery_url"]
-    assert result.get("error", "") == ""
 
 
 @pytest.mark.asyncio
-async def test_register_offer_api_error():
-    with patch("backend.blocks.oixa_protocol._call", _mock_response({"error": "duplicate capability"})):
-        block = RegisterOfferBlock()
-        inp = RegisterOfferBlock.Input(
-            agent_id="agent_1",
-            agent_name="Agent One",
-            capability="web_scraping",
-            input_required="URL string",
-            output_guaranteed="Markdown text",
-            price_usdc=0.02,
-        )
-        result = await collect(block.run(inp))
-
-    assert result["error"] == "duplicate capability"
+async def test_register_offer_raises_on_error():
+    block = RegisterOfferBlock()
+    inp = RegisterOfferBlock.Input(
+        agent_id="a", agent_name="A", capability="x",
+        input_required="y", output_guaranteed="z", price_usdc=0.01,
+    )
+    with patch.object(block, "register_offer", new=AsyncMock(side_effect=RuntimeError("duplicate"))):
+        with pytest.raises(RuntimeError, match="duplicate"):
+            await collect(block.run(inp))
 
 
 # ── CheckBalanceBlock ─────────────────────────────────────────────────────────
@@ -305,58 +264,37 @@ async def test_register_offer_api_error():
 
 @pytest.mark.asyncio
 async def test_check_balance_success():
-    payload = {
-        "data": {
-            "agent_id": "agent_1",
-            "score": 75.0,
-            "transactions_completed": 7,
-            "rank": 3,
-        }
-    }
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = CheckBalanceBlock()
-        inp = CheckBalanceBlock.Input(agent_id="agent_1")
+    block = CheckBalanceBlock()
+    inp = CheckBalanceBlock.Input(agent_id="agent_1")
+    with patch.object(block, "fetch_reputation", new=AsyncMock(return_value={"score": 75.0, "transactions_completed": 7, "rank": 3})):
         result = await collect(block.run(inp))
-
     assert result["score"] == 75.0
     assert result["transactions_completed"] == 7
     assert result["rank"] == 3
-    assert result.get("error", "") == ""
 
 
 @pytest.mark.asyncio
-async def test_check_balance_agent_not_found():
-    with patch("backend.blocks.oixa_protocol._call", _mock_response({"error": "Agent has no reputation record yet"})):
-        block = CheckBalanceBlock()
-        inp = CheckBalanceBlock.Input(agent_id="unknown_agent")
-        result = await collect(block.run(inp))
-
-    assert result["error"] == "Agent has no reputation record yet"
+async def test_check_balance_raises_on_error():
+    block = CheckBalanceBlock()
+    inp = CheckBalanceBlock.Input(agent_id="unknown")
+    with patch.object(block, "fetch_reputation", new=AsyncMock(side_effect=RuntimeError("not found"))):
+        with pytest.raises(RuntimeError, match="not found"):
+            await collect(block.run(inp))
 
 
 @pytest.mark.asyncio
 async def test_check_balance_malformed_response():
-    payload = {"data": {"score": "N/A", "transactions_completed": "bad", "rank": None}}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = CheckBalanceBlock()
-        inp = CheckBalanceBlock.Input(agent_id="agent_1")
-        result = await collect(block.run(inp))
-
-    assert "error" in result
-    assert "Malformed" in result["error"]
+    block = CheckBalanceBlock()
+    inp = CheckBalanceBlock.Input(agent_id="agent_1")
+    with patch.object(block, "fetch_reputation", new=AsyncMock(return_value={"score": "N/A", "transactions_completed": None, "rank": None})):
+        with pytest.raises(RuntimeError, match="Malformed"):
+            await collect(block.run(inp))
 
 
 @pytest.mark.asyncio
-async def test_list_auctions_data_null():
-    """API returns {"data": null} — should not raise AttributeError."""
-    payload = {"data": None}
-
-    with patch("backend.blocks.oixa_protocol._call", _mock_response(payload)):
-        block = ListAuctionsBlock()
-        inp = ListAuctionsBlock.Input()
-        result = await collect(block.run(inp))
-
-    assert result["count"] == 0
-    assert json.loads(result["auctions_json"]) == []
+async def test_check_balance_missing_fields():
+    block = CheckBalanceBlock()
+    inp = CheckBalanceBlock.Input(agent_id="agent_1")
+    with patch.object(block, "fetch_reputation", new=AsyncMock(return_value={})):
+        with pytest.raises(RuntimeError, match="Malformed"):
+            await collect(block.run(inp))
