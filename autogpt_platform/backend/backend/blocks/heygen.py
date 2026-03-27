@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import SecretStr
 
@@ -11,6 +11,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.data.execution import ExecutionContext
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
@@ -18,7 +19,9 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import store_media_file
 from backend.util.request import Requests
+from backend.util.type import MediaFileType
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ class HeyGenCreateVideoBlock(Block):
             title="Polling Interval",
             advanced=True,
         )
-        test: Optional[bool] = SchemaField(
+        test: bool = SchemaField(
             description="Enable test mode to generate a free video with watermark",
             default=False,
             title="Test Mode",
@@ -85,6 +88,7 @@ class HeyGenCreateVideoBlock(Block):
         video_url: str = SchemaField(
             description="The URL of the generated avatar video"
         )
+        error: str = SchemaField(description="Error message if video generation failed")
 
     def __init__(self):
         super().__init__(
@@ -151,6 +155,7 @@ class HeyGenCreateVideoBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         payload: dict[str, Any] = {
@@ -180,7 +185,13 @@ class HeyGenCreateVideoBlock(Block):
             status = status_response.get("status")
 
             if status == "completed":
-                yield "video_url", status_response["video_url"]
+                video_url = status_response["video_url"]
+                stored_url = await store_media_file(
+                    file=MediaFileType(video_url),
+                    execution_context=execution_context,
+                    return_format="for_block_output",
+                )
+                yield "video_url", stored_url
                 return
             elif status == "failed":
                 error_msg = status_response.get("error", "Unknown error")
