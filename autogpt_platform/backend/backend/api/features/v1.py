@@ -981,7 +981,6 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
     dry_run: Annotated[bool, Body(embed=True)] = False,
-    simulation_context: Annotated[dict[str, Any] | None, Body(embed=True)] = None,
 ) -> execution_db.GraphExecutionMeta:
     if not dry_run:
         user_credit_model = await get_user_credit_model(user_id)
@@ -1001,7 +1000,6 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
-            simulation_context=simulation_context,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)

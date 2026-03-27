@@ -4,7 +4,7 @@ LLM-powered block simulator for dry-run execution.
 When dry_run=True, instead of calling the real block, this module
 role-plays the block's execution using an LLM.  For most blocks no real
 API calls or side effects occur.  OrchestratorBlock and AgentExecutorBlock
-are exceptions — they execute for real so the orchestrator can make LLM
+are exceptions -- they execute for real so the orchestrator can make LLM
 calls and agent executors can spawn child graphs (handled in manager.py).
 
 The LLM simulation is grounded by:
@@ -20,8 +20,10 @@ import logging
 import re
 from collections.abc import AsyncGenerator
 from typing import Any
-from urllib.parse import urlparse, urlunparse
 
+from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.mcp.block import MCPToolBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -47,7 +49,7 @@ def _simulator_model() -> str:
         secrets = Settings().secrets
         # get_openai_client() uses the direct OpenAI client whenever
         # openai_internal_api_key is set, regardless of open_router_api_key.
-        # Strip the provider prefix (e.g. "openai/gpt-4o-mini" → "gpt-4o-mini")
+        # Strip the provider prefix (e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini")
         # so the model name is valid for the direct OpenAI API.
         if secrets.openai_internal_api_key and "/" in model:
             model = model.split("/", 1)[1]
@@ -60,6 +62,10 @@ def _simulator_model() -> str:
 _TEMPERATURE = 0.2
 _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
+
+# Blocks that execute for real during dry-run (they orchestrate child
+# executions whose blocks are then simulated).
+_PASSTHROUGH_BLOCK_TYPES = (OrchestratorBlock, AgentExecutorBlock)
 
 
 def _truncate_value(value: Any) -> Any:
@@ -80,71 +86,6 @@ def _truncate_value(value: Any) -> Any:
 def _truncate_input_values(input_data: dict[str, Any]) -> dict[str, Any]:
     """Recursively truncate long string values so the prompt doesn't blow up."""
     return {k: _truncate_value(v) for k, v in input_data.items()}
-
-
-# ---------------------------------------------------------------------------
-# Credential redaction & URL sanitization
-# ---------------------------------------------------------------------------
-
-# Keys whose values should be masked regardless of nesting depth.
-# Use underscore-aware boundaries (^ and $ for start/end, _ for segment
-# separators) instead of \b to avoid false positives on keys like
-# "author", "authority", "token_count", etc. while still catching
-# compound forms like "api_secret", "client_secret", "credentials".
-_SECRET_KEY_PATTERN = re.compile(
-    r"(?:^|_)(api_?key|password|secret|access_?token|private_?key|auth_token|oauth_token|credentials?)(?:$|_)",
-    re.IGNORECASE,
-)
-
-_REDACTED = "<REDACTED>"
-
-
-def _sanitize_url(url: str) -> str:
-    """Strip userinfo, query, and fragment from a URL string."""
-    try:
-        parsed = urlparse(url)
-        if not parsed.scheme or not parsed.netloc:
-            return url  # not a real URL, return as-is
-        sanitized = urlunparse(
-            (parsed.scheme, parsed.hostname or "", parsed.path, "", "", "")
-        )
-        if parsed.port:
-            sanitized = urlunparse(
-                (
-                    parsed.scheme,
-                    f"{parsed.hostname or ''}:{parsed.port}",
-                    parsed.path,
-                    "",
-                    "",
-                    "",
-                )
-            )
-        return sanitized
-    except Exception:
-        return url
-
-
-def _looks_like_url(value: str) -> bool:
-    """Return True if the string looks like a URL."""
-    return bool(re.match(r"^https?://", value, re.IGNORECASE))
-
-
-def _redact_value(key: str, value: Any) -> Any:
-    """Redact credential-bearing values and sanitize URLs recursively."""
-    if _SECRET_KEY_PATTERN.search(key):
-        return _REDACTED
-    if isinstance(value, str) and _looks_like_url(value):
-        return _sanitize_url(value)
-    if isinstance(value, dict):
-        return {k: _redact_value(k, v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_redact_value(key, item) for item in value]
-    return value
-
-
-def _redact_inputs(input_data: dict[str, Any]) -> dict[str, Any]:
-    """Redact secret fields and sanitize URLs in input data for prompt safety."""
-    return {k: _redact_value(k, v) for k, v in input_data.items()}
 
 
 def _describe_schema_pins(schema: dict[str, Any]) -> str:
@@ -173,14 +114,6 @@ async def _call_llm_for_simulation(
     """Send a simulation prompt to the LLM and return the parsed JSON dict.
 
     Handles client acquisition, retries on invalid JSON, and logging.
-
-    Args:
-        system_prompt: The system message for the LLM.
-        user_prompt: The user message for the LLM.
-        label: A short identifier used in log messages (e.g. block name or tool name).
-
-    Returns:
-        The parsed JSON dict from the LLM response.
 
     Raises:
         RuntimeError: If no LLM client is available.
@@ -251,24 +184,7 @@ async def _call_llm_for_simulation(
 # ---------------------------------------------------------------------------
 
 
-def _format_simulation_context(simulation_context: dict[str, Any] | None) -> str:
-    """Format optional simulation context as a prompt section."""
-    if not simulation_context:
-        return ""
-    ctx_json = json.dumps(_truncate_input_values(simulation_context), indent=2)
-    return (
-        "\n## Simulation Context\n"
-        "The user provided the following scenario context. Use it to produce "
-        "outputs that match this scenario:\n"
-        f"{ctx_json}\n"
-    )
-
-
-def build_simulation_prompt(
-    block: Any,
-    input_data: dict[str, Any],
-    simulation_context: dict[str, Any] | None = None,
-) -> tuple[str, str]:
+def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str, str]:
     """Build (system_prompt, user_prompt) for block simulation."""
     input_schema = block.input_schema.jsonschema()
     output_schema = block.output_schema.jsonschema()
@@ -306,16 +222,14 @@ Rules:
 
 Output pin names you MUST include: {json.dumps(required_output_properties)}"""
 
-    safe_inputs = _redact_inputs(_truncate_input_values(input_data))
+    safe_inputs = _truncate_input_values(input_data)
     user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
-    user_prompt += _format_simulation_context(simulation_context)
 
     return system_prompt, user_prompt
 
 
 def _build_mcp_simulation_prompt(
     input_data: dict[str, Any],
-    simulation_context: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Build (system_prompt, user_prompt) for MCP tool simulation.
 
@@ -336,14 +250,11 @@ def _build_mcp_simulation_prompt(
         schema_text = "(none)"
     desc_line = f"\n- Description: {tool_description}" if tool_description else ""
 
-    # Sanitize server_url to strip credentials / query params.
-    safe_server_url = _sanitize_url(server_url) if server_url else ""
-
     system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.
 
 ## Tool Details
 - Tool name: {tool_name}{desc_line}
-- MCP server: {safe_server_url}
+- MCP server: {server_url}
 
 ## Tool Input Schema
 {schema_text}
@@ -358,9 +269,8 @@ Rules:
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Base your response on what a tool named "{tool_name}" with the given schema would realistically return."""
 
-    safe_args = _redact_inputs(_truncate_input_values(tool_arguments))
+    safe_args = _truncate_input_values(tool_arguments)
     user_prompt = f"## Tool Arguments\n{json.dumps(safe_args, indent=2)}"
-    user_prompt += _format_simulation_context(simulation_context)
 
     return system_prompt, user_prompt
 
@@ -370,11 +280,24 @@ Rules:
 # ---------------------------------------------------------------------------
 
 
+def can_simulate(block: Any) -> bool:
+    """Return True if the simulator can handle this block type.
+
+    OrchestratorBlock and AgentExecutorBlock execute for real in dry-run mode
+    (they orchestrate child executions whose blocks are then simulated).
+    """
+    return not isinstance(block, _PASSTHROUGH_BLOCK_TYPES)
+
+
 async def simulate_mcp_block(
     _block: Any,
     input_data: dict[str, Any],
+<<<<<<< HEAD
     simulation_context: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any]]:
+=======
+) -> AsyncIterator[tuple[str, Any]]:
+>>>>>>> 61c311aad9 (fix(backend): simplify dry-run special block handling per review feedback)
     """Simulate MCP tool execution using an LLM.
 
     Unlike the generic ``simulate_block``, this builds a prompt grounded in
@@ -384,9 +307,7 @@ async def simulate_mcp_block(
     Yields ``(output_name, output_data)`` tuples matching the Block.execute()
     interface.
     """
-    system_prompt, user_prompt = _build_mcp_simulation_prompt(
-        input_data, simulation_context=simulation_context
-    )
+    system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
     label = input_data.get("selected_tool", "mcp_tool")
 
     try:
@@ -400,19 +321,31 @@ async def simulate_mcp_block(
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
+<<<<<<< HEAD
     simulation_context: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
+=======
+) -> AsyncIterator[tuple[str, Any]]:
+>>>>>>> 61c311aad9 (fix(backend): simplify dry-run special block handling per review feedback)
     """Simulate block execution using an LLM.
+
+    For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
+    Returns None for blocks that should execute for real (OrchestratorBlock,
+    AgentExecutorBlock).
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
     On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
     """
+    # MCPToolBlock gets a specialised simulation using its tool schema.
+    if isinstance(block, MCPToolBlock):
+        async for output in simulate_mcp_block(block, input_data):
+            yield output
+        return
+
     output_schema = block.output_schema.jsonschema()
     output_properties: dict[str, Any] = output_schema.get("properties", {})
 
-    system_prompt, user_prompt = build_simulation_prompt(
-        block, input_data, simulation_context=simulation_context
-    )
+    system_prompt, user_prompt = build_simulation_prompt(block, input_data)
     label = getattr(block, "name", "?")
 
     try:

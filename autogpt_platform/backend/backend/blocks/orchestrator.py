@@ -524,7 +524,6 @@ class OrchestratorBlock(Block):
             },
             test_output=[],
             test_credentials=llm.TEST_CREDENTIALS,
-            dry_run_passthrough=True,
         )
 
     @staticmethod

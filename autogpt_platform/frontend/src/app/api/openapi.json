@@ -8256,18 +8256,7 @@
             ],
             "title": "Source"
           },
-          "dry_run": {
-            "type": "boolean",
-            "title": "Dry Run",
-            "default": false
-          },
-          "simulation_context": {
-            "anyOf": [
-              { "additionalProperties": true, "type": "object" },
-              { "type": "null" }
-            ],
-            "title": "Simulation Context"
-          }
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
         "type": "object",
         "title": "Body_postV1Execute graph agent"
