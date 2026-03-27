@@ -48,14 +48,18 @@ Read the canonical PR template at `.github/PULL_REQUEST_TEMPLATE.md` and use it 
 4. **Do not pre-check boxes** — leave all checkboxes as `- [ ]` until each step is actually completed
 5. Do not alter the template structure, rename sections, or remove any checklist items
 
-Use `gh pr create` with the base branch (defaults to `dev` if no `[base-branch]` was provided):
+**PR title must use conventional commit format** (e.g., `feat(backend): add new block`, `fix(frontend): resolve routing bug`, `dx(skills): update PR workflow`). See CLAUDE.md for the full list of scopes.
+
+Use `gh pr create` with the base branch (defaults to `dev` if no `[base-branch]` was provided). Use `--body-file` to avoid shell interpretation of backticks and special characters:
 
 ```bash
 BASE_BRANCH="${BASE_BRANCH:-dev}"
-gh pr create --base "$BASE_BRANCH" --title "<short title>" --body "$(cat <<'EOF'
-<filled-in template>
-EOF
-)"
+PR_BODY=$(mktemp)
+cat > "$PR_BODY" << 'PREOF'
+<filled-in template from .github/PULL_REQUEST_TEMPLATE.md>
+PREOF
+gh pr create --base "$BASE_BRANCH" --title "<type>(scope): short description" --body-file "$PR_BODY"
+rm "$PR_BODY"
 ```
 
 ## Step 4: Review workflow
@@ -69,15 +73,15 @@ This is common for agents running in worktrees without a full stack. In this cas
 
 1. Run `/pr-review` locally to catch obvious issues before pushing
 2. **Comment `/review` on the PR** after creating it to trigger the review bot
-3. **Wait approximately 30 minutes** for the review bot to process and return its review
+3. **Poll for the review** rather than blindly waiting — check for new review comments every 30 seconds using `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/reviews --paginate` and the GraphQL inline threads query. The bot typically responds within 30 minutes, but polling lets the agent react as soon as it arrives.
 4. Do NOT proceed or merge until the bot review comes back
-5. Address any issues the bot raises before requesting human review
+5. Address any issues the bot raises — use `/pr-address` which has a full polling loop with CI + comment tracking
 
 ```bash
 # After creating the PR:
 PR_NUMBER=$(gh pr view --json number -q .number)
 gh pr comment "$PR_NUMBER" --body "/review"
-echo "Review bot triggered. Wait ~30 minutes for the review to complete."
+# Then use /pr-address to poll for and address the review when it arrives
 ```
 
 ## Step 5: Address review feedback

@@ -25,7 +25,17 @@ REPO_NAME=$(basename "$ROOT")
 PARENT=$(dirname "$ROOT")
 ```
 
-If the repo is already inside a worktree layout (i.e. `$ROOT` is already named `main` and siblings exist), detect that and use the existing structure. Otherwise, proceed with fresh setup.
+Detect if the repo is already inside a worktree layout:
+
+```bash
+# Check if this is already a worktree-based layout
+if [ "$(basename "$ROOT")" = "main" ] && git worktree list 2>/dev/null | grep -q "$PARENT/"; then
+  echo "INFO: Existing worktree layout detected at $PARENT"
+  # Use $ROOT as-is; skip renaming/restructuring
+else
+  echo "INFO: Fresh clone detected, proceeding with setup"
+fi
+```
 
 ## Step 2: Ask the user questions
 
@@ -88,26 +98,31 @@ done
 3. If only `.env.default` or `.env.example` exists, copy that as `.env`
 4. If neither exists, warn the user and list which env files are missing
 
-Env file locations to check:
+Env file locations to check (same as the `/worktree` skill — keep these in sync):
 - `autogpt_platform/.env`
 - `autogpt_platform/backend/.env`
 - `autogpt_platform/frontend/.env`
-- `autogpt_platform/db/docker/.env`
+
+> **Note:** This env copying logic intentionally mirrors the `/worktree` skill's approach. If you update the path list or fallback logic here, update `/worktree` as well.
 
 ```bash
 SOURCE="$ROOT"
 WORKTREES="reviews"
 for i in $(seq 1 "$COUNT"); do WORKTREES="$WORKTREES branch$i"; done
 
+FOUND_ANY_ENV=0
 for wt in $WORKTREES; do
   TARGET="$PARENT/$wt"
-  for envpath in autogpt_platform autogpt_platform/backend autogpt_platform/frontend autogpt_platform/db/docker; do
+  for envpath in autogpt_platform autogpt_platform/backend autogpt_platform/frontend; do
     if [ -f "$SOURCE/$envpath/.env" ]; then
+      FOUND_ANY_ENV=1
       cp "$SOURCE/$envpath/.env" "$TARGET/$envpath/.env"
     elif [ -f "$SOURCE/$envpath/.env.default" ]; then
+      FOUND_ANY_ENV=1
       cp "$SOURCE/$envpath/.env.default" "$TARGET/$envpath/.env"
       echo "NOTE: $wt/$envpath/.env was created from .env.default — you may need to edit it"
     elif [ -f "$SOURCE/$envpath/.env.example" ]; then
+      FOUND_ANY_ENV=1
       cp "$SOURCE/$envpath/.env.example" "$TARGET/$envpath/.env"
       echo "NOTE: $wt/$envpath/.env was created from .env.example — you may need to edit it"
     else
@@ -115,9 +130,13 @@ for wt in $WORKTREES; do
     fi
   done
 done
-```
 
-If no .env files exist at all in the source, ask the user if they want to continue without them or set them up first.
+if [ "$FOUND_ANY_ENV" -eq 0 ]; then
+  echo "WARNING: No environment files or templates were found in the source worktree."
+  # Use AskUserQuestion to confirm: "Continue setup without env files?"
+  # If the user declines, stop here and let them set up .env files first.
+fi
+```
 
 ## Step 6: Copy branchlet config
 
