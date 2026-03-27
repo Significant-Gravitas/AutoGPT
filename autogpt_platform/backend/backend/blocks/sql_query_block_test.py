@@ -94,7 +94,9 @@ class TestValidateQueryIsReadOnly:
         ],
     )
     def test_valid_select_queries(self, query: str):
-        assert _validate_query_is_read_only(query) is None
+        _, stmt = _validate_single_statement(query)
+        assert stmt is not None
+        assert _validate_query_is_read_only(stmt) is None
 
     @pytest.mark.parametrize(
         "query",
@@ -107,7 +109,9 @@ class TestValidateQueryIsReadOnly:
         ],
     )
     def test_non_select_rejected(self, query: str):
-        result = _validate_query_is_read_only(query)
+        _, stmt = _validate_single_statement(query)
+        assert stmt is not None
+        result = _validate_query_is_read_only(stmt)
         assert result is not None
 
 
@@ -810,7 +814,7 @@ class TestSQLQueryBlockDefaultPort:
         captured_conn_str = {}
 
         def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
-            captured_conn_str["value"] = kwargs["connection_string"]
+            captured_conn_str["value"] = str(kwargs["connection_url"])
             return [{"id": 1}], ["id"], -1
 
         block.execute_query = fake_execute  # type: ignore[assignment]
@@ -833,7 +837,7 @@ class TestSQLQueryBlockDefaultPort:
         captured_conn_str = {}
 
         def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
-            captured_conn_str["value"] = kwargs["connection_string"]
+            captured_conn_str["value"] = str(kwargs["connection_url"])
             return [{"id": 1}], ["id"], -1
 
         block.execute_query = fake_execute  # type: ignore[assignment]
@@ -856,7 +860,7 @@ class TestSQLQueryBlockDefaultPort:
         captured_conn_str = {}
 
         def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
-            captured_conn_str["value"] = kwargs["connection_string"]
+            captured_conn_str["value"] = str(kwargs["connection_url"])
             return [{"id": 1}], ["id"], -1
 
         block.execute_query = fake_execute  # type: ignore[assignment]
@@ -879,7 +883,7 @@ class TestSQLQueryBlockDefaultPort:
         captured_conn_str = {}
 
         def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
-            captured_conn_str["value"] = kwargs["connection_string"]
+            captured_conn_str["value"] = str(kwargs["connection_url"])
             return [{"id": 1}], ["id"], -1
 
         block.execute_query = fake_execute  # type: ignore[assignment]
@@ -906,7 +910,7 @@ class TestSQLQueryBlockDNSPinning:
         captured_conn_str = {}
 
         def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
-            captured_conn_str["value"] = kwargs["connection_string"]
+            captured_conn_str["value"] = str(kwargs["connection_url"])
             return [{"id": 1}], ["id"], -1
 
         block.execute_query = fake_execute  # type: ignore[assignment]
