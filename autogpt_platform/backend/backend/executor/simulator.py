@@ -316,8 +316,10 @@ async def simulate_block(
     """Simulate block execution using an LLM.
 
     For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
-    Returns None for blocks that should execute for real (OrchestratorBlock,
-    AgentExecutorBlock).
+
+    Note: callers should check ``can_simulate(block)`` first.
+    OrchestratorBlock and AgentExecutorBlock are *not* handled here — they
+    execute for real in dry-run mode (see manager.py).
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
     On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
