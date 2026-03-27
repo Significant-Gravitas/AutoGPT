@@ -5,7 +5,7 @@ import uuid
 from typing import Any
 
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.context import get_current_permissions, is_session_dry_run
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -69,6 +69,9 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        block_id: str = "",
+        input_data: dict | None = None,
+        dry_run: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -78,17 +81,18 @@ class RunBlockTool(BaseTool):
             session: Chat session
             block_id: Block UUID to execute
             input_data: Input values for the block
+            dry_run: If True, simulate execution without side effects
 
         Returns:
             BlockOutputResponse: Block execution outputs
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
-        dry_run = bool(kwargs.get("dry_run", False))
+        block_id = block_id.strip()
+        if input_data is None:
+            input_data = {}
         # Session-level dry_run forces all tool calls to use dry-run mode.
-        if is_session_dry_run():
+        if session.dry_run:
             dry_run = True
         session_id = session.session_id
 

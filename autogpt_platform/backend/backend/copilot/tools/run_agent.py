@@ -6,7 +6,6 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot.config import ChatConfig
-from backend.copilot.context import is_session_dry_run
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import graph_db, library_db, user_db
@@ -175,10 +174,15 @@ class RunAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the tool with automatic state detection."""
+        """Execute the tool with automatic state detection.
+
+        Note: This tool accepts **kwargs and delegates to RunAgentInput for
+        validation because the parameter set is complex with cross-field
+        validators defined in the Pydantic model.
+        """
         params = RunAgentInput(**kwargs)
         # Session-level dry_run forces all tool calls to use dry-run mode.
-        if is_session_dry_run():
+        if session.dry_run:
             params.dry_run = True
         session_id = session.session_id
 
