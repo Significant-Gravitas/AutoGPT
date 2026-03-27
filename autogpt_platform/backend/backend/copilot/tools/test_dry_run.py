@@ -471,10 +471,11 @@ async def test_execute_block_dry_run_simulator_error_returns_error_response():
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
-        yield (
-            "error",
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
+        msg = (
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] "
+            "No LLM client available (missing OpenAI/OpenRouter API key)."
         )
+        yield "error", msg
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error

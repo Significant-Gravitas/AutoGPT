@@ -13,7 +13,7 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from backend.util.clients import get_openai_client
@@ -136,7 +136,7 @@ Output pin names you MUST include: {json.dumps(required_output_properties)}
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
-) -> AsyncIterator[tuple[str, Any]]:
+) -> AsyncGenerator[tuple[str, Any], None]:
     """Simulate block execution using an LLM.
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
@@ -183,7 +183,9 @@ async def simulate_block(
             for pin_name in output_properties:
                 if pin_name in parsed:
                     value = parsed[pin_name]
-                    # Drop empty/blank error pins: they carry no information
+                    # Drop empty/blank error pins: they carry no information.
+                    # Uses strip() intentionally so whitespace-only strings
+                    # (e.g. " ", "\n") are also treated as empty.
                     if (
                         pin_name == "error"
                         and isinstance(value, str)
