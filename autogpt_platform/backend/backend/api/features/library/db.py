@@ -163,7 +163,9 @@ async def list_library_agents(
         library_agents.sort(key=get_sort_key)
 
         # Apply pagination after sorting
-        agent_count = len(library_agents)
+        agent_count = await prisma.models.LibraryAgent.prisma().count(
+            where=where_clause
+        )
         start_idx = (page - 1) * page_size
         end_idx = start_idx + page_size
         page_agents = library_agents[start_idx:end_idx]
