@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 from backend.blocks._base import (
@@ -162,54 +163,41 @@ class AIConditionBlock(AIBlockBase):
         ]
 
         # Call the LLM
-        try:
-            response = await self.llm_call(
-                credentials=credentials,
-                llm_model=input_data.model,
-                prompt=prompt,
-                max_tokens=10,  # We only expect a true/false response
-            )
+        response = await self.llm_call(
+            credentials=credentials,
+            llm_model=input_data.model,
+            prompt=prompt,
+            max_tokens=16,  # We only expect a true/false response
+        )
 
-            # Extract the boolean result from the response
-            response_text = response.response.strip().lower()
-            if response_text == "true":
+        # Extract the boolean result from the response
+        response_text = response.response.strip().lower()
+        if response_text == "true":
+            result = True
+        elif response_text == "false":
+            result = False
+        else:
+            # If the response is not clear, try to interpret it using word boundaries.
+            # Use word boundaries to avoid false positives like 'untrue' or '10'.
+            tokens = set(re.findall(r"\b(true|false|yes|no|1|0)\b", response_text))
+
+            if tokens == {"true"} or tokens == {"yes"} or tokens == {"1"}:
                 result = True
-            elif response_text == "false":
+            elif tokens == {"false"} or tokens == {"no"} or tokens == {"0"}:
                 result = False
             else:
-                # If the response is not clear, try to interpret it using word boundaries
-                import re
+                # Unclear or conflicting response - default to False and yield error
+                result = False
+                yield "error", f"Unclear AI response: '{response.response}'"
 
-                # Use word boundaries to avoid false positives like 'untrue' or '10'
-                tokens = set(re.findall(r"\b(true|false|yes|no|1|0)\b", response_text))
-
-                if tokens == {"true"} or tokens == {"yes"} or tokens == {"1"}:
-                    result = True
-                elif tokens == {"false"} or tokens == {"no"} or tokens == {"0"}:
-                    result = False
-                else:
-                    # Unclear or conflicting response - default to False and yield error
-                    result = False
-                    yield "error", f"Unclear AI response: '{response.response}'"
-
-            # Update internal stats
-            self.merge_stats(
-                NodeExecutionStats(
-                    input_token_count=response.prompt_tokens,
-                    output_token_count=response.completion_tokens,
-                )
+        # Update internal stats
+        self.merge_stats(
+            NodeExecutionStats(
+                input_token_count=response.prompt_tokens,
+                output_token_count=response.completion_tokens,
             )
-            self.prompt = response.prompt
-
-        except Exception as e:
-            # In case of any error, default to False to be safe
-            result = False
-            # Log the error but don't fail the block execution
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.error(f"AI condition evaluation failed: {str(e)}")
-            yield "error", f"AI evaluation failed: {str(e)}"
+        )
+        self.prompt = response.prompt
 
         # Yield results
         yield "result", result
