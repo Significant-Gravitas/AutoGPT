@@ -64,9 +64,18 @@ done
 Create worktrees as siblings to the main checkout:
 
 ```bash
-git worktree add "$PARENT/reviews" reviews
+if [ -d "$PARENT/reviews" ]; then
+  echo "INFO: Worktree '$PARENT/reviews' already exists, skipping"
+else
+  git worktree add "$PARENT/reviews" reviews
+fi
+
 for i in $(seq 1 "$COUNT"); do
-  git worktree add "$PARENT/branch$i" "branch$i"
+  if [ -d "$PARENT/branch$i" ]; then
+    echo "INFO: Worktree '$PARENT/branch$i' already exists, skipping"
+  else
+    git worktree add "$PARENT/branch$i" "branch$i"
+  fi
 done
 ```
 
