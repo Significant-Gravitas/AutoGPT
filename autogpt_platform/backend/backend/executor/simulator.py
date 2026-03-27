@@ -3,9 +3,9 @@ LLM-powered block simulator for dry-run execution.
 
 When dry_run=True, instead of calling the real block, this module
 role-plays the block's execution using an LLM.  For most blocks no real
-API calls or side effects occur.  OrchestratorBlock and AgentExecutorBlock
-are exceptions -- they execute for real so the orchestrator can make LLM
-calls and agent executors can spawn child graphs (handled in manager.py).
+API calls or side effects occur.  OrchestratorBlock is an exception --
+it executes for real with a cheap model so the orchestrator can make LLM
+calls (handled in manager.py via ``prepare_dry_run``).
 
 The LLM simulation is grounded by:
   - Block name and description
@@ -21,7 +21,7 @@ import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.llm import LlmModel
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
@@ -63,9 +63,8 @@ _TEMPERATURE = 0.2
 _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
 
-# Blocks that execute for real during dry-run (they orchestrate child
-# executions whose blocks are then simulated).
-_PASSTHROUGH_BLOCK_TYPES = (OrchestratorBlock, AgentExecutorBlock)
+# Cheap model used when executing OrchestratorBlock during dry-run.
+DRY_RUN_MODEL = LlmModel.GPT4O_MINI
 
 
 def _truncate_value(value: Any) -> Any:
@@ -280,13 +279,20 @@ Rules:
 # ---------------------------------------------------------------------------
 
 
-def can_simulate(block: Any) -> bool:
-    """Return True if the simulator can handle this block type.
+def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | None:
+    """Prepare *input_data* for a dry-run execution of *block*.
 
-    OrchestratorBlock and AgentExecutorBlock execute for real in dry-run mode
-    (they orchestrate child executions whose blocks are then simulated).
+    Returns a **modified copy** of *input_data* for blocks that should execute
+    for real with cheap settings (e.g. OrchestratorBlock), or ``None`` when the
+    block should be LLM-simulated instead.
     """
-    return not isinstance(block, _PASSTHROUGH_BLOCK_TYPES)
+    if isinstance(block, OrchestratorBlock):
+        return {
+            **input_data,
+            "model": DRY_RUN_MODEL,
+            "agent_mode_max_iterations": 1,
+        }
+    return None
 
 
 async def simulate_mcp_block(
@@ -331,9 +337,9 @@ async def simulate_block(
 
     For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
 
-    Note: callers should check ``can_simulate(block)`` first.
-    OrchestratorBlock and AgentExecutorBlock are *not* handled here — they
-    execute for real in dry-run mode (see manager.py).
+    Note: callers should check ``prepare_dry_run(block, input_data)`` first.
+    OrchestratorBlock executes for real with a cheap model in dry-run mode
+    (see manager.py).
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
     On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.

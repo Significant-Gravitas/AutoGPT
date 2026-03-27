@@ -11,8 +11,10 @@ from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
 from backend.executor.simulator import (
+    DRY_RUN_MODEL,
     _build_mcp_simulation_prompt,
     build_simulation_prompt,
+    prepare_dry_run,
     simulate_block,
     simulate_mcp_block,
 )
@@ -628,3 +630,29 @@ async def test_simulate_mcp_block_retries_on_bad_json():
 
     assert mock_client.chat.completions.create.call_count == 2
     assert ("result", "ok") in outputs
+
+
+# ---------------------------------------------------------------------------
+# prepare_dry_run tests
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_dry_run_orchestrator_block():
+    """prepare_dry_run returns input with cheap model for OrchestratorBlock."""
+    from backend.blocks.orchestrator import OrchestratorBlock
+
+    block = OrchestratorBlock()
+    input_data = {"prompt": "hello", "model": "gpt-4o", "agent_mode_max_iterations": 10}
+    result = prepare_dry_run(block, input_data)
+
+    assert result is not None
+    assert result["model"] == DRY_RUN_MODEL
+    assert result["agent_mode_max_iterations"] == 1
+    # Original input_data should not be mutated.
+    assert input_data["model"] == "gpt-4o"
+
+
+def test_prepare_dry_run_regular_block_returns_none():
+    """prepare_dry_run returns None for a regular block (use simulator)."""
+    mock_block = make_mock_block()
+    assert prepare_dry_run(mock_block, {"query": "test"}) is None
