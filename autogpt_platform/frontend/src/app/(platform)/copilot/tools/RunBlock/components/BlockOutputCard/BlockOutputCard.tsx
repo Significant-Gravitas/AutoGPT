@@ -115,8 +115,6 @@ function OutputKeySection({
 }
 
 export function BlockOutputCard({ output }: Props) {
-  const displayOutputs = Object.entries(output.outputs ?? {});
-
   return (
     <ContentGrid>
       {output.is_dry_run && (
@@ -127,7 +125,7 @@ export function BlockOutputCard({ output }: Props) {
       )}
       <ContentMessage>{output.message}</ContentMessage>
 
-      {displayOutputs.map(([key, items]) => (
+      {Object.entries(output.outputs ?? {}).map(([key, items]) => (
         <OutputKeySection key={key} outputKey={key} items={items} />
       ))}
     </ContentGrid>

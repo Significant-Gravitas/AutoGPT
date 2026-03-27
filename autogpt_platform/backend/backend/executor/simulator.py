@@ -96,6 +96,10 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     input_pins = _describe_schema_pins(input_schema)
     output_pins = _describe_schema_pins(output_schema)
     output_properties = list(output_schema.get("properties", {}).keys())
+    # Build a separate list for the "MUST include" instruction that excludes
+    # "error" — the prompt already tells the LLM to OMIT the error pin unless
+    # simulating a logical error.  Including it in "MUST include" is contradictory.
+    required_output_properties = [k for k in output_properties if k != "error"]
 
     block_name = getattr(block, "name", type(block).__name__)
     block_description = getattr(block, "description", "No description available.")
@@ -120,7 +124,7 @@ Rules:
 - If there is an "error" pin, OMIT it entirely unless you are simulating a logical error. Only include the "error" pin when there is a genuine error message to report.
 - Do not include any extra keys beyond the output pins.
 
-Output pin names you MUST include: {json.dumps(output_properties)}
+Output pin names you MUST include: {json.dumps(required_output_properties)}
 """
 
     safe_inputs = _truncate_input_values(input_data)

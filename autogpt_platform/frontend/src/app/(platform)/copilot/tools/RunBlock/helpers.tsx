@@ -106,7 +106,9 @@ export function isRunBlockErrorOutput(
   if (output.type === ResponseType.error) return true;
   // Fallback for untyped payloads: match only if "error" exists at the top
   // level AND there is no "block_id" (which distinguishes BlockOutputResponse
-  // from ErrorResponse).
+  // from ErrorResponse).  Note: `type` is optional in both interfaces, so
+  // correctness here depends on `block_id` presence (always set on
+  // BlockOutputResponse), not on `type` presence.
   if (!("type" in output) && "error" in output && !("block_id" in output))
     return true;
   return false;
