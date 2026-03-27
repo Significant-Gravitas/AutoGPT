@@ -41,7 +41,7 @@ async def _resolve_user_id(
     """Resolve a user_id and email from the provided parameters.
 
     Returns (user_id, email). Accepts either user_id or email; at least one
-    must be provided.
+    must be provided.  When both are provided, ``email`` takes precedence.
     """
     if email:
         user = await get_user_by_email(email)

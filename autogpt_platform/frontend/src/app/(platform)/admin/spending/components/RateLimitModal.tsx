@@ -119,7 +119,11 @@ export function RateLimitModal({
           )}
 
           {!isLoading && rateLimitData && (
-            <RateLimitDisplay data={rateLimitData} onReset={handleReset} />
+            <RateLimitDisplay
+              data={rateLimitData}
+              onReset={handleReset}
+              className="space-y-4"
+            />
           )}
 
           {!isLoading && !rateLimitData && (

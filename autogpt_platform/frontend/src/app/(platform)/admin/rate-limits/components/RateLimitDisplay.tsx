@@ -8,9 +8,11 @@ import { UsageBar } from "../../components/UsageBar";
 interface Props {
   data: UserRateLimitResponse;
   onReset: (resetWeekly: boolean) => Promise<void>;
+  /** Override the outer container classes (default: bordered card). */
+  className?: string;
 }
 
-export function RateLimitDisplay({ data, onReset }: Props) {
+export function RateLimitDisplay({ data, onReset, className }: Props) {
   const [isResetting, setIsResetting] = useState(false);
   const [resetWeekly, setResetWeekly] = useState(false);
 
@@ -33,7 +35,7 @@ export function RateLimitDisplay({ data, onReset }: Props) {
     : data.daily_tokens_used === 0;
 
   return (
-    <div className="rounded-md border bg-white p-6">
+    <div className={className ?? "rounded-md border bg-white p-6"}>
       <h2 className="mb-1 text-lg font-semibold">
         Rate Limits for {data.user_email ?? data.user_id}
       </h2>
