@@ -238,7 +238,7 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should contain [DRY RUN] in message and success=True."""
+    """Dry-run response should match real execution message format and have success=True."""
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
@@ -259,7 +259,8 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "[DRY RUN]" in response.message
+    assert "executed successfully" in response.message
+    assert "[DRY RUN]" not in response.message  # must not leak to LLM context
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
 

@@ -115,10 +115,7 @@ async def execute_block(
                     session_id=session_id,
                 )
             return BlockOutputResponse(
-                message=(
-                    f"[DRY RUN] Block '{block.name}' simulated successfully "
-                    "— no real execution occurred."
-                ),
+                message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),

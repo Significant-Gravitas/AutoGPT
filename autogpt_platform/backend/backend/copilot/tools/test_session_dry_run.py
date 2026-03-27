@@ -91,7 +91,7 @@ class TestRunBlockToolSessionDryRun:
 
             # Set up execute_block to return a success
             mock_exec.return_value = MagicMock(
-                message="[DRY RUN] Block executed",
+                message="Block 'TestBlock' executed successfully",
                 success=True,
             )
 

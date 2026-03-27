@@ -51,11 +51,7 @@ class RunBlockTool(BaseTool):
                 },
                 "dry_run": {
                     "type": "boolean",
-                    "description": (
-                        "When true, simulates block execution using an LLM without making any "
-                        "real API calls or producing side effects. Useful for testing agent "
-                        "wiring and previewing outputs."
-                    ),
+                    "description": "Execute in preview mode.",
                 },
             },
             "required": ["block_id", "input_data", "dry_run"],
