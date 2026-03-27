@@ -114,8 +114,17 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
             return BlockOutputResponse(
+<<<<<<< HEAD
                 message=f"Block '{block.name}' executed successfully.",
+=======
+                message=(
+                    f"[DRY RUN] Block '{block.name}' simulated successfully "
+                    "(no real API calls or side effects occurred). "
+                    "Status: COMPLETED."
+                ),
+>>>>>>> origin/fix/dry-run-simulation-streaming
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
