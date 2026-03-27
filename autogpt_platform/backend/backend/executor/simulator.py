@@ -298,12 +298,8 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
 async def simulate_mcp_block(
     _block: Any,
     input_data: dict[str, Any],
-<<<<<<< HEAD
     simulation_context: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any]]:
-=======
-) -> AsyncIterator[tuple[str, Any]]:
->>>>>>> 61c311aad9 (fix(backend): simplify dry-run special block handling per review feedback)
     """Simulate MCP tool execution using an LLM.
 
     Unlike the generic ``simulate_block``, this builds a prompt grounded in
@@ -327,12 +323,8 @@ async def simulate_mcp_block(
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
-<<<<<<< HEAD
     simulation_context: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
-=======
-) -> AsyncIterator[tuple[str, Any]]:
->>>>>>> 61c311aad9 (fix(backend): simplify dry-run special block handling per review feedback)
     """Simulate block execution using an LLM.
 
     For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
