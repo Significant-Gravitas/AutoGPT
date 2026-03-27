@@ -456,6 +456,9 @@ async def create_library_agent(
                                 sensitive_action_safe_mode=sensitive_action_safe_mode,
                             ).model_dump()
                         ),
+                        topIntegrations=SafeJson(
+                            library_model._compute_top_integrations(graph_entry)
+                        ),
                         **(
                             {"Folder": {"connect": {"id": folder_id}}}
                             if folder_id and graph_entry is graph
@@ -626,6 +629,15 @@ async def update_library_agent_version_and_settings(
             user_id=user_id,
             settings=updated_settings,
         )
+
+    # Recompute top integrations on version update
+    top_integrations = library_model._compute_top_integrations(agent_graph)
+    await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library.id},
+        data={"topIntegrations": SafeJson(top_integrations)},
+    )
+    library.top_integrations = top_integrations
+
     return library
 
 

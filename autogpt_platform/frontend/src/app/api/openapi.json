@@ -10076,6 +10076,14 @@
             "title": "Recommended Schedule Cron"
           },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
+          "top_integrations": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Top Integrations"
+          },
           "marketplace_listing": {
             "anyOf": [
               { "$ref": "#/components/schemas/MarketplaceListing" },

@@ -5,6 +5,7 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
+import { IntegrationLinkImage } from "@/components/molecules/IntegrationLinkImage/IntegrationLinkImage";
 import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
@@ -25,6 +26,7 @@ interface Props {
   creatorSlug?: string;
   agentSlug?: string;
   agentGraphID?: string;
+  topIntegrations?: Array<{ name: string; type: "provider" | "category" }>;
 }
 
 export function StoreCard({
@@ -40,6 +42,7 @@ export function StoreCard({
   creatorSlug,
   agentSlug,
   agentGraphID,
+  topIntegrations,
 }: Props) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -79,9 +82,10 @@ export function StoreCard({
             />
           </>
         ) : (
-          <div
-            className="absolute inset-0 rounded-xl"
-            style={{ backgroundColor: "rgb(216, 208, 255)" }}
+          <IntegrationLinkImage
+            integrations={topIntegrations ?? []}
+            size="md"
+            className="absolute inset-0 h-full w-full"
           />
         )}
       </div>

@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import Image from "next/image";
 import { useRef, useState } from "react";
 import { AddToLibraryButton } from "../AddToLibraryButton/AddToLibraryButton";
+import { IntegrationLinkImage } from "@/components/molecules/IntegrationLinkImage/IntegrationLinkImage";
 
 interface Props {
   agent: StoreAgent;
@@ -62,7 +63,18 @@ export function FeaturedAgentCard({ agent, backgroundColor }: Props) {
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-50" />
+          <IntegrationLinkImage
+            integrations={
+              "top_integrations" in agent
+                ? (agent.top_integrations as Array<{
+                    name: string;
+                    type: "provider" | "category";
+                  }>)
+                : []
+            }
+            size="lg"
+            className="absolute inset-0 h-full w-full"
+          />
         )}
       </div>
 
