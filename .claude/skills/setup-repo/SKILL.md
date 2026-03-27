@@ -42,17 +42,17 @@ Use AskUserQuestion to gather setup preferences:
 cd "$ROOT"
 git fetch origin
 
-# Create the reviews branch from base (skip if it already exists)
-if git rev-parse --verify --quiet "refs/heads/reviews" >/dev/null 2>&1; then
-  echo "INFO: Branch 'reviews' already exists, skipping creation"
+# Create the reviews branch from base (skip if already exists)
+if git show-ref --verify --quiet refs/heads/reviews; then
+  echo "INFO: Branch 'reviews' already exists, skipping"
 else
   git branch reviews <base-branch>
 fi
 
-# Create numbered work branches from base (skip existing)
-for i in $(seq 1 $COUNT); do
-  if git rev-parse --verify --quiet "refs/heads/branch$i" >/dev/null 2>&1; then
-    echo "INFO: Branch 'branch$i' already exists, skipping creation"
+# Create numbered work branches from base (skip if already exists)
+for i in $(seq 1 "$COUNT"); do
+  if git show-ref --verify --quiet "refs/heads/branch$i"; then
+    echo "INFO: Branch 'branch$i' already exists, skipping"
   else
     git branch "branch$i" <base-branch>
   fi
@@ -65,7 +65,7 @@ Create worktrees as siblings to the main checkout:
 
 ```bash
 git worktree add "$PARENT/reviews" reviews
-for i in $(seq 1 $COUNT); do
+for i in $(seq 1 "$COUNT"); do
   git worktree add "$PARENT/branch$i" "branch$i"
 done
 ```
@@ -88,7 +88,7 @@ Env file locations to check:
 ```bash
 SOURCE="$ROOT"
 WORKTREES="reviews"
-for i in $(seq 1 $COUNT); do WORKTREES="$WORKTREES branch$i"; done
+for i in $(seq 1 "$COUNT"); do WORKTREES="$WORKTREES branch$i"; done
 
 for wt in $WORKTREES; do
   TARGET="$PARENT/$wt"

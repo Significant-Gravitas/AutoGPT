@@ -37,24 +37,23 @@ If you cannot run the full test suite locally, note which tests you ran and whic
 
 ## Step 3: Create the PR using the repo template
 
-The repo has a PR template at `.github/PULL_REQUEST_TEMPLATE.md`. Your PR body **must** use this template exactly:
+Read the canonical PR template at `.github/PULL_REQUEST_TEMPLATE.md` and use it **verbatim** as your PR body:
 
 1. Read the template: `cat .github/PULL_REQUEST_TEMPLATE.md`
 2. Preserve the exact section titles and formatting, including:
    - `### Why / What / How`
    - `### Changes 🏗️`
    - `### Checklist 📋`
-3. Fill in the placeholder comments (`<!-- ... -->`) with actual content
-4. **Do not pre-check boxes** — leave checkboxes unchecked (`- [ ]`) until you have actually completed that step. Check them off (`- [x]`) only as you verify each item.
+3. Replace HTML comment prompts (`<!-- ... -->`) with actual content; do not leave them in
+4. **Do not pre-check boxes** — leave all checkboxes as `- [ ]` until each step is actually completed
 5. Do not alter the template structure, rename sections, or remove any checklist items
-6. Fill in the template completely. Do not leave placeholder comments in the final PR body.
 
-Use `gh pr create` with the base branch (uses the `[base-branch]` argument if provided, defaults to `dev`):
+Use `gh pr create` with the base branch (defaults to `dev` if no `[base-branch]` was provided):
 
 ```bash
-BASE_BRANCH="${1:-dev}"  # Use provided base-branch argument, default to dev
+BASE_BRANCH="${BASE_BRANCH:-dev}"
 gh pr create --base "$BASE_BRANCH" --title "<short title>" --body "$(cat <<'EOF'
-<filled-in template from .github/PULL_REQUEST_TEMPLATE.md>
+<filled-in template>
 EOF
 )"
 ```
