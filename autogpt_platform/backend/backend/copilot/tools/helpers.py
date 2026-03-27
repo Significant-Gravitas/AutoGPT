@@ -115,17 +115,6 @@ async def execute_block(
                     session_id=session_id,
                 )
 
-            # Strip empty "error" pins that the simulator always includes for
-            # blocks with an error output.  An empty error means "no error" —
-            # leaving it in the response confuses both the frontend (renders a
-            # misleading "error" output section) and the LLM (interprets the
-            # presence of "error" as a failure, reporting INCOMPLETE status).
-            clean_outputs = {
-                k: v
-                for k, v in outputs.items()
-                if not (k == "error" and v and all(val == "" for val in v))
-            }
-
             return BlockOutputResponse(
                 message=(
                     f"[DRY RUN] Block '{block.name}' simulated successfully "
@@ -134,7 +123,7 @@ async def execute_block(
                 ),
                 block_id=block_id,
                 block_name=block.name,
-                outputs=clean_outputs,
+                outputs=dict(outputs),
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,

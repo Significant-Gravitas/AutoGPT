@@ -73,7 +73,10 @@ def make_openai_response(
 
 @pytest.mark.asyncio
 async def test_simulate_block_basic():
-    """simulate_block returns correct (output_name, output_data) tuples."""
+    """simulate_block returns correct (output_name, output_data) tuples.
+
+    Empty "error" pins are dropped at source — only non-empty errors are yielded.
+    """
     mock_block = make_mock_block()
     mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(
@@ -88,7 +91,8 @@ async def test_simulate_block_basic():
             outputs.append((name, data))
 
     assert ("result", "simulated output") in outputs
-    assert ("error", "") in outputs
+    # Empty error pin is dropped at the simulator level
+    assert ("error", "") not in outputs
 
 
 @pytest.mark.asyncio
@@ -113,6 +117,8 @@ async def test_simulate_block_json_retry():
 
     assert mock_client.chat.completions.create.call_count == 3
     assert ("result", "ok") in outputs
+    # Empty error pin is dropped
+    assert ("error", "") not in outputs
 
 
 @pytest.mark.asyncio
@@ -141,7 +147,7 @@ async def test_simulate_block_all_retries_exhausted():
 
 @pytest.mark.asyncio
 async def test_simulate_block_missing_output_pins():
-    """LLM response missing some output pins; verify they're filled with None."""
+    """LLM response missing some output pins; verify non-error pins filled with None."""
     mock_block = make_mock_block(
         output_props={
             "result": {"type": "string"},
@@ -164,7 +170,29 @@ async def test_simulate_block_missing_output_pins():
 
     assert outputs["result"] == "hello"
     assert outputs["count"] is None  # missing pin filled with None
-    assert outputs["error"] == ""  # "error" pin filled with ""
+    assert "error" not in outputs  # missing error pin is omitted entirely
+
+
+@pytest.mark.asyncio
+async def test_simulate_block_keeps_nonempty_error():
+    """simulate_block keeps non-empty error pins (simulated logical errors)."""
+    mock_block = make_mock_block()
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=make_openai_response(
+            '{"result": "", "error": "API rate limit exceeded"}'
+        )
+    )
+
+    with patch(
+        "backend.executor.simulator.get_openai_client", return_value=mock_client
+    ):
+        outputs = []
+        async for name, data in simulate_block(mock_block, {"query": "test"}):
+            outputs.append((name, data))
+
+    assert ("result", "") in outputs
+    assert ("error", "API rate limit exceeded") in outputs
 
 
 @pytest.mark.asyncio
@@ -333,19 +361,18 @@ def test_run_block_tool_dry_run_calls_execute():
 
 
 @pytest.mark.asyncio
-async def test_execute_block_dry_run_filters_empty_error_pin():
-    """Dry-run should strip the empty 'error' pin from outputs.
+async def test_execute_block_dry_run_no_empty_error_from_simulator():
+    """The simulator no longer yields empty error pins, so execute_block
+    simply passes through whatever the simulator produces.
 
-    The simulator always includes an 'error' pin set to '' (empty string) for
-    blocks that define one. This confuses the frontend (renders a misleading
-    'error' section) and the LLM (misinterprets as failure). Filtering it out
-    ensures only meaningful output pins are included in the response.
+    Since the fix is at the simulator level, even if a simulator somehow
+    yields only non-error outputs, they pass through unchanged.
     """
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
+        # Simulator now omits empty error pins at source
         yield "result", "simulated output"
-        yield "error", ""
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
@@ -364,7 +391,6 @@ async def test_execute_block_dry_run_filters_empty_error_pin():
     assert isinstance(response, BlockOutputResponse)
     assert response.success is True
     assert response.is_dry_run is True
-    # The empty "error" pin should be filtered out
     assert "error" not in response.outputs
     assert response.outputs == {"result": ["simulated output"]}
 

@@ -215,21 +215,6 @@ export function AccordionIcon() {
   return <PlayCircleIcon size={32} weight="light" />;
 }
 
-/**
- * Returns true when an output entry is an empty "error" pin — i.e. the block
- * schema defines an "error" output and the value is `""` or `null` for every
- * item, meaning "no error occurred". Used to hide the misleading "error"
- * section in both BlockOutputCard and the accordion metadata.
- */
-export function isEmptyErrorPin(key: string, items: unknown[]): boolean {
-  return (
-    key === "error" &&
-    Array.isArray(items) &&
-    items.length > 0 &&
-    items.every((v) => v === "" || v == null)
-  );
-}
-
 export function formatMaybeJson(value: unknown): string {
   if (typeof value === "string") return value;
   try {
@@ -248,14 +233,7 @@ export function getAccordionMeta(output: RunBlockToolOutput): {
   const icon = <AccordionIcon />;
 
   if (isRunBlockBlockOutput(output)) {
-    // For dry-run outputs, filter out empty error pins when counting keys.
-    // For real executions, empty error pins are meaningful (block reported
-    // no error) and should be counted — consistent with BlockOutputCard.
-    const keys = Object.entries(output.outputs ?? {})
-      .filter(
-        ([k, v]) => !(output.is_dry_run && isEmptyErrorPin(k, v as unknown[])),
-      )
-      .map(([k]) => k);
+    const keys = Object.keys(output.outputs ?? {});
     const outputCount =
       keys.length > 0
         ? `${keys.length} output key${keys.length === 1 ? "" : "s"}`

@@ -17,7 +17,6 @@ import {
   ContentGrid,
   ContentMessage,
 } from "../../../../components/ToolAccordion/AccordionContent";
-import { isEmptyErrorPin } from "../../helpers";
 
 interface Props {
   output: BlockOutputResponse;
@@ -116,13 +115,7 @@ function OutputKeySection({
 }
 
 export function BlockOutputCard({ output }: Props) {
-  // For dry-run outputs, filter out empty "error" pins.  The simulator
-  // always includes an "error" pin set to "" (meaning "no error"), which
-  // is confusing when rendered as an output section.  For real executions
-  // the empty error pin is a meaningful signal (block reported no error).
-  const displayOutputs = Object.entries(output.outputs ?? {}).filter(
-    ([key, items]) => !(output.is_dry_run && isEmptyErrorPin(key, items)),
-  );
+  const displayOutputs = Object.entries(output.outputs ?? {});
 
   return (
     <ContentGrid>

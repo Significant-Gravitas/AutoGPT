@@ -117,7 +117,7 @@ Rules:
 - Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Make the simulated outputs realistic and consistent with the inputs.
-- If there is an "error" pin, set it to "" (empty string) unless you are simulating a logical error.
+- If there is an "error" pin, OMIT it entirely unless you are simulating a logical error. Only include the "error" pin when there is a genuine error message to report.
 - Do not include any extra keys beyond the output pins.
 
 Output pin names you MUST include: {json.dumps(output_properties)}
@@ -172,13 +172,24 @@ async def simulate_block(
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
 
-            # Fill missing output pins with defaults
+            # Fill missing output pins with defaults.
+            # Skip empty "error" pins — an empty string means "no error" and
+            # would only confuse downstream consumers (LLM, frontend).
             result: dict[str, Any] = {}
             for pin_name in output_properties:
                 if pin_name in parsed:
-                    result[pin_name] = parsed[pin_name]
-                else:
-                    result[pin_name] = "" if pin_name == "error" else None
+                    value = parsed[pin_name]
+                    # Drop empty/blank error pins: they carry no information
+                    if (
+                        pin_name == "error"
+                        and isinstance(value, str)
+                        and not value.strip()
+                    ):
+                        continue
+                    result[pin_name] = value
+                elif pin_name != "error":
+                    # Only fill non-error missing pins with None
+                    result[pin_name] = None
 
             logger.debug(
                 "simulate_block: block=%s attempt=%d tokens=%s/%s",
