@@ -446,7 +446,7 @@ async def create_library_agent(
                     },
                     data={
                         "create": prisma.types.LibraryAgentCreateInput(
-                            isCreatedByUser=(user_id == user_id),
+                            isCreatedByUser=(user_id == graph.user_id),
                             useGraphIsActiveVersion=True,
                             User={"connect": {"id": user_id}},
                             AgentGraph={

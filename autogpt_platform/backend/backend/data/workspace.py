@@ -127,11 +127,14 @@ async def create_workspace_file(
     metadata: Optional[dict] = None,
 ) -> WorkspaceFile:
     """
-    Create or update a workspace file record.
+    Create a new workspace file record.
 
-    Uses upsert on the (workspaceId, path) composite unique constraint to
-    atomically handle concurrent requests for the same path. If a record
-    already exists, the mutable fields are updated in place.
+    Raises ``UniqueViolationError`` if a record with the same
+    ``(workspaceId, path)`` already exists.  The caller
+    (``WorkspaceManager._persist_db_record``) relies on this to trigger
+    its delete-old-file-then-retry flow, which cleans up the old storage
+    blob before re-creating the DB record.  Using ``upsert`` here would
+    silently overwrite ``storagePath`` and orphan the old blob in storage.
 
     Args:
         workspace_id: The workspace ID
@@ -145,57 +148,29 @@ async def create_workspace_file(
         metadata: Optional additional metadata
 
     Returns:
-        Created or updated WorkspaceFile instance
+        Created WorkspaceFile instance
     """
     # Normalize path to start with /
     if not path.startswith("/"):
         path = f"/{path}"
 
-    try:
-        file = await UserWorkspaceFile.prisma().upsert(
-            where={
-                "workspaceId_path": {
-                    "workspaceId": workspace_id,
-                    "path": path,
-                }
-            },
-            data={
-                "create": {
-                    "id": file_id,
-                    "workspaceId": workspace_id,
-                    "name": name,
-                    "path": path,
-                    "storagePath": storage_path,
-                    "mimeType": mime_type,
-                    "sizeBytes": size_bytes,
-                    "checksum": checksum,
-                    "metadata": SafeJson(metadata or {}),
-                },
-                "update": {
-                    "name": name,
-                    "storagePath": storage_path,
-                    "mimeType": mime_type,
-                    "sizeBytes": size_bytes,
-                    "checksum": checksum,
-                    "metadata": SafeJson(metadata or {}),
-                    "isDeleted": False,
-                    "deletedAt": None,
-                },
-            },
-        )
-    except UniqueViolationError:
-        # Defense-in-depth: upsert can still race under high concurrency;
-        # fall back to fetching the existing record.
-        existing = await UserWorkspaceFile.prisma().find_first(
-            where={"workspaceId": workspace_id, "path": path}
-        )
-        if existing is None:
-            raise
-        logger.info(f"Workspace file at {path} already exists, returning existing")
-        return WorkspaceFile.from_db(existing)
+    file = await UserWorkspaceFile.prisma().create(
+        data={
+            "id": file_id,
+            "workspaceId": workspace_id,
+            "name": name,
+            "path": path,
+            "storagePath": storage_path,
+            "mimeType": mime_type,
+            "sizeBytes": size_bytes,
+            "checksum": checksum,
+            "metadata": SafeJson(metadata or {}),
+        }
+    )
 
     logger.info(
-        f"Upserted workspace file {file.id} at path {path} in workspace {workspace_id}"
+        f"Created workspace file {file.id} at path {path} "
+        f"in workspace {workspace_id}"
     )
     return WorkspaceFile.from_db(file)
 

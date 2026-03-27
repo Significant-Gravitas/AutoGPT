@@ -1534,7 +1534,16 @@ async def __create_graph(tx, graph: Graph, user_id: str):
         order={"version": "desc"},
     )
     if existing and existing.version >= graph.version:
+        old_version = graph.version
         graph.version = existing.version + 1
+        logger.warning(
+            "Auto-incremented graph %s version from %d to %d "
+            "(version %d already exists)",
+            graph.id,
+            old_version,
+            graph.version,
+            existing.version,
+        )
 
     graphs = [graph] + graph.sub_graphs
 
