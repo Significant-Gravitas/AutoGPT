@@ -42,7 +42,8 @@ export function RateLimitDisplay({
   const [isChangingTier, setIsChangingTier] = useState(false);
   const { toast } = useToast();
 
-  const currentTier = ((data as Record<string, unknown>).tier as Tier) ?? "PRO";
+  const currentTier =
+    ((data as unknown as Record<string, unknown>).tier as Tier) ?? "PRO";
 
   async function handleReset() {
     const msg = resetWeekly
