@@ -358,7 +358,7 @@ class TestSubscriptionTier:
         assert TIER_MULTIPLIERS[SubscriptionTier.FREE] == 1
         assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5
         assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 20
-        assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 50
+        assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60
 
     def test_default_tier_is_pro(self):
         assert DEFAULT_TIER == SubscriptionTier.PRO
@@ -680,8 +680,8 @@ class TestGetGlobalRateLimitsWithTiers:
         assert tier == SubscriptionTier.BUSINESS
 
     @pytest.mark.asyncio
-    async def test_enterprise_tier_50x_multiplier(self):
-        """Enterprise tier should multiply limits by 50."""
+    async def test_enterprise_tier_60x_multiplier(self):
+        """Enterprise tier should multiply limits by 60."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
@@ -697,8 +697,8 @@ class TestGetGlobalRateLimitsWithTiers:
                 _USER, 2_500_000, 12_500_000
             )
 
-        assert daily == 125_000_000
-        assert weekly == 625_000_000
+        assert daily == 150_000_000
+        assert weekly == 750_000_000
         assert tier == SubscriptionTier.ENTERPRISE
 
 

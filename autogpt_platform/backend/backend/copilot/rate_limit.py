@@ -46,7 +46,7 @@ TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
     SubscriptionTier.FREE: 1,
     SubscriptionTier.PRO: 5,
     SubscriptionTier.BUSINESS: 20,
-    SubscriptionTier.ENTERPRISE: 50,
+    SubscriptionTier.ENTERPRISE: 60,
 }
 
 DEFAULT_TIER = SubscriptionTier.PRO
