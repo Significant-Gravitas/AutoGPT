@@ -203,16 +203,21 @@ async def tool_call_loop(
     while max_iterations < 0 or iteration < max_iterations:
         iteration += 1
 
-        # On last iteration, add a hint to finish
-        iteration_messages = list(messages)
-        if (
+        # On last iteration, add a hint to finish.  Only copy the list
+        # when the hint needs to be appended to avoid per-iteration overhead
+        # on long conversations.
+        is_last = (
             last_iteration_message
             and max_iterations > 0
             and iteration == max_iterations
-        ):
+        )
+        if is_last:
+            iteration_messages = list(messages)
             iteration_messages.append(
                 {"role": "system", "content": last_iteration_message}
             )
+        else:
+            iteration_messages = messages
 
         # Call LLM
         response = await llm_call(iteration_messages, tools)

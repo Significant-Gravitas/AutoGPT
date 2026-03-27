@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import os
 import re
 import shutil
+import tempfile
 import types
 import uuid as uuid_mod
 from collections import Counter
@@ -1278,7 +1278,12 @@ class OrchestratorBlock(Block):
                     "additionalProperties"
                 ]
 
-            def _make_handler(_tool_func=tf, _self=self):
+            def _make_handler(
+                _tool_func=tf,
+                _self=self,
+                _exec_params=execution_params,
+                _exec_processor=execution_processor,
+            ):
                 async def handler(args: dict[str, Any]) -> dict[str, Any]:
                     func = _tool_func["function"]
 
@@ -1292,7 +1297,7 @@ class OrchestratorBlock(Block):
 
                     try:
                         result = await _self._execute_single_tool_with_manager(
-                            tool_info, execution_params, execution_processor
+                            tool_info, _exec_params, _exec_processor
                         )
                         # result is a tool response dict with "content" key
                         content = result.get("content", "Tool executed successfully")
@@ -1343,7 +1348,9 @@ class OrchestratorBlock(Block):
             ClaudeSDKClient,
             ResultMessage,
             TextBlock,
+            ToolResultBlock,
             ToolUseBlock,
+            UserMessage,
         )
 
         # Build MCP server from graph-connected tools
@@ -1414,9 +1421,11 @@ class OrchestratorBlock(Block):
             sdk_env = {"ANTHROPIC_API_KEY": api_key}
 
         # Use an execution-specific working directory to prevent concurrent
-        # SDK executions from colliding in a shared /tmp.
-        sdk_cwd = f"/tmp/orchestrator-sdk-{execution_params.graph_exec_id}"
-        os.makedirs(sdk_cwd, exist_ok=True)
+        # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
+        # and works in containerised environments with read-only root filesystems.
+        sdk_cwd = tempfile.mkdtemp(
+            prefix=f"orchestrator-sdk-{execution_params.graph_exec_id}-"
+        )
 
         # Build SDK options
         options = ClaudeAgentOptions(
@@ -1529,6 +1538,29 @@ class OrchestratorBlock(Block):
                                     {
                                         "role": "assistant",
                                         "content": msg_content,
+                                    }
+                                )
+                        elif isinstance(sdk_msg, UserMessage):
+                            # Capture tool results so the conversation
+                            # history records what each tool returned.
+                            result_parts: list[str] = []
+                            for block in getattr(sdk_msg, "content", []):
+                                if isinstance(block, ToolResultBlock):
+                                    content_val = getattr(block, "content", "")
+                                    if isinstance(content_val, list):
+                                        # list of text blocks
+                                        for item in content_val:
+                                            if isinstance(item, dict):
+                                                result_parts.append(
+                                                    item.get("text", "")
+                                                )
+                                    elif content_val:
+                                        result_parts.append(str(content_val))
+                            if result_parts:
+                                conversation.append(
+                                    {
+                                        "role": "tool",
+                                        "content": "\n".join(result_parts),
                                     }
                                 )
                         elif isinstance(sdk_msg, ResultMessage):
@@ -1699,6 +1731,9 @@ class OrchestratorBlock(Block):
                     f"SDK mode requires an Anthropic-compatible provider (got provider={provider}). "
                     "Please select an Anthropic or OpenRouter provider, or disable SDK mode."
                 )
+            # Safety-net: all Claude models have .value starting with "claude-".
+            # This guards against non-Claude models that happen to use the
+            # "anthropic" metadata provider (if any are added in the future).
             if not model_name.startswith("claude"):
                 raise ValueError(
                     f"SDK mode only supports Claude models (got model={model_name}). "

@@ -513,3 +513,42 @@ async def test_token_accumulation():
     assert final_result.total_prompt_tokens == 300  # 3 calls * 100
     assert final_result.total_completion_tokens == 150  # 3 calls * 50
     assert final_result.iterations == 3
+
+
+@pytest.mark.asyncio
+async def test_max_iterations_zero_no_loop():
+    """max_iterations=0 should immediately yield a 'max reached' result without calling LLM."""
+
+    async def llm_call(
+        messages: list[dict[str, Any]], tools: Sequence[Any]
+    ) -> LLMLoopResponse:
+        raise AssertionError("LLM should not be called when max_iterations=0")
+
+    async def execute_tool(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        raise AssertionError("Tool should not be called when max_iterations=0")
+
+    def update_conversation(
+        messages: list[dict[str, Any]],
+        response: LLMLoopResponse,
+        tool_results: list[ToolCallResult] | None = None,
+    ) -> None:
+        raise AssertionError("Updater should not be called when max_iterations=0")
+
+    msgs: list[dict[str, Any]] = [{"role": "user", "content": "Go"}]
+    results: list[ToolCallLoopResult] = []
+    async for r in tool_call_loop(
+        messages=msgs,
+        tools=TOOL_DEFS,
+        llm_call=llm_call,
+        execute_tool=execute_tool,
+        update_conversation=update_conversation,
+        max_iterations=0,
+    ):
+        results.append(r)
+
+    assert len(results) == 1
+    assert results[0].finished_naturally is False
+    assert results[0].iterations == 0
+    assert "0 iterations" in results[0].response_text
