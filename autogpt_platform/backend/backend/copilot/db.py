@@ -15,11 +15,10 @@ from prisma.types import (
     ChatSessionWhereInput,
 )
 
-from backend.copilot.model import invalidate_session_cache
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSession, ChatSessionInfo
+from .model import ChatMessage, ChatSession, ChatSessionInfo, invalidate_session_cache
 
 logger = logging.getLogger(__name__)
 

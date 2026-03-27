@@ -26,11 +26,11 @@ import orjson
 from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
+from backend.data.db_accessors import chat_db
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
 )
-from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 
 from .config import ChatConfig
@@ -827,8 +827,7 @@ async def mark_session_completed(
                 duration_ms = max(0, int(elapsed.total_seconds() * 1000))
             except (ValueError, TypeError):
                 logger.warning(
-                    "Failed to compute session duration for %s "
-                    "(created_at=%r)",
+                    "Failed to compute session duration for %s (created_at=%r)",
                     session_id,
                     created_at_raw,
                 )
