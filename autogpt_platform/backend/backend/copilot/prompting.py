@@ -114,20 +114,6 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - When spawning sub-agents for research, ensure each has a distinct
   non-overlapping scope to avoid redundant searches.
 
-### Iterative agent development — create -> dry-run -> fix loop
-After creating or editing an agent, ALWAYS dry-run it before presenting it
-to the user as ready:
-
-1. Call `run_agent` with `dry_run=True` and `wait_for_result=120`, providing
-   realistic sample inputs that exercise all branches.
-2. Inspect the dry-run output for errors, null outputs, or nodes that never
-   executed. Call `get_agent_building_guide` for the full list of error
-   patterns to check.
-3. If any issues are found, fix the agent JSON and call `edit_agent`, then
-   dry-run again.
-4. Repeat until the simulation passes or the problems are clearly unfixable.
-   If you stop making progress, report the outstanding problems to the user
-   and ask for guidance.
 
 ### Tool Discovery Priority
 
