@@ -6,7 +6,7 @@ Validates the fix for the Anthropic API error:
     original response."
 
 The API requires that thinking blocks in the LAST assistant message are
-preserved byte-for-byte. Older assistant messages may have thinking blocks
+preserved value-identical. Older assistant messages may have thinking blocks
 stripped entirely. This test suite covers:
 
   1. _flatten_assistant_content — strips thinking from older messages
@@ -461,7 +461,7 @@ class TestCompactTranscriptThinkingBlocks:
         ), "redacted_thinking block missing from last assistant message"
         assert "text" in block_types
 
-        # Verify the thinking block content is byte-for-byte identical
+        # Verify the thinking block content is value-identical
         thinking_blocks = [b for b in last_content if b["type"] == "thinking"]
         assert len(thinking_blocks) == 1
         assert thinking_blocks[0]["thinking"] == THINKING_BLOCK["thinking"]
@@ -532,10 +532,10 @@ class TestCompactTranscriptThinkingBlocks:
             ]
         )
 
+        # The compressor only receives the prefix (1 user message); the
+        # tail (assistant + trailing user) is preserved verbatim.
         compacted_msgs = [
-            {"role": "user", "content": "[summary]"},
-            {"role": "assistant", "content": "Hi there"},
-            {"role": "user", "content": "Follow-up question"},
+            {"role": "user", "content": "Hello"},
         ]
         mock_result = type(
             "CompressResult",
@@ -545,7 +545,7 @@ class TestCompactTranscriptThinkingBlocks:
                 "messages": compacted_msgs,
                 "original_token_count": 400,
                 "token_count": 100,
-                "messages_summarized": 1,
+                "messages_summarized": 0,
                 "messages_dropped": 0,
             },
         )()
