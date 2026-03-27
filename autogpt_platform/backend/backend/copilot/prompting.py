@@ -123,9 +123,9 @@ When the user asks to interact with a service or API, follow this order:
 
 2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
 
-3. **Authenticated web request** — If no block or MCP server exists, check if we have existing credentials (OAuth tokens, API keys) for the service via `connect_integration`, then use authenticated HTTP requests.
+3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
 
-4. **Manual API call** — As a last resort, guide the user to set up credentials and use direct API calls.
+4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
 
 **Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
 
