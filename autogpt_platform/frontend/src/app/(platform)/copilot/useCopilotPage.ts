@@ -57,6 +57,8 @@ export function useCopilotPage() {
     isReconnecting,
     isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
@@ -378,5 +380,8 @@ export function useCopilotPage() {
     handleCancelDelete,
     // Historical durations for persisted timer stats
     historicalDurations,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }

@@ -1,5 +1,7 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
+import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 export function formatResetTime(
   resetsAt: Date | string,
@@ -70,15 +72,50 @@ function UsageBar({
   );
 }
 
+function ResetButton({
+  cost,
+  onCreditChange,
+}: {
+  cost: number;
+  onCreditChange?: () => void;
+}) {
+  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
+
+  return (
+    <Button
+      variant="primary"
+      size="small"
+      onClick={() => resetUsage()}
+      loading={isPending}
+      className="mt-1 w-full text-[11px]"
+    >
+      {isPending
+        ? "Resetting..."
+        : `Reset daily limit for $${(cost / 100).toFixed(2)}`}
+    </Button>
+  );
+}
+
 export function UsagePanelContent({
   usage,
   showBillingLink = true,
+  hasInsufficientCredits = false,
+  isBillingEnabled = false,
+  onCreditChange,
 }: {
   usage: CoPilotUsageStatus;
   showBillingLink?: boolean;
+  hasInsufficientCredits?: boolean;
+  isBillingEnabled?: boolean;
+  onCreditChange?: () => void;
 }) {
   const hasDailyLimit = usage.daily.limit > 0;
   const hasWeeklyLimit = usage.weekly.limit > 0;
+  const isDailyExhausted =
+    hasDailyLimit && usage.daily.used >= usage.daily.limit;
+  const isWeeklyExhausted =
+    hasWeeklyLimit && usage.weekly.used >= usage.weekly.limit;
+  const resetCost = usage.reset_cost ?? 0;
 
   if (!hasDailyLimit && !hasWeeklyLimit) {
     return (
@@ -105,6 +142,23 @@ export function UsagePanelContent({
           resetsAt={usage.weekly.resets_at}
         />
       )}
+      {isDailyExhausted &&
+        !isWeeklyExhausted &&
+        resetCost > 0 &&
+        !hasInsufficientCredits && (
+          <ResetButton cost={resetCost} onCreditChange={onCreditChange} />
+        )}
+      {isDailyExhausted &&
+        !isWeeklyExhausted &&
+        hasInsufficientCredits &&
+        isBillingEnabled && (
+          <Link
+            href="/profile/credits"
+            className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Add credits to reset
+          </Link>
+        )}
       {showBillingLink && (
         <Link
           href="/profile/credits"
