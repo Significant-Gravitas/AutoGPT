@@ -59,7 +59,12 @@ async def update_chat_session(
     total_completion_tokens: int | None = None,
     title: str | None = None,
 ) -> ChatSession | None:
-    """Update a chat session's metadata."""
+    """Update a chat session's mutable fields.
+
+    Note: ``metadata`` (which includes ``dry_run``) is intentionally omitted —
+    it is set once at creation time and treated as immutable for the lifetime
+    of the session.
+    """
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
 
     if credentials is not None:

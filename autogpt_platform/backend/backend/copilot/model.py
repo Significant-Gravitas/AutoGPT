@@ -119,7 +119,7 @@ class ChatSessionInfo(BaseModel):
 
         # Parse typed metadata from the JSON column.
         raw_metadata = _parse_json_field(prisma_session.metadata, default={})
-        metadata = ChatSessionMetadata.model_validate(raw_metadata or {})
+        metadata = ChatSessionMetadata.model_validate(raw_metadata)
 
         # Calculate usage from token counts.
         # NOTE: Per-turn cache_read_tokens / cache_creation_tokens breakdown
