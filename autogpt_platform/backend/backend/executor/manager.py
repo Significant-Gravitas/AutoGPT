@@ -109,6 +109,9 @@ _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
 
+# Maximum agent-mode iterations allowed during dry-run to prevent unbounded loops.
+_DRY_RUN_MAX_ITERATIONS = 5
+
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
 )
@@ -291,7 +294,6 @@ async def execute_node(
             if default_value is not None and not input_data.get(field_name):
                 input_data[field_name] = default_value
 
-        _DRY_RUN_MAX_ITERATIONS = 5
         current = input_data.get("agent_mode_max_iterations")
         if current is None or current < 0 or current > _DRY_RUN_MAX_ITERATIONS:
             log_metadata.info(
