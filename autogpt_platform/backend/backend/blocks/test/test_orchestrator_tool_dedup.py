@@ -405,7 +405,7 @@ async def test_suffix_collision_with_user_named_tool():
 
 def test_disambiguate_skips_malformed_tools():
     """Malformed tools (missing function/name) should not crash disambiguation."""
-    tools: list[dict] = [
+    tools: list = [
         {"function": {"name": "good_tool", "description": "A tool"}},
         {"function": {"name": "good_tool", "description": "Another tool"}},
         # Missing 'function' key entirely
@@ -413,6 +413,7 @@ def test_disambiguate_skips_malformed_tools():
         # 'function' present but missing 'name'
         {"function": {"description": "no name"}},
         # Not even a dict
+        "not_a_dict",
     ]
     # Should not raise
     _disambiguate_tool_names(tools)
