@@ -103,7 +103,7 @@ export async function AdminUserGrantHistory({
             {history.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="py-10 text-center text-gray-500"
                 >
                   No transactions found
@@ -112,7 +112,7 @@ export async function AdminUserGrantHistory({
             ) : (
               history.map((transaction) => (
                 <TableRow
-                  key={transaction.user_id}
+                  key={`${transaction.user_id}-${transaction.transaction_time}`}
                   className="hover:bg-gray-50"
                 >
                   <TableCell className="font-medium">

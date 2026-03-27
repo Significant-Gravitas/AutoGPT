@@ -59,7 +59,7 @@ export function RateLimitModal({
     }
 
     fetchRateLimit();
-  }, [open, userId]);
+  }, [open, userId, toast]);
 
   async function handleReset(resetWeekly: boolean) {
     if (!rateLimitData) return;

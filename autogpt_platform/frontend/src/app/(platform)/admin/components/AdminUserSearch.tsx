@@ -51,6 +51,7 @@ export function AdminUserSearch({
     <div className="flex w-full items-center gap-2">
       <Input
         placeholder={placeholder}
+        aria-label={placeholder}
         value={currentValue}
         onChange={(e) => handleChange(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && handleSearch()}

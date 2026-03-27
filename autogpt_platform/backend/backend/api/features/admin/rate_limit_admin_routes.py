@@ -47,7 +47,7 @@ async def _resolve_user_id(
         user = await get_user_by_email(email)
         if not user:
             raise HTTPException(
-                status_code=404, detail=f"No user found with email: {email}"
+                status_code=404, detail="No user found with the provided email."
             )
         return user.id, email
 
@@ -84,7 +84,7 @@ async def get_user_rate_limit(
     """
     resolved_id, resolved_email = await _resolve_user_id(user_id, email)
 
-    logger.info(f"Admin {admin_user_id} checking rate limit for user {resolved_id}")
+    logger.info("Admin %s checking rate limit for user %s", admin_user_id, resolved_id)
 
     daily_limit, weekly_limit = await get_global_rate_limits(
         resolved_id, config.daily_token_limit, config.weekly_token_limit
@@ -113,8 +113,10 @@ async def reset_user_rate_limit(
 ) -> UserRateLimitResponse:
     """Reset a user's daily usage counter (and optionally weekly). Admin-only."""
     logger.info(
-        f"Admin {admin_user_id} resetting rate limit for user {user_id} "
-        f"(reset_weekly={reset_weekly})"
+        "Admin %s resetting rate limit for user %s (reset_weekly=%s)",
+        admin_user_id,
+        user_id,
+        reset_weekly,
     )
 
     try:

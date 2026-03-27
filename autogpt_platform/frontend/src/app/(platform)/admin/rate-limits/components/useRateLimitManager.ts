@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
-import type { UserTransaction } from "@/app/api/__generated__/models/userTransaction";
 import {
   getV2GetUserRateLimit,
   getV2GetAllUsersHistory,
@@ -98,7 +97,7 @@ export function useRateLimitManager() {
       // Deduplicate by user_id to get unique users
       const seen = new Set<string>();
       const users: UserOption[] = [];
-      for (const tx of response.data.history as UserTransaction[]) {
+      for (const tx of response.data.history) {
         if (!seen.has(tx.user_id)) {
           seen.add(tx.user_id);
           users.push({
