@@ -81,7 +81,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
-from .simulator import can_simulate, simulate_block
+from .simulator import prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -108,9 +108,6 @@ if TYPE_CHECKING:
 _logger = logging.getLogger(__name__)
 logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
-
-# Maximum agent-mode iterations allowed during dry-run to prevent unbounded loops.
-_DRY_RUN_MAX_ITERATIONS = 5
 
 active_runs_gauge = Gauge(
     "execution_manager_active_runs", "Number of active graph runs"
@@ -282,25 +279,22 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
-    # For passthrough blocks in dry-run (OrchestratorBlock, AgentExecutorBlock),
-    # restore credential fields from node defaults so they can acquire credentials,
-    # and cap agent-mode iterations to prevent unbounded loops.
-    _dry_run_passthrough = execution_context.dry_run and not can_simulate(node_block)
-    if _dry_run_passthrough:
+    # For OrchestratorBlock in dry-run, prepare_dry_run returns a modified
+    # input_data with a cheap model so the block executes for real.
+    # For all other blocks it returns None -> use LLM simulator.
+    _dry_run_input: dict[str, Any] | None = None
+    if execution_context.dry_run:
+        _dry_run_input = prepare_dry_run(node_block, input_data)
+    if _dry_run_input is not None:
+        input_data = _dry_run_input
+        # Restore credential fields from node defaults so the block can
+        # acquire credentials during dry-run.
         for field_name in cast(
             type[BlockSchema], node_block.input_schema
         ).get_credentials_fields():
             default_value = node.input_default.get(field_name)
             if default_value is not None and not input_data.get(field_name):
                 input_data[field_name] = default_value
-
-        current = input_data.get("agent_mode_max_iterations")
-        if current is None or current < 0 or current > _DRY_RUN_MAX_ITERATIONS:
-            log_metadata.info(
-                f"Dry-run: capping agent_mode_max_iterations from {current} "
-                f"to {_DRY_RUN_MAX_ITERATIONS}"
-            )
-            input_data["agent_mode_max_iterations"] = _DRY_RUN_MAX_ITERATIONS
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
@@ -398,7 +392,7 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        if execution_context.dry_run and not _dry_run_passthrough:
+        if execution_context.dry_run and _dry_run_input is None:
             block_iter = simulate_block(node_block, input_data)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
