@@ -95,6 +95,26 @@ class TestResolveDiscriminatedCredentials:
         assert ProviderName.HTTP in field_info.provider
         assert "host_scoped" in field_info.supported_types
 
+    def test_provider_discriminator_still_works(self):
+        """Verify provider-based discrimination (e.g. model -> provider) is preserved.
+
+        The refactored conditional in _resolve_discriminated_credentials split the
+        original single ``if`` into nested ``if/else`` branches. This test ensures
+        the provider-based path still narrows the provider correctly.
+        """
+        from backend.blocks.llm import AITextGeneratorBlock
+
+        block = AITextGeneratorBlock()
+        input_data = {"model": "gpt-4o-mini"}
+
+        result = _resolve_discriminated_credentials(block, input_data)
+
+        assert "credentials" in result
+        field_info = result["credentials"]
+        # Should narrow provider to openai
+        assert ProviderName.OPENAI in field_info.provider
+        assert "gpt-4o-mini" in field_info.discriminator_values
+
 
 # ---------------------------------------------------------------------------
 # find_matching_credential tests (host-scoped)
