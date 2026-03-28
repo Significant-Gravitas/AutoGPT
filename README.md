@@ -2,6 +2,7 @@
 
 [![Discord Follow](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2Fautogpt%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&label=total%20members&logo=discord&logoColor=white&color=7289da)](https://discord.gg/autogpt) &ensp;
 [![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
+[![gitcgr](https://gitcgr.com/badge/Significant-Gravitas/AutoGPT.svg)](https://gitcgr.com/Significant-Gravitas/AutoGPT)
 
 <!-- Keep these links. Translations will automatically update with the README. -->
 [Deutsch](https://zdoc.app/de/Significant-Gravitas/AutoGPT) | 
