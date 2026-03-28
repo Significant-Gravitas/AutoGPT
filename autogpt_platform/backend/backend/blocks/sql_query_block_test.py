@@ -1080,7 +1080,9 @@ class TestMaxRowsEnforcement:
         block = SQLQueryBlock()
         creds = _make_credentials()
         max_rows = 5
-        input_data = _make_input(creds, query="SELECT * FROM big_table", max_rows=max_rows)
+        input_data = _make_input(
+            creds, query="SELECT * FROM big_table", max_rows=max_rows
+        )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         # Simulate the database returning exactly max_rows rows (truncated)
         mock_rows = [{"id": i} for i in range(max_rows)]
@@ -1106,7 +1108,9 @@ class TestPasswordInErrorMessages:
     def test_url_embedded_password_scrubbed(self):
         """://user:pass@ in error text must be replaced."""
         conn = "postgresql://admin:hunter2@test.invalid:5432/db"
-        error = "could not connect: postgresql://admin:hunter2@test.invalid:5432/db refused"
+        error = (
+            "could not connect: postgresql://admin:hunter2@test.invalid:5432/db refused"
+        )
         result = _sanitize_error(error, conn)
         assert "hunter2" not in result
 
