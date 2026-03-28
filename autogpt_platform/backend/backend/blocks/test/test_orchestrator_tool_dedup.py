@@ -1107,3 +1107,4 @@ def test_disambiguate_preserves_non_duplicate_hardcoded_defaults_cleanup():
 
     assert tools[0]["function"]["name"] == "unique_a"
     assert tools[1]["function"]["name"] == "unique_b"
+
