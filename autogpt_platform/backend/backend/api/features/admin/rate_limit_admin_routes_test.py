@@ -324,6 +324,24 @@ def test_set_user_tier_invalid_tier(
     assert response.status_code == 422
 
 
+def test_set_user_tier_invalid_tier_uppercase(
+    target_user_id: str,
+) -> None:
+    """Test that setting an unrecognised uppercase tier (e.g. 'INVALID') returns 422.
+
+    Regression: ensures Pydantic enum validation rejects values that are not
+    members of SubscriptionTier, even when they look like valid enum names.
+    """
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "INVALID"},
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "detail" in body
+
+
 def test_set_user_tier_user_not_found(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
