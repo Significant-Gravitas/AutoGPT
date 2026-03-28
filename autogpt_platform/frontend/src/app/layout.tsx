@@ -53,7 +53,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen">
+      <body className="h-screen overflow-hidden">
         <ErrorBoundary context="application">
           <Providers
             attribute="class"
@@ -62,7 +62,7 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
-            <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
+            <div className="flex h-full flex-col items-stretch justify-items-stretch">
               {children}
               {/* TallyPopupSimple removed — feedback button is now in the Navbar */}
               <VercelAnalyticsWrapper />

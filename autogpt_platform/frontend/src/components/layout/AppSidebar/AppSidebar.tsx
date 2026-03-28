@@ -51,7 +51,7 @@ export function AppSidebar({ dynamicContent }: Props) {
       ? { name: "Copilot", href: "/copilot", icon: Sparkle }
       : { name: "Library", href: "/library", icon: TreeStructure },
     ...(isChatEnabled === true
-      ? [{ name: "Workflow", href: "/library", icon: TreeStructure }]
+      ? [{ name: "Workflows", href: "/library", icon: TreeStructure }]
       : []),
     { name: "Explore", href: "/marketplace", icon: Compass },
     { name: "Builder", href: "/build", icon: Wrench },
@@ -80,11 +80,11 @@ export function AppSidebar({ dynamicContent }: Props) {
             isCollapsed ? "justify-center" : "justify-between",
           )}
         >
-          <Link href={homeHref}>
-            <IconAutoGPTLogo
-              className={cn(isCollapsed ? "h-8 w-8" : "h-8 w-24")}
-            />
-          </Link>
+          {!isCollapsed && (
+            <Link href={homeHref}>
+              <IconAutoGPTLogo className="h-8 w-24" />
+            </Link>
+          )}
           {!isCollapsed && (
             <div className="flex items-center gap-1">
               <Tooltip>

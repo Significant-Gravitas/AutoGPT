@@ -12,11 +12,11 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar dynamicContent={<SidebarDynamicContent />} />
-      <main className="flex h-screen w-full flex-col">
+      <main className="flex h-screen w-full flex-col overflow-hidden">
         <NetworkStatusMonitor />
         <Navbar />
         <AdminImpersonationBanner />
-        <section className="flex-1 overflow-auto">{children}</section>
+        <section className="flex-1 overflow-y-auto">{children}</section>
       </main>
     </SidebarProvider>
   );
