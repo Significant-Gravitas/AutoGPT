@@ -95,6 +95,35 @@ These define the agent's interface — what it accepts and what it produces.
 Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
 
+### Execution Model — CRITICAL
+
+Understanding how nodes execute is essential for building correct agents:
+
+1. **A node executes only when ALL linked input pins have received data.**
+   If a pin has a link connected to it, that pin becomes mandatory — even
+   if the pin is marked "optional" in the block schema. The node will wait
+   indefinitely until every linked pin has data.
+
+2. **Each input is consumed once.** When a node executes, it consumes the
+   data on its input pins. The data is gone — it cannot be re-read by
+   the same node in a subsequent execution. This means a node in a loop
+   needs fresh input data on every iteration.
+
+3. **Static links (`is_static: true`) reuse the latest value.** Unlike
+   normal links, static links do NOT consume the data. They fetch the
+   most recent value each time the node executes. Use static links for:
+   - Design-time constants (e.g. a prompt template, API URL)
+   - Values that should persist across loop iterations
+   - Config that doesn't change between executions
+
+4. **Self-loops are forbidden.** A link where `source_id == sink_id`
+   creates a circular dependency — the node waits for its own output
+   before it can execute, which never happens. Always verify:
+   `link.source_id != link.sink_id` for every link.
+
+5. **Downstream nodes are skipped** if an upstream node fails or never
+   executes. Data only flows forward through successfully completed nodes.
+
 ### Key Rules
 
 - **Name & description**: Include `name` and `description` in the agent JSON
@@ -110,6 +139,7 @@ inputs or see outputs. NEVER skip them.
   sink_name/source_name to access nested object fields.
 - **is_static links**: Set `is_static: true` when the link carries a
   design-time constant (matches a field in inputSchema with a default).
+  Normal links consume data on read; static links reuse the latest value.
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
 - **Prompt templates**: Use `{{variable}}` (double curly braces) for
   literal braces in prompt strings — single `{` and `}` are for
