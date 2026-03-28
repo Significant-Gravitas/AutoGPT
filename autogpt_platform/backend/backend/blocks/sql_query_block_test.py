@@ -185,7 +185,7 @@ class TestSanitizeError:
 
     def test_url_credentials_scrubbed(self):
         conn = "postgresql://user:secret@host:5432/db"
-        error = "connection to postgresql://admin:hunter2@db.internal:5432/prod failed"
+        error = "connection to postgresql://admin:hunter2@db.test.invalid:5432/testprod failed"
         result = _sanitize_error(error, conn)
         assert "hunter2" not in result
         assert "***:***@" in result
@@ -205,16 +205,16 @@ class TestSanitizeError:
 
     def test_hostname_scrubbed(self):
         """Database hostname must be replaced with <host>."""
-        conn = "postgresql://user:pass@52.73.47.72:5432/db"
+        conn = "postgresql://user:pass@198.51.100.1:5432/db"
         error = (
-            'connection to server at "db.adfjtextkuilwuhzdjpf.supabase.co" '
-            "(52.73.47.72), port 5432 failed: FATAL: "
+            'connection to server at "db.example.supabase.invalid" '
+            "(198.51.100.1), port 5432 failed: FATAL: "
             'password authentication failed for user "postgres"'
         )
         result = _sanitize_error(
-            error, conn, host="52.73.47.72", username="postgres", port=5432
+            error, conn, host="198.51.100.1", username="postgres", port=5432
         )
-        assert "52.73.47.72" not in result
+        assert "198.51.100.1" not in result
         assert "postgres" not in result
         assert "5432" not in result
         assert "<host>" in result
@@ -232,7 +232,7 @@ class TestSanitizeError:
 
     def test_username_scrubbed(self):
         """Database username must be replaced with <user>."""
-        conn = "postgresql://analytics_ro:pass@1.2.3.4:5432/db"
+        conn = "postgresql://testuser:fakepw@198.51.100.1:5432/testdb"
         error = 'FATAL: role "analytics_ro" does not exist'
         result = _sanitize_error(error, conn, username="analytics_ro")
         assert "analytics_ro" not in result
@@ -272,22 +272,22 @@ class TestSanitizeError:
 
     def test_realistic_postgres_error_fully_sanitized(self):
         """Full realistic Postgres connection error must not leak any infra details."""
-        conn = "postgresql://postgres:mypass@52.73.47.72:5432/postgres"
+        conn = "postgresql://testuser:fakepw@198.51.100.1:5432/testdb"
         error = (
             "(psycopg2.OperationalError) connection to server at "
-            '"db.adfjtextkuilwuhzdjpf.supabase.co" (52.73.47.72), '
+            '"db.example.supabase.invalid" (198.51.100.1), '
             "port 5432 failed: FATAL: "
             'password authentication failed for user "postgres"'
         )
         result = _sanitize_error(
             error,
             conn,
-            host="52.73.47.72",
-            original_host="db.adfjtextkuilwuhzdjpf.supabase.co",
+            host="198.51.100.1",
+            original_host="db.example.supabase.invalid",
             username="postgres",
             port=5432,
         )
-        assert "52.73.47.72" not in result
+        assert "198.51.100.1" not in result
         assert "adfjtextkuilwuhzdjpf" not in result
         assert "supabase" not in result
         assert "postgres" not in result
@@ -477,12 +477,12 @@ class TestSQLQueryBlockRunErrorHandling:
         block = SQLQueryBlock()
         creds = _make_credentials(username="postgres", password="secret")
         input_data = _make_input(
-            creds, host="db.prod.supabase.co", port=5432, database="mydb"
+            creds, host="db.test.supabase.invalid", port=5432, database="mydb"
         )
-        block.check_host_allowed = AsyncMock(return_value=["52.73.47.72"])  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["198.51.100.1"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
             OperationalError(
-                'connection to server at "db.prod.supabase.co" (52.73.47.72), '
+                'connection to server at "db.test.supabase.invalid" (198.51.100.1), '
                 "port 5432 failed: FATAL: "
                 'password authentication failed for user "postgres"',
                 params=None,
@@ -492,8 +492,8 @@ class TestSQLQueryBlockRunErrorHandling:
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         error = outputs["error"]
-        assert "db.prod.supabase.co" not in error
-        assert "52.73.47.72" not in error
+        assert "db.test.supabase.invalid" not in error
+        assert "198.51.100.1" not in error
         assert '"postgres"' not in error
         assert "password authentication failed" in error
 
@@ -1105,8 +1105,8 @@ class TestPasswordInErrorMessages:
 
     def test_url_embedded_password_scrubbed(self):
         """://user:pass@ in error text must be replaced."""
-        conn = "postgresql://admin:hunter2@host:5432/db"
-        error = "could not connect: postgresql://admin:hunter2@host:5432/db refused"
+        conn = "postgresql://admin:hunter2@test.invalid:5432/db"
+        error = "could not connect: postgresql://admin:hunter2@test.invalid:5432/db refused"
         result = _sanitize_error(error, conn)
         assert "hunter2" not in result
 
@@ -1129,14 +1129,14 @@ class TestPasswordInErrorMessages:
 
     def test_multiple_password_formats_scrubbed(self):
         """Error containing password in multiple formats must be fully scrubbed."""
-        conn = "postgresql://admin:s3cret@prod.db:5432/analytics"
+        conn = "postgresql://testadmin:fakepw@test.example.invalid:5432/testdb"
         error = (
-            "connection to postgresql://admin:s3cret@prod.db:5432/analytics failed: "
-            "password=s3cret authentication failed for user 'admin'"
+            "connection to postgresql://testadmin:fakepw@test.example.invalid:5432/testdb failed: "
+            "password=fakepw authentication failed for user 'testadmin'"
         )
         result = _sanitize_error(
-            error, conn, host="prod.db", username="admin", port=5432
+            error, conn, host="test.example.invalid", username="testadmin", port=5432
         )
-        assert "s3cret" not in result
-        assert "admin" not in result
-        assert "prod.db" not in result
+        assert "fakepw" not in result
+        assert "testadmin" not in result
+        assert "test.example.invalid" not in result
