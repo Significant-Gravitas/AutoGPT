@@ -58,8 +58,8 @@ class ExecutionMode(str, Enum):
     BUILT_IN = "built_in"
     """Default built-in tool-call loop (supports all LLM providers)."""
 
-    EXTENDED_THINKING = "extended_thinking"
-    """Use extended thinking via Claude Agent SDK.
+    CLAUDE_CODE_SDK = "claude_code_sdk"
+    """Delegate tool orchestration to the Claude Code SDK.
     Only supports Anthropic-compatible providers (anthropic / open_router)."""
 
 
@@ -363,7 +363,7 @@ class OrchestratorBlock(Block):
             default=ExecutionMode.BUILT_IN,
             description="How tool calls are executed. "
             "'built_in' uses the default tool-call loop (all providers). "
-            "'extended_thinking' delegates to the Claude Agent SDK "
+            "'claude_code_sdk' delegates to the Claude Code SDK "
             "(Anthropic / OpenRouter only, requires API credentials, "
             "ignores 'Agent Mode Max Iterations').",
             advanced=True,
@@ -1751,8 +1751,8 @@ class OrchestratorBlock(Block):
             )
 
         # Execute tools based on the selected mode
-        if input_data.execution_mode == ExecutionMode.EXTENDED_THINKING:
-            # Validate — extended thinking only works with Claude models
+        if input_data.execution_mode == ExecutionMode.CLAUDE_CODE_SDK:
+            # Validate — Claude Code SDK only works with Claude models
             provider = input_data.model.metadata.provider
             model_name = input_data.model.value
             # All Claude models have metadata.provider == "anthropic", but
@@ -1760,8 +1760,8 @@ class OrchestratorBlock(Block):
             # use a different metadata provider for the same Anthropic API.
             if provider not in ("anthropic", "open_router"):
                 raise ValueError(
-                    f"Extended thinking requires an Anthropic-compatible provider "
-                    f"(got provider={provider}). "
+                    f"Claude Code SDK mode requires an Anthropic-compatible "
+                    f"provider (got provider={provider}). "
                     "Please select an Anthropic or OpenRouter provider, "
                     "or switch execution mode to 'built_in'."
                 )
@@ -1770,12 +1770,12 @@ class OrchestratorBlock(Block):
             # "anthropic" metadata provider (if any are added in the future).
             if not model_name.startswith("claude"):
                 raise ValueError(
-                    f"Extended thinking only supports Claude models "
+                    f"Claude Code SDK mode only supports Claude models "
                     f"(got model={model_name}). "
                     "Please select a Claude model, "
                     "or switch execution mode to 'built_in'."
                 )
-            # Extended thinking: Claude Agent SDK manages conversation + tool calling
+            # Claude Code SDK: SDK manages conversation + tool calling
             execution_params = ExecutionParams(
                 user_id=user_id,
                 graph_id=graph_id,
