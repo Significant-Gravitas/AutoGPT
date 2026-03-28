@@ -28,6 +28,7 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
+from backend.util.security import SENSITIVE_FIELD_NAMES
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
@@ -256,6 +257,71 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
             pending_calls[call_id] -= 1
 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
+
+
+def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
+    """Ensure all tool names are unique (Anthropic API requires this).
+
+    When multiple nodes use the same block type, they get the same tool name.
+    This appends _1, _2, etc. and enriches descriptions with hardcoded defaults
+    so the LLM can distinguish them. Mutates the list in place.
+
+    Malformed tools (missing ``function`` or ``function.name``) are silently
+    skipped so the caller never crashes on unexpected input.
+    """
+    # Collect names, skipping tools that lack the required structure.
+    valid_tools: list[tuple[int, dict[str, Any]]] = []
+    for idx, tool in enumerate(tools):
+        func = tool.get("function") if isinstance(tool, dict) else None
+        if not isinstance(func, dict) or not isinstance(func.get("name"), str):
+            # Strip internal metadata even from malformed entries.
+            if isinstance(func, dict):
+                func.pop("_hardcoded_defaults", None)
+            continue
+        valid_tools.append((idx, tool))
+
+    names = [t.get("function", {}).get("name", "") for _i, t in valid_tools]
+    name_counts = Counter(names)
+    duplicates = {n for n, c in name_counts.items() if c > 1}
+
+    if not duplicates:
+        for _i, t in valid_tools:
+            t.get("function", {}).pop("_hardcoded_defaults", None)
+        return
+
+    taken: set[str] = set(names)
+    counters: dict[str, int] = {}
+
+    for _i, tool in valid_tools:
+        func = tool.get("function", {})
+        name = func.get("name", "")
+        defaults = func.pop("_hardcoded_defaults", {})
+
+        if name not in duplicates:
+            continue
+
+        counters[name] = counters.get(name, 0) + 1
+        # Skip suffixes that collide with existing (e.g. user-named) tools
+        while True:
+            suffix = f"_{counters[name]}"
+            candidate = f"{name[: 64 - len(suffix)]}{suffix}"
+            if candidate not in taken:
+                break
+            counters[name] += 1
+
+        func["name"] = candidate
+        taken.add(candidate)
+
+        if defaults and isinstance(defaults, dict):
+            parts: list[str] = []
+            for k, v in defaults.items():
+                rendered = json.dumps(v)
+                if len(rendered) > 100:
+                    rendered = rendered[:80] + "...<truncated>"
+                parts.append(f"{k}={rendered}")
+            summary = ", ".join(parts)
+            original_desc = func.get("description", "") or ""
+            func["description"] = f"{original_desc} [Pre-configured: {summary}]"
 
 
 class OrchestratorBlock(Block):
@@ -507,6 +573,23 @@ class OrchestratorBlock(Block):
         tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
+        # Store hardcoded defaults (non-linked inputs) for disambiguation.
+        # Exclude linked fields, private fields, and credential/auth fields
+        # to avoid leaking sensitive data into tool descriptions.
+        linked_fields = {link.sink_name for link in links}
+        defaults = sink_node.input_default
+        tool_function["_hardcoded_defaults"] = (
+            {
+                k: v
+                for k, v in defaults.items()
+                if k not in linked_fields
+                and not k.startswith("_")
+                and k.lower() not in SENSITIVE_FIELD_NAMES
+            }
+            if isinstance(defaults, dict)
+            else {}
+        )
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
@@ -581,6 +664,24 @@ class OrchestratorBlock(Block):
         tool_function["_field_mapping"] = field_mapping
         tool_function["_sink_node_id"] = sink_node.id
 
+        # Store hardcoded defaults (non-linked inputs) for disambiguation.
+        # Exclude linked fields, private fields, agent meta fields, and
+        # credential/auth fields to avoid leaking sensitive data.
+        linked_fields = {link.sink_name for link in links}
+        defaults = sink_node.input_default
+        tool_function["_hardcoded_defaults"] = (
+            {
+                k: v
+                for k, v in defaults.items()
+                if k not in linked_fields
+                and k not in ("graph_id", "graph_version", "input_schema")
+                and not k.startswith("_")
+                and k.lower() not in SENSITIVE_FIELD_NAMES
+            }
+            if isinstance(defaults, dict)
+            else {}
+        )
+
         return {"type": "function", "function": tool_function}
 
     @staticmethod
@@ -629,6 +730,7 @@ class OrchestratorBlock(Block):
                 )
                 return_tool_functions.append(tool_func)
 
+        _disambiguate_tool_names(return_tool_functions)
         return return_tool_functions
 
     async def _attempt_llm_call_with_validation(
@@ -996,7 +1098,10 @@ class OrchestratorBlock(Block):
                     credentials, input_data, iteration_prompt, tool_functions
                 )
             except Exception as e:
-                yield "error", f"LLM call failed in agent mode iteration {iteration}: {str(e)}"
+                yield (
+                    "error",
+                    f"LLM call failed in agent mode iteration {iteration}: {str(e)}",
+                )
                 return
 
             # Process tool calls
@@ -1041,7 +1146,10 @@ class OrchestratorBlock(Block):
         if max_iterations < 0:
             yield "finished", f"Agent mode completed after {iteration} iterations"
         else:
-            yield "finished", f"Agent mode completed after {max_iterations} iterations (limit reached)"
+            yield (
+                "finished",
+                f"Agent mode completed after {max_iterations} iterations (limit reached)",
+            )
         yield "conversations", current_prompt
 
     async def run(
