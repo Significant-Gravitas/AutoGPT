@@ -773,9 +773,9 @@ async def test_unicode_in_block_names_and_defaults():
     import re
 
     for name in names:
-        assert re.fullmatch(r"[a-zA-Z0-9_-]+", name), (
-            f"Invalid chars in tool name: {name!r}"
-        )
+        assert re.fullmatch(
+            r"[a-zA-Z0-9_-]+", name
+        ), f"Invalid chars in tool name: {name!r}"
 
 
 def test_disambiguate_unicode_in_defaults_description():
@@ -1039,7 +1039,7 @@ async def test_cleanup_special_characters_in_tool_name():
     """Tool names with special characters should be sanitised by cleanup()."""
     # cleanup replaces non-alphanumeric (except _ and -) with _
     result = OrchestratorBlock.cleanup("My Tool! @#$% v2.0")
-    assert result == "my_tool______v2_0"
+    assert result == "my_tool_______v2_0"
     # Only [a-zA-Z0-9_-] should remain
     import re
 
