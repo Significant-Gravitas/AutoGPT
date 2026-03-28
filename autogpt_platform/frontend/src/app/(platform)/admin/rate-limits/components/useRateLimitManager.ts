@@ -5,6 +5,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
   getV2GetUserRateLimit,
+  getV2GetAllUsersHistory,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 
@@ -77,6 +78,9 @@ export function useRateLimitManager() {
   }
 
   /** Search users by partial name/email via the User table. */
+  /** Search users by partial name/email.
+   *  Tries the User-table endpoint first; falls back to credit-history search
+   *  when the endpoint is not yet deployed (e.g. preview environments). */
   async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -84,22 +88,43 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
+      // Primary: query User table directly (returns all matching users)
       const response = await fetch(
         `/api/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
       );
-      if (!response.ok) {
+
+      if (response.ok) {
+        const users: UserOption[] = await response.json();
+        if (users.length === 0) {
+          toast({ title: "No results", description: "No users found." });
+        }
+        setSearchResults(users);
+        return;
+      }
+
+      // Fallback: search credit transaction history (only finds users with transactions)
+      const fallback = await getV2GetAllUsersHistory({
+        search: trimmed,
+        page: 1,
+        page_size: 50,
+      });
+      if (fallback.status !== 200) {
         throw new Error("Failed to search users");
       }
-
-      const users: UserOption[] = await response.json();
-
-      if (users.length === 0) {
-        toast({
-          title: "No results",
-          description: "No users found matching your search.",
-        });
+      const seen = new Set<string>();
+      const users: UserOption[] = [];
+      for (const tx of fallback.data.history) {
+        if (!seen.has(tx.user_id)) {
+          seen.add(tx.user_id);
+          users.push({
+            user_id: tx.user_id,
+            user_email: String(tx.user_email ?? tx.user_id),
+          });
+        }
       }
-
+      if (users.length === 0) {
+        toast({ title: "No results", description: "No users found." });
+      }
       setSearchResults(users);
     } catch (error) {
       console.error("Error searching users:", error);
