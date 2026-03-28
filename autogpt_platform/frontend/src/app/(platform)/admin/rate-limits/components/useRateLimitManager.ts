@@ -181,14 +181,17 @@ export function useRateLimitManager() {
   async function handleTierChange(newTier: string) {
     if (!rateLimitData) return;
 
-    const response = await fetch("/api/proxy/api/copilot/admin/rate_limit/tier", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        user_id: rateLimitData.user_id,
-        tier: newTier,
-      }),
-    });
+    const response = await fetch(
+      "/api/proxy/api/copilot/admin/rate_limit/tier",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: rateLimitData.user_id,
+          tier: newTier,
+        }),
+      },
+    );
 
     if (!response.ok) {
       throw new Error("Failed to update tier");
