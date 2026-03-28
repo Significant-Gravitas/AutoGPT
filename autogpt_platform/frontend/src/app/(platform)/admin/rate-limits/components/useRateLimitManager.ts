@@ -86,7 +86,7 @@ export function useRateLimitManager() {
 
     try {
       const response = await fetch(
-        `/api/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
+        `/api/proxy/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
       );
       if (!response.ok) {
         throw new Error("Failed to search users");
@@ -181,7 +181,7 @@ export function useRateLimitManager() {
   async function handleTierChange(newTier: string) {
     if (!rateLimitData) return;
 
-    const response = await fetch("/api/copilot/admin/rate_limit/tier", {
+    const response = await fetch("/api/proxy/copilot/admin/rate_limit/tier", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
