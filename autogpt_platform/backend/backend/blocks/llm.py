@@ -104,6 +104,18 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
+
+    @classmethod
+    def _missing_(cls, value: object) -> "LlmModel | None":
+        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
+        if isinstance(value, str) and "/" in value:
+            stripped = value.split("/", 1)[1]
+            try:
+                return cls(stripped)
+            except ValueError:
+                return None
+        return None
+
     # OpenAI models
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"

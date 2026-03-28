@@ -15,6 +15,7 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -99,6 +100,11 @@ class SDKResponseAdapter:
                         responses.append(
                             StreamTextDelta(id=self.text_block_id, delta=block.text)
                         )
+
+                elif isinstance(block, ThinkingBlock):
+                    # Thinking blocks are preserved in the transcript but
+                    # not streamed to the frontend — skip silently.
+                    pass
 
                 elif isinstance(block, ToolUseBlock):
                     self._end_text_if_open(responses)
