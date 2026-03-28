@@ -1954,6 +1954,69 @@
         ]
       }
     },
+    "/api/copilot/admin/rate_limit/search_users": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Search Users by Name or Email",
+        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly \u2014 returns results even for users\nwithout credit transaction history.",
+        "operationId": "getV2Search users by name or email",
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Query"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserSearchResult"
+                  },
+                  "type": "array",
+                  "title": "Response Getv2Search Users By Name Or Email"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/copilot/admin/rate_limit/tier": {
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
@@ -8871,69 +8934,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/copilot/admin/rate_limit/search_users": {
-      "get": {
-        "tags": ["v2", "admin", "copilot", "admin"],
-        "summary": "Search Users by Name or Email",
-        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly \u2014 returns results even for users\nwithout credit transaction history.",
-        "operationId": "getV2Search users by name or email",
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "query",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Query"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "title": "Limit"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/UserSearchResult"
-                  },
-                  "type": "array",
-                  "title": "Response Getv2Search Users By Name Or Email"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
               }
             }
           }
@@ -20313,6 +20313,28 @@
         "title": "UserReadiness",
         "description": "User readiness status."
       },
+      "UserSearchResult": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "user_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Email"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserSearchResult"
+      },
       "UserTierResponse": {
         "properties": {
           "user_id": {
@@ -20618,28 +20640,6 @@
           "expires_in_hours"
         ],
         "title": "UploadFileResponse"
-      },
-      "UserSearchResult": {
-        "properties": {
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "user_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Email"
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "UserSearchResult"
       }
     },
     "securitySchemes": {
