@@ -20,6 +20,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.llm import LlmModel
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
@@ -294,6 +295,11 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
             "model": DRY_RUN_MODEL,
             "agent_mode_max_iterations": max_iters,
         }
+    if isinstance(block, AgentExecutorBlock):
+        # Let the AgentExecutorBlock execute for real so the sub-agent graph
+        # is triggered.  The sub-agent's blocks will be individually simulated
+        # because dry_run propagates via execution_context.
+        return {**input_data}
     return None
 
 
