@@ -510,6 +510,7 @@ async def test_list_library_agents_sort_by_last_executed(mocker):
     mock_library_agent.return_value.find_many = mocker.AsyncMock(
         return_value=mock_library_agents
     )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=4)
 
     # Call function with LAST_EXECUTED sort (without include_executions)
     result = await db.list_library_agents(
@@ -664,6 +665,7 @@ async def test_list_library_agents_last_executed_metrics_accuracy(mocker):
             [full_library_agent],
         ]
     )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
     result = await db.list_library_agents(
         "test-user",
@@ -735,6 +737,7 @@ async def test_list_library_agents_last_executed_null_updated_at(mocker):
     mock_library_agent.return_value.find_many = mocker.AsyncMock(
         return_value=[library_agent1]
     )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
     result = await db.list_library_agents(
         "test-user",
@@ -773,6 +776,7 @@ async def test_list_library_agents_last_executed_none_agent_graph(mocker):
     mock_library_agent.return_value.find_many = mocker.AsyncMock(
         return_value=[agent_no_graph]
     )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
     result = await db.list_library_agents(
         "test-user",
@@ -840,6 +844,7 @@ async def test_list_library_agents_last_executed_pagination(mocker):
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_library_agent.return_value.find_many = mocker.AsyncMock(return_value=agents)
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=3)
 
     result_page1 = await db.list_library_agents(
         "test-user",
