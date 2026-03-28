@@ -438,7 +438,7 @@ class TestFindMatchingUserPasswordCredential:
     def test_rejects_credential_for_wrong_provider(self):
         """A user/password credential for a different provider should not match."""
         cred = self._make_user_password_cred("smtp")
-        field_info = self._make_field_info(ProviderName.DATAFORSEO)
+        field_info = self._make_field_info(ProviderName.HUBSPOT)
 
         result = find_matching_credential([cred], field_info)
         assert result is None
@@ -459,12 +459,12 @@ class TestFindMatchingUserPasswordCredential:
     def test_selects_correct_credential_from_multiple(self):
         """When multiple user/password credentials exist, the correct one is selected."""
         cred_smtp = self._make_user_password_cred("smtp", "smtp-cred")
-        cred_dataseo = self._make_user_password_cred("dataforseo", "dataseo-cred")
-        field_info = self._make_field_info(ProviderName.DATAFORSEO)
+        cred_hubspot = self._make_user_password_cred("hubspot", "hubspot-cred")
+        field_info = self._make_field_info(ProviderName.HUBSPOT)
 
-        result = find_matching_credential([cred_smtp, cred_dataseo], field_info)
+        result = find_matching_credential([cred_smtp, cred_hubspot], field_info)
         assert result is not None
-        assert result.id == "dataseo-cred"
+        assert result.id == "hubspot-cred"
 
     def test_returns_none_when_no_credentials(self):
         """Should return None when the credential list is empty."""
