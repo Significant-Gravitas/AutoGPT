@@ -131,8 +131,8 @@ class ConnectIntegrationTool(BaseTool):
         """
         _ = user_id  # setup card is user-agnostic; auth is enforced via requires_auth
         session_id = session.session_id if session else None
-        provider = provider.strip().lower()
-        reason = reason.strip()[:500]  # cap LLM-controlled text
+        provider = (provider or "").strip().lower()
+        reason = (reason or "").strip()[:500]  # cap LLM-controlled text
         extra_scopes: list[str] = [
             str(s).strip() for s in (scopes or []) if str(s).strip()
         ]
