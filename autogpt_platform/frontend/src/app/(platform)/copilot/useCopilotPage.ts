@@ -11,10 +11,12 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
+import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useLoadMoreMessages } from "./useLoadMoreMessages";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
@@ -39,7 +41,10 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    rawSessionMessages,
     hasActiveStream,
+    hasMoreMessages,
+    oldestSequence,
     isLoadingSession,
     isSessionError,
     createSession,
@@ -48,7 +53,7 @@ export function useCopilotPage() {
   } = useChatSession();
 
   const {
-    messages,
+    messages: currentMessages,
     sendMessage,
     stop,
     status,
@@ -64,6 +69,19 @@ export function useCopilotPage() {
     hasActiveStream,
     refetchSession,
   });
+
+  const { olderMessages, hasMore, isLoadingMore, loadMore } =
+    useLoadMoreMessages({
+      sessionId,
+      initialOldestSequence: oldestSequence,
+      initialHasMore: hasMoreMessages,
+      initialPageRawMessages: rawSessionMessages,
+    });
+
+  // Combine older (paginated) messages with current page messages,
+  // merging consecutive assistant UIMessages at the page boundary so
+  // reasoning + response parts stay in a single bubble.
+  const messages = concatWithAssistantMerge(olderMessages, currentMessages);
 
   useCopilotNotifications(sessionId);
 
@@ -361,6 +379,10 @@ export function useCopilotPage() {
     isLoggedIn,
     createSession,
     onSend,
+    // Pagination
+    hasMoreMessages: hasMore,
+    isLoadingMore,
+    loadMore,
     // Mobile drawer
     isMobile,
     isDrawerOpen,
