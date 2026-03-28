@@ -1356,13 +1356,30 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces run_block and run_agent calls to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
         "security": [
           {
             "HTTPBearerJWT": []
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/CreateSessionRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1376,6 +1393,16 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -1992,10 +2019,10 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/UserSearchResult"
                   },
-                  "type": "array",
                   "title": "Response Getv2Search Users By Name Or Email"
                 }
               }
@@ -10980,6 +11007,18 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
+      "ChatSessionMetadata": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ChatSessionMetadata",
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns \u2014\nno migration required for new fields as long as a default is provided."
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
@@ -11184,6 +11223,18 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateSessionRequest": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Request model for creating a new chat session."
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": {
@@ -11204,6 +11255,12 @@
               }
             ],
             "title": "User Id"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": {
+              "dry_run": false
+            }
           }
         },
         "type": "object",
@@ -16799,6 +16856,12 @@
             "type": "integer",
             "title": "Total Completion Tokens",
             "default": 0
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": {
+              "dry_run": false
+            }
           }
         },
         "type": "object",
