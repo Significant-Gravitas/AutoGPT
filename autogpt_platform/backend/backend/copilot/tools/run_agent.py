@@ -153,7 +153,11 @@ class RunAgentTool(BaseTool):
                 },
                 "dry_run": {
                     "type": "boolean",
-                    "description": "Execute in preview mode.",
+                    "description": (
+                        "When true, simulates execution using an LLM for each block "
+                        "— no real API calls, credentials, or credits. "
+                        "See agent_generation_guide for the full workflow."
+                    ),
                 },
             },
             "required": ["dry_run"],

@@ -13,9 +13,12 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
+from backend.blocks.llm import LlmModel
+from backend.blocks.mcp.block import MCPToolBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -54,6 +57,9 @@ def _simulator_model() -> str:
 _TEMPERATURE = 0.2
 _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
+
+# Cheap model used when executing OrchestratorBlock during dry-run.
+DRY_RUN_MODEL = LlmModel.GPT4O_MINI
 
 
 def _truncate_value(value: Any) -> Any:
@@ -133,15 +139,204 @@ Output pin names you MUST include: {json.dumps(required_output_properties)}
     return system_prompt, user_prompt
 
 
+def _build_mcp_simulation_prompt(
+    input_data: dict[str, Any],
+) -> tuple[str, str]:
+    """Build (system_prompt, user_prompt) for MCP tool simulation.
+
+    Uses the tool name, its JSON Schema, and the supplied arguments to let the
+    LLM generate a realistic response.
+    """
+    tool_name = input_data.get("selected_tool", "unknown_tool")
+    tool_description = input_data.get("tool_description", "")
+    tool_schema = input_data.get("tool_input_schema", {})
+    tool_arguments = input_data.get("tool_arguments", {})
+    server_url = input_data.get("server_url", "")
+
+    if tool_schema:
+        schema_text = json.dumps(tool_schema, indent=2)
+        if len(schema_text) > _MAX_INPUT_VALUE_CHARS:
+            schema_text = schema_text[:_MAX_INPUT_VALUE_CHARS] + "... [TRUNCATED]"
+    else:
+        schema_text = "(none)"
+    desc_line = f"\n- Description: {tool_description}" if tool_description else ""
+
+    system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.
+
+## Tool Details
+- Tool name: {tool_name}{desc_line}
+- MCP server: {server_url}
+
+## Tool Input Schema
+{schema_text}
+
+Your task: given the tool arguments below, produce a realistic simulated output
+for this MCP tool call.
+
+Rules:
+- Respond with a single JSON object with exactly two keys: "result" and "error".
+- "result" should contain realistic output data that the tool would return.
+- "error" should be "" (empty string) unless you are simulating a logical error.
+- Assume all credentials and authentication are present and valid. Never simulate authentication failures.
+- Base your response on what a tool named "{tool_name}" with the given schema would realistically return."""
+
+    safe_args = _truncate_input_values(tool_arguments)
+    user_prompt = f"## Tool Arguments\n{json.dumps(safe_args, indent=2)}"
+
+    return system_prompt, user_prompt
+
+
+# ---------------------------------------------------------------------------
+# Shared LLM call helper
+# ---------------------------------------------------------------------------
+
+
+async def _call_llm_for_simulation(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    label: str = "simulate",
+) -> dict[str, Any]:
+    """Send a simulation prompt to the LLM and return the parsed JSON dict.
+
+    Handles client acquisition, retries on invalid JSON, and logging.
+
+    Raises:
+        RuntimeError: If no LLM client is available.
+        ValueError: If all retry attempts are exhausted.
+    """
+    client = get_openai_client()
+    if client is None:
+        raise RuntimeError(
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
+            "(missing OpenAI/OpenRouter API key)."
+        )
+
+    model = _simulator_model()
+    last_error: Exception | None = None
+    for attempt in range(_MAX_JSON_RETRIES):
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                temperature=_TEMPERATURE,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            )
+            if not response.choices:
+                raise ValueError("LLM returned empty choices array")
+            raw = response.choices[0].message.content or ""
+            parsed = json.loads(raw)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
+
+            logger.debug(
+                "simulate(%s): attempt=%d tokens=%s/%s",
+                label,
+                attempt + 1,
+                getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
+                getattr(getattr(response, "usage", None), "completion_tokens", "?"),
+            )
+            return parsed
+
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
+            logger.warning(
+                "simulate(%s): JSON parse error on attempt %d/%d: %s",
+                label,
+                attempt + 1,
+                _MAX_JSON_RETRIES,
+                e,
+            )
+        except Exception as e:
+            last_error = e
+            logger.error("simulate(%s): LLM call failed: %s", label, e, exc_info=True)
+            break
+
+    msg = (
+        f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
+        f"attempts: {last_error}"
+    )
+    logger.error(
+        "simulate(%s): all retries exhausted; last_error=%s", label, last_error
+    )
+    raise ValueError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Public simulation functions
+# ---------------------------------------------------------------------------
+
+
+def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | None:
+    """Prepare *input_data* for a dry-run execution of *block*.
+
+    Returns a **modified copy** of *input_data* for blocks that should execute
+    for real with cheap settings (e.g. OrchestratorBlock), or ``None`` when the
+    block should be LLM-simulated instead.
+    """
+    if isinstance(block, OrchestratorBlock):
+        # Preserve the user's configured mode: 0 means traditional (single
+        # LLM call, no agent loop). Only override to 1 when the user chose
+        # agent mode (non-zero) so the dry run still exercises the loop once
+        # without running away.
+        original = input_data.get("agent_mode_max_iterations", 0)
+        max_iters = 1 if original != 0 else 0
+        return {
+            **input_data,
+            "model": DRY_RUN_MODEL,
+            "agent_mode_max_iterations": max_iters,
+        }
+    return None
+
+
+async def simulate_mcp_block(
+    _block: Any,
+    input_data: dict[str, Any],
+) -> AsyncIterator[tuple[str, Any]]:
+    """Simulate MCP tool execution using an LLM.
+
+    Unlike the generic ``simulate_block``, this builds a prompt grounded in
+    the selected MCP tool's name and JSON Schema so the LLM can produce a
+    realistic response for that specific tool.
+
+    Yields ``(output_name, output_data)`` tuples matching the Block.execute()
+    interface.
+    """
+    system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
+    label = input_data.get("selected_tool", "mcp_tool")
+
+    try:
+        parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
+        yield "result", parsed.get("result", None)
+        yield "error", parsed.get("error", "")
+    except (RuntimeError, ValueError) as e:
+        yield "error", str(e)
+
+
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
 ) -> AsyncGenerator[tuple[str, Any], None]:
     """Simulate block execution using an LLM.
 
+    For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
+
+    Note: callers should check ``prepare_dry_run(block, input_data)`` first.
+    OrchestratorBlock executes for real with a cheap model in dry-run mode
+    (see manager.py).
+
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
     On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
     """
+    # MCPToolBlock gets a specialised simulation using its tool schema.
+    if isinstance(block, MCPToolBlock):
+        async for output in simulate_mcp_block(block, input_data):
+            yield output
+        return
+
     client = get_openai_client()
     if client is None:
         yield (
