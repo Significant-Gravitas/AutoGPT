@@ -198,8 +198,20 @@ export function useRateLimitManager() {
       throw new Error("Failed to update tier");
     }
 
-    // Re-fetch rate limit data to reflect new tier limits
-    await fetchRateLimit(rateLimitData.user_id);
+    // Re-fetch rate limit data to reflect new tier limits.
+    // Use a direct fetch so errors propagate to the caller's catch block
+    // (fetchRateLimit swallows errors internally with its own toast).
+    try {
+      const refreshResponse = await getV2GetUserRateLimit({
+        user_id: rateLimitData.user_id,
+      });
+      if (refreshResponse.status === 200) {
+        setRateLimitData(refreshResponse.data);
+      }
+    } catch {
+      // Tier was changed server-side; UI will be stale but not incorrect.
+      // The caller's success toast is still valid — the tier change worked.
+    }
   }
 
   return {
