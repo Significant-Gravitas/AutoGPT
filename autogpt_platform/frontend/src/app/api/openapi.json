@@ -9482,59 +9482,6 @@
           }
         }
       }
-    },
-    "/api/copilot/admin/rate_limit/search_users": {
-      "get": {
-        "tags": [
-          "copilot",
-          "admin"
-        ],
-        "summary": "Search Users by Name or Email",
-        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly \u2014 returns results even for users\nwithout credit transaction history.",
-        "operationId": "getV2Search users by name or email",
-        "security": [
-          {
-            "JWTBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "query",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Query"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "title": "Limit"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/UserSearchResult"
-                  },
-                  "title": "Response"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -21830,31 +21777,6 @@
           "expires_in_hours"
         ],
         "title": "UploadFileResponse"
-      },
-      "UserSearchResult": {
-        "properties": {
-          "user_id": {
-            "type": "string",
-            "title": "User Id"
-          },
-          "user_email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "User Email",
-            "default": null
-          }
-        },
-        "type": "object",
-        "required": [
-          "user_id"
-        ],
-        "title": "UserSearchResult"
       }
     },
     "securitySchemes": {
