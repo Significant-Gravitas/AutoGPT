@@ -5,7 +5,6 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
   getV2GetUserRateLimit,
-  getV2GetAllUsersHistory,
   postV2ResetUserRateLimitUsage,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 
@@ -77,7 +76,7 @@ export function useRateLimitManager() {
     }
   }
 
-  /** Fuzzy name/email search via the spending-history endpoint. */
+  /** Search users by partial name/email via the User table. */
   async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -85,27 +84,14 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
-      const response = await getV2GetAllUsersHistory({
-        search: trimmed,
-        page: 1,
-        page_size: 50,
-      });
-      if (response.status !== 200) {
+      const response = await fetch(
+        `/api/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
+      );
+      if (!response.ok) {
         throw new Error("Failed to search users");
       }
 
-      // Deduplicate by user_id to get unique users
-      const seen = new Set<string>();
-      const users: UserOption[] = [];
-      for (const tx of response.data.history) {
-        if (!seen.has(tx.user_id)) {
-          seen.add(tx.user_id);
-          users.push({
-            user_id: tx.user_id,
-            user_email: String(tx.user_email ?? tx.user_id),
-          });
-        }
-      }
+      const users: UserOption[] = await response.json();
 
       if (users.length === 0) {
         toast({
@@ -114,9 +100,6 @@ export function useRateLimitManager() {
         });
       }
 
-      // Always show the result list so the user explicitly picks a match.
-      // The history endpoint paginates transactions, not users, so a single
-      // page may not be authoritative -- avoid auto-selecting.
       setSearchResults(users);
     } catch (error) {
       console.error("Error searching users:", error);

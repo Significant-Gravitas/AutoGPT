@@ -17,7 +17,7 @@ from backend.copilot.rate_limit import (
     reset_user_usage,
     set_user_tier,
 )
-from backend.data.user import get_user_by_email, get_user_email_by_id
+from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
 
 logger = logging.getLogger(__name__)
 
@@ -203,3 +203,28 @@ async def set_user_rate_limit_tier(
         raise HTTPException(status_code=500, detail="Failed to set tier") from e
 
     return UserTierResponse(user_id=request.user_id, tier=request.tier)
+
+
+class UserSearchResult(BaseModel):
+    user_id: str
+    user_email: Optional[str] = None
+
+
+@router.get(
+    "/rate_limit/search_users",
+    response_model=list[UserSearchResult],
+    summary="Search Users by Name or Email",
+)
+async def admin_search_users(
+    query: str,
+    limit: int = 20,
+    admin_user_id: str = Security(get_user_id),
+) -> list[UserSearchResult]:
+    """Search users by partial email or name. Admin-only.
+
+    Queries the User table directly — returns results even for users
+    without credit transaction history.
+    """
+    logger.info("Admin %s searching users with query=%r", admin_user_id, query)
+    results = await search_users(query, limit=min(limit, 50))
+    return [UserSearchResult(user_id=uid, user_email=email) for uid, email in results]
