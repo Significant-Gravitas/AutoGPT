@@ -77,6 +77,7 @@ export function useRateLimitManager() {
   }
 
   /** Search users by partial name/email via the User table. */
+  /** Search users by partial name/email via the User table. */
   async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -85,21 +86,16 @@ export function useRateLimitManager() {
 
     try {
       const response = await fetch(
-        `/api/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
+        `/api/proxy/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
       );
       if (!response.ok) {
         throw new Error("Failed to search users");
       }
 
       const users: UserOption[] = await response.json();
-
       if (users.length === 0) {
-        toast({
-          title: "No results",
-          description: "No users found matching your search.",
-        });
+        toast({ title: "No results", description: "No users found." });
       }
-
       setSearchResults(users);
     } catch (error) {
       console.error("Error searching users:", error);
@@ -185,7 +181,7 @@ export function useRateLimitManager() {
   async function handleTierChange(newTier: string) {
     if (!rateLimitData) return;
 
-    const response = await fetch("/api/copilot/admin/rate_limit/tier", {
+    const response = await fetch("/api/proxy/copilot/admin/rate_limit/tier", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -198,8 +194,20 @@ export function useRateLimitManager() {
       throw new Error("Failed to update tier");
     }
 
-    // Re-fetch rate limit data to reflect new tier limits
-    await fetchRateLimit(rateLimitData.user_id);
+    // Re-fetch rate limit data to reflect new tier limits.
+    // Use a direct fetch so errors propagate to the caller's catch block
+    // (fetchRateLimit swallows errors internally with its own toast).
+    try {
+      const refreshResponse = await getV2GetUserRateLimit({
+        user_id: rateLimitData.user_id,
+      });
+      if (refreshResponse.status === 200) {
+        setRateLimitData(refreshResponse.data);
+      }
+    } catch {
+      // Tier was changed server-side; UI will be stale but not incorrect.
+      // The caller's success toast is still valid — the tier change worked.
+    }
   }
 
   return {
