@@ -20,6 +20,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.llm import LlmModel
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
@@ -190,7 +191,6 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     input_pins = _describe_schema_pins(input_schema)
     output_pins = _describe_schema_pins(output_schema)
     output_properties = list(output_schema.get("properties", {}).keys())
-    # Exclude "error" from MUST include — the prompt tells the LLM to OMIT it
     required_output_properties = [k for k in output_properties if k != "error"]
 
     block_name = getattr(block, "name", type(block).__name__)
@@ -296,6 +296,11 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
             "model": DRY_RUN_MODEL,
             "agent_mode_max_iterations": max_iters,
         }
+    if isinstance(block, AgentExecutorBlock):
+        # Let the AgentExecutorBlock execute for real so the sub-agent graph
+        # is triggered.  The sub-agent's blocks will be individually simulated
+        # because dry_run propagates via execution_context.
+        return {**input_data}
     return None
 
 
@@ -360,7 +365,6 @@ async def simulate_block(
         for pin_name in output_properties:
             if pin_name in parsed:
                 value = parsed[pin_name]
-                # Drop empty/blank error pins: they carry no information.
                 if (
                     pin_name == "error"
                     and isinstance(value, str)
@@ -369,7 +373,6 @@ async def simulate_block(
                     continue
                 result[pin_name] = value
             elif pin_name != "error":
-                # Only fill non-error missing pins with None
                 result[pin_name] = None
 
         for pin_name, pin_value in result.items():
