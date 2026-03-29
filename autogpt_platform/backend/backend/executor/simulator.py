@@ -20,11 +20,13 @@ OrchestratorBlock and AgentExecutorBlock are handled in manager.py via
 The LLM simulation is grounded by:
   - Block name and description
   - Input/output schemas (from block.input_schema.jsonschema() / output_schema.jsonschema())
+  - The block's run() source code (via inspect.getsource)
   - The actual input values
 
 Inspired by https://github.com/Significant-Gravitas/agent-simulator
 """
 
+import inspect
 import json
 import logging
 from collections.abc import AsyncIterator
@@ -202,6 +204,13 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     block_name = getattr(block, "name", type(block).__name__)
     block_description = getattr(block, "description", "No description available.")
 
+    # Include the block's run() source code so the LLM knows exactly how
+    # inputs are transformed to outputs.
+    try:
+        run_source = inspect.getsource(block.run)
+    except (TypeError, OSError):
+        run_source = ""
+
     system_prompt = f"""You are simulating the execution of a software block called "{block_name}".
 
 ## Block Description
@@ -212,8 +221,14 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
 
 ## Output Schema (what you must return)
 {output_pins}
-
+{"" if not run_source else f"""
+## Block Implementation (run function source code)
+```python
+{run_source}
+```
+"""}
 Your task: given the current inputs, produce realistic simulated outputs for this block.
+Study the block's run() source code above to understand exactly how inputs are transformed to outputs.
 
 Rules:
 - Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
