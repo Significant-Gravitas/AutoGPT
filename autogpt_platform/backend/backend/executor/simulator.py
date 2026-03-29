@@ -12,7 +12,7 @@ Special cases (no LLM simulation needed):
     (whose blocks are then simulated).
   - AgentInputBlock (and all subclasses) and AgentOutputBlock are pure
     passthrough -- they forward their input values directly.
-  - MCPToolBlock uses a specialised LLM prompt grounded in the tool's schema.
+  - MCPToolBlock is simulated via the generic LLM prompt (with run() source code).
 
 OrchestratorBlock and AgentExecutorBlock are handled in manager.py via
 ``prepare_dry_run``.
@@ -34,7 +34,6 @@ from typing import Any
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
 
@@ -258,53 +257,6 @@ Available output pins: {json.dumps(output_properties)}
     return system_prompt, user_prompt
 
 
-def _build_mcp_simulation_prompt(
-    input_data: dict[str, Any],
-) -> tuple[str, str]:
-    """Build (system_prompt, user_prompt) for MCP tool simulation.
-
-    Uses the tool name, its JSON Schema, and the supplied arguments to let the
-    LLM generate a realistic response.
-    """
-    tool_name = input_data.get("selected_tool", "unknown_tool")
-    tool_description = input_data.get("tool_description", "")
-    tool_schema = input_data.get("tool_input_schema", {})
-    tool_arguments = input_data.get("tool_arguments", {})
-    server_url = input_data.get("server_url", "")
-
-    if tool_schema:
-        schema_text = json.dumps(tool_schema, indent=2)
-        if len(schema_text) > _MAX_INPUT_VALUE_CHARS:
-            schema_text = schema_text[:_MAX_INPUT_VALUE_CHARS] + "... [TRUNCATED]"
-    else:
-        schema_text = "(none)"
-    desc_line = f"\n- Description: {tool_description}" if tool_description else ""
-
-    system_prompt = f"""You are simulating the execution of an MCP (Model Context Protocol) tool.
-
-## Tool Details
-- Tool name: {tool_name}{desc_line}
-- MCP server: {server_url}
-
-## Tool Input Schema
-{schema_text}
-
-Your task: given the tool arguments below, produce a realistic simulated output
-for this MCP tool call.
-
-Rules:
-- Respond with a single JSON object with exactly two keys: "result" and "error".
-- "result" should contain realistic output data that the tool would return.
-- Only include "error" if there is an actual error to report. Omit it otherwise.
-- Assume all credentials and authentication are present and valid. Never simulate authentication failures.
-- Base your response on what a tool named "{tool_name}" with the given schema would realistically return."""
-
-    safe_args = _truncate_input_values(tool_arguments)
-    user_prompt = f"## Tool Arguments\n{json.dumps(safe_args, indent=2)}"
-
-    return system_prompt, user_prompt
-
-
 # ---------------------------------------------------------------------------
 # Public simulation functions
 # ---------------------------------------------------------------------------
@@ -345,38 +297,14 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
     return None
 
 
-async def simulate_mcp_block(
-    _block: Any,
-    input_data: dict[str, Any],
-) -> AsyncIterator[tuple[str, Any]]:
-    """Simulate MCP tool execution using an LLM.
-
-    Unlike the generic ``simulate_block``, this builds a prompt grounded in
-    the selected MCP tool's name and JSON Schema so the LLM can produce a
-    realistic response for that specific tool.
-
-    Yields ``(output_name, output_data)`` tuples matching the Block.execute()
-    interface.
-    """
-    system_prompt, user_prompt = _build_mcp_simulation_prompt(input_data)
-    label = input_data.get("selected_tool", "mcp_tool")
-
-    try:
-        parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
-        for pin_name, pin_value in parsed.items():
-            if pin_value is not None and pin_value != "":
-                yield pin_name, pin_value
-    except (RuntimeError, ValueError) as e:
-        yield "error", str(e)
-
-
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
 ) -> AsyncIterator[tuple[str, Any]]:
     """Simulate block execution using an LLM.
 
-    For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
+    All block types (including MCPToolBlock) use the same generic LLM prompt
+    which includes the block's run() source code for accurate simulation.
 
     Note: callers should check ``prepare_dry_run(block, input_data)`` first.
     OrchestratorBlock and AgentExecutorBlock execute for real in dry-run mode
@@ -385,12 +313,6 @@ async def simulate_block(
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
     On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
     """
-    # MCPToolBlock gets a specialised simulation using its tool schema.
-    if isinstance(block, MCPToolBlock):
-        async for output in simulate_mcp_block(block, input_data):
-            yield output
-        return
-
     # Input/output blocks are pure passthrough -- they just forward their
     # input values.  No LLM simulation needed.
     if isinstance(block, AgentInputBlock):
