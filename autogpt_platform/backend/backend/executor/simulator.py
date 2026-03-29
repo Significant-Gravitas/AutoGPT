@@ -367,6 +367,8 @@ async def simulate_mcp_block(
             if pin_value is not None and pin_value != "":
                 yield pin_name, pin_value
     except (RuntimeError, ValueError) as e:
+        # Yield both pins so downstream nodes connected to "result" aren't starved.
+        yield "result", None
         yield "error", str(e)
 
 
