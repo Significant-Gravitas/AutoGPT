@@ -6,7 +6,7 @@ import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userR
 import { UsageBar } from "../../components/UsageBar";
 
 interface Props {
-  data: UserRateLimitResponse;
+  data: UserRateLimitResponse & { user_email?: string };
   onReset: (resetWeekly: boolean) => Promise<void>;
   /** Override the outer container classes (default: bordered card). */
   className?: string;
