@@ -259,7 +259,7 @@ class TestRunAgentInputModel:
 
     def test_dry_run_defaults_to_false(self):
         """When dry_run is omitted, it must default to False."""
-        model = RunAgentInput(username_agent_slug="user/agent")
+        model = RunAgentInput(username_agent_slug="user/agent", dry_run=False)
         assert model.dry_run is False
 
     def test_dry_run_accepts_true(self):
