@@ -100,6 +100,23 @@ class RunMCPToolTool(BaseTool):
         tool_name = tool_name.strip()
         session_id = session.session_id
 
+        # Session-level dry_run prevents real MCP tool execution.
+        # Discovery (no tool_name) is still allowed so the agent can inspect
+        # available tools, but actual execution is blocked.
+        if session.dry_run and tool_name:
+            return MCPToolOutputResponse(
+                message=(
+                    f"[dry-run] MCP tool '{tool_name}' on "
+                    f"{server_host(server_url)} was not executed "
+                    "because the session is in dry-run mode."
+                ),
+                server_url=server_url,
+                tool_name=tool_name,
+                result=None,
+                success=True,
+                session_id=session_id,
+            )
+
         if tool_arguments is not None and not isinstance(tool_arguments, dict):
             return ErrorResponse(
                 message="tool_arguments must be a JSON object.",

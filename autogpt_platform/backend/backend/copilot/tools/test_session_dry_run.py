@@ -1,8 +1,9 @@
 """Tests for session-level dry_run flag propagation.
 
-Verifies that when a session has dry_run=True, run_block and run_agent tool
-calls are forced to use dry-run mode, regardless of what the individual
-tool call specifies.  The single source of truth is ``session.dry_run``.
+Verifies that when a session has dry_run=True, run_block, run_agent, and
+run_mcp_tool calls are forced to use dry-run mode, regardless of what the
+individual tool call specifies.  The single source of truth is
+``session.dry_run``.
 """
 
 from __future__ import annotations
@@ -12,9 +13,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.copilot.model import ChatSession
-from backend.copilot.tools.models import ErrorResponse
+from backend.copilot.tools.models import ErrorResponse, MCPToolOutputResponse
 from backend.copilot.tools.run_agent import RunAgentInput, RunAgentTool
 from backend.copilot.tools.run_block import RunBlockTool
+from backend.copilot.tools.run_mcp_tool import RunMCPToolTool
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -282,3 +284,110 @@ class TestRunAgentInputDryRunOverride:
         # Simulate session-level override
         params.dry_run = True
         assert params.dry_run is True
+
+
+# ---------------------------------------------------------------------------
+# RunMCPToolTool tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunMCPToolToolSessionDryRun:
+    """Test that RunMCPToolTool respects session-level dry_run."""
+
+    @pytest.mark.asyncio
+    async def test_session_dry_run_blocks_mcp_execution(self):
+        """When session dry_run is True, MCP tool execution should be skipped."""
+        tool = RunMCPToolTool()
+        session = _make_session(dry_run=True)
+
+        result = await tool._execute(
+            user_id="test-user",
+            session=session,
+            server_url="https://mcp.example.com/sse",
+            tool_name="some_tool",
+            tool_arguments={"key": "value"},
+        )
+
+        assert isinstance(result, MCPToolOutputResponse)
+        assert result.success is True
+        assert "dry-run" in result.message
+        assert result.tool_name == "some_tool"
+        assert result.result is None
+
+    @pytest.mark.asyncio
+    async def test_session_dry_run_allows_discovery(self):
+        """When session dry_run is True, tool discovery (no tool_name) should still work."""
+        tool = RunMCPToolTool()
+        session = _make_session(dry_run=True)
+
+        # Discovery requires a network call, so we mock the client
+        with (
+            patch(
+                "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.tools.run_mcp_tool.validate_url_host",
+                return_value=None,
+            ),
+            patch("backend.copilot.tools.run_mcp_tool.MCPClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client_cls.return_value = mock_client
+
+            mock_tool = MagicMock()
+            mock_tool.name = "test_tool"
+            mock_tool.description = "A test tool"
+            mock_tool.input_schema = {"type": "object", "properties": {}}
+            mock_client.list_tools.return_value = [mock_tool]
+
+            result = await tool._execute(
+                user_id="test-user",
+                session=session,
+                server_url="https://mcp.example.com/sse",
+                tool_name="",  # Discovery mode
+            )
+
+            # Discovery should proceed normally
+            mock_client.initialize.assert_called_once()
+            mock_client.list_tools.assert_called_once()
+            assert "Discovered" in result.message
+
+    @pytest.mark.asyncio
+    async def test_no_session_dry_run_allows_execution(self):
+        """When session dry_run is False, MCP tool execution should proceed."""
+        tool = RunMCPToolTool()
+        session = _make_session(dry_run=False)
+
+        with (
+            patch(
+                "backend.copilot.tools.run_mcp_tool.auto_lookup_mcp_credential",
+                return_value=None,
+            ),
+            patch(
+                "backend.copilot.tools.run_mcp_tool.validate_url_host",
+                return_value=None,
+            ),
+            patch("backend.copilot.tools.run_mcp_tool.MCPClient") as mock_client_cls,
+        ):
+            mock_client = AsyncMock()
+            mock_client_cls.return_value = mock_client
+
+            mock_result = MagicMock()
+            mock_result.is_error = False
+            mock_result.content = [{"type": "text", "text": "hello"}]
+            mock_client.call_tool.return_value = mock_result
+
+            result = await tool._execute(
+                user_id="test-user",
+                session=session,
+                server_url="https://mcp.example.com/sse",
+                tool_name="some_tool",
+                tool_arguments={"key": "value"},
+            )
+
+            # Execution should proceed
+            mock_client.initialize.assert_called_once()
+            mock_client.call_tool.assert_called_once_with("some_tool", {"key": "value"})
+            assert isinstance(result, MCPToolOutputResponse)
+            assert result.success is True
