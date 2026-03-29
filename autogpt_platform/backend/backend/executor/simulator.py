@@ -10,8 +10,8 @@ Special cases (no LLM simulation needed):
     (iterations capped to 1).
   - AgentExecutorBlock executes for real so it can spawn child graph executions
     (whose blocks are then simulated).
-  - AgentInputBlock, AgentOutputBlock, and other simple blocks are simulated
-    using the same LLM prompt (which includes the block's run() source code).
+  - AgentInputBlock (and all subclasses) and AgentOutputBlock are pure
+    passthrough -- they forward their input values directly.
   - MCPToolBlock uses a specialised LLM prompt grounded in the tool's schema.
 
 OrchestratorBlock and AgentExecutorBlock are handled in manager.py via
@@ -33,6 +33,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
@@ -379,6 +380,24 @@ async def simulate_block(
     if isinstance(block, MCPToolBlock):
         async for output in simulate_mcp_block(block, input_data):
             yield output
+        return
+
+    # Input/output blocks are pure passthrough -- they just forward their
+    # input values.  No LLM simulation needed.
+    if isinstance(block, AgentInputBlock):
+        # AgentInputBlock and all subclasses (AgentDropdownInputBlock,
+        # AgentFileInputBlock, AgentShortTextInputBlock, etc.) yield
+        # "result" with the provided value.
+        value = input_data.get("value")
+        if value is not None:
+            yield "result", value
+        return
+
+    if isinstance(block, AgentOutputBlock):
+        # AgentOutputBlock passes through "value" as "output" (+ "name").
+        yield "output", input_data.get("value")
+        if "name" in input_data:
+            yield "name", input_data["name"]
         return
 
     output_schema = block.output_schema.jsonschema()
