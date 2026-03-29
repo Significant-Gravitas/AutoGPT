@@ -291,77 +291,40 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
-def _derive_descriptive_suffix(defaults: dict[str, Any]) -> str:
-    """Derive a short, LLM-readable suffix from the first distinctive default value.
-
-    Prefers short string values (e.g. ``match="error"`` -> ``_error``).
-    Also handles booleans and numbers (e.g. ``enabled=True`` -> ``_enabled_true``).
-    Falls back to the first key name if all values are complex.
-    Returns empty string if no defaults are available.
-    """
-    import re as _re  # noqa: PLC0415
-
-    if not defaults:
-        return ""
-
-    # Try to find a short, descriptive string value first
-    for _key, value in defaults.items():
-        if isinstance(value, str) and 1 <= len(value) <= 30:
-            # Sanitize to valid function-name chars: [a-zA-Z0-9_]
-            sanitized = _re.sub(r"[^a-zA-Z0-9]", "_", value).strip("_")
-            sanitized = _re.sub(r"_+", "_", sanitized)  # collapse runs
-            if sanitized:
-                return f"_{sanitized[:20]}"
-
-    # Try to build a key_value suffix from the first boolean/numeric default
-    for key, value in defaults.items():
-        if isinstance(value, bool):
-            return f"_{key[:15]}_{str(value).lower()}"
-        if isinstance(value, (int, float)):
-            return f"_{key[:15]}_{value}"
-
-    # Fall back to first key name (e.g. _match, _url, _query)
-    first_key = next(iter(defaults))
-    return f"_{first_key[:20]}"
-
-
 def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     """Ensure all tool names are unique (Anthropic API requires this).
 
     When multiple nodes use the same block type, they get the same tool name.
-    This appends a descriptive suffix derived from the tool's hardcoded defaults
-    (e.g. ``search_error``, ``search_warning``) so the LLM can tell them apart,
-    and enriches descriptions with the full defaults summary.
-    Falls back to numeric suffixes (``_1``, ``_2``) when descriptive names
-    still collide. Mutates the list in place.
+    This appends _1, _2, etc. and enriches descriptions with hardcoded defaults
+    so the LLM can distinguish them. Mutates the list in place.
 
     Malformed tools (missing ``function`` or ``function.name``) are silently
     skipped so the caller never crashes on unexpected input.
     """
-    # Collect names, skipping tools that lack the required structure.
-    valid_tools: list[tuple[int, dict[str, Any]]] = []
-    for idx, tool in enumerate(tools):
+    # Collect tools that have the required structure, skipping malformed ones.
+    valid_tools: list[dict[str, Any]] = []
+    for tool in tools:
         func = tool.get("function") if isinstance(tool, dict) else None
         if not isinstance(func, dict) or not isinstance(func.get("name"), str):
             # Strip internal metadata even from malformed entries.
             if isinstance(func, dict):
                 func.pop("_hardcoded_defaults", None)
             continue
-        valid_tools.append((idx, tool))
+        valid_tools.append(tool)
 
-    names = [t.get("function", {}).get("name", "") for _i, t in valid_tools]
+    names = [t.get("function", {}).get("name", "") for t in valid_tools]
     name_counts = Counter(names)
     duplicates = {n for n, c in name_counts.items() if c > 1}
 
     if not duplicates:
-        for _i, t in valid_tools:
+        for t in valid_tools:
             t.get("function", {}).pop("_hardcoded_defaults", None)
         return
 
     taken: set[str] = set(names)
     counters: dict[str, int] = {}
 
-    for _i, tool in valid_tools:
+    for tool in valid_tools:
         func = tool.get("function", {})
         name = func.get("name", "")
         defaults = func.pop("_hardcoded_defaults", {})
@@ -369,18 +332,8 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
         if name not in duplicates:
             continue
 
-        # First try a descriptive suffix derived from the defaults
-        desc_suffix = _derive_descriptive_suffix(defaults)
-        if desc_suffix:
-            candidate = f"{name[: 64 - len(desc_suffix)]}{desc_suffix}"
-            if candidate not in taken:
-                func["name"] = candidate
-                taken.add(candidate)
-                _enrich_description(func, defaults)
-                continue
-
-        # Fall back to numeric suffix if descriptive name already taken
         counters[name] = counters.get(name, 0) + 1
+        # Skip suffixes that collide with existing (e.g. user-named) tools
         while True:
             suffix = f"_{counters[name]}"
             candidate = f"{name[: 64 - len(suffix)]}{suffix}"
@@ -390,22 +343,17 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
 
         func["name"] = candidate
         taken.add(candidate)
-        _enrich_description(func, defaults)
 
-
-def _enrich_description(func: dict[str, Any], defaults: dict[str, Any]) -> None:
-    """Append a ``[Pre-configured: ...]`` summary to the tool description."""
-    if not defaults or not isinstance(defaults, dict):
-        return
-    parts: list[str] = []
-    for k, v in defaults.items():
-        rendered = json.dumps(v)
-        if len(rendered) > 100:
-            rendered = rendered[:80] + "...<truncated>"
-        parts.append(f"{k}={rendered}")
-    summary = ", ".join(parts)
-    original_desc = func.get("description", "") or ""
-    func["description"] = f"{original_desc} [Pre-configured: {summary}]"
+        if defaults and isinstance(defaults, dict):
+            parts: list[str] = []
+            for k, v in defaults.items():
+                rendered = json.dumps(v)
+                if len(rendered) > 100:
+                    rendered = rendered[:80] + "...<truncated>"
+                parts.append(f"{k}={rendered}")
+            summary = ", ".join(parts)
+            original_desc = func.get("description", "") or ""
+            func["description"] = f"{original_desc} [Pre-configured: {summary}]"
 
 
 class OrchestratorBlock(Block):

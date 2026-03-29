@@ -64,10 +64,10 @@ async def test_duplicate_block_names_get_suffixed():
     names = [t["function"]["name"] for t in tools]
     assert len(names) == 2
     assert len(set(names)) == 2, f"Tool names are not unique: {names}"
-    # Should get descriptive suffixes derived from default values
+    # Should be suffixed with _1, _2
     base = OrchestratorBlock.cleanup(block.name)
-    assert f"{base}_foo" in names
-    assert f"{base}_bar" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
 
 
 @pytest.mark.asyncio
@@ -96,9 +96,9 @@ async def test_duplicate_tools_include_defaults_in_description():
     ):
         tools = await OrchestratorBlock._create_tool_node_signatures("orch")
 
-    # Find each tool by descriptive suffix
-    tool_1 = next(t for t in tools if t["function"]["name"].endswith("_error"))
-    tool_2 = next(t for t in tools if t["function"]["name"].endswith("_warning"))
+    # Find each tool by suffix
+    tool_1 = next(t for t in tools if t["function"]["name"].endswith("_1"))
+    tool_2 = next(t for t in tools if t["function"]["name"].endswith("_2"))
 
     # Descriptions should contain the hardcoded defaults (not the linked 'text' field)
     assert "[Pre-configured:" in tool_1["function"]["description"]
@@ -213,10 +213,9 @@ async def test_three_duplicates_all_get_unique_names():
     assert len(names) == 3
     assert len(set(names)) == 3, f"Tool names are not unique: {names}"
     base = OrchestratorBlock.cleanup(block.name)
-    # Descriptive suffixes from the "match" default values
-    assert f"{base}_error" in names
-    assert f"{base}_warning" in names
-    assert f"{base}_info" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
+    assert f"{base}_3" in names
 
 
 @pytest.mark.asyncio
@@ -249,7 +248,7 @@ async def test_linked_fields_excluded_from_defaults():
     ):
         tools = await OrchestratorBlock._create_tool_node_signatures("orch")
 
-    tool_1 = next(t for t in tools if t["function"]["name"].endswith("_error"))
+    tool_1 = next(t for t in tools if t["function"]["name"].endswith("_1"))
     desc = tool_1["function"]["description"]
     # 'text' is linked so should NOT appear in Pre-configured
     assert "text=" not in desc
@@ -290,8 +289,8 @@ async def test_mixed_unique_and_duplicate_names():
     assert len(set(names)) == 3
     assert "unique_tool" in names
     base = OrchestratorBlock.cleanup(block_a.name)
-    assert f"{base}_foo" in names
-    assert f"{base}_bar" in names
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
 
 
 @pytest.mark.asyncio
@@ -368,18 +367,15 @@ async def test_long_tool_name_truncated():
 
 @pytest.mark.asyncio
 async def test_suffix_collision_with_user_named_tool():
-    """If a user-named tool collides with a descriptive suffix, dedup falls back to numeric."""
+    """If a user-named tool is 'my_tool_1', dedup of 'my_tool' should skip to _2."""
     block = MatchTextPatternBlock()
-    base = OrchestratorBlock.cleanup(block.name)
-
     # Two nodes with same block name (will collide)
     node_a = _make_mock_node(block, "node_a", input_default={"match": "foo"})
     node_b = _make_mock_node(block, "node_b", input_default={"match": "bar"})
 
-    # A third node that a user has customized to match one of the descriptive suffixes
-    node_c = _make_mock_node(
-        block, "node_c", metadata={"customized_name": f"{base}_foo"}
-    )
+    # A third node that a user has customized to match the _1 suffix pattern
+    base = OrchestratorBlock.cleanup(block.name)
+    node_c = _make_mock_node(block, "node_c", metadata={"customized_name": f"{base}_1"})
 
     link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
     link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
@@ -401,13 +397,10 @@ async def test_suffix_collision_with_user_named_tool():
     names = [t["function"]["name"] for t in tools]
     assert len(set(names)) == len(names), f"Tool names are not unique: {names}"
     # The user-named tool keeps its name
-    assert f"{base}_foo" in names
-    # One duplicate gets its descriptive suffix, the other falls back to numeric
-    assert f"{base}_bar" in names
-    # The "foo" descriptive suffix collided with user-named, so fallback to numeric
-    assert any(
-        n.startswith(base) and n not in (f"{base}_foo", f"{base}_bar") for n in names
-    )
+    assert f"{base}_1" in names
+    # The duplicates should skip _1 (taken) and use _2, _3
+    assert f"{base}_2" in names
+    assert f"{base}_3" in names
 
 
 def test_disambiguate_skips_malformed_tools():
@@ -487,9 +480,8 @@ def test_disambiguate_handles_missing_description():
     ]
     _disambiguate_tool_names(tools)
 
-    # Descriptive suffixes from the "key" default values
-    tool_1 = next(t for t in tools if t["function"]["name"] == "my_tool_val1")
-    tool_2 = next(t for t in tools if t["function"]["name"] == "my_tool_val2")
+    tool_1 = next(t for t in tools if t["function"]["name"] == "my_tool_1")
+    tool_2 = next(t for t in tools if t["function"]["name"] == "my_tool_2")
     # Both should have Pre-configured
     assert "[Pre-configured:" in tool_1["function"].get("description", "")
     assert "[Pre-configured:" in tool_2["function"].get("description", "")
@@ -569,7 +561,7 @@ async def test_very_long_block_names_truncated_with_suffix():
 
 @pytest.mark.asyncio
 async def test_five_plus_duplicates_all_unique():
-    """Five duplicate blocks should all get unique descriptive names."""
+    """Five duplicate blocks should produce _1 through _5, all unique."""
     block = MatchTextPatternBlock()
     nodes_and_links = []
     for i in range(5):
@@ -631,11 +623,10 @@ async def test_mixed_duplicates_and_custom_named_same_type():
     # Custom-named tool keeps its name
     assert "summarizer" in names
     base = OrchestratorBlock.cleanup(block.name)
-    # Descriptive suffixes from the "match" default values
-    assert f"{base}_alpha" in names
-    assert f"{base}_beta" in names
-    # "summarizer" should NOT have a suffix
-    assert not any(n.startswith("summarizer_") for n in names)
+    assert f"{base}_1" in names
+    assert f"{base}_2" in names
+    # "summarizer" should NOT have a numeric suffix
+    assert not any(n.startswith("summarizer_") and n[-1].isdigit() for n in names)
 
 
 @pytest.mark.asyncio
@@ -1082,11 +1073,8 @@ def test_disambiguate_tools_with_boolean_and_numeric_defaults():
     names = [t["function"]["name"] for t in tools]
     assert len(set(names)) == 2
 
-    # Descriptive suffix from first boolean default: enabled=True -> _enabled_true
-    tool_true = next(
-        t for t in tools if t["function"]["name"] == "processor_enabled_true"
-    )
-    desc = tool_true["function"]["description"]
+    tool_1 = next(t for t in tools if t["function"]["name"] == "processor_1")
+    desc = tool_1["function"]["description"]
     assert "enabled=true" in desc
     assert "count=42" in desc
     assert "ratio=3.14" in desc
@@ -1119,3 +1107,269 @@ def test_disambiguate_preserves_non_duplicate_hardcoded_defaults_cleanup():
 
     assert tools[0]["function"]["name"] == "unique_a"
     assert tools[1]["function"]["name"] == "unique_b"
+
+
+# ---------------------------------------------------------------------------
+# Additional test conditions — reviewer-requested coverage expansion
+# ---------------------------------------------------------------------------
+
+
+def test_disambiguate_preserves_parameters_and_metadata():
+    """Disambiguation must NOT strip parameters, _field_mapping, or _sink_node_id."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "tool",
+                "description": "Tool A",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+                "_field_mapping": {"query": "query"},
+                "_sink_node_id": "node_a",
+                "_hardcoded_defaults": {"mode": "fast"},
+            }
+        },
+        {
+            "function": {
+                "name": "tool",
+                "description": "Tool B",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                },
+                "_field_mapping": {"query": "query"},
+                "_sink_node_id": "node_b",
+                "_hardcoded_defaults": {"mode": "slow"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    for tool in tools:
+        func = tool["function"]
+        # parameters must be untouched
+        assert "parameters" in func
+        assert func["parameters"]["properties"]["query"]["type"] == "string"
+        # Internal metadata must survive
+        assert "_field_mapping" in func
+        assert "_sink_node_id" in func
+        # _hardcoded_defaults must be cleaned up
+        assert "_hardcoded_defaults" not in func
+
+
+def test_disambiguate_name_with_leading_trailing_underscores():
+    """Tool names with leading/trailing underscores should still disambiguate."""
+    tools: list[dict] = [
+        {"function": {"name": "_private_tool_", "description": "A"}},
+        {"function": {"name": "_private_tool_", "description": "B"}},
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 2, f"Names not unique: {names}"
+
+
+def test_disambiguate_name_at_exactly_64_chars():
+    """Tool name at exactly 64 chars with no suffix needed stays unchanged."""
+    name_64 = "a" * 64
+    tools: list[dict] = [
+        {"function": {"name": name_64, "description": "Only one"}},
+    ]
+    _disambiguate_tool_names(tools)
+    assert tools[0]["function"]["name"] == name_64
+
+
+def test_disambiguate_name_at_62_chars_fits_suffix():
+    """Tool name at 62 chars + _1 suffix = 64 chars, should fit without truncation."""
+    name_62 = "a" * 62
+    tools: list[dict] = [
+        {"function": {"name": name_62, "description": "A"}},
+        {"function": {"name": name_62, "description": "B"}},
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 2
+    for n in names:
+        assert len(n) <= 64, f"Name too long: {n!r} ({len(n)} chars)"
+    # _1 = 2 chars, 62 + 2 = 64 — fits exactly
+    assert f"{name_62}_1" in names
+    assert f"{name_62}_2" in names
+
+
+def test_disambiguate_two_digit_suffix_truncates_base():
+    """When suffix is _10 (3 chars), base must be truncated to 61 chars."""
+    tools: list[dict] = [
+        {"function": {"name": "a" * 63, "description": f"Tool {i}"}} for i in range(11)
+    ]
+    _disambiguate_tool_names(tools)
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 11, f"Names not unique: {names}"
+    for n in names:
+        assert len(n) <= 64, f"Name too long: {n!r} ({len(n)} chars)"
+
+
+def test_disambiguate_defaults_with_nested_dict_values():
+    """Nested dict/list values in defaults should serialize as JSON in description."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "proc",
+                "description": "Processor",
+                "_hardcoded_defaults": {
+                    "config": {"nested": {"key": "val"}, "list": [1, 2, 3]},
+                },
+            }
+        },
+        {
+            "function": {
+                "name": "proc",
+                "description": "Processor",
+                "_hardcoded_defaults": {"config": {"nested": {"key": "other"}}},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    for tool in tools:
+        desc = tool["function"]["description"]
+        assert "[Pre-configured:" in desc
+        assert "config=" in desc
+
+
+def test_disambiguate_defaults_with_null_value():
+    """None values in defaults should serialize as 'null' in JSON."""
+    tools: list[dict] = [
+        {
+            "function": {
+                "name": "tool",
+                "description": "A",
+                "_hardcoded_defaults": {"optional_field": None},
+            }
+        },
+        {
+            "function": {
+                "name": "tool",
+                "description": "B",
+                "_hardcoded_defaults": {"optional_field": "present"},
+            }
+        },
+    ]
+    _disambiguate_tool_names(tools)
+
+    tool_1 = next(t for t in tools if t["function"]["name"] == "tool_1")
+    assert "null" in tool_1["function"]["description"]
+
+
+@pytest.mark.asyncio
+async def test_customized_name_takes_priority_over_block_name():
+    """When a node has customized_name in metadata, that should be the tool name."""
+    block = MatchTextPatternBlock()
+    custom = "my_custom_tool"
+    node = _make_mock_node(block, "node_a", metadata={"customized_name": custom})
+    link = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [(link, node)]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    assert tools[0]["function"]["name"] == custom
+
+
+@pytest.mark.asyncio
+async def test_customized_names_collide_get_suffixed():
+    """Two nodes with the SAME customized_name should get suffixed."""
+    block = MatchTextPatternBlock()
+    node_a = _make_mock_node(
+        block,
+        "node_a",
+        metadata={"customized_name": "searcher"},
+        input_default={"match": "alpha"},
+    )
+    node_b = _make_mock_node(
+        block,
+        "node_b",
+        metadata={"customized_name": "searcher"},
+        input_default={"match": "beta"},
+    )
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    names = [t["function"]["name"] for t in tools]
+    assert len(set(names)) == 2, f"Names not unique: {names}"
+    assert "searcher_1" in names
+    assert "searcher_2" in names
+
+
+@pytest.mark.asyncio
+async def test_tool_has_correct_required_fields():
+    """Tool parameters should include required fields from the block schema."""
+    block = MatchTextPatternBlock()
+    node = _make_mock_node(block, "node_a")
+    link = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [(link, node)]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    params = tools[0]["function"]["parameters"]
+    assert params["type"] == "object"
+    assert "text" in params["properties"]
+    assert params["additionalProperties"] is False
+
+
+@pytest.mark.asyncio
+async def test_disambiguation_does_not_modify_parameters():
+    """After disambiguation, tool parameters should be identical to pre-disambiguation."""
+    block = MatchTextPatternBlock()
+    node_a = _make_mock_node(block, "node_a", input_default={"match": "foo"})
+    node_b = _make_mock_node(block, "node_b", input_default={"match": "bar"})
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    for tool in tools:
+        params = tool["function"]["parameters"]
+        # Parameters must survive disambiguation intact
+        assert "properties" in params
+        assert "text" in params["properties"]
+        assert params["type"] == "object"
