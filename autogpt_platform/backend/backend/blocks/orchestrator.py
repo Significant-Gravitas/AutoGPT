@@ -54,7 +54,12 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionMode(str, Enum):
-    """How the OrchestratorBlock executes tool calls."""
+    """How the OrchestratorBlock executes tool calls.
+
+    Designed to be provider-agnostic: new SDK integrations (e.g. Codex,
+    Copilot) can be added as additional enum members without renaming
+    existing ones.
+    """
 
     BUILT_IN = "built_in"
     """Default built-in tool-call loop (supports all LLM providers)."""
@@ -409,8 +414,8 @@ class OrchestratorBlock(Block):
     single-shot and iterative agent mode execution.
     """
 
-    # MCP server name used by extended thinking.  Keep in sync with
-    # _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
+    # MCP server name used by the Claude Code SDK execution mode.  Keep in sync
+    # with _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
     _SDK_MCP_SERVER_NAME = "graph_tools"
 
     class Input(BlockSchemaInput):
