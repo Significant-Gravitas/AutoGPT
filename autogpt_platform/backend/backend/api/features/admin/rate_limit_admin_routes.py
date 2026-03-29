@@ -37,6 +37,7 @@ class UserRateLimitResponse(BaseModel):
     weekly_token_limit: int
     daily_tokens_used: int
     weekly_tokens_used: int
+    tier: SubscriptionTier
 
 
 class UserTierResponse(BaseModel):
@@ -112,6 +113,7 @@ async def get_user_rate_limit(
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
         weekly_tokens_used=usage.weekly.used,
+        tier=_tier,
     )
 
 
@@ -157,6 +159,7 @@ async def reset_user_rate_limit(
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
         weekly_tokens_used=usage.weekly.used,
+        tier=_tier,
     )
 
 

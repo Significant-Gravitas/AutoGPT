@@ -14917,7 +14917,8 @@
           "weekly_tokens_used": {
             "type": "integer",
             "title": "Weekly Tokens Used"
-          }
+          },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": [
@@ -14925,7 +14926,8 @@
           "daily_token_limit",
           "weekly_token_limit",
           "daily_tokens_used",
-          "weekly_tokens_used"
+          "weekly_tokens_used",
+          "tier"
         ],
         "title": "UserRateLimitResponse"
       },
