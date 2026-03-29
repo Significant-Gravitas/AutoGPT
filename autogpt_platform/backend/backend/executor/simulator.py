@@ -363,9 +363,11 @@ async def simulate_mcp_block(
 
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
-        for pin_name, pin_value in parsed.items():
-            if pin_value is not None and pin_value != "":
-                yield pin_name, pin_value
+        # Always yield "result" so downstream nodes are never starved.
+        yield "result", parsed.get("result")
+        error_val = parsed.get("error")
+        if error_val is not None and error_val != "":
+            yield "error", error_val
     except (RuntimeError, ValueError) as e:
         # Yield both pins so downstream nodes connected to "result" aren't starved.
         yield "result", None
