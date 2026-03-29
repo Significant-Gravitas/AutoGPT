@@ -85,6 +85,7 @@ class SearchDocsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         """Search documentation and return relevant sections.
@@ -99,7 +100,7 @@ class SearchDocsTool(BaseTool):
             NoResultsResponse: No results found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
+        query = query.strip()
         session_id = session.session_id if session else None
 
         if not query:
