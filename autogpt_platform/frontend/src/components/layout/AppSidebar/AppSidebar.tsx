@@ -48,14 +48,46 @@ export function AppSidebar({ dynamicContent }: Props) {
 
   const navLinks = [
     isChatEnabled === true
-      ? { name: "Copilot", href: "/copilot", icon: Sparkle }
-      : { name: "Library", href: "/library", icon: TreeStructure },
+      ? {
+          name: "Copilot",
+          href: "/copilot",
+          icon: Sparkle,
+          testId: "sidebar-link-copilot",
+        }
+      : {
+          name: "Library",
+          href: "/library",
+          icon: TreeStructure,
+          testId: "sidebar-link-library",
+        },
     ...(isChatEnabled === true
-      ? [{ name: "Workflows", href: "/library", icon: TreeStructure }]
+      ? [
+          {
+            name: "Workflows",
+            href: "/library",
+            icon: TreeStructure,
+            testId: "sidebar-link-workflows",
+          },
+        ]
       : []),
-    { name: "Explore", href: "/marketplace", icon: Compass },
-    { name: "Builder", href: "/build", icon: Wrench },
-    { name: "Settings", href: "/profile/settings", icon: GearSix },
+    {
+      name: "Explore",
+      href: "/marketplace",
+      icon: Compass,
+      testId: "sidebar-link-marketplace",
+    },
+    {
+      name: "Builder",
+      href: "/build",
+      icon: Wrench,
+      testId: "sidebar-link-build",
+    },
+    {
+      name: "Settings",
+      href: "/profile/settings",
+      icon: GearSix,
+      testId: "sidebar-link-settings",
+    },
   ];
 
   function isActive(href: string) {
@@ -120,7 +152,7 @@ export function AppSidebar({ dynamicContent }: Props) {
                     tooltip={link.name}
                     className="py-5 data-[active=true]:bg-violet-50 data-[active=true]:font-normal data-[active=true]:text-violet-700"
                   >
-                    <Link href={link.href}>
+                    <Link href={link.href} data-testid={link.testId}>
                       <link.icon className="!size-5" weight="regular" />
                       <span>{link.name}</span>
                     </Link>
