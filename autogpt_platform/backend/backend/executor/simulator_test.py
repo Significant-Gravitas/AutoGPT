@@ -88,12 +88,12 @@ class TestBuildSimulationPrompt:
         block = _make_block()
         system, _ = build_simulation_prompt(block, {})
         assert "REALISTIC" in system
-        assert "NEVER return empty strings" in system
+        assert "Never return empty strings" in system
 
     def test_system_prompt_contains_no_auth_failure_instruction(self) -> None:
         block = _make_block()
         system, _ = build_simulation_prompt(block, {})
-        assert "NEVER simulate authentication failures" in system
+        assert "Do not simulate auth failures" in system
 
     def test_credentials_stripped_from_user_prompt(self) -> None:
         block = _make_block()
@@ -247,11 +247,12 @@ class TestSimulateBlockPassthrough:
 
             mock_llm.assert_called_once()
             assert ("result", "simulated result") in outputs
-            assert ("error", "") in outputs
+            # Empty error pin is omitted — not yielded
+            assert ("error", "") not in outputs
 
     @pytest.mark.asyncio
-    async def test_generic_block_fills_missing_pins(self) -> None:
-        """Missing output pins should be filled with defaults."""
+    async def test_generic_block_omits_missing_pins(self) -> None:
+        """Missing output pins are omitted (not yielded)."""
         block = _make_block()
 
         with patch(
@@ -264,8 +265,8 @@ class TestSimulateBlockPassthrough:
                 outputs[name] = data
 
             assert outputs["result"] == "data"
-            # Error pin should be filled with empty string
-            assert outputs["error"] == ""
+            # Missing pins are omitted — only meaningful values are yielded
+            assert "error" not in outputs
 
     @pytest.mark.asyncio
     async def test_llm_failure_yields_error(self) -> None:
