@@ -324,6 +324,24 @@ def test_set_user_tier_invalid_tier(
     assert response.status_code == 422
 
 
+def test_set_user_tier_invalid_tier_uppercase(
+    target_user_id: str,
+) -> None:
+    """Test that setting an unrecognised uppercase tier (e.g. 'INVALID') returns 422.
+
+    Regression: ensures Pydantic enum validation rejects values that are not
+    members of SubscriptionTier, even when they look like valid enum names.
+    """
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "INVALID"},
+    )
+
+    assert response.status_code == 422
+    body = response.json()
+    assert "detail" in body
+
+
 def test_set_user_tier_user_not_found(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
@@ -376,3 +394,48 @@ def test_tier_endpoints_require_admin_role(mock_jwt_user) -> None:
         json={"user_id": "test", "tier": "PRO"},
     )
     assert response.status_code == 403
+
+
+# ─── search_users endpoint ──────────────────────────────────────────
+
+
+def test_search_users_returns_matching_users(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """Partial search should return all matching users from the User table."""
+    mocker.patch(
+        _MOCK_MODULE + ".search_users",
+        new_callable=AsyncMock,
+        return_value=[
+            ("user-1", "zamil.majdy@gmail.com"),
+            ("user-2", "zamil.majdy@agpt.co"),
+        ],
+    )
+
+    response = client.get("/admin/rate_limit/search_users", params={"query": "zamil"})
+
+    assert response.status_code == 200
+    results = response.json()
+    assert len(results) == 2
+    assert results[0]["user_email"] == "zamil.majdy@gmail.com"
+    assert results[1]["user_email"] == "zamil.majdy@agpt.co"
+
+
+def test_search_users_empty_results(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """Search with no matches returns empty list."""
+    mocker.patch(
+        _MOCK_MODULE + ".search_users",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get(
+        "/admin/rate_limit/search_users", params={"query": "nonexistent"}
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
