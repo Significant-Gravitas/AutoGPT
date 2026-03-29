@@ -20,6 +20,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.llm import LlmModel
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
@@ -190,6 +191,7 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     input_pins = _describe_schema_pins(input_schema)
     output_pins = _describe_schema_pins(output_schema)
     output_properties = list(output_schema.get("properties", {}).keys())
+    required_output_properties = [k for k in output_properties if k != "error"]
 
     block_name = getattr(block, "name", type(block).__name__)
     block_description = getattr(block, "description", "No description available.")
@@ -211,10 +213,10 @@ Rules:
 - Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Make the simulated outputs realistic and consistent with the inputs.
-- If there is an "error" pin, set it to "" (empty string) unless you are simulating a logical error.
+- If there is an "error" pin, OMIT it entirely unless you are simulating a logical error. Only include the "error" pin when there is a genuine error message to report.
 - Do not include any extra keys beyond the output pins.
 
-Output pin names you MUST include: {json.dumps(output_properties)}
+Output pin names you MUST include: {json.dumps(required_output_properties)}
 """
 
     safe_inputs = _truncate_input_values(input_data)
@@ -294,6 +296,11 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
             "model": DRY_RUN_MODEL,
             "agent_mode_max_iterations": max_iters,
         }
+    if isinstance(block, AgentExecutorBlock):
+        # Let the AgentExecutorBlock execute for real so the sub-agent graph
+        # is triggered.  The sub-agent's blocks will be individually simulated
+        # because dry_run propagates via execution_context.
+        return {**input_data}
     return None
 
 
@@ -351,13 +358,18 @@ async def simulate_block(
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
 
-        # Fill missing output pins with defaults
+        # Fill missing output pins with defaults.
+        # Skip empty "error" pins — an empty string means "no error" and
+        # would only confuse downstream consumers (LLM, frontend).
         result: dict[str, Any] = {}
         for pin_name in output_properties:
             if pin_name in parsed:
-                result[pin_name] = parsed[pin_name]
-            else:
-                result[pin_name] = "" if pin_name == "error" else None
+                value = parsed[pin_name]
+                if pin_name == "error" and isinstance(value, str) and not value.strip():
+                    continue
+                result[pin_name] = value
+            elif pin_name != "error":
+                result[pin_name] = None
 
         for pin_name, pin_value in result.items():
             yield pin_name, pin_value
