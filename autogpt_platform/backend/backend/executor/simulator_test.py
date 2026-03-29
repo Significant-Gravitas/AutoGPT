@@ -166,6 +166,34 @@ class TestPrepareDryRun:
         assert result is not None
         assert result["graph_id"] == "abc"
 
+    def test_agent_executor_block_returns_identical_copy(self) -> None:
+        """AgentExecutorBlock must execute for real during dry-run so it can
+        spawn a child graph execution.  ``prepare_dry_run`` returns a shallow
+        copy of input_data with no modifications -- every key/value must be
+        identical, but the returned dict must be a *different* object so
+        callers can mutate it without affecting the original."""
+        from backend.blocks.agent import AgentExecutorBlock
+
+        block = AgentExecutorBlock()
+        input_data = {
+            "user_id": "user-42",
+            "graph_id": "graph-99",
+            "graph_version": 3,
+            "inputs": {"text": "hello"},
+            "input_schema": {"props": "a"},
+            "output_schema": {"props": "b"},
+        }
+        result = prepare_dry_run(block, input_data)
+
+        assert result is not None
+        # Must be a different object (copy, not alias)
+        assert result is not input_data
+        # Every key/value must be identical -- no modifications
+        assert result == input_data
+        # Mutating the copy must not affect the original
+        result["extra"] = "added"
+        assert "extra" not in input_data
+
     def test_regular_block_returns_none(self) -> None:
         block = _make_block()
         result = prepare_dry_run(block, {"query": "test"})
@@ -230,6 +258,62 @@ class TestSimulateBlockPassthrough:
 
         assert ("output", "result data") in outputs
         assert ("name", "output_name") in outputs
+
+    @pytest.mark.asyncio
+    async def test_input_block_no_value_no_name_empty_placeholders(self) -> None:
+        """AgentInputBlock with value=None, name=None, and empty
+        placeholder_values list must not crash.
+
+        When the ``name`` key is present but explicitly ``None``,
+        ``dict.get("name", "sample input")`` returns ``None`` (the key
+        exists), so the fallback sentinel is *not* used.  The test verifies
+        the code does not raise and yields a single result."""
+        from backend.blocks.io import AgentInputBlock
+
+        block = AgentInputBlock()
+
+        outputs = []
+        async for name, data in simulate_block(
+            block, {"value": None, "name": None, "placeholder_values": []}
+        ):
+            outputs.append((name, data))
+
+        # Does not crash; yields exactly one output
+        assert len(outputs) == 1
+        assert outputs[0][0] == "result"
+
+    @pytest.mark.asyncio
+    async def test_input_block_missing_all_fields_uses_sentinel(self) -> None:
+        """AgentInputBlock with no value, name, or placeholders at all should
+        fall back to the ``"sample input"`` sentinel."""
+        from backend.blocks.io import AgentInputBlock
+
+        block = AgentInputBlock()
+
+        outputs = []
+        async for name, data in simulate_block(block, {}):
+            outputs.append((name, data))
+
+        assert outputs == [("result", "sample input")]
+
+    @pytest.mark.asyncio
+    async def test_generic_block_zero_outputs_handled(self) -> None:
+        """When the LLM returns a valid JSON object but none of the output pins
+        have meaningful values, ``simulate_block`` should yield nothing (zero
+        outputs) and *not* raise or crash."""
+        block = _make_block()
+
+        with patch(
+            "backend.executor.simulator._call_llm_for_simulation",
+            new_callable=AsyncMock,
+            # All output pin values are None or empty -- nothing to yield
+            return_value={"result": None, "error": ""},
+        ):
+            outputs = []
+            async for name, data in simulate_block(block, {"query": "test"}):
+                outputs.append((name, data))
+
+            assert outputs == []
 
     @pytest.mark.asyncio
     async def test_generic_block_calls_llm(self) -> None:
