@@ -53,14 +53,21 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionMode(str, Enum):
-    """How the OrchestratorBlock executes tool calls."""
+    """How the OrchestratorBlock executes tool calls.
+
+    Designed to be provider-agnostic: new SDK integrations (e.g. Codex,
+    Copilot) can be added as additional enum members without renaming
+    existing ones.
+    """
 
     BUILT_IN = "built_in"
     """Default built-in tool-call loop (supports all LLM providers)."""
 
-    EXTENDED_THINKING = "extended_thinking"
-    """Use extended thinking via Claude Agent SDK for deeper reasoning.
-    Only supports Anthropic-compatible providers (anthropic / open_router)."""
+    AGENT_SDK = "agent_sdk"
+    """Delegate the tool-calling loop to an external Agent SDK for richer
+    reasoning (e.g. extended thinking, multi-step planning).
+    Currently supports Anthropic-compatible providers (anthropic / open_router)
+    via the Claude Agent SDK; additional SDK backends may be added later."""
 
 
 class ToolInfo(BaseModel):
@@ -363,8 +370,8 @@ class OrchestratorBlock(Block):
             default=ExecutionMode.BUILT_IN,
             description="How tool calls are executed. "
             "'built_in' uses the default tool-call loop (all providers). "
-            "'extended_thinking' uses extended thinking via Claude Agent SDK "
-            "(Anthropic / OpenRouter only, requires API credentials, "
+            "'agent_sdk' delegates to an external Agent SDK for richer reasoning "
+            "(currently Anthropic / OpenRouter only, requires API credentials, "
             "ignores 'Agent Mode Max Iterations').",
             advanced=True,
         )
@@ -1751,7 +1758,7 @@ class OrchestratorBlock(Block):
             )
 
         # Execute tools based on the selected mode
-        if input_data.execution_mode == ExecutionMode.EXTENDED_THINKING:
+        if input_data.execution_mode == ExecutionMode.AGENT_SDK:
             # Validate — Claude Code SDK only works with Claude models
             provider = input_data.model.metadata.provider
             model_name = input_data.model.value
