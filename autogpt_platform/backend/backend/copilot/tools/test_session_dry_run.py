@@ -391,3 +391,109 @@ class TestRunMCPToolToolSessionDryRun:
             mock_client.call_tool.assert_called_once_with("some_tool", {"key": "value"})
             assert isinstance(result, MCPToolOutputResponse)
             assert result.success is True
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatibility tests for ChatSessionMetadata deserialization
+# ---------------------------------------------------------------------------
+
+
+class TestChatSessionMetadataBackwardCompat:
+    """Verify that sessions created before the dry_run field existed still load.
+
+    The ``metadata`` JSON column in the DB may contain ``{}``, ``null``, or a
+    dict without the ``dry_run`` key for sessions created before the flag was
+    introduced.  These must deserialize without errors and default to
+    ``dry_run=False``.
+    """
+
+    def test_metadata_default_construction(self):
+        """ChatSessionMetadata() with no args should default dry_run=False."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        meta = ChatSessionMetadata()
+        assert meta.dry_run is False
+
+    def test_metadata_from_empty_dict(self):
+        """Deserializing an empty dict (old-format metadata) should succeed."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        meta = ChatSessionMetadata.model_validate({})
+        assert meta.dry_run is False
+
+    def test_metadata_from_dict_without_dry_run_key(self):
+        """A metadata dict with other keys but no dry_run should still work."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        meta = ChatSessionMetadata.model_validate({"some_future_field": 42})
+        # dry_run should fall back to default
+        assert meta.dry_run is False
+
+    def test_metadata_round_trip_with_dry_run_false(self):
+        """Serialize then deserialize with dry_run=False."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        original = ChatSessionMetadata(dry_run=False)
+        raw = original.model_dump()
+        restored = ChatSessionMetadata.model_validate(raw)
+        assert restored.dry_run is False
+
+    def test_metadata_round_trip_with_dry_run_true(self):
+        """Serialize then deserialize with dry_run=True."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        original = ChatSessionMetadata(dry_run=True)
+        raw = original.model_dump()
+        restored = ChatSessionMetadata.model_validate(raw)
+        assert restored.dry_run is True
+
+    def test_metadata_json_round_trip(self):
+        """Serialize to JSON string and back, simulating Redis cache flow."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        original = ChatSessionMetadata(dry_run=True)
+        json_str = original.model_dump_json()
+        restored = ChatSessionMetadata.model_validate_json(json_str)
+        assert restored.dry_run is True
+
+    def test_session_dry_run_property_with_default_metadata(self):
+        """ChatSession.dry_run returns False when metadata has no dry_run."""
+        from backend.copilot.model import ChatSessionMetadata
+
+        # Simulate building a session with metadata deserialized from an old row
+        meta = ChatSessionMetadata.model_validate({})
+        session = _make_session(dry_run=False)
+        session.metadata = meta
+        assert session.dry_run is False
+
+    def test_session_info_dry_run_property_with_default_metadata(self):
+        """ChatSessionInfo.dry_run returns False when metadata is default."""
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata
+
+        info = ChatSessionInfo(
+            session_id="old-session-id",
+            user_id="test-user",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            metadata=ChatSessionMetadata.model_validate({}),
+        )
+        assert info.dry_run is False
+
+    def test_session_full_json_round_trip_without_dry_run(self):
+        """A full ChatSession JSON round-trip preserves dry_run default."""
+        session = _make_session(dry_run=False)
+        json_bytes = session.model_dump_json()
+        restored = ChatSession.model_validate_json(json_bytes)
+        assert restored.dry_run is False
+        assert restored.metadata.dry_run is False
+
+    def test_session_full_json_round_trip_with_dry_run(self):
+        """A full ChatSession JSON round-trip preserves dry_run=True."""
+        session = _make_session(dry_run=True)
+        json_bytes = session.model_dump_json()
+        restored = ChatSession.model_validate_json(json_bytes)
+        assert restored.dry_run is True
+        assert restored.metadata.dry_run is True
