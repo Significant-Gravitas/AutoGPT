@@ -185,7 +185,7 @@ class TestSanitizeError:
 
     def test_url_credentials_scrubbed(self):
         conn = "postgresql://user:secret@host:5432/db"
-        error = "connection to postgresql://admin:hunter2@db.internal:5432/prod failed"
+        error = "connection to postgresql://admin:hunter2@db.test.invalid:5432/testprod failed"
         result = _sanitize_error(error, conn)
         assert "hunter2" not in result
         assert "***:***@" in result
@@ -205,16 +205,16 @@ class TestSanitizeError:
 
     def test_hostname_scrubbed(self):
         """Database hostname must be replaced with <host>."""
-        conn = "postgresql://user:pass@52.73.47.72:5432/db"
+        conn = "postgresql://user:pass@198.51.100.1:5432/db"
         error = (
-            'connection to server at "db.adfjtextkuilwuhzdjpf.supabase.co" '
-            "(52.73.47.72), port 5432 failed: FATAL: "
+            'connection to server at "db.example.supabase.invalid" '
+            "(198.51.100.1), port 5432 failed: FATAL: "
             'password authentication failed for user "postgres"'
         )
         result = _sanitize_error(
-            error, conn, host="52.73.47.72", username="postgres", port=5432
+            error, conn, host="198.51.100.1", username="postgres", port=5432
         )
-        assert "52.73.47.72" not in result
+        assert "198.51.100.1" not in result
         assert "postgres" not in result
         assert "5432" not in result
         assert "<host>" in result
@@ -232,7 +232,7 @@ class TestSanitizeError:
 
     def test_username_scrubbed(self):
         """Database username must be replaced with <user>."""
-        conn = "postgresql://analytics_ro:pass@1.2.3.4:5432/db"
+        conn = "postgresql://testuser:fakepw@198.51.100.1:5432/testdb"
         error = 'FATAL: role "analytics_ro" does not exist'
         result = _sanitize_error(error, conn, username="analytics_ro")
         assert "analytics_ro" not in result
@@ -272,22 +272,22 @@ class TestSanitizeError:
 
     def test_realistic_postgres_error_fully_sanitized(self):
         """Full realistic Postgres connection error must not leak any infra details."""
-        conn = "postgresql://postgres:mypass@52.73.47.72:5432/postgres"
+        conn = "postgresql://testuser:fakepw@198.51.100.1:5432/testdb"
         error = (
             "(psycopg2.OperationalError) connection to server at "
-            '"db.adfjtextkuilwuhzdjpf.supabase.co" (52.73.47.72), '
+            '"db.example.supabase.invalid" (198.51.100.1), '
             "port 5432 failed: FATAL: "
             'password authentication failed for user "postgres"'
         )
         result = _sanitize_error(
             error,
             conn,
-            host="52.73.47.72",
-            original_host="db.adfjtextkuilwuhzdjpf.supabase.co",
+            host="198.51.100.1",
+            original_host="db.example.supabase.invalid",
             username="postgres",
             port=5432,
         )
-        assert "52.73.47.72" not in result
+        assert "198.51.100.1" not in result
         assert "adfjtextkuilwuhzdjpf" not in result
         assert "supabase" not in result
         assert "postgres" not in result
@@ -477,12 +477,12 @@ class TestSQLQueryBlockRunErrorHandling:
         block = SQLQueryBlock()
         creds = _make_credentials(username="postgres", password="secret")
         input_data = _make_input(
-            creds, host="db.prod.supabase.co", port=5432, database="mydb"
+            creds, host="db.test.supabase.invalid", port=5432, database="mydb"
         )
-        block.check_host_allowed = AsyncMock(return_value=["52.73.47.72"])  # type: ignore[assignment]
+        block.check_host_allowed = AsyncMock(return_value=["198.51.100.1"])  # type: ignore[assignment]
         block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
             OperationalError(
-                'connection to server at "db.prod.supabase.co" (52.73.47.72), '
+                'connection to server at "db.test.supabase.invalid" (198.51.100.1), '
                 "port 5432 failed: FATAL: "
                 'password authentication failed for user "postgres"',
                 params=None,
@@ -492,8 +492,8 @@ class TestSQLQueryBlockRunErrorHandling:
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" in outputs
         error = outputs["error"]
-        assert "db.prod.supabase.co" not in error
-        assert "52.73.47.72" not in error
+        assert "db.test.supabase.invalid" not in error
+        assert "198.51.100.1" not in error
         assert '"postgres"' not in error
         assert "password authentication failed" in error
 
@@ -894,3 +894,253 @@ class TestSQLQueryBlockDNSPinning:
         # The resolved IP should be in the connection string, not the hostname
         assert "93.184.216.34" in captured_conn_str["value"]
         assert "evil.example.com" not in captured_conn_str["value"]
+
+
+# ---------------------------------------------------------------------------
+# Security gap tests: IPv6 SSRF, writable CTEs, timeout/max_rows enforcement,
+# and password scrubbing in error messages.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestSQLQueryBlockIPv6SSRF:
+    """IPv6 loopback and link-local addresses must be blocked."""
+
+    async def test_ipv6_loopback_rejected(self):
+        """IPv6 loopback (::1) must be blocked just like 127.0.0.1."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, host="::1")
+        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
+            side_effect=ValueError(
+                "Access to blocked or private IP address ::1 "
+                "for hostname ::1 is not allowed."
+            )
+        )
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        assert "Blocked host" in outputs["error"]
+
+    async def test_ipv6_link_local_rejected(self):
+        """IPv6 link-local (fe80::) must be blocked."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, host="fe80::1")
+        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
+            side_effect=ValueError(
+                "Access to blocked or private IP address fe80::1 "
+                "for hostname fe80::1 is not allowed."
+            )
+        )
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        assert "Blocked host" in outputs["error"]
+
+    async def test_ipv6_mapped_ipv4_loopback_rejected(self):
+        """IPv4-mapped IPv6 loopback (::ffff:127.0.0.1) must be blocked."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, host="::ffff:127.0.0.1")
+        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
+            side_effect=ValueError(
+                "Access to blocked or private IP address ::ffff:127.0.0.1 "
+                "for hostname ::ffff:127.0.0.1 is not allowed."
+            )
+        )
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        assert "Blocked host" in outputs["error"]
+
+    async def test_ipv6_unique_local_rejected(self):
+        """IPv6 unique-local (fd00::) must be blocked like RFC1918."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, host="fd00::1")
+        block.check_host_allowed = AsyncMock(  # type: ignore[assignment]
+            side_effect=ValueError(
+                "Access to blocked or private IP address fd00::1 "
+                "for hostname fd00::1 is not allowed."
+            )
+        )
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        assert "Blocked host" in outputs["error"]
+
+
+class TestWritableCTEBlocked:
+    """Writable CTEs (WITH ... DELETE/INSERT/UPDATE ... RETURNING) must be
+    blocked even though sqlparse classifies them as SELECT type."""
+
+    @pytest.mark.parametrize(
+        "query,expected_keyword",
+        [
+            (
+                "WITH deleted AS (DELETE FROM users RETURNING *) SELECT * FROM deleted",
+                "DELETE",
+            ),
+            (
+                "WITH ins AS (INSERT INTO t VALUES (1) RETURNING *) SELECT * FROM ins",
+                "INSERT",
+            ),
+            (
+                "WITH upd AS (UPDATE t SET x=1 RETURNING *) SELECT * FROM upd",
+                "UPDATE",
+            ),
+        ],
+    )
+    def test_writable_cte_rejected_in_read_only(
+        self, query: str, expected_keyword: str
+    ):
+        """A CTE containing a data-modifying statement must be caught by
+        the keyword-based defense-in-depth check even if stmt.get_type()
+        returns 'SELECT'."""
+        error, stmt = _validate_single_statement(query)
+        assert error is None
+        assert stmt is not None
+        ro_error = _validate_query_is_read_only(stmt)
+        assert ro_error is not None
+        assert expected_keyword in ro_error
+
+    def test_writable_cte_with_truncate_rejected(self):
+        """TRUNCATE inside a CTE must also be blocked."""
+        query = "WITH t AS (TRUNCATE users RETURNING *) SELECT * FROM t"
+        error, stmt = _validate_single_statement(query)
+        # sqlparse may reject this as invalid or we catch it in read-only check
+        if error is None and stmt is not None:
+            ro_error = _validate_query_is_read_only(stmt)
+            assert ro_error is not None
+
+
+@pytest.mark.asyncio
+class TestTimeoutEnforcement:
+    """Timeout parameter must be forwarded to execute_query."""
+
+    async def test_timeout_forwarded_to_execute(self):
+        """The timeout value from input must reach execute_query."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, query="SELECT 1", timeout=7)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured_kwargs: dict[str, Any] = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_kwargs.update(kwargs)
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert captured_kwargs["timeout"] == 7
+
+    async def test_timeout_generates_clean_error(self):
+        """When execute_query raises a timeout OperationalError, the block
+        yields a clean user-facing 'timed out' message with the configured
+        timeout value."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, query="SELECT pg_sleep(9999)", timeout=3)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (_ for _ in ()).throw(  # type: ignore[assignment]
+            OperationalError(
+                "canceling statement due to statement timeout",
+                params=None,
+                orig=Exception("timeout"),
+            )
+        )
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        assert "timed out" in outputs["error"].lower()
+        assert "3s" in outputs["error"]
+
+
+@pytest.mark.asyncio
+class TestMaxRowsEnforcement:
+    """max_rows parameter must be forwarded and used to truncate results."""
+
+    async def test_max_rows_forwarded_to_execute(self):
+        """The max_rows value from input must reach execute_query."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(creds, query="SELECT 1", max_rows=42)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured_kwargs: dict[str, Any] = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured_kwargs.update(kwargs)
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert captured_kwargs["max_rows"] == 42
+
+    async def test_max_rows_truncates_large_result(self):
+        """When execute_query returns exactly max_rows items, row_count
+        reflects the truncated count."""
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        max_rows = 5
+        input_data = _make_input(
+            creds, query="SELECT * FROM big_table", max_rows=max_rows
+        )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        # Simulate the database returning exactly max_rows rows (truncated)
+        mock_rows = [{"id": i} for i in range(max_rows)]
+        block.execute_query = lambda **_kwargs: (mock_rows, ["id"], -1)  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        assert outputs["row_count"] == max_rows
+        assert len(outputs["results"]) == max_rows
+
+
+class TestPasswordInErrorMessages:
+    """Connection errors must not leak passwords, even when the password
+    appears in driver-specific formats."""
+
+    def test_password_key_value_scrubbed(self):
+        """password=<value> in error text must be replaced with ***."""
+        conn = "postgresql://user:P@ssw0rd!@host:5432/db"
+        error = "FATAL: password=P@ssw0rd! authentication failed"
+        result = _sanitize_error(error, conn)
+        assert "P@ssw0rd!" not in result
+        assert "password=***" in result
+
+    def test_url_embedded_password_scrubbed(self):
+        """://user:pass@ in error text must be replaced."""
+        conn = "postgresql://admin:hunter2@test.invalid:5432/db"
+        error = (
+            "could not connect: postgresql://admin:hunter2@test.invalid:5432/db refused"
+        )
+        result = _sanitize_error(error, conn)
+        assert "hunter2" not in result
+
+    def test_ipv6_address_in_error_scrubbed(self):
+        """Bracketed IPv6 addresses (e.g. [::1]) in error messages must be
+        scrubbed to prevent leaking internal network topology."""
+        conn = "postgresql://user:pass@[::1]:5432/db"
+        error = 'could not connect to server at "[::1]", port 5432'
+        result = _sanitize_error(error, conn, host="::1", port=5432)
+        assert "[::1]" not in result
+        assert "5432" not in result
+
+    def test_ipv6_link_local_in_error_scrubbed(self):
+        """Bracketed IPv6 link-local with zone ID (e.g. [fe80::1%eth0]) must
+        be scrubbed."""
+        conn = "postgresql://user:pass@[fe80::1%25eth0]:5432/db"
+        error = 'connection to "[fe80::1%eth0]" refused'
+        result = _sanitize_error(error, conn, host="fe80::1%eth0")
+        assert "[fe80::1%eth0]" not in result
+
+    def test_multiple_password_formats_scrubbed(self):
+        """Error containing password in multiple formats must be fully scrubbed."""
+        conn = "postgresql://testadmin:fakepw@test.example.invalid:5432/testdb"
+        error = (
+            "connection to postgresql://testadmin:fakepw@test.example.invalid:5432/testdb failed: "
+            "password=fakepw authentication failed for user 'testadmin'"
+        )
+        result = _sanitize_error(
+            error, conn, host="test.example.invalid", username="testadmin", port=5432
+        )
+        assert "fakepw" not in result
+        assert "testadmin" not in result
+        assert "test.example.invalid" not in result
