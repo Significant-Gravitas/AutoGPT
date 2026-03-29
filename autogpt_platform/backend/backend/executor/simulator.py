@@ -216,6 +216,15 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     except (TypeError, OSError):
         run_source = ""
 
+    implementation_section = ""
+    if run_source:
+        implementation_section = (
+            "\n## Block Implementation (run function source code)\n"
+            "```python\n"
+            f"{run_source}\n"
+            "```\n"
+        )
+
     system_prompt = f"""You are simulating the execution of a software block called "{block_name}".
 
 ## Block Description
@@ -226,12 +235,7 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
 
 ## Output Schema (what you must return)
 {output_pins}
-{"" if not run_source else f"""
-## Block Implementation (run function source code)
-```python
-{run_source}
-```
-"""}
+{implementation_section}
 Your task: given the current inputs, produce realistic simulated outputs for this block.
 Study the block's run() source code above to understand exactly how inputs are transformed to outputs.
 
