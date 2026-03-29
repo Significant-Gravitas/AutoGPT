@@ -79,9 +79,7 @@ async def get_user_by_email(email: str) -> Optional[User]:
         raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
 
 
-async def search_users(
-    query: str, limit: int = 20
-) -> list[tuple[str, str | None]]:
+async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
     """Search users by partial email or name.
 
     Returns a list of ``(user_id, email)`` tuples, up to *limit* results.

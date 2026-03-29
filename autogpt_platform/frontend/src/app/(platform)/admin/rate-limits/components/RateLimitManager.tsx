@@ -14,6 +14,7 @@ export function RateLimitManager() {
     handleSearch,
     handleSelectUser,
     handleReset,
+    handleTierChange,
   } = useRateLimitManager();
 
   return (
@@ -74,7 +75,11 @@ export function RateLimitManager() {
       )}
 
       {rateLimitData && (
-        <RateLimitDisplay data={rateLimitData} onReset={handleReset} />
+        <RateLimitDisplay
+          data={rateLimitData}
+          onReset={handleReset}
+          onTierChange={handleTierChange}
+        />
       )}
     </div>
   );
