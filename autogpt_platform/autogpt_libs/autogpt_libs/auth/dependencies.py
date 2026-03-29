@@ -38,7 +38,8 @@ def get_optional_user_id(
     Returns:
         The user ID (str) extracted from the JWT "sub" claim, or None if no valid token is present.
     """
-    if not credentials:
+    if not credentials or not credentials.credentials:
+        logger.debug("No authorization credentials provided (anonymous access)")
         return None
 
     try:
@@ -98,7 +99,7 @@ async def get_user_id(
 
     # Check for admin impersonation header
     impersonate_header = request.headers.get(IMPERSONATION_HEADER_NAME, "").strip()
-    if impersonate_header:
+    if impersonate_header and impersonate_header.lower() != "none":  # 'none' (case-insensitive) disables impersonation
         # Verify the authenticated user is an admin
         authenticated_user = verify_user(jwt_payload, admin_only=False)
         if authenticated_user.role != "admin":
