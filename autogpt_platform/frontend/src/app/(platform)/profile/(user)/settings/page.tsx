@@ -45,7 +45,7 @@ export default function SettingsPage() {
 
   if (preferencesError) {
     return (
-      <div className="container max-w-2xl py-10">
+      <div className="w-full max-w-2xl px-6 py-10">
         <ErrorCard
           responseError={
             preferencesErrorData
@@ -68,7 +68,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="container max-w-2xl space-y-6 py-10">
+    <div className="w-full max-w-2xl space-y-6 px-6 py-10">
       <div className="flex flex-col gap-2">
         <Text variant="h3">My account</Text>
         <Text variant="large">

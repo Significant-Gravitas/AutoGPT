@@ -73,9 +73,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         </SheetContent>
       </Sheet>
 
-      <div className="relative hidden h-[912px] w-[234px] border-none lg:block">
-        <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
-          <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
+      <div className="sticky top-0 hidden w-[234px] shrink-0 self-start border-none lg:block">
+        <div className="w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
+          <div className="inline-flex flex-col items-start justify-start gap-6 p-3">
             {renderLinks()}
           </div>
         </div>

@@ -7,7 +7,6 @@ import "./globals.css";
 import { Providers } from "@/app/providers";
 import { CookieConsentBanner } from "@/components/molecules/CookieConsentBanner/CookieConsentBanner";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
-import TallyPopupSimple from "@/components/molecules/TallyPoup/TallyPopup";
 import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
@@ -54,7 +53,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen">
+      <body className="h-screen overflow-hidden">
         <ErrorBoundary context="application">
           <Providers
             attribute="class"
@@ -63,9 +62,9 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
-            <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
+            <div className="flex h-full flex-col items-stretch justify-items-stretch">
               {children}
-              <TallyPopupSimple />
+              {/* TallyPopupSimple removed — feedback button is now in the Navbar */}
               <VercelAnalyticsWrapper />
 
               {/* React Query DevTools is only available in development */}

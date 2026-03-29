@@ -27,8 +27,8 @@ import { SidebarSimpleIcon } from "@phosphor-icons/react";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "20rem";
-const SIDEBAR_WIDTH_MOBILE = "20rem";
+const SIDEBAR_WIDTH = "16rem";
+const SIDEBAR_WIDTH_MOBILE = "16rem";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
@@ -280,23 +280,26 @@ Sidebar.displayName = "Sidebar";
 const SidebarTrigger = React.forwardRef<
   React.ElementRef<typeof Button>,
   React.ComponentProps<typeof Button>
->(({ onClick }, ref) => {
+>(({ className, onClick, ...props }, ref) => {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <Button
+    <button
       ref={ref}
       data-sidebar="trigger"
-      variant="ghost"
-      size="icon"
+      className={cn(
+        "rounded-md p-1.5 text-neutral-600 transition-colors hover:bg-zinc-100",
+        className,
+      )}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
       }}
+      {...props}
     >
-      <SidebarSimpleIcon className="!size-5" />
+      <SidebarSimpleIcon className="h-5 w-5" />
       <span className="sr-only">Toggle Sidebar</span>
-    </Button>
+    </button>
   );
 });
 SidebarTrigger.displayName = "SidebarTrigger";

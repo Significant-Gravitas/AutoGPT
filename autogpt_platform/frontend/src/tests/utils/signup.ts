@@ -85,7 +85,7 @@ export async function signupTestUser(
 
     if (withAgent) {
       // Create a dummy agent for each new user
-      const buildLink = getId("navbar-link-build");
+      const buildLink = getId("sidebar-link-build");
       await buildLink.click();
 
       const blocksBtn = getId("blocks-control-blocks-button");

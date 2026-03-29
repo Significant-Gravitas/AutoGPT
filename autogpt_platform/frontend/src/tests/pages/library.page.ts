@@ -16,6 +16,42 @@ export class LibraryPage extends BasePage {
     super(page);
   }
 
+  private async scrollLibraryContainer(
+    position: "bottom" | "page",
+  ): Promise<void> {
+    const { getId } = getSelectors(this.page);
+    const lastAgentCard = getId("library-agent-card").last();
+
+    await lastAgentCard.scrollIntoViewIfNeeded();
+    await lastAgentCard.evaluate((node, targetPosition) => {
+      let currentElement: HTMLElement | null = node.parentElement;
+
+      while (currentElement) {
+        const style = window.getComputedStyle(currentElement);
+        const canScrollVertically =
+          /(auto|scroll)/.test(style.overflowY) &&
+          currentElement.scrollHeight > currentElement.clientHeight;
+
+        if (canScrollVertically) {
+          if (targetPosition === "bottom") {
+            currentElement.scrollTop = currentElement.scrollHeight;
+          } else {
+            currentElement.scrollTop += currentElement.clientHeight;
+          }
+          return;
+        }
+
+        currentElement = currentElement.parentElement;
+      }
+
+      if (targetPosition === "bottom") {
+        window.scrollTo(0, document.body.scrollHeight);
+      } else {
+        window.scrollBy(0, window.innerHeight);
+      }
+    }, position);
+  }
+
   async isLoaded(): Promise<boolean> {
     console.log(`checking if library page is loaded`);
     try {
@@ -276,13 +312,13 @@ export class LibraryPage extends BasePage {
 
   async scrollToBottom(): Promise<void> {
     console.log(`scrolling to bottom to trigger pagination`);
-    await this.page.keyboard.press("End");
+    await this.scrollLibraryContainer("bottom");
     await this.page.waitForTimeout(1000);
   }
 
   async scrollDown(): Promise<void> {
     console.log(`scrolling down to trigger pagination`);
-    await this.page.keyboard.press("PageDown");
+    await this.scrollLibraryContainer("page");
     await this.page.waitForTimeout(1000);
   }
 

@@ -12,21 +12,21 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("check the navigation when logged out", async ({ page }) => {
-  const { getButton, getText, getLink } = getSelectors(page);
+  const { getButton, getLink } = getSelectors(page);
 
-  // Test marketplace link
+  // Logged-out users should not see navigation links
   const marketplaceLink = getLink("Marketplace");
-  await isVisible(marketplaceLink);
-  await marketplaceLink.click();
-  await hasUrl(page, "/marketplace");
-  await isVisible(getText("Explore AI agents", { exact: false }));
+  await isHidden(marketplaceLink);
 
-  // Test login button
+  // Login button is hidden on the login page itself
   const loginBtn = getButton("Log In");
-  await isVisible(loginBtn);
-  await loginBtn.click();
-  await hasUrl(page, "/login");
   await isHidden(loginBtn);
+
+  // Navigate to marketplace directly and verify login button appears
+  await page.goto("/marketplace");
+  await hasUrl(page, "/marketplace");
+  const loginBtnOnMarketplace = getButton("Log In");
+  await isVisible(loginBtnOnMarketplace);
 });
 
 test("user can login successfully", async ({ page }) => {
