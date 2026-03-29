@@ -703,6 +703,130 @@ class TestGetGlobalRateLimitsWithTiers:
 
 
 # ---------------------------------------------------------------------------
+# End-to-end: tier limits are respected by check_rate_limit
+# ---------------------------------------------------------------------------
+
+
+class TestTierLimitsRespected:
+    """Verify that tier-adjusted limits from get_global_rate_limits flow
+    correctly into check_rate_limit, so higher tiers allow more usage and
+    lower tiers are blocked when they would exceed their allocation."""
+
+    _BASE_DAILY = 2_500_000
+    _BASE_WEEKLY = 12_500_000
+
+    @staticmethod
+    def _ld_side_effect(daily: int, weekly: int):
+        call_count = 0
+
+        async def _side_effect(flag_key, user_id, default):
+            nonlocal call_count
+            call_count += 1
+            return daily if call_count == 1 else weekly
+
+        return _side_effect
+
+    @pytest.mark.asyncio
+    async def test_pro_user_allowed_above_free_limit(self):
+        """A PRO user with usage above the FREE limit should be allowed."""
+        # Usage: 3M tokens (above FREE limit of 2.5M, below PRO limit of 12.5M)
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["3000000", "3000000"])
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.PRO,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, self._BASE_DAILY, self._BASE_WEEKLY
+            )
+            # PRO: 5x multiplier
+            assert daily == 12_500_000
+            assert tier == SubscriptionTier.PRO
+            # Should NOT raise — 3M < 12.5M
+            await check_rate_limit(
+                _USER, daily_token_limit=daily, weekly_token_limit=weekly
+            )
+
+    @pytest.mark.asyncio
+    async def test_free_user_blocked_at_free_limit(self):
+        """A FREE user at or above the base limit should be blocked."""
+        # Usage: 2.5M tokens (at FREE limit of 2.5M)
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["2500000", "2500000"])
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.FREE,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, self._BASE_DAILY, self._BASE_WEEKLY
+            )
+            # FREE: 1x multiplier
+            assert daily == 2_500_000
+            assert tier == SubscriptionTier.FREE
+            # Should raise — 2.5M >= 2.5M
+            with pytest.raises(RateLimitExceeded):
+                await check_rate_limit(
+                    _USER, daily_token_limit=daily, weekly_token_limit=weekly
+                )
+
+    @pytest.mark.asyncio
+    async def test_enterprise_user_has_highest_headroom(self):
+        """An ENTERPRISE user should have 60x the base limit."""
+        # Usage: 100M tokens (huge, but below ENTERPRISE daily of 150M)
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["100000000", "100000000"])
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.ENTERPRISE,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(self._BASE_DAILY, self._BASE_WEEKLY),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, self._BASE_DAILY, self._BASE_WEEKLY
+            )
+            assert daily == 150_000_000
+            assert tier == SubscriptionTier.ENTERPRISE
+            # Should NOT raise — 100M < 150M
+            await check_rate_limit(
+                _USER, daily_token_limit=daily, weekly_token_limit=weekly
+            )
+
+
+# ---------------------------------------------------------------------------
 # reset_daily_usage
 # ---------------------------------------------------------------------------
 
