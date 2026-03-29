@@ -71,7 +71,7 @@ export const useFlow = () => {
         // the WebSocket subscription is established (race condition on fast
         // executions like dry-runs).  Stops once the execution reaches a
         // terminal state and isGraphRunning becomes false.
-        refetchInterval: isGraphRunning ? 2000 : false,
+        refetchInterval: isGraphRunning ? 1000 : false,
       },
     },
   );
