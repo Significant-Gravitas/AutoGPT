@@ -3,11 +3,19 @@ LLM-powered block simulator for dry-run execution.
 
 When dry_run=True, instead of calling the real block, this module
 role-plays the block's execution using an LLM.  For most blocks no real
-API calls or side effects occur.  OrchestratorBlock and AgentExecutorBlock
-are exceptions -- OrchestratorBlock executes for real with a cheap model so
-it can make LLM calls, and AgentExecutorBlock executes for real so it can
-spawn child graph executions (whose blocks are then simulated).  Both are
-handled in manager.py via ``prepare_dry_run``.
+API calls or side effects occur.
+
+Special cases (no LLM simulation needed):
+  - OrchestratorBlock executes for real with the user's own model/credentials
+    (iterations capped to 1).
+  - AgentExecutorBlock executes for real so it can spawn child graph executions
+    (whose blocks are then simulated).
+  - AgentInputBlock (and all subclasses) and AgentOutputBlock are pure
+    passthrough -- they forward their input values directly.
+  - MCPToolBlock uses a specialised LLM prompt grounded in the tool's schema.
+
+OrchestratorBlock and AgentExecutorBlock are handled in manager.py via
+``prepare_dry_run``.
 
 The LLM simulation is grounded by:
   - Block name and description
@@ -23,7 +31,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.llm import LlmModel
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
@@ -64,9 +72,6 @@ def _simulator_model() -> str:
 _TEMPERATURE = 0.2
 _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
-
-# Cheap model used when executing OrchestratorBlock during dry-run.
-DRY_RUN_MODEL = LlmModel.GPT4O_MINI
 
 
 def _truncate_value(value: Any) -> Any:
@@ -295,11 +300,13 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # LLM call, no agent loop). Only override to 1 when the user chose
         # agent mode (non-zero) so the dry run still exercises the loop once
         # without running away.
+        # Keep the user's own model and credentials -- swapping to a different
+        # model can cause credential mismatches (e.g. Anthropic key vs OpenAI
+        # model).
         original = input_data.get("agent_mode_max_iterations", 0)
         max_iters = 1 if original != 0 else 0
         return {
             **input_data,
-            "model": DRY_RUN_MODEL,
             "agent_mode_max_iterations": max_iters,
         }
     if isinstance(block, AgentExecutorBlock):
@@ -354,6 +361,24 @@ async def simulate_block(
     if isinstance(block, MCPToolBlock):
         async for output in simulate_mcp_block(block, input_data):
             yield output
+        return
+
+    # Input/output blocks are pure passthrough -- they just forward their
+    # input values.  No LLM simulation needed.
+    if isinstance(block, AgentInputBlock):
+        # AgentInputBlock and all subclasses (AgentDropdownInputBlock,
+        # AgentFileInputBlock, AgentShortTextInputBlock, etc.) yield
+        # "result" with the provided value.
+        value = input_data.get("value")
+        if value is not None:
+            yield "result", value
+        return
+
+    if isinstance(block, AgentOutputBlock):
+        # AgentOutputBlock passes through "value" as "output" (+ "name").
+        yield "output", input_data.get("value")
+        if "name" in input_data:
+            yield "name", input_data["name"]
         return
 
     output_schema = block.output_schema.jsonschema()
