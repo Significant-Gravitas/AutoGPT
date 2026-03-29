@@ -49,23 +49,17 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
-      // The backend accepts an optional `email` query-param and returns
-      // `user_email` in the response, but the generated Orval types haven't
-      // been regenerated yet -- use type assertions until they are updated.
       const params = looksLikeEmail(trimmed)
-        ? ({ email: trimmed } as unknown as { user_id: string })
+        ? { email: trimmed }
         : { user_id: trimmed };
       const response = await getV2GetUserRateLimit(params);
       if (response.status !== 200) {
         throw new Error("Failed to fetch rate limit");
       }
-      const data = response.data as UserRateLimitResponse & {
-        user_email?: string;
-      };
-      setRateLimitData(data);
+      setRateLimitData(response.data);
       setSelectedUser({
-        user_id: data.user_id,
-        user_email: data.user_email ?? data.user_id,
+        user_id: response.data.user_id,
+        user_email: response.data.user_email ?? response.data.user_id,
       });
     } catch (error) {
       console.error("Error fetching rate limit:", error);
