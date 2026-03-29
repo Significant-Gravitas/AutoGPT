@@ -58,8 +58,8 @@ class ExecutionMode(str, Enum):
     BUILT_IN = "built_in"
     """Default built-in tool-call loop (supports all LLM providers)."""
 
-    CLAUDE_CODE_SDK = "claude_code_sdk"
-    """Delegate tool orchestration to the Claude Code SDK.
+    EXTENDED_THINKING = "extended_thinking"
+    """Use extended thinking via Claude Agent SDK for deeper reasoning.
     Only supports Anthropic-compatible providers (anthropic / open_router)."""
 
 
@@ -363,7 +363,7 @@ class OrchestratorBlock(Block):
             default=ExecutionMode.BUILT_IN,
             description="How tool calls are executed. "
             "'built_in' uses the default tool-call loop (all providers). "
-            "'claude_code_sdk' delegates to the Claude Code SDK "
+            "'extended_thinking' uses extended thinking via Claude Agent SDK "
             "(Anthropic / OpenRouter only, requires API credentials, "
             "ignores 'Agent Mode Max Iterations').",
             advanced=True,
@@ -1751,7 +1751,7 @@ class OrchestratorBlock(Block):
             )
 
         # Execute tools based on the selected mode
-        if input_data.execution_mode == ExecutionMode.CLAUDE_CODE_SDK:
+        if input_data.execution_mode == ExecutionMode.EXTENDED_THINKING:
             # Validate — Claude Code SDK only works with Claude models
             provider = input_data.model.metadata.provider
             model_name = input_data.model.value
