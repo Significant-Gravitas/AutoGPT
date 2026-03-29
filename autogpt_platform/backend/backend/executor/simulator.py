@@ -241,14 +241,21 @@ Study the block's run() source code above to understand exactly how inputs are t
 
 Rules:
 - Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
-- Assume all credentials and authentication are present and valid. Never simulate authentication failures.
-- Make the simulated outputs realistic and consistent with the inputs.
+- Assume all credentials, API keys, and authentication are present and valid. NEVER simulate authentication failures, missing credentials, or permission errors.
+- Generate REALISTIC, useful simulated outputs. For example: real-looking URLs (https://example.com/generated/image_001.png), plausible text, valid data structures.
+- NEVER return empty strings, null values, or placeholder text like "N/A" for outputs that should have content.
 - If there is an "error" pin, OMIT it entirely unless you are simulating a logical error. Only include the "error" pin when there is a genuine error message to report.
 - Do not include any extra keys beyond the output pins.
 
 Output pin names you MUST include: {json.dumps(required_output_properties)}"""
 
-    safe_inputs = _truncate_input_values(input_data)
+    # Strip credentials from input so the LLM doesn't see null/empty creds
+    # and incorrectly simulate auth failures.
+    safe_inputs = {
+        k: v
+        for k, v in _truncate_input_values(input_data).items()
+        if k not in ("credentials", "api_key", "token", "secret")
+    }
     user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
 
     return system_prompt, user_prompt
@@ -391,12 +398,15 @@ async def simulate_block(
     # Input/output blocks are pure passthrough -- they just forward their
     # input values.  No LLM simulation needed.
     if isinstance(block, AgentInputBlock):
-        # AgentInputBlock and all subclasses (AgentDropdownInputBlock,
-        # AgentFileInputBlock, AgentShortTextInputBlock, etc.) yield
-        # "result" with the provided value.
         value = input_data.get("value")
-        if value is not None:
-            yield "result", value
+        if value is None:
+            # Dry-run with no user input: use first dropdown option or name
+            placeholder = input_data.get("placeholder_values")
+            if placeholder and isinstance(placeholder, list) and placeholder:
+                value = placeholder[0]
+            else:
+                value = input_data.get("name", "sample input")
+        yield "result", value
         return
 
     if isinstance(block, AgentOutputBlock):
