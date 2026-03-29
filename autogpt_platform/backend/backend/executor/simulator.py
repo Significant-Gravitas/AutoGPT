@@ -395,8 +395,16 @@ async def simulate_block(
         # AgentFileInputBlock, AgentShortTextInputBlock, etc.) yield
         # "result" with the provided value.
         value = input_data.get("value")
-        if value is not None:
-            yield "result", value
+        if value is None:
+            # Dry-run with no user input: generate a sensible default so
+            # downstream blocks (e.g. OrchestratorBlock) still receive data.
+            placeholder = input_data.get("placeholder_values")
+            if placeholder and isinstance(placeholder, list) and placeholder:
+                value = placeholder[0]  # First dropdown option
+            else:
+                name = input_data.get("name", "input")
+                value = f"sample {name}"
+        yield "result", value
         return
 
     if isinstance(block, AgentOutputBlock):
