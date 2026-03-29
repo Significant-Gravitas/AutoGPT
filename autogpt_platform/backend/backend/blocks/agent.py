@@ -88,6 +88,7 @@ class AgentExecutorBlock(Block):
             execution_context=execution_context.model_copy(
                 update={"parent_execution_id": graph_exec_id},
             ),
+            dry_run=execution_context.dry_run,
         )
 
         logger = execution_utils.LogMetadata(
