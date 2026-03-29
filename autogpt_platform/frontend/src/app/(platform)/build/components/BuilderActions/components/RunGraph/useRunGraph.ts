@@ -33,6 +33,9 @@ export const useRunGraph = () => {
   const clearAllNodeErrors = useNodeStore(
     useShallow((state) => state.clearAllNodeErrors),
   );
+  const clearAllNodeExecutionResults = useNodeStore(
+    useShallow((state) => state.clearAllNodeExecutionResults),
+  );
   const cleanNodesStatuses = useNodeStore(
     useShallow((state) => state.cleanNodesStatuses),
   );
@@ -140,9 +143,8 @@ export const useRunGraph = () => {
     if (!dryRun && (hasInputs() || hasCredentials())) {
       setOpenRunInputDialog(true);
     } else {
-      // Clear previous node statuses so fresh execution results are visible.
-      // Without this, stale COMPLETED badges from a previous run remain and
-      // new RUNNING/COMPLETED updates from the dry-run are not rendered.
+      // Clear stale results so the UI shows fresh output from this execution
+      clearAllNodeExecutionResults();
       cleanNodesStatuses();
       // Optimistically set running state immediately for responsive UI
       setIsGraphRunning(true);
