@@ -259,48 +259,12 @@ def get_pending_tool_calls(conversation_history: list[Any] | None) -> dict[str, 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
-def _slug_from_value(value: Any) -> str:
-    """Extract a short alphanumeric slug from a default value.
-
-    Used to build descriptive tool-name suffixes so the LLM can tell
-    duplicate tools apart at a glance (e.g. ``web_search_for_weather``
-    instead of ``web_search_1``).
-    """
-    text = str(value) if not isinstance(value, str) else value
-    # Keep only alphanumeric and spaces, collapse whitespace, take first 3 words
-    text = re.sub(r"[^a-zA-Z0-9 ]", " ", text).strip()
-    words = text.split()[:3]
-    slug = "_".join(w.lower() for w in words if w)
-    return slug[:30] if slug else ""
-
-
-def _descriptive_suffix(name: str, defaults: dict[str, Any], taken: set[str]) -> str:
-    """Try to build a descriptive suffix from hardcoded defaults.
-
-    Iterates through defaults looking for a value that produces a usable
-    slug. Returns the suffix string (e.g. ``_for_weather``) or empty
-    string if no descriptive suffix could be derived.
-    """
-    for _k, v in defaults.items():
-        slug = _slug_from_value(v)
-        if not slug:
-            continue
-        suffix = f"_for_{slug}"
-        candidate = f"{name[: 64 - len(suffix)]}{suffix}"
-        if candidate not in taken:
-            return suffix
-    return ""
-
-
 def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     """Ensure all tool names are unique (Anthropic API requires this).
 
     When multiple nodes use the same block type, they get the same tool name.
-    This creates descriptive suffixes from hardcoded defaults (e.g.
-    ``web_search_for_weather``) so the LLM understands what each duplicate
-    does. Falls back to ``_1``, ``_2`` numbering only when no descriptive
-    suffix can be derived. Also enriches descriptions with the full set of
-    hardcoded defaults. Mutates the list in place.
+    This appends _1, _2, etc. and enriches descriptions with hardcoded defaults
+    so the LLM can distinguish them. Mutates the list in place.
 
     Malformed tools (missing ``function`` or ``function.name``) are silently
     skipped so the caller never crashes on unexpected input.
@@ -336,22 +300,14 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
         if name not in duplicates:
             continue
 
-        # Try a descriptive suffix first (e.g. _for_weather)
-        suffix = ""
-        if defaults and isinstance(defaults, dict):
-            suffix = _descriptive_suffix(name, defaults, taken)
-
-        if suffix:
+        counters[name] = counters.get(name, 0) + 1
+        # Skip suffixes that collide with existing (e.g. user-named) tools
+        while True:
+            suffix = f"_{counters[name]}"
             candidate = f"{name[: 64 - len(suffix)]}{suffix}"
-        else:
-            # Fall back to numbered suffix
-            counters[name] = counters.get(name, 0) + 1
-            while True:
-                suffix = f"_{counters[name]}"
-                candidate = f"{name[: 64 - len(suffix)]}{suffix}"
-                if candidate not in taken:
-                    break
-                counters[name] += 1
+            if candidate not in taken:
+                break
+            counters[name] += 1
 
         func["name"] = candidate
         taken.add(candidate)
