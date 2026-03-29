@@ -256,5 +256,6 @@ export function useRateLimitManager() {
     handleSearch,
     handleSelectUser,
     handleReset,
+    handleTierChange,
   };
 }
