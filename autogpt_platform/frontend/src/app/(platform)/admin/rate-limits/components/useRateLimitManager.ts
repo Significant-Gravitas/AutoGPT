@@ -49,6 +49,9 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
+      // The backend accepts an optional `email` query-param and returns
+      // `user_email` in the response, but the generated Orval types haven't
+      // been regenerated yet -- use type assertions until they are updated.
       const params = looksLikeEmail(trimmed)
         ? ({ email: trimmed } as unknown as { user_id: string })
         : { user_id: trimmed };
