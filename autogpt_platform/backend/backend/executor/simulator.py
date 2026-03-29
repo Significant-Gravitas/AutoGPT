@@ -235,14 +235,15 @@ Your task: given the current inputs, produce realistic simulated outputs for thi
 Study the block's run() source code above to understand exactly how inputs are transformed to outputs.
 
 Rules:
-- Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
-- Assume all credentials, API keys, and authentication are present and valid. NEVER simulate authentication failures, missing credentials, or permission errors.
-- Generate REALISTIC, useful simulated outputs. For example: real-looking URLs (https://example.com/generated/image_001.png), plausible text, valid data structures.
-- NEVER return empty strings, null values, or placeholder text like "N/A" for outputs that should have content.
-- If there is an "error" pin, ALWAYS set it to "" (empty string). The simulation always succeeds.
-- Do not include any extra keys beyond the output pins.
+- Respond with a single JSON object.
+- Only include output pins that have meaningful values. Omit pins with no relevant output.
+- Assume all credentials and API keys are present and valid. Do not simulate auth failures.
+- Generate REALISTIC, useful outputs: real-looking URLs, plausible text, valid data structures.
+- Never return empty strings, null, or "N/A" for pins that should have content.
+- You MAY simulate logical errors (e.g., invalid input format, unsupported operation) when the inputs warrant it — use the "error" pin for these. But do NOT simulate auth/credential errors.
+- Do not include extra keys beyond the defined output pins.
 
-Output pin names you MUST include: {json.dumps(output_properties)}
+Available output pins: {json.dumps(output_properties)}
 """
 
     # Strip credentials from input so the LLM doesn't see null/empty creds
@@ -294,7 +295,7 @@ for this MCP tool call.
 Rules:
 - Respond with a single JSON object with exactly two keys: "result" and "error".
 - "result" should contain realistic output data that the tool would return.
-- "error" should be "" (empty string) unless you are simulating a logical error.
+- Only include "error" if there is an actual error to report. Omit it otherwise.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Base your response on what a tool named "{tool_name}" with the given schema would realistically return."""
 
@@ -362,8 +363,9 @@ async def simulate_mcp_block(
 
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
-        yield "result", parsed.get("result", None)
-        yield "error", parsed.get("error", "")
+        for pin_name, pin_value in parsed.items():
+            if pin_value is not None and pin_value != "":
+                yield pin_name, pin_value
     except (RuntimeError, ValueError) as e:
         yield "error", str(e)
 
@@ -419,15 +421,10 @@ async def simulate_block(
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
 
-        # Fill missing output pins with defaults
-        result: dict[str, Any] = {}
+        # Yield only pins that have meaningful values
         for pin_name in output_properties:
-            if pin_name in parsed:
-                result[pin_name] = parsed[pin_name]
-            else:
-                result[pin_name] = "" if pin_name == "error" else None
-
-        for pin_name, pin_value in result.items():
-            yield pin_name, pin_value
+            value = parsed.get(pin_name)
+            if value is not None and value != "":
+                yield pin_name, value
     except (RuntimeError, ValueError) as e:
         yield "error", str(e)
