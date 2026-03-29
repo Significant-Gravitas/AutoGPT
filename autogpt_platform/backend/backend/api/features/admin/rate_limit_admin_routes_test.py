@@ -9,7 +9,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pytest_snapshot.plugin import Snapshot
 
-from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+from backend.copilot.rate_limit import CoPilotUsageStatus, SubscriptionTier, UsageWindow
 
 from .rate_limit_admin_routes import router as rate_limit_admin_router
 
@@ -57,7 +57,7 @@ def _patch_rate_limit_deps(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.FREE),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
@@ -228,7 +228,7 @@ def test_get_rate_limit_email_lookup_failure(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000),
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.FREE),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",

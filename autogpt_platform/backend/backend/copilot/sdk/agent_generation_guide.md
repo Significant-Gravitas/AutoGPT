@@ -23,12 +23,6 @@ generate the agent JSON yourself using block schemas, then validate and save.
    or fix manually based on the error descriptions. Iterate until valid.
 7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
    the final `agent_json`
-8. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
-   `wait_for_result=120` to verify the agent works end-to-end.
-9. **Inspect & fix**: Check the dry-run output for errors. If issues are
-   found, call `edit_agent` to fix and dry-run again. Repeat until the
-   simulation passes or the problems are clearly unfixable.
-   See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 ### Agent JSON Structure
 
@@ -95,35 +89,6 @@ These define the agent's interface — what it accepts and what it produces.
 Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
 
-### Execution Model — CRITICAL
-
-Understanding how nodes execute is essential for building correct agents:
-
-1. **A node executes only when ALL linked input pins have received data.**
-   If a pin has a link connected to it, that pin becomes mandatory — even
-   if the pin is marked "optional" in the block schema. The node will wait
-   indefinitely until every linked pin has data.
-
-2. **Each input is consumed once.** When a node executes, it consumes the
-   data on its input pins. The data is gone — it cannot be re-read by
-   the same node in a subsequent execution. This means a node in a loop
-   needs fresh input data on every iteration.
-
-3. **Static links (`is_static: true`) reuse the latest value.** Unlike
-   normal links, static links do NOT consume the data. They fetch the
-   most recent value each time the node executes. Use static links for:
-   - Design-time constants (e.g. a prompt template, API URL)
-   - Values that should persist across loop iterations
-   - Config that doesn't change between executions
-
-4. **Self-loops are forbidden.** A link where `source_id == sink_id`
-   creates a circular dependency — the node waits for its own output
-   before it can execute, which never happens. Always verify:
-   `link.source_id != link.sink_id` for every link.
-
-5. **Downstream nodes are skipped** if an upstream node fails or never
-   executes. Data only flows forward through successfully completed nodes.
-
 ### Key Rules
 
 - **Name & description**: Include `name` and `description` in the agent JSON
@@ -139,7 +104,6 @@ Understanding how nodes execute is essential for building correct agents:
   sink_name/source_name to access nested object fields.
 - **is_static links**: Set `is_static: true` when the link carries a
   design-time constant (matches a field in inputSchema with a default).
-  Normal links consume data on read; static links reuse the latest value.
 - **ConditionBlock**: Needs a `StoreValueBlock` wired to its `value2` input.
 - **Prompt templates**: Use `{{variable}}` (double curly braces) for
   literal braces in prompt strings — single `{` and `}` are for
@@ -252,87 +216,30 @@ call in a loop until the task is complete:
 Regular blocks work exactly like sub-agents as tools — wire each input
 field from `source_name: "tools"` on the Orchestrator side.
 
-### REQUIRED: Dry-Run Verification Loop (create -> dry-run -> fix)
+### Testing with Dry Run
 
-After creating or editing an agent, you MUST dry-run it before telling the
-user the agent is ready. NEVER skip this step.
+After saving an agent, suggest a dry run to validate wiring without consuming
+real API calls, credentials, or credits:
 
-#### Step-by-step workflow
+1. **Run**: Call `run_agent` or `run_block` with `dry_run=True` and provide
+   sample inputs. This executes the graph with mock outputs, verifying that
+   links resolve correctly and required inputs are satisfied.
+2. **Check results**: Call `view_agent_output` with `show_execution_details=True`
+   to inspect the full node-by-node execution trace. This shows what each node
+   received as input and produced as output, making it easy to spot wiring issues.
+3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
+   the agent JSON and re-save before suggesting a real execution.
 
-1. **Create/Edit**: Call `create_agent` or `edit_agent` to save the agent.
-2. **Dry-run**: Call `run_agent` with `dry_run=True`, `wait_for_result=120`,
-   and realistic sample inputs that exercise every path in the agent. This
-   simulates execution using an LLM for each block — no real API calls,
-   credentials, or credits are consumed.
-3. **Inspect output**: Examine the dry-run result for problems. If
-   `wait_for_result` returns only a summary, call
-   `view_agent_output(execution_id=..., show_execution_details=True)` to
-   see the full node-by-node execution trace. Look for:
-   - **Errors / failed nodes** — a node raised an exception or returned an
-     error status. Common causes: wrong `source_name`/`sink_name` in links,
-     missing `input_default` values, or referencing a nonexistent block output.
-   - **Null / empty outputs** — data did not flow through a link. Verify that
-     `source_name` and `sink_name` match the block schemas exactly (case-
-     sensitive, including nested `_#_` notation).
-   - **Nodes that never executed** — the node was not reached. Likely a
-     missing or broken link from an upstream node.
-   - **Unexpected values** — data arrived but in the wrong type or
-     structure. Check type compatibility between linked ports.
-4. **Fix**: If any issues are found, call `edit_agent` with the corrected
-   agent JSON, then go back to step 2.
-5. **Repeat**: Continue the dry-run -> fix cycle until the simulation passes
-   or the problems are clearly unfixable. If you stop making progress,
-   report the remaining issues to the user and ask for guidance.
-
-#### Correctness metrics
-
-The dry-run result includes a `correctness_score` (0.0–1.0) generated by
-evaluating whether the agent achieved its intended goal. Use this as the
-**primary success metric**:
-
-- **`correctness_score >= 0.7`** — agent works as intended, ready to ship
-- **`correctness_score 0.3–0.7`** — partially working, needs debugging
-- **`correctness_score < 0.3`** — fundamentally broken, needs structural fixes
-
-Also check `node_error_count` — but note that **zero errors does NOT mean
-the agent is correct**. A block can complete without errors but produce
-empty/useless output (e.g. AgentExecutorBlock simulating a sub-agent).
-
-#### Common dry-run failures
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| `correctness_score: 0.0` with no errors | Block completed but produced no useful output | Check if AgentExecutorBlock sub-agent actually ran; verify output links |
-| Node never executed | Missing link from upstream node, or self-loop | Check links; remove any link where `source_id == sink_id` |
-| Output node received `null` | Broken `source_name`/`sink_name` in link | Verify names match block schemas exactly (case-sensitive) |
-| Status `FAILED` | Node raised an exception | Read the error message; fix input_default or link wiring |
-
-#### Self-loop detection
-
-**NEVER create a link where `source_id` and `sink_id` are the same node.**
-This creates a circular dependency that prevents the node from ever executing.
-Before saving, verify:
-```
-for link in agent_json["links"]:
-    assert link["source_id"] != link["sink_id"], f"Self-loop on {link['source_id']}"
-```
-
-#### Good vs bad dry-run output
-
-**Good output** (agent is ready):
-- `correctness_score >= 0.7`
-- All nodes executed successfully (no errors in the execution trace)
-- Data flows through every link with non-null, correctly-typed values
-- The final `AgentOutputBlock` contains a meaningful result
-- Status is `COMPLETED`
-
-**Bad output** (needs fixing):
-- `correctness_score < 0.3` — even if status is COMPLETED
-- Status is `FAILED` — check the error message for the failing node
-- An output node received `null` — trace back to find the broken link
-- A node received data in the wrong format (e.g. string where list expected)
-- Nodes downstream of a failing node were skipped entirely
-- AgentExecutorBlock completed but sub-agent produced no output
+**Special block behaviour in dry-run mode:**
+- **OrchestratorBlock** and **AgentExecutorBlock** execute for real so the
+  orchestrator can make LLM calls and agent executors can spawn child graphs.
+  Their downstream tool blocks and child-graph blocks are still simulated.
+  Note: real LLM inference calls are made (consuming API quota), even though
+  platform credits are not charged. Agent-mode iterations are capped at 1 in
+  dry-run to keep it fast.
+- **MCPToolBlock** is simulated using the selected tool's name and JSON Schema
+  so the LLM can produce a realistic mock response without connecting to the
+  MCP server.
 
 ### Example: Simple AI Text Processor
 
