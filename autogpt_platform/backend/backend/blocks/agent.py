@@ -169,30 +169,6 @@ class AgentExecutorBlock(Block):
                         extra_steps=event.stats.node_exec_count if event.stats else 0,
                     )
                 )
-
-                # Fallback for dry-run: if no outputs were yielded via events
-                # (common in simulation where events may arrive before listener),
-                # query the sub-agent's output nodes directly from the DB.
-                if not yielded_node_exec_ids:
-                    from backend.data.execution import get_node_executions
-
-                    results = await get_node_executions(
-                        graph_exec_id=graph_exec_id,
-                        statuses=[ExecutionStatus.COMPLETED],
-                    )
-                    for result in results:
-                        r_block = get_block(result.block_id)
-                        if not r_block or r_block.block_type != BlockType.OUTPUT:
-                            continue
-                        r_name = (result.input_data or {}).get("name")
-                        if not r_name:
-                            continue
-                        for r_data in (result.output_data or {}).get("output", []):
-                            logger.debug(
-                                f"Execution {log_id} fallback output {r_name}: {r_data}"
-                            )
-                            yield r_name, r_data
-
                 break
 
             logger.debug(
