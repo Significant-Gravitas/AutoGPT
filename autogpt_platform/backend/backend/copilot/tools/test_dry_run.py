@@ -11,7 +11,6 @@ from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
 from backend.executor.simulator import (
-    DRY_RUN_MODEL,
     _build_mcp_simulation_prompt,
     build_simulation_prompt,
     prepare_dry_run,
@@ -638,7 +637,7 @@ async def test_simulate_mcp_block_retries_on_bad_json():
 
 
 def test_prepare_dry_run_orchestrator_block():
-    """prepare_dry_run returns input with cheap model for OrchestratorBlock."""
+    """prepare_dry_run caps iterations but keeps the user's model."""
     from backend.blocks.orchestrator import OrchestratorBlock
 
     block = OrchestratorBlock()
@@ -646,7 +645,8 @@ def test_prepare_dry_run_orchestrator_block():
     result = prepare_dry_run(block, input_data)
 
     assert result is not None
-    assert result["model"] == DRY_RUN_MODEL
+    # Model is NOT swapped -- the user's own model/credentials are preserved.
+    assert result["model"] == "gpt-4o"
     assert result["agent_mode_max_iterations"] == 1
     # Original input_data should not be mutated.
     assert input_data["model"] == "gpt-4o"
@@ -684,3 +684,85 @@ def test_prepare_dry_run_regular_block_returns_none():
     """prepare_dry_run returns None for a regular block (use simulator)."""
     mock_block = make_mock_block()
     assert prepare_dry_run(mock_block, {"query": "test"}) is None
+
+
+# ---------------------------------------------------------------------------
+# Input/output block passthrough tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_input_block_passthrough():
+    """AgentInputBlock should pass through the value directly, no LLM call."""
+    from backend.blocks.io import AgentInputBlock
+
+    block = AgentInputBlock()
+    outputs = []
+    async for name, data in simulate_block(
+        block, {"value": "hello world", "name": "q"}
+    ):
+        outputs.append((name, data))
+
+    assert outputs == [("result", "hello world")]
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_dropdown_input_block_passthrough():
+    """AgentDropdownInputBlock (subclass of AgentInputBlock) should pass through."""
+    from backend.blocks.io import AgentDropdownInputBlock
+
+    block = AgentDropdownInputBlock()
+    outputs = []
+    async for name, data in simulate_block(
+        block,
+        {
+            "value": "Option B",
+            "name": "sev",
+            "placeholder_values": ["Option A", "Option B"],
+        },
+    ):
+        outputs.append((name, data))
+
+    assert outputs == [("result", "Option B")]
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_input_block_none_value():
+    """AgentInputBlock with value=None should yield nothing."""
+    from backend.blocks.io import AgentInputBlock
+
+    block = AgentInputBlock()
+    outputs = []
+    async for name, data in simulate_block(block, {"value": None, "name": "q"}):
+        outputs.append((name, data))
+
+    assert outputs == []
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_output_block_passthrough():
+    """AgentOutputBlock should pass through value as output."""
+    from backend.blocks.io import AgentOutputBlock
+
+    block = AgentOutputBlock()
+    outputs = []
+    async for name, data in simulate_block(
+        block, {"value": "result text", "name": "out1"}
+    ):
+        outputs.append((name, data))
+
+    assert ("output", "result text") in outputs
+    assert ("name", "out1") in outputs
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_output_block_no_name():
+    """AgentOutputBlock without name in input should still yield output."""
+    from backend.blocks.io import AgentOutputBlock
+
+    block = AgentOutputBlock()
+    outputs = []
+    async for name, data in simulate_block(block, {"value": 42}):
+        outputs.append((name, data))
+
+    assert outputs == [("output", 42)]
