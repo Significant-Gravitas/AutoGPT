@@ -1466,48 +1466,6 @@ class OrchestratorBlock(Block):
             prefix=f"orchestrator-sdk-{execution_params.graph_exec_id}-"
         )
 
-        # Build SDK options
-        options = ClaudeAgentOptions(
-            system_prompt=input_data.sys_prompt or "",
-            mcp_servers={self._SDK_MCP_SERVER_NAME: mcp_server},
-            allowed_tools=allowed_tools,
-            disallowed_tools=disallowed_tools,
-            cwd=sdk_cwd,
-            env=sdk_env,
-            model=input_data.model.value or None,
-        )
-
-        # Strip system messages from prompt — they're already passed via
-        # ClaudeAgentOptions.system_prompt to avoid sending them twice.
-        sdk_prompt = [p for p in prompt if p.get("role") != "system"]
-
-        # Build user message from prompt.
-        # The SDK's query() accepts a string or an async iterable of message dicts.
-        # For multi-turn conversations, pass the full history as an async iterable
-        # to preserve assistant replies, tool calls/results, and system messages.
-        has_multi_turn = any(p.get("role") in ("assistant", "tool") for p in sdk_prompt)
-        if has_multi_turn:
-
-            async def _prompt_iter():
-                for p in sdk_prompt:
-                    yield p
-
-            user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
-        else:
-            # Single-turn: collapse user content into one string
-            user_parts = []
-            for p in sdk_prompt:
-                if p.get("role") == "user" and p.get("content"):
-                    user_parts.append(str(p["content"]))
-            user_message = "\n\n".join(user_parts) if user_parts else input_data.prompt
-
-        # Run SDK client with heartbeat-safe message iteration.
-        # We must NOT cancel __anext__() mid-flight — doing so corrupts
-        # the SDK's internal anyio memory stream (same pattern as
-        # copilot/sdk/service.py:_iter_sdk_messages).
-
-        _HEARTBEAT_INTERVAL = 10.0  # seconds
-
         response_parts: list[str] = []
         conversation: list[dict[str, Any]] = list(prompt)  # Start with input prompt
         total_prompt_tokens = 0
@@ -1515,6 +1473,51 @@ class OrchestratorBlock(Block):
 
         sdk_error: Exception | None = None
         try:
+            # Build SDK options
+            options = ClaudeAgentOptions(
+                system_prompt=input_data.sys_prompt or "",
+                mcp_servers={self._SDK_MCP_SERVER_NAME: mcp_server},
+                allowed_tools=allowed_tools,
+                disallowed_tools=disallowed_tools,
+                cwd=sdk_cwd,
+                env=sdk_env,
+                model=input_data.model.value or None,
+            )
+
+            # Strip system messages from prompt — they're already passed via
+            # ClaudeAgentOptions.system_prompt to avoid sending them twice.
+            sdk_prompt = [p for p in prompt if p.get("role") != "system"]
+
+            # Build user message from prompt.
+            # The SDK's query() accepts a string or an async iterable of message dicts.
+            # For multi-turn conversations, pass the full history as an async iterable
+            # to preserve assistant replies, tool calls/results, and system messages.
+            has_multi_turn = any(
+                p.get("role") in ("assistant", "tool") for p in sdk_prompt
+            )
+            if has_multi_turn:
+
+                async def _prompt_iter():
+                    for p in sdk_prompt:
+                        yield p
+
+                user_message: str | AsyncIterable[dict[str, Any]] = _prompt_iter()
+            else:
+                # Single-turn: collapse user content into one string
+                user_parts = []
+                for p in sdk_prompt:
+                    if p.get("role") == "user" and p.get("content"):
+                        user_parts.append(str(p["content"]))
+                user_message = (
+                    "\n\n".join(user_parts) if user_parts else input_data.prompt
+                )
+
+            # Run SDK client with heartbeat-safe message iteration.
+            # We must NOT cancel __anext__() mid-flight — doing so corrupts
+            # the SDK's internal anyio memory stream (same pattern as
+            # copilot/sdk/service.py:_iter_sdk_messages).
+
+            _HEARTBEAT_INTERVAL = 10.0  # seconds
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(user_message)
 
