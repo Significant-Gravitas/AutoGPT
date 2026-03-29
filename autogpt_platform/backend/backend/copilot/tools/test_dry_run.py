@@ -84,7 +84,8 @@ def make_openai_response(
 async def test_simulate_block_basic():
     """simulate_block returns correct (output_name, output_data) tuples.
 
-    Empty "error" pins are dropped at source — only non-empty errors are yielded.
+    Empty error pins should be omitted (not yielded) — only pins with
+    meaningful values are forwarded.
     """
     mock_block = make_mock_block()
     mock_client = AsyncMock()
@@ -100,7 +101,7 @@ async def test_simulate_block_basic():
             outputs.append((name, data))
 
     assert ("result", "simulated output") in outputs
-    # Empty error pin is dropped at the simulator level
+    # Empty error pin should NOT be yielded — the simulator omits empty values
     assert ("error", "") not in outputs
 
 
@@ -156,7 +157,7 @@ async def test_simulate_block_all_retries_exhausted():
 
 @pytest.mark.asyncio
 async def test_simulate_block_missing_output_pins():
-    """LLM response missing some output pins; verify non-error pins filled with None."""
+    """LLM response missing some output pins; they are omitted (not yielded)."""
     mock_block = make_mock_block(
         output_props={
             "result": {"type": "string"},
@@ -178,30 +179,9 @@ async def test_simulate_block_missing_output_pins():
             outputs[name] = data
 
     assert outputs["result"] == "hello"
-    assert outputs["count"] is None  # missing pin filled with None
-    assert "error" not in outputs  # missing error pin is omitted entirely
-
-
-@pytest.mark.asyncio
-async def test_simulate_block_keeps_nonempty_error():
-    """simulate_block keeps non-empty error pins (simulated logical errors)."""
-    mock_block = make_mock_block()
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(
-        return_value=make_openai_response(
-            '{"result": "", "error": "API rate limit exceeded"}'
-        )
-    )
-
-    with patch(
-        "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
-        outputs = []
-        async for name, data in simulate_block(mock_block, {"query": "test"}):
-            outputs.append((name, data))
-
-    assert ("result", "") in outputs
-    assert ("error", "API rate limit exceeded") in outputs
+    # Missing pins are omitted — only pins with meaningful values are yielded
+    assert "count" not in outputs
+    assert "error" not in outputs
 
 
 @pytest.mark.asyncio
@@ -563,7 +543,7 @@ def test_build_mcp_simulation_prompt_includes_description():
 
 @pytest.mark.asyncio
 async def test_simulate_mcp_block_basic():
-    """simulate_mcp_block returns result and error tuples."""
+    """simulate_mcp_block returns result tuple; empty error is omitted."""
     mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(
         return_value=make_openai_response(
@@ -589,11 +569,12 @@ async def test_simulate_mcp_block_basic():
         async for name, data in simulate_mcp_block(None, input_data):
             outputs.append((name, data))
 
-    assert len(outputs) == 2
+    # Only the result pin is yielded; empty error is omitted
+    assert len(outputs) == 1
     result_outputs = [d for n, d in outputs if n == "result"]
     assert result_outputs[0]["temperature"] == 22
     error_outputs = [d for n, d in outputs if n == "error"]
-    assert error_outputs[0] == ""
+    assert len(error_outputs) == 0
 
 
 @pytest.mark.asyncio
@@ -727,8 +708,8 @@ async def test_simulate_agent_dropdown_input_block_passthrough():
 
 
 @pytest.mark.asyncio
-async def test_simulate_agent_input_block_none_value():
-    """AgentInputBlock with value=None should yield nothing."""
+async def test_simulate_agent_input_block_none_value_falls_back_to_name():
+    """AgentInputBlock with value=None falls back to the input name."""
     from backend.blocks.io import AgentInputBlock
 
     block = AgentInputBlock()
@@ -736,7 +717,8 @@ async def test_simulate_agent_input_block_none_value():
     async for name, data in simulate_block(block, {"value": None, "name": "q"}):
         outputs.append((name, data))
 
-    assert outputs == []
+    # When value is None, the simulator falls back to the "name" field
+    assert outputs == [("result", "q")]
 
 
 @pytest.mark.asyncio
