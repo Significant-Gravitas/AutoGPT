@@ -2,7 +2,7 @@ import asyncio
 import re
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import sqlparse
 from pydantic import SecretStr
@@ -279,7 +279,7 @@ class SQLQueryBlock(Block):
             placeholder="db.example.com",
             secret=True,
         )
-        port: Optional[int] = SchemaField(
+        port: int | None = SchemaField(
             default=None,
             description=(
                 "Database port (leave empty for default: "
