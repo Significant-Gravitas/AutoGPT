@@ -269,30 +269,30 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
     Malformed tools (missing ``function`` or ``function.name``) are silently
     skipped so the caller never crashes on unexpected input.
     """
-    # Collect names, skipping tools that lack the required structure.
-    valid_tools: list[tuple[int, dict[str, Any]]] = []
-    for idx, tool in enumerate(tools):
+    # Collect tools that have the required structure, skipping malformed ones.
+    valid_tools: list[dict[str, Any]] = []
+    for tool in tools:
         func = tool.get("function") if isinstance(tool, dict) else None
         if not isinstance(func, dict) or not isinstance(func.get("name"), str):
             # Strip internal metadata even from malformed entries.
             if isinstance(func, dict):
                 func.pop("_hardcoded_defaults", None)
             continue
-        valid_tools.append((idx, tool))
+        valid_tools.append(tool)
 
-    names = [t.get("function", {}).get("name", "") for _i, t in valid_tools]
+    names = [t.get("function", {}).get("name", "") for t in valid_tools]
     name_counts = Counter(names)
     duplicates = {n for n, c in name_counts.items() if c > 1}
 
     if not duplicates:
-        for _i, t in valid_tools:
+        for t in valid_tools:
             t.get("function", {}).pop("_hardcoded_defaults", None)
         return
 
     taken: set[str] = set(names)
     counters: dict[str, int] = {}
 
-    for _i, tool in valid_tools:
+    for tool in valid_tools:
         func = tool.get("function", {})
         name = func.get("name", "")
         defaults = func.pop("_hardcoded_defaults", {})
