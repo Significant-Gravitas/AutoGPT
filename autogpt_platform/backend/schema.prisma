@@ -41,7 +41,7 @@ model User {
   timezone String @default("not-set")
 
   // CoPilot subscription tier — controls rate-limit multipliers.
-  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=20x, ENTERPRISE=50x.
+  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=20x, ENTERPRISE=60x.
   subscriptionTier SubscriptionTier @default(PRO)
 
   // Relations
