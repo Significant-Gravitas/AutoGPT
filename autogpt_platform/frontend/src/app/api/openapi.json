@@ -1553,128 +1553,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/copilot/admin/rate_limit/search_users": {
-      "get": {
-        "tags": ["v2", "admin", "copilot", "admin"],
-        "summary": "Search Users by Name or Email",
-        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly — returns results even for users\nwithout credit transaction history.",
-        "operationId": "getV2Search users by name or email",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "query",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Query" }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": { "type": "integer", "default": 20, "title": "Limit" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": { "$ref": "#/components/schemas/UserSearchResult" },
-                  "title": "Response Getv2Search Users By Name Or Email"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/copilot/admin/rate_limit/tier": {
-      "get": {
-        "tags": ["v2", "admin", "copilot", "admin"],
-        "summary": "Get User Rate Limit Tier",
-        "description": "Get a user's current rate-limit tier. Admin-only.",
-        "operationId": "getV2Get user rate limit tier",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "User Id" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/UserTierResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": ["v2", "admin", "copilot", "admin"],
-        "summary": "Set User Rate Limit Tier",
-        "description": "Set a user's rate-limit tier. Admin-only.",
-        "operationId": "postV2Set user rate limit tier",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/SetUserTierRequest" }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/UserTierResponse" }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/credits": {
       "get": {
         "tags": ["v1", "credits"],
@@ -12315,15 +12193,6 @@
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
       },
-      "SetUserTierRequest": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
-        },
-        "type": "object",
-        "required": ["user_id", "tier"],
-        "title": "SetUserTierRequest"
-      },
       "SetupInfo": {
         "properties": {
           "agent_id": { "type": "string", "title": "Agent Id" },
@@ -14917,8 +14786,7 @@
           "weekly_tokens_used": {
             "type": "integer",
             "title": "Weekly Tokens Used"
-          },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          }
         },
         "type": "object",
         "required": [
@@ -14926,8 +14794,7 @@
           "daily_token_limit",
           "weekly_token_limit",
           "daily_tokens_used",
-          "weekly_tokens_used",
-          "tier"
+          "weekly_tokens_used"
         ],
         "title": "UserRateLimitResponse"
       },
@@ -14953,27 +14820,6 @@
         "type": "object",
         "title": "UserReadiness",
         "description": "User readiness status."
-      },
-      "UserSearchResult": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "user_email": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "User Email"
-          }
-        },
-        "type": "object",
-        "required": ["user_id"],
-        "title": "UserSearchResult"
-      },
-      "UserTierResponse": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
-        },
-        "type": "object",
-        "required": ["user_id", "tier"],
-        "title": "UserTierResponse"
       },
       "UserTransaction": {
         "properties": {
