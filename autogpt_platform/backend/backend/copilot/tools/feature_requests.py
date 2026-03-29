@@ -160,7 +160,7 @@ class SearchFeatureRequestsTool(BaseTool):
         query: str = "",
         **kwargs,
     ) -> ToolResponseBase:
-        query = query.strip()
+        query = (query or "").strip()
         session_id = session.session_id if session else None
 
         if not query:
@@ -294,8 +294,8 @@ class CreateFeatureRequestTool(BaseTool):
         existing_issue_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        title = title.strip()
-        description = description.strip()
+        title = (title or "").strip()
+        description = (description or "").strip()
         session_id = session.session_id if session else None
 
         if not title or not description:

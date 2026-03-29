@@ -8663,9 +8663,10 @@
         "properties": {
           "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
         },
+        "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating a new chat session."
+        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {

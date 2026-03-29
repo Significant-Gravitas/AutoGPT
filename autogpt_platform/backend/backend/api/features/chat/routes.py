@@ -11,7 +11,7 @@ from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -114,7 +114,13 @@ class StreamChatRequest(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    """Request model for creating a new chat session."""
+    """Request model for creating a new chat session.
+
+    ``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.
+    Extra/unknown fields are rejected (422) to prevent silent mis-use.
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = False
 

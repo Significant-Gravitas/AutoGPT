@@ -103,7 +103,7 @@ class FindBlockTool(BaseTool):
             NoResultsResponse: No blocks found
             ErrorResponse: Error message
         """
-        query = query.strip()
+        query = (query or "").strip()
         session_id = session.session_id
 
         if not query:
