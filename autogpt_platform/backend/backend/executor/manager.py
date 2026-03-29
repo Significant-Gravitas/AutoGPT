@@ -279,9 +279,10 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
-    # For OrchestratorBlock in dry-run, prepare_dry_run returns a modified
-    # input_data with a cheap model so the block executes for real.
-    # For all other blocks it returns None -> use LLM simulator.
+    # For special blocks in dry-run (OrchestratorBlock, AgentExecutorBlock),
+    # prepare_dry_run returns a (possibly modified) copy of input_data so the
+    # block executes for real.  For all other blocks it returns None -> use
+    # LLM simulator.
     _dry_run_input: dict[str, Any] | None = None
     if execution_context.dry_run:
         _dry_run_input = prepare_dry_run(node_block, input_data)

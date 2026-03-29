@@ -3,9 +3,11 @@ LLM-powered block simulator for dry-run execution.
 
 When dry_run=True, instead of calling the real block, this module
 role-plays the block's execution using an LLM.  For most blocks no real
-API calls or side effects occur.  OrchestratorBlock is an exception --
-it executes for real with a cheap model so the orchestrator can make LLM
-calls (handled in manager.py via ``prepare_dry_run``).
+API calls or side effects occur.  OrchestratorBlock and AgentExecutorBlock
+are exceptions -- OrchestratorBlock executes for real with a cheap model so
+it can make LLM calls, and AgentExecutorBlock executes for real so it can
+spawn child graph executions (whose blocks are then simulated).  Both are
+handled in manager.py via ``prepare_dry_run``.
 
 The LLM simulation is grounded by:
   - Block name and description
@@ -191,7 +193,6 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     input_pins = _describe_schema_pins(input_schema)
     output_pins = _describe_schema_pins(output_schema)
     output_properties = list(output_schema.get("properties", {}).keys())
-    required_output_properties = [k for k in output_properties if k != "error"]
 
     block_name = getattr(block, "name", type(block).__name__)
     block_description = getattr(block, "description", "No description available.")
@@ -213,10 +214,10 @@ Rules:
 - Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Make the simulated outputs realistic and consistent with the inputs.
-- If there is an "error" pin, OMIT it entirely unless you are simulating a logical error. Only include the "error" pin when there is a genuine error message to report.
+- If there is an "error" pin, set it to "" (empty string) unless you are simulating a logical error.
 - Do not include any extra keys beyond the output pins.
 
-Output pin names you MUST include: {json.dumps(required_output_properties)}
+Output pin names you MUST include: {json.dumps(output_properties)}
 """
 
     safe_inputs = _truncate_input_values(input_data)
@@ -283,6 +284,11 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
     Returns a **modified copy** of *input_data* for blocks that should execute
     for real with cheap settings (e.g. OrchestratorBlock), or ``None`` when the
     block should be LLM-simulated instead.
+
+    AgentExecutorBlock also executes for real so it can spawn a child graph
+    execution.  The child graph's blocks will be simulated because the
+    execution context inherits ``dry_run=True`` (see ``add_graph_execution``
+    in utils.py).
     """
     if isinstance(block, OrchestratorBlock):
         # Preserve the user's configured mode: 0 means traditional (single
@@ -297,9 +303,10 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
             "agent_mode_max_iterations": max_iters,
         }
     if isinstance(block, AgentExecutorBlock):
-        # Let the AgentExecutorBlock execute for real so the sub-agent graph
-        # is triggered.  The sub-agent's blocks will be individually simulated
-        # because dry_run propagates via execution_context.
+        # AgentExecutorBlock spawns a child graph execution.  No input
+        # modifications are needed -- the child graph inherits dry_run=True
+        # from the execution context and its blocks will be simulated.
+        # Return a copy so the caller knows this is a passthrough block.
         return {**input_data}
     return None
 
@@ -337,7 +344,7 @@ async def simulate_block(
     For MCPToolBlock, uses a specialised prompt grounded in the tool's schema.
 
     Note: callers should check ``prepare_dry_run(block, input_data)`` first.
-    OrchestratorBlock executes for real with a cheap model in dry-run mode
+    OrchestratorBlock and AgentExecutorBlock execute for real in dry-run mode
     (see manager.py).
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
@@ -358,18 +365,13 @@ async def simulate_block(
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
 
-        # Fill missing output pins with defaults.
-        # Skip empty "error" pins — an empty string means "no error" and
-        # would only confuse downstream consumers (LLM, frontend).
+        # Fill missing output pins with defaults
         result: dict[str, Any] = {}
         for pin_name in output_properties:
             if pin_name in parsed:
-                value = parsed[pin_name]
-                if pin_name == "error" and isinstance(value, str) and not value.strip():
-                    continue
-                result[pin_name] = value
-            elif pin_name != "error":
-                result[pin_name] = None
+                result[pin_name] = parsed[pin_name]
+            else:
+                result[pin_name] = "" if pin_name == "error" else None
 
         for pin_name, pin_value in result.items():
             yield pin_name, pin_value
