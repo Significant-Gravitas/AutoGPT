@@ -291,8 +291,8 @@ class OrchestratorBlock(Block):
     single-shot and iterative agent mode execution.
     """
 
-    # MCP server name used by extended thinking.  Keep in sync with
-    # _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
+    # MCP server name used by the Claude Code SDK execution mode.  Keep in sync
+    # with _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
     _SDK_MCP_SERVER_NAME = "graph_tools"
 
     class Input(BlockSchemaInput):
