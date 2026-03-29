@@ -579,7 +579,16 @@ def _resolve_discriminated_credentials(
     block: AnyBlockSchema,
     input_data: dict[str, Any],
 ) -> dict[str, CredentialsFieldInfo]:
-    """Resolve credential requirements, applying discriminator logic where needed."""
+    """Resolve credential requirements, applying discriminator logic where needed.
+
+    Handles two discrimination modes:
+    1. **Provider-based** (``discriminator_mapping`` is set): the discriminator
+       field value selects the provider (e.g. an AI model name -> provider).
+    2. **URL/host-based** (``discriminator`` is set but ``discriminator_mapping``
+       is ``None``): the discriminator field value (typically a URL) is added to
+       ``discriminator_values`` so that host-scoped credential matching can
+       compare the credential's host against the target URL.
+    """
     credentials_fields_info = block.input_schema.get_credentials_fields_info()
     if not credentials_fields_info:
         return {}
