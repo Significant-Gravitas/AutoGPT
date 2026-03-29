@@ -326,15 +326,15 @@ def test_run_block_tool_dry_run_param():
 
 
 def test_run_block_tool_dry_run_calls_execute():
-    """RunBlockTool._execute extracts dry_run from kwargs correctly.
+    """RunBlockTool._execute accepts dry_run as an explicit parameter.
 
-    We verify the extraction logic directly by inspecting the source, then confirm
-    the kwarg is forwarded in the execute_block call site.
+    We verify the parameter is declared directly on _execute (not extracted
+    from kwargs), and that it is forwarded in the execute_block call site.
     """
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is extracted from kwargs
+    # Verify dry_run is declared as an explicit parameter
     assert "dry_run" in source
-    assert 'kwargs.get("dry_run"' in source
+    assert "dry_run: bool" in source
 
     # Scope to _execute method source only — module-wide search is brittle
     # and can match unrelated text/comments.
