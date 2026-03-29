@@ -520,6 +520,34 @@ def test_prepare_dry_run_orchestrator_block():
     assert input_data["model"] == "gpt-4o"
 
 
+def test_prepare_dry_run_agent_executor_block():
+    """prepare_dry_run returns a copy of input_data for AgentExecutorBlock.
+
+    AgentExecutorBlock must execute for real during dry-run so it can spawn
+    a child graph execution (whose blocks are then simulated).  Its Output
+    schema has no properties, so LLM simulation would yield zero outputs.
+    """
+    from backend.blocks.agent import AgentExecutorBlock
+
+    block = AgentExecutorBlock()
+    input_data = {
+        "user_id": "u1",
+        "graph_id": "g1",
+        "graph_version": 1,
+        "inputs": {"text": "hello"},
+        "input_schema": {},
+        "output_schema": {},
+    }
+    result = prepare_dry_run(block, input_data)
+
+    assert result is not None
+    # Input data is returned as-is (no model swap needed).
+    assert result["user_id"] == "u1"
+    assert result["graph_id"] == "g1"
+    # Original input_data should not be mutated.
+    assert result is not input_data
+
+
 def test_prepare_dry_run_regular_block_returns_none():
     """prepare_dry_run returns None for a regular block (use simulator)."""
     mock_block = make_mock_block()
