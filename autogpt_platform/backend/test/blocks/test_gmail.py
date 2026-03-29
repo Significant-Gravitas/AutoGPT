@@ -9,6 +9,7 @@ from backend.blocks.google.gmail import (
     GmailReadBlock,
     _build_reply_message,
     create_mime_message,
+    validate_all_recipients,
     validate_email_recipients,
 )
 from backend.data.execution import ExecutionContext
@@ -298,6 +299,33 @@ class TestValidateEmailRecipients:
 
     def test_empty_list_passes(self):
         validate_email_recipients([])
+
+
+class TestValidateAllRecipients:
+    """Test cases for validate_all_recipients."""
+
+    def test_valid_all_fields(self):
+        data = SimpleNamespace(to=["a@b.com"], cc=["c@d.com"], bcc=["e@f.com"])
+        validate_all_recipients(data)
+
+    def test_invalid_to_raises(self):
+        data = SimpleNamespace(to=["bad"], cc=[], bcc=[])
+        with pytest.raises(ValueError, match="'to'"):
+            validate_all_recipients(data)
+
+    def test_invalid_cc_raises(self):
+        data = SimpleNamespace(to=["a@b.com"], cc=["bad"], bcc=[])
+        with pytest.raises(ValueError, match="'cc'"):
+            validate_all_recipients(data)
+
+    def test_invalid_bcc_raises(self):
+        data = SimpleNamespace(to=["a@b.com"], cc=["c@d.com"], bcc=["bad"])
+        with pytest.raises(ValueError, match="'bcc'"):
+            validate_all_recipients(data)
+
+    def test_empty_cc_bcc_skipped(self):
+        data = SimpleNamespace(to=["a@b.com"], cc=[], bcc=[])
+        validate_all_recipients(data)
 
 
 class TestCreateMimeMessageValidation:

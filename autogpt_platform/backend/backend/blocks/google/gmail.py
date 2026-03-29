@@ -70,6 +70,20 @@ def validate_email_recipients(recipients: list[str], field_name: str = "to") -> 
         )
 
 
+def validate_all_recipients(input_data) -> None:
+    """Validate to/cc/bcc recipient fields on an input namespace.
+
+    Calls ``validate_email_recipients`` for ``to`` (required) and
+    ``cc``/``bcc`` (when non-empty), raising ``ValueError`` on the
+    first field that contains an invalid address.
+    """
+    validate_email_recipients(input_data.to, "to")
+    if input_data.cc:
+        validate_email_recipients(input_data.cc, "cc")
+    if input_data.bcc:
+        validate_email_recipients(input_data.bcc, "bcc")
+
+
 def _make_mime_text(
     body: str,
     content_type: Optional[Literal["auto", "plain", "html"]] = None,
@@ -125,11 +139,7 @@ async def create_mime_message(
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
     # Validate all recipient lists before building the MIME message
-    validate_email_recipients(input_data.to, "to")
-    if input_data.cc:
-        validate_email_recipients(input_data.cc, "cc")
-    if input_data.bcc:
-        validate_email_recipients(input_data.bcc, "bcc")
+    validate_all_recipients(input_data)
 
     message = MIMEMultipart()
     message["to"] = serialize_email_recipients(input_data.to)
@@ -1199,11 +1209,7 @@ async def _build_reply_message(
 
     # Create MIME message
     # Validate all recipient lists before building the MIME message
-    validate_email_recipients(input_data.to, "to")
-    if input_data.cc:
-        validate_email_recipients(input_data.cc, "cc")
-    if input_data.bcc:
-        validate_email_recipients(input_data.bcc, "bcc")
+    validate_all_recipients(input_data)
 
     msg = MIMEMultipart()
     if input_data.to:
@@ -1724,11 +1730,7 @@ To: {original_to}
             body = f"{forward_header}\n\n{original_body}"
 
         # Validate all recipient lists before building the MIME message
-        validate_email_recipients(input_data.to, "to")
-        if input_data.cc:
-            validate_email_recipients(input_data.cc, "cc")
-        if input_data.bcc:
-            validate_email_recipients(input_data.bcc, "bcc")
+        validate_all_recipients(input_data)
 
         # Create MIME message
         msg = MIMEMultipart()
