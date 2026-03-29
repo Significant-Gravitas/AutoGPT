@@ -1144,3 +1144,218 @@ class TestPasswordInErrorMessages:
         assert "fakepw" not in result
         assert "testadmin" not in result
         assert "test.example.invalid" not in result
+
+
+# ---------------------------------------------------------------------------
+# SQL injection within single statements -- BY DESIGN these pass validation.
+#
+# The block uses ``text(query)`` (raw SQL) without parameterization. This is
+# intentional: the block is designed for trusted admin / analytics use where
+# the copilot or autopilot constructs queries against analytics databases.
+# The security boundary is:
+#   1. Single-statement enforcement (prevents multi-query injection)
+#   2. Read-only keyword filtering (prevents data modification in default mode)
+#   3. SSRF host validation (prevents access to internal networks)
+#   4. Database-level read-only session (defense-in-depth)
+#
+# Within those constraints, the raw query is forwarded as-is to the database.
+# These tests document that single-statement injection patterns are NOT blocked
+# at the application layer -- the database's own auth/permissions are the final
+# gate.
+# ---------------------------------------------------------------------------
+
+
+class TestSQLInjectionWithinSingleStatement:
+    """Document that single-statement SQL injection patterns pass validation.
+
+    The block executes raw SQL via ``text(query)`` without parameterization.
+    This is BY DESIGN for trusted admin/analytics use. These tests verify and
+    document that the validation layer does NOT attempt to catch injection
+    within a single SELECT statement -- that responsibility falls to database
+    permissions and the read-only session mode.
+    """
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            # Classic tautology injection
+            "SELECT * FROM users WHERE id = '1' OR '1'='1'",
+            # UNION-based injection to read other tables
+            "SELECT name FROM users WHERE id = 1 UNION SELECT password FROM credentials",
+            # Boolean-based blind injection
+            "SELECT * FROM users WHERE username = 'admin' AND 1=1",
+            # Comment-based injection (single-line comment)
+            "SELECT * FROM users WHERE username = 'admin' --' AND password = 'x'",
+            # Subquery injection
+            "SELECT * FROM users WHERE id = (SELECT MAX(id) FROM users)",
+            # LIKE wildcard injection
+            "SELECT * FROM users WHERE name LIKE '%'",
+        ],
+    )
+    def test_single_statement_injection_passes_validation(self, query: str):
+        """Single-statement injection patterns pass the single-statement
+        validator because they are syntactically valid single statements.
+        The block relies on database permissions for fine-grained access control."""
+        error, stmt = _validate_single_statement(query)
+        assert error is None, f"Expected query to pass validation: {query}"
+        assert stmt is not None
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT * FROM users WHERE id = '1' OR '1'='1'",
+            "SELECT name FROM users UNION SELECT secret FROM keys",
+            "SELECT * FROM users WHERE username = 'admin' AND 1=1",
+        ],
+    )
+    def test_single_statement_injection_passes_read_only_check(self, query: str):
+        """Single-statement SELECT-based injections also pass the read-only
+        check since they are valid SELECT queries (or UNION of SELECTs).
+        The database's own permission model is the final defense layer."""
+        error, stmt = _validate_single_statement(query)
+        assert error is None
+        assert stmt is not None
+        ro_error = _validate_query_is_read_only(stmt)
+        assert ro_error is None, f"Expected read-only check to pass: {query}"
+
+    def test_injection_with_write_keyword_blocked_in_read_only(self):
+        """Even within a single statement, if an injection smuggles a
+        disallowed keyword (e.g. INSERT via subquery), the read-only
+        keyword check catches it."""
+        # This is a contrived example -- real injection would look different,
+        # but it tests the keyword defense-in-depth layer.
+        query = "SELECT * FROM users WHERE id IN (SELECT id FROM t) UNION SELECT * FROM (DELETE FROM users RETURNING id) AS x"
+        error, stmt = _validate_single_statement(query)
+        # sqlparse may split this or reject it; if it parses as single, the
+        # read-only check must still catch DELETE.
+        if error is None and stmt is not None:
+            ro_error = _validate_query_is_read_only(stmt)
+            assert ro_error is not None
+            assert "DELETE" in ro_error
+
+
+# ---------------------------------------------------------------------------
+# URL.create() special character handling
+#
+# The existing test_special_chars_in_password mocks execute_query, so it
+# never exercises URL.create(). These tests verify that URL.create()
+# correctly handles special characters in credentials without raising
+# exceptions or corrupting the URL.
+# ---------------------------------------------------------------------------
+
+
+class TestURLCreateSpecialCharacters:
+    """Verify URL.create() correctly handles special characters in credentials.
+
+    The block uses ``URL.create()`` (not manual string formatting) to build
+    connection URLs. This avoids URL-encoding issues with special characters
+    in passwords. These tests verify the URL is constructed correctly by
+    inspecting the URL object properties, without needing a real database.
+    """
+
+    @pytest.mark.parametrize(
+        "password",
+        [
+            "p@ss:word/with#special!chars",
+            "has spaces in it",
+            "symbols!@#$%^&*()",
+            "url_tricky://user:pass@host/",
+            "percent%20encoded%3F",
+            "unicode_café_naïve",
+            "backslash\\and\ttab",
+            "empty",  # control case
+        ],
+    )
+    def test_url_create_preserves_password(self, password: str):
+        """URL.create() must preserve the exact password without corruption."""
+        from sqlalchemy.engine.url import URL
+
+        url = URL.create(
+            drivername="postgresql",
+            username="testuser",
+            password=password,
+            host="1.2.3.4",
+            port=5432,
+            database="testdb",
+        )
+        # The URL object stores the password without URL-encoding
+        assert url.password == password
+        assert url.username == "testuser"
+        assert url.host == "1.2.3.4"
+        assert url.port == 5432
+        assert url.database == "testdb"
+
+    @pytest.mark.parametrize(
+        "username",
+        [
+            "user@domain.com",
+            "user:name",
+            "user/slash",
+            "admin#hash",
+        ],
+    )
+    def test_url_create_preserves_username(self, username: str):
+        """URL.create() must preserve special characters in usernames."""
+        from sqlalchemy.engine.url import URL
+
+        url = URL.create(
+            drivername="postgresql",
+            username=username,
+            password="pass",
+            host="1.2.3.4",
+            port=5432,
+            database="testdb",
+        )
+        assert url.username == username
+
+    @pytest.mark.parametrize(
+        "db_type,expected_driver",
+        [
+            (DatabaseType.POSTGRES, "postgresql"),
+            (DatabaseType.MYSQL, "mysql+pymysql"),
+            (DatabaseType.MSSQL, "mssql+pymssql"),
+        ],
+    )
+    def test_url_create_correct_driver_per_db_type(
+        self, db_type: DatabaseType, expected_driver: str
+    ):
+        """URL.create() must use the correct drivername for each database type."""
+        from sqlalchemy.engine.url import URL
+
+        from backend.blocks.sql_query_block import _DATABASE_TYPE_TO_DRIVER
+
+        drivername = _DATABASE_TYPE_TO_DRIVER[db_type]
+        url = URL.create(
+            drivername=drivername,
+            username="user",
+            password="pass",
+            host="1.2.3.4",
+            port=5432,
+            database="testdb",
+        )
+        assert url.drivername == expected_driver
+
+    @pytest.mark.asyncio
+    async def test_special_chars_reach_url_create(self):
+        """End-to-end: credentials with special chars are correctly passed to
+        URL.create() (verified by capturing the connection_url kwarg)."""
+        block = SQLQueryBlock()
+        special_pass = "p@ss:w0rd/#!&=+()"
+        special_user = "admin@corp"
+        creds = _make_credentials(username=special_user, password=special_pass)
+        input_data = _make_input(creds)
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+        captured: dict[str, Any] = {}
+
+        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+            captured.update(kwargs)
+            return [{"id": 1}], ["id"], -1
+
+        block.execute_query = fake_execute  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" not in outputs
+        conn_url = captured["connection_url"]
+        # URL.create() produces a URL object, not a string
+        assert hasattr(conn_url, "password"), "connection_url should be a URL object"
+        assert conn_url.password == special_pass
+        assert conn_url.username == special_user
