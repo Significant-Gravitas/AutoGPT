@@ -173,7 +173,7 @@ async def get_user_rate_limit_tier(
     admin_user_id: str = Security(get_user_id),
 ) -> UserTierResponse:
     """Get a user's current rate-limit tier. Admin-only."""
-    logger.info(f"Admin {admin_user_id} checking tier for user {user_id}")
+    logger.info("Admin %s checking tier for user %s", admin_user_id, user_id)
     tier = await get_user_tier(user_id)
     return UserTierResponse(user_id=user_id, tier=tier)
 
@@ -189,8 +189,10 @@ async def set_user_rate_limit_tier(
 ) -> UserTierResponse:
     """Set a user's rate-limit tier. Admin-only."""
     logger.info(
-        f"Admin {admin_user_id} setting tier for user {request.user_id} "
-        f"to {request.tier.value}"
+        "Admin %s setting tier for user %s to %s",
+        admin_user_id,
+        request.user_id,
+        request.tier.value,
     )
     try:
         await set_user_tier(request.user_id, request.tier)
