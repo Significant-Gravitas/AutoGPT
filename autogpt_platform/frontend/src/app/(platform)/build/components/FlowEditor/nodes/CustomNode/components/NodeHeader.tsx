@@ -7,7 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { beautifyString, cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomNodeData } from "../CustomNode";
 import { NodeBadges } from "./NodeBadges";
 import { NodeContextMenu } from "./NodeContextMenu";
@@ -18,18 +18,90 @@ type Props = {
   nodeId: string;
 };
 
-export const NodeHeader = ({ data, nodeId }: Props) => {
+export function NodeHeader({ data, nodeId }: Props) {
   const updateNodeData = useNodeStore((state) => state.updateNodeData);
 
-  const title = (data.metadata?.customized_name as string) || data.title;
+  // For Agent Executor blocks, show agent name + version if available
+  function getTitle(): string {
+    if (data.metadata?.customized_name) {
+      return data.metadata.customized_name as string;
+    }
+
+    const agentName = data.hardcodedValues?.agent_name as string | undefined;
+    const agentVersion = data.hardcodedValues?.graph_version as
+      | number
+      | undefined;
+
+    if (agentName && agentVersion != null) {
+      return `${agentName} v${agentVersion}`;
+    } else if (agentName) {
+      return agentName;
+    }
+
+    return data.title;
+  }
+
+  function getBeautifiedTitle(): string {
+    const rawTitle = getTitle();
+
+    // Don't beautify user-customized names or agent-derived names
+    if (data.metadata?.customized_name || data.hardcodedValues?.agent_name) {
+      return rawTitle;
+    }
+
+    // Only for block type names (from data.title): beautify and strip "Block" suffix
+    const beautified = beautifyString(rawTitle);
+
+    // Strip "Block" suffix only if it's at the end (e.g., "AITextGeneratorBlock" -> "AI Text Generator")
+    // Don't strip "Block" from middle of names (e.g., "Blockchain Analyzer" stays "Blockchain Analyzer")
+    if (beautified.endsWith(" Block")) {
+      return beautified.slice(0, -6).trim();
+    }
+
+    return beautified.trim();
+  }
+
+  // Memoize title to prevent unnecessary recalculations
+  const title = useMemo(
+    () => getBeautifiedTitle(),
+    [
+      data.metadata?.customized_name,
+      data.hardcodedValues?.agent_name,
+      data.hardcodedValues?.graph_version,
+      data.title,
+    ],
+  );
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
 
+  // Track the last synced title to detect external changes
+  const lastSyncedTitle = useRef(title);
+
+  // Sync editedTitle when title changes externally (e.g., agent updated)
+  // Only sync when NOT editing to preserve user's in-progress edits
+  useEffect(() => {
+    if (!isEditingTitle && title !== lastSyncedTitle.current) {
+      setEditedTitle(title);
+      lastSyncedTitle.current = title;
+    }
+  }, [title, isEditingTitle]);
+
   const handleTitleEdit = () => {
-    updateNodeData(nodeId, {
-      metadata: { ...data.metadata, customized_name: editedTitle },
-    });
+    const trimmedEditedTitle = editedTitle.trim();
+    const trimmedOriginalTitle = title.trim();
+
+    // Only persist if the title actually changed to avoid freezing agent-derived titles
+    // Allow saving empty string if user explicitly wants to clear it
+    if (trimmedEditedTitle !== trimmedOriginalTitle) {
+      updateNodeData(nodeId, {
+        metadata: {
+          ...data.metadata,
+          customized_name: trimmedEditedTitle || undefined, // Clear customized_name if empty
+        },
+      });
+      lastSyncedTitle.current = trimmedEditedTitle || title;
+    }
     setIsEditingTitle(false);
   };
 
@@ -72,12 +144,12 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
                         variant="large-semibold"
                         className="line-clamp-1 hover:cursor-text"
                       >
-                        {beautifyString(title).replace("Block", "").trim()}
+                        {title}
                       </Text>
                     </div>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{beautifyString(title).replace("Block", "").trim()}</p>
+                    <p>{title}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -106,4 +178,4 @@ export const NodeHeader = ({ data, nodeId }: Props) => {
       </div>
     </div>
   );
-};
+}
