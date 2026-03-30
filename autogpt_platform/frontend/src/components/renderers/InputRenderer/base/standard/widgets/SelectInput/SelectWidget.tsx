@@ -61,13 +61,15 @@ export const SelectWidget = (props: WidgetProps) => {
         hideLabel={true}
         disabled={disabled || readonly}
         size={selectSize as any}
-        value={value ?? ""}
+        value={value || undefined}
         onValueChange={onChange}
         options={
-          enumOptions?.map((option: any) => ({
-            value: option.value,
-            label: option.label,
-          })) || []
+          enumOptions
+            ?.filter((option: any) => option.value !== "")
+            .map((option: any) => ({
+              value: option.value,
+              label: option.label,
+            })) || []
         }
         wrapperClassName="!mb-0 "
         className={className}
