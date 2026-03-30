@@ -17,7 +17,7 @@ import { EmptyTemplates } from "./components/other/EmptyTemplates";
 import { EmptyTriggers } from "./components/other/EmptyTriggers";
 import { MarketplaceBanners } from "./components/other/MarketplaceBanners";
 import { SectionWrap } from "./components/other/SectionWrap";
-import { LoadingSelectedContent } from "./components/selected-views/LoadingSelectedContent";
+
 import { SelectedRunView } from "./components/selected-views/SelectedRunView/SelectedRunView";
 import { SelectedScheduleView } from "./components/selected-views/SelectedScheduleView/SelectedScheduleView";
 import { SelectedTemplateView } from "./components/selected-views/SelectedTemplateView/SelectedTemplateView";
@@ -128,11 +128,11 @@ export function NewAgentLibraryView() {
     );
   }
 
-  if (!ready || !agent) {
+  if (!ready || !agent || sidebarLoading) {
     return <AgentRunsLoading />;
   }
 
-  if (!sidebarLoading && !hasAnyItems) {
+  if (!hasAnyItems) {
     return (
       <>
         <div className="flex h-full flex-col">
@@ -240,8 +240,6 @@ export function NewAgentLibraryView() {
               banner={renderMarketplaceUpdateBanner()}
             />
           )
-        ) : sidebarLoading ? (
-          <LoadingSelectedContent agent={agent} />
         ) : activeTab === "scheduled" ? (
           <SelectedViewLayout
             agent={agent}
