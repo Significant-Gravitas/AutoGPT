@@ -85,7 +85,7 @@ export const NodeDataViewer: FC<NodeDataViewerProps> = ({
 
   const shouldGroupExecutions = groupedExecutions.length > 0;
   return (
-    <Dialog styling={{ width: "600px" }}>
+    <Dialog title="Data Preview" styling={{ width: "600px" }}>
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
