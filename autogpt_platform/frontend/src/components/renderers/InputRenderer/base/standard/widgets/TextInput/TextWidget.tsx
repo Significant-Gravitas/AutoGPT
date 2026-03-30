@@ -25,6 +25,7 @@ export default function TextWidget(props: WidgetProps) {
 
   const mapped = mapJsonSchemaTypeToInputType(schema);
 
+
   type InputConfig = {
     htmlType: string;
     placeholder: string;
@@ -45,12 +46,24 @@ export default function TextWidget(props: WidgetProps) {
     [InputType.NUMBER]: {
       htmlType: "number",
       placeholder: "Enter number value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        const trimmed = v.trim();
+        if(trimmed === "") return undefined;
+
+        const num = Number(trimmed);
+        return Number.isNaN(num) ? undefined : num;
+      },
     },
     [InputType.INTEGER]: {
-      htmlType: "account",
+      htmlType: "number",
       placeholder: "Enter integer value...",
-      handleChange: (v: string) => (v === "" ? undefined : Number(v)),
+      handleChange: (v: string) => {
+        const trimmed = v.trim();
+        if(trimmed === "") return undefined;
+
+        const num = Number(trimmed);
+        return Number.isNaN(num) ? undefined : Math.trunc(num);
+      },
     },
   };
 
