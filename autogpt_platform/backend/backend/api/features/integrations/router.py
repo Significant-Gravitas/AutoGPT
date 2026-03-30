@@ -29,6 +29,7 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
@@ -40,7 +41,10 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
@@ -110,6 +114,7 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    autogpt_managed: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +153,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        autogpt_managed=cred.autogpt_managed,
     )
 
 
@@ -332,6 +338,11 @@ async def delete_credentials(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
+    if is_system_credential(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System-managed credentials cannot be deleted",
+        )
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(
@@ -341,6 +352,11 @@ async def delete_credentials(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Credentials not found",
+        )
+    if creds.autogpt_managed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AutoGPT-managed credentials cannot be deleted",
         )
 
     try:
@@ -844,6 +860,64 @@ async def get_ayrshare_sso_url(
 
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
     return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
+
+
+class AgentMailConnectResponse(BaseModel):
+    pod_id: str
+
+
+@router.post("/agentmail/connect")
+async def connect_agentmail(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> AgentMailConnectResponse:
+    """Provision an AgentMail pod for the current user.
+
+    Creates a pod via the org-level API key, generates a pod-scoped API key,
+    and stores it as an autogpt_managed credential. The pod key then appears
+    automatically in the credential dropdown for AgentMail blocks.
+
+    Idempotent: if a pod already exists for this user, returns its ID without
+    creating a duplicate.
+    """
+    from agentmail import AsyncAgentMail
+
+    org_api_key = settings.secrets.agentmail_api_key
+    if not org_api_key:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="AgentMail API key is not configured",
+        )
+
+    # Check if already provisioned
+    if await creds_manager.store.has_managed_credential(user_id, "agent_mail"):
+        user_integrations = await get_user_integrations(user_id)
+        cred = next(
+            c
+            for c in user_integrations.credentials
+            if c.provider == "agent_mail" and c.autogpt_managed
+        )
+        return AgentMailConnectResponse(pod_id=cred.metadata["pod_id"])
+
+    # Provision pod + API key via org-level key
+    client = AsyncAgentMail(api_key=org_api_key)
+    pod = await client.pods.create(client_id=user_id, name=f"{user_id}-pod")
+    api_key_obj = await client.pods.api_keys.create(
+        pod_id=pod.pod_id, name=f"{user_id}-agpt-managed"
+    )
+
+    await creds_manager.store.add_managed_credential(
+        user_id,
+        APIKeyCredentials(
+            provider="agent_mail",
+            title="AgentMail (managed by AutoGPT)",
+            api_key=SecretStr(api_key_obj.api_key),
+            expires_at=None,
+            autogpt_managed=True,
+            metadata={"pod_id": pod.pod_id},
+        ),
+    )
+
+    return AgentMailConnectResponse(pod_id=pod.pod_id)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===

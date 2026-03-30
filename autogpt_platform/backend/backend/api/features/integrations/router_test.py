@@ -276,3 +276,51 @@ class TestCreateCredentialNoSecretInResponse:
 
         assert resp.status_code == 403
         mock_mgr.create.assert_not_called()
+
+
+class TestAutogptManagedCredentials:
+    """AutoGPT-managed credentials cannot be deleted by users."""
+
+    def test_delete_autogpt_managed_returns_403(self):
+        cred = APIKeyCredentials(
+            id="managed-cred-1",
+            provider="agent_mail",
+            title="AgentMail (managed by AutoGPT)",
+            api_key=SecretStr("sk-managed-key"),
+            autogpt_managed=True,
+        )
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_creds_by_id = AsyncMock(return_value=cred)
+            resp = client.request("DELETE", "/agent_mail/credentials/managed-cred-1")
+
+        assert resp.status_code == 403
+        assert "AutoGPT-managed" in resp.json()["detail"]
+
+    def test_list_credentials_includes_autogpt_managed_field(self):
+        managed = APIKeyCredentials(
+            id="managed-1",
+            provider="agent_mail",
+            title="AgentMail (managed)",
+            api_key=SecretStr("sk-key"),
+            autogpt_managed=True,
+        )
+        regular = APIKeyCredentials(
+            id="regular-1",
+            provider="openai",
+            title="My Key",
+            api_key=SecretStr("sk-key"),
+        )
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(return_value=[managed, regular])
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        managed_cred = next(c for c in data if c["id"] == "managed-1")
+        regular_cred = next(c for c in data if c["id"] == "regular-1")
+        assert managed_cred["autogpt_managed"] is True
+        assert regular_cred["autogpt_managed"] is False
