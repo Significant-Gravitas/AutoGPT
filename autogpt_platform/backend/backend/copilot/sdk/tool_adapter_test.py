@@ -766,9 +766,9 @@ class TestFiveConcurrentPrelaunchAllComplete:
             for i in range(N):
                 results.append(await handler({"cmd": f"task-{i}"}))
 
-        assert mock_tool.execute.await_count == N, (
-            f"Expected {N} execute calls, got {mock_tool.execute.await_count}"
-        )
+        assert (
+            mock_tool.execute.await_count == N
+        ), f"Expected {N} execute calls, got {mock_tool.execute.await_count}"
         for i, result in enumerate(results):
             assert result["isError"] is False, f"Result {i} should not be an error"
             text = result["content"][0]["text"]

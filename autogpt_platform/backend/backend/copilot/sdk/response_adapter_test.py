@@ -687,6 +687,6 @@ def test_already_resolved_tool_skipped_in_user_message():
     user_msg = UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="real")])
     r = adapter.convert_message(user_msg)
     output_events = [r_ for r_ in r if isinstance(r_, StreamToolOutputAvailable)]
-    assert len(output_events) == 0, (
-        "Already-resolved tool should not emit duplicate output"
-    )
+    assert (
+        len(output_events) == 0
+    ), "Already-resolved tool should not emit duplicate output"
