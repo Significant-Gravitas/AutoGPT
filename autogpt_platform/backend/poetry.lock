@@ -3311,6 +3311,21 @@ rich = ["rich (>=13.9.4)"]
 ws = ["websockets (>=15.0.1)"]
 
 [[package]]
+name = "mcp-secure"
+version = "1.0.0"
+description = "MCPS -- MCP Secure. Cryptographic identity, message signing, and trust verification for the Model Context Protocol."
+optional = false
+python-versions = ">=3.9"
+groups = ["main"]
+files = [
+    {file = "mcp_secure-1.0.0-py3-none-any.whl", hash = "sha256:ba131c88e2a05e2b26ba215e52a8a1feefedde154f21ee8944190c1101bfee55"},
+    {file = "mcp_secure-1.0.0.tar.gz", hash = "sha256:dbc2dce0e23d3ab90722e1de8f57f2021d3d243130311e9492626d1543f16a87"},
+]
+
+[package.dependencies]
+cryptography = ">=41.0.0"
+
+[[package]]
 name = "mdurl"
 version = "0.1.2"
 description = "Markdown URL utilities"

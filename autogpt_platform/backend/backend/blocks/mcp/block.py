@@ -24,6 +24,7 @@ from backend.blocks.mcp.helpers import (
     normalize_mcp_url,
     parse_mcp_content,
 )
+from backend.blocks.mcp.security import MCPToolIntegrityError
 from backend.data.block import BlockInput, BlockOutput
 from backend.data.model import (
     CredentialsField,
@@ -94,6 +95,14 @@ class MCPToolBlock(Block):
             description="Arguments to pass to the selected MCP tool. "
             "The fields here are defined by the tool's input schema.",
             default={},
+        )
+
+        tool_integrity_hash: str = SchemaField(
+            description="SHA-256 fingerprint of the selected tool's definition "
+            "(auto-populated at tool selection). When set, the definition is "
+            "re-verified before every run to detect post-deployment mutations.",
+            default="",
+            hidden=True,
         )
 
         @classmethod
@@ -167,10 +176,15 @@ class MCPToolBlock(Block):
         tool_name: str,
         arguments: dict[str, Any],
         auth_token: str | None = None,
+        tool_integrity_hash: str | None = None,
     ) -> Any:
         """Call a tool on the MCP server. Extracted for easy mocking in tests."""
         client = MCPClient(server_url, auth_token=auth_token)
         await client.initialize()
+
+        if tool_integrity_hash:
+            await client.verify_tool_before_call(tool_name, tool_integrity_hash)
+
         result = await client.call_tool(tool_name, arguments)
 
         if result.is_error:
@@ -244,8 +258,12 @@ class MCPToolBlock(Block):
                 tool_name=input_data.selected_tool,
                 arguments=input_data.tool_arguments,
                 auth_token=auth_token,
+                tool_integrity_hash=input_data.tool_integrity_hash or None,
             )
             yield "result", result
+        except MCPToolIntegrityError as e:
+            logger.warning("MCP tool integrity check failed: %s", e)
+            yield "error", f"Tool integrity check failed: {e}"
         except MCPClientError as e:
             yield "error", str(e)
         except Exception as e:
