@@ -37,25 +37,27 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
     );
 
     return outputNodes
-      .map((node) => {
+      .flatMap((node) => {
         const executionResults = node.data.nodeExecutionResults || [];
-        const latestResult =
-          executionResults.length > 0
-            ? executionResults[executionResults.length - 1]
-            : undefined;
-        const outputData = latestResult?.output_data?.output;
+        if (executionResults.length === 0) return [];
 
-        const renderer = globalRegistry.getRenderer(outputData);
+        return executionResults
+          .filter((result) => result.output_data?.output !== undefined)
+          .map((result) => {
+            const outputData = result.output_data?.output;
+            const renderer = globalRegistry.getRenderer(outputData);
 
-        return {
-          metadata: {
-            name: node.data.hardcodedValues?.name || "Output",
-            description:
-              node.data.hardcodedValues?.description || "Output from the agent",
-          },
-          value: outputData ?? "No output yet",
-          renderer,
-        };
+            return {
+              metadata: {
+                name: node.data.hardcodedValues?.name || "Output",
+                description:
+                  node.data.hardcodedValues?.description ||
+                  "Output from the agent",
+              },
+              value: outputData ?? "No output yet",
+              renderer,
+            };
+          });
       })
       .filter(
         (
