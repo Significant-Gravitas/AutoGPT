@@ -218,7 +218,12 @@ export function useRateLimitManager() {
         user_id: rateLimitData.user_id,
       });
       if (refreshResponse.status === 200) {
-        setRateLimitData(refreshResponse.data);
+        // Merge tier into refreshed data (same pattern as fetchRateLimit).
+        const tier = await fetchTier(rateLimitData.user_id);
+        const data = tier
+          ? { ...refreshResponse.data, tier }
+          : refreshResponse.data;
+        setRateLimitData(data as typeof refreshResponse.data);
       }
     } catch {
       // Tier was changed server-side; UI will be stale but not incorrect.
