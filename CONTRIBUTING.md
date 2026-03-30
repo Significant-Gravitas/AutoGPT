@@ -13,7 +13,7 @@ All contributions to [the autogpt_platform folder](https://github.com/Significan
 ## In short
 1. Avoid duplicate work, issues, PRs etc.
 2. We encourage you to collaborate with fellow community members on some of our bigger
-   [todo's][roadmap]!
+   [todos][roadmap]!
    * We highly recommend to post your idea and discuss it in the [dev channel].
 3. Create a draft PR when starting work on bigger changes.
 4. Adhere to the [Code Guidelines]
@@ -27,7 +27,7 @@ All contributions to [the autogpt_platform folder](https://github.com/Significan
 [dev channel]: https://discord.com/channels/1092243196446249134/1095817829405704305
 [code guidelines]: https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing#code-guidelines
 
-If you wish to involve with the project (beyond just contributing PRs), please read the
+If you wish to get involved with the project (beyond just contributing PRs), please read the
 wiki page about [Catalyzing](https://github.com/Significant-Gravitas/AutoGPT/wiki/Catalyzing).
 
 In fact, why not just look through the whole wiki (it's only a few pages) and
