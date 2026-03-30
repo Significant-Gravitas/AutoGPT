@@ -1074,6 +1074,7 @@ async def test_orchestrator_uses_customized_name_for_blocks():
     mock_node.block_id = StoreValueBlock().id
     mock_node.metadata = {"customized_name": "My Custom Tool Name"}
     mock_node.block = StoreValueBlock()
+    mock_node.input_default = {}
 
     # Create a mock link
     mock_link = MagicMock(spec=Link)
@@ -1105,6 +1106,7 @@ async def test_orchestrator_falls_back_to_block_name():
     mock_node.block_id = StoreValueBlock().id
     mock_node.metadata = {}  # No customized_name
     mock_node.block = StoreValueBlock()
+    mock_node.input_default = {}
 
     # Create a mock link
     mock_link = MagicMock(spec=Link)
