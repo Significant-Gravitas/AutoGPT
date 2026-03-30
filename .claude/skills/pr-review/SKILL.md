@@ -10,6 +10,13 @@ metadata:
 
 # PR Review
 
+## Current State
+
+- **Branch:** `!git branch --show-current`
+- **PR:** `!gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT --json number,url,title -q '.[0] | "\(.number) \(.url) \(.title)"' 2>/dev/null || echo "no PR found for current branch"`
+
+Use the context above to skip the "Find the PR" step if a PR number is already shown.
+
 ## Find the PR
 
 ```bash
