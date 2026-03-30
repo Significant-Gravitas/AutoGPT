@@ -11,7 +11,11 @@ import pytest
 
 from backend.copilot.context import _current_project_dir
 
-from .security_hooks import _validate_tool_access, _validate_user_isolation
+from .security_hooks import (
+    _validate_tool_access,
+    _validate_user_isolation,
+    create_security_hooks,
+)
 
 SDK_CWD = "/tmp/copilot-abc123"
 
@@ -220,8 +224,6 @@ def test_bash_builtin_blocked_message_clarity():
 @pytest.fixture()
 def _hooks():
     """Create security hooks and return (pre, post, post_failure) handlers."""
-    from .security_hooks import create_security_hooks
-
     hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
     pre = hooks["PreToolUse"][0].hooks[0]
     post = hooks["PostToolUse"][0].hooks[0]
@@ -324,8 +326,6 @@ async def test_task_slot_released_on_completion(_hooks):
 @pytest.fixture()
 def _hooks_search():
     """Create security hooks with low search cap for testing."""
-    from .security_hooks import create_security_hooks
-
     hooks = create_security_hooks(
         user_id="u1",
         sdk_cwd=SDK_CWD,
@@ -372,6 +372,7 @@ async def test_web_search_denied_at_cap(_hooks_search):
     assert _is_denied(result)
     reason = _reason(result)
     assert "web search" in reason.lower()
+    assert "per turn" in reason.lower()
     assert "synthesize" in reason.lower()
 
 
@@ -381,8 +382,6 @@ async def test_web_search_denied_at_cap(_hooks_search):
 @pytest.fixture()
 def _hooks_tool_cap():
     """Create security hooks with low total tool call cap for testing."""
-    from .security_hooks import create_security_hooks
-
     hooks = create_security_hooks(
         user_id="u1",
         sdk_cwd=SDK_CWD,
