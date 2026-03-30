@@ -5,16 +5,12 @@ generate the agent JSON yourself using block schemas, then validate and save.
 
 ### Workflow for Creating/Editing Agents
 
-1. **Clarify if needed**: If the goal is ambiguous (output format, delivery
-   channel, data source, or trigger unspecified), call `find_block` with a
-   query targeting the ambiguous dimension (e.g. `"email send"`, `"slack
-   message"`, `"google docs write"`) to discover what the platform supports.
-   Then ask the user **one** concrete question listing those real options and
-   wait for their answer before continuing. If the goal is already specific,
-   skip to step 2.
+1. **Clarify intent**: Call `clarify_agent_request` first to confirm
+   the user's intent — output format, delivery channel, data source, and
+   trigger. Wait for the user's answer before continuing.
 2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
-   search for relevant blocks using the (now specific) goal. This returns
-   block IDs, names, descriptions, and full input/output schemas.
+   search for relevant blocks. This returns block IDs, names, descriptions,
+   and full input/output schemas.
 3. **Find library agents**: Call `find_library_agent` to discover reusable
    agents that can be composed as sub-agents via `AgentExecutorBlock`.
 4. **Generate JSON**: Build the agent JSON using block schemas:
