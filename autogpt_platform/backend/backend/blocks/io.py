@@ -467,7 +467,8 @@ class AgentFileInputBlock(AgentInputBlock):
 
 class AgentDropdownInputBlock(AgentInputBlock):
     """
-    A specialized text input block that relies on placeholder_values to present a dropdown.
+    A specialized text input block that presents a dropdown selector
+    restricted to a fixed set of values.
     """
 
     class Input(AgentInputBlock.Input):
@@ -477,16 +478,28 @@ class AgentDropdownInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
-        placeholder_values: list = SchemaField(
-            description="Possible values for the dropdown.",
+        options: list = SchemaField(
+            description=(
+                "If provided, renders the input as a dropdown selector "
+                "restricted to these values. Leave empty for free-text input."
+            ),
             default_factory=list,
             advanced=False,
             title="Dropdown Options",
         )
 
+        @classmethod
+        def model_construct(cls, *args, **kwargs):
+            # Backward compat: remap legacy "placeholder_values" → "options"
+            if "placeholder_values" in kwargs and "options" not in kwargs:
+                kwargs["options"] = kwargs.pop("placeholder_values")
+            elif "placeholder_values" in kwargs:
+                kwargs.pop("placeholder_values")
+            return super().model_construct(*args, **kwargs)
+
         def generate_schema(self):
             schema = super().generate_schema()
-            if possible_values := self.placeholder_values:
+            if possible_values := self.options:
                 schema["enum"] = possible_values
             return schema
 
@@ -504,13 +517,13 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 {
                     "value": "Option A",
                     "name": "dropdown_1",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 1",
                 },
                 {
                     "value": "Option C",
                     "name": "dropdown_2",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 2",
                 },
             ],
