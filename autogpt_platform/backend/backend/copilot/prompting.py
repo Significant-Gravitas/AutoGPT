@@ -9,6 +9,23 @@ handling the distinction between:
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
 from backend.copilot.tools import TOOL_REGISTRY
 
+# Agent-building clarification rule — injected into every system prompt so it
+# is active before any tool call, not just when the guide is loaded lazily.
+_AGENT_CLARIFY_NOTE = """
+### Building agents — clarify first, then generate
+When a user asks you to build/create/generate an agent and the goal is ambiguous
+(output format, delivery channel, data source, or trigger unspecified):
+1. Call `find_block` with a query targeting the ambiguous dimension (e.g.
+   "email send", "slack message", "google docs write") to discover what the
+   platform actually supports.
+2. Ask the user ONE concrete question listing the real options you found.
+3. Wait for their answer.
+Only after the user provides a specific goal, proceed to the full agent
+generation workflow (find_block for all relevant blocks → generate JSON →
+validate → save).
+If the goal is already specific enough, skip straight to agent generation.
+"""
+
 # Shared technical notes that apply to both SDK and baseline modes
 _SHARED_TOOL_NOTES = f"""\
 
@@ -303,8 +320,8 @@ def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
         The supplement string to append to the system prompt
     """
     if use_e2b:
-        return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement(cwd)
+        return _AGENT_CLARIFY_NOTE + _get_cloud_sandbox_supplement()
+    return _AGENT_CLARIFY_NOTE + _get_local_storage_supplement(cwd)
 
 
 def get_baseline_supplement() -> str:
@@ -318,4 +335,4 @@ def get_baseline_supplement() -> str:
         The supplement string to append to the system prompt
     """
     tool_docs = _generate_tool_documentation()
-    return tool_docs + _SHARED_TOOL_NOTES
+    return _AGENT_CLARIFY_NOTE + tool_docs + _SHARED_TOOL_NOTES
