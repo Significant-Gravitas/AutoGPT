@@ -107,6 +107,14 @@ Do not re-fetch or re-generate data you already have from prior tool calls.
 After building the file, reference it with `@@agptfile:` in other tools:
 `@@agptfile:/home/user/report.md`
 
+### Web search best practices
+- If 3 similar web searches don't return the specific data you need, conclude
+  it isn't publicly available and work with what you have.
+- Prefer fewer, well-targeted searches over many variations of the same query.
+- When spawning sub-agents for research, ensure each has a distinct
+  non-overlapping scope to avoid redundant searches.
+- There is a hard cap on web searches per session — use them wisely.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.

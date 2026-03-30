@@ -128,6 +128,8 @@ def create_security_hooks(
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
+    max_web_searches: int = 15,
+    max_tool_calls: int = 100,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -143,6 +145,10 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        max_web_searches: Maximum WebSearch calls per session (across all
+            sub-agents).  Prevents runaway research loops.
+        max_tool_calls: Maximum total tool calls per turn.  Acts as a hard
+            circuit breaker to cap cost and latency.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -154,6 +160,12 @@ def create_security_hooks(
         # Per-session tracking for Task sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
         task_tool_use_ids: set[str] = set()
+
+        # --- Circuit breaker counters ---
+        # Cap WebSearch calls per session (across all sub-agents) to prevent
+        # runaway research loops (see incident d2f7cba3: 179 searches, $20.66).
+        web_search_count: list[int] = [0]  # mutable container for closure
+        total_tool_call_count: list[int] = [0]  # total tool calls this turn
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -189,6 +201,41 @@ def create_security_hooks(
                             f"Maximum {max_subtasks} concurrent sub-tasks. "
                             "Wait for running sub-tasks to finish, "
                             "or continue in the main conversation."
+                        ),
+                    )
+
+            # --- Circuit breaker: total tool calls per turn ---
+            total_tool_call_count[0] += 1
+            if total_tool_call_count[0] > max_tool_calls:
+                logger.warning(
+                    "[SDK] Total tool call cap reached (%d), user=%s",
+                    max_tool_calls,
+                    user_id,
+                )
+                return cast(
+                    SyncHookJSONOutput,
+                    _deny(
+                        f"Maximum {max_tool_calls} tool calls per turn reached. "
+                        "Please synthesize your answer from the information "
+                        "you have already gathered."
+                    ),
+                )
+
+            # --- Circuit breaker: WebSearch calls per session ---
+            if tool_name == "WebSearch":
+                web_search_count[0] += 1
+                if web_search_count[0] > max_web_searches:
+                    logger.warning(
+                        "[SDK] WebSearch cap reached (%d), user=%s",
+                        max_web_searches,
+                        user_id,
+                    )
+                    return cast(
+                        SyncHookJSONOutput,
+                        _deny(
+                            f"Maximum {max_web_searches} web searches per session "
+                            "reached. Synthesize your answer from the information "
+                            "you have already gathered instead of searching again."
                         ),
                     )
 
@@ -313,8 +360,7 @@ def create_security_hooks(
                 .replace("\r", "")
             )
             logger.info(
-                "[SDK] Context compaction triggered: %s, user=%s, "
-                "transcript_path=%s",
+                "[SDK] Context compaction triggered: %s, user=%s, transcript_path=%s",
                 trigger,
                 user_id,
                 transcript_path,
