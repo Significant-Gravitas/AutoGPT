@@ -3,17 +3,21 @@
 import logging
 from typing import Optional
 
+import prisma.errors
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.rate_limit import (
+    SubscriptionTier,
     get_global_rate_limits,
     get_usage_status,
+    get_user_tier,
     reset_user_usage,
+    set_user_tier,
 )
-from backend.data.user import get_user_by_email, get_user_email_by_id
+from backend.data.user import get_user_by_email, get_user_email_by_id, search_users
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,17 @@ class UserRateLimitResponse(BaseModel):
     weekly_token_limit: int
     daily_tokens_used: int
     weekly_tokens_used: int
+    tier: SubscriptionTier
+
+
+class UserTierResponse(BaseModel):
+    user_id: str
+    tier: SubscriptionTier
+
+
+class SetUserTierRequest(BaseModel):
+    user_id: str
+    tier: SubscriptionTier
 
 
 async def _resolve_user_id(
@@ -86,10 +101,10 @@ async def get_user_rate_limit(
 
     logger.info("Admin %s checking rate limit for user %s", admin_user_id, resolved_id)
 
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         resolved_id, config.daily_token_limit, config.weekly_token_limit
     )
-    usage = await get_usage_status(resolved_id, daily_limit, weekly_limit)
+    usage = await get_usage_status(resolved_id, daily_limit, weekly_limit, tier=tier)
 
     return UserRateLimitResponse(
         user_id=resolved_id,
@@ -98,6 +113,7 @@ async def get_user_rate_limit(
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
         weekly_tokens_used=usage.weekly.used,
+        tier=tier,
     )
 
 
@@ -125,10 +141,10 @@ async def reset_user_rate_limit(
         logger.exception("Failed to reset user usage")
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
 
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
-    usage = await get_usage_status(user_id, daily_limit, weekly_limit)
+    usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
 
     try:
         resolved_email = await get_user_email_by_id(user_id)
@@ -143,4 +159,74 @@ async def reset_user_rate_limit(
         weekly_token_limit=weekly_limit,
         daily_tokens_used=usage.daily.used,
         weekly_tokens_used=usage.weekly.used,
+        tier=tier,
     )
+
+
+@router.get(
+    "/rate_limit/tier",
+    response_model=UserTierResponse,
+    summary="Get User Rate Limit Tier",
+)
+async def get_user_rate_limit_tier(
+    user_id: str,
+    admin_user_id: str = Security(get_user_id),
+) -> UserTierResponse:
+    """Get a user's current rate-limit tier. Admin-only."""
+    logger.info("Admin %s checking tier for user %s", admin_user_id, user_id)
+    tier = await get_user_tier(user_id)
+    return UserTierResponse(user_id=user_id, tier=tier)
+
+
+@router.post(
+    "/rate_limit/tier",
+    response_model=UserTierResponse,
+    summary="Set User Rate Limit Tier",
+)
+async def set_user_rate_limit_tier(
+    request: SetUserTierRequest,
+    admin_user_id: str = Security(get_user_id),
+) -> UserTierResponse:
+    """Set a user's rate-limit tier. Admin-only."""
+    logger.info(
+        "Admin %s setting tier for user %s to %s",
+        admin_user_id,
+        request.user_id,
+        request.tier.value,
+    )
+    try:
+        await set_user_tier(request.user_id, request.tier)
+    except prisma.errors.RecordNotFoundError as e:
+        raise HTTPException(
+            status_code=404, detail=f"User {request.user_id} not found"
+        ) from e
+    except Exception as e:
+        logger.exception("Failed to set user tier")
+        raise HTTPException(status_code=500, detail="Failed to set tier") from e
+
+    return UserTierResponse(user_id=request.user_id, tier=request.tier)
+
+
+class UserSearchResult(BaseModel):
+    user_id: str
+    user_email: Optional[str] = None
+
+
+@router.get(
+    "/rate_limit/search_users",
+    response_model=list[UserSearchResult],
+    summary="Search Users by Name or Email",
+)
+async def admin_search_users(
+    query: str,
+    limit: int = 20,
+    admin_user_id: str = Security(get_user_id),
+) -> list[UserSearchResult]:
+    """Search users by partial email or name. Admin-only.
+
+    Queries the User table directly — returns results even for users
+    without credit transaction history.
+    """
+    logger.info("Admin %s searching users with query=%r", admin_user_id, query)
+    results = await search_users(query, limit=min(limit, 50))
+    return [UserSearchResult(user_id=uid, user_email=email) for uid, email in results]

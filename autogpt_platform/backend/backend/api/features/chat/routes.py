@@ -433,8 +433,9 @@ async def get_copilot_usage(
 
     Returns current token usage vs limits for daily and weekly windows.
     Global defaults sourced from LaunchDarkly (falling back to config).
+    Includes the user's rate-limit tier.
     """
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
     return await get_usage_status(
@@ -442,6 +443,7 @@ async def get_copilot_usage(
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
+        tier=tier,
     )
 
 
@@ -493,7 +495,7 @@ async def reset_copilot_usage(
             detail="Rate limit reset is not available (credit system is disabled).",
         )
 
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, _tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
 
@@ -531,6 +533,7 @@ async def reset_copilot_usage(
             user_id=user_id,
             daily_token_limit=daily_limit,
             weekly_token_limit=weekly_limit,
+            tier=_tier,
         )
         if daily_limit > 0 and usage_status.daily.used < daily_limit:
             raise HTTPException(
@@ -606,6 +609,7 @@ async def reset_copilot_usage(
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
+        tier=_tier,
     )
 
     return RateLimitResetResponse(
@@ -716,7 +720,7 @@ async def stream_chat_post(
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
-            daily_limit, weekly_limit = await get_global_rate_limits(
+            daily_limit, weekly_limit, _tier = await get_global_rate_limits(
                 user_id, config.daily_token_limit, config.weekly_token_limit
             )
             await check_rate_limit(
