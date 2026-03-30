@@ -16,7 +16,7 @@ When activated, the block:
    - Install dependencies (npm, pip, etc.)
    - Run terminal commands
    - Build and test applications
-5. Extracts all text files created/modified during execution
+5. Extracts all files created/modified during execution (text files and binary files like images, PDFs, etc.)
 6. Returns the response and files, optionally keeping the sandbox alive for follow-up tasks
 
 The block supports conversation continuation through three mechanisms:
@@ -42,7 +42,7 @@ The block supports conversation continuation through three mechanisms:
 | Output | Description |
 |--------|-------------|
 | Response | The output/response from Claude Code execution |
-| Files | List of text files created/modified during execution. Each file includes path, relative_path, name, and content fields |
+| Files | List of files (text and binary) created/modified during execution. Includes images, PDFs, and other supported formats. Each file has path, relative_path, name, content, and workspace_ref fields. Binary files are stored in workspace and accessible via workspace_ref |
 | Conversation History | Full conversation history including this turn. Use to restore context on a fresh sandbox |
 | Session ID | Session ID for this conversation. Pass back with sandbox_id to continue the conversation |
 | Sandbox ID | ID of the sandbox instance (null if disposed). Pass back with session_id to continue the conversation |
