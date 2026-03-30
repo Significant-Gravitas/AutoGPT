@@ -112,6 +112,7 @@ from backend.data.user import (
 from backend.data.workspace import (
     count_workspace_files,
     create_workspace_file,
+    free_deleted_path,
     get_or_create_workspace,
     get_workspace_file,
     get_workspace_file_by_path,
@@ -318,6 +319,7 @@ class DatabaseManager(AppService):
     # ============ Workspace ============ #
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
+    free_deleted_path = _(free_deleted_path)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
@@ -512,6 +514,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Workspace ============ #
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
+    free_deleted_path = d.free_deleted_path
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
