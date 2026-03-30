@@ -113,7 +113,7 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - Prefer fewer, well-targeted searches over many variations of the same query.
 - When spawning sub-agents for research, ensure each has a distinct
   non-overlapping scope to avoid redundant searches.
-- There is a hard cap on web searches per session — use them wisely.
+- There is a hard cap on web searches — use them wisely.
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
