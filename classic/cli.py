@@ -7,10 +7,11 @@ To ensure efficiency, add the imports to the functions so only what is needed is
 try:
     import click
 except ImportError:
-    import os
-
-    os.system("pip3 install click")
-    import click
+    raise SystemExit(
+        "Missing dependency: click\n"
+        "Please install it using:\n"
+        "  pip install click"
+    )
 
 
 @click.group()
