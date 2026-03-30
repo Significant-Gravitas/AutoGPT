@@ -706,6 +706,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 block_id=self.id,
             )
 
+        # Ensure auto_credentials kwargs are present (even as None) so blocks
+        # that declare e.g. `*, credentials: GoogleCredentials` as a required
+        # kwarg don't crash with TypeError when the execution context didn't
+        # resolve credentials (e.g. the GoogleDriveFile field was empty).
+        for kwarg_name in self.input_schema.get_auto_credentials_fields():
+            kwargs.setdefault(kwarg_name, None)
+
         # Use the validated input data
         async for output_name, output_data in self.run(
             self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
