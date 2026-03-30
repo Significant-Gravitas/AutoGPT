@@ -221,6 +221,14 @@ llama_api_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+minimax_credentials = APIKeyCredentials(
+    id="3f5d7a2e-8b1c-4e9f-a6d3-7c2b1e0f5a8d",
+    provider="minimax",
+    api_key=SecretStr(settings.secrets.minimax_api_key),
+    title="Use Credits for MiniMax",
+    expires_at=None,
+)
+
 v0_credentials = APIKeyCredentials(
     id="c4e6d1a0-3b5f-4789-a8e2-9b123456789f",
     provider="v0",
@@ -278,6 +286,7 @@ DEFAULT_CREDENTIALS = [
     zerobounce_credentials,
     google_maps_credentials,
     llama_api_credentials,
+    minimax_credentials,
     v0_credentials,
     webshare_proxy_credentials,
     openweathermap_credentials,
@@ -387,6 +396,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(google_maps_credentials)
         if settings.secrets.llama_api_key:
             all_credentials.append(llama_api_credentials)
+        if settings.secrets.minimax_api_key:
+            all_credentials.append(minimax_credentials)
         if settings.secrets.v0_api_key:
             all_credentials.append(v0_credentials)
         if (

@@ -49,6 +49,7 @@ from backend.integrations.credentials_store import (
     ideogram_credentials,
     jina_credentials,
     llama_api_credentials,
+    minimax_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
@@ -151,6 +152,8 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.V0_1_5_MD: 1,
     LlmModel.V0_1_5_LG: 2,
     LlmModel.V0_1_0_MD: 1,
+    LlmModel.MINIMAX_M2_5: 1,
+    LlmModel.MINIMAX_M2_5_HIGHSPEED: 1,
 }
 
 for model in LlmModel:
@@ -273,6 +276,23 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "aiml_api"
+    ]
+    # MiniMax Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": minimax_credentials.id,
+                    "provider": minimax_credentials.provider,
+                    "type": minimax_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "minimax"
     ]
 )
 

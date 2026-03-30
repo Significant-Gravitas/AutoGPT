@@ -33,6 +33,7 @@ class ProviderName(str, Enum):
     MCP = "mcp"
     MEDIUM = "medium"
     MEM0 = "mem0"
+    MINIMAX = "minimax"
     NOTION = "notion"
     NVIDIA = "nvidia"
     OLLAMA = "ollama"
