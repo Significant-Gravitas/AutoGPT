@@ -12,6 +12,7 @@ from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
+    SDK_DISALLOWED_TOOLS,
     _text_from_mcp_result,
     cancel_pending_tool_tasks,
     create_tool_handler,
@@ -765,10 +766,30 @@ class TestFiveConcurrentPrelaunchAllComplete:
             for i in range(N):
                 results.append(await handler({"cmd": f"task-{i}"}))
 
-        assert (
-            mock_tool.execute.await_count == N
-        ), f"Expected {N} execute calls, got {mock_tool.execute.await_count}"
+        assert mock_tool.execute.await_count == N, (
+            f"Expected {N} execute calls, got {mock_tool.execute.await_count}"
+        )
         for i, result in enumerate(results):
             assert result["isError"] is False, f"Result {i} should not be an error"
             text = result["content"][0]["text"]
             assert "done-" in text, f"Result {i} missing expected output: {text}"
+
+
+# ---------------------------------------------------------------------------
+# SDK_DISALLOWED_TOOLS
+# ---------------------------------------------------------------------------
+
+
+class TestSDKDisallowedTools:
+    """Verify that dangerous SDK built-in tools are in the disallowed list."""
+
+    def test_task_tool_is_disallowed(self):
+        """Task is disallowed — AutoPilotBlock is preferred for Langfuse observability."""
+        assert "Task" in SDK_DISALLOWED_TOOLS
+
+    def test_bash_tool_is_disallowed(self):
+        assert "Bash" in SDK_DISALLOWED_TOOLS
+
+    def test_webfetch_tool_is_disallowed(self):
+        """WebFetch is disallowed due to SSRF risk."""
+        assert "WebFetch" in SDK_DISALLOWED_TOOLS

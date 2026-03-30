@@ -466,3 +466,57 @@ async def test_task_slot_released_on_failure(_hooks):
         context={},
     )
     assert not _is_denied(result)
+
+
+# -- WebSearch denial doesn't consume total budget ---------------------------
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_websearch_denials_do_not_consume_total_cap():
+    """Denied WebSearch calls should not count toward the total tool call budget."""
+    hooks = create_security_hooks(
+        user_id="u1",
+        sdk_cwd=SDK_CWD,
+        max_subtasks=2,
+        max_web_searches=3,
+        max_tool_calls=5,
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+
+    # Exhaust the WebSearch cap (3 allowed)
+    for i in range(3):
+        result = await pre(
+            {"tool_name": "WebSearch", "tool_input": {"query": f"q{i}"}},
+            tool_use_id=f"ws-budget-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Next WebSearch should be denied
+    result = await pre(
+        {"tool_name": "WebSearch", "tool_input": {"query": "q3"}},
+        tool_use_id="ws-budget-3",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # The 3 allowed WebSearches consumed 3 of 5 total budget slots.
+    # The denied one should NOT have consumed a slot.
+    # So we should have 2 remaining non-WebSearch calls.
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "SomeTool", "tool_input": {}},
+            tool_use_id=f"other-{i}",
+            context={},
+        )
+        assert not _is_denied(result), f"SomeTool call {i} should be allowed"
+
+    # 6th total call (3 WebSearch + 2 SomeTool + 1 denied WS that shouldn't count)
+    # should be denied because we're at 5 total
+    result = await pre(
+        {"tool_name": "SomeTool", "tool_input": {}},
+        tool_use_id="other-2",
+        context={},
+    )
+    assert _is_denied(result), "Should hit total tool call cap"

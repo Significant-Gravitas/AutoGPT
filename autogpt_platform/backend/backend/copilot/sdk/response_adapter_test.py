@@ -59,6 +59,16 @@ def test_system_non_init_emits_nothing():
     assert results == []
 
 
+def test_task_progress_emits_heartbeat():
+    """task_progress events emit a StreamHeartbeat to keep Redis TTL alive."""
+    from backend.copilot.response_model import StreamHeartbeat
+
+    adapter = _adapter()
+    results = adapter.convert_message(SystemMessage(subtype="task_progress", data={}))
+    assert len(results) == 1
+    assert isinstance(results[0], StreamHeartbeat)
+
+
 # -- AssistantMessage with TextBlock -----------------------------------------
 
 
@@ -677,6 +687,6 @@ def test_already_resolved_tool_skipped_in_user_message():
     user_msg = UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="real")])
     r = adapter.convert_message(user_msg)
     output_events = [r_ for r_ in r if isinstance(r_, StreamToolOutputAvailable)]
-    assert (
-        len(output_events) == 0
-    ), "Already-resolved tool should not emit duplicate output"
+    assert len(output_events) == 0, (
+        "Already-resolved tool should not emit duplicate output"
+    )
