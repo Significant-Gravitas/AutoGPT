@@ -2,7 +2,7 @@ import logging
 from typing import Annotated, Sequence, cast, get_args
 
 import fastapi
-from autogpt_libs.auth.dependencies import get_user_id, requires_user
+from backend.libs.auth.dependencies import get_user_id, requires_user
 
 from backend.integrations.providers import ProviderName
 from backend.util.models import Pagination

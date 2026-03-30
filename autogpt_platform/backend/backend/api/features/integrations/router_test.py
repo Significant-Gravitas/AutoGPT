@@ -74,7 +74,7 @@ def _make_sdk_default_cred(provider: str = "openai"):
 
 @pytest.fixture(autouse=True)
 def setup_auth(mock_jwt_user):
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+    from backend.libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield

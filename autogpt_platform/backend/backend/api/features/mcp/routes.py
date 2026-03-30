@@ -9,7 +9,7 @@ import logging
 from typing import Annotated, Any
 
 import fastapi
-from autogpt_libs.auth import get_user_id
+from backend.libs.auth import get_user_id
 from fastapi import Security
 from pydantic import BaseModel, Field, SecretStr
 

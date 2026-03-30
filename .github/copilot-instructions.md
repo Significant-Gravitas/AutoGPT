@@ -128,7 +128,7 @@ pnpm storybook                      # Start component development server
   - `src/app/` - App Router pages and layouts
   - `src/components/` - Reusable React components
   - `src/lib/` - Utilities and configurations
-- `autogpt_libs/` - Shared Python utilities
+- `backend/backend/libs/` - Shared Python utilities
 - `docker-compose.yml` - Development stack orchestration
 
 **Key Configuration Files:**

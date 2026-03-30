@@ -10,7 +10,7 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from autogpt_libs.auth import get_user_id
+from backend.libs.auth import get_user_id
 from pydantic import SecretStr
 
 from backend.api.features.mcp.routes import router

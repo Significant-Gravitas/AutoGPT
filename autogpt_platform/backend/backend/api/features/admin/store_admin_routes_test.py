@@ -15,7 +15,7 @@ import fastapi.responses
 import fastapi.testclient
 import pytest
 import pytest_mock
-from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from backend.libs.auth.jwt_utils import get_jwt_payload
 
 from backend.data.graph import get_graph_as_admin
 from backend.util.exceptions import NotFoundError

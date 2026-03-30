@@ -15,20 +15,22 @@ aiodns = "^3.5.0"
 agentmail = "^0.4.5"
 anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
-autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
 claude-agent-sdk = "0.1.45"  # see copilot/sdk/sdk_compat_test.py for capability checks
 click = "^8.2.0"
+colorama = "^0.4.6"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
 e2b = "^2.15.2"
 e2b-code-interpreter = "^2.0"
 elevenlabs = "^1.50.0"
+expiringdict = "^1.2.2"
 fastapi = "^0.128.6"
 feedparser = "^6.0.11"
 flake8 = "^7.3.0"
 google-api-python-client = "^2.177.0"
 google-auth-oauthlib = "^1.2.2"
+google-cloud-logging = "^3.13.0"
 google-cloud-storage = "^3.2.0"
 googlemaps = "^4.10.0"
 gravitasml = "^0.1.4"
@@ -57,6 +59,7 @@ psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
 pydantic = { extras = ["email"], version = "^2.12.5" }
 pydantic-settings = "^2.12.0"
+pyjwt = { version = "^2.11.0", extras = ["crypto"] }
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
@@ -163,4 +166,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-

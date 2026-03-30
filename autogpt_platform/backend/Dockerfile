@@ -42,7 +42,6 @@ ENV PATH=/opt/poetry/bin:$PATH
 RUN pip3 install poetry --break-system-packages
 
 # Copy and install dependencies
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
 WORKDIR /app/autogpt_platform/backend
 RUN poetry install --no-ansi --no-root
@@ -143,8 +142,7 @@ WORKDIR /app/autogpt_platform/backend
 COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
 ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
 
-# Copy dependency files + autogpt_libs (path dependency)
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+# Copy dependency files
 COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
 
 # Copy backend code + docs (for Copilot docs search)

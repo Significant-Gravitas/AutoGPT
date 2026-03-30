@@ -34,32 +34,14 @@ repos:
       - id: poetry-install
         name: Check & Install dependencies - AutoGPT Platform - Backend
         alias: poetry-install-platform-backend
-        # include autogpt_libs source (since it's a path dependency)
         entry: >
           bash -c '
           if [ -n "$PRE_COMMIT_FROM_REF" ]; then
             git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
           else
             git diff --cached --name-only
-          fi | grep -qE "^autogpt_platform/(backend|autogpt_libs)/poetry\.lock$" || exit 0;
+          fi | grep -qE "^autogpt_platform/backend/poetry\.lock$" || exit 0;
           poetry -C autogpt_platform/backend install
-          '
-        always_run: true
-        language: system
-        pass_filenames: false
-        stages: [pre-commit, post-checkout]
-
-      - id: poetry-install
-        name: Check & Install dependencies - AutoGPT Platform - Libs
-        alias: poetry-install-platform-libs
-        entry: >
-          bash -c '
-          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
-            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
-          else
-            git diff --cached --name-only
-          fi | grep -qE "^autogpt_platform/autogpt_libs/poetry\.lock$" || exit 0;
-          poetry -C autogpt_platform/autogpt_libs install
           '
         always_run: true
         language: system
@@ -147,12 +129,12 @@ repos:
             git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
           else
             git diff --cached --name-only
-          fi | grep -qE "^autogpt_platform/((backend|autogpt_libs)/poetry\.lock|backend/schema\.prisma)$" || exit 0;
+          fi | grep -qE "^autogpt_platform/(backend/poetry\.lock|backend/schema\.prisma)$" || exit 0;
           cd autogpt_platform/backend
           && poetry run prisma generate
           && poetry run gen-prisma-stub
           '
-        # include everything that triggers poetry install + the prisma schema
+        # include everything that triggers backend dependency install + the prisma schema
         always_run: true
         language: system
         pass_filenames: false
@@ -198,17 +180,6 @@ repos:
         alias: ruff-lint-platform-backend
         files: ^autogpt_platform/backend/
         args: [--fix]
-
-      - id: ruff
-        name: Lint (Ruff) - AutoGPT Platform - Libs
-        alias: ruff-lint-platform-libs
-        files: ^autogpt_platform/autogpt_libs/
-        args: [--fix]
-
-      - id: ruff-format
-        name: Format (Ruff) - AutoGPT Platform - Libs
-        alias: ruff-lint-platform-libs
-        files: ^autogpt_platform/autogpt_libs/
 
   - repo: local
     # isort needs the context of which packages are installed to function, so we
@@ -295,17 +266,7 @@ repos:
         name: Typecheck - AutoGPT Platform - Backend
         alias: pyright-platform-backend
         entry: poetry -C autogpt_platform/backend run pyright
-        # include forge source (since it's a path dependency) but exclude *_test.py files:
-        files: ^autogpt_platform/(backend/((backend|test)/|(\w+\.py|poetry\.lock)$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
-        types: [file]
-        language: system
-        pass_filenames: false
-
-      - id: pyright
-        name: Typecheck - AutoGPT Platform - Libs
-        alias: pyright-platform-libs
-        entry: poetry -C autogpt_platform/autogpt_libs run pyright
-        files: ^autogpt_platform/autogpt_libs/(autogpt_libs/|poetry\.lock$)
+        files: ^autogpt_platform/backend/((backend|test)/|(\w+\.py|poetry\.lock)$)
         types: [file]
         language: system
         pass_filenames: false
@@ -354,8 +315,7 @@ repos:
   #       name: Run tests - AutoGPT Platform - Backend
   #       alias: pytest-platform-backend
   #       entry: bash -c 'cd autogpt_platform/backend && poetry run pytest'
-  #       # include autogpt_libs source (since it's a path dependency) but exclude *_test.py files:
-  #       files: ^autogpt_platform/(backend/((backend|test)/|poetry\.lock$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
+  #       files: ^autogpt_platform/backend/((backend|test)/|poetry\.lock$)
   #       language: system
   #       pass_filenames: false
 

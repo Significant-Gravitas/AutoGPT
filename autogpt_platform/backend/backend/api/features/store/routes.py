@@ -1,7 +1,7 @@
 import logging
 import urllib.parse
 
-import autogpt_libs.auth
+import backend.libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
@@ -34,10 +34,10 @@ router = fastapi.APIRouter()
     "/profile",
     summary="Get user profile",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def get_profile(
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
     """Get the profile details for the authenticated user."""
     profile = await store_db.get_user_profile(user_id)
@@ -50,11 +50,11 @@ async def get_profile(
     "/profile",
     summary="Update user profile",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def update_or_create_profile(
     profile: store_model.Profile,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
     """Update the store profile for the authenticated user."""
     updated_profile = await store_db.update_profile(user_id=user_id, profile=profile)
@@ -80,7 +80,7 @@ async def unified_search(
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
     user_id: str | None = Security(
-        autogpt_libs.auth.get_optional_user_id, use_cache=False
+        backend.libs.auth.get_optional_user_id, use_cache=False
     ),
 ) -> store_model.UnifiedSearchResponse:
     """
@@ -203,13 +203,13 @@ async def get_agent_by_name(
     "/agents/{username}/{agent_name}/review",
     summary="Create agent review",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def post_user_review_for_agent(
     username: str,
     agent_name: str,
     review: store_model.StoreReviewCreate,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> store_model.StoreReview:
     """Post a user review on a marketplace agent listing"""
     username = urllib.parse.unquote(username).lower()
@@ -228,7 +228,7 @@ async def post_user_review_for_agent(
     "/listings/versions/{store_listing_version_id}",
     summary="Get agent by version",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def get_agent_by_listing_version(
     store_listing_version_id: str,
@@ -241,7 +241,7 @@ async def get_agent_by_listing_version(
     "/listings/versions/{store_listing_version_id}/graph",
     summary="Get agent graph",
     tags=["store"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def get_graph_meta_by_store_listing_version_id(
     store_listing_version_id: str,
@@ -325,10 +325,10 @@ async def get_creator(username: str) -> store_model.CreatorDetails:
     "/my-unpublished-agents",
     summary="Get my agents",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def get_my_unpublished_agents(
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
 ) -> store_model.MyUnpublishedAgentsResponse:
@@ -341,11 +341,11 @@ async def get_my_unpublished_agents(
     "/submissions/{submission_id}",
     summary="Delete store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def delete_submission(
     submission_id: str,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> bool:
     """Delete a marketplace listing submission"""
     result = await store_db.delete_store_submission(
@@ -359,10 +359,10 @@ async def delete_submission(
     "/submissions",
     summary="List my submissions",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def get_submissions(
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
     page: int = Query(ge=1, default=1),
     page_size: int = Query(ge=1, default=20),
 ) -> store_model.StoreSubmissionsResponse:
@@ -379,11 +379,11 @@ async def get_submissions(
     "/submissions",
     summary="Create store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def create_submission(
     submission_request: store_model.StoreSubmissionRequest,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> store_model.StoreSubmission:
     """Submit a new marketplace listing for review"""
     result = await store_db.create_store_submission(
@@ -409,12 +409,12 @@ async def create_submission(
     "/submissions/{store_listing_version_id}",
     summary="Edit store submission",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def edit_submission(
     store_listing_version_id: str,
     submission_request: store_model.StoreSubmissionEditRequest,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> store_model.StoreSubmission:
     """Update a pending marketplace listing submission"""
     result = await store_db.edit_store_submission(
@@ -438,11 +438,11 @@ async def edit_submission(
     "/submissions/media",
     summary="Upload submission media",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def upload_submission_media(
     file: fastapi.UploadFile,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> str:
     """Upload media for a marketplace listing submission"""
     media_url = await store_media.upload_media(user_id=user_id, file=file)
@@ -457,11 +457,11 @@ class ImageURLResponse(BaseModel):
     "/submissions/generate_image",
     summary="Generate submission image",
     tags=["store", "private"],
-    dependencies=[Security(autogpt_libs.auth.requires_user)],
+    dependencies=[Security(backend.libs.auth.requires_user)],
 )
 async def generate_image(
     graph_id: str,
-    user_id: str = Security(autogpt_libs.auth.get_user_id),
+    user_id: str = Security(backend.libs.auth.get_user_id),
 ) -> ImageURLResponse:
     """
     Generate an image for a marketplace listing submission based on the properties
