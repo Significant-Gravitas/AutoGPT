@@ -183,15 +183,21 @@ class RefundRequestData(BaseNotificationData):
 
 
 class _LegacyAgentFieldsMixin:
-    """Temporary patch to handle existing queued payloads"""
+    """Temporary patch to handle existing queued payloads that still use
+    the old ``agent_id`` / ``agent_version`` field names.
 
-    # FIXME: remove in next release
+    Safe to remove once all in-flight RabbitMQ messages have been drained
+    (i.e. after one full notification-batch cycle post-deploy).
+    """
 
     @model_validator(mode="before")
     @classmethod
     def _map_legacy_agent_fields(cls, values: Any):
         if isinstance(values, dict):
             if "graph_id" not in values and "agent_id" in values:
+                logger.warning(
+                    "Received legacy 'agent_id' field in notification payload"
+                )
                 values["graph_id"] = values.pop("agent_id")
             if "graph_version" not in values and "agent_version" in values:
                 values["graph_version"] = values.pop("agent_version")

@@ -269,7 +269,7 @@ model AgentGraph {
   // Link to User model
   userId String
   // FIX: Do not cascade delete the agent when the user is deleted
-  // This allows us to delete user data with deleting the agent which maybe in use by other users
+  // This allows us to delete user data without deleting the agent which may be in use by other users
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   forkedFromId      String?
