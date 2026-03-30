@@ -1,0 +1,979 @@
+"""Tests for EditAgentTool.
+
+Covers:
+- EditAgentTool._execute input validation and pipeline integration
+- get_agent_as_json lookup paths (graph ID, library agent ID, not found)
+- update_graph_in_library version/ownership matrix
+- save_agent_to_library routing (is_update=True vs False)
+"""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from backend.copilot.tools.edit_agent import EditAgentTool
+from backend.copilot.tools.models import (
+    AgentPreviewResponse,
+    AgentSavedResponse,
+    ErrorResponse,
+)
+
+from ._test_data import make_session
+
+_TEST_USER_ID = "test-user-edit-agent"
+_OTHER_USER_ID = "other-user-owner"
+_PIPELINE = "backend.copilot.tools.agent_generator.pipeline"
+_EDIT_AGENT = "backend.copilot.tools.edit_agent"
+_LIBRARY_DB = "backend.api.features.library.db"
+_GRAPH_DB = f"{_LIBRARY_DB}.graph_db"
+
+
+def _make_agent_json(
+    *,
+    agent_id: str = "graph-123",
+    version: int = 1,
+    name: str = "Existing Agent",
+) -> dict:
+    return {
+        "id": agent_id,
+        "version": version,
+        "name": name,
+        "description": "An existing agent",
+        "is_active": True,
+        "nodes": [
+            {
+                "id": "node-1",
+                "block_id": "block-1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+    }
+
+
+@pytest.fixture
+def tool():
+    return EditAgentTool()
+
+
+@pytest.fixture
+def session():
+    return make_session(_TEST_USER_ID)
+
+
+# ── Input validation tests ───────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_missing_agent_id_returns_error(tool, session):
+    """Missing agent_id returns ErrorResponse."""
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_json=_make_agent_json(),
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_agent_id"
+
+
+@pytest.mark.asyncio
+async def test_missing_agent_json_returns_error(tool, session):
+    """Missing agent_json returns ErrorResponse."""
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_id="graph-123",
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_agent_json"
+
+
+@pytest.mark.asyncio
+async def test_empty_nodes_returns_error(tool, session):
+    """agent_json with no nodes returns ErrorResponse."""
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_id="graph-123",
+        agent_json={"nodes": [], "links": []},
+    )
+    assert isinstance(result, ErrorResponse)
+    assert "no nodes" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_agent_not_found_returns_error(tool, session):
+    """Non-existent agent_id returns ErrorResponse."""
+    with patch(
+        f"{_EDIT_AGENT}.get_agent_as_json",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="nonexistent-id",
+            agent_json=_make_agent_json(),
+        )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "agent_not_found"
+
+
+# ── Preview mode tests ───────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_preview_mode_returns_preview(tool, session):
+    """save=False with valid agent_json returns AgentPreviewResponse."""
+    existing_agent = _make_agent_json()
+    updated_json = _make_agent_json(name="Updated Agent")
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=updated_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="graph-123",
+            agent_json=updated_json,
+            save=False,
+        )
+
+    assert isinstance(result, AgentPreviewResponse)
+    assert result.agent_name == "Updated Agent"
+    assert result.node_count == 1
+
+
+@pytest.mark.asyncio
+async def test_no_auth_returns_error(tool, session):
+    """save=True without user_id returns ErrorResponse about login."""
+    existing_agent = _make_agent_json()
+    updated_json = _make_agent_json(name="Updated Agent")
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=updated_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+    ):
+        result = await tool._execute(
+            user_id=None,
+            session=session,
+            agent_id="graph-123",
+            agent_json=updated_json,
+            save=True,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert "logged in" in result.message.lower()
+
+
+# ── Save tests ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_save_calls_pipeline_with_is_update_true(tool, session):
+    """Saving passes is_update=True and preserves the original agent's id."""
+    existing_agent = _make_agent_json(agent_id="original-graph-id", version=3)
+    updated_json = _make_agent_json(name="Edited Agent")
+
+    mock_graph = MagicMock()
+    mock_graph.id = "original-graph-id"
+    mock_graph.name = "Edited Agent"
+    mock_graph.version = 4
+
+    mock_library_agent = MagicMock()
+    mock_library_agent.id = "lib-agent-1"
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=updated_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    mock_save = AsyncMock(return_value=(mock_graph, mock_library_agent))
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+        patch(f"{_PIPELINE}.save_agent_to_library", mock_save),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="original-graph-id",
+            agent_json=updated_json,
+            save=True,
+        )
+
+    assert isinstance(result, AgentSavedResponse)
+    assert result.agent_name == "Edited Agent"
+
+    # Verify save_agent_to_library was called with is_update=True
+    mock_save.assert_called_once()
+    call_kwargs = mock_save.call_args
+    assert call_kwargs[1].get("is_update") or call_kwargs[0][2] is True
+    # The agent_json passed to save should have the original graph ID
+    saved_json = call_kwargs[0][0] if call_kwargs[0] else call_kwargs[1]["agent_json"]
+    assert saved_json["id"] == "original-graph-id"
+
+
+@pytest.mark.asyncio
+async def test_save_preserves_original_version(tool, session):
+    """Edit sets agent_json version to the current agent's version."""
+    existing_agent = _make_agent_json(agent_id="graph-abc", version=5)
+    updated_json = _make_agent_json(name="Edited v5")
+
+    mock_graph = MagicMock()
+    mock_graph.id = "graph-abc"
+    mock_graph.name = "Edited v5"
+    mock_graph.version = 6
+
+    mock_library_agent = MagicMock()
+    mock_library_agent.id = "lib-1"
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=updated_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    mock_save = AsyncMock(return_value=(mock_graph, mock_library_agent))
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+        patch(f"{_PIPELINE}.save_agent_to_library", mock_save),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="graph-abc",
+            agent_json=updated_json,
+            save=True,
+        )
+
+    assert isinstance(result, AgentSavedResponse)
+    saved_json = mock_save.call_args[0][0]
+    assert saved_json["version"] == 5
+
+
+@pytest.mark.asyncio
+async def test_save_failure_returns_error(tool, session):
+    """When save_agent_to_library raises, returns ErrorResponse."""
+    existing_agent = _make_agent_json()
+    updated_json = _make_agent_json(name="Will Fail")
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=updated_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    mock_save = AsyncMock(
+        side_effect=Exception(
+            "Unique constraint failed on the fields: (`id`,`version`)"
+        )
+    )
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+        patch(f"{_PIPELINE}.save_agent_to_library", mock_save),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="graph-123",
+            agent_json=updated_json,
+            save=True,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "save_failed"
+    assert "Unique constraint" in result.message
+
+
+# ── Bug reproduction: version conflict (xfail) ──────────────────────────
+
+
+@pytest.mark.xfail(
+    reason="SECRT-2175: update_graph_in_library version lookup misses "
+    "non-owned graphs, causing unique constraint violation on (id, version)",
+    strict=True,
+)
+@pytest.mark.asyncio
+async def test_edit_agent_version_conflict_when_user_not_graph_owner(tool, session):
+    """Editing an agent whose graph is owned by a different user should
+    still succeed (version should auto-increment correctly).
+
+    Currently fails because update_graph_in_library calls
+    get_graph_all_versions(graph_id, user_id) which filters by userId.
+    If the editing user is not the graph owner (e.g. store-forked agent),
+    the version lookup returns empty → version defaults to 1 → unique
+    constraint violation since version 1 already exists.
+
+    This test exercises the real update_graph_in_library logic with mocked
+    Prisma calls to reproduce the exact production failure:
+    1. get_graph_all_versions returns empty (user doesn't own the graph)
+    2. Version defaults to 1
+    3. create_graph hits unique constraint because version 1 already exists
+    """
+    from backend.api.features.library.db import update_graph_in_library
+    from backend.data.graph import Graph, Node
+
+    graph = Graph(
+        id="shared-graph-id",
+        version=1,
+        name="Citedy Topic to Publish",
+        description="An agent owned by another user",
+        is_active=True,
+        nodes=[
+            Node(
+                id="node-1",
+                block_id="c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+                input_default={},
+                metadata={"position": {"x": 0, "y": 0}},
+            )
+        ],
+        links=[],
+    )
+
+    # Mock get_graph_all_versions to return empty (simulates userId mismatch)
+    # and create_graph to raise the unique constraint violation
+    with (
+        patch(
+            "backend.api.features.library.db.graph_db.get_graph_all_versions",
+            new_callable=AsyncMock,
+            return_value=[],  # Empty: user doesn't own this graph
+        ),
+        patch(
+            "backend.api.features.library.db.graph_db.make_graph_model",
+            return_value=graph,
+        ),
+        patch(
+            "backend.api.features.library.db.graph_db.create_graph",
+            new_callable=AsyncMock,
+        ) as mock_create,
+    ):
+        # With existing_versions empty, version will be set to 1.
+        # The real DB would reject this with UniqueViolationError since
+        # version 1 already exists. We verify the version passed to
+        # create_graph is > 1 (which it won't be — that's the bug).
+        mock_create.return_value = graph
+        # Need to mock the library agent lookup too
+        with (
+            patch(
+                "backend.api.features.library.db.get_library_agent_by_graph_id",
+                new_callable=AsyncMock,
+                return_value=MagicMock(id="lib-1"),
+            ),
+            patch(
+                "backend.api.features.library.db.update_library_agent_version_and_settings",
+                new_callable=AsyncMock,
+                return_value=MagicMock(id="lib-1"),
+            ),
+            patch(
+                "backend.api.features.library.db.on_graph_activate",
+                new_callable=AsyncMock,
+                return_value=graph,
+            ),
+            patch(
+                "backend.api.features.library.db.graph_db.set_graph_active_version",
+                new_callable=AsyncMock,
+            ),
+        ):
+            await update_graph_in_library(graph, _TEST_USER_ID)
+
+            # The bug: with empty existing_versions, version defaults to 1
+            # which collides with the already-existing version 1.
+            # This assertion verifies the version was incremented above 1.
+            created_graph_arg = mock_create.call_args[0][0]
+            assert created_graph_arg.version > 1, (
+                f"Expected version > 1 but got {created_graph_arg.version}. "
+                "update_graph_in_library defaults to version=1 when "
+                "get_graph_all_versions returns empty (userId mismatch), "
+                "causing unique constraint violation on (id, version)."
+            )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# update_graph_in_library — version/ownership matrix
+# ══════════════════════════════════════════════════════════════════════════
+#
+# These test the core versioning logic in library/db.py directly, mocking
+# only Prisma/graph_db calls. They cover the matrix of conditions:
+#
+#   existing_versions × is_active × current_active_version
+
+
+def _make_graph_obj(
+    graph_id: str = "graph-1",
+    version: int = 1,
+    is_active: bool = True,
+    name: str = "Test Agent",
+):
+    """Create a Graph object for update_graph_in_library tests."""
+    from backend.data.graph import Graph, Node
+
+    return Graph(
+        id=graph_id,
+        version=version,
+        name=name,
+        description="test",
+        is_active=is_active,
+        nodes=[
+            Node(
+                id="node-1",
+                block_id="c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+                input_default={},
+                metadata={"position": {"x": 0, "y": 0}},
+            )
+        ],
+        links=[],
+    )
+
+
+def _make_graph_model_mock(graph):
+    """Create a MagicMock that behaves like a GraphModel for the given Graph.
+
+    GraphModel has reassign_ids() which Graph does not, so we need a mock
+    that tracks version mutations while providing that method.
+    """
+    model = MagicMock()
+    model.id = graph.id
+    model.version = graph.version
+    model.is_active = graph.is_active
+    # Allow version to be set and read back
+    type(model).version = property(
+        lambda self: self._version, lambda self, v: setattr(self, "_version", v)
+    )
+    model._version = graph.version
+    model.reassign_ids = MagicMock()
+    return model
+
+
+def _make_version_mock(version: int, is_active: bool = False):
+    """Create a mock GraphModel representing an existing version."""
+    m = MagicMock()
+    m.version = version
+    m.is_active = is_active
+    return m
+
+
+def _library_db_mocks():
+    """Return a dict of common mocks needed for update_graph_in_library."""
+    return {
+        f"{_LIBRARY_DB}.get_library_agent_by_graph_id": AsyncMock(
+            return_value=MagicMock(id="lib-1")
+        ),
+        f"{_LIBRARY_DB}.update_library_agent_version_and_settings": AsyncMock(
+            return_value=MagicMock(id="lib-1")
+        ),
+        f"{_LIBRARY_DB}.on_graph_activate": AsyncMock(),
+        f"{_LIBRARY_DB}.on_graph_deactivate": AsyncMock(),
+        f"{_GRAPH_DB}.set_graph_active_version": AsyncMock(),
+    }
+
+
+async def _run_update(
+    graph,
+    existing_versions,
+    user_id=_TEST_USER_ID,
+):
+    """Run update_graph_in_library with mocked dependencies, return
+    (version_passed_to_create, on_graph_deactivate_called)."""
+    from backend.api.features.library.db import update_graph_in_library
+
+    graph_model = _make_graph_model_mock(graph)
+    mocks = _library_db_mocks()
+
+    # create_graph returns a MagicMock that looks like a GraphModel
+    created_mock = MagicMock()
+    created_mock.id = graph.id
+    created_mock.is_active = graph.is_active
+
+    with (
+        patch(
+            f"{_GRAPH_DB}.get_graph_all_versions",
+            new_callable=AsyncMock,
+            return_value=existing_versions,
+        ),
+        patch(f"{_GRAPH_DB}.make_graph_model", return_value=graph_model),
+        patch(f"{_GRAPH_DB}.create_graph", new_callable=AsyncMock) as mock_create,
+    ):
+        mock_create.return_value = created_mock
+        # on_graph_activate needs to return the created graph
+        mocks[f"{_LIBRARY_DB}.on_graph_activate"].return_value = created_mock
+
+        patches = {k: patch(k, v) for k, v in mocks.items()}
+        started = {k: p.start() for k, p in patches.items()}
+        try:
+            await update_graph_in_library(graph, user_id)
+        finally:
+            for p in patches.values():
+                p.stop()
+
+        # update_graph_in_library sets graph.version before make_graph_model
+        created_version = graph.version
+        deactivate_called = started[f"{_LIBRARY_DB}.on_graph_deactivate"].called
+        return created_version, deactivate_called
+
+
+@pytest.mark.asyncio
+async def test_update_version_increments_from_single_version():
+    """Owner with one existing version → new version = 2."""
+    graph = _make_graph_obj(version=1, is_active=True)
+    existing = [_make_version_mock(1, is_active=True)]
+
+    version, deactivated = await _run_update(graph, existing)
+    assert version == 2
+
+
+@pytest.mark.asyncio
+async def test_update_version_increments_from_multiple_versions():
+    """Owner with versions [1,2,3] → new version = 4."""
+    graph = _make_graph_obj(version=1, is_active=True)
+    existing = [
+        _make_version_mock(3, is_active=True),
+        _make_version_mock(2),
+        _make_version_mock(1),
+    ]
+
+    version, _ = await _run_update(graph, existing)
+    assert version == 4
+
+
+@pytest.mark.asyncio
+async def test_update_deactivates_old_active_version():
+    """When there's an active version and new graph is active,
+    the old active version should be deactivated."""
+    graph = _make_graph_obj(version=1, is_active=True)
+    existing = [_make_version_mock(1, is_active=True)]
+
+    _, deactivated = await _run_update(graph, existing)
+    assert deactivated is True
+
+
+@pytest.mark.asyncio
+async def test_update_no_deactivation_when_no_active_version():
+    """When no existing version is active, on_graph_deactivate is not called."""
+    graph = _make_graph_obj(version=1, is_active=True)
+    existing = [_make_version_mock(1, is_active=False)]
+
+    _, deactivated = await _run_update(graph, existing)
+    assert deactivated is False
+
+
+@pytest.mark.asyncio
+async def test_update_inactive_graph_skips_activation():
+    """When graph.is_active=False, activation/deactivation logic is skipped."""
+    from backend.api.features.library.db import update_graph_in_library
+
+    graph = _make_graph_obj(version=1, is_active=False)
+    graph_model = _make_graph_model_mock(graph)
+    existing = [_make_version_mock(1, is_active=True)]
+
+    created_mock = MagicMock()
+    created_mock.id = graph.id
+    created_mock.is_active = False
+
+    mocks = _library_db_mocks()
+
+    with (
+        patch(
+            f"{_GRAPH_DB}.get_graph_all_versions",
+            new_callable=AsyncMock,
+            return_value=existing,
+        ),
+        patch(f"{_GRAPH_DB}.make_graph_model", return_value=graph_model),
+        patch(
+            f"{_GRAPH_DB}.create_graph",
+            new_callable=AsyncMock,
+            return_value=created_mock,
+        ),
+    ):
+        patches = {k: patch(k, v) for k, v in mocks.items()}
+        started = {k: p.start() for k, p in patches.items()}
+        try:
+            await update_graph_in_library(graph, _TEST_USER_ID)
+        finally:
+            for p in patches.values():
+                p.stop()
+
+        started[f"{_LIBRARY_DB}.on_graph_activate"].assert_not_called()
+        started[f"{_GRAPH_DB}.set_graph_active_version"].assert_not_called()
+        started[f"{_LIBRARY_DB}.on_graph_deactivate"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_raises_when_library_agent_missing():
+    """When no library agent exists for the graph, NotFoundError is raised."""
+    from backend.api.features.library.db import update_graph_in_library
+    from backend.util.exceptions import NotFoundError
+
+    graph = _make_graph_obj(version=1, is_active=True)
+    graph_model = _make_graph_model_mock(graph)
+    existing = [_make_version_mock(1, is_active=True)]
+
+    created_mock = MagicMock()
+    created_mock.id = graph.id
+
+    with (
+        patch(
+            f"{_GRAPH_DB}.get_graph_all_versions",
+            new_callable=AsyncMock,
+            return_value=existing,
+        ),
+        patch(f"{_GRAPH_DB}.make_graph_model", return_value=graph_model),
+        patch(
+            f"{_GRAPH_DB}.create_graph",
+            new_callable=AsyncMock,
+            return_value=created_mock,
+        ),
+        patch(
+            f"{_LIBRARY_DB}.get_library_agent_by_graph_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        with pytest.raises(NotFoundError, match="Library agent not found"):
+            await update_graph_in_library(graph, _TEST_USER_ID)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# get_agent_as_json — lookup path matrix
+# ══════════════════════════════════════════════════════════════════════════
+
+
+_CORE = "backend.copilot.tools.agent_generator.core"
+
+
+@pytest.mark.asyncio
+async def test_get_agent_as_json_found_by_graph_id():
+    """When graph is found directly by ID, returns JSON without library fallback."""
+    from backend.copilot.tools.agent_generator.core import get_agent_as_json
+
+    mock_graph = MagicMock()
+    mock_graph.id = "graph-1"
+    mock_graph.name = "Direct Graph"
+    mock_graph.description = "test"
+    mock_graph.version = 1
+    mock_graph.is_active = True
+    mock_graph.nodes = []
+
+    mock_db = MagicMock()
+    mock_db.get_graph = AsyncMock(return_value=mock_graph)
+
+    with patch(f"{_CORE}.graph_db", return_value=mock_db):
+        result = await get_agent_as_json("graph-1", _TEST_USER_ID)
+
+    assert result is not None
+    assert result["id"] == "graph-1"
+    assert result["name"] == "Direct Graph"
+
+
+@pytest.mark.asyncio
+async def test_get_agent_as_json_found_by_library_agent_id():
+    """When graph ID lookup fails but library agent lookup succeeds."""
+    from backend.copilot.tools.agent_generator.core import get_agent_as_json
+
+    mock_graph = MagicMock()
+    mock_graph.id = "actual-graph-id"
+    mock_graph.name = "Library Agent"
+    mock_graph.description = "test"
+    mock_graph.version = 2
+    mock_graph.is_active = True
+    mock_graph.nodes = []
+
+    mock_library_agent = MagicMock()
+    mock_library_agent.graph_id = "actual-graph-id"
+
+    mock_graph_db = MagicMock()
+    # First call (by library agent ID) returns None, second (by graph_id) succeeds
+    mock_graph_db.get_graph = AsyncMock(side_effect=[None, mock_graph])
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock(return_value=mock_library_agent)
+
+    with (
+        patch(f"{_CORE}.graph_db", return_value=mock_graph_db),
+        patch(f"{_CORE}.library_db", return_value=mock_lib_db),
+    ):
+        result = await get_agent_as_json("lib-agent-id", _TEST_USER_ID)
+
+    assert result is not None
+    assert result["id"] == "actual-graph-id"
+    assert result["version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_agent_as_json_not_found_anywhere():
+    """When neither graph nor library lookup finds anything, returns None."""
+    from backend.copilot.tools.agent_generator.core import get_agent_as_json
+    from backend.util.exceptions import NotFoundError
+
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=None)
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock(side_effect=NotFoundError("not found"))
+
+    with (
+        patch(f"{_CORE}.graph_db", return_value=mock_graph_db),
+        patch(f"{_CORE}.library_db", return_value=mock_lib_db),
+    ):
+        result = await get_agent_as_json("bad-id", _TEST_USER_ID)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_agent_as_json_no_user_skips_library_fallback():
+    """When user_id is None, library fallback is skipped."""
+    from backend.copilot.tools.agent_generator.core import get_agent_as_json
+
+    mock_graph_db = MagicMock()
+    mock_graph_db.get_graph = AsyncMock(return_value=None)
+
+    mock_lib_db = MagicMock()
+    mock_lib_db.get_library_agent = AsyncMock()
+
+    with (
+        patch(f"{_CORE}.graph_db", return_value=mock_graph_db),
+        patch(f"{_CORE}.library_db", return_value=mock_lib_db),
+    ):
+        result = await get_agent_as_json("some-id", None)
+
+    assert result is None
+    mock_lib_db.get_library_agent.assert_not_called()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# save_agent_to_library — routing tests
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_save_routes_to_update_when_is_update_true():
+    """is_update=True routes to update_graph_in_library."""
+    from backend.copilot.tools.agent_generator.core import save_agent_to_library
+
+    mock_db = MagicMock()
+    mock_db.update_graph_in_library = AsyncMock(return_value=(MagicMock(), MagicMock()))
+    mock_db.create_graph_in_library = AsyncMock()
+
+    with patch(
+        "backend.copilot.tools.agent_generator.core.library_db",
+        return_value=mock_db,
+    ):
+        await save_agent_to_library(_make_agent_json(), _TEST_USER_ID, is_update=True)
+
+    mock_db.update_graph_in_library.assert_called_once()
+    mock_db.create_graph_in_library.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_save_routes_to_create_when_is_update_false():
+    """is_update=False routes to create_graph_in_library."""
+    from backend.copilot.tools.agent_generator.core import save_agent_to_library
+
+    mock_db = MagicMock()
+    mock_db.update_graph_in_library = AsyncMock()
+    mock_db.create_graph_in_library = AsyncMock(return_value=(MagicMock(), MagicMock()))
+
+    with patch(
+        "backend.copilot.tools.agent_generator.core.library_db",
+        return_value=mock_db,
+    ):
+        await save_agent_to_library(_make_agent_json(), _TEST_USER_ID, is_update=False)
+
+    mock_db.create_graph_in_library.assert_called_once()
+    mock_db.update_graph_in_library.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_save_passes_folder_id_to_create():
+    """folder_id is forwarded to create_graph_in_library."""
+    from backend.copilot.tools.agent_generator.core import save_agent_to_library
+
+    mock_db = MagicMock()
+    mock_db.create_graph_in_library = AsyncMock(return_value=(MagicMock(), MagicMock()))
+
+    with patch(
+        "backend.copilot.tools.agent_generator.core.library_db",
+        return_value=mock_db,
+    ):
+        await save_agent_to_library(
+            _make_agent_json(),
+            _TEST_USER_ID,
+            is_update=False,
+            folder_id="folder-42",
+        )
+
+    call_kwargs = mock_db.create_graph_in_library.call_args
+    assert call_kwargs[1].get("folder_id") == "folder-42"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# edit_agent._execute — edge cases
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.asyncio
+async def test_edit_sets_is_active_default(tool, session):
+    """agent_json without is_active gets it defaulted to True."""
+    existing_agent = _make_agent_json(agent_id="graph-1", version=1)
+    updated_json = {
+        "name": "No Active Flag",
+        "nodes": [
+            {
+                "id": "n1",
+                "block_id": "b1",
+                "input_default": {},
+                "metadata": {"position": {"x": 0, "y": 0}},
+            }
+        ],
+        "links": [],
+        # Note: no "is_active" key
+    }
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=updated_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (True, None)
+    mock_validator.errors = []
+
+    mock_created_graph = MagicMock()
+    mock_created_graph.id = "graph-1"
+    mock_created_graph.configure_mock(name="No Active Flag")
+    mock_created_graph.version = 2
+
+    mock_save = AsyncMock(return_value=(mock_created_graph, MagicMock(id="lib-1")))
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+        patch(f"{_PIPELINE}.save_agent_to_library", mock_save),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="graph-1",
+            agent_json=updated_json,
+            save=True,
+        )
+
+    assert isinstance(result, AgentSavedResponse)
+    saved_json = mock_save.call_args[0][0]
+    assert saved_json["is_active"] is True
+
+
+@pytest.mark.asyncio
+async def test_edit_validation_failure_returns_error(tool, session):
+    """When validation fails after auto-fix, returns ErrorResponse."""
+    existing_agent = _make_agent_json()
+    bad_json = _make_agent_json(name="Bad Agent")
+
+    mock_fixer = MagicMock()
+    mock_fixer.apply_all_fixes = MagicMock(return_value=bad_json)
+    mock_fixer.get_fixes_applied.return_value = []
+
+    mock_validator = MagicMock()
+    mock_validator.validate.return_value = (False, "Invalid block connection")
+    mock_validator.errors = ["Invalid block connection"]
+
+    with (
+        patch(
+            f"{_EDIT_AGENT}.get_agent_as_json",
+            new_callable=AsyncMock,
+            return_value=existing_agent,
+        ),
+        patch(f"{_PIPELINE}.get_blocks_as_dicts", return_value=[]),
+        patch(f"{_PIPELINE}.AgentFixer", return_value=mock_fixer),
+        patch(f"{_PIPELINE}.AgentValidator", return_value=mock_validator),
+    ):
+        result = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            agent_id="graph-123",
+            agent_json=bad_json,
+            save=True,
+        )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "validation_failed"
+    assert "Invalid block connection" in result.message
+
+
+@pytest.mark.asyncio
+async def test_edit_whitespace_agent_id_returns_error(tool, session):
+    """agent_id that's only whitespace is treated as missing."""
+    result = await tool._execute(
+        user_id=_TEST_USER_ID,
+        session=session,
+        agent_id="   ",
+        agent_json=_make_agent_json(),
+    )
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_agent_id"
