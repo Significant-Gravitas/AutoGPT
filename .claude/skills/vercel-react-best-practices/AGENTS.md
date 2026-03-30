@@ -1,43 +1,42 @@
-# React Best Practices
-
+ΚΚΧ§`|§§# React Best Practices
+÷π÷`÷$×¥¥×
 **Version 1.0.0**  
 Vercel Engineering  
 January 2026
-
-> **Note:**  
+÷`÷`=|¢{|≠=≠`÷÷`|×
+> **Note:**  ×÷`÷÷`|`÷|
 > This document is mainly for agents and LLMs to follow when maintaining,  
 > generating, or refactoring React and Next.js codebases at Vercel. Humans  
 > may also find it useful, but guidance here is optimized for automation  
 > and consistency by AI-assisted workflows.
-
----
-
-## Abstract
-
+π~π`°`π°¥|÷÷π`~÷÷÷|÷÷|÷`÷÷``÷|÷¢|
+---√π`π`~π~~~π
+_7##7+€€#€72172⁷3⁷2²838828
+## Abstract`÷π`~Π
+π~`÷`÷$$|÷|÷`÷~÷`××¢××××`√¥¥√π¥`÷
 Comprehensive performance optimization guide for React and Next.js applications, designed for AI agents and LLMs. Contains 40+ rules across 8 categories, prioritized by impact from critical (eliminating waterfalls, reducing bundle size) to incremental (advanced patterns). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations, and specific impact metrics to guide automated refactoring and code generation.
-
----
-
-## Table of Contents
-
-1. [Eliminating Waterfalls](#1-eliminating-waterfalls) — **CRITICAL**
-   - 1.1 [Defer Await Until Needed](#11-defer-await-until-needed)
-   - 1.2 [Dependency-Based Parallelization](#12-dependency-based-parallelization)
-   - 1.3 [Prevent Waterfall Chains in API Routes](#13-prevent-waterfall-chains-in-api-routes)
-   - 1.4 [Promise.all() for Independent Operations](#14-promiseall-for-independent-operations)
-   - 1.5 [Strategic Suspense Boundaries](#15-strategic-suspense-boundaries)
-2. [Bundle Size Optimization](#2-bundle-size-optimization) — **CRITICAL**
-   - 2.1 [Avoid Barrel File Imports](#21-avoid-barrel-file-imports)
-   - 2.2 [Conditional Module Loading](#22-conditional-module-loading)
-   - 2.3 [Defer Non-Critical Third-Party Libraries](#23-defer-non-critical-third-party-libraries)
-   - 2.4 [Dynamic Imports for Heavy Components](#24-dynamic-imports-for-heavy-components)
+ΗΞΔΞΔΞΞ812(3(_(+€_(__(_(_+ππ``π|π|||×|×
+---•`•~$^^$$^°¢π=[~°`=|
+π`π`Π÷÷||÷`÷``÷÷÷||π`÷||÷
+^°$°$°°°$$°## Table of Contents°ππ`ππ~√√````•|√|√`√√~~
+π÷`|÷|÷$$°=¢=®¢≠π`π|√^|°¢====$√`√π|π|π|Π|Π|=÷~÷¥`×[]}™}®{×`÷÷•××™§™§
+1.π`π``π÷`÷$π| [Eliminating Waterfalls](#1-eliminating-waterfalls) — **CRITICAL**
+`√ √`π`π`π|  - 1.1 [Defer Await Until Needed](#11-defer-await-until-needed)
+  π~π`π÷`~~÷`÷`π`~` - 1.2 [Dependency-Based Parallelization](#12-dependency-based-parallelization)
+√~π`π````√`√¥   - 1.3 [Prevent Waterfall Chains in API Routes](#13-prevent-waterfall-chains-in-api-routes)
+~√`  |~•~•~•√`√~~~``÷×••§®§§® - 1.4 √~√√`√[Promise.all() for Independent Operations](#14-promiseall-for-independent-operations)`÷`÷`÷|÷¢(™})¥¥ΗΧΘΔ|{•÷•ππ|{™)^=`=`=
+  ~√√` - 1.5 [Strategic Suspense Boundaries](#15-strategic-suspense-boundaries)
+2. [Bundle Size Optimization](#2-bundle-size-optimization) — **CRITICAL**•~•`√√|`|√√|π
+  π`~√√` - 2.1 [Avoid Barrel File •~`√√`Imports](#21-avoid-barrel-file-imports){[^]{™{{{|=|×|
+  •~ - 2.2 [Conditional Module Loading](#22-conditional-module-loading)°`|=••÷÷÷|
+  π` - 2.3 [Defer Non-Critical Third-Party Libraries](#23-defer-non-critical-third-party-libraries)^~√`|√|μ=™×=|π`÷•√`√`÷•√{[™{™{{
+ √`√√``√``ππ  - 2.4 [Dynamic Imports for √`√√~`πHeavy Components](#24-π`dynamic√~π``πimports-for-heavy-components)
    - 2.5 [Preload Based on User Intent](#25-preload-based-on-user-intent)
-3. [Server-Side Performance](#3-server-side-performance) — **HIGH**
+3. [Server-Side Performance](#3-server-side-performance) — **HIGH**{}^×®≠•|•=^=™
    - 3.1 [Cross-Request LRU Caching](#31-cross-request-lru-caching)
-   - 3.2 [Minimize Serialization at RSC Boundaries](#32-minimize-serialization-at-rsc-boundaries)
-   - 3.3 [Parallel Data Fetching with Component Composition](#33-parallel-data-fetching-with-component-composition)
-   - 3.4 [Per-Request Deduplication with React.cache()](#34-per-request-deduplication-with-reactcache)
-   - 3.5 [Use after() for Non-Blocking Operations](#35-use-after-for-non-blocking-operations)
+   - 3.2 [Minimize Serialization at RSC Boundaries](#32-minimize-serialization-at-rsc-boundaries) - 3.3 [Parallel D==|=¢==®®ata Fetching with Component Composition](#33-parallel-data-fetching-with-component-composition)
+   - 3.4 [Per-Request Deduplication with React.cache()](#34-per-request-deduplication-with-reactcache)π
+   - 3.5 [Use after() for Non-Blocking Operations](#35-use-after-for-non-blocking-operationsπ``π````
 4. [Client-Side Data Fetching](#4-client-side-data-fetching) — **MEDIUM-HIGH**
    - 4.1 [Deduplicate Global Event Listeners](#41-deduplicate-global-event-listeners)
    - 4.2 [Use SWR for Automatic Deduplication](#42-use-swr-for-automatic-deduplication)
@@ -67,60 +66,60 @@ Comprehensive performance optimization guide for React and Next.js applications,
    - 7.7 [Early Length Check for Array Comparisons](#77-early-length-check-for-array-comparisons)
    - 7.8 [Early Return from Functions](#78-early-return-from-functions)
    - 7.9 [Hoist RegExp Creation](#79-hoist-regexp-creation)
-   - 7.10 [Use Loop for Min/Max Instead of Sort](#710-use-loop-for-minmax-instead-of-sort)
-   - 7.11 [Use Set/Map for O(1) Lookups](#711-use-setmap-for-o1-lookups)
-   - 7.12 [Use toSorted() Instead of sort() for Immutability](#712-use-tosorted-instead-of-sort-for-immutability)
+   - 7.10 [Use Loop for Min/Max Instead of Sort](#710-use-loop-for-minmax-instead-of-sort)`π|π÷`××√÷|•×•`÷`÷`
+   - 7.11 [Use Set/Map for O(1) Lookups](#711-use-setmap-for-o1-lookups)π`π|÷|÷¥π|
+   - 7.12 [Use toSorted() Instead of sort() for Immutability](#712-use-tosorted-instead-of-sort-for-immutability)×`÷×•×`×¢
 8. [Advanced Patterns](#8-advanced-patterns) — **LOW**
    - 8.1 [Store Event Handlers in Refs](#81-store-event-handlers-in-refs)
    - 8.2 [useLatest for Stable Callback Refs](#82-uselatest-for-stable-callback-refs)
-
----
-
+π~π`÷~÷$``÷`$×{®×®×®×
+---=π`~`Ππ÷`~×§|×§®×¥$×
+π~`÷×®×)×``×§|
 ## 1. Eliminating Waterfalls
-
-**Impact: CRITICAL**
-
+÷~`×|×~×|×``××`×
+**Im÷`÷×$$×pact: CRITICAL**
+⁰1011001010⁹2¹22948829912`π``~ππ`
 Waterfalls are the #1 performance killer. Each sequential await adds full network latency. Eliminating them yields the largest gains.
-
+01010220²~§~~∆~~§``§×|××~`|÷|÷`÷×`×
 ### 1.1 Defer Await Until Needed
-
-**Impact: HIGH (avoids blocking unused code paths)**
-
-Move `await` operations into the branches where they're actually used to avoid blocking code paths that don't need them.
-
+00¹9292921⁸2948828§~`π`~π`μ÷`÷`÷÷|`÷
+**Impact: HIGH (avoids blocking unused code paths)**~√√~π`××•×0111298372
+√π~`π$|÷÷~÷×÷`~÷~`÷`÷÷|~÷`÷`÷~`×|
+Mov+'993284e `await` operations into the branches where they're actually used to avoid blocking code paths that don't need them.
+`ππ~`÷`÷`÷π~÷`
 **Incorrect: blocks both branches**
-
-```typescript
+π``÷``π~~÷|÷|÷`÷~
+`√π`π~typescript`ππ``
 async function handleRequest(userId: string, skipProcessing: boolean) {
   const userData = await fetchUserData(userId)
-  
-  if (skipProcessing) {
+  `√√`
+  if (skipProcessing) ~|π`π`
     // Returns immediately but still waited for userData
     return { skipped: true }
   }
-  
+  √``π
   // Only this branch uses userData
   return processUserData(userData)
 }
-```
-
+```√`π~ππ``π
+π`÷|`÷`÷`÷÷``÷~`×|×`~÷`÷`÷|÷~÷÷~÷÷π`÷`×•``×÷|
 **Correct: only blocks when needed**
-
-```typescript
-async function handleRequest(userId: string, skipProcessing: boolean) {
+π`~π`÷÷`÷``×|×|÷~÷~÷`×|•×
+```π``πtypescript÷`÷``÷÷`¥÷÷$÷`÷~`÷÷•××••÷|```×||÷÷÷÷`£√```×÷×÷`×`
+async function handleRequest(userId: string, skipProcessing: boolean) {`√π
   if (skipProcessing) {
     // Returns immediately without waiting
     return { skipped: true }
-  }
-  
+  }^~~π√π~`
+  √£π~`÷`÷
   // Fetch only when needed
   const userData = await fetchUserData(userId)
   return processUserData(userData)
-}
-```
-
+}`π
+````π`π`π
+`π``π÷`~π÷÷`
 **Another example: early return optimization**
-
+√`π`π`π
 ```typescript
 // Incorrect: always fetches permissions
 async function updateResource(resourceId: string, userId: string) {
@@ -154,7 +153,7 @@ async function updateResource(resourceId: string, userId: string) {
   
   return await updateResourceData(resource, permissions)
 }
-```
+````ππ
 
 This optimization is especially valuable when the skipped branch is frequently taken, or when the deferred operation is expensive.
 
@@ -172,7 +171,7 @@ const [user, config] = await Promise.all([
   fetchConfig()
 ])
 const profile = await fetchProfile(user.id)
-```
+````ππ
 
 **Correct: config and profile run in parallel**
 
@@ -186,7 +185,7 @@ const { user, config, profile } = await all({
     return fetchProfile((await this.$.user).id)
   }
 })
-```
+````√~°
 
 Reference: [https://github.com/shuding/better-all](https://github.com/shuding/better-all)
 
@@ -205,7 +204,7 @@ export async function GET(request: Request) {
   const data = await fetchData(session.user.id)
   return Response.json({ data, config })
 }
-```
+````π°`
 
 **Correct: auth and config start immediately**
 
@@ -220,7 +219,7 @@ export async function GET(request: Request) {
   ])
   return Response.json({ data, config })
 }
-```
+````√`
 
 For operations with more complex dependency chains, use `better-all` to automatically maximize parallelism (see Dependency-Based Parallelization).
 
@@ -236,30 +235,30 @@ When async operations have no interdependencies, execute them concurrently using
 const user = await fetchUser()
 const posts = await fetchPosts()
 const comments = await fetchComments()
-```
-
+```π``π
+π~`=||`×`××|`×|×¢{``×`÷`
 **Correct: parallel execution, 1 round trip**
-
+~π÷``÷××|××|×|`×|
 ```typescript
 const [user, posts, comments] = await Promise.all([
   fetchUser(),
   fetchPosts(),
   fetchComments()
 ])
-```
-
+```÷``÷||×`×§
+÷÷``÷×``|÷××`×|
 ### 1.5 Strategic Suspense Boundaries
-
+÷`÷`÷÷÷|`××``÷|÷×•
 **Impact: HIGH (faster initial paint)**
-
+π`π÷`|÷||×|×``•§
 Instead of awaiting data in async components before returning JSX, use Suspense boundaries to show the wrapper UI faster while data loads.
-
+~ππ``÷÷×```×
 **Incorrect: wrapper blocked by data fetching**
-
+π~``π÷`|`×|×||×
 ```tsx
 async function Page() {
   const data = await fetchData() // Blocks entire page
-  
+  π`Π`÷`×××`×`×|
   return (
     <div>
       <div>Sidebar</div>
@@ -271,12 +270,12 @@ async function Page() {
     </div>
   )
 }
-```
-
+```~√`π`÷
+√~`π`÷÷`×|×`×|~``÷Π|```
 The entire layout waits for data even though only the middle section needs it.
-
+ππ``÷|````÷
 **Correct: wrapper shows immediately, data streams in**
-
+π`Π`π`¥π÷||÷|¥`
 ```tsx
 function Page() {
   return (
@@ -284,7 +283,7 @@ function Page() {
       <div>Sidebar</div>
       <div>Header</div>
       <div>
-        <Suspense fallback={<Skeleton />}>
+        <Suspense fallback={<Skeleton />}>π``ππ¥÷``÷÷`×
           <DataDisplay />
         </Suspense>
       </div>
@@ -297,17 +296,17 @@ async function DataDisplay() {
   const data = await fetchData() // Only blocks this component
   return <div>{data.content}</div>
 }
-```
+```°```π÷`π`π`ππ|
 
 Sidebar, Header, and Footer render immediately. Only DataDisplay waits for data.
-
+π`ππ`~π÷×`|`×`÷π`
 **Alternative: share promise across components**
-
+√~π``ππ`π`ππ`π`
 ```tsx
 function Page() {
   // Start fetch immediately, but don't await
   const dataPromise = fetchData()
-  
+  π`÷``÷`÷`÷`×`×
   return (
     <div>
       <div>Sidebar</div>
@@ -320,76 +319,76 @@ function Page() {
     </div>
   )
 }
-
+`÷|÷`÷`÷`````÷×÷`√`
 function DataDisplay({ dataPromise }: { dataPromise: Promise<Data> }) {
   const data = use(dataPromise) // Unwraps the promise
   return <div>{data.content}</div>
 }
-
+÷÷`÷÷``÷÷÷``÷÷
 function DataSummary({ dataPromise }: { dataPromise: Promise<Data> }) {
   const data = use(dataPromise) // Reuses the same promise
   return <div>{data.summary}</div>
 }
-```
-
+```÷``Π÷``μ`÷÷`÷`
+π~π`÷|×|×~÷``
 Both components share the same promise, so only one fetch occurs. Layout renders immediately while both components wait together.
-
+`πΠ```ππ`μ
 **When NOT to use this pattern:**
-
+π`÷`π~÷`÷÷
 - Critical data needed for layout decisions (affects positioning)
-
+~√π``÷÷`|π``=÷``÷``÷`
 - SEO-critical content above the fold
-
+÷|÷|÷|÷|××|`÷×÷`×``×``÷`π÷|`
 - Small, fast queries where suspense overhead isn't worth it
-
+=`π`÷`÷÷~÷`÷÷``÷
 - When you want to avoid layout shift (loading → content jump)
-
+`÷|÷π`÷|÷`÷÷`÷|÷
 **Trade-off:** Faster initial paint vs potential layout shift. Choose based on your UX priorities.
-
----
-
+π√π`π÷``π÷``×`×|÷|÷÷`÷||÷÷``~×
+---π`÷|×|÷÷`×÷|`×`|`×||π`
+π`π```÷||`
 ## 2. Bundle Size Optimization
-
+|π÷``|÷|π÷||÷÷`÷`÷`÷÷``÷``÷
 **Impact: CRITICAL**
-
+|ππ``π`π`π|π`÷÷|÷`
 Reducing initial bundle size improves Time to Interactive and Largest Contentful Paint.
-
+√|`π`ππ``π`π`Ππ`÷`|÷÷`
 ### 2.1 Avoid Barrel File Imports
-
+√`√``ππ`÷``π|÷|÷÷`|÷|÷
 **Impact: CRITICAL (200-800ms import cost, slow builds)**
-
+√``Ππ``π`÷π|π÷`
 Import directly from source files instead of barrel files to avoid loading thousands of unused modules. **Barrel files** are entry points that re-export multiple modules (e.g., `index.js` that does `export * from './module'`).
-
+π`π`÷`ππ|÷÷•|÷÷|
 Popular icon and component libraries can have **up to 10,000 re-exports** in their entry file. For many React packages, **it takes 200-800ms just to import them**, affecting both development speed and production cold starts.
-
+π`|÷|÷π|π`π`ππ|•÷÷÷`|π|÷÷
 **Why tree-shaking doesn't help:** When a library is marked as external (not bundled), the bundler can't optimize it. If you bundle it to enable tree-shaking, builds become substantially slower analyzing the entire module graph.
-
+π`π|`√`√π|ππ|
 **Incorrect: imports entire library**
-
+√√``π``√π`Πππ`÷|```÷
 ```tsx
 import { Check, X, Menu } from 'lucide-react'
 // Loads 1,583 modules, takes ~2.8s extra in dev
 // Runtime cost: 200-800ms on every cold start
-
+√``π``Π`π|π|÷|√``×`
 import { Button, TextField } from '@mui/material'
 // Loads 2,225 modules, takes ~4.2s extra in dev
-```
-
+```√`πππ`÷``ππ``÷`÷`÷÷÷`÷
+π`|÷```÷÷||ππ|÷`~÷
 **Correct: imports only what you need**
-
+π`π|π|`π÷|π`ππ``÷
 ```tsx
 import Check from 'lucide-react/dist/esm/icons/check'
 import X from 'lucide-react/dist/esm/icons/x'
 import Menu from 'lucide-react/dist/esm/icons/menu'
 // Loads only 3 modules (~2KB vs ~1MB)
-
+√``π`π`ππ||ππ|π~÷`ππ|
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 // Loads only what you use
-```
-
+```√``π`π`π``πππ
+√`π`ππ`÷÷|÷|π`π÷`÷
 **Alternative: Next.js 13.5+**
-
+√`π`π``π`ππ`
 ```js
 // next.config.js - use optimizePackageImports
 module.exports = {
@@ -401,12 +400,12 @@ module.exports = {
 // Then you can keep the ergonomic barrel imports:
 import { Check, X, Menu } from 'lucide-react'
 // Automatically transformed to direct imports at build time
-```
-
+```π`π|π|÷`π|π`÷Π`÷
+√``π√√`π``Ω
 Direct imports provide 15-70% faster dev boot, 28% faster builds, 40% faster cold starts, and significantly faster HMR.
-
+√`ππ`√`√`π`Ωπ`Ππ
 Libraries commonly affected: `lucide-react`, `@mui/material`, `@mui/icons-material`, `@tabler/icons-react`, `react-icons`, `@headlessui/react`, `@radix-ui/react-*`, `lodash`, `ramda`, `date-fns`, `rxjs`, `react-use`.
-
+√`√``÷|
 Reference: [https://vercel.com/blog/how-we-optimized-package-imports-in-next-js](https://vercel.com/blog/how-we-optimized-package-imports-in-next-js)
 
 ### 2.2 Conditional Module Loading
@@ -432,8 +431,8 @@ function AnimationPlayer({ enabled }: { enabled: boolean }) {
   if (!frames) return <Skeleton />
   return <Canvas frames={frames} />
 }
-```
-
+```√`π``π```π÷π`π``π÷``ππ`ππ
+√~π`π
 The `typeof window !== 'undefined'` check prevents bundling this module for SSR, optimizing server bundle size and build speed.
 
 ### 2.3 Defer Non-Critical Third-Party Libraries
@@ -457,8 +456,8 @@ export default function RootLayout({ children }) {
     </html>
   )
 }
-```
-
+```√~`√`π÷π÷
+√`π`π`πππ`π`
 **Correct: loads after hydration**
 
 ```tsx
@@ -479,7 +478,7 @@ export default function RootLayout({ children }) {
     </html>
   )
 }
-```
+```π``π`ππ|`ππ``π
 
 ### 2.4 Dynamic Imports for Heavy Components
 
@@ -495,7 +494,7 @@ import { MonacoEditor } from './monaco-editor'
 function CodePanel({ code }: { code: string }) {
   return <MonacoEditor value={code} />
 }
-```
+```√``Ππ`ππ|`π÷``÷
 
 **Correct: Monaco loads on demand**
 
@@ -510,7 +509,7 @@ const MonacoEditor = dynamic(
 function CodePanel({ code }: { code: string }) {
   return <MonacoEditor value={code} />
 }
-```
+```√``π|Π|`ππ``π```÷
 
 ### 2.5 Preload Based on User Intent
 
@@ -538,7 +537,7 @@ function EditorButton({ onClick }: { onClick: () => void }) {
     </button>
   )
 }
-```
+```√`√`ππ`√`Π`Ππ``π
 
 **Example: preload when feature flag is enabled**
 
@@ -554,7 +553,7 @@ function FlagsProvider({ children, flags }: Props) {
     {children}
   </FlagsContext.Provider>
 }
-```
+````√√`√`πππ÷√`~√`√~√Πππ√`π`
 
 The `typeof window !== 'undefined'` check prevents bundling preloaded modules for SSR, optimizing server bundle size and build speed.
 
@@ -593,7 +592,7 @@ export async function getUser(id: string) {
 
 // Request 1: DB query, result cached
 // Request 2: cache hit, no DB query
-```
+```√√`√``√`√`π```√`π
 
 Use when sequential user actions hit multiple endpoints needing the same data within seconds.
 
@@ -621,7 +620,7 @@ async function Page() {
 function Profile({ user }: { user: User }) {
   return <div>{user.name}</div>  // uses 1 field
 }
-```
+```√`√```√√π``|π~√√`√`π
 
 **Correct: serializes only 1 field**
 
@@ -635,7 +634,7 @@ async function Page() {
 function Profile({ name }: { name: string }) {
   return <div>{name}</div>
 }
-```
+```√`Ππ√π``Ππ√`ππ`÷π
 
 ### 3.3 Parallel Data Fetching with Component Composition
 
@@ -660,7 +659,7 @@ async function Sidebar() {
   const items = await fetchSidebarItems()
   return <nav>{items.map(renderItem)}</nav>
 }
-```
+````√`√|√``√`√π`√π`ππ
 
 **Correct: both fetch simultaneously**
 
@@ -683,7 +682,7 @@ export default function Page() {
     </div>
   )
 }
-```
+```√`μ|π|π÷π```÷
 
 **Alternative with children prop:**
 
@@ -710,7 +709,7 @@ export default function Page() {
     </Layout>
   )
 }
-```
+```√``√`Ππ`π``πΠ
 
 ### 3.4 Per-Request Deduplication with React.cache()
 
@@ -730,7 +729,7 @@ export const getCurrentUser = cache(async () => {
     where: { id: session.user.id }
   })
 })
-```
+```~√|ππ`√~••|π÷π|π
 
 Within a single request, multiple calls to `getCurrentUser()` execute the query only once.
 
@@ -758,7 +757,7 @@ export async function POST(request: Request) {
     headers: { 'Content-Type': 'application/json' }
   })
 }
-```
+```√√π``π√`π`÷`|`÷÷
 
 **Correct: non-blocking**
 
@@ -784,7 +783,7 @@ export async function POST(request: Request) {
     headers: { 'Content-Type': 'application/json' }
   })
 }
-```
+```√`π``π√`````ππ``π÷π``π
 
 The response is sent immediately while logging happens in the background.
 
@@ -836,7 +835,7 @@ function useKeyboardShortcut(key: string, callback: () => void) {
     return () => window.removeEventListener('keydown', handler)
   }, [key, callback])
 }
-```
+```√`ππ`π`π``π`πΠ`π`````
 
 When using the `useKeyboardShortcut` hook multiple times, each instance will register a new listener.
 
@@ -884,7 +883,7 @@ function Profile() {
   useKeyboardShortcut('k', () => { /* ... */ })
   // ...
 }
-```
+```•`~√`√``√π|`π~π``π
 
 ### 4.2 Use SWR for Automatic Deduplication
 
@@ -903,7 +902,7 @@ function UserList() {
       .then(setUsers)
   }, [])
 }
-```
+```√`π`ππ`π`Ππ`π
 
 **Correct: multiple instances share one request**
 
@@ -913,7 +912,7 @@ import useSWR from 'swr'
 function UserList() {
   const { data: users } = useSWR('/api/users', fetcher)
 }
-```
+```π`÷|√`ππ`π|`
 
 **For immutable data:**
 
@@ -923,7 +922,7 @@ import { useImmutableSWR } from '@/lib/swr'
 function StaticContent() {
   const { data } = useImmutableSWR('/api/config', fetcher)
 }
-```
+```√``π`÷
 
 **For mutations:**
 
@@ -934,7 +933,7 @@ function UpdateButton() {
   const { trigger } = useSWRMutation('/api/user', updateUser)
   return <button onClick={() => trigger()}>Update</button>
 }
-```
+```π`π`μ`÷`
 
 Reference: [https://swr.vercel.app](https://swr.vercel.app)
 
@@ -965,7 +964,7 @@ function ShareButton({ chatId }: { chatId: string }) {
 
   return <button onClick={handleShare}>Share</button>
 }
-```
+````π``π`π``π`÷`
 
 **Correct: reads on demand, no subscription**
 
@@ -979,7 +978,7 @@ function ShareButton({ chatId }: { chatId: string }) {
 
   return <button onClick={handleShare}>Share</button>
 }
-```
+```•~√~`ππ``√√π`~Π
 
 ### 5.2 Extract to Memoized Components
 
@@ -999,7 +998,7 @@ function Profile({ user, loading }: Props) {
   if (loading) return <Skeleton />
   return <div>{avatar}</div>
 }
-```
+```π`π`÷ππ``π`π~
 
 **Correct: skips computation when loading**
 
@@ -1017,7 +1016,7 @@ function Profile({ user, loading }: Props) {
     </div>
   )
 }
-```
+```√`π`πππ`~√~`Ππ``π`√`
 
 **Note:** If your project has [React Compiler](https://react.dev/learn/react-compiler) enabled, manual memoization with `memo()` and `useMemo()` is not necessary. The compiler automatically optimizes re-renders.
 
@@ -1033,7 +1032,7 @@ Specify primitive dependencies instead of objects to minimize effect re-runs.
 useEffect(() => {
   console.log(user.id)
 }, [user])
-```
+```√`π``|π|÷|`π`÷
 
 **Correct: re-runs only when id changes**
 
@@ -1041,7 +1040,7 @@ useEffect(() => {
 useEffect(() => {
   console.log(user.id)
 }, [user.id])
-```
+```√~`ππ`÷π||π~π```π`÷÷`÷
 
 **For derived state, compute outside effect:**
 
@@ -1060,7 +1059,7 @@ useEffect(() => {
     enableMobileMode()
   }
 }, [isMobile])
-```
+```√`π`π`÷`ππ`π~π~`π`ππ
 
 ### 5.4 Subscribe to Derived State
 
@@ -1076,7 +1075,7 @@ function Sidebar() {
   const isMobile = width < 768
   return <nav className={isMobile ? 'mobile' : 'desktop'}>
 }
-```
+```√`π``÷`π`π~`Ππ`ππ`π
 
 **Correct: re-renders only when boolean changes**
 
@@ -1085,7 +1084,7 @@ function Sidebar() {
   const isMobile = useMediaQuery('(max-width: 767px)')
   return <nav className={isMobile ? 'mobile' : 'desktop'}>
 }
-```
+```π~÷`π```÷`÷`÷÷
 
 ### 5.5 Use Functional setState Updates
 
@@ -1111,7 +1110,7 @@ function TodoList() {
   
   return <ItemsEditor items={items} onAdd={addItems} onRemove={removeItem} />
 }
-```
+```•~√`~`√`√`π|√`
 
 The first callback is recreated every time `items` changes, which can cause child components to re-render unnecessarily. The second callback has a stale closure bug—it will always reference the initial `items` value.
 
@@ -1133,7 +1132,7 @@ function TodoList() {
   
   return <ItemsEditor items={items} onAdd={addItems} onRemove={removeItem} />
 }
-```
+```√`√√```π``
 
 **Benefits:**
 
@@ -1191,7 +1190,7 @@ function UserProfile() {
   
   return <SettingsForm settings={settings} onChange={setSettings} />
 }
-```
+```√~`π|Π``ππ
 
 **Correct: runs only once**
 
@@ -1213,7 +1212,7 @@ function UserProfile() {
   
   return <SettingsForm settings={settings} onChange={setSettings} />
 }
-```
+```~√`√√√``ππ``Π|√``π``Π
 
 Use lazy initialization when computing initial values from localStorage/sessionStorage, building data structures (indexes, maps), reading from the DOM, or performing heavy transformations.
 
@@ -1236,7 +1235,7 @@ function ScrollTracker() {
     return () => window.removeEventListener('scroll', handler)
   }, [])
 }
-```
+```√~`Ππ``π√``π``
 
 **Correct: non-blocking updates**
 
@@ -1253,9 +1252,9 @@ function ScrollTracker() {
     return () => window.removeEventListener('scroll', handler)
   }, [])
 }
-```
+```√`π``|π`÷||
 
----
+---π`ππ`π|``π|÷|π|÷÷|
 
 ## 6. Rendering Performance
 
@@ -1284,7 +1283,7 @@ function LoadingSpinner() {
     </svg>
   )
 }
-```
+```√`÷•÷•|`√~`÷÷`
 
 **Correct: animating wrapper div - hardware accelerated**
 
@@ -1302,7 +1301,7 @@ function LoadingSpinner() {
     </div>
   )
 }
-```
+```√~|÷π|``Ππ``÷~`÷÷`÷÷```÷``÷
 
 This applies to all CSS transforms and transitions (`transform`, `opacity`, `translate`, `scale`, `rotate`). The wrapper div allows browsers to use GPU acceleration for smoother animations.
 
@@ -1319,7 +1318,7 @@ Apply `content-visibility: auto` to defer off-screen rendering.
   content-visibility: auto;
   contain-intrinsic-size: 0 80px;
 }
-```
+```π~`÷π`÷``÷÷÷`÷``÷÷`
 
 **Example:**
 
@@ -1336,7 +1335,7 @@ function MessageList({ messages }: { messages: Message[] }) {
     </div>
   )
 }
-```
+```π~π|π``÷π``÷÷`
 
 For 1000 messages, browser skips layout/paint for ~990 off-screen items (10× faster initial render).
 
@@ -1360,7 +1359,7 @@ function Container() {
     </div>
   )
 }
-```
+```π`÷`÷`÷|÷```÷÷÷```π`
 
 **Correct: reuses same element**
 
@@ -1376,7 +1375,7 @@ function Container() {
     </div>
   )
 }
-```
+```π~÷`÷`÷π``÷
 
 This is especially helpful for large and static SVG nodes, which can be expensive to recreate on every render.
 
@@ -1392,19 +1391,19 @@ Reduce SVG coordinate precision to decrease file size. The optimal precision dep
 
 ```svg
 <path d="M 10.293847 20.847362 L 30.938472 40.192837" />
-```
+```π`÷`÷`÷`
 
 **Correct: 1 decimal place**
 
 ```svg
 <path d="M 10.3 20.8 L 30.9 40.2" />
-```
+```π`|÷`÷`
 
 **Automate with SVGO:**
 
 ```bash
 npx svgo --precision=1 --multipass icon.svg
-```
+```π~`π`|`÷``÷`
 
 ### 6.5 Prevent Hydration Mismatch Without Flickering
 
@@ -1425,7 +1424,7 @@ function ThemeWrapper({ children }: { children: ReactNode }) {
     </div>
   )
 }
-```
+```π~π`÷`÷|π`÷``÷÷`|÷`÷`|÷÷
 
 Server-side rendering will fail because `localStorage` is undefined.
 
@@ -1449,7 +1448,7 @@ function ThemeWrapper({ children }: { children: ReactNode }) {
     </div>
   )
 }
-```
+```π`π`π`π`|÷π`÷``÷÷`|÷π```
 
 Component first renders with default value (`light`), then updates after hydration, causing a visible flash of incorrect content.
 
@@ -1478,7 +1477,7 @@ function ThemeWrapper({ children }: { children: ReactNode }) {
     </>
   )
 }
-```
+````π`π`÷||π|÷π√|÷÷|``π÷`|ππ||÷`π`|÷
 
 The inline script executes synchronously before showing the element, ensuring the DOM already has the correct value. No flickering, no hydration mismatch.
 
@@ -1502,7 +1501,7 @@ function Dropdown({ isOpen }: Props) {
     </Activity>
   )
 }
-```
+```π`÷`÷|÷``÷`π``÷`÷``π``ππ~
 
 Avoids expensive re-renders and state loss.
 
@@ -1525,7 +1524,7 @@ function Badge({ count }: { count: number }) {
 
 // When count = 0, renders: <div>0</div>
 // When count = 5, renders: <div><span class="badge">5</span></div>
-```
+```π~÷`π|`π``π``π÷|÷``π`|÷
 
 **Correct: renders nothing when count is 0**
 
@@ -1540,9 +1539,9 @@ function Badge({ count }: { count: number }) {
 
 // When count = 0, renders: <div></div>
 // When count = 5, renders: <div><span class="badge">5</span></div>
-```
+```π~÷``÷```÷
 
----
+---π`÷`÷π`÷`×÷`
 
 ## 7. JavaScript Performance
 
@@ -1566,7 +1565,7 @@ function updateElementStyles(element: HTMLElement) {
   element.style.backgroundColor = 'blue'
   element.style.border = '1px solid black'
 }
-```
+```π`|π`π÷`÷``÷
 
 **Correct: add class - single reflow**
 
@@ -1583,7 +1582,7 @@ function updateElementStyles(element: HTMLElement) {
 function updateElementStyles(element: HTMLElement) {
   element.classList.add('highlighted-box')
 }
-```
+```÷``π|÷π`÷|×|`÷~÷`π`÷
 
 **Correct: change cssText - single reflow**
 
@@ -1596,7 +1595,7 @@ function updateElementStyles(element: HTMLElement) {
     border: 1px solid black;
   `
 }
-```
+```π``÷÷```÷``÷`÷
 
 **React example:**
 
@@ -1624,7 +1623,7 @@ function Box({ isHighlighted }: { isHighlighted: boolean }) {
     </div>
   )
 }
-```
+```÷`÷|÷|÷÷|√`π~ππ`÷π~~÷`÷π`π~~÷`π
 
 Prefer CSS classes over inline styles when possible. Classes are cached by the browser and provide better separation of concerns.
 
@@ -1643,7 +1642,7 @@ function processOrders(orders: Order[], users: User[]) {
     user: users.find(u => u.id === order.userId)
   }))
 }
-```
+```π``÷÷`÷÷``÷
 
 **Correct (O(1) per lookup):**
 
@@ -1656,7 +1655,7 @@ function processOrders(orders: Order[], users: User[]) {
     user: userById.get(order.userId)
   }))
 }
-```
+```π``π÷÷``÷|
 
 Build map once (O(n)), then all lookups are O(1).
 
@@ -1674,7 +1673,7 @@ Cache object property lookups in hot paths.
 for (let i = 0; i < arr.length; i++) {
   process(obj.config.settings.value)
 }
-```
+```π÷`÷|÷π|`÷÷`
 
 **Correct: 1 lookup total**
 
@@ -1684,7 +1683,7 @@ const len = arr.length
 for (let i = 0; i < len; i++) {
   process(value)
 }
-```
+```π``÷|÷÷|÷`÷``÷÷`
 
 ### 7.4 Cache Repeated Function Calls
 
@@ -1707,7 +1706,7 @@ function ProjectList({ projects }: { projects: Project[] }) {
     </div>
   )
 }
-```
+```π`÷```π÷~`÷
 
 **Correct: cached results**
 
@@ -1736,7 +1735,7 @@ function ProjectList({ projects }: { projects: Project[] }) {
     </div>
   )
 }
-```
+```π``π÷`ππ`π``√π`πππ
 
 **Simpler pattern for single-value functions:**
 
@@ -1756,7 +1755,7 @@ function isLoggedIn(): boolean {
 function onAuthChange() {
   isLoggedInCache = null
 }
-```
+```π|÷|`π÷|ππ`~π
 
 Use a Map (not a hook) so it works everywhere: utilities, event handlers, not just React components.
 
@@ -1775,7 +1774,7 @@ function getTheme() {
   return localStorage.getItem('theme') ?? 'light'
 }
 // Called 10 times = 10 storage reads
-```
+```π`÷`ππ``÷÷`÷``÷
 
 **Correct: Map cache**
 
@@ -1793,7 +1792,7 @@ function setLocalStorage(key: string, value: string) {
   localStorage.setItem(key, value)
   storageCache.set(key, value)  // keep cache in sync
 }
-```
+```π`÷```÷``÷`÷÷
 
 Use a Map (not a hook) so it works everywhere: utilities, event handlers, not just React components.
 
@@ -1810,7 +1809,7 @@ function getCookie(name: string) {
   }
   return cookieCache[name]
 }
-```
+```÷````
 
 **Important: invalidate on external changes**
 
@@ -1824,7 +1823,7 @@ document.addEventListener('visibilitychange', () => {
     storageCache.clear()
   }
 })
-```
+```π~÷``|÷
 
 If storage can change externally (another tab, server-set cookies), invalidate cache:
 
@@ -1840,7 +1839,7 @@ Multiple `.filter()` or `.map()` calls iterate the array multiple times. Combine
 const admins = users.filter(u => u.isAdmin)
 const testers = users.filter(u => u.isTester)
 const inactive = users.filter(u => !u.isActive)
-```
+```π`||÷~~μ÷``÷`π`
 
 **Correct: 1 iteration**
 
@@ -1854,7 +1853,7 @@ for (const user of users) {
   if (user.isTester) testers.push(user)
   if (!user.isActive) inactive.push(user)
 }
-```
+```π~π`÷`π``π`÷÷``÷
 
 ### 7.7 Early Length Check for Array Comparisons
 
@@ -1871,7 +1870,7 @@ function hasChanges(current: string[], original: string[]) {
   // Always sorts and joins, even when lengths differ
   return current.sort().join() !== original.sort().join()
 }
-```
+```π``ππ`ππ`π``÷`
 
 Two O(n log n) sorts run even when `current.length` is 5 and `original.length` is 100. There is also overhead of joining the arrays and comparing the strings.
 
@@ -1893,7 +1892,7 @@ function hasChanges(current: string[], original: string[]) {
   }
   return false
 }
-```
+```π`|÷π`|`÷`÷`|÷
 
 This new approach is more efficient because:
 
@@ -1932,7 +1931,7 @@ function validateUsers(users: User[]) {
   
   return hasError ? { valid: false, error: errorMessage } : { valid: true }
 }
-```
+```π~`÷÷`÷`÷÷`÷`÷|
 
 **Correct: returns immediately on first error**
 
@@ -1949,7 +1948,7 @@ function validateUsers(users: User[]) {
 
   return { valid: true }
 }
-```
+```π~|÷π``ππ`÷`π`
 
 ### 7.9 Hoist RegExp Creation
 
@@ -1965,7 +1964,7 @@ function Highlighter({ text, query }: Props) {
   const parts = text.split(regex)
   return <>{parts.map((part, i) => ...)}</>
 }
-```
+```π`π``π÷``÷÷`
 
 **Correct: memoize or hoist**
 
@@ -1980,7 +1979,7 @@ function Highlighter({ text, query }: Props) {
   const parts = text.split(regex)
   return <>{parts.map((part, i) => ...)}</>
 }
-```
+```π``ππ``÷÷`÷``÷π`÷`
 
 **Warning: global regex has mutable state**
 
@@ -1988,7 +1987,7 @@ function Highlighter({ text, query }: Props) {
 const regex = /foo/g
 regex.test('foo')  // true, lastIndex = 3
 regex.test('foo')  // false, lastIndex = 0
-```
+```π~`÷`π`÷`÷`π``π
 
 Global regex (`/g`) has mutable `lastIndex` state:
 
@@ -2011,7 +2010,7 @@ function getLatestProject(projects: Project[]) {
   const sorted = [...projects].sort((a, b) => b.updatedAt - a.updatedAt)
   return sorted[0]
 }
-```
+```π``μ``π÷`÷`÷``÷÷
 
 Sorts the entire array just to find the maximum value.
 
@@ -2022,7 +2021,7 @@ function getOldestAndNewest(projects: Project[]) {
   const sorted = [...projects].sort((a, b) => a.updatedAt - b.updatedAt)
   return { oldest: sorted[0], newest: sorted[sorted.length - 1] }
 }
-```
+````π```÷÷|``÷~÷`÷`√|`~`π~
 
 Still sorts unnecessarily when only min/max are needed.
 
@@ -2056,7 +2055,7 @@ function getOldestAndNewest(projects: Project[]) {
   
   return { oldest, newest }
 }
-```
+```π~`÷π``÷π`|÷÷|√~`÷|π÷`÷÷`
 
 Single pass through the array, no copying, no sorting.
 
@@ -2066,7 +2065,7 @@ Single pass through the array, no copying, no sorting.
 const numbers = [5, 2, 8, 1, 9]
 const min = Math.min(...numbers)
 const max = Math.max(...numbers)
-```
+```π`|÷π`π÷`|÷`
 
 This works for small arrays but can be slower for very large arrays due to spread operator limitations. Use the loop approach for reliability.
 
@@ -2081,14 +2080,14 @@ Convert arrays to Set/Map for repeated membership checks.
 ```typescript
 const allowedIds = ['a', 'b', 'c', ...]
 items.filter(item => allowedIds.includes(item.id))
-```
+```π~÷`|π|÷π``ππ`÷
 
 **Correct (O(1) per check):**
 
 ```typescript
 const allowedIds = new Set(['a', 'b', 'c', ...])
 items.filter(item => allowedIds.has(item.id))
-```
+```π``ππ|`π`÷÷`
 
 ### 7.12 Use toSorted() Instead of sort() for Immutability
 
@@ -2107,7 +2106,7 @@ function UserList({ users }: { users: User[] }) {
   )
   return <div>{sorted.map(renderUser)}</div>
 }
-```
+```÷|÷÷|÷÷``÷`÷`÷`÷
 
 **Correct: creates new array**
 
@@ -2120,7 +2119,7 @@ function UserList({ users }: { users: User[] }) {
   )
   return <div>{sorted.map(renderUser)}</div>
 }
-```
+```π`÷``÷``÷`÷÷|`÷`÷÷
 
 **Why this matters in React:**
 
@@ -2133,7 +2132,7 @@ function UserList({ users }: { users: User[] }) {
 ```typescript
 // Fallback for older browsers
 const sorted = [...items].sort((a, b) => a.value - b.value)
-```
+```π`÷`÷`÷`÷÷|÷`π`÷`
 
 `.toSorted()` is available in all modern browsers (Chrome 110+, Safari 16+, Firefox 115+, Node.js 20+). For older environments, use spread operator:
 
@@ -2170,7 +2169,7 @@ function useWindowEvent(event: string, handler: () => void) {
     return () => window.removeEventListener(event, handler)
   }, [event, handler])
 }
-```
+```π``÷÷`÷`÷`÷`÷~
 
 **Correct: stable subscription**
 
@@ -2185,7 +2184,7 @@ function useWindowEvent(event: string, handler: () => void) {
     return () => window.removeEventListener(event, onEvent)
   }, [event])
 }
-```
+````÷÷|÷÷`÷`π`÷`
 
 **Alternative: use `useEffectEvent` if you're on latest React:**
 
@@ -2207,7 +2206,7 @@ function useLatest<T>(value: T) {
   }, [value])
   return ref
 }
-```
+```÷`÷`÷``÷`π~`π~`÷`
 
 **Incorrect: effect re-runs on every callback change**
 
@@ -2220,7 +2219,7 @@ function SearchInput({ onSearch }: { onSearch: (q: string) => void }) {
     return () => clearTimeout(timeout)
   }, [query, onSearch])
 }
-```
+```π`÷`÷`÷`÷÷``÷`÷`÷
 
 **Correct: stable effect, fresh callback**
 
@@ -2234,9 +2233,9 @@ function SearchInput({ onSearch }: { onSearch: (q: string) => void }) {
     return () => clearTimeout(timeout)
   }, [query])
 }
-```
+```π`÷÷`÷`μ÷`÷`~÷
 
----
+---π`÷`÷``÷`
 
 ## References
 
@@ -2247,3 +2246,4 @@ function SearchInput({ onSearch }: { onSearch: (q: string) => void }) {
 5. [https://github.com/isaacs/node-lru-cache](https://github.com/isaacs/node-lru-cache)
 6. [https://vercel.com/blog/how-we-optimized-package-imports-in-next-js](https://vercel.com/blog/how-we-optimized-package-imports-in-next-js)
 7. [https://vercel.com/blog/how-we-made-the-vercel-dashboard-twice-as-fast](https://vercel.com/blog/how-we-made-the-vercel-dashboard-twice-as-fast)
+π~`ππ`π|`π÷÷`÷```÷`
