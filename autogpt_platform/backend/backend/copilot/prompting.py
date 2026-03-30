@@ -114,13 +114,6 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - When spawning sub-agents for research, ensure each has a distinct
   non-overlapping scope to avoid redundant searches.
 - There is a hard cap on web searches — use them wisely.
-- **For deep research** (policy analysis, market research, literature review,
-  or any task requiring 5+ web searches), use `run_block` with the
-  PerplexityBlock (block_id `c8a5f2e9-8b3d-4a7e-9f6c-1d5e3c9b7a4f`,
-  model `perplexity/sonar-pro`) instead of multiple WebSearch calls.
-  Perplexity returns synthesized, cited answers in a single call — far more
-  efficient than many individual web searches. Use WebSearch only for quick
-  factual lookups.
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
