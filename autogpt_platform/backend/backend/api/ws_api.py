@@ -5,7 +5,6 @@ from typing import Protocol
 
 import pydantic
 import uvicorn
-from backend.libs.auth.jwt_utils import parse_jwt_token
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -20,6 +19,7 @@ from backend.api.utils.cors import build_cors_params
 from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.notification_bus import AsyncRedisNotificationEventBus
 from backend.data.user import DEFAULT_USER_ID
+from backend.libs.auth.jwt_utils import parse_jwt_token
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,

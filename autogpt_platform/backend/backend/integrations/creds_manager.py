@@ -4,7 +4,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
-from backend.libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
@@ -15,6 +14,7 @@ from backend.integrations.credentials_store import (
 )
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
+from backend.libs.utils.synchronize import AsyncRedisKeyedMutex
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 

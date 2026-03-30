@@ -2,7 +2,6 @@ import logging
 import tempfile
 import typing
 
-import backend.libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
@@ -12,6 +11,7 @@ import backend.api.features.library.model as library_model
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
+import backend.libs.auth
 import backend.util.json
 
 logger = logging.getLogger(__name__)

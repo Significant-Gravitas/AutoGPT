@@ -1,8 +1,9 @@
 from typing import Optional
 
-import backend.libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Query, Security, status
 from fastapi.responses import Response
+
+import backend.libs.auth as autogpt_auth_lib
 
 from .. import db as library_db
 from .. import model as library_model

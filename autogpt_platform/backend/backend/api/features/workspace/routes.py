@@ -9,7 +9,6 @@ from typing import Annotated
 from urllib.parse import quote
 
 import fastapi
-from backend.libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -23,6 +22,7 @@ from backend.data.workspace import (
     get_workspace_total_size,
     soft_delete_workspace_file,
 )
+from backend.libs.auth.dependencies import get_user_id, requires_user
 from backend.util.settings import Config
 from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager

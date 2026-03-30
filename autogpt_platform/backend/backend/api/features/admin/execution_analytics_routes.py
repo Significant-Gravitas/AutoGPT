@@ -3,7 +3,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from backend.libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
@@ -25,6 +24,7 @@ from backend.executor.activity_status_generator import (
     generate_activity_status_for_execution,
 )
 from backend.executor.manager import get_db_async_client
+from backend.libs.auth import get_user_id, requires_admin_user
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)

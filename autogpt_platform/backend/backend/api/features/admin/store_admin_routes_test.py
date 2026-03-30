@@ -15,9 +15,9 @@ import fastapi.responses
 import fastapi.testclient
 import pytest
 import pytest_mock
-from backend.libs.auth.jwt_utils import get_jwt_payload
 
 from backend.data.graph import get_graph_as_admin
+from backend.libs.auth.jwt_utils import get_jwt_payload
 from backend.util.exceptions import NotFoundError
 
 from .store_admin_routes import router as store_admin_router

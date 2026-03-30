@@ -1,11 +1,11 @@
 import logging
 import typing
 
-from backend.libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, Security
 from prisma.enums import CreditTransactionType
 
 from backend.data.credit import admin_get_user_history, get_user_credit_model
+from backend.libs.auth import get_user_id, requires_admin_user
 from backend.util.json import SafeJson
 
 from .model import AddUserCreditsResponse, UserHistoryResponse

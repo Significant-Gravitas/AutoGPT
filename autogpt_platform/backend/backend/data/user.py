@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from typing import Optional, cast
 from urllib.parse import quote_plus
 
-from backend.libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
 from prisma.enums import NotificationType
 from prisma.models import User as PrismaUser
@@ -15,6 +14,7 @@ from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 from backend.data.db import prisma
 from backend.data.model import User, UserIntegrations, UserMetadata
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.libs.auth.models import DEFAULT_USER_ID
 from backend.util.cache import cached
 from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError

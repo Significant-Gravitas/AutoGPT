@@ -2,10 +2,10 @@ import asyncio
 import logging
 from typing import Any, List
 
-import backend.libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, HTTPException, Query, Security, status
 from prisma.enums import ReviewStatus
 
+import backend.libs.auth as autogpt_auth_lib
 from backend.copilot.constants import (
     is_copilot_synthetic_id,
     parse_node_id_from_exec_id,

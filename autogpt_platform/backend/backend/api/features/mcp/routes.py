@@ -9,7 +9,6 @@ import logging
 from typing import Annotated, Any
 
 import fastapi
-from backend.libs.auth import get_user_id
 from fastapi import Security
 from pydantic import BaseModel, Field, SecretStr
 
@@ -24,6 +23,7 @@ from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
+from backend.libs.auth import get_user_id
 from backend.util.request import HTTPClientError, Requests, validate_url_host
 from backend.util.settings import Settings
 

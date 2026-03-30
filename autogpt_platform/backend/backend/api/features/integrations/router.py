@@ -3,7 +3,6 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
-from backend.libs.auth import get_user_id
 from fastapi import (
     APIRouter,
     Body,
@@ -48,6 +47,7 @@ from backend.integrations.creds_manager import (
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
+from backend.libs.auth import get_user_id
 from backend.util.exceptions import (
     GraphNotInLibraryError,
     MissingConfigError,

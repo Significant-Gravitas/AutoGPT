@@ -1,7 +1,6 @@
 import logging
 import urllib.parse
 
-import backend.libs.auth
 import fastapi
 import fastapi.responses
 import prisma.enums
@@ -9,6 +8,7 @@ from fastapi import Query, Security
 from pydantic import BaseModel
 
 import backend.data.graph
+import backend.libs.auth
 import backend.util.json
 from backend.util.exceptions import NotFoundError
 from backend.util.models import Pagination

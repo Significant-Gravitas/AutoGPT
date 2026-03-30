@@ -10,12 +10,12 @@ import fastapi
 import httpx
 import pytest
 import pytest_asyncio
-from backend.libs.auth import get_user_id
 from pydantic import SecretStr
 
 from backend.api.features.mcp.routes import router
 from backend.blocks.mcp.client import MCPClientError, MCPTool
 from backend.data.model import OAuth2Credentials
+from backend.libs.auth import get_user_id
 from backend.util.request import HTTPClientError
 
 app = fastapi.FastAPI()

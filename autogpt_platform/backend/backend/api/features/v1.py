@@ -9,8 +9,6 @@ from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
-from backend.libs.auth import get_user_id, requires_user
-from backend.libs.auth.jwt_utils import get_jwt_payload
 from fastapi import (
     APIRouter,
     Body,
@@ -83,6 +81,8 @@ from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
 )
+from backend.libs.auth import get_user_id, requires_user
+from backend.libs.auth.jwt_utils import get_jwt_payload
 from backend.monitoring.instrumentation import (
     record_block_execution,
     record_graph_execution,

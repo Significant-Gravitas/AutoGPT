@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from backend.libs.utils.synchronize import AsyncRedisKeyedMutex
 from pydantic import SecretStr
 
 from backend.data.db import prisma
@@ -18,6 +17,7 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
+from backend.libs.utils.synchronize import AsyncRedisKeyedMutex
 from backend.util.settings import Settings
 
 settings = Settings()

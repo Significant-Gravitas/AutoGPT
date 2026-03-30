@@ -1,7 +1,8 @@
 import logging
 
-from backend.libs.auth import get_user_id, requires_user
 from fastapi import APIRouter, HTTPException, Security
+
+from backend.libs.auth import get_user_id, requires_user
 
 from .models import ApiResponse, ChatRequest
 from .service import OttoService

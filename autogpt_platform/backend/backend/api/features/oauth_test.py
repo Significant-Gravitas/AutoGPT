@@ -21,7 +21,6 @@ from typing import AsyncGenerator
 import httpx
 import pytest
 import pytest_asyncio
-from backend.libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
 from prisma.models import OAuthAccessToken as PrismaOAuthAccessToken
 from prisma.models import OAuthApplication as PrismaOAuthApplication
@@ -30,6 +29,7 @@ from prisma.models import OAuthRefreshToken as PrismaOAuthRefreshToken
 from prisma.models import User as PrismaUser
 
 from backend.api.rest_api import app
+from backend.libs.api_key.keysmith import APIKeySmith
 
 keysmith = APIKeySmith()
 

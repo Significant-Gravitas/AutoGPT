@@ -21,7 +21,6 @@ from datetime import datetime
 from typing import Literal, Optional
 from urllib.parse import urlencode
 
-from backend.libs.auth import get_user_id
 from fastapi import APIRouter, Body, HTTPException, Security, UploadFile, status
 from gcloud.aio import storage as async_storage
 from PIL import Image
@@ -49,6 +48,7 @@ from backend.data.auth.oauth import (
     validate_redirect_uri,
     validate_scopes,
 )
+from backend.libs.auth import get_user_id
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
 

@@ -7,7 +7,6 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
-from backend.libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
@@ -61,6 +60,7 @@ from backend.copilot.tools.models import (
 from backend.copilot.tracking import track_user_message
 from backend.data.redis_client import get_redis_async
 from backend.data.workspace import get_or_create_workspace
+from backend.libs import auth
 from backend.util.exceptions import NotFoundError
 
 config = ChatConfig()

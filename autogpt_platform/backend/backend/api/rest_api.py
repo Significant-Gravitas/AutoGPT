@@ -9,8 +9,6 @@ import fastapi.responses
 import pydantic
 import starlette.middleware.cors
 import uvicorn
-from backend.libs.auth import add_auth_responses_to_openapi
-from backend.libs.auth import verify_settings as verify_auth_settings
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.routing import APIRoute
@@ -48,6 +46,8 @@ from backend.api.features.library.exceptions import (
 from backend.blocks.llm import DEFAULT_LLM_MODEL
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.libs.auth import add_auth_responses_to_openapi
+from backend.libs.auth import verify_settings as verify_auth_settings
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util import json
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
