@@ -280,16 +280,21 @@ async def publish_chunk(
         # Set TTL on stream to match session metadata TTL
         await redis.expire(stream_key, config.stream_ttl)
 
-        # Periodically refresh the session meta key TTL so it doesn't expire
+        # Periodically refresh session-related TTLs so they don't expire
         # during long-running turns. Without this, turns exceeding stream_ttl
-        # (default 1h) lose their "running" status and become invisible to
-        # the resume endpoint — causing empty sessions on page reload.
+        # (default 1h) lose their "running" status and stream data, making
+        # the session invisible to the resume endpoint (empty on page reload).
+        # Both meta key AND stream key are refreshed: the stream key's expire
+        # above only fires when publish_chunk is called, but during long
+        # sub-agent gaps (task_progress events don't produce chunks), neither
+        # key gets refreshed.
         if session_id:
             now = time.perf_counter()
             last_refresh = _meta_ttl_refresh_at.get(session_id, 0)
             if now - last_refresh >= _META_TTL_REFRESH_INTERVAL:
                 meta_key = _get_session_meta_key(session_id)
                 await redis.expire(meta_key, config.stream_ttl)
+                await redis.expire(stream_key, config.stream_ttl)
                 _meta_ttl_refresh_at[session_id] = now
 
         total_time = (time.perf_counter() - start_time) * 1000
