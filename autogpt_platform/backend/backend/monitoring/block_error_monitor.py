@@ -12,7 +12,7 @@ from backend.util.clients import (
     get_database_manager_client,
     get_notification_manager_client,
 )
-from backend.util.metrics import sentry_capture_error
+from backend.util.metrics import DiscordChannel, sentry_capture_error
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,32 @@ class BlockErrorMonitor:
 
             if critical_alerts:
                 msg = "Block Error Rate Alert:\n\n" + "\n\n".join(critical_alerts)
-                self.notification_client.discord_system_alert(msg)
+
+                # Send alert with correlation ID for block errors
+                # We'll create a simple hash of the block IDs that have errors
+                blocks_with_errors = [
+                    stats.block_id
+                    for name, stats in block_stats.items()
+                    if stats.total_executions >= 10
+                    and stats.error_rate >= threshold * 100
+                ]
+                correlation_id = (
+                    f"block_errors_{len(blocks_with_errors)}_blocks_{end_time.date()}"
+                )
+
+                self.notification_client.system_alert(
+                    content=msg,
+                    channel=DiscordChannel.PLATFORM,
+                    correlation_id=correlation_id,
+                    severity="warning",
+                    status="open",
+                    extra_attributes={
+                        "blocks_affected": str(len(critical_alerts)),
+                        "date": end_time.date().isoformat(),
+                        "threshold": f"{threshold * 100}%",
+                    },
+                )
+
                 logger.info(
                     f"Sent block error rate alert for {len(critical_alerts)} blocks"
                 )
@@ -87,7 +112,22 @@ class BlockErrorMonitor:
                     block_stats, start_time, end_time
                 )
                 if top_blocks_msg:
-                    self.notification_client.discord_system_alert(top_blocks_msg)
+                    # Daily summary gets a date-based correlation ID
+                    correlation_id = f"block_error_daily_summary_{end_time.date()}"
+
+                    self.notification_client.system_alert(
+                        content=top_blocks_msg,
+                        channel=DiscordChannel.PLATFORM,
+                        correlation_id=correlation_id,
+                        severity="minor",
+                        status="open",
+                        extra_attributes={
+                            "type": "daily_summary",
+                            "date": end_time.date().isoformat(),
+                            "top_blocks_count": str(self.include_top_blocks),
+                        },
+                    )
+
                     logger.info("Sent top blocks summary")
                     return "Sent top blocks summary"
 
@@ -100,7 +140,22 @@ class BlockErrorMonitor:
             error = Exception(f"Error checking block error rates: {e}")
             msg = str(error)
             sentry_capture_error(error)
-            self.notification_client.discord_system_alert(msg)
+
+            # Send error alert with generic correlation ID
+            correlation_id = "block_error_monitoring_failure"
+
+            self.notification_client.system_alert(
+                content=msg,
+                channel=DiscordChannel.PLATFORM,
+                correlation_id=correlation_id,
+                severity="critical",
+                status="open",
+                extra_attributes={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)[:200],
+                },
+            )
+
             return msg
 
     def _get_block_stats_from_db(
