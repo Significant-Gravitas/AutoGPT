@@ -181,6 +181,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Retrieve key-value information for the current user |
+| [Sardis Balance](block-integrations/sardis/balance.md#sardis-balance) | Check the balance and remaining spending limits of a Sardis wallet |
+| [Sardis Pay](block-integrations/sardis/payment.md#sardis-pay) | Execute a policy-controlled payment from a Sardis wallet |
+| [Sardis Policy Check](block-integrations/sardis/policy.md#sardis-policy-check) | Check if a payment would pass spending policy without executing it |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
 ## Text Processing
