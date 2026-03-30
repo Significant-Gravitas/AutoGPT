@@ -5,23 +5,30 @@ generate the agent JSON yourself using block schemas, then validate and save.
 
 ### Workflow for Creating/Editing Agents
 
-1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
-   search for relevant blocks. This returns block IDs, names, descriptions,
-   and full input/output schemas.
-2. **Find library agents**: Call `find_library_agent` to discover reusable
+1. **Clarify if needed**: If the goal is ambiguous (output format, delivery
+   channel, data source, or trigger unspecified), call `find_block` with a
+   query targeting the ambiguous dimension (e.g. `"email send"`, `"slack
+   message"`, `"google docs write"`) to discover what the platform supports.
+   Then ask the user **one** concrete question listing those real options and
+   wait for their answer before continuing. If the goal is already specific,
+   skip to step 2.
+2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
+   search for relevant blocks using the (now specific) goal. This returns
+   block IDs, names, descriptions, and full input/output schemas.
+3. **Find library agents**: Call `find_library_agent` to discover reusable
    agents that can be composed as sub-agents via `AgentExecutorBlock`.
-3. **Generate JSON**: Build the agent JSON using block schemas:
-   - Use block IDs from step 1 as `block_id` in nodes
+4. **Generate JSON**: Build the agent JSON using block schemas:
+   - Use block IDs from step 2 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
-4. **Write to workspace**: Save the JSON to a workspace file so the user
+5. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-5. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+6. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-6. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+7. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+8. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
    the final `agent_json`
 
 ### Agent JSON Structure
