@@ -56,6 +56,10 @@ export const useFlow = () => {
       flowExecutionID: parseAsString,
     });
 
+  const isGraphRunning = useGraphStore(
+    useShallow((state) => state.isGraphRunning),
+  );
+
   const { data: executionDetails } = useGetV1GetExecutionDetails(
     flowID || "",
     flowExecutionID || "",
@@ -63,6 +67,11 @@ export const useFlow = () => {
       query: {
         select: (res) => res.data as GetV1GetExecutionDetails200,
         enabled: !!flowID && !!flowExecutionID,
+        // Poll while the graph is running to catch updates that arrive before
+        // the WebSocket subscription is established (race condition on fast
+        // executions like dry-runs).  Stops once the execution reaches a
+        // terminal state and isGraphRunning becomes false.
+        refetchInterval: isGraphRunning ? 1000 : false,
       },
     },
   );
