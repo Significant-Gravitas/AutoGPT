@@ -154,9 +154,9 @@ class RunAgentTool(BaseTool):
                 "dry_run": {
                     "type": "boolean",
                     "description": (
-                        "When true, simulates the entire agent execution using an LLM "
-                        "for each block — no real API calls, no credentials needed, "
-                        "no credits charged. Useful for testing agent wiring end-to-end."
+                        "When true, simulates execution using an LLM for each block "
+                        "— no real API calls, credentials, or credits. "
+                        "See agent_generation_guide for the full workflow."
                     ),
                 },
             },
