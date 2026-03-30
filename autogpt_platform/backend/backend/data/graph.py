@@ -329,7 +329,16 @@ class BaseGraph(GraphBaseMeta):
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema_fields.append(type_class.model_construct(**input_default))
+                constructed_obj = type_class.model_construct(**input_default)
+                # Validate that the constructed object has required 'name' attribute
+                # model_construct() bypasses validation, so we need to check manually
+                if not hasattr(constructed_obj, "name") or constructed_obj.name is None:
+                    logger.warning(
+                        f"Skipping invalid {type_class.__name__} node: missing required 'name' field. "
+                        f"Input data: {input_default}"
+                    )
+                    continue
+                schema_fields.append(constructed_obj)
             except Exception as e:
                 logger.error(f"Invalid {type_class}: {input_default}, {e}")
 
