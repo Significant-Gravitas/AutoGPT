@@ -114,10 +114,12 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
             return BlockOutputResponse(
                 message=(
                     f"[DRY RUN] Block '{block.name}' simulated successfully "
-                    "— no real execution occurred."
+                    "(no real API calls or side effects occurred). "
+                    "Status: COMPLETED."
                 ),
                 block_id=block_id,
                 block_name=block.name,
