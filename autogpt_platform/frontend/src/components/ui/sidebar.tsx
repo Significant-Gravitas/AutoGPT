@@ -278,15 +278,17 @@ const Sidebar = React.forwardRef<
 Sidebar.displayName = "Sidebar";
 
 const SidebarTrigger = React.forwardRef<
-  React.ElementRef<typeof Button>,
+  HTMLButtonElement,
   React.ComponentProps<typeof Button>
 >(({ className, onClick, ...props }, ref) => {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <button
+    <Button
       ref={ref}
       data-sidebar="trigger"
+      variant="ghost"
+      size="sm"
       className={cn(
         "rounded-md p-1.5 text-neutral-600 transition-colors hover:bg-zinc-100",
         className,
@@ -299,7 +301,7 @@ const SidebarTrigger = React.forwardRef<
     >
       <SidebarSimpleIcon className="h-5 w-5" />
       <span className="sr-only">Toggle Sidebar</span>
-    </button>
+    </Button>
   );
 });
 SidebarTrigger.displayName = "SidebarTrigger";

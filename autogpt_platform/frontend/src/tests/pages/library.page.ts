@@ -20,7 +20,21 @@ export class LibraryPage extends BasePage {
     position: "bottom" | "page",
   ): Promise<void> {
     const { getId } = getSelectors(this.page);
-    const lastAgentCard = getId("library-agent-card").last();
+    const agentCards = getId("library-agent-card");
+    const cardCount = await agentCards.count();
+
+    if (cardCount === 0) {
+      await this.page.evaluate((targetPosition) => {
+        if (targetPosition === "bottom") {
+          window.scrollTo(0, document.body.scrollHeight);
+        } else {
+          window.scrollBy(0, window.innerHeight);
+        }
+      }, position);
+      return;
+    }
+
+    const lastAgentCard = agentCards.nth(cardCount - 1);
 
     await lastAgentCard.scrollIntoViewIfNeeded();
     await lastAgentCard.evaluate((node, targetPosition) => {

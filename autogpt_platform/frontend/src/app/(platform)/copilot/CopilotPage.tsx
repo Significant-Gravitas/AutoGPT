@@ -5,7 +5,6 @@ import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/
 import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { cn } from "@/lib/utils";
 import { UploadSimple } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
@@ -151,17 +150,14 @@ export function CopilotPage() {
       {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
       <NotificationBanner />
       {/* Drop overlay */}
-      <div
-        className={cn(
-          "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
-          isDragging ? "opacity-100" : "opacity-0",
-        )}
-      >
-        <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
-        <span className="text-lg font-medium text-violet-600">
-          Drop files here
-        </span>
-      </div>
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10">
+          <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
+          <span className="text-lg font-medium text-violet-600">
+            Drop files here
+          </span>
+        </div>
+      )}
       <div className="flex-1 overflow-hidden">
         <ChatContainer
           messages={messages}

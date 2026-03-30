@@ -5,10 +5,18 @@ import { SidebarDynamicContent } from "@/components/layout/AppSidebar/SidebarDyn
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { NetworkStatusMonitor } from "@/services/network-status/NetworkStatusMonitor";
-import { ReactNode } from "react";
+import { usePathname } from "next/navigation";
+import { ReactNode, useEffect, useRef } from "react";
 import { AdminImpersonationBanner } from "./admin/components/AdminImpersonationBanner";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const scrollRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [pathname]);
+
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar dynamicContent={<SidebarDynamicContent />} />
@@ -16,7 +24,9 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         <NetworkStatusMonitor />
         <Navbar />
         <AdminImpersonationBanner />
-        <section className="flex-1 overflow-y-auto">{children}</section>
+        <section ref={scrollRef} className="flex-1 overflow-y-auto">
+          {children}
+        </section>
       </main>
     </SidebarProvider>
   );

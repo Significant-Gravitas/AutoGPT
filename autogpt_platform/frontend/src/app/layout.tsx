@@ -53,7 +53,7 @@ export default async function RootLayout({
           }}
         />
       </head>
-      <body className="h-screen overflow-hidden">
+      <body className="min-h-screen">
         <ErrorBoundary context="application">
           <Providers
             attribute="class"
