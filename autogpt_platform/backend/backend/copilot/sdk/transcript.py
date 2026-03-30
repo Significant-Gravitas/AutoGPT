@@ -605,20 +605,31 @@ COMPACT_MSG_ID_PREFIX = "msg_compact_"
 ENTRY_TYPE_MESSAGE = "message"
 
 
+_THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+
+
 def _flatten_assistant_content(blocks: list) -> str:
     """Flatten assistant content blocks into a single plain-text string.
 
     Structured ``tool_use`` blocks are converted to ``[tool_use: name]``
-    placeholders.  This is intentional: ``compress_context`` requires plain
-    text for token counting and LLM summarization.  The structural loss is
-    acceptable because compaction only runs when the original transcript was
-    already too large for the model — a summarized plain-text version is
-    better than no context at all.
+    placeholders.  ``thinking`` and ``redacted_thinking`` blocks are
+    silently dropped — they carry no useful context for compression
+    summaries and must not leak into compacted transcripts (the Anthropic
+    API requires thinking blocks in the last assistant message to be
+    value-identical to the original response; including stale thinking
+    text would violate that constraint).
+
+    This is intentional: ``compress_context`` requires plain text for
+    token counting and LLM summarization.  The structural loss is
+    acceptable because compaction only runs when the original transcript
+    was already too large for the model.
     """
     parts: list[str] = []
     for block in blocks:
         if isinstance(block, dict):
             btype = block.get("type", "")
+            if btype in _THINKING_BLOCK_TYPES:
+                continue
             if btype == "text":
                 parts.append(block.get("text", ""))
             elif btype == "tool_use":
@@ -805,6 +816,68 @@ async def _run_compression(
         )
 
 
+def _find_last_assistant_entry(
+    content: str,
+) -> tuple[list[str], list[str]]:
+    """Split JSONL lines into (compressible_prefix, preserved_tail).
+
+    The tail starts at the **first** entry of the last assistant turn and
+    includes everything after it (typically trailing user messages).  An
+    assistant turn can span multiple consecutive JSONL entries sharing the
+    same ``message.id`` (e.g., a thinking entry followed by a tool_use
+    entry).  All entries of the turn are preserved verbatim.
+
+    The Anthropic API requires that ``thinking`` and ``redacted_thinking``
+    blocks in the **last** assistant message remain value-identical to the
+    original response (the API validates parsed signature values, not raw
+    JSON bytes).  By excluding the entire turn from compression we
+    guarantee those blocks are never altered.
+
+    Returns ``(all_lines, [])`` when no assistant entry is found.
+    """
+    lines = [ln for ln in content.strip().split("\n") if ln.strip()]
+
+    # Parse all lines once to avoid double JSON deserialization.
+    # json.loads with fallback=None returns Any; non-dict entries are
+    # safely skipped by the isinstance(entry, dict) guards below.
+    parsed: list = [json.loads(ln, fallback=None) for ln in lines]
+
+    # Reverse scan: find the message.id and index of the last assistant entry.
+    last_asst_msg_id: str | None = None
+    last_asst_idx: int | None = None
+    for i in range(len(parsed) - 1, -1, -1):
+        entry = parsed[i]
+        if not isinstance(entry, dict):
+            continue
+        msg = entry.get("message", {})
+        if msg.get("role") == "assistant":
+            last_asst_idx = i
+            last_asst_msg_id = msg.get("id")
+            break
+
+    if last_asst_idx is None:
+        return lines, []
+
+    # If the assistant entry has no message.id, fall back to preserving
+    # from that single entry onward — safer than compressing everything.
+    if last_asst_msg_id is None:
+        return lines[:last_asst_idx], lines[last_asst_idx:]
+
+    # Forward scan: find the first entry of this turn (same message.id).
+    first_turn_idx: int | None = None
+    for i, entry in enumerate(parsed):
+        if not isinstance(entry, dict):
+            continue
+        msg = entry.get("message", {})
+        if msg.get("role") == "assistant" and msg.get("id") == last_asst_msg_id:
+            first_turn_idx = i
+            break
+
+    if first_turn_idx is None:
+        return lines, []
+    return lines[:first_turn_idx], lines[first_turn_idx:]
+
+
 async def compact_transcript(
     content: str,
     *,
@@ -816,41 +889,49 @@ async def compact_transcript(
     Converts transcript entries to plain messages, runs ``compress_context``
     (the same compressor used for pre-query history), and rebuilds JSONL.
 
-    Structured content (``tool_use`` blocks, ``tool_result`` nesting, images)
-    is flattened to plain text for compression.  This matches the fidelity of
-    the Plan C (DB compression) fallback path, where
-    ``_format_conversation_context`` similarly renders tool calls as
-    ``You called tool: name(args)`` and results as ``Tool result: ...``.
-    Neither path preserves structured API content blocks — the compacted
-    context serves as text history for the LLM, which creates proper
-    structured tool calls going forward.
+    The **last assistant entry** (and any entries after it) are preserved
+    verbatim — never flattened or compressed.  The Anthropic API requires
+    ``thinking`` and ``redacted_thinking`` blocks in the latest assistant
+    message to be value-identical to the original response (the API
+    validates parsed signature values, not raw JSON bytes); compressing
+    them would destroy the cryptographic signatures and cause
+    ``invalid_request_error``.
 
-    Images are per-turn attachments loaded from workspace storage by file ID
-    (via ``_prepare_file_attachments``), not part of the conversation history.
-    They are re-attached each turn and are unaffected by compaction.
+    Structured content in *older* assistant entries (``tool_use`` blocks,
+    ``thinking`` blocks, ``tool_result`` nesting, images) is flattened to
+    plain text for compression.  This matches the fidelity of the Plan C
+    (DB compression) fallback path.
 
     Returns the compacted JSONL string, or ``None`` on failure.
 
     See also:
         ``_compress_messages`` in ``service.py`` — compresses ``ChatMessage``
-        lists for pre-query DB history.  Both share ``compress_context()``
-        but operate on different input formats (JSONL transcript entries
-        here vs. ChatMessage dicts there).
+        lists for pre-query DB history.
     """
-    messages = _transcript_to_messages(content)
-    if len(messages) < 2:
-        logger.warning("%s Too few messages to compact (%d)", log_prefix, len(messages))
+    prefix_lines, tail_lines = _find_last_assistant_entry(content)
+
+    # Build the JSONL string for the compressible prefix
+    prefix_content = "\n".join(prefix_lines) + "\n" if prefix_lines else ""
+    messages = _transcript_to_messages(prefix_content) if prefix_content else []
+
+    if len(messages) + len(tail_lines) < 2:
+        total = len(messages) + len(tail_lines)
+        logger.warning("%s Too few messages to compact (%d)", log_prefix, total)
+        return None
+    if not messages:
+        logger.warning("%s Nothing to compress (only tail entries remain)", log_prefix)
         return None
     try:
         result = await _run_compression(messages, model, log_prefix)
         if not result.was_compacted:
-            # Compressor says it's within budget, but the SDK rejected it.
-            # Return None so the caller falls through to DB fallback.
             logger.warning(
                 "%s Compressor reports within budget but SDK rejected — "
                 "signalling failure",
                 log_prefix,
             )
+            return None
+        if not result.messages:
+            logger.warning("%s Compressor returned empty messages", log_prefix)
             return None
         logger.info(
             "%s Compacted transcript: %d->%d tokens (%d summarized, %d dropped)",
@@ -860,7 +941,29 @@ async def compact_transcript(
             result.messages_summarized,
             result.messages_dropped,
         )
-        compacted = _messages_to_transcript(result.messages)
+        compressed_part = _messages_to_transcript(result.messages)
+
+        # Re-append the preserved tail (last assistant + trailing entries)
+        # with parentUuid patched to chain onto the compressed prefix.
+        tail_part = _rechain_tail(compressed_part, tail_lines)
+        compacted = compressed_part + tail_part
+
+        if len(compacted) >= len(content):
+            # Byte count can increase due to preserved tail entries
+            # (thinking blocks, JSON overhead) even when token count
+            # decreased.  Log a warning but still return — the API
+            # validates tokens not bytes, and the caller falls through
+            # to DB fallback if the transcript is still too large.
+            logger.warning(
+                "%s Compacted transcript (%d bytes) is not smaller than "
+                "original (%d bytes) — may still reduce token count",
+                log_prefix,
+                len(compacted),
+                len(content),
+            )
+        # Authoritative validation — the caller (_reduce_context) also
+        # validates, but this is the canonical check that guarantees we
+        # never return a malformed transcript from this function.
         if not validate_transcript(compacted):
             logger.warning("%s Compacted transcript failed validation", log_prefix)
             return None
@@ -870,3 +973,43 @@ async def compact_transcript(
             "%s Transcript compaction failed: %s", log_prefix, e, exc_info=True
         )
         return None
+
+
+def _rechain_tail(compressed_prefix: str, tail_lines: list[str]) -> str:
+    """Patch tail entries so their parentUuid chain links to the compressed prefix.
+
+    The first tail entry's ``parentUuid`` is set to the ``uuid`` of the
+    last entry in the compressed prefix.  Subsequent tail entries are
+    rechained to point to their predecessor in the tail — their original
+    ``parentUuid`` values may reference entries that were compressed away.
+    """
+    if not tail_lines:
+        return ""
+    # Find the last uuid in the compressed prefix
+    last_prefix_uuid = ""
+    for line in reversed(compressed_prefix.strip().split("\n")):
+        if not line.strip():
+            continue
+        entry = json.loads(line, fallback=None)
+        if isinstance(entry, dict) and "uuid" in entry:
+            last_prefix_uuid = entry["uuid"]
+            break
+
+    result_lines: list[str] = []
+    prev_uuid: str | None = None
+    for i, line in enumerate(tail_lines):
+        entry = json.loads(line, fallback=None)
+        if not isinstance(entry, dict):
+            # Safety guard: _find_last_assistant_entry already filters empty
+            # lines, and well-formed JSONL always parses to dicts.  Non-dict
+            # lines are passed through unchanged; prev_uuid is intentionally
+            # NOT updated so the next dict entry chains to the last known uuid.
+            result_lines.append(line)
+            continue
+        if i == 0:
+            entry["parentUuid"] = last_prefix_uuid
+        elif prev_uuid is not None:
+            entry["parentUuid"] = prev_uuid
+        prev_uuid = entry.get("uuid")
+        result_lines.append(json.dumps(entry, separators=(",", ":")))
+    return "\n".join(result_lines) + "\n"
