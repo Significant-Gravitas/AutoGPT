@@ -6,7 +6,7 @@ Blocks for AI-powered browser automation using Stagehand and Browserbase.
 ## Stagehand Act
 
 ### What it is
-Interact with a web page by performing actions on a web page. Use it to build self-healing and deterministic automations that adapt to website chang.
+Interact with a web page by performing actions on a web page. Use it to build self-healing and deterministic automations that adapt to website changes.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
