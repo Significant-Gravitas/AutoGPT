@@ -77,11 +77,11 @@ class ChatConfig(BaseSettings):
     # allows ~70-100 turns/day.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # TODO: These are deploy-time constants applied identically to every user.
-    #  If per-user or per-plan limits are needed (e.g., free tier vs paid), these
-    #  must move to the database (e.g., a UserPlan table) and get_usage_status /
-    #  check_rate_limit would look up each user's specific limits instead of
-    #  reading config.daily_token_limit / config.weekly_token_limit.
+    # These are base limits for the FREE tier. Higher tiers (PRO, BUSINESS,
+    # ENTERPRISE) multiply these by their tier multiplier (see
+    # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
+    # User.subscriptionTier DB column and resolved inside
+    # get_global_rate_limits().
     daily_token_limit: int = Field(
         default=2_500_000,
         description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
@@ -178,7 +178,7 @@ class ChatConfig(BaseSettings):
 
         Single source of truth for "will the SDK route through OpenRouter?".
         Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
-        present — mirrors the fallback logic in ``_build_sdk_env``.
+        present — mirrors the fallback logic in ``build_sdk_env``.
         """
         if not self.use_openrouter:
             return False

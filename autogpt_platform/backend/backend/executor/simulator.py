@@ -2,20 +2,39 @@
 LLM-powered block simulator for dry-run execution.
 
 When dry_run=True, instead of calling the real block, this module
-role-plays the block's execution using an LLM. No real API calls,
-no side effects. The LLM is grounded by:
+role-plays the block's execution using an LLM.  For most blocks no real
+API calls or side effects occur.
+
+Special cases (no LLM simulation needed):
+  - OrchestratorBlock executes for real with the user's own model/credentials
+    (iterations capped to 1).
+  - AgentExecutorBlock executes for real so it can spawn child graph executions
+    (whose blocks are then simulated).
+  - AgentInputBlock (and all subclasses) and AgentOutputBlock are pure
+    passthrough -- they forward their input values directly.
+  - MCPToolBlock is simulated via the generic LLM prompt (with run() source code).
+
+OrchestratorBlock and AgentExecutorBlock are handled in manager.py via
+``prepare_dry_run``.
+
+The LLM simulation is grounded by:
   - Block name and description
   - Input/output schemas (from block.input_schema.jsonschema() / output_schema.jsonschema())
+  - The block's run() source code (via inspect.getsource)
   - The actual input values
 
 Inspired by https://github.com/Significant-Gravitas/agent-simulator
 """
 
+import inspect
 import json
 import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
+from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
@@ -41,7 +60,7 @@ def _simulator_model() -> str:
         secrets = Settings().secrets
         # get_openai_client() uses the direct OpenAI client whenever
         # openai_internal_api_key is set, regardless of open_router_api_key.
-        # Strip the provider prefix (e.g. "openai/gpt-4o-mini" → "gpt-4o-mini")
+        # Strip the provider prefix (e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini")
         # so the model name is valid for the direct OpenAI API.
         if secrets.openai_internal_api_key and "/" in model:
             model = model.split("/", 1)[1]
@@ -88,69 +107,31 @@ def _describe_schema_pins(schema: dict[str, Any]) -> str:
     return "\n".join(lines) if lines else "(no output pins defined)"
 
 
-def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str, str]:
-    """Build (system_prompt, user_prompt) for block simulation."""
-    input_schema = block.input_schema.jsonschema()
-    output_schema = block.output_schema.jsonschema()
-
-    input_pins = _describe_schema_pins(input_schema)
-    output_pins = _describe_schema_pins(output_schema)
-    output_properties = list(output_schema.get("properties", {}).keys())
-
-    block_name = getattr(block, "name", type(block).__name__)
-    block_description = getattr(block, "description", "No description available.")
-
-    system_prompt = f"""You are simulating the execution of a software block called "{block_name}".
-
-## Block Description
-{block_description}
-
-## Input Schema
-{input_pins}
-
-## Output Schema (what you must return)
-{output_pins}
-
-Your task: given the current inputs, produce realistic simulated outputs for this block.
-
-Rules:
-- Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
-- Assume all credentials and authentication are present and valid. Never simulate authentication failures.
-- Make the simulated outputs realistic and consistent with the inputs.
-- If there is an "error" pin, set it to "" (empty string) unless you are simulating a logical error.
-- Do not include any extra keys beyond the output pins.
-
-Output pin names you MUST include: {json.dumps(output_properties)}
-"""
-
-    safe_inputs = _truncate_input_values(input_data)
-    user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
-
-    return system_prompt, user_prompt
+# ---------------------------------------------------------------------------
+# Shared LLM call helper
+# ---------------------------------------------------------------------------
 
 
-async def simulate_block(
-    block: Any,
-    input_data: dict[str, Any],
-) -> AsyncIterator[tuple[str, Any]]:
-    """Simulate block execution using an LLM.
+async def _call_llm_for_simulation(
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    label: str = "simulate",
+) -> dict[str, Any]:
+    """Send a simulation prompt to the LLM and return the parsed JSON dict.
 
-    Yields (output_name, output_data) tuples matching the Block.execute() interface.
-    On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
+    Handles client acquisition, retries on invalid JSON, and logging.
+
+    Raises:
+        RuntimeError: If no LLM client is available.
+        ValueError: If all retry attempts are exhausted.
     """
     client = get_openai_client()
     if client is None:
-        yield (
-            "error",
+        raise RuntimeError(
             "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "
-            "(missing OpenAI/OpenRouter API key).",
+            "(missing OpenAI/OpenRouter API key)."
         )
-        return
-
-    output_schema = block.output_schema.jsonschema()
-    output_properties: dict[str, Any] = output_schema.get("properties", {})
-
-    system_prompt, user_prompt = build_simulation_prompt(block, input_data)
 
     model = _simulator_model()
     last_error: Exception | None = None
@@ -172,47 +153,200 @@ async def simulate_block(
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
 
-            # Fill missing output pins with defaults
-            result: dict[str, Any] = {}
-            for pin_name in output_properties:
-                if pin_name in parsed:
-                    result[pin_name] = parsed[pin_name]
-                else:
-                    result[pin_name] = "" if pin_name == "error" else None
-
             logger.debug(
-                "simulate_block: block=%s attempt=%d tokens=%s/%s",
-                getattr(block, "name", "?"),
+                "simulate(%s): attempt=%d tokens=%s/%s",
+                label,
                 attempt + 1,
                 getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
                 getattr(getattr(response, "usage", None), "completion_tokens", "?"),
             )
-
-            for pin_name, pin_value in result.items():
-                yield pin_name, pin_value
-            return
+            return parsed
 
         except (json.JSONDecodeError, ValueError) as e:
             last_error = e
             logger.warning(
-                "simulate_block: JSON parse error on attempt %d/%d: %s",
+                "simulate(%s): JSON parse error on attempt %d/%d: %s",
+                label,
                 attempt + 1,
                 _MAX_JSON_RETRIES,
                 e,
             )
         except Exception as e:
             last_error = e
-            logger.error("simulate_block: LLM call failed: %s", e, exc_info=True)
+            logger.error("simulate(%s): LLM call failed: %s", label, e, exc_info=True)
             break
 
-    logger.error(
-        "simulate_block: all %d retries exhausted for block=%s; last_error=%s",
-        _MAX_JSON_RETRIES,
-        getattr(block, "name", "?"),
-        last_error,
-    )
-    yield (
-        "error",
+    msg = (
         f"[SIMULATOR ERROR — NOT A BLOCK FAILURE] Failed after {_MAX_JSON_RETRIES} "
-        f"attempts: {last_error}",
+        f"attempts: {last_error}"
     )
+    logger.error(
+        "simulate(%s): all retries exhausted; last_error=%s", label, last_error
+    )
+    raise ValueError(msg)
+
+
+# ---------------------------------------------------------------------------
+# Prompt builders
+# ---------------------------------------------------------------------------
+
+
+def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str, str]:
+    """Build (system_prompt, user_prompt) for block simulation."""
+    input_schema = block.input_schema.jsonschema()
+    output_schema = block.output_schema.jsonschema()
+
+    input_pins = _describe_schema_pins(input_schema)
+    output_pins = _describe_schema_pins(output_schema)
+    output_properties = list(output_schema.get("properties", {}).keys())
+
+    block_name = getattr(block, "name", type(block).__name__)
+    block_description = getattr(block, "description", "No description available.")
+
+    # Include the block's run() source code so the LLM knows exactly how
+    # inputs are transformed to outputs.
+    try:
+        run_source = inspect.getsource(block.run)
+    except (TypeError, OSError):
+        run_source = ""
+
+    implementation_section = ""
+    if run_source:
+        implementation_section = (
+            "\n## Block Implementation (run function source code)\n"
+            "```python\n"
+            f"{run_source}\n"
+            "```\n"
+        )
+
+    system_prompt = f"""You are simulating the execution of a software block called "{block_name}".
+
+## Block Description
+{block_description}
+
+## Input Schema
+{input_pins}
+
+## Output Schema (what you must return)
+{output_pins}
+{implementation_section}
+Your task: given the current inputs, produce realistic simulated outputs for this block.
+Study the block's run() source code above to understand exactly how inputs are transformed to outputs.
+
+Rules:
+- Respond with a single JSON object.
+- Only include output pins that have meaningful values. Omit pins with no relevant output.
+- Assume all credentials and API keys are present and valid. Do not simulate auth failures.
+- Generate REALISTIC, useful outputs: real-looking URLs, plausible text, valid data structures.
+- Never return empty strings, null, or "N/A" for pins that should have content.
+- You MAY simulate logical errors (e.g., invalid input format, unsupported operation) when the inputs warrant it — use the "error" pin for these. But do NOT simulate auth/credential errors.
+- Do not include extra keys beyond the defined output pins.
+
+Available output pins: {json.dumps(output_properties)}
+"""
+
+    # Strip credentials from input so the LLM doesn't see null/empty creds
+    # and incorrectly simulate auth failures.
+    safe_inputs = {
+        k: v
+        for k, v in _truncate_input_values(input_data).items()
+        if k not in ("credentials", "api_key", "token", "secret")
+    }
+    user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
+
+    return system_prompt, user_prompt
+
+
+# ---------------------------------------------------------------------------
+# Public simulation functions
+# ---------------------------------------------------------------------------
+
+
+def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | None:
+    """Prepare *input_data* for a dry-run execution of *block*.
+
+    Returns a **modified copy** of *input_data* for blocks that should execute
+    for real with cheap settings (e.g. OrchestratorBlock), or ``None`` when the
+    block should be LLM-simulated instead.
+
+    AgentExecutorBlock also executes for real so it can spawn a child graph
+    execution.  The child graph's blocks will be simulated because the
+    execution context inherits ``dry_run=True`` (see ``add_graph_execution``
+    in utils.py).
+    """
+    if isinstance(block, OrchestratorBlock):
+        # Preserve the user's configured mode: 0 means traditional (single
+        # LLM call, no agent loop). Only override to 1 when the user chose
+        # agent mode (non-zero) so the dry run still exercises the loop once
+        # without running away.
+        # Keep the user's own model and credentials -- swapping to a different
+        # model can cause credential mismatches (e.g. Anthropic key vs OpenAI
+        # model).
+        original = input_data.get("agent_mode_max_iterations", 0)
+        max_iters = 1 if original != 0 else 0
+        return {
+            **input_data,
+            "agent_mode_max_iterations": max_iters,
+        }
+    if isinstance(block, AgentExecutorBlock):
+        # AgentExecutorBlock spawns a child graph execution.  No input
+        # modifications are needed -- the child graph inherits dry_run=True
+        # from the execution context and its blocks will be simulated.
+        # Return a copy so the caller knows this is a passthrough block.
+        return {**input_data}
+    return None
+
+
+async def simulate_block(
+    block: Any,
+    input_data: dict[str, Any],
+) -> AsyncIterator[tuple[str, Any]]:
+    """Simulate block execution using an LLM.
+
+    All block types (including MCPToolBlock) use the same generic LLM prompt
+    which includes the block's run() source code for accurate simulation.
+
+    Note: callers should check ``prepare_dry_run(block, input_data)`` first.
+    OrchestratorBlock and AgentExecutorBlock execute for real in dry-run mode
+    (see manager.py).
+
+    Yields (output_name, output_data) tuples matching the Block.execute() interface.
+    On unrecoverable failure, yields a single ("error", "[SIMULATOR ERROR ...") tuple.
+    """
+    # Input/output blocks are pure passthrough -- they just forward their
+    # input values.  No LLM simulation needed.
+    if isinstance(block, AgentInputBlock):
+        value = input_data.get("value")
+        if value is None:
+            # Dry-run with no user input: use first dropdown option or name
+            placeholder = input_data.get("placeholder_values")
+            if placeholder and isinstance(placeholder, list) and placeholder:
+                value = placeholder[0]
+            else:
+                value = input_data.get("name", "sample input")
+        yield "result", value
+        return
+
+    if isinstance(block, AgentOutputBlock):
+        # AgentOutputBlock passes through "value" as "output" (+ "name").
+        yield "output", input_data.get("value")
+        if "name" in input_data:
+            yield "name", input_data["name"]
+        return
+
+    output_schema = block.output_schema.jsonschema()
+    output_properties: dict[str, Any] = output_schema.get("properties", {})
+
+    system_prompt, user_prompt = build_simulation_prompt(block, input_data)
+    label = getattr(block, "name", "?")
+
+    try:
+        parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
+
+        # Yield only pins that have meaningful values
+        for pin_name in output_properties:
+            value = parsed.get(pin_name)
+            if value is not None and value != "":
+                yield pin_name, value
+    except (RuntimeError, ValueError) as e:
+        yield "error", str(e)

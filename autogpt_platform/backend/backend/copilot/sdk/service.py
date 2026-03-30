@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
+from backend.copilot.rate_limit import get_user_tier
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -77,9 +78,9 @@ from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
+from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
-from .subscription import validate_subscription as _validate_claude_code_subscription
 from .tool_adapter import (
     cancel_pending_tool_tasks,
     create_copilot_mcp_server,
@@ -565,60 +566,6 @@ def _resolve_sdk_model() -> str | None:
     if not config.openrouter_active:
         model = model.replace(".", "-")
     return model
-
-
-def _build_sdk_env(
-    session_id: str | None = None,
-    user_id: str | None = None,
-) -> dict[str, str]:
-    """Build env vars for the SDK CLI subprocess.
-
-    Three modes (checked in order):
-    1. **Subscription** — clears all keys; CLI uses `claude login` auth.
-    2. **Direct Anthropic** — returns `{}`; subprocess inherits
-       `ANTHROPIC_API_KEY` from the parent environment.
-    3. **OpenRouter** (default) — overrides base URL and auth token to
-       route through the proxy, with Langfuse trace headers.
-    """
-    # --- Mode 1: Claude Code subscription auth ---
-    if config.use_claude_code_subscription:
-        _validate_claude_code_subscription()
-        return {
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        }
-
-    # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    # `openrouter_active` checks the flag *and* credential presence.
-    if not config.openrouter_active:
-        return {}
-
-    # --- Mode 3: OpenRouter proxy ---
-    # Strip /v1 suffix — SDK expects the base URL without a version path.
-    base = (config.base_url or "").rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-    env: dict[str, str] = {
-        "ANTHROPIC_BASE_URL": base,
-        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
-        "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-    }
-
-    # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-    def _safe(v: str) -> str:
-        """Sanitise a header value: strip newlines/whitespace and cap length."""
-        return v.replace("\r", "").replace("\n", "").strip()[:128]
-
-    parts = []
-    if session_id:
-        parts.append(f"x-session-id: {_safe(session_id)}")
-    if user_id:
-        parts.append(f"x-user-id: {_safe(user_id)}")
-    if parts:
-        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
-
-    return env
 
 
 def _make_sdk_cwd(session_id: str) -> str:
@@ -1867,7 +1814,7 @@ async def stream_chat_completion_sdk(
         )
 
         # Fail fast when no API credentials are available at all.
-        sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
+        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
@@ -1926,15 +1873,20 @@ async def stream_chat_completion_sdk(
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
+        _user_tier = await get_user_tier(user_id) if user_id else None
+        _otel_metadata: dict[str, str] = {
+            "resume": str(use_resume),
+            "conversation_turn": str(turn),
+        }
+        if _user_tier:
+            _otel_metadata["subscription_tier"] = _user_tier.value
+
         _otel_ctx = propagate_attributes(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-sdk",
             tags=["sdk"],
-            metadata={
-                "resume": str(use_resume),
-                "conversation_turn": str(turn),
-            },
+            metadata=_otel_metadata,
         )
         _otel_ctx.__enter__()
 

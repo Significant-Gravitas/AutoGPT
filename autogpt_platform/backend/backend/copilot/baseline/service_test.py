@@ -31,7 +31,7 @@ async def test_baseline_multi_turn(setup_test_user, test_user_id):
     if not api_key:
         return pytest.skip("OPEN_ROUTER_API_KEY is not set, skipping test")
 
-    session = await create_chat_session(test_user_id)
+    session = await create_chat_session(test_user_id, dry_run=False)
     session = await upsert_chat_session(session)
 
     # --- Turn 1: send a message with a unique keyword ---
