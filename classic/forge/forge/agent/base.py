@@ -18,7 +18,7 @@ from typing import (
 )
 
 from colorama import Fore
-from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, Field
 from pydantic_core import from_json, to_json
 
 from forge.agent import protocols
@@ -34,6 +34,7 @@ from forge.llm.providers import CHAT_MODELS, ModelName, OpenAIModelName
 from forge.llm.providers.schema import ChatModelInfo
 from forge.models.action import ActionResult, AnyProposal
 from forge.models.config import SystemConfiguration, SystemSettings, UserConfigurable
+from forge.permissions import CommandPermissionManager
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,6 @@ class BaseAgentConfiguration(SystemConfiguration):
 
     fast_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT3_16k)
     smart_llm: ModelName = UserConfigurable(default=OpenAIModelName.GPT4)
-    use_functions_api: bool = UserConfigurable(default=False)
 
     default_cycle_instruction: str = DEFAULT_TRIGGERING_PROMPT
     """The default instruction passed to the AI for a thinking cycle."""
@@ -84,22 +84,6 @@ class BaseAgentConfiguration(SystemConfiguration):
     defaults to 75% of `llm.max_tokens`.
     """
 
-    @field_validator("use_functions_api")
-    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
-        if value:
-            smart_llm = info.data["smart_llm"]
-            fast_llm = info.data["fast_llm"]
-            assert all(
-                [
-                    not any(s in name for s in {"-0301", "-0314"})
-                    for name in {smart_llm, fast_llm}
-                ]
-            ), (
-                f"Model {smart_llm} does not support OpenAI Functions. "
-                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
-            )
-        return value
-
 
 class BaseAgentSettings(SystemSettings):
     agent_id: str = ""
@@ -130,10 +114,12 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
     def __init__(
         self,
         settings: BaseAgentSettings,
+        permission_manager: Optional[CommandPermissionManager] = None,
     ):
         self.state = settings
         self.components: list[AgentComponent] = []
         self.config = settings.config
+        self.permission_manager = permission_manager
         # Execution data for debugging
         self._trace: list[str] = []
 
@@ -156,24 +142,21 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
         return self.config.send_token_limit or self.llm.max_tokens * 3 // 4
 
     @abstractmethod
-    async def propose_action(self) -> AnyProposal:
-        ...
+    async def propose_action(self) -> AnyProposal: ...
 
     @abstractmethod
     async def execute(
         self,
         proposal: AnyProposal,
         user_feedback: str = "",
-    ) -> ActionResult:
-        ...
+    ) -> ActionResult: ...
 
     @abstractmethod
     async def do_not_execute(
         self,
         denied_proposal: AnyProposal,
         user_feedback: str,
-    ) -> ActionResult:
-        ...
+    ) -> ActionResult: ...
 
     def reset_trace(self):
         self._trace = []
@@ -181,8 +164,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
     @overload
     async def run_pipeline(
         self, protocol_method: Callable[P, Iterator[T]], *args, retry_limit: int = 3
-    ) -> list[T]:
-        ...
+    ) -> list[T]: ...
 
     @overload
     async def run_pipeline(
@@ -190,8 +172,7 @@ class BaseAgent(Generic[AnyProposal], metaclass=AgentMeta):
         protocol_method: Callable[P, None | Awaitable[None]],
         *args,
         retry_limit: int = 3,
-    ) -> list[None]:
-        ...
+    ) -> list[None]: ...
 
     async def run_pipeline(
         self,

@@ -101,26 +101,22 @@ class S3FileStorage(FileStorage):
         path: str | Path,
         mode: Literal["r", "w"] = "r",
         binary: Literal[False] = False,
-    ) -> TextIOWrapper:
-        ...
+    ) -> TextIOWrapper: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"], binary: Literal[True]
-    ) -> S3BinaryIOWrapper:
-        ...
+    ) -> S3BinaryIOWrapper: ...
 
     @overload
     def open_file(
         self, path: str | Path, *, binary: Literal[True]
-    ) -> S3BinaryIOWrapper:
-        ...
+    ) -> S3BinaryIOWrapper: ...
 
     @overload
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False
-    ) -> S3BinaryIOWrapper | TextIOWrapper:
-        ...
+    ) -> S3BinaryIOWrapper | TextIOWrapper: ...
 
     def open_file(
         self, path: str | Path, mode: Literal["r", "w"] = "r", binary: bool = False

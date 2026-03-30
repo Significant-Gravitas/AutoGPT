@@ -1,13 +1,14 @@
 """Configurator module."""
+
 from __future__ import annotations
 
 import logging
 from typing import Literal, Optional
 
 import click
-from forge.llm.providers import ModelName, MultiProvider
-
 from autogpt.app.config import GPT_3_MODEL, AppConfig
+
+from forge.llm.providers import ModelName, MultiProvider
 
 logger = logging.getLogger(__name__)
 
