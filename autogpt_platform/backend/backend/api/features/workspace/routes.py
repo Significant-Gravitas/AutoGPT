@@ -9,7 +9,7 @@ from typing import Annotated
 from urllib.parse import quote
 
 import fastapi
-from autogpt_libs.auth.dependencies import get_user_id, requires_user
+from backend.libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel

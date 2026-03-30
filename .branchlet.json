@@ -27,7 +27,6 @@
   ],
   "worktreePathTemplate": "$BASE_PATH.worktree",
   "postCreateCmd": [
-    "cd autogpt_platform/autogpt_libs && poetry install",
     "cd autogpt_platform/backend && poetry install && poetry run prisma generate",
     "cd autogpt_platform/frontend && pnpm install"
   ],

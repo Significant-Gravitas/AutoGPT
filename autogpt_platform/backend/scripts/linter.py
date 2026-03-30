@@ -5,8 +5,7 @@ import sys
 backend_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 BACKEND_DIR = "."
-LIBS_DIR = "../autogpt_libs"
-TARGET_DIRS = [BACKEND_DIR, LIBS_DIR]
+TARGET_DIRS = [BACKEND_DIR]
 
 
 def run(*command: str) -> None:
@@ -33,9 +32,9 @@ def lint():
 
     lint_step_args: list[list[str]] = [
         ["ruff", "check", *TARGET_DIRS, "--exit-zero"],
-        ["ruff", "format", "--diff", "--check", LIBS_DIR],
-        ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],
-        ["black", "--diff", "--check", BACKEND_DIR],
+        ["ruff", "format", "--diff", "--check", *TARGET_DIRS],
+        ["isort", "--diff", "--check", "--profile", "black", *TARGET_DIRS],
+        ["black", "--diff", "--check", *TARGET_DIRS],
     ]
     if not skip_pyright:
         lint_step_args.append(["pyright", *TARGET_DIRS])
@@ -53,9 +52,9 @@ def lint():
 
 def format():
     run("ruff", "check", "--fix", *TARGET_DIRS)
-    run("ruff", "format", LIBS_DIR)
-    run("isort", "--profile", "black", BACKEND_DIR)
-    run("black", BACKEND_DIR)
+    run("ruff", "format", *TARGET_DIRS)
+    run("isort", "--profile", "black", *TARGET_DIRS)
+    run("black", *TARGET_DIRS)
     # Generate Prisma types stub before running pyright to prevent type budget exhaustion
     run("gen-prisma-stub")
     run("pyright", *TARGET_DIRS)

@@ -4,9 +4,6 @@
 # Documentation (for embeddings/search)
 !docs/
 
-# Platform - Libs
-!autogpt_platform/autogpt_libs/
-
 # Platform - Backend
 !autogpt_platform/backend/
 

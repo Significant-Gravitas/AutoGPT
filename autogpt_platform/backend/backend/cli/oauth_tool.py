@@ -40,7 +40,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import click
-from autogpt_libs.api_key.keysmith import APIKeySmith
+from backend.libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission
 
 keysmith = APIKeySmith()

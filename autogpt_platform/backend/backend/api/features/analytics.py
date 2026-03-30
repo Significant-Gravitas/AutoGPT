@@ -5,8 +5,8 @@ from typing import Annotated
 
 import fastapi
 import pydantic
-from autogpt_libs.auth import get_user_id
-from autogpt_libs.auth.dependencies import requires_user
+from backend.libs.auth import get_user_id
+from backend.libs.auth.dependencies import requires_user
 
 import backend.data.analytics
 

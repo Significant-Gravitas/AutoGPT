@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
-from autogpt_libs import auth
+from backend.libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile

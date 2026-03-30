@@ -46,7 +46,6 @@ done
 
 ```bash
 TARGET="$(dirname "$(git rev-parse --show-toplevel)")/<NAME>"
-cd "$TARGET/autogpt_platform/autogpt_libs" && poetry install
 cd "$TARGET/autogpt_platform/backend" && poetry install && poetry run prisma generate
 cd "$TARGET/autogpt_platform/frontend" && pnpm install
 ```

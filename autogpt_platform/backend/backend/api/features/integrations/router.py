@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal
 
-from autogpt_libs.auth import get_user_id
+from backend.libs.auth import get_user_id
 from fastapi import (
     APIRouter,
     Body,

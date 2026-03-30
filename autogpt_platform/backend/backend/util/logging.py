@@ -6,12 +6,12 @@ settings = Settings()
 
 
 def configure_logging():
-    import autogpt_libs.logging.config
+    import backend.libs.logging.config
 
     if not is_structured_logging_enabled():
-        autogpt_libs.logging.config.configure_logging(force_cloud_logging=False)
+        backend.libs.logging.config.configure_logging(force_cloud_logging=False)
     else:
-        autogpt_libs.logging.config.configure_logging(force_cloud_logging=True)
+        backend.libs.logging.config.configure_logging(force_cloud_logging=True)
 
     # Silence httpx logger
     logging.getLogger("httpx").setLevel(logging.WARNING)
