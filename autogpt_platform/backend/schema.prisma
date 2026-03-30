@@ -1302,3 +1302,164 @@ model OAuthRefreshToken {
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
 }
+
+// ============================================================================
+// LLM Registry Models
+// ============================================================================
+
+enum LlmCostUnit {
+  RUN
+  TOKENS
+}
+
+model LlmProvider {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String @unique
+  displayName String
+  description String?
+
+  defaultCredentialProvider String?
+  defaultCredentialId       String?
+  defaultCredentialType     String?
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+
+}
+
+model LlmModel {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  slug        String @unique
+  displayName String
+  description String?
+
+  providerId String
+  Provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  // Creator is the organization that created/trained the model (e.g., OpenAI, Meta)
+  // This is distinct from the provider who hosts/serves the model (e.g., OpenRouter)
+  creatorId String?
+  Creator   LlmModelCreator? @relation(fields: [creatorId], references: [id], onDelete: SetNull)
+
+  contextWindow   Int
+  maxOutputTokens Int?
+  priceTier       Int     @default(1) // 1=cheapest, 2=medium, 3=expensive (DB constraint: 1-3)
+  isEnabled       Boolean @default(true)
+  isRecommended   Boolean @default(false)
+
+  // Model-specific capabilities
+  // These vary per model even within the same provider (e.g., Hugging Face)
+  // Default to false for safety - partially-seeded rows should not be assumed capable
+  supportsTools            Boolean @default(false)
+  supportsJsonOutput       Boolean @default(false)
+  supportsReasoning        Boolean @default(false)
+  supportsParallelToolCalls Boolean @default(false)
+
+  capabilities Json @default("{}")
+  metadata     Json @default("{}")
+
+  Costs             LlmModelCost[]
+  SourceMigrations  LlmModelMigration[] @relation("SourceMigrations")
+  TargetMigrations  LlmModelMigration[] @relation("TargetMigrations")
+
+  @@index([providerId, isEnabled])
+  @@index([creatorId])
+  // Note: slug already has @unique which creates an implicit index
+}
+
+model LlmModelCost {
+  id        String      @id @default(uuid())
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  unit      LlmCostUnit @default(RUN)
+
+  creditCost Int // DB constraint: >= 0
+
+  // Provider identifier (e.g., "openai", "anthropic", "openrouter")
+  // Used to determine which credential system provides the API key.
+  // Allows different pricing for:
+  // - Default provider costs (WHERE credentialId IS NULL)
+  // - User's own API key costs (WHERE credentialId IS NOT NULL)
+  credentialProvider String
+  credentialId       String?
+  credentialType     String?
+  currency           String?
+
+  metadata Json @default("{}")
+
+  llmModelId String
+  Model      LlmModel @relation(fields: [llmModelId], references: [id], onDelete: Cascade)
+
+  // Note: Unique constraints are implemented as partial indexes in migration SQL:
+  // - One for default costs (WHERE credentialId IS NULL)
+  // - One for credential-specific costs (WHERE credentialId IS NOT NULL)
+  // This allows both provider-level defaults and credential-specific overrides
+}
+
+model LlmModelCreator {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  name        String  @unique // e.g., "openai", "anthropic", "meta"
+  displayName String  // e.g., "OpenAI", "Anthropic", "Meta"
+  description String?
+  websiteUrl  String? // Link to creator's website
+  logoUrl     String? // URL to creator's logo
+
+  metadata Json @default("{}")
+
+  Models LlmModel[]
+
+}
+
+model LlmModelMigration {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sourceModelSlug String // The original model that was disabled
+  targetModelSlug String // The model workflows were migrated to
+  reason          String? // Why the migration happened (e.g., "Provider outage")
+
+  // FK constraints ensure slugs reference valid models
+  SourceModel LlmModel @relation("SourceMigrations", fields: [sourceModelSlug], references: [slug], onDelete: Restrict)
+  TargetModel LlmModel @relation("TargetMigrations", fields: [targetModelSlug], references: [slug], onDelete: Restrict)
+
+  // Track affected nodes as JSON array of node IDs
+  // Format: ["node-uuid-1", "node-uuid-2", ...]
+  migratedNodeIds Json @default("[]")
+  nodeCount       Int  // Number of nodes migrated (DB constraint: >= 0)
+
+  // Custom pricing override for migrated workflows during the migration period.
+  // Use case: When migrating users from an expensive model (e.g., GPT-4) to a cheaper
+  // one (e.g., GPT-3.5), you may want to temporarily maintain the original pricing
+  // to avoid billing surprises, or offer a discount during the transition.
+  //
+  // IMPORTANT: This field is intended for integration with the billing system.
+  // When billing calculates costs for nodes affected by this migration, it should
+  // check if customCreditCost is set and use it instead of the target model's cost.
+  // If null, the target model's normal cost applies.
+  //
+  // TODO: Integrate with billing system to apply this override during cost calculation.
+  // LIMITATION: This is a simple Int and doesn't distinguish RUN vs TOKENS pricing.
+  // For token-priced models, this may be ambiguous. Consider migrating to a relation
+  // with LlmModelCost or a dedicated override model in a follow-up PR.
+  customCreditCost Int? // DB constraint: >= 0 when not null
+
+  // Revert tracking
+  isReverted Boolean   @default(false)
+  revertedAt DateTime?
+
+  // Note: Partial unique index in migration SQL prevents multiple active migrations per source:
+  // UNIQUE (sourceModelSlug) WHERE isReverted = false
+  @@index([targetModelSlug])
+  @@index([sourceModelSlug, isReverted]) // Composite index for active migration queries
+}
