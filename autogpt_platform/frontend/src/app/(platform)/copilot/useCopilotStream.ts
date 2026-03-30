@@ -19,6 +19,7 @@ import {
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
+const STREAM_TIMEOUT_MS = 60_000;
 
 /** Minimum time the page must have been hidden to trigger a wake re-sync. */
 const WAKE_RESYNC_THRESHOLD_MS = 30_000;
@@ -102,6 +103,11 @@ export function useCopilotStream({
   // Set when the user explicitly clicks stop — prevents onError from
   // triggering a reconnect cycle for the resulting AbortError.
   const isUserStoppingRef = useRef(false);
+  // Timer that fires when no SSE events arrive for STREAM_TIMEOUT_MS during
+  // an active stream — auto-cancels the stream to avoid "Reasoning..." forever.
+  const streamTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  // Ref to the latest stop() so the timeout callback never uses a stale closure.
+  const stopRef = useRef<() => void>(() => {});
   // Set when all reconnect attempts are exhausted — prevents hasActiveStream
   // from keeping the UI blocked forever when the backend is slow to clear it.
   // Must be state (not ref) so that setting it triggers a re-render and
@@ -245,6 +251,8 @@ export function useCopilotStream({
   // Wrap AI SDK's stop() to also cancel the backend executor task.
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
   // the cancel API to actually stop the executor and wait for confirmation.
+  // Also kept in stopRef so the stream-timeout callback always calls the
+  // latest version without needing it in the effect dependency array.
   async function stop() {
     isUserStoppingRef.current = true;
     sdkStop();
@@ -295,6 +303,7 @@ export function useCopilotStream({
       });
     }
   }
+  stopRef.current = stop;
 
   // Keep a ref to sessionId so the async wake handler can detect staleness.
   const sessionIdRef = useRef(sessionId);
@@ -375,6 +384,8 @@ export function useCopilotStream({
   useEffect(() => {
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
+    clearTimeout(streamTimeoutRef.current);
+    streamTimeoutRef.current = undefined;
     reconnectAttemptsRef.current = 0;
     isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
@@ -387,6 +398,8 @@ export function useCopilotStream({
     return () => {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = undefined;
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = undefined;
     };
   }, [sessionId]);
 
@@ -467,6 +480,37 @@ export function useCopilotStream({
       isUserStoppingRef.current = false;
     }
   }, [hasActiveStream]);
+
+  // Stream timeout guard: if no SSE events arrive for STREAM_TIMEOUT_MS while
+  // the stream is active, auto-cancel to avoid the UI stuck in "Reasoning..."
+  // indefinitely (e.g. when the SSE connection dies silently without a
+  // disconnect event).
+  useEffect(() => {
+    const isActive = status === "streaming" || status === "submitted";
+    if (!isActive) {
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = undefined;
+      return;
+    }
+
+    clearTimeout(streamTimeoutRef.current);
+    streamTimeoutRef.current = setTimeout(() => {
+      streamTimeoutRef.current = undefined;
+      toast({
+        title: "Connection lost",
+        description: "Connection lost — please try again",
+        variant: "destructive",
+      });
+      stopRef.current();
+    }, STREAM_TIMEOUT_MS);
+
+    return () => {
+      clearTimeout(streamTimeoutRef.current);
+      streamTimeoutRef.current = undefined;
+    };
+    // rawMessages changes on every SSE event, resetting the timeout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, rawMessages]);
 
   // True while reconnecting or backend has active stream but we haven't connected yet.
   // Suppressed when the user explicitly stopped or when all reconnect attempts
