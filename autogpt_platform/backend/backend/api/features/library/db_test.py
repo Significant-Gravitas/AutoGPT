@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import prisma.enums
@@ -10,6 +10,7 @@ from backend.data.db import connect
 from backend.data.includes import library_agent_include
 
 from . import db
+from . import model as library_model
 
 
 @pytest.mark.asyncio
@@ -353,3 +354,516 @@ async def test_create_library_agent_uses_upsert():
     # Verify update branch restores soft-deleted/archived agents
     assert data["update"]["isDeleted"] is False
     assert data["update"]["isArchived"] is False
+
+
+async def test_list_library_agents_sort_by_last_executed(mocker):
+    """
+    Test LAST_EXECUTED sorting behavior:
+    - Agents WITH executions come first, sorted by most recent execution (updatedAt)
+    - Agents WITHOUT executions come last, sorted by creation date
+    """
+    now = datetime.now(timezone.utc)
+
+    # Agent 1: Has execution that finished 1 hour ago
+    agent1_execution = prisma.models.AgentGraphExecution(
+        id="exec1",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=now - timedelta(hours=1),  # Finished 1 hour ago
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    agent1_graph = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Recent Execution",
+        description="Has execution finished 1 hour ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=5),
+        Executions=[agent1_execution],
+    )
+    library_agent1 = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=5),
+        updatedAt=now - timedelta(days=5),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent1_graph,
+    )
+
+    # Agent 2: Has execution that finished 3 hours ago
+    agent2_execution = prisma.models.AgentGraphExecution(
+        id="exec2",
+        agentGraphId="agent2",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=5),
+        updatedAt=now - timedelta(hours=3),  # Finished 3 hours ago
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    agent2_graph = prisma.models.AgentGraph(
+        id="agent2",
+        version=1,
+        name="Agent With Older Execution",
+        description="Has execution finished 3 hours ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=3),
+        Executions=[agent2_execution],
+    )
+    library_agent2 = prisma.models.LibraryAgent(
+        id="lib2",
+        userId="test-user",
+        agentGraphId="agent2",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=3),
+        updatedAt=now - timedelta(days=3),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent2_graph,
+    )
+
+    # Agent 3: No executions, created 1 day ago (should come after agents with executions)
+    agent3_graph = prisma.models.AgentGraph(
+        id="agent3",
+        version=1,
+        name="Agent Without Executions (Newer)",
+        description="No executions, created 1 day ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=1),
+        Executions=[],
+    )
+    library_agent3 = prisma.models.LibraryAgent(
+        id="lib3",
+        userId="test-user",
+        agentGraphId="agent3",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=1),
+        updatedAt=now - timedelta(days=1),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent3_graph,
+    )
+
+    # Agent 4: No executions, created 2 days ago
+    agent4_graph = prisma.models.AgentGraph(
+        id="agent4",
+        version=1,
+        name="Agent Without Executions (Older)",
+        description="No executions, created 2 days ago",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=2),
+        Executions=[],
+    )
+    library_agent4 = prisma.models.LibraryAgent(
+        id="lib4",
+        userId="test-user",
+        agentGraphId="agent4",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=2),
+        updatedAt=now - timedelta(days=2),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=agent4_graph,
+    )
+
+    # Return agents in random order to verify sorting works
+    mock_library_agents = [
+        library_agent3,
+        library_agent1,
+        library_agent4,
+        library_agent2,
+    ]
+
+    # Mock prisma calls
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=mock_library_agents
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=4)
+
+    # Call function with LAST_EXECUTED sort (without include_executions)
+    result = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+    )
+
+    # Verify sorting order:
+    # 1. Agent 1 (execution finished 1 hour ago) - most recent execution
+    # 2. Agent 2 (execution finished 3 hours ago) - older execution
+    # 3. Agent 3 (no executions, created 1 day ago) - newer creation
+    # 4. Agent 4 (no executions, created 2 days ago) - older creation
+    assert len(result.agents) == 4
+    assert (
+        result.agents[0].id == "lib1"
+    ), "Agent with most recent execution should be first"
+    assert result.agents[1].id == "lib2", "Agent with older execution should be second"
+    assert (
+        result.agents[2].id == "lib3"
+    ), "Agent without executions (newer) should be third"
+    assert (
+        result.agents[3].id == "lib4"
+    ), "Agent without executions (older) should be last"
+    assert (
+        result.agents[2].id == "lib3"
+    ), "Agent without executions (newer) should be third"
+    assert (
+        result.agents[3].id == "lib4"
+    ), "Agent without executions (older) should be last"
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_last_executed_metrics_accuracy(mocker):
+    """
+    Test that when LAST_EXECUTED sort is used with include_executions=True,
+    metrics (execution_count, success_rate) are computed from the full execution
+    history, not from the single execution used for sort-order determination.
+
+    Bug: execution_limit=1 was used for both sorting AND metric calculation,
+    causing execution_count to always be 0 or 1 and success_rate to be 0% or 100%.
+    Fix: after sorting/pagination, re-fetch the page agents with full execution data.
+    """
+    now = datetime.now(timezone.utc)
+
+    # Agent with 1 execution (used for sort-key fetch, execution_limit=1)
+    sort_execution = prisma.models.AgentGraphExecution(
+        id="exec-sort",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=now - timedelta(hours=1),
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    sort_graph = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Many Executions",
+        description="Should show full execution count",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=5),
+        Executions=[sort_execution],  # Only 1 for sort
+    )
+    sort_library_agent = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=5),
+        updatedAt=now - timedelta(days=5),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=sort_graph,
+    )
+
+    # Agent with full execution history (used for metric calculation, full execution_limit)
+    full_exec1 = prisma.models.AgentGraphExecution(
+        id="exec1",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=now - timedelta(hours=1),
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    full_exec2 = prisma.models.AgentGraphExecution(
+        id="exec2",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=4),
+        updatedAt=now - timedelta(hours=3),
+        executionStatus=prisma.enums.AgentExecutionStatus.FAILED,
+        isDeleted=False,
+        isShared=False,
+    )
+    full_exec3 = prisma.models.AgentGraphExecution(
+        id="exec3",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=6),
+        updatedAt=now - timedelta(hours=5),
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        isDeleted=False,
+        isShared=False,
+    )
+    full_graph = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Many Executions",
+        description="Should show full execution count",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=5),
+        Executions=[full_exec1, full_exec2, full_exec3],  # All 3
+    )
+    full_library_agent = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=5),
+        updatedAt=now - timedelta(days=5),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=full_graph,
+    )
+
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    # First call: sort-key fetch (execution_limit=1) → returns sort_library_agent
+    # Second call: full metric fetch → returns full_library_agent
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        side_effect=[
+            [sort_library_agent],
+            [full_library_agent],
+        ]
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    result = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+        include_executions=True,
+    )
+
+    assert len(result.agents) == 1
+    agent = result.agents[0]
+    assert agent.id == "lib1"
+    # With the fix: metrics are computed from all 3 executions, not just 1
+    assert agent.execution_count == 3, (
+        "execution_count should reflect the full execution history, not the "
+        "sort-key fetch which used execution_limit=1"
+    )
+    # 2 out of 3 executions are COMPLETED → 66.67%
+    assert agent.success_rate is not None
+    assert (
+        abs(agent.success_rate - 200 / 3) < 0.01
+    ), "success_rate should be calculated from all executions"
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_last_executed_null_updated_at(mocker):
+    """
+    Test that the LAST_EXECUTED sort gracefully handles executions where updatedAt
+    is None — the sort key should fall back to createdAt instead.
+    """
+    now = datetime.now(timezone.utc)
+
+    execution_no_updated = prisma.models.AgentGraphExecution(
+        id="exec-no-updated",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        userId="test-user",
+        createdAt=now - timedelta(hours=2),
+        updatedAt=None,
+        executionStatus=prisma.enums.AgentExecutionStatus.RUNNING,
+        isDeleted=False,
+        isShared=False,
+    )
+    graph1 = prisma.models.AgentGraph(
+        id="agent1",
+        version=1,
+        name="Agent With Null UpdatedAt",
+        description="",
+        userId="test-user",
+        isActive=True,
+        createdAt=now - timedelta(days=1),
+        Executions=[execution_no_updated],
+    )
+    library_agent1 = prisma.models.LibraryAgent(
+        id="lib1",
+        userId="test-user",
+        agentGraphId="agent1",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=1),
+        updatedAt=now - timedelta(days=1),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=graph1,
+    )
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=[library_agent1]
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    result = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+    )
+
+    assert len(result.agents) == 1
+    assert result.agents[0].id == "lib1"
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_last_executed_none_agent_graph(mocker):
+    """
+    Test that the LAST_EXECUTED sort safely handles agents where AgentGraph is None.
+    Such agents should fall to the bottom (treated as no executions).
+    """
+    now = datetime.now(timezone.utc)
+
+    agent_no_graph = prisma.models.LibraryAgent(
+        id="lib-no-graph",
+        userId="test-user",
+        agentGraphId="agent-gone",
+        agentGraphVersion=1,
+        settings="{}",  # type: ignore
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=now - timedelta(days=1),
+        updatedAt=now - timedelta(days=1),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=None,
+    )
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=[agent_no_graph]
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    result = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+    )
+
+    assert (
+        len(result.agents) == 0
+    ), "Agent with no graph should be skipped (from_db will fail gracefully)"
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_last_executed_pagination(mocker):
+    """
+    Test that LAST_EXECUTED sort correctly applies in-memory pagination:
+    page 1 returns first page_size agents, page 2 returns the next batch,
+    and agent_count reflects the total across all pages.
+    """
+    now = datetime.now(timezone.utc)
+
+    def make_agent(agent_id: str, lib_id: str, hours_ago: int):
+        execution = prisma.models.AgentGraphExecution(
+            id=f"exec-{agent_id}",
+            agentGraphId=agent_id,
+            agentGraphVersion=1,
+            userId="test-user",
+            createdAt=now - timedelta(hours=hours_ago + 1),
+            updatedAt=now - timedelta(hours=hours_ago),
+            executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+            isDeleted=False,
+            isShared=False,
+        )
+        graph = prisma.models.AgentGraph(
+            id=agent_id,
+            version=1,
+            name=f"Agent {agent_id}",
+            description="",
+            userId="test-user",
+            isActive=True,
+            createdAt=now - timedelta(days=3),
+            Executions=[execution],
+        )
+        return prisma.models.LibraryAgent(
+            id=lib_id,
+            userId="test-user",
+            agentGraphId=agent_id,
+            agentGraphVersion=1,
+            settings="{}",  # type: ignore
+            isCreatedByUser=True,
+            isDeleted=False,
+            isArchived=False,
+            createdAt=now - timedelta(days=3),
+            updatedAt=now - timedelta(days=3),
+            isFavorite=False,
+            useGraphIsActiveVersion=True,
+            AgentGraph=graph,
+        )
+
+    # 3 agents, ordered newest-first by execution time: lib1, lib2, lib3
+    agents = [
+        make_agent("a1", "lib1", hours_ago=1),
+        make_agent("a2", "lib2", hours_ago=2),
+        make_agent("a3", "lib3", hours_ago=3),
+    ]
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(return_value=agents)
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=3)
+
+    result_page1 = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+        page=1,
+        page_size=2,
+    )
+    result_page2 = await db.list_library_agents(
+        "test-user",
+        sort_by=library_model.LibraryAgentSort.LAST_EXECUTED,
+        page=2,
+        page_size=2,
+    )
+
+    assert result_page1.pagination.total_items == 3
+    assert result_page1.pagination.total_pages == 2
+    assert len(result_page1.agents) == 2
+    assert result_page1.agents[0].id == "lib1"
+    assert result_page1.agents[1].id == "lib2"
+
+    assert len(result_page2.agents) == 1
+    assert result_page2.agents[0].id == "lib3"
