@@ -4,29 +4,40 @@ import pytest
 
 from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.clarify_agent_request import ClarifyAgentRequestTool
-from backend.copilot.tools.models import ClarificationNeededResponse, ResponseType
+from backend.copilot.tools.models import (
+    ClarificationNeededResponse,
+    ErrorResponse,
+    ResponseType,
+)
 
 _TEST_USER_ID = "test-user-clarify"
 
 
+@pytest.fixture
+def tool() -> ClarifyAgentRequestTool:
+    return ClarifyAgentRequestTool()
+
+
+@pytest.fixture
+def session():
+    return make_session(user_id=_TEST_USER_ID)
+
+
 class TestClarifyAgentRequestTool:
-    def test_name(self):
-        assert ClarifyAgentRequestTool().name == "clarify_agent_request"
+    def test_name(self, tool: ClarifyAgentRequestTool):
+        assert tool.name == "clarify_agent_request"
 
-    def test_requires_no_auth(self):
-        assert ClarifyAgentRequestTool().requires_auth is False
+    def test_requires_no_auth(self, tool: ClarifyAgentRequestTool):
+        assert tool.requires_auth is False
 
-    def test_question_is_required_parameter(self):
-        params = ClarifyAgentRequestTool().parameters
+    def test_question_is_required_parameter(self, tool: ClarifyAgentRequestTool):
+        params = tool.parameters
         assert "question" in params["required"]
         assert "options" not in params["required"]
         assert "keyword" not in params["required"]
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_returns_clarification_response(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_returns_clarification_response(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -41,10 +52,7 @@ class TestClarifyAgentRequestTool:
         assert response.session_id == session.session_id
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_question_is_set_on_clarifying_question(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_question_is_set_on_clarifying_question(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -59,10 +67,7 @@ class TestClarifyAgentRequestTool:
         )
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_options_joined_as_example(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_options_joined_as_example(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -74,10 +79,7 @@ class TestClarifyAgentRequestTool:
         assert response.questions[0].example == "Email, Slack, Google Docs"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_keyword_is_stored(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_keyword_is_stored(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -89,10 +91,7 @@ class TestClarifyAgentRequestTool:
         assert response.questions[0].keyword == "slack message"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_options_gives_none_example(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_no_options_gives_none_example(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -103,10 +102,7 @@ class TestClarifyAgentRequestTool:
         assert response.questions[0].example is None
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_empty_options_list_gives_none_example(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_empty_options_list_gives_none_example(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -118,10 +114,7 @@ class TestClarifyAgentRequestTool:
         assert response.questions[0].example is None
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_missing_keyword_defaults_to_empty_string(self):
-        session = make_session(user_id=_TEST_USER_ID)
-        tool = ClarifyAgentRequestTool()
-
+    async def test_missing_keyword_defaults_to_empty_string(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
@@ -130,3 +123,24 @@ class TestClarifyAgentRequestTool:
 
         assert isinstance(response, ClarificationNeededResponse)
         assert response.questions[0].keyword == ""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_blank_question_returns_error(self, tool, session):
+        response = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            question="   ",
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "missing_question"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_question_returns_error(self, tool, session):
+        response = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "missing_question"

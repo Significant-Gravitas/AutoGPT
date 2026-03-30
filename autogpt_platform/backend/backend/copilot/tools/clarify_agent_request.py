@@ -6,7 +6,12 @@ from typing import Any
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
+from .models import (
+    ClarificationNeededResponse,
+    ClarifyingQuestion,
+    ErrorResponse,
+    ToolResponseBase,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,10 +79,17 @@ class ClarifyAgentRequestTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         del user_id  # unused; required by BaseTool contract
-        question: str = kwargs.get("question", "")
+        question = str(kwargs.get("question", "")).strip()
         options: list[str] = kwargs.get("options", [])
         keyword: str = kwargs.get("keyword", "")
         session_id = session.session_id if session else None
+
+        if not question:
+            return ErrorResponse(
+                message="clarify_agent_request requires a non-empty question.",
+                error="missing_question",
+                session_id=session_id,
+            )
 
         example = ", ".join(options) if options else None
         clarifying_question = ClarifyingQuestion(
