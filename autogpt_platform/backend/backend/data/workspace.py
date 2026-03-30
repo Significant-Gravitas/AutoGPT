@@ -76,20 +76,24 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
+    Uses upsert to atomically handle concurrent creation attempts.
+
     Args:
         user_id: The user's ID
 
     Returns:
         Workspace instance
     """
-    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
-    if workspace:
-        return Workspace.from_db(workspace)
-
     try:
-        workspace = await UserWorkspace.prisma().create(data={"userId": user_id})
+        workspace = await UserWorkspace.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id},
+                "update": {},  # No-op update; workspace already exists
+            },
+        )
     except UniqueViolationError:
-        # Concurrent request already created it
+        # Defense-in-depth: should not happen with upsert, but handle gracefully
         workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
         if workspace is None:
             raise
@@ -124,6 +128,13 @@ async def create_workspace_file(
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
+
+    Raises ``UniqueViolationError`` if a record with the same
+    ``(workspaceId, path)`` already exists.  The caller
+    (``WorkspaceManager._persist_db_record``) relies on this to trigger
+    its delete-old-file-then-retry flow, which cleans up the old storage
+    blob before re-creating the DB record.  Using ``upsert`` here would
+    silently overwrite ``storagePath`` and orphan the old blob in storage.
 
     Args:
         workspace_id: The workspace ID
