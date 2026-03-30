@@ -92,6 +92,8 @@ export function CopilotPage() {
     isDeleting,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
@@ -175,6 +177,7 @@ export function CopilotPage() {
           isUploadingFiles={isUploadingFiles}
           droppedFiles={droppedFiles}
           onDroppedFilesConsumed={handleDroppedFilesConsumed}
+          historicalDurations={historicalDurations}
         />
       </div>
       {isMobile && (
