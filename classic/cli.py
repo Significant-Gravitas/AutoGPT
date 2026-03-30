@@ -7,9 +7,10 @@ To ensure efficiency, add the imports to the functions so only what is needed is
 try:
     import click
 except ImportError:
-    import os
+    import subprocess
+    import sys
 
-    os.system("pip3 install click")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "click"])
     import click
 
 
