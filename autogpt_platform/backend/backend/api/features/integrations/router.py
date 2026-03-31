@@ -114,7 +114,7 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
-    autogpt_managed: bool = False
+    is_managed: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -153,7 +153,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
-        autogpt_managed=cred.autogpt_managed,
+        is_managed=cred.is_managed,
     )
 
 
@@ -357,7 +357,7 @@ async def delete_credentials(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Credentials not found",
         )
-    if creds.autogpt_managed:
+    if creds.is_managed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="AutoGPT-managed credentials cannot be deleted",

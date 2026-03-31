@@ -325,7 +325,7 @@ class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
     title: Optional[str] = None
-    autogpt_managed: bool = False
+    is_managed: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_serializer("*")

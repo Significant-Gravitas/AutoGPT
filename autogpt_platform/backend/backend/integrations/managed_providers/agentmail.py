@@ -1,7 +1,7 @@
 """AgentMail managed credential provider.
 
 Uses the org-level AgentMail API key to create a per-user pod and a
-pod-scoped API key.  The pod key is stored as an ``autogpt_managed``
+pod-scoped API key.  The pod key is stored as an ``is_managed``
 credential so it appears automatically in block credential dropdowns.
 """
 
@@ -49,7 +49,7 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
             title="AgentMail (managed by AutoGPT)",
             api_key=SecretStr(api_key_obj.api_key),
             expires_at=None,
-            autogpt_managed=True,
+            is_managed=True,
             metadata={"pod_id": pod.pod_id},
         )
 

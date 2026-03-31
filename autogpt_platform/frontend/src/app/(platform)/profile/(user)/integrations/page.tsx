@@ -198,7 +198,7 @@ export default function UserIntegrationsPage() {
                 </small>
               </TableCell>
               <TableCell className="w-0 whitespace-nowrap">
-                {!cred.autogpt_managed && (
+                {!cred.is_managed && (
                   <Button
                     variant="destructive"
                     onClick={() => removeCredentials(cred.provider, cred.id)}

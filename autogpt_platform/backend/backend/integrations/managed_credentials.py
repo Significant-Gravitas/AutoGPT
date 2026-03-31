@@ -2,7 +2,7 @@
 
 Managed credentials are provisioned automatically by the platform (e.g. an
 AgentMail pod-scoped API key) and stored alongside regular user credentials
-with ``autogpt_managed=True``.  Users cannot update or delete them.
+with ``is_managed=True``.  Users cannot update or delete them.
 
 New integrations register a :class:`ManagedCredentialProvider` at import time;
 the two entry-points consumed by the rest of the application are:
@@ -47,7 +47,7 @@ class ManagedCredentialProvider(ABC):
     async def provision(self, user_id: str) -> Credentials:
         """Create external resources and return a credential.
 
-        The returned credential **must** have ``autogpt_managed=True``.
+        The returned credential **must** have ``is_managed=True``.
         """
 
     @abstractmethod
@@ -162,7 +162,7 @@ async def cleanup_managed_credentials(
 ) -> None:
     """Revoke all external managed resources for a user being deleted."""
     all_creds = await store.get_all_creds(user_id)
-    managed = [c for c in all_creds if c.autogpt_managed]
+    managed = [c for c in all_creds if c.is_managed]
     for cred in managed:
         provider = _PROVIDERS.get(cred.provider)
         if not provider:

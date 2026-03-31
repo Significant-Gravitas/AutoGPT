@@ -278,16 +278,16 @@ class TestCreateCredentialNoSecretInResponse:
         mock_mgr.create.assert_not_called()
 
 
-class TestAutogptManagedCredentials:
+class TestManagedCredentials:
     """AutoGPT-managed credentials cannot be deleted by users."""
 
-    def test_delete_autogpt_managed_returns_403(self):
+    def test_delete_is_managed_returns_403(self):
         cred = APIKeyCredentials(
             id="managed-cred-1",
             provider="agent_mail",
             title="AgentMail (managed by AutoGPT)",
             api_key=SecretStr("sk-managed-key"),
-            autogpt_managed=True,
+            is_managed=True,
         )
         with patch(
             "backend.api.features.integrations.router.creds_manager"
@@ -298,13 +298,13 @@ class TestAutogptManagedCredentials:
         assert resp.status_code == 403
         assert "AutoGPT-managed" in resp.json()["detail"]
 
-    def test_list_credentials_includes_autogpt_managed_field(self):
+    def test_list_credentials_includes_is_managed_field(self):
         managed = APIKeyCredentials(
             id="managed-1",
             provider="agent_mail",
             title="AgentMail (managed)",
             api_key=SecretStr("sk-key"),
-            autogpt_managed=True,
+            is_managed=True,
         )
         regular = APIKeyCredentials(
             id="regular-1",
@@ -322,8 +322,8 @@ class TestAutogptManagedCredentials:
         data = resp.json()
         managed_cred = next(c for c in data if c["id"] == "managed-1")
         regular_cred = next(c for c in data if c["id"] == "regular-1")
-        assert managed_cred["autogpt_managed"] is True
-        assert regular_cred["autogpt_managed"] is False
+        assert managed_cred["is_managed"] is True
+        assert regular_cred["is_managed"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -339,7 +339,7 @@ def _make_managed_cred(
         provider=provider,
         title="AgentMail (managed by AutoGPT)",
         api_key=SecretStr("sk-pod-key"),
-        autogpt_managed=True,
+        is_managed=True,
         metadata={"pod_id": pod_id},
     )
 

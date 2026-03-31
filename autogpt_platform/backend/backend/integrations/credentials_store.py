@@ -457,7 +457,7 @@ class IntegrationCredentialsStore:
                     f"Credentials with ID {updated.id} "
                     f"for user with ID {user_id} not found"
                 )
-            if current.autogpt_managed:
+            if current.is_managed:
                 raise ValueError(
                     f"AutoGPT-managed credential #{updated.id} cannot be updated"
                 )
@@ -492,7 +492,7 @@ class IntegrationCredentialsStore:
         async with await self.locked_user_integrations(user_id):
             persisted = await self._get_persisted_user_creds_unlocked(user_id)
             target = next((c for c in persisted if c.id == credentials_id), None)
-            if target and target.autogpt_managed:
+            if target and target.is_managed:
                 raise ValueError(
                     f"AutoGPT-managed credential #{credentials_id} cannot be deleted"
                 )
@@ -502,28 +502,28 @@ class IntegrationCredentialsStore:
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
 
     async def has_managed_credential(self, user_id: str, provider: str) -> bool:
-        """Check if an autogpt_managed credential exists for *provider*."""
+        """Check if a managed credential exists for *provider*."""
         user_integrations = await self._get_user_integrations(user_id)
         return any(
-            c.provider == provider and c.autogpt_managed
+            c.provider == provider and c.is_managed
             for c in user_integrations.credentials
         )
 
     async def add_managed_credential(
         self, user_id: str, credential: Credentials
     ) -> None:
-        """Upsert an autogpt_managed credential.
+        """Upsert a managed credential.
 
-        Removes any existing autogpt_managed credential for the same provider,
-        then appends the new one. The credential MUST have autogpt_managed=True.
+        Removes any existing managed credential for the same provider,
+        then appends the new one. The credential MUST have is_managed=True.
         """
-        if not credential.autogpt_managed:
-            raise ValueError("credential.autogpt_managed must be True")
+        if not credential.is_managed:
+            raise ValueError("credential.is_managed must be True")
         async with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.credentials = [
                 c
                 for c in user_integrations.credentials
-                if not (c.provider == credential.provider and c.autogpt_managed)
+                if not (c.provider == credential.provider and c.is_managed)
             ]
             user_integrations.credentials.append(credential)
 
