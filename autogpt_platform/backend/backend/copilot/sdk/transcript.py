@@ -473,31 +473,39 @@ def strip_stale_thinking_blocks(content: str) -> str:
     for line in lines:
         parsed.append((line, json.loads(line, fallback=None)))
 
-    # Reverse scan to find the last assistant message ID.
+    # Reverse scan to find the last assistant message ID and index.
     last_asst_msg_id: str | None = None
-    for _line, entry in reversed(parsed):
+    last_asst_idx: int | None = None
+    for i in range(len(parsed) - 1, -1, -1):
+        _line, entry = parsed[i]
         if not isinstance(entry, dict):
             continue
         msg = entry.get("message", {})
         if msg.get("role") == "assistant":
             last_asst_msg_id = msg.get("id")
+            last_asst_idx = i
             break
 
-    if last_asst_msg_id is None:
+    if last_asst_idx is None:
         return content
 
     result_lines: list[str] = []
     stripped_count = 0
-    for line, entry in parsed:
+    for i, (line, entry) in enumerate(parsed):
         if not isinstance(entry, dict):
             result_lines.append(line)
             continue
 
         msg = entry.get("message", {})
         # Only strip from assistant entries that are NOT the last turn.
+        # Use msg_id matching when available; fall back to index for entries
+        # without an id field.
+        is_last_turn = (
+            last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
+        ) or (last_asst_msg_id is None and i == last_asst_idx)
         if (
             msg.get("role") == "assistant"
-            and msg.get("id") != last_asst_msg_id
+            and not is_last_turn
             and isinstance(msg.get("content"), list)
         ):
             content_blocks = msg["content"]
