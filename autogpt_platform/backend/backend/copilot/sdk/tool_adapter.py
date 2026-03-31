@@ -80,30 +80,9 @@ _consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
     default=None,  # type: ignore[arg-type]
 )
 
-# Read-only tools — safe to run in parallel (no side effects).
-# The SDK CLI dispatches tools with readOnlyHint=True concurrently,
-# eliminating the need for speculative pre-launch execution.
-_READ_ONLY_TOOLS = frozenset(
-    {
-        "find_agent",
-        "find_block",
-        "find_library_agent",
-        "list_folders",
-        "view_agent_output",
-        "search_docs",
-        "get_doc_page",
-        "get_agent_building_guide",
-        "get_mcp_guide",
-        "web_fetch",
-        "browser_screenshot",
-        "search_feature_requests",
-        "validate_agent_graph",
-        "list_workspace_files",
-        "read_workspace_file",
-    }
-)
-
-# Read-only E2B file tools
+# Read-only E2B file tools.  Unlike TOOL_REGISTRY tools (which derive
+# from BaseTool.read_only), E2B tools are plain handler tuples, so
+# their read-only classification is listed explicitly here.
 _READ_ONLY_E2B_TOOLS = frozenset({"read_file", "glob", "grep"})
 
 
@@ -468,8 +447,10 @@ _READONLY_ANNOTATION = ToolAnnotations(readOnlyHint=True)
 def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    Read-only tools are annotated with ``readOnlyHint=True`` so the SDK CLI
-    can dispatch them in parallel natively, without speculative pre-launch.
+    Tools with ``BaseTool.read_only = True`` are annotated with
+    ``readOnlyHint=True`` so the SDK CLI dispatches them in parallel.
+    New read-only tools should override the ``read_only`` property on
+    their ``BaseTool`` subclass rather than editing a separate list.
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
@@ -538,7 +519,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     for tool_name, base_tool in TOOL_REGISTRY.items():
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
-        annotations = _READONLY_ANNOTATION if tool_name in _READ_ONLY_TOOLS else None
+        annotations = _READONLY_ANNOTATION if base_tool.read_only else None
         decorated = tool(
             tool_name,
             base_tool.description,

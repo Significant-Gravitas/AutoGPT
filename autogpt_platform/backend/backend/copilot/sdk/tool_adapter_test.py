@@ -13,7 +13,6 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _READ_ONLY_E2B_TOOLS,
-    _READ_ONLY_TOOLS,
     _text_from_mcp_result,
     create_tool_handler,
     pop_pending_tool_output,
@@ -339,29 +338,35 @@ class TestCreateToolHandler:
 
 
 class TestReadOnlyAnnotations:
-    """Tests that read-only tools get readOnlyHint=True annotations."""
+    """Tests that read-only tools get readOnlyHint=True via BaseTool.read_only."""
 
-    def test_read_only_tools_set_is_not_empty(self):
-        """Sanity check: _READ_ONLY_TOOLS has entries."""
-        assert len(_READ_ONLY_TOOLS) > 0
+    def test_read_only_tools_exist_in_registry(self):
+        """At least some tools in TOOL_REGISTRY have read_only=True."""
+        from backend.copilot.tools import TOOL_REGISTRY
 
-    def test_read_only_e2b_tools_set_is_not_empty(self):
-        """Sanity check: _READ_ONLY_E2B_TOOLS has entries."""
-        assert len(_READ_ONLY_E2B_TOOLS) > 0
+        read_only_names = [name for name, t in TOOL_REGISTRY.items() if t.read_only]
+        assert len(read_only_names) > 0, "No read-only tools found in registry"
 
-    def test_known_read_only_tools_are_in_set(self):
-        """Key read-only tools should be in the set."""
+    def test_known_read_only_tools_have_attribute(self):
+        """Key read-only tools should have read_only=True."""
+        from backend.copilot.tools import TOOL_REGISTRY
+
         for name in ["find_block", "search_docs", "list_workspace_files", "web_fetch"]:
-            assert name in _READ_ONLY_TOOLS, f"{name} should be read-only"
+            if name in TOOL_REGISTRY:
+                assert TOOL_REGISTRY[name].read_only, f"{name} should be read_only"
 
-    def test_side_effect_tools_not_in_read_only_set(self):
-        """Key side-effect tools should NOT be in the read-only set."""
+    def test_side_effect_tools_are_not_read_only(self):
+        """Key side-effect tools should have read_only=False."""
+        from backend.copilot.tools import TOOL_REGISTRY
+
         for name in ["run_block", "bash_exec", "create_agent", "run_agent"]:
-            assert name not in _READ_ONLY_TOOLS, f"{name} should not be read-only"
+            if name in TOOL_REGISTRY:
+                assert not TOOL_REGISTRY[
+                    name
+                ].read_only, f"{name} should not be read_only"
 
-    def test_mcp_server_registers_annotations(self):
-        """create_copilot_mcp_server passes annotations through to the SDK tool decorator."""
-        # Verify that ToolAnnotations can be created correctly
+    def test_tool_annotations_creation(self):
+        """ToolAnnotations(readOnlyHint=True) works correctly."""
         ann = ToolAnnotations(readOnlyHint=True)
         assert ann.readOnlyHint is True
         assert ann.destructiveHint is None

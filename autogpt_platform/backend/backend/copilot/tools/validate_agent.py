@@ -44,6 +44,10 @@ class ValidateAgentGraphTool(BaseTool):
             "required": ["agent_json"],
         }
 
+    @property
+    def read_only(self) -> bool:
+        return True
+
     async def _execute(
         self,
         user_id: str | None,

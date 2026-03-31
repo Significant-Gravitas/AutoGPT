@@ -33,6 +33,10 @@ class FindAgentTool(BaseTool):
             "required": ["query"],
         }
 
+    @property
+    def read_only(self) -> bool:
+        return True
+
     async def _execute(
         self, user_id: str | None, session: ChatSession, **kwargs
     ) -> ToolResponseBase:

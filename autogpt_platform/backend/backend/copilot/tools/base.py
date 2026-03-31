@@ -120,6 +120,16 @@ class BaseTool:
         raise NotImplementedError
 
     @property
+    def read_only(self) -> bool:
+        """Whether this tool is read-only (no side effects).
+
+        Read-only tools are annotated with ``readOnlyHint=True`` in MCP,
+        allowing the SDK CLI to dispatch them in parallel.  Override to
+        return ``True`` for tools that only search, list, or retrieve data.
+        """
+        return False
+
+    @property
     def requires_auth(self) -> bool:
         """Whether this tool requires authentication."""
         return False

@@ -80,6 +80,10 @@ class WebFetchTool(BaseTool):
         }
 
     @property
+    def read_only(self) -> bool:
+        return True
+
+    @property
     def requires_auth(self) -> bool:
         return False
 
