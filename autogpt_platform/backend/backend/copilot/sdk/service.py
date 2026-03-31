@@ -2134,6 +2134,18 @@ async def stream_chat_completion_sdk(
                     events_yielded,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                # Clean up any messages persisted by intermediate flushes
+                # during this attempt so they don't resurface on reload.
+                try:
+                    await delete_messages_from_sequence(
+                        session.session_id, pre_attempt_msg_count
+                    )
+                except Exception as cleanup_err:
+                    logger.warning(
+                        "%s Failed to clean up orphaned messages: %s",
+                        log_prefix,
+                        cleanup_err,
+                    )
                 # transcript_builder still contains entries from the aborted
                 # attempt that no longer match session.messages.  Skip upload
                 # so a future --resume doesn't replay rolled-back content.
