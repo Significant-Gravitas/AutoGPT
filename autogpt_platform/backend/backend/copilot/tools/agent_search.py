@@ -10,10 +10,10 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryAgent
     from backend.api.features.store.model import StoreAgent, StoreAgentDetails
 
+from backend.data.db_accessors import graph_db as get_graph_db
 from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
-from .agent_generator import get_agent_as_json
 from .models import (
     AgentInfo,
     AgentsFoundResponse,
@@ -209,8 +209,14 @@ _MAX_GRAPH_FETCHES = 10
 
 
 async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> None:
-    """Fetch and attach full graph JSON (nodes + links) to each agent in-place."""
-    fetchable = [a for a in agents if a.graph_id][:_MAX_GRAPH_FETCHES]
+    """Fetch and attach full Graph (nodes + links) to each agent in-place.
+
+    Only the first ``_MAX_GRAPH_FETCHES`` agents with a ``graph_id`` are
+    enriched.  If some agents are skipped, a warning is logged so callers
+    are aware of the truncation.
+    """
+    with_graph_id = [a for a in agents if a.graph_id]
+    fetchable = with_graph_id[:_MAX_GRAPH_FETCHES]
     if not fetchable:
         return
 
@@ -219,14 +225,27 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
         if not graph_id:
             return
         try:
-            graph_json = await get_agent_as_json(graph_id, user_id)
-            if graph_json is None:
+            graph = await get_graph_db().get_graph(
+                graph_id, version=None, user_id=user_id
+            )
+            if graph is None:
                 logger.warning(f"Graph not found for agent {graph_id}")
-            agent.graph = graph_json
+            agent.graph = graph
         except Exception as e:
             logger.warning(f"Failed to fetch graph for agent {graph_id}: {e}")
 
     await asyncio.gather(*[_fetch(a) for a in fetchable])
+
+    skipped = len(with_graph_id) - len(fetchable)
+    if skipped > 0:
+        logger.warning(
+            "include_graph: fetched graphs for %d/%d agents "
+            "(_MAX_GRAPH_FETCHES=%d, %d skipped)",
+            len(fetchable),
+            len(with_graph_id),
+            _MAX_GRAPH_FETCHES,
+            skipped,
+        )
 
 
 def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:
