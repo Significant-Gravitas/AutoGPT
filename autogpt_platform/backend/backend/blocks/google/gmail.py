@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -53,6 +53,22 @@ def serialize_email_recipients(recipients: list[str]) -> str:
 
 # RFC 5322 simplified pattern: local@domain where domain has at least one dot
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@runtime_checkable
+class HasRecipients(Protocol):
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+def validate_all_recipients(input_data: HasRecipients) -> None:
+    """Validate to/cc/bcc recipient lists on the given input data."""
+    validate_email_recipients(input_data.to, "to")
+    if input_data.cc:
+        validate_email_recipients(input_data.cc, "cc")
+    if input_data.bcc:
+        validate_email_recipients(input_data.bcc, "bcc")
 
 
 def validate_email_recipients(recipients: list[str], field_name: str = "to") -> None:
@@ -124,12 +140,7 @@ async def create_mime_message(
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
-    # Validate all recipient lists before building the MIME message
-    validate_email_recipients(input_data.to, "to")
-    if input_data.cc:
-        validate_email_recipients(input_data.cc, "cc")
-    if input_data.bcc:
-        validate_email_recipients(input_data.bcc, "bcc")
+    validate_all_recipients(input_data)
 
     message = MIMEMultipart()
     message["to"] = serialize_email_recipients(input_data.to)
@@ -1198,12 +1209,7 @@ async def _build_reply_message(
         references.append(headers["message-id"])
 
     # Create MIME message
-    # Validate all recipient lists before building the MIME message
-    validate_email_recipients(input_data.to, "to")
-    if input_data.cc:
-        validate_email_recipients(input_data.cc, "cc")
-    if input_data.bcc:
-        validate_email_recipients(input_data.bcc, "bcc")
+    validate_all_recipients(input_data)
 
     msg = MIMEMultipart()
     if input_data.to:
@@ -1723,12 +1729,7 @@ To: {original_to}
         else:
             body = f"{forward_header}\n\n{original_body}"
 
-        # Validate all recipient lists before building the MIME message
-        validate_email_recipients(input_data.to, "to")
-        if input_data.cc:
-            validate_email_recipients(input_data.cc, "cc")
-        if input_data.bcc:
-            validate_email_recipients(input_data.bcc, "bcc")
+        validate_all_recipients(input_data)
 
         # Create MIME message
         msg = MIMEMultipart()

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from backend.blocks.google.gmail import (
+    GmailForwardBlock,
     GmailReadBlock,
     _build_reply_message,
     create_mime_message,
@@ -430,5 +431,85 @@ class TestBuildReplyMessageValidation:
             await _build_reply_message(
                 self._mock_service(from_addr="bad-sender"),
                 self._make_input(),  # to=[] triggers auto-resolution
+                self._exec_ctx(),
+            )
+
+
+class TestForwardMessageValidation:
+    """Test that _forward_message() raises ValueError for invalid recipients."""
+
+    @staticmethod
+    def _make_input(
+        to: list[str] | None = None,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+    ) -> "GmailForwardBlock.Input":
+        mock = Mock(spec=GmailForwardBlock.Input)
+        mock.messageId = "m1"
+        mock.to = to or []
+        mock.cc = cc or []
+        mock.bcc = bcc or []
+        mock.subject = ""
+        mock.forwardMessage = "FYI"
+        mock.includeAttachments = False
+        mock.content_type = None
+        mock.additionalAttachments = []
+        mock.credentials = None
+        return mock
+
+    @staticmethod
+    def _exec_ctx():
+        return ExecutionContext(user_id="u1", graph_exec_id="g1")
+
+    @staticmethod
+    def _mock_service():
+        """Build a mock Gmail service that returns a parent message."""
+        parent_message = {
+            "id": "m1",
+            "payload": {
+                "headers": [
+                    {"name": "Subject", "value": "Original subject"},
+                    {"name": "From", "value": "sender@example.com"},
+                    {"name": "To", "value": "me@example.com"},
+                    {"name": "Date", "value": "Mon, 31 Mar 2026 00:00:00 +0000"},
+                ],
+                "mimeType": "text/plain",
+                "body": {
+                    "data": base64.urlsafe_b64encode(b"Hello world").decode(),
+                },
+                "parts": [],
+            },
+        }
+        svc = Mock()
+        svc.users().messages().get().execute.return_value = parent_message
+        return svc
+
+    @pytest.mark.asyncio
+    async def test_invalid_to_raises(self):
+        block = GmailForwardBlock()
+        with pytest.raises(ValueError, match="Invalid email address.*'to'"):
+            await block._forward_message(
+                self._mock_service(),
+                self._make_input(to=["bad-addr"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_cc_raises(self):
+        block = GmailForwardBlock()
+        with pytest.raises(ValueError, match="Invalid email address.*'cc'"):
+            await block._forward_message(
+                self._mock_service(),
+                self._make_input(to=["valid@example.com"], cc=["not-valid"]),
+                self._exec_ctx(),
+            )
+
+    @pytest.mark.asyncio
+    async def test_invalid_bcc_raises(self):
+        block = GmailForwardBlock()
+        with pytest.raises(ValueError, match="Invalid email address.*'bcc'"):
+            await block._forward_message(
+                self._mock_service(),
+                self._make_input(to=["valid@example.com"], bcc=["nope"]),
                 self._exec_ctx(),
             )
