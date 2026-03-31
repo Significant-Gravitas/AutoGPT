@@ -377,3 +377,17 @@ def test_generate_schema_integration_dropdown_legacy_placeholder_values():
         "Green",
         "Blue",
     ], "Legacy placeholder_values should still produce enum via model_construct remap"
+
+
+def test_dropdown_input_block_init_legacy_placeholder_values():
+    """Verify backward compat: constructing AgentDropdownInputBlock.Input via
+    __init__ with legacy 'placeholder_values' correctly maps to 'options'."""
+    opts = ["Option A", "Option B"]
+    instance = AgentDropdownInputBlock.Input(
+        name="choice", value=None, placeholder_values=opts
+    )
+    assert (
+        instance.options == opts
+    ), "Legacy placeholder_values should be remapped to options via __init__"
+    schema = instance.generate_schema()
+    assert schema.get("enum") == opts

@@ -2,6 +2,8 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
+from pydantic import AliasChoices, Field
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -478,24 +480,19 @@ class AgentDropdownInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
-        options: list = SchemaField(
+        # Use Field() directly (not SchemaField) to pass validation_alias,
+        # which handles backward compat for legacy "placeholder_values" across
+        # all construction paths (model_construct, __init__, model_validate).
+        options: list = Field(
+            default_factory=list,
+            title="Dropdown Options",
             description=(
                 "If provided, renders the input as a dropdown selector "
                 "restricted to these values. Leave empty for free-text input."
             ),
-            default_factory=list,
-            advanced=False,
-            title="Dropdown Options",
+            validation_alias=AliasChoices("options", "placeholder_values"),
+            json_schema_extra={"advanced": False},
         )
-
-        @classmethod
-        def model_construct(cls, *args, **kwargs):
-            # Backward compat: remap legacy "placeholder_values" → "options"
-            if "placeholder_values" in kwargs and "options" not in kwargs:
-                kwargs["options"] = kwargs.pop("placeholder_values")
-            elif "placeholder_values" in kwargs:
-                kwargs.pop("placeholder_values")
-            return super().model_construct(*args, **kwargs)
 
         def generate_schema(self):
             schema = super().generate_schema()
