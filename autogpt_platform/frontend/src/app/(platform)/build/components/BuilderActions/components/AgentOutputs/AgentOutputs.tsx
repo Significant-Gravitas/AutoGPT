@@ -45,7 +45,11 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
           .map((result) => {
             const outputData = result.output_data!.output;
             const renderer = globalRegistry.getRenderer(outputData);
-            return { value: outputData, renderer };
+            return {
+              nodeExecID: result.node_exec_id,
+              value: outputData,
+              renderer,
+            };
           })
           .filter(
             (
@@ -58,18 +62,16 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
         if (items.length === 0) return null;
 
         return {
+          nodeID: node.id,
           metadata: {
             name: node.data.hardcodedValues?.name || "Output",
             description:
-              node.data.hardcodedValues?.description ||
-              "Output from the agent",
+              node.data.hardcodedValues?.description || "Output from the agent",
           },
           items,
         };
       })
-      .filter(
-        (group): group is NonNullable<typeof group> => group !== null,
-      );
+      .filter((group): group is NonNullable<typeof group> => group !== null);
   }, [nodes]);
 
   const actionItems = useMemo(() => {
@@ -124,8 +126,8 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-6">
               {outputs && outputs.length > 0 ? (
-                outputs.map((group, i) => (
-                  <div key={i} className="space-y-2">
+                outputs.map((group) => (
+                  <div key={group.nodeID} className="space-y-2">
                     <div>
                       <Label className="text-base font-semibold">
                         {group.metadata.name || "Unnamed Output"}
@@ -137,9 +139,9 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                       )}
                     </div>
 
-                    {group.items.map((item, j) => (
+                    {group.items.map((item) => (
                       <OutputItem
-                        key={j}
+                        key={item.nodeExecID}
                         value={item.value}
                         metadata={{}}
                         renderer={item.renderer}
