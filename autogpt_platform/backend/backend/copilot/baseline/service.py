@@ -202,7 +202,6 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
-    transcript_builder: TranscriptBuilder,
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
@@ -224,10 +223,6 @@ async def _baseline_tool_executor(
                 output=parse_error,
                 success=False,
             )
-        )
-        transcript_builder.append_tool_result(
-            tool_use_id=tool_call_id,
-            content=parse_error,
         )
         return ToolCallResult(
             tool_call_id=tool_call_id,
@@ -259,10 +254,6 @@ async def _baseline_tool_executor(
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
-        transcript_builder.append_tool_result(
-            tool_use_id=tool_call_id,
-            content=tool_output,
-        )
         return ToolCallResult(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
@@ -283,10 +274,6 @@ async def _baseline_tool_executor(
                 output=error_output,
                 success=False,
             )
-        )
-        transcript_builder.append_tool_result(
-            tool_use_id=tool_call_id,
-            content=error_output,
         )
         return ToolCallResult(
             tool_call_id=tool_call_id,
@@ -350,6 +337,13 @@ def _baseline_conversation_updater(
                     "tool_call_id": tr.tool_call_id,
                     "content": tr.content,
                 }
+            )
+            # Record tool result to transcript AFTER the assistant tool_use
+            # block to maintain correct Anthropic API ordering:
+            # assistant(tool_use) → user(tool_result)
+            transcript_builder.append_tool_result(
+                tool_use_id=tr.tool_call_id,
+                content=tr.content,
             )
     else:
         if response.response_text:
@@ -556,11 +550,7 @@ async def stream_chat_completion_baseline(
     # using functools.partial so they satisfy the Protocol signatures.
     _bound_llm_caller = partial(_baseline_llm_caller, state=state)
     _bound_tool_executor = partial(
-        _baseline_tool_executor,
-        state=state,
-        user_id=user_id,
-        session=session,
-        transcript_builder=transcript_builder,
+        _baseline_tool_executor, state=state, user_id=user_id, session=session
     )
 
     _bound_conversation_updater = partial(
