@@ -14,7 +14,12 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-opus-4.6", description="Default model to use"
+        default="anthropic/claude-opus-4.6",
+        description="Default model for extended thinking mode",
+    )
+    fast_model: str = Field(
+        default="anthropic/claude-sonnet-4",
+        description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",

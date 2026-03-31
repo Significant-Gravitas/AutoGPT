@@ -113,7 +113,7 @@ async def _baseline_llm_caller(
         if tools:
             typed_tools = cast(list[ChatCompletionToolParam], tools)
             response = await client.chat.completions.create(
-                model=config.model,
+                model=config.fast_model,
                 messages=typed_messages,
                 tools=typed_tools,
                 stream=True,
@@ -121,7 +121,7 @@ async def _baseline_llm_caller(
             )
         else:
             response = await client.chat.completions.create(
-                model=config.model,
+                model=config.fast_model,
                 messages=typed_messages,
                 stream=True,
                 stream_options={"include_usage": True},
@@ -386,14 +386,14 @@ async def _compress_session_messages(
     try:
         result = await compress_context(
             messages=messages_dict,
-            model=config.model,
+            model=config.fast_model,
             client=_get_openai_client(),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
         result = await compress_context(
             messages=messages_dict,
-            model=config.model,
+            model=config.fast_model,
             client=None,
         )
 
@@ -556,7 +556,7 @@ async def stream_chat_completion_baseline(
     _bound_conversation_updater = partial(
         _baseline_conversation_updater,
         transcript_builder=transcript_builder,
-        model=config.model,
+        model=config.fast_model,
     )
 
     try:
@@ -635,10 +635,10 @@ async def stream_chat_completion_baseline(
             and not (_stream_error and not state.assistant_text)
         ):
             state.turn_prompt_tokens = max(
-                estimate_token_count(openai_messages, model=config.model), 1
+                estimate_token_count(openai_messages, model=config.fast_model), 1
             )
             state.turn_completion_tokens = estimate_token_count_str(
-                state.assistant_text, model=config.model
+                state.assistant_text, model=config.fast_model
             )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
