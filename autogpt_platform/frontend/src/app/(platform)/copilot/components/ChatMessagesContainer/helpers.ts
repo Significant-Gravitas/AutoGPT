@@ -1,6 +1,8 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
-import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { parseWorkspaceURI } from "@/lib/workspace-uri";
+import { FileUIPart, ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import type { ArtifactRef } from "../../store";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -29,6 +31,10 @@ const CUSTOM_TOOL_TYPES = new Set([
   "tool-search_feature_requests",
   "tool-create_feature_request",
 ]);
+
+const WORKSPACE_FILE_PATTERN =
+  /\/api\/proxy\/api\/workspace\/files\/([a-f0-9-]+)\/download/;
+const WORKSPACE_URI_PATTERN = /workspace:\/\/([a-f0-9-]+)(?:#([^\s)\]]+))?/g;
 
 const INTERACTIVE_RESPONSE_TYPES: ReadonlySet<string> = new Set([
   ResponseType.setup_requirements,
@@ -230,6 +236,86 @@ export function parseSpecialMarkers(text: string): {
   }
 
   return { markerType: null, markerText: "", cleanText: text };
+}
+
+export function filePartToArtifactRef(file: FileUIPart): ArtifactRef | null {
+  if (!file.url) return null;
+  const match = file.url.match(WORKSPACE_FILE_PATTERN);
+  if (!match) return null;
+  return {
+    id: match[1],
+    title: file.filename || "File",
+    mimeType: file.mediaType || null,
+    sourceUrl: file.url,
+    origin: "user-upload",
+  };
+}
+
+export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
+  const seen = new Set<string>();
+  const artifacts: ArtifactRef[] = [];
+
+  for (const match of text.matchAll(WORKSPACE_URI_PATTERN)) {
+    const fullUri = match[0];
+    const parsed = parseWorkspaceURI(fullUri);
+
+    if (!parsed || seen.has(parsed.fileID)) continue;
+
+    seen.add(parsed.fileID);
+
+    const linkPattern = new RegExp(
+      `\\[([^\\]]+)\\]\\(${fullUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`,
+    );
+    const linkMatch = text.match(linkPattern);
+    const title = linkMatch?.[1] ?? `File ${parsed.fileID.slice(0, 8)}`;
+
+    artifacts.push({
+      id: parsed.fileID,
+      title,
+      mimeType: parsed.mimeType,
+      sourceUrl: `/api/proxy/api/workspace/files/${parsed.fileID}/download`,
+      origin: "agent",
+    });
+  }
+
+  return artifacts;
+}
+
+export function getMessageArtifacts(
+  message: UIMessage<unknown, UIDataTypes, UITools>,
+): ArtifactRef[] {
+  const seen = new Set<string>();
+  const artifacts: ArtifactRef[] = [];
+
+  for (const part of message.parts) {
+    if (part.type === "text") {
+      for (const artifact of extractWorkspaceArtifacts(part.text)) {
+        if (seen.has(artifact.id)) continue;
+        seen.add(artifact.id);
+        artifacts.push(artifact);
+      }
+    }
+
+    if (part.type === "file") {
+      const artifact = filePartToArtifactRef(part);
+      if (!artifact || seen.has(artifact.id)) continue;
+      seen.add(artifact.id);
+      artifacts.push(artifact);
+    }
+  }
+
+  return artifacts;
+}
+
+export function getMessageArtifactFingerprint(
+  message: UIMessage<unknown, UIDataTypes, UITools>,
+): string {
+  return getMessageArtifacts(message)
+    .map(
+      (artifact) =>
+        `${artifact.id}:${artifact.title}:${artifact.mimeType ?? ""}:${artifact.sourceUrl}`,
+    )
+    .join("|");
 }
 
 /**

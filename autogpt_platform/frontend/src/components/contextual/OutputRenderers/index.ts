@@ -1,6 +1,8 @@
 import { globalRegistry } from "./types";
 import { textRenderer } from "./renderers/TextRenderer";
 import { codeRenderer } from "./renderers/CodeRenderer";
+import { csvRenderer } from "./renderers/CSVRenderer";
+import { htmlRenderer } from "./renderers/HTMLRenderer";
 import { imageRenderer } from "./renderers/ImageRenderer";
 import { videoRenderer } from "./renderers/VideoRenderer";
 import { audioRenderer } from "./renderers/AudioRenderer";
@@ -13,7 +15,9 @@ import { linkRenderer } from "./renderers/LinkRenderer";
 globalRegistry.register(workspaceFileRenderer);
 globalRegistry.register(videoRenderer);
 globalRegistry.register(audioRenderer);
+globalRegistry.register(htmlRenderer);
 globalRegistry.register(imageRenderer);
+globalRegistry.register(csvRenderer);
 globalRegistry.register(codeRenderer);
 globalRegistry.register(markdownRenderer);
 globalRegistry.register(jsonRenderer);

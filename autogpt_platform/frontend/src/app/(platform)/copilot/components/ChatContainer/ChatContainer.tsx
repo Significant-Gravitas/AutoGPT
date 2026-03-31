@@ -1,11 +1,14 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { cn } from "@/lib/utils";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback } from "react";
+import { useCopilotUIStore } from "../../store";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -42,6 +45,8 @@ export const ChatContainer = ({
   droppedFiles,
   onDroppedFilesConsumed,
 }: ChatContainerProps) => {
+  const isArtifactOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  useAutoOpenArtifacts({ messages, sessionId });
   const isBusy =
     status === "streaming" ||
     status === "submitted" ||
@@ -69,7 +74,12 @@ export const ChatContainer = ({
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
           {sessionId ? (
-            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+            <div
+              className={cn(
+                "mx-auto flex h-full min-h-0 w-full flex-col",
+                !isArtifactOpen && "max-w-3xl",
+              )}
+            >
               <ChatMessagesContainer
                 messages={messages}
                 status={status}

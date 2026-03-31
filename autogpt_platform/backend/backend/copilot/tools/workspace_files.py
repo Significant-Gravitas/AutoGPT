@@ -814,6 +814,7 @@ class WriteWorkspaceFileTool(BaseTool):
                 path=kwargs.get("path"),
                 mime_type=kwargs.get("mime_type"),
                 overwrite=kwargs.get("overwrite", False),
+                metadata={"origin": "agent-created"},
             )
 
             # Build informative source label and message.

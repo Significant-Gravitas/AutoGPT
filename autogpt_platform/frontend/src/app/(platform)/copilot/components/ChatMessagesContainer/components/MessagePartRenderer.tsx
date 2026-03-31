@@ -2,7 +2,8 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
@@ -19,7 +20,11 @@ import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
-import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
+import {
+  extractWorkspaceArtifacts,
+  parseSpecialMarkers,
+  resolveWorkspaceUrls,
+} from "../helpers";
 
 /**
  * Custom img component for Streamdown that renders <video> elements
@@ -65,6 +70,26 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
+
+function TextWithArtifactCards({ text }: { text: string }) {
+  const artifacts = useMemo(() => extractWorkspaceArtifacts(text), [text]);
+  const resolved = resolveWorkspaceUrls(text);
+
+  return (
+    <>
+      {artifacts.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {artifacts.map((artifact) => (
+            <ArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </div>
+      )}
+      <MessageResponse components={STREAMDOWN_COMPONENTS}>
+        {resolved}
+      </MessageResponse>
+    </>
+  );
+}
 
 interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
@@ -123,11 +148,7 @@ export function MessagePartRenderer({
         );
       }
 
-      return (
-        <MessageResponse key={key} components={STREAMDOWN_COMPONENTS}>
-          {resolveWorkspaceUrls(cleanText)}
-        </MessageResponse>
-      );
+      return <TextWithArtifactCards key={key} text={cleanText} />;
     }
     case "tool-find_block":
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;

@@ -14,6 +14,8 @@ import {
   ContentCardTitle,
   ContentCardSubtitle,
 } from "../../ToolAccordion/AccordionContent";
+import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
+import { filePartToArtifactRef } from "../helpers";
 
 interface Props {
   files: FileUIPart[];
@@ -44,6 +46,15 @@ export function MessageAttachments({ files, isUser }: Props) {
   return (
     <div className="mt-2 flex flex-col gap-2">
       {files.map((file, i) => {
+        const artifactRef = filePartToArtifactRef(file);
+        if (artifactRef) {
+          return (
+            <ArtifactCard
+              key={`artifact-${artifactRef.id}-${i}`}
+              artifact={artifactRef}
+            />
+          );
+        }
         const rendered = renderFileContent(file);
         return rendered ? (
           <div

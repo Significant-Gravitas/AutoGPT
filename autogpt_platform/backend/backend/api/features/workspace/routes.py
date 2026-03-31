@@ -131,6 +131,11 @@ class StorageUsageResponse(BaseModel):
     file_count: int
 
 
+class ListFilesResponse(BaseModel):
+    files: list[dict]
+    total_count: int
+
+
 @router.get(
     "/files/{file_id}/download",
     summary="Download file by ID",
@@ -250,7 +255,7 @@ async def upload_file(
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     try:
         workspace_file = await manager.write_file(
-            content, filename, overwrite=overwrite
+            content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
         )
     except ValueError as e:
         raise fastapi.HTTPException(status_code=409, detail=str(e)) from e
@@ -300,4 +305,41 @@ async def get_storage_usage(
         limit_bytes=limit_bytes,
         used_percent=round((used_bytes / limit_bytes) * 100, 1) if limit_bytes else 0,
         file_count=file_count,
+    )
+
+
+@router.get(
+    "/files",
+    summary="List workspace files",
+)
+async def list_workspace_files(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    session_id: str | None = Query(default=None),
+) -> ListFilesResponse:
+    """
+    List files in the user's workspace.
+
+    When session_id is provided, only files for that session are returned.
+    Otherwise, all files across sessions are listed.
+    """
+    workspace = await get_or_create_workspace(user_id)
+
+    manager = WorkspaceManager(user_id, workspace.id, session_id)
+    include_all = session_id is None
+    files = await manager.list_files(include_all_sessions=include_all)
+
+    return ListFilesResponse(
+        files=[
+            {
+                "id": f.id,
+                "name": f.name,
+                "path": f.path,
+                "mime_type": f.mime_type,
+                "size_bytes": f.size_bytes,
+                "metadata": f.metadata,
+                "created_at": f.created_at.isoformat(),
+            }
+            for f in files
+        ],
+        total_count=len(files),
     )
