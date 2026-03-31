@@ -1,6 +1,5 @@
 """ClarifyAgentRequestTool - Ask the user one clarifying question before generating an agent."""
 
-import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
@@ -13,7 +12,7 @@ from .models import (
     ToolResponseBase,
 )
 
-logger = logging.getLogger(__name__)
+_VALID_DIMENSIONS = frozenset({"output_format", "delivery_channel", "data_source", "trigger"})
 
 
 class ClarifyAgentRequestTool(BaseTool):
@@ -89,13 +88,17 @@ class ClarifyAgentRequestTool(BaseTool):
         del user_id  # unused; required by BaseTool contract
         dimension = str(kwargs.get("dimension", "")).strip()
         question = str(kwargs.get("question", "")).strip()
-        options: list[str] = kwargs.get("options", [])
+        raw_options: list = kwargs.get("options", [])
+        options = [o.strip() for o in raw_options if isinstance(o, str) and o.strip()]
         session_id = session.session_id if session else None
 
-        if not dimension:
+        if not dimension or dimension not in _VALID_DIMENSIONS:
             return ErrorResponse(
-                message="clarify_agent_request requires a dimension.",
-                error="missing_dimension",
+                message=(
+                    f"clarify_agent_request requires a valid dimension "
+                    f"({', '.join(sorted(_VALID_DIMENSIONS))}), got: {dimension!r}."
+                ),
+                error="invalid_dimension",
                 session_id=session_id,
             )
 
@@ -108,7 +111,7 @@ class ClarifyAgentRequestTool(BaseTool):
 
         if not options:
             return ErrorResponse(
-                message="clarify_agent_request requires at least one option.",
+                message="clarify_agent_request requires at least one non-empty option.",
                 error="missing_options",
                 session_id=session_id,
             )

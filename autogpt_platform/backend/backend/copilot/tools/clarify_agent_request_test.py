@@ -43,6 +43,8 @@ class TestClarifyAgentRequestTool:
             "trigger",
         }
 
+    # --- Happy path ---
+
     @pytest.mark.asyncio(loop_scope="session")
     async def test_returns_clarification_response(self, tool, session):
         response = await tool._execute(
@@ -103,29 +105,72 @@ class TestClarifyAgentRequestTool:
         assert response.questions[0].example == "CSV"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_empty_options_returns_error(self, tool, session):
+    async def test_none_session_uses_none_session_id(self, tool):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
-            session=session,
-            dimension="trigger",
-            question="What trigger should start the agent?",
-            options=[],
+            session=None,
+            dimension="delivery_channel",
+            question="How should the agent deliver results?",
+            options=["Email", "Slack"],
         )
 
-        assert isinstance(response, ErrorResponse)
-        assert response.error == "missing_options"
+        assert isinstance(response, ClarificationNeededResponse)
+        assert response.session_id is None
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_options_returns_error(self, tool, session):
+    async def test_whitespace_options_are_stripped(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
-            dimension="trigger",
-            question="What trigger should start the agent?",
+            dimension="delivery_channel",
+            question="Where should results go?",
+            options=["  Email  ", "Slack"],
+        )
+
+        assert isinstance(response, ClarificationNeededResponse)
+        assert response.questions[0].example == "Email, Slack"
+
+    # --- Dimension validation ---
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_dimension_returns_error(self, tool, session):
+        response = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            question="Where should results go?",
+            options=["Email"],
         )
 
         assert isinstance(response, ErrorResponse)
-        assert response.error == "missing_options"
+        assert response.error == "invalid_dimension"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_blank_dimension_returns_error(self, tool, session):
+        response = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            dimension="  ",
+            question="Where should results go?",
+            options=["Email"],
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "invalid_dimension"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_invalid_dimension_returns_error(self, tool, session):
+        response = await tool._execute(
+            user_id=_TEST_USER_ID,
+            session=session,
+            dimension="color_preference",
+            question="What color?",
+            options=["Red"],
+        )
+
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "invalid_dimension"
+
+    # --- Question validation ---
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_blank_question_returns_error(self, tool, session):
@@ -152,40 +197,42 @@ class TestClarifyAgentRequestTool:
         assert isinstance(response, ErrorResponse)
         assert response.error == "missing_question"
 
+    # --- Options validation ---
+
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_missing_dimension_returns_error(self, tool, session):
+    async def test_empty_options_returns_error(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
-            question="Where should results go?",
-            options=["Email"],
+            dimension="trigger",
+            question="What trigger should start the agent?",
+            options=[],
         )
 
         assert isinstance(response, ErrorResponse)
-        assert response.error == "missing_dimension"
+        assert response.error == "missing_options"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_blank_dimension_returns_error(self, tool, session):
+    async def test_no_options_returns_error(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
             session=session,
-            dimension="  ",
-            question="Where should results go?",
-            options=["Email"],
+            dimension="trigger",
+            question="What trigger should start the agent?",
         )
 
         assert isinstance(response, ErrorResponse)
-        assert response.error == "missing_dimension"
+        assert response.error == "missing_options"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_none_session_uses_none_session_id(self, tool):
+    async def test_whitespace_only_options_returns_error(self, tool, session):
         response = await tool._execute(
             user_id=_TEST_USER_ID,
-            session=None,
-            dimension="delivery_channel",
-            question="How should the agent deliver results?",
-            options=["Email", "Slack"],
+            session=session,
+            dimension="trigger",
+            question="What trigger?",
+            options=["", "  "],
         )
 
-        assert isinstance(response, ClarificationNeededResponse)
-        assert response.session_id is None
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "missing_options"
