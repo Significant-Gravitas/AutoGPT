@@ -41,9 +41,7 @@ export default function PlatformLinkPage() {
 
     async function checkToken() {
       try {
-        const res = await fetch(
-          `/api/platform-linking/tokens/${token}/status`,
-        );
+        const res = await fetch(`/api/platform-linking/tokens/${token}/status`);
         if (!res.ok) {
           setState({
             status: "error",
@@ -65,8 +63,7 @@ export default function PlatformLinkPage() {
         if (data.status === "expired") {
           setState({
             status: "error",
-            message:
-              "This link has expired. Please ask the bot for a new one.",
+            message: "This link has expired. Please ask the bot for a new one.",
           });
           return;
         }
@@ -111,16 +108,13 @@ export default function PlatformLinkPage() {
         return;
       }
 
-      const res = await fetch(
-        `/api/platform-linking/tokens/${token}/confirm`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`,
-          },
+      const res = await fetch(`/api/platform-linking/tokens/${token}/confirm`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
         },
-      );
+      });
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
