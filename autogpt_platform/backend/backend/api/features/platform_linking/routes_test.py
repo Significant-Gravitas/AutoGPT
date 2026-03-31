@@ -78,7 +78,7 @@ class TestCreateLinkTokenRequest:
 
         with pytest.raises(ValidationError):
             self.CreateLinkTokenRequest(
-                platform="INVALID",
+                platform="INVALID",  # type: ignore[arg-type]
                 platform_user_id="123",
             )
 
