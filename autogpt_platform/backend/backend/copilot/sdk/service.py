@@ -754,11 +754,10 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
                 for tc in msg.tool_calls:
                     func = tc.get("function", {})
                     tool_name = func.get("name", "unknown")
-                    tool_args = func.get("arguments", "")
-                    lines.append(f"You called tool: {tool_name}({tool_args})")
+                    lines.append(f"(You used the {tool_name} tool)")
         elif msg.role == "tool":
             content = msg.content or ""
-            lines.append(f"Tool result: {content}")
+            lines.append(f"(Tool returned: {content[:500]})")
 
     if not lines:
         return None
