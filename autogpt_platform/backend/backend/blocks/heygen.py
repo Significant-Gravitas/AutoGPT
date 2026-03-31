@@ -177,26 +177,41 @@ class HeyGenCreateVideoBlock(Block):
         if input_data.test:
             payload["test"] = True
 
-        response = await self.create_video(credentials.api_key, payload)
-        video_id = response["video_id"]
+        try:
+            response = await self.create_video(credentials.api_key, payload)
+            video_id = response.get("video_id")
+            if not video_id:
+                raise RuntimeError("HeyGen API did not return a video_id")
 
-        for _ in range(input_data.max_polling_attempts):
-            status_response = await self.get_video_status(credentials.api_key, video_id)
-            status = status_response.get("status")
-
-            if status == "completed":
-                video_url = status_response["video_url"]
-                stored_url = await store_media_file(
-                    file=MediaFileType(video_url),
-                    execution_context=execution_context,
-                    return_format="for_block_output",
+            for attempt in range(input_data.max_polling_attempts):
+                status_response = await self.get_video_status(
+                    credentials.api_key, video_id
                 )
-                yield "video_url", stored_url
-                return
-            elif status == "failed":
-                error_msg = status_response.get("error", "Unknown error")
-                raise RuntimeError(f"Video generation failed: {error_msg}")
+                status = status_response.get("status")
+                logger.debug(
+                    f"Polling HeyGen video {video_id}: status={status} "
+                    f"(attempt {attempt + 1}/{input_data.max_polling_attempts})"
+                )
 
-            await asyncio.sleep(input_data.polling_interval)
+                if status == "completed":
+                    video_url = status_response.get("video_url")
+                    if not video_url:
+                        raise RuntimeError(
+                            "HeyGen API returned completed status without video_url"
+                        )
+                    stored_url = await store_media_file(
+                        file=MediaFileType(video_url),
+                        execution_context=execution_context,
+                        return_format="for_block_output",
+                    )
+                    yield "video_url", stored_url
+                    return
+                elif status == "failed":
+                    error_msg = status_response.get("error", "Unknown error")
+                    raise RuntimeError(f"Video generation failed: {error_msg}")
 
-        raise TimeoutError("Video generation timed out")
+                await asyncio.sleep(input_data.polling_interval)
+
+            raise TimeoutError("Video generation timed out")
+        except Exception as e:
+            yield "error", str(e)
