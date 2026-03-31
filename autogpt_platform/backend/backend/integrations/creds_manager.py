@@ -216,24 +216,26 @@ class IntegrationCredentialsManager:
                 oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
-                    f"Refreshing '{credentials.provider}' credentials #{credentials.id}"
+                    "Refreshing '%s' credentials #%s",
+                    credentials.provider,
+                    credentials.id,
                 )
                 # Wait until the credentials are no longer in use anywhere
                 _lock = await self._acquire_lock(user_id, credentials.id)
-
-                fresh_credentials = await oauth_handler.refresh_tokens(credentials)
-                await self.store.update_creds(user_id, fresh_credentials)
-                _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
-                if (await _lock.locked()) and (await _lock.owned()):
-                    try:
-                        await _lock.release()
-                    except Exception:
-                        logger.warning(
-                            "Failed to release OAuth refresh lock",
-                            exc_info=True,
-                        )
-
-                credentials = fresh_credentials
+                try:
+                    fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+                    await self.store.update_creds(user_id, fresh_credentials)
+                    _invoke_creds_changed_hook(user_id, fresh_credentials.provider)
+                    credentials = fresh_credentials
+                finally:
+                    if (await _lock.locked()) and (await _lock.owned()):
+                        try:
+                            await _lock.release()
+                        except Exception:
+                            logger.warning(
+                                "Failed to release OAuth refresh lock",
+                                exc_info=True,
+                            )
         return credentials
 
     async def _refresh_unlocked(
@@ -252,8 +254,9 @@ class IntegrationCredentialsManager:
             oauth_handler = await _get_provider_oauth_handler(credentials.provider)
         if oauth_handler.needs_refresh(credentials):
             logger.debug(
-                f"Refreshing '{credentials.provider}' credentials #{credentials.id} "
-                "(lock-free)"
+                "Refreshing '%s' credentials #%s (lock-free)",
+                credentials.provider,
+                credentials.id,
             )
             fresh_credentials = await oauth_handler.refresh_tokens(credentials)
             await self.store.update_creds(user_id, fresh_credentials)
