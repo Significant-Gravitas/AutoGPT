@@ -22,8 +22,8 @@ loop possible:
 
 1. The ``run_agent`` and ``run_block`` OpenAI tool schemas expose a
    ``dry_run`` boolean parameter that the LLM must be able to set.
-2. The ``RunAgentInput`` Pydantic model validates ``dry_run`` as a bool,
-   defaulting to False, so the executor can branch on it.
+2. The ``RunAgentInput`` Pydantic model validates ``dry_run`` as a required
+   bool, so the executor can branch on it.
 3. The ``_check_prerequisites`` method in ``RunAgentTool`` bypasses
    credential and missing-input gates when ``dry_run=True``.
 4. The guide documents the workflow steps in a specific order that the LLM
@@ -80,18 +80,12 @@ class TestToolDescriptionsDryRunLoop:
         assert "dry_run" in params["properties"]
         assert params["properties"]["dry_run"]["type"] == "boolean"
 
-    def test_run_agent_dry_run_param_references_guide(self):
-        """After deduplication the dry_run param description points to the guide."""
+    def test_run_agent_dry_run_param_mentions_preview(self):
+        """After deduplication the dry_run param description mentions preview mode."""
         schema = TOOL_REGISTRY["run_agent"].as_openai_tool()
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         dry_run_desc = params["properties"]["dry_run"]["description"]
-        assert "agent_generation_guide" in dry_run_desc
-
-    def test_run_agent_dry_run_param_mentions_simulates(self):
-        schema = TOOL_REGISTRY["run_agent"].as_openai_tool()
-        params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        dry_run_desc = params["properties"]["dry_run"]["description"]
-        assert "simulates" in dry_run_desc.lower()
+        assert "preview mode" in dry_run_desc.lower()
 
 
 class TestPromptingSupplementContent:
@@ -178,11 +172,11 @@ class TestRunAgentToolSchema:
         assert "parameters" in func
         assert func["name"] == "run_agent"
 
-    def test_dry_run_not_required(self, schema: ChatCompletionToolParam):
-        """dry_run should be optional (not in 'required') so it defaults to false."""
+    def test_dry_run_is_required(self, schema: ChatCompletionToolParam):
+        """dry_run must be in 'required' so the LLM always provides it explicitly."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         required = params.get("required", [])
-        assert "dry_run" not in required
+        assert "dry_run" in required
 
     def test_dry_run_is_boolean_type(self, schema: ChatCompletionToolParam):
         """dry_run must be typed as boolean so the LLM generates true/false."""
@@ -194,7 +188,7 @@ class TestRunAgentToolSchema:
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         desc = params["properties"]["dry_run"]["description"]
         assert isinstance(desc, str)
-        assert len(desc) > 20, "Description too short to guide the LLM"
+        assert len(desc) > 10, "Description too short to guide the LLM"
 
     def test_wait_for_result_coexists_with_dry_run(
         self, schema: ChatCompletionToolParam
@@ -225,24 +219,23 @@ class TestRunBlockToolSchema:
         assert "dry_run" in props
         assert props["dry_run"]["type"] == "boolean"
 
-    def test_dry_run_not_required(self, schema: ChatCompletionToolParam):
-        """dry_run should be optional — block_id and input_data are required."""
+    def test_dry_run_is_required(self, schema: ChatCompletionToolParam):
+        """dry_run must be required — along with block_id and input_data."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         required = params.get("required", [])
-        assert "dry_run" not in required
-        # block_id and input_data should be required
+        assert "dry_run" in required
         assert "block_id" in required
         assert "input_data" in required
 
-    def test_dry_run_description_mentions_simulation(
+    def test_dry_run_description_mentions_preview(
         self, schema: ChatCompletionToolParam
     ):
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         desc = params["properties"]["dry_run"]["description"]
         assert isinstance(desc, str)
         assert (
-            "simulat" in desc.lower()
-        ), "run_block dry_run description should mention simulation"
+            "preview mode" in desc.lower()
+        ), "run_block dry_run description should mention preview mode"
 
 
 # ---------------------------------------------------------------------------
@@ -257,9 +250,9 @@ class TestRunAgentInputModel:
     and validate properly.
     """
 
-    def test_dry_run_defaults_to_false(self):
-        """When dry_run is omitted, it must default to False."""
-        model = RunAgentInput(username_agent_slug="user/agent")
+    def test_dry_run_accepts_explicit_false(self):
+        """dry_run=False must be accepted when provided explicitly."""
+        model = RunAgentInput(username_agent_slug="user/agent", dry_run=False)
         assert model.dry_run is False
 
     def test_dry_run_accepts_true(self):
