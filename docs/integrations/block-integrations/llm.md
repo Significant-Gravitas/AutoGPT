@@ -661,6 +661,47 @@ A marketing team could use this block to create engaging video content for socia
 
 ---
 
+## Hey Gen Create Video
+
+### What it is
+This block uses HeyGen to create avatar videos from a text script.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The block sends a video generation request to the HeyGen API with your specified avatar and voice configuration. It then polls the API for completion status, returning the stored video URL once the video is ready.
+
+Configure polling behavior with max attempts and interval settings. Enable test mode to generate free watermarked videos for testing purposes.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| text | The text script for the avatar to speak | str | Yes |
+| avatar_id | The HeyGen avatar ID to use for the video | str | No |
+| voice_id | The voice ID to use for the avatar | str | No |
+| max_polling_attempts | Maximum number of polling attempts | int | No |
+| polling_interval | Interval between polling attempts in seconds | int | No |
+| test | Enable test mode to generate a free video with watermark | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if video generation failed | str |
+| video_url | The URL of the generated avatar video | str |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Personalized Welcome Videos**: Create custom avatar-narrated welcome messages for new users or customers by feeding in personalized scripts.
+
+**Training Content**: Generate talking-head explainer videos from training scripts for employee onboarding or product tutorials.
+
+**Social Media Content**: Produce short avatar videos for social media posts by automating video creation from text-based content calendars.
+<!-- END MANUAL -->
+
+---
+
 ## Ideogram Model
 
 ### What it is

@@ -110,16 +110,17 @@ class HeyGenCreateVideoBlock(Block):
             test_output=[
                 (
                     "video_url",
-                    "https://files.heygen.ai/video/test-video.mp4",
+                    lambda x: x.startswith(("workspace://", "data:")),
                 ),
             ],
             test_mock={
                 "create_video": lambda *args, **kwargs: {
                     "video_id": "test-video-id-1234",
                 },
+                # Use data URI to avoid HTTP requests during tests
                 "get_video_status": lambda *args, **kwargs: {
                     "status": "completed",
-                    "video_url": "https://files.heygen.ai/video/test-video.mp4",
+                    "video_url": "data:video/mp4;base64,AAAA",
                 },
             },
             test_credentials=TEST_CREDENTIALS,
