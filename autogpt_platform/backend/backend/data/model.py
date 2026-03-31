@@ -723,7 +723,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             credentials_scopes=self.required_scopes,
             discriminator=self.discriminator,
             discriminator_mapping=self.discriminator_mapping,
-            discriminator_values=self.discriminator_values,
+            discriminator_values=set(self.discriminator_values),  # defensive copy
         )
 
 
