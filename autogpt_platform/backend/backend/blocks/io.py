@@ -491,7 +491,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 "restricted to these values. Leave empty for free-text input."
             ),
             validation_alias=AliasChoices("options", "placeholder_values"),
-            json_schema_extra={"advanced": False},
+            json_schema_extra={"advanced": False, "secret": False},
         )
 
         def generate_schema(self):
