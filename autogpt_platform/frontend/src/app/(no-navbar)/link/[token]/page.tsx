@@ -3,9 +3,8 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
-import { Link } from "@/components/atoms/Link/Link";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 /** Platform display names and icons */
@@ -29,7 +28,6 @@ type LinkState =
 
 export default function PlatformLinkPage() {
   const params = useParams();
-  const router = useRouter();
   const token = params.token as string;
   const { user, supabase } = useSupabaseStore();
 
