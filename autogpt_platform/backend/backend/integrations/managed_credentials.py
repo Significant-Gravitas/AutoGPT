@@ -61,9 +61,6 @@ class ManagedCredentialProvider(ABC):
 
 _PROVIDERS: dict[str, ManagedCredentialProvider] = {}
 
-# Per-(user, provider) lock to prevent concurrent provisioning races.
-_provision_locks: dict[tuple[str, str], asyncio.Lock] = {}
-
 # Users whose managed credentials have already been verified recently.
 # Avoids redundant DB checks on every GET /credentials call.
 # maxsize caps memory; TTL re-checks periodically (e.g. when new providers
@@ -88,25 +85,22 @@ def get_managed_providers() -> dict[str, ManagedCredentialProvider]:
 # ---------------------------------------------------------------------------
 
 
-def _get_provision_lock(user_id: str, provider_name: str) -> asyncio.Lock:
-    key = (user_id, provider_name)
-    if key not in _provision_locks:
-        _provision_locks[key] = asyncio.Lock()
-    return _provision_locks[key]
-
-
 async def _ensure_one(
     user_id: str,
     store: IntegrationCredentialsStore,
     name: str,
     provider: ManagedCredentialProvider,
 ) -> None:
-    """Provision a single managed credential under a per-user lock."""
+    """Provision a single managed credential under a distributed Redis lock."""
     try:
         if not await provider.is_available():
             return
-        lock = _get_provision_lock(user_id, name)
-        async with lock:
+        # Use a distributed Redis lock so the check-then-provision operation
+        # is atomic across all workers, preventing duplicate external
+        # resource provisioning (e.g. AgentMail API keys).
+        locks = await store.locks()
+        key = (f"user:{user_id}", f"managed-provision:{name}")
+        async with locks.locked(key):
             # Re-check under lock to avoid duplicate provisioning.
             if await store.has_managed_credential(user_id, name):
                 return
@@ -117,9 +111,6 @@ async def _ensure_one(
                 name,
                 user_id,
             )
-        # Evict the lock after successful provisioning to prevent unbounded
-        # growth of _provision_locks (one entry per user×provider pair).
-        _provision_locks.pop((user_id, name), None)
     except Exception:
         logger.warning(
             "Failed to provision managed credential for provider=%s user=%s",
