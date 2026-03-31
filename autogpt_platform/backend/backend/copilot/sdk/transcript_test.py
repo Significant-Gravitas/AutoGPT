@@ -302,7 +302,7 @@ class TestDeleteTranscript:
         mock_storage.delete = AsyncMock()
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -322,7 +322,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -340,7 +340,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -857,11 +857,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=None,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=truncation_result,
             ) as mock_compress,
@@ -893,11 +893,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=mock_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=llm_result,
             ) as mock_compress,
@@ -931,11 +931,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=mock_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_compress_side_effect,
             ),
         ):
@@ -969,19 +969,19 @@ class TestRunCompression:
         fake_client = MagicMock()
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=fake_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_compress_side_effect,
             ),
             patch(
-                "backend.copilot.sdk.transcript._COMPACTION_TIMEOUT_SECONDS",
+                "backend.copilot.transcript._COMPACTION_TIMEOUT_SECONDS",
                 0.05,
             ),
             patch(
-                "backend.copilot.sdk.transcript._TRUNCATION_TIMEOUT_SECONDS",
+                "backend.copilot.transcript._TRUNCATION_TIMEOUT_SECONDS",
                 5,
             ),
         ):
@@ -1014,7 +1014,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1043,7 +1043,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1069,7 +1069,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1095,7 +1095,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1117,7 +1117,7 @@ class TestCleanupStaleProjectDirs:
 
         nonexistent = str(tmp_path / "does-not-exist" / "projects")
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: nonexistent,
         )
 
@@ -1136,7 +1136,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1164,7 +1164,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1188,7 +1188,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 

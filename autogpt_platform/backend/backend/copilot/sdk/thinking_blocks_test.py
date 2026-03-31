@@ -438,7 +438,7 @@ class TestCompactTranscriptThinkingBlocks:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -497,7 +497,7 @@ class TestCompactTranscriptThinkingBlocks:
             )()
 
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             side_effect=mock_compression,
         ):
             await compact_transcript(transcript, model="test-model")
@@ -550,7 +550,7 @@ class TestCompactTranscriptThinkingBlocks:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -600,7 +600,7 @@ class TestCompactTranscriptThinkingBlocks:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -637,7 +637,7 @@ class TestCompactTranscriptThinkingBlocks:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -698,7 +698,7 @@ class TestCompactTranscriptThinkingBlocks:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):

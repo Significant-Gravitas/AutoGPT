@@ -113,7 +113,7 @@ class TestScenarioCompactAndRetry:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -170,7 +170,7 @@ class TestScenarioCompactFailsFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("LLM unavailable"),
             ),
@@ -261,7 +261,7 @@ class TestScenarioDoubleFailDBFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -337,7 +337,7 @@ class TestScenarioCompactionIdentical:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -730,7 +730,7 @@ class TestRetryEdgeCases:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -841,7 +841,7 @@ class TestRetryStateReset:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ),
