@@ -440,6 +440,7 @@ async def stream_chat_completion_baseline(
 
     # Append user message
     new_role = "user" if is_user_message else "assistant"
+    is_new_message = False
     if message and (
         len(session.messages) == 0
         or not (
@@ -448,6 +449,7 @@ async def stream_chat_completion_baseline(
         )
     ):
         session.messages.append(ChatMessage(role=new_role, content=message))
+        is_new_message = True
         if is_user_message:
             track_user_message(
                 user_id=user_id,
@@ -481,8 +483,8 @@ async def stream_chat_completion_baseline(
             logger.warning("[Baseline] Transcript download failed: %s", e)
             transcript_covers_prefix = False
 
-    # Append user message to transcript
-    if message:
+    # Append user message to transcript only if it was actually stored
+    if message and is_new_message:
         transcript_builder.append_user(content=message)
 
     # Generate title for new sessions

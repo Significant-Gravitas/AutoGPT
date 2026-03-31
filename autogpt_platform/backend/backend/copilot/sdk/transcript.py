@@ -7,7 +7,7 @@ dependencies.  All symbols are re-exported here so existing ``from
 to work without modification.
 """
 
-from backend.copilot.transcript import (  # noqa: F401 — re-exports
+from backend.copilot.transcript import (
     _MAX_PROJECT_DIRS_TO_SWEEP,
     _STALE_PROJECT_DIR_SECONDS,
     COMPACT_MSG_ID_PREFIX,

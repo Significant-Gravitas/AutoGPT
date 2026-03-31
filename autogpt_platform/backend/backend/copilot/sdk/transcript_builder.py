@@ -5,9 +5,6 @@ so both the SDK and baseline paths can import without cross-package
 dependencies.
 """
 
-from backend.copilot.transcript_builder import (  # noqa: F401 — re-exports
-    TranscriptBuilder,
-    TranscriptEntry,
-)
+from backend.copilot.transcript_builder import TranscriptBuilder, TranscriptEntry
 
 __all__ = ["TranscriptBuilder", "TranscriptEntry"]
