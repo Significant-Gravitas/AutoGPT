@@ -46,12 +46,7 @@ class ClarifyAgentRequestTool(BaseTool):
             "properties": {
                 "dimension": {
                     "type": "string",
-                    "enum": [
-                        "output_format",
-                        "delivery_channel",
-                        "data_source",
-                        "trigger",
-                    ],
+                    "enum": sorted(_VALID_DIMENSIONS),
                     "description": (
                         "Which dimension of the user's goal is ambiguous."
                     ),
@@ -88,7 +83,7 @@ class ClarifyAgentRequestTool(BaseTool):
         del user_id  # unused; required by BaseTool contract
         dimension = str(kwargs.get("dimension", "")).strip()
         question = str(kwargs.get("question", "")).strip()
-        raw_options: list = kwargs.get("options", [])
+        raw_options = kwargs.get("options", [])
         options = [o.strip() for o in raw_options if isinstance(o, str) and o.strip()]
         session_id = session.session_id if session else None
 

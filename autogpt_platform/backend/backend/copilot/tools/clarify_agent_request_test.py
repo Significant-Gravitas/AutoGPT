@@ -34,14 +34,13 @@ class TestClarifyAgentRequestTool:
         params = tool.parameters
         assert set(params["required"]) == {"dimension", "question", "options"}
 
-    def test_dimension_has_enum_values(self, tool: ClarifyAgentRequestTool):
+    def test_dimension_enum_matches_valid_dimensions(
+        self, tool: ClarifyAgentRequestTool
+    ):
+        from backend.copilot.tools.clarify_agent_request import _VALID_DIMENSIONS
+
         dim_schema = tool.parameters["properties"]["dimension"]
-        assert set(dim_schema["enum"]) == {
-            "output_format",
-            "delivery_channel",
-            "data_source",
-            "trigger",
-        }
+        assert set(dim_schema["enum"]) == _VALID_DIMENSIONS
 
     # --- Happy path ---
 
