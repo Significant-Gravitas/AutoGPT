@@ -498,7 +498,8 @@ export function useCopilotStream({
       streamTimeoutRef.current = undefined;
       toast({
         title: "Connection lost",
-        description: "Connection lost — please try again",
+        description:
+          "No response received — please try sending your message again.",
         variant: "destructive",
       });
       stopRef.current();
