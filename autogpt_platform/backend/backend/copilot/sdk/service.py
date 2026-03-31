@@ -1404,6 +1404,14 @@ async def _run_stream_attempt(
                         ctx.log_prefix,
                         sdk_msg.result or "(no error message provided)",
                     )
+                    # If the CLI itself rejected the prompt as too long
+                    # (pre-API check, duration_api_ms=0), re-raise as an
+                    # exception so the retry loop can trigger compaction.
+                    # Without this, the ResultMessage is silently consumed
+                    # and the retry/compaction mechanism is never invoked.
+                    error_text = (sdk_msg.result or "").lower()
+                    if any(p in error_text for p in _PROMPT_TOO_LONG_PATTERNS):
+                        raise Exception(sdk_msg.result or "prompt is too long")
 
                 # Capture token usage from ResultMessage.
                 # Anthropic reports cached tokens separately:

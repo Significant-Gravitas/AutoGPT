@@ -43,6 +43,10 @@ STRIPPABLE_TYPES = frozenset(
     {"progress", "file-history-snapshot", "queue-operation", "summary", "pr-link"}
 )
 
+# Thinking block types that can be stripped from non-last assistant entries.
+# The Anthropic API only requires these in the *last* assistant message.
+_THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+
 
 @dataclass
 class TranscriptDownload:
@@ -450,6 +454,75 @@ def _build_meta_storage_path(user_id: str, session_id: str, backend: object) -> 
     )
 
 
+def strip_stale_thinking_blocks(content: str) -> str:
+    """Remove thinking/redacted_thinking blocks from non-last assistant entries.
+
+    The Anthropic API only requires thinking blocks in the **last** assistant
+    message to be value-identical to the original response.  Older assistant
+    entries carry stale thinking blocks that consume significant tokens
+    (often 10-50K each) without providing useful context for ``--resume``.
+
+    Stripping them before upload prevents the CLI from triggering compaction
+    every turn just to compress away the stale thinking bloat.
+    """
+    lines = content.strip().split("\n")
+    if not lines:
+        return content
+
+    parsed: list[tuple[str, dict | None]] = []
+    for line in lines:
+        parsed.append((line, json.loads(line, fallback=None)))
+
+    # Reverse scan to find the last assistant message ID.
+    last_asst_msg_id: str | None = None
+    for _line, entry in reversed(parsed):
+        if not isinstance(entry, dict):
+            continue
+        msg = entry.get("message", {})
+        if msg.get("role") == "assistant":
+            last_asst_msg_id = msg.get("id")
+            break
+
+    if last_asst_msg_id is None:
+        return content
+
+    result_lines: list[str] = []
+    stripped_count = 0
+    for line, entry in parsed:
+        if not isinstance(entry, dict):
+            result_lines.append(line)
+            continue
+
+        msg = entry.get("message", {})
+        # Only strip from assistant entries that are NOT the last turn.
+        if (
+            msg.get("role") == "assistant"
+            and msg.get("id") != last_asst_msg_id
+            and isinstance(msg.get("content"), list)
+        ):
+            content_blocks = msg["content"]
+            filtered = [
+                b
+                for b in content_blocks
+                if not (isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES)
+            ]
+            if len(filtered) < len(content_blocks):
+                stripped_count += len(content_blocks) - len(filtered)
+                entry = {**entry, "message": {**msg, "content": filtered}}
+                result_lines.append(json.dumps(entry, separators=(",", ":")))
+                continue
+
+        result_lines.append(line)
+
+    if stripped_count:
+        logger.info(
+            "[Transcript] Stripped %d stale thinking block(s) from non-last entries",
+            stripped_count,
+        )
+
+    return "\n".join(result_lines) + "\n"
+
+
 async def upload_transcript(
     user_id: str,
     session_id: str,
@@ -472,6 +545,9 @@ async def upload_transcript(
     # Strip metadata entries (progress, file-history-snapshot, etc.)
     # Note: SDK-built transcripts shouldn't have these, but strip for safety
     stripped = strip_progress_entries(content)
+    # Strip stale thinking blocks from older assistant entries — these consume
+    # significant tokens and trigger unnecessary CLI compaction every turn.
+    stripped = strip_stale_thinking_blocks(stripped)
     if not validate_transcript(stripped):
         # Log entry types for debugging — helps identify why validation failed
         entry_types = [
