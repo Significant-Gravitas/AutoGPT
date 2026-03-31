@@ -619,6 +619,22 @@ class TestAIConversationBlockValidation:
             async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
                 pass
 
+    @pytest.mark.asyncio
+    async def test_messages_with_none_content_raises_error(self):
+        """Messages with content=None should not crash with AttributeError."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": None}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
 
 class TestAITextSummarizerValidation:
     """Test that AITextSummarizerBlock validates LLM responses are strings."""

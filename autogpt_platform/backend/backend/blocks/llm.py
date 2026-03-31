@@ -1999,9 +1999,11 @@ class AIConversationBlock(AIBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        has_messages = bool(input_data.messages) and any(
-            isinstance(m, dict) and bool(m.get("content", "").strip())
-            for m in input_data.messages
+        has_messages = any(
+            isinstance(m, dict)
+            and isinstance(m.get("content"), str)
+            and bool(m["content"].strip())
+            for m in (input_data.messages or [])
         )
         has_prompt = bool(input_data.prompt and input_data.prompt.strip())
         if not has_messages and not has_prompt:
