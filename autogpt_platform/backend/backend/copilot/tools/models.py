@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from backend.data.graph import Graph
 from backend.data.model import CredentialsMetaInput
 
 
@@ -123,7 +122,7 @@ class AgentInfo(BaseModel):
         default=None,
         description="Input schema for the agent, including field names, types, and defaults",
     )
-    graph: Graph | None = Field(
+    graph: dict[str, Any] | None = Field(
         default=None,
         description="Full graph structure (nodes + links) when include_graph is requested",
     )
