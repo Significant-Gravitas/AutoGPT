@@ -168,7 +168,7 @@ class ActivityStatusResponse(TypedDict):
     """Type definition for structured activity status response."""
 
     activity_status: str
-    correctness_score: float
+    correctness_score: float | None
 
 
 def _truncate_uuid(uuid_str: str) -> str:
@@ -180,7 +180,7 @@ def _truncate_uuid(uuid_str: str) -> str:
 
 _CREDIT_EXHAUSTION_MESSAGES = (
     "you have no credits left to run an agent.",
-    "insufficientbalanceerror",
+    "insufficient balance of",
 )
 
 
@@ -211,7 +211,7 @@ def _check_obvious_failure(
                 "This run couldn't start because your account has run out of credits. "
                 "Please top up your credits to continue using this agent."
             ),
-            "correctness_score": 0.0,
+            "correctness_score": None,
         }
 
     return None
@@ -280,8 +280,7 @@ async def generate_activity_status_for_execution(
     obvious_result = _check_obvious_failure(execution_stats, execution_status)
     if obvious_result is not None:
         logger.info(
-            f"Skipping LLM analysis for {graph_exec_id}: "
-            "obvious failure detected (credit exhaustion)"
+            f"Skipping LLM analysis for {graph_exec_id}: " "obvious failure detected"
         )
         return obvious_result
 

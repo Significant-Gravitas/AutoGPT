@@ -813,12 +813,14 @@ class TestObviousFailureDetection:
     def test_credit_exhaustion_detected(self):
         """Credit exhaustion errors should be detected."""
         assert _is_credit_exhaustion("You have no credits left to run an agent.")
-        assert _is_credit_exhaustion("InsufficientBalanceError: no credits")
+        assert _is_credit_exhaustion(
+            "Insufficient balance of $0, where this will cost $1"
+        )
 
     def test_credit_exhaustion_case_insensitive(self):
         """Detection should be case-insensitive."""
         assert _is_credit_exhaustion("YOU HAVE NO CREDITS LEFT TO RUN AN AGENT.")
-        assert _is_credit_exhaustion("insufficientbalanceerror")
+        assert _is_credit_exhaustion("INSUFFICIENT BALANCE OF $0")
 
     def test_non_credit_errors_not_matched(self):
         """Non-credit errors should not match."""
@@ -826,7 +828,7 @@ class TestObviousFailureDetection:
         assert not _is_credit_exhaustion("API rate limit exceeded")
         assert not _is_credit_exhaustion("Invalid credentials")
         assert not _is_credit_exhaustion("")
-        assert not _is_credit_exhaustion("Insufficient balance")
+        assert not _is_credit_exhaustion("Insufficient balance")  # No trailing "of"
 
     def test_partial_word_no_false_positive(self):
         """Similar words like 'credential' should not match 'credit'."""
@@ -839,7 +841,7 @@ class TestObviousFailureDetection:
         result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
 
         assert result is not None
-        assert result["correctness_score"] == 0.0
+        assert result["correctness_score"] is None
         assert "credits" in result["activity_status"].lower()
 
     def test_check_obvious_failure_non_failed_status(self):
@@ -860,6 +862,15 @@ class TestObviousFailureDetection:
         stats = GraphExecutionStats(error=None)
         result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
         assert result is None
+
+    def test_check_obvious_failure_with_exception_object(self):
+        """Exception objects (not just strings) should be handled via str()."""
+        error = Exception("You have no credits left to run an agent.")
+        stats = GraphExecutionStats(error=error)
+        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
+        assert result is not None
+        assert result["correctness_score"] is None
+        assert "credits" in result["activity_status"].lower()
 
     @pytest.mark.asyncio
     async def test_generate_skips_llm_for_credit_exhaustion(self):
@@ -892,7 +903,7 @@ class TestObviousFailureDetection:
             )
 
         assert result is not None
-        assert result["correctness_score"] == 0.0
+        assert result["correctness_score"] is None
         assert "credits" in result["activity_status"].lower()
 
         # Verify NO database or LLM calls were made

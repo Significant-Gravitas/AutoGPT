@@ -880,9 +880,11 @@ class ExecutionProcessor:
             if activity_response is not None:
                 exec_stats.activity_status = activity_response["activity_status"]
                 exec_stats.correctness_score = activity_response["correctness_score"]
+                score = activity_response["correctness_score"]
+                score_str = f"{score:.2f}" if score is not None else "N/A"
                 log_metadata.info(
                     f"Generated activity status: {activity_response['activity_status']} "
-                    f"(correctness: {activity_response['correctness_score']:.2f})"
+                    f"(correctness: {score_str})"
                 )
             else:
                 log_metadata.debug(
