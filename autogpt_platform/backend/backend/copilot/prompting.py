@@ -288,6 +288,23 @@ def _generate_tool_documentation() -> str:
     return docs
 
 
+_AGENT_CLARIFY_NOTE = """\
+
+### Clarifying ambiguous agent goals — ALWAYS CHECK BEFORE GENERATING
+When the user asks you to build an agent and the goal is missing the output
+format, delivery channel, data source, or trigger:
+1. Call `find_block` with a query targeting the ambiguous dimension to discover
+   what the platform actually supports.
+2. Call `clarify_agent_request` with the discovered options so the user sees a
+   grounded, one-question clarification card.
+3. **Wait for the user's answer** before proceeding to agent generation.
+
+Skip this step when the goal already specifies all dimensions (e.g. "scrape
+prices from Amazon and email me daily" — output, source, channel, and trigger
+are all clear).
+"""
+
+
 def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
@@ -303,8 +320,8 @@ def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
         The supplement string to append to the system prompt
     """
     if use_e2b:
-        return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement(cwd)
+        return _get_cloud_sandbox_supplement() + _AGENT_CLARIFY_NOTE
+    return _get_local_storage_supplement(cwd) + _AGENT_CLARIFY_NOTE
 
 
 def get_baseline_supplement() -> str:
@@ -318,4 +335,4 @@ def get_baseline_supplement() -> str:
         The supplement string to append to the system prompt
     """
     tool_docs = _generate_tool_documentation()
-    return tool_docs + _SHARED_TOOL_NOTES
+    return tool_docs + _SHARED_TOOL_NOTES + _AGENT_CLARIFY_NOTE
