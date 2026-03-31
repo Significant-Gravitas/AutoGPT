@@ -306,6 +306,31 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         return False
 
 
+async def delete_messages_from_sequence(session_id: str, from_sequence: int) -> int:
+    """Delete messages with sequence >= from_sequence for a session.
+
+    Used to clean up orphaned messages after a stream attempt rollback
+    when intermediate flushes persisted messages that should be discarded.
+
+    Returns:
+        Number of messages deleted.
+    """
+    result = await PrismaChatMessage.prisma().delete_many(
+        where={
+            "sessionId": session_id,
+            "sequence": {"gte": from_sequence},
+        }
+    )
+    if result > 0:
+        logger.info(
+            "Deleted %d orphaned messages (sequence >= %d) for session %s",
+            result,
+            from_sequence,
+            session_id,
+        )
+    return result
+
+
 async def get_next_sequence(session_id: str) -> int:
     """Get the next sequence number for a new message in this session.
 

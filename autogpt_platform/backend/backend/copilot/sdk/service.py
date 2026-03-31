@@ -47,6 +47,7 @@ from ..constants import (
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli
+from ..db import delete_messages_from_sequence
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -2165,11 +2166,18 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
-                # Note: if intermediate flushes persisted messages from this
-                # attempt, those orphans remain in DB.  In practice this is
-                # unlikely because retries only fire on context-too-long errors
-                # with events_yielded==0 (meaning the stream barely started and
-                # the flush threshold was almost certainly not reached).
+                # Clean up any messages persisted by intermediate flushes
+                # during this attempt so they don't resurface on reload.
+                try:
+                    await delete_messages_from_sequence(
+                        session.session_id, pre_attempt_msg_count
+                    )
+                except Exception as cleanup_err:
+                    logger.warning(
+                        "%s Failed to clean up orphaned messages: %s",
+                        log_prefix,
+                        cleanup_err,
+                    )
                 # Cancel any pre-launched tasks from the failed attempt so they
                 # don't continue executing against the rolled-back session.
                 await cancel_pending_tool_tasks()
