@@ -7046,9 +7046,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "autogpt_managed": {
+          "is_managed": {
             "type": "boolean",
-            "title": "Autogpt Managed",
+            "title": "Is Managed",
             "default": false
           },
           "metadata": {
@@ -8672,9 +8672,9 @@
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
           },
-          "autogpt_managed": {
+          "is_managed": {
             "type": "boolean",
-            "title": "Autogpt Managed",
+            "title": "Is Managed",
             "default": false
           }
         },
@@ -9907,9 +9907,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "autogpt_managed": {
+          "is_managed": {
             "type": "boolean",
-            "title": "Autogpt Managed",
+            "title": "Is Managed",
             "default": false
           },
           "metadata": {
@@ -11010,9 +11010,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "autogpt_managed": {
+          "is_managed": {
             "type": "boolean",
-            "title": "Autogpt Managed",
+            "title": "Is Managed",
             "default": false
           },
           "metadata": {
@@ -14715,9 +14715,9 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "autogpt_managed": {
+          "is_managed": {
             "type": "boolean",
-            "title": "Autogpt Managed",
+            "title": "Is Managed",
             "default": false
           },
           "metadata": {
