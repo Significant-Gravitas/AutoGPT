@@ -34,8 +34,15 @@ TEST_CREDENTIALS_INPUT = {
 _WALLET_ID_RE = re.compile(r"^wal_[a-zA-Z0-9]+$")
 
 
+_MAX_WALLET_ID_LEN = 128
+
+
 def validate_wallet_id(v: str) -> str:
     """Validate that a wallet ID matches the ``wal_<alnum>`` pattern."""
+    if len(v) > _MAX_WALLET_ID_LEN:
+        raise ValueError(
+            f"wallet_id must be at most {_MAX_WALLET_ID_LEN} characters"
+        )
     if not _WALLET_ID_RE.match(v):
         raise ValueError(
             "wallet_id must start with 'wal_' followed by alphanumeric "
@@ -63,16 +70,21 @@ def validate_destination(v: str) -> str:
     return v
 
 
+_MAX_AMOUNT = Decimal("1000000")
+
+
 def validate_amount(v: str) -> str:
-    """Validate that an amount is a finite decimal string >= 0.01."""
+    """Validate that an amount is a finite decimal string >= 0.01 and <= 1M."""
     try:
         val = Decimal(v)
-    except (InvalidOperation, TypeError):
-        raise ValueError(f"amount must be a numeric string, got '{v}'")
+    except (InvalidOperation, TypeError) as e:
+        raise ValueError(f"amount must be a numeric string, got '{v}'") from e
     if not val.is_finite():
         raise ValueError(f"amount must be a finite numeric string, got '{v}'")
     if val < Decimal("0.01"):
         raise ValueError(f"amount must be >= 0.01, got '{v}'")
+    if val > _MAX_AMOUNT:
+        raise ValueError(f"amount must be <= {_MAX_AMOUNT}, got '{v}'")
     return v
 
 

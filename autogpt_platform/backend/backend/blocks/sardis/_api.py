@@ -1,10 +1,7 @@
 """Sardis API client helpers used by the Sardis block suite."""
 
-import asyncio
-import hashlib
 import logging
 import uuid
-from collections import OrderedDict
 from typing import Any
 
 from backend.blocks.sardis._auth import SardisCredentials
@@ -12,29 +9,10 @@ from backend.util.request import Requests, Response
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Client cache — bounded LRU with async lock
-# ---------------------------------------------------------------------------
-
-_lock = asyncio.Lock()
-_clients: OrderedDict[str, "SardisClient"] = OrderedDict()
-_MAX_CLIENTS = 32
-
 
 async def get_client(credentials: SardisCredentials) -> "SardisClient":
-    """Return a cached client keyed on the API key hash (bounded LRU)."""
-    cache_key = hashlib.sha256(
-        credentials.api_key.get_secret_value().encode()
-    ).hexdigest()[:16]
-    async with _lock:
-        if cache_key in _clients:
-            _clients.move_to_end(cache_key)
-            return _clients[cache_key]
-        client = SardisClient(credentials)
-        _clients[cache_key] = client
-        if len(_clients) > _MAX_CLIENTS:
-            _clients.popitem(last=False)
-        return client
+    """Create a fresh client per call, consistent with other block integrations."""
+    return SardisClient(credentials)
 
 
 class SardisClient:
@@ -43,18 +21,7 @@ class SardisClient:
     API_URL = "https://api.sardis.sh/api/v2"
 
     def __init__(self, credentials: SardisCredentials):
-        """Store Sardis credentials and configure tolerant HTTP handling.
-
-        Two HTTP clients are used:
-        * ``_requests_safe`` -- retries enabled (3 attempts) for idempotent
-          operations (balance queries, policy checks).
-        * ``_requests_no_retry`` -- **no** retries, used exclusively for
-          ``send_payment`` to avoid duplicate financial transactions.
-
-        The API key is kept behind ``SecretStr`` and extracted only at
-        request time via ``_auth_headers`` to avoid long-lived plaintext
-        copies in memory.
-        """
+        """Configure tolerant HTTP handling with two retry strategies."""
         self._credentials = credentials
         self._requests_safe = Requests(
             raise_for_status=False,
@@ -83,13 +50,8 @@ class SardisClient:
     ) -> dict[str, Any]:
         """Execute a policy-controlled payment.
 
-        ``amount`` is a decimal *string* — never a float — so the exact value
+        ``amount`` is a decimal *string* -- never a float -- so the exact value
         the caller entered reaches the API without IEEE 754 rounding.
-
-        ``idempotency_key`` should be derived from the execution context
-        (e.g. ``node_exec_id``) so that retrying the same logical payment
-        does not create a duplicate charge.  Falls back to a random UUID
-        when no key is provided (e.g. in tests).
         """
         key = idempotency_key or str(uuid.uuid4())
         response = await self._requests_no_retry.post(
@@ -131,10 +93,7 @@ class SardisClient:
         destination: str,
         token: str = "USDC",
     ) -> dict[str, Any]:
-        """Check if a payment would be allowed by spending policy.
-
-        ``amount`` is a decimal *string* to preserve precision.
-        """
+        """Check if a payment would be allowed by spending policy."""
         response = await self._requests_safe.post(
             f"{self.API_URL}/policies/check",
             headers=self._auth_headers(),
@@ -156,13 +115,20 @@ class SardisClient:
         *,
         default_error: str,
     ) -> dict[str, Any]:
-        """Convert Sardis responses into a consistent dict error contract."""
+        """Convert Sardis responses into a consistent dict error contract.
+
+        Error paths never leak raw server responses to the end user --
+        full bodies are logged at debug level only.
+        """
         try:
             payload = response.json()
         except Exception:
             body = (response.text() or "")[:200]
+            logger.debug(
+                "Non-JSON response from Sardis: HTTP %s %s", response.status, body
+            )
             return {
-                "error": f"{default_error}: HTTP {response.status} {body}",
+                "error": f"{default_error}: HTTP {response.status}",
                 "status": response.status,
             }
 
@@ -170,7 +136,7 @@ class SardisClient:
             if isinstance(payload, dict):
                 return payload
             return {
-                "error": f"{default_error}: unexpected response body type {type(payload).__name__}",
+                "error": f"{default_error}: unexpected response type",
                 "status": response.status,
             }
 
@@ -185,8 +151,12 @@ class SardisClient:
             normalized_payload.setdefault("status", response.status)
             return normalized_payload
 
-        body = (response.text() or "")[:200]
+        logger.debug(
+            "Non-dict error from Sardis: HTTP %s %s",
+            response.status,
+            str(payload)[:200],
+        )
         return {
-            "error": f"{default_error}: HTTP {response.status} {body}",
+            "error": f"{default_error}: HTTP {response.status}",
             "status": response.status,
         }

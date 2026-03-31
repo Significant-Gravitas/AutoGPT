@@ -22,6 +22,8 @@ from backend.blocks.sardis._auth import (
 )
 from backend.data.model import SchemaField
 
+_MAX_PURPOSE_LEN = 500
+
 
 class SardisPayBlock(Block):
     """Execute a policy-controlled payment from a Sardis wallet.
@@ -76,6 +78,15 @@ class SardisPayBlock(Block):
         def _validate_amount(cls, v: str) -> str:
             return validate_amount(v)
 
+        @field_validator("purpose")
+        @classmethod
+        def _validate_purpose(cls, v: str) -> str:
+            if len(v) > _MAX_PURPOSE_LEN:
+                raise ValueError(
+                    f"purpose must be at most {_MAX_PURPOSE_LEN} characters"
+                )
+            return v
+
     class Output(BlockSchemaOutput):
         status: str = SchemaField(description="APPROVED, BLOCKED, or ERROR", default="")
         tx_id: str = SchemaField(description="Transaction ID if approved", default="")
@@ -89,10 +100,11 @@ class SardisPayBlock(Block):
             id="353e4e7f-f4c7-4091-badc-59170ef15500",
             description="Execute a policy-controlled payment from a Sardis wallet. "
             "Each payment is verified against spending policies before execution.",
-            categories={BlockCategory.DATA},
+            categories={BlockCategory.OUTPUT},
             input_schema=SardisPayBlock.Input,
             output_schema=SardisPayBlock.Output,
             test_input=[
+                # Happy path
                 {
                     "wallet_id": "wal_test123",
                     "destination": "0x1234567890abcdef1234567890abcdef12345678",
@@ -102,20 +114,56 @@ class SardisPayBlock(Block):
                     "purpose": "Test payment",
                     "credentials": TEST_CREDENTIALS_INPUT,
                 },
+                # Error case
+                {
+                    "wallet_id": "wal_test123",
+                    "destination": "0x1234567890abcdef1234567890abcdef12345678",
+                    "amount": "10.00",
+                    "token": "USDC",
+                    "chain": "base",
+                    "purpose": "Error test",
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
+                # Blocked case
+                {
+                    "wallet_id": "wal_test123",
+                    "destination": "0x1234567890abcdef1234567890abcdef12345678",
+                    "amount": "10.00",
+                    "token": "USDC",
+                    "chain": "base",
+                    "purpose": "Blocked test",
+                    "credentials": TEST_CREDENTIALS_INPUT,
+                },
             ],
             test_output=[
+                # Happy path outputs
                 ("status", "APPROVED"),
                 ("tx_id", "tx_mock123"),
                 ("amount", "10.00"),
                 ("message", "Payment approved"),
+                # Error outputs
+                ("status", "ERROR"),
+                ("error", "insufficient funds"),
+                # Blocked outputs
+                ("status", "BLOCKED"),
+                ("message", "Exceeds daily spending limit"),
             ],
             test_mock={
-                "send_payment": lambda *args, **kwargs: {
-                    "success": True,
-                    "tx_id": "tx_mock123",
-                    "message": "Payment approved",
-                    "amount": "10.00",
-                }
+                "send_payment": [
+                    # Happy path
+                    lambda *a, **kw: {
+                        "success": True,
+                        "tx_id": "tx_mock123",
+                        "message": "Payment approved",
+                        "amount": "10.00",
+                    },
+                    # Error
+                    lambda *a, **kw: {"error": "insufficient funds"},
+                    # Blocked
+                    lambda *a, **kw: {
+                        "message": "Exceeds daily spending limit",
+                    },
+                ]
             },
             test_credentials=TEST_CREDENTIALS,
             is_sensitive_action=True,
