@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi import APIRouter, HTTPException, Security
 from pydantic import BaseModel, Field
 
 import backend.data.db
@@ -170,9 +170,7 @@ async def get_link_token_status(token: str) -> LinkTokenStatusResponse:
     """
     prisma = backend.data.db.get_prisma()
 
-    link_token = await prisma.platformlinktoken.find_unique(
-        where={"token": token}
-    )
+    link_token = await prisma.platformlinktoken.find_unique(where={"token": token})
 
     if not link_token:
         raise HTTPException(status_code=404, detail="Token not found")
@@ -253,9 +251,7 @@ async def confirm_link_token(
     """
     prisma = backend.data.db.get_prisma()
 
-    link_token = await prisma.platformlinktoken.find_unique(
-        where={"token": token}
-    )
+    link_token = await prisma.platformlinktoken.find_unique(where={"token": token})
 
     if not link_token:
         raise HTTPException(status_code=404, detail="Token not found")
@@ -380,7 +376,15 @@ async def delete_link(
 
 # ── Helpers ────────────────────────────────────────────────────────────
 
-VALID_PLATFORMS = {"DISCORD", "TELEGRAM", "SLACK", "TEAMS", "WHATSAPP", "GITHUB", "LINEAR"}
+VALID_PLATFORMS = {
+    "DISCORD",
+    "TELEGRAM",
+    "SLACK",
+    "TEAMS",
+    "WHATSAPP",
+    "GITHUB",
+    "LINEAR",
+}
 
 
 def _validate_platform(platform: str) -> None:

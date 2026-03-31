@@ -1,13 +1,12 @@
 """Tests for platform bot linking API routes."""
 
 import pytest
-from datetime import datetime, timezone
+from fastapi import HTTPException
 
 from backend.api.features.platform_linking.routes import (
     VALID_PLATFORMS,
     _validate_platform,
 )
-from fastapi import HTTPException
 
 
 class TestValidatePlatform:
