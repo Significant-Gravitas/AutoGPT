@@ -1,5 +1,6 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -344,6 +345,21 @@ def _make_managed_cred(
     )
 
 
+def _make_store_mock(**kwargs) -> MagicMock:
+    """Create a store mock with a working async ``locks()`` context manager."""
+
+    @asynccontextmanager
+    async def _noop_locked(key):
+        yield
+
+    locks_obj = MagicMock()
+    locks_obj.locked = _noop_locked
+
+    store = MagicMock(**kwargs)
+    store.locks = AsyncMock(return_value=locks_obj)
+    return store
+
+
 class TestEnsureManagedCredentials:
     """Unit tests for the ensure/cleanup helpers in managed_credentials.py."""
 
@@ -352,6 +368,7 @@ class TestEnsureManagedCredentials:
         """Provider.provision() is called when no managed credential exists."""
         from backend.integrations.managed_credentials import (
             _PROVIDERS,
+            _provisioned_users,
             ensure_managed_credentials,
         )
 
@@ -361,18 +378,20 @@ class TestEnsureManagedCredentials:
         provider.is_available = AsyncMock(return_value=True)
         provider.provision = AsyncMock(return_value=cred)
 
-        store = MagicMock()
+        store = _make_store_mock()
         store.has_managed_credential = AsyncMock(return_value=False)
         store.add_managed_credential = AsyncMock()
 
         saved = dict(_PROVIDERS)
         _PROVIDERS.clear()
         _PROVIDERS["test_provider"] = provider
+        _provisioned_users.pop("user-1", None)
         try:
             await ensure_managed_credentials("user-1", store)
         finally:
             _PROVIDERS.clear()
             _PROVIDERS.update(saved)
+            _provisioned_users.pop("user-1", None)
 
         provider.provision.assert_awaited_once_with("user-1")
         store.add_managed_credential.assert_awaited_once_with("user-1", cred)
@@ -382,6 +401,7 @@ class TestEnsureManagedCredentials:
         """Provider.provision() is NOT called when managed credential exists."""
         from backend.integrations.managed_credentials import (
             _PROVIDERS,
+            _provisioned_users,
             ensure_managed_credentials,
         )
 
@@ -390,17 +410,19 @@ class TestEnsureManagedCredentials:
         provider.is_available = AsyncMock(return_value=True)
         provider.provision = AsyncMock()
 
-        store = MagicMock()
+        store = _make_store_mock()
         store.has_managed_credential = AsyncMock(return_value=True)
 
         saved = dict(_PROVIDERS)
         _PROVIDERS.clear()
         _PROVIDERS["test_provider"] = provider
+        _provisioned_users.pop("user-1", None)
         try:
             await ensure_managed_credentials("user-1", store)
         finally:
             _PROVIDERS.clear()
             _PROVIDERS.update(saved)
+            _provisioned_users.pop("user-1", None)
 
         provider.provision.assert_not_awaited()
 
@@ -409,6 +431,7 @@ class TestEnsureManagedCredentials:
         """Provider.provision() is NOT called when provider is not available."""
         from backend.integrations.managed_credentials import (
             _PROVIDERS,
+            _provisioned_users,
             ensure_managed_credentials,
         )
 
@@ -417,17 +440,19 @@ class TestEnsureManagedCredentials:
         provider.is_available = AsyncMock(return_value=False)
         provider.provision = AsyncMock()
 
-        store = MagicMock()
+        store = _make_store_mock()
         store.has_managed_credential = AsyncMock()
 
         saved = dict(_PROVIDERS)
         _PROVIDERS.clear()
         _PROVIDERS["test_provider"] = provider
+        _provisioned_users.pop("user-1", None)
         try:
             await ensure_managed_credentials("user-1", store)
         finally:
             _PROVIDERS.clear()
             _PROVIDERS.update(saved)
+            _provisioned_users.pop("user-1", None)
 
         provider.provision.assert_not_awaited()
         store.has_managed_credential.assert_not_awaited()
@@ -437,6 +462,7 @@ class TestEnsureManagedCredentials:
         """A failed provision is logged but does not raise."""
         from backend.integrations.managed_credentials import (
             _PROVIDERS,
+            _provisioned_users,
             ensure_managed_credentials,
         )
 
@@ -445,17 +471,19 @@ class TestEnsureManagedCredentials:
         provider.is_available = AsyncMock(return_value=True)
         provider.provision = AsyncMock(side_effect=RuntimeError("boom"))
 
-        store = MagicMock()
+        store = _make_store_mock()
         store.has_managed_credential = AsyncMock(return_value=False)
 
         saved = dict(_PROVIDERS)
         _PROVIDERS.clear()
         _PROVIDERS["test_provider"] = provider
+        _provisioned_users.pop("user-1", None)
         try:
             await ensure_managed_credentials("user-1", store)
         finally:
             _PROVIDERS.clear()
             _PROVIDERS.update(saved)
+            _provisioned_users.pop("user-1", None)
 
         # No exception raised — provisioning failure is swallowed.
 
