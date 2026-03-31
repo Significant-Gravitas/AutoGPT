@@ -178,6 +178,44 @@ def _truncate_uuid(uuid_str: str) -> str:
     return uuid_str.split("-")[0] if "-" in uuid_str else uuid_str[:8]
 
 
+def _is_credit_exhaustion(error_str: str) -> bool:
+    """Check if the error indicates credit/balance exhaustion."""
+    credit_indicators = [
+        "no credits left",
+        "insufficient balance",
+        "insufficientbalanceerror",
+    ]
+    error_lower = error_str.lower()
+    return any(indicator in error_lower for indicator in credit_indicators)
+
+
+def _check_obvious_failure(
+    execution_stats: GraphExecutionStats,
+    execution_status: ExecutionStatus | None,
+) -> ActivityStatusResponse | None:
+    """
+    Check if the execution failed for an obvious, deterministic reason
+    that doesn't require LLM analysis.
+
+    Returns a static ActivityStatusResponse if matched, None otherwise.
+    """
+    if execution_status != ExecutionStatus.FAILED:
+        return None
+
+    error_str = str(execution_stats.error) if execution_stats.error else ""
+
+    if _is_credit_exhaustion(error_str):
+        return {
+            "activity_status": (
+                "This run couldn't start because your account has run out of credits. "
+                "Please top up your credits to continue using this agent."
+            ),
+            "correctness_score": 0.0,
+        }
+
+    return None
+
+
 async def generate_activity_status_for_execution(
     graph_exec_id: str,
     graph_id: str,
@@ -236,6 +274,15 @@ async def generate_activity_status_for_execution(
             "activity_status": execution_stats.activity_status,
             "correctness_score": execution_stats.correctness_score,
         }
+
+    # Check for obvious failures that don't need LLM analysis
+    obvious_result = _check_obvious_failure(execution_stats, execution_status)
+    if obvious_result is not None:
+        logger.info(
+            f"Skipping LLM analysis for {graph_exec_id}: "
+            f"obvious failure detected — {execution_stats.error}"
+        )
+        return obvious_result
 
     # Check if we have OpenAI API key
     try:

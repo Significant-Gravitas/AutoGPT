@@ -12,6 +12,8 @@ from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import GraphExecutionStats
 from backend.executor.activity_status_generator import (
     _build_execution_summary,
+    _check_obvious_failure,
+    _is_credit_exhaustion,
     generate_activity_status_for_execution,
 )
 
@@ -224,7 +226,9 @@ class TestBuildExecutionSummary:
             # Check that errors are now in node's recent_errors field
             # Find the output node (with truncated UUID)
             output_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "678e9012"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "678e9012"  # Truncated
             )
             assert output_node["error_count"] == 1
             assert output_node["execution_count"] == 1
@@ -352,7 +356,9 @@ class TestBuildExecutionSummary:
 
             # String error format - find node with truncated ID
             string_error_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "333e4444"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "333e4444"  # Truncated
             )
             assert len(string_error_node["recent_errors"]) == 1
             assert (
@@ -362,7 +368,9 @@ class TestBuildExecutionSummary:
 
             # No error output format - find node with truncated ID
             no_error_node = next(
-                n for n in summary["nodes"] if n["node_id"] == "777e8888"  # Truncated
+                n
+                for n in summary["nodes"]
+                if n["node_id"] == "777e8888"  # Truncated
             )
             assert len(no_error_node["recent_errors"]) == 1
             assert no_error_node["recent_errors"][0]["error"] == "Unknown error"
@@ -379,8 +387,9 @@ class TestLLMCall:
         from backend.blocks.llm import AIStructuredResponseGeneratorBlock
         from backend.data.model import APIKeyCredentials
 
-        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
-            "backend.blocks.llm.secrets.token_hex", return_value="test123"
+        with (
+            patch("backend.blocks.llm.llm_call") as mock_llm_call,
+            patch("backend.blocks.llm.secrets.token_hex", return_value="test123"),
         ):
             mock_llm_call.return_value = LLMResponse(
                 raw_response={},
@@ -442,8 +451,9 @@ class TestLLMCall:
         from backend.blocks.llm import AIStructuredResponseGeneratorBlock
         from backend.data.model import APIKeyCredentials
 
-        with patch("backend.blocks.llm.llm_call") as mock_llm_call, patch(
-            "backend.blocks.llm.secrets.token_hex", return_value="test123"
+        with (
+            patch("backend.blocks.llm.llm_call") as mock_llm_call,
+            patch("backend.blocks.llm.secrets.token_hex", return_value="test123"),
         ):
             # Return invalid JSON that will fail validation (missing required field)
             mock_llm_call.return_value = LLMResponse(
@@ -515,17 +525,21 @@ class TestGenerateActivityStatusForExecution:
         mock_graph.links = []
         mock_db_client.get_graph.return_value = mock_graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -533,10 +547,13 @@ class TestGenerateActivityStatusForExecution:
             mock_instance = mock_structured_block.return_value
 
             async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "I analyzed your data and provided the requested insights.",
-                    "correctness_score": 0.85,
-                }
+                yield (
+                    "response",
+                    {
+                        "activity_status": "I analyzed your data and provided the requested insights.",
+                        "correctness_score": 0.85,
+                    },
+                )
 
             mock_instance.run = mock_run
 
@@ -586,11 +603,14 @@ class TestGenerateActivityStatusForExecution:
         """Test activity status generation with no API key."""
         mock_db_client = AsyncMock()
 
-        with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
             mock_settings.return_value.secrets.openai_internal_api_key = ""
 
@@ -612,11 +632,14 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client = AsyncMock()
         mock_db_client.get_node_executions.side_effect = Exception("Database error")
 
-        with patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -641,17 +664,21 @@ class TestGenerateActivityStatusForExecution:
         mock_db_client.get_graph_metadata.return_value = None  # No metadata
         mock_db_client.get_graph.return_value = None  # No graph
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -659,10 +686,13 @@ class TestGenerateActivityStatusForExecution:
             mock_instance = mock_structured_block.return_value
 
             async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": "Agent completed execution.",
-                    "correctness_score": 0.8,
-                }
+                yield (
+                    "response",
+                    {
+                        "activity_status": "Agent completed execution.",
+                        "correctness_score": 0.8,
+                    },
+                )
 
             mock_instance.run = mock_run
 
@@ -704,17 +734,21 @@ class TestIntegration:
 
         expected_activity = "I processed user input but failed during final output generation due to system error."
 
-        with patch(
-            "backend.executor.activity_status_generator.get_block"
-        ) as mock_get_block, patch(
-            "backend.executor.activity_status_generator.Settings"
-        ) as mock_settings, patch(
-            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
-        ) as mock_structured_block, patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.get_block"
+            ) as mock_get_block,
+            patch(
+                "backend.executor.activity_status_generator.Settings"
+            ) as mock_settings,
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
         ):
-
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -722,10 +756,13 @@ class TestIntegration:
             mock_instance = mock_structured_block.return_value
 
             async def mock_run(*args, **kwargs):
-                yield "response", {
-                    "activity_status": expected_activity,
-                    "correctness_score": 0.3,  # Low score since there was a failure
-                }
+                yield (
+                    "response",
+                    {
+                        "activity_status": expected_activity,
+                        "correctness_score": 0.3,  # Low score since there was a failure
+                    },
+                )
 
             mock_instance.run = mock_run
 
@@ -774,3 +811,93 @@ class TestIntegration:
             mock_db_client.get_node_executions.assert_not_called()
             mock_db_client.get_graph_metadata.assert_not_called()
             mock_db_client.get_graph.assert_not_called()
+
+
+class TestObviousFailureDetection:
+    """Tests for obvious failure detection that skips LLM analysis."""
+
+    def test_credit_exhaustion_detected(self):
+        """Credit exhaustion errors should be detected."""
+        assert _is_credit_exhaustion("You have no credits left to run an agent.")
+        assert _is_credit_exhaustion("Insufficient balance")
+        assert _is_credit_exhaustion("InsufficientBalanceError: no credits")
+
+    def test_credit_exhaustion_case_insensitive(self):
+        """Detection should be case-insensitive."""
+        assert _is_credit_exhaustion("NO CREDITS LEFT")
+        assert _is_credit_exhaustion("INSUFFICIENT BALANCE")
+        assert _is_credit_exhaustion("insufficientbalanceerror")
+
+    def test_non_credit_errors_not_matched(self):
+        """Non-credit errors should not match."""
+        assert not _is_credit_exhaustion("Connection timeout")
+        assert not _is_credit_exhaustion("API rate limit exceeded")
+        assert not _is_credit_exhaustion("Invalid credentials")
+        assert not _is_credit_exhaustion("")
+
+    def test_partial_word_no_false_positive(self):
+        """Similar words like 'credential' should not match 'credit'."""
+        assert not _is_credit_exhaustion("Invalid credential provided")
+        assert not _is_credit_exhaustion("Credential expired")
+
+    def test_check_obvious_failure_credit_exhaustion(self):
+        """Credit exhaustion should return static response."""
+        stats = GraphExecutionStats(error="You have no credits left to run an agent.")
+        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
+
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert "credits" in result["activity_status"].lower()
+
+    def test_check_obvious_failure_non_failed_status(self):
+        """Non-FAILED status should always return None."""
+        stats = GraphExecutionStats(error="Some error")
+        assert _check_obvious_failure(stats, ExecutionStatus.COMPLETED) is None
+        assert _check_obvious_failure(stats, ExecutionStatus.TERMINATED) is None
+        assert _check_obvious_failure(stats, None) is None
+
+    def test_check_obvious_failure_unknown_error(self):
+        """Unknown errors should return None (fall through to LLM)."""
+        stats = GraphExecutionStats(error="Some unexpected error occurred")
+        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
+        assert result is None
+
+    def test_check_obvious_failure_no_error(self):
+        """FAILED status with no error string should return None."""
+        stats = GraphExecutionStats(error=None)
+        result = _check_obvious_failure(stats, ExecutionStatus.FAILED)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_skips_llm_for_credit_exhaustion(self):
+        """Full integration: credit exhaustion should skip LLM and DB calls."""
+        stats = GraphExecutionStats(
+            error="You have no credits left to run an agent.",
+            node_count=0,
+            node_error_count=0,
+        )
+        mock_db_client = AsyncMock()
+
+        with patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ):
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+                execution_status=ExecutionStatus.FAILED,
+                skip_feature_flag=False,
+            )
+
+        assert result is not None
+        assert result["correctness_score"] == 0.0
+        assert "credits" in result["activity_status"].lower()
+
+        # Verify NO database or LLM calls were made
+        mock_db_client.get_node_executions.assert_not_called()
+        mock_db_client.get_graph_metadata.assert_not_called()
+        mock_db_client.get_graph.assert_not_called()
