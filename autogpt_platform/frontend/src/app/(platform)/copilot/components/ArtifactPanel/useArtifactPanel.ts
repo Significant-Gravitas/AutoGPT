@@ -50,6 +50,18 @@ export function useArtifactPanel() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [artifactPanel.isOpen, closeArtifactPanel]);
 
+  // Track viewport width reactively for maximize mode
+  const [viewportWidth, setViewportWidth] = useState(
+    typeof window !== "undefined" ? window.innerWidth : 1280,
+  );
+  useEffect(() => {
+    function handleResize() {
+      setViewportWidth(window.innerWidth);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const canCopy =
     classification != null &&
     classification.type !== "image" &&
@@ -61,7 +73,9 @@ export function useArtifactPanel() {
     fetch(activeArtifact.sourceUrl)
       .then((res) => res.text())
       .then((text) => navigator.clipboard.writeText(text))
-      .catch(() => {});
+      .catch(() => {
+        /* clipboard permission denied or fetch failed — silent for now */
+      });
   }
 
   function handleDownload() {
@@ -72,9 +86,6 @@ export function useArtifactPanel() {
     a.click();
   }
 
-  // Compute effective width
-  const viewportWidth =
-    typeof window !== "undefined" ? window.innerWidth : 1280;
   const effectiveWidth = artifactPanel.isMaximized
     ? viewportWidth * 0.85
     : artifactPanel.width;

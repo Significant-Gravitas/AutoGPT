@@ -100,8 +100,8 @@ export function buildReactArtifactSrcDoc(
         white-space: pre-wrap;
       }
     </style>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   </head>
   <body>
     <div id="root"></div>

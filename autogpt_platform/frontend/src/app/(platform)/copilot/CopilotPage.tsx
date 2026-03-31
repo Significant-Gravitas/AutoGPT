@@ -12,14 +12,6 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
-
-const ArtifactPanel = dynamic(
-  () =>
-    import("./components/ArtifactPanel/ArtifactPanel").then(
-      (m) => m.ArtifactPanel,
-    ),
-  { ssr: false },
-);
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
@@ -28,6 +20,14 @@ import { NotificationDialog } from "./components/NotificationDialog/Notification
 import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
+
+const ArtifactPanel = dynamic(
+  () =>
+    import("./components/ArtifactPanel/ArtifactPanel").then(
+      (m) => m.ArtifactPanel,
+    ),
+  { ssr: false },
+);
 
 export function CopilotPage() {
   const [isDragging, setIsDragging] = useState(false);
