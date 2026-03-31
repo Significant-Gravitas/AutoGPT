@@ -79,7 +79,10 @@ export function StoreCard({
             />
           </>
         ) : (
-          <div className="absolute inset-0 rounded-xl bg-violet-50" />
+          <div
+            className="absolute inset-0 rounded-xl"
+            style={{ backgroundColor: "rgb(216, 208, 255)" }}
+          />
         )}
       </div>
 

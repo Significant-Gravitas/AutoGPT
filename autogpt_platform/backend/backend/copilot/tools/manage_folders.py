@@ -88,10 +88,7 @@ class CreateFolderTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Create a new folder in the user's library to organize agents. "
-            "Optionally nest it inside an existing folder using parent_id."
-        )
+        return "Create a library folder. Use parent_id to nest inside another folder."
 
     @property
     def requires_auth(self) -> bool:
@@ -104,22 +101,19 @@ class CreateFolderTool(BaseTool):
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Name for the new folder (max 100 chars).",
+                    "description": "Folder name (max 100 chars).",
                 },
                 "parent_id": {
                     "type": "string",
-                    "description": (
-                        "ID of the parent folder to nest inside. "
-                        "Omit to create at root level."
-                    ),
+                    "description": "Parent folder ID (omit for root).",
                 },
                 "icon": {
                     "type": "string",
-                    "description": "Optional icon identifier for the folder.",
+                    "description": "Icon identifier.",
                 },
                 "color": {
                     "type": "string",
-                    "description": "Optional hex color code (#RRGGBB).",
+                    "description": "Hex color (#RRGGBB).",
                 },
             },
             "required": ["name"],
@@ -175,13 +169,9 @@ class ListFoldersTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List the user's library folders. "
-            "Omit parent_id to get the full folder tree. "
-            "Provide parent_id to list only direct children of that folder. "
-            "Set include_agents=true to also return the agents inside each folder "
-            "and root-level agents not in any folder. Always set include_agents=true "
-            "when the user asks about agents, wants to see what's in their folders, "
-            "or mentions agents alongside folders."
+            "List library folders. Omit parent_id for full tree. "
+            "Set include_agents=true when user asks about agents, wants to see "
+            "what's in their folders, or mentions agents alongside folders."
         )
 
     @property
@@ -195,17 +185,11 @@ class ListFoldersTool(BaseTool):
             "properties": {
                 "parent_id": {
                     "type": "string",
-                    "description": (
-                        "List children of this folder. "
-                        "Omit to get the full folder tree."
-                    ),
+                    "description": "List children of this folder (omit for full tree).",
                 },
                 "include_agents": {
                     "type": "boolean",
-                    "description": (
-                        "Whether to include the list of agents inside each folder. "
-                        "Defaults to false."
-                    ),
+                    "description": "Include agents in each folder (default: false).",
                 },
             },
             "required": [],
@@ -357,10 +341,7 @@ class MoveFolderTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Move a folder to a different parent folder. "
-            "Set target_parent_id to null to move to root level."
-        )
+        return "Move a folder. Set target_parent_id to null for root."
 
     @property
     def requires_auth(self) -> bool:
@@ -373,14 +354,11 @@ class MoveFolderTool(BaseTool):
             "properties": {
                 "folder_id": {
                     "type": "string",
-                    "description": "ID of the folder to move.",
+                    "description": "Folder ID.",
                 },
                 "target_parent_id": {
                     "type": ["string", "null"],
-                    "description": (
-                        "ID of the new parent folder. "
-                        "Use null to move to root level."
-                    ),
+                    "description": "New parent folder ID (null for root).",
                 },
             },
             "required": ["folder_id"],
@@ -433,10 +411,7 @@ class DeleteFolderTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Delete a folder from the user's library. "
-            "Agents inside the folder are moved to root level (not deleted)."
-        )
+        return "Delete a folder. Agents inside move to root (not deleted)."
 
     @property
     def requires_auth(self) -> bool:
@@ -499,10 +474,7 @@ class MoveAgentsToFolderTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Move one or more agents to a folder. "
-            "Set folder_id to null to move agents to root level."
-        )
+        return "Move agents to a folder. Set folder_id to null for root."
 
     @property
     def requires_auth(self) -> bool:
@@ -516,13 +488,11 @@ class MoveAgentsToFolderTool(BaseTool):
                 "agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "List of library agent IDs to move.",
+                    "description": "Library agent IDs to move.",
                 },
                 "folder_id": {
                     "type": ["string", "null"],
-                    "description": (
-                        "Target folder ID. Use null to move to root level."
-                    ),
+                    "description": "Target folder ID (null for root).",
                 },
             },
             "required": ["agent_ids"],

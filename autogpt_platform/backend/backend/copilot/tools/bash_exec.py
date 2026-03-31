@@ -42,15 +42,9 @@ class BashExecTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a Bash command or script. "
-            "Full Bash scripting is supported (loops, conditionals, pipes, "
-            "functions, etc.). "
-            "The working directory is shared with the SDK Read/Write/Edit/Glob/Grep "
-            "tools — files created by either are immediately visible to both. "
-            "Execution is killed after the timeout (default 30s, max 120s). "
-            "Returns stdout and stderr. "
-            "Useful for file manipulation, data processing, running scripts, "
-            "and installing packages."
+            "Execute a Bash command or script. Shares filesystem with SDK file tools. "
+            "Useful for scripts, data processing, and package installation. "
+            "Killed after timeout (default 30s, max 120s)."
         )
 
     @property
@@ -60,13 +54,11 @@ class BashExecTool(BaseTool):
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Bash command or script to execute.",
+                    "description": "Bash command or script.",
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": (
-                        "Max execution time in seconds (default 30, max 120)."
-                    ),
+                    "description": "Max seconds (default 30, max 120).",
                     "default": 30,
                 },
             },

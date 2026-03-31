@@ -17,13 +17,16 @@ Subscribers:
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
 
 import orjson
+from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
+from backend.data.db_accessors import chat_db
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
@@ -33,12 +36,21 @@ from backend.data.redis_client import get_redis_async
 from .config import ChatConfig
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
 from .response_model import (
+    ResponseType,
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
+    StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
     StreamTextStart,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+    StreamUsage,
 )
 
 logger = logging.getLogger(__name__)
@@ -100,6 +112,14 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
     ``session_id`` is used as a fallback for ``turn_id`` when the meta hash
     pre-dates the turn_id field (backward compat for in-flight sessions).
     """
+    created_at = datetime.now(timezone.utc)
+    created_at_raw = meta.get("created_at")
+    if created_at_raw:
+        try:
+            created_at = datetime.fromisoformat(str(created_at_raw))
+        except (ValueError, TypeError):
+            pass
+
     return ActiveSession(
         session_id=meta.get("session_id", "") or session_id,
         user_id=meta.get("user_id", "") or None,
@@ -108,6 +128,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
+        created_at=created_at,
     )
 
 
@@ -278,6 +299,56 @@ async def publish_chunk(
         )
 
     return message_id
+
+
+async def stream_and_publish(
+    session_id: str,
+    turn_id: str,
+    stream: AsyncIterator[StreamBaseResponse],
+) -> AsyncIterator[StreamBaseResponse]:
+    """Wrap an async stream iterator with registry publishing.
+
+    Publishes each chunk to the stream registry for frontend SSE consumption,
+    skipping ``StreamFinish`` and ``StreamError`` (which are published by
+    :func:`mark_session_completed`).
+
+    This is a pass-through: every event from *stream* is yielded unchanged so
+    the caller can still consume and aggregate them.  The caller is responsible
+    for calling :func:`create_session` before and :func:`mark_session_completed`
+    after iterating.
+
+    Args:
+        session_id: Chat session ID (for logging only).
+        turn_id: Turn UUID that identifies the Redis stream to publish to.
+            If empty, publishing is silently skipped (graceful degradation).
+        stream: The underlying async iterator of stream events.
+
+    Yields:
+        Every event from *stream*, unchanged.
+    """
+    publish_failed_once = False
+
+    async for event in stream:
+        if turn_id and not isinstance(event, (StreamFinish, StreamError)):
+            try:
+                await publish_chunk(turn_id, event)
+            except (RedisError, ConnectionError, OSError):
+                if not publish_failed_once:
+                    publish_failed_once = True
+                    logger.warning(
+                        "[stream_and_publish] Failed to publish chunk %s for %s "
+                        "(further failures logged at DEBUG)",
+                        type(event).__name__,
+                        session_id[:12],
+                        exc_info=True,
+                    )
+                else:
+                    logger.debug(
+                        "[stream_and_publish] Failed to publish chunk %s",
+                        type(event).__name__,
+                        exc_info=True,
+                    )
+        yield event
 
 
 async def subscribe_to_session(
@@ -693,6 +764,8 @@ async def _stream_listener(
 async def mark_session_completed(
     session_id: str,
     error_message: str | None = None,
+    *,
+    skip_error_publish: bool = False,
 ) -> bool:
     """Mark a session as completed, then publish StreamFinish.
 
@@ -708,6 +781,10 @@ async def mark_session_completed(
         session_id: Session ID to mark as completed
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
+        skip_error_publish: If True, still marks the session as "failed" but
+            does NOT publish a StreamError event. Use this when the error has
+            already been published to the stream (e.g. via stream_and_publish)
+            to avoid duplicate error delivery to the frontend.
 
     Returns:
         True if session was newly marked completed, False if already completed/failed
@@ -727,13 +804,40 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
-    if error_message:
+    if error_message and not skip_error_publish:
         try:
             await publish_chunk(turn_id, StreamError(errorText=error_message))
         except Exception as e:
             logger.warning(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
+
+    # Compute wall-clock duration from session created_at.
+    # Only persist when (a) the session completed successfully and
+    # (b) created_at was actually present in Redis meta (not a fallback).
+    duration_ms: int | None = None
+    if meta and not error_message:
+        created_at_raw = meta.get("created_at")
+        if created_at_raw:
+            try:
+                created_at = datetime.fromisoformat(str(created_at_raw))
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                elapsed = datetime.now(timezone.utc) - created_at
+                duration_ms = max(0, int(elapsed.total_seconds() * 1000))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Failed to compute session duration for %s (created_at=%r)",
+                    session_id,
+                    created_at_raw,
+                )
+
+    # Persist duration on the last assistant message
+    if duration_ms is not None:
+        try:
+            await chat_db().set_turn_duration(session_id, duration_ms)
+        except Exception as e:
+            logger.warning(f"Failed to save turn duration for {session_id}: {e}")
 
     # Publish StreamFinish AFTER status is set to "completed"/"failed".
     # This is the SINGLE place that publishes StreamFinish — services and
@@ -913,21 +1017,6 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
     Returns:
         Reconstructed response object, or None if unknown type
     """
-    from .response_model import (
-        ResponseType,
-        StreamError,
-        StreamFinish,
-        StreamFinishStep,
-        StreamHeartbeat,
-        StreamStart,
-        StreamStartStep,
-        StreamTextEnd,
-        StreamToolInputAvailable,
-        StreamToolInputStart,
-        StreamToolOutputAvailable,
-        StreamUsage,
-    )
-
     # Map response types to their corresponding classes
     type_to_class: dict[str, type[StreamBaseResponse]] = {
         ResponseType.START.value: StreamStart,

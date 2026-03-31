@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field, field_validator
 from backend.api.features.library.model import LibraryAgent
 from backend.copilot.model import ChatSession
 from backend.data.db_accessors import execution_db, library_db
-from backend.data.execution import ExecutionStatus, GraphExecution, GraphExecutionMeta
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecution,
+    GraphExecutionMeta,
+    GraphExecutionWithNodes,
+)
 
 from .base import BaseTool
 from .execution_utils import TERMINAL_STATUSES, wait_for_execution
@@ -35,6 +40,7 @@ class AgentOutputInput(BaseModel):
     execution_id: str = ""
     run_time: str = "latest"
     wait_if_running: int = Field(default=0, ge=0, le=300)
+    show_execution_details: bool = False
 
     @field_validator(
         "agent_name",
@@ -108,22 +114,12 @@ class AgentOutputTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Retrieve execution outputs from agents in the user's library.
-
-        Identify the agent using one of:
-        - agent_name: Fuzzy search in user's library
-        - library_agent_id: Exact library agent ID
-        - store_slug: Marketplace format 'username/agent-name'
-
-        Select which run to retrieve using:
-        - execution_id: Specific execution ID
-        - run_time: 'latest' (default), 'yesterday', 'last week', or ISO date 'YYYY-MM-DD'
-
-        Wait for completion (optional):
-        - wait_if_running: Max seconds to wait if execution is still running (0-300).
-          If the execution is running/queued, waits up to this many seconds for completion.
-          Returns current status on timeout. If already finished, returns immediately.
-        """
+        return (
+            "Retrieve execution outputs from a library agent. "
+            "Identify by agent_name, library_agent_id, or store_slug. "
+            "Filter by execution_id or run_time. "
+            "Optionally wait for running executions."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -132,32 +128,33 @@ class AgentOutputTool(BaseTool):
             "properties": {
                 "agent_name": {
                     "type": "string",
-                    "description": "Agent name to search for in user's library (fuzzy match)",
+                    "description": "Agent name (fuzzy match).",
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Exact library agent ID",
+                    "description": "Library agent ID.",
                 },
                 "store_slug": {
                     "type": "string",
-                    "description": "Marketplace identifier: 'username/agent-slug'",
+                    "description": "Marketplace 'username/agent-name'.",
                 },
                 "execution_id": {
                     "type": "string",
-                    "description": "Specific execution ID to retrieve",
+                    "description": "Specific execution ID.",
                 },
                 "run_time": {
                     "type": "string",
-                    "description": (
-                        "Time filter: 'latest', 'yesterday', 'last week', or 'YYYY-MM-DD'"
-                    ),
+                    "description": "Time filter: 'latest', 'today', 'yesterday', 'last week', 'last 7 days', 'last month', 'last 30 days', 'YYYY-MM-DD', or ISO datetime.",
                 },
                 "wait_if_running": {
                     "type": "integer",
-                    "description": (
-                        "Max seconds to wait if execution is still running (0-300). "
-                        "If running, waits for completion. Returns current state on timeout."
-                    ),
+                    "description": "Max seconds to wait if still running (0-300). Returns current state on timeout.",
+                    "minimum": 0,
+                    "maximum": 300,
+                },
+                "show_execution_details": {
+                    "type": "boolean",
+                    "description": "If true, include full node-by-node execution trace (inputs, outputs, status, timing for each node). Useful for debugging agent wiring. Default: false.",
                 },
             },
             "required": [],
@@ -239,13 +236,19 @@ class AgentOutputTool(BaseTool):
         time_start: datetime | None,
         time_end: datetime | None,
         include_running: bool = False,
-    ) -> tuple[GraphExecution | None, list[GraphExecutionMeta], str | None]:
+        include_node_executions: bool = False,
+    ) -> tuple[
+        GraphExecution | GraphExecutionWithNodes | None,
+        list[GraphExecutionMeta],
+        str | None,
+    ]:
         """
         Fetch execution(s) based on filters.
         Returns (single_execution, available_executions_meta, error_message).
 
         Args:
             include_running: If True, also look for running/queued executions (for waiting)
+            include_node_executions: If True, include node-by-node execution details
         """
         exec_db = execution_db()
 
@@ -254,7 +257,7 @@ class AgentOutputTool(BaseTool):
             execution = await exec_db.get_graph_execution(
                 user_id=user_id,
                 execution_id=execution_id,
-                include_node_executions=False,
+                include_node_executions=include_node_executions,
             )
             if not execution:
                 return None, [], f"Execution '{execution_id}' not found"
@@ -292,7 +295,7 @@ class AgentOutputTool(BaseTool):
             full_execution = await exec_db.get_graph_execution(
                 user_id=user_id,
                 execution_id=executions[0].id,
-                include_node_executions=False,
+                include_node_executions=include_node_executions,
             )
             return full_execution, [], None
 
@@ -300,14 +303,14 @@ class AgentOutputTool(BaseTool):
         full_execution = await exec_db.get_graph_execution(
             user_id=user_id,
             execution_id=executions[0].id,
-            include_node_executions=False,
+            include_node_executions=include_node_executions,
         )
         return full_execution, executions, None
 
     def _build_response(
         self,
         agent: LibraryAgent,
-        execution: GraphExecution | None,
+        execution: GraphExecution | GraphExecutionWithNodes | None,
         available_executions: list[GraphExecutionMeta],
         session_id: str | None,
     ) -> AgentOutputResponse:
@@ -325,6 +328,21 @@ class AgentOutputTool(BaseTool):
                 total_executions=0,
             )
 
+        node_executions_data = None
+        if isinstance(execution, GraphExecutionWithNodes):
+            node_executions_data = [
+                {
+                    "node_id": ne.node_id,
+                    "block_id": ne.block_id,
+                    "status": ne.status.value,
+                    "input_data": ne.input_data,
+                    "output_data": dict(ne.output_data),
+                    "start_time": ne.start_time.isoformat() if ne.start_time else None,
+                    "end_time": ne.end_time.isoformat() if ne.end_time else None,
+                }
+                for ne in execution.node_executions
+            ]
+
         execution_info = ExecutionOutputInfo(
             execution_id=execution.id,
             status=execution.status.value,
@@ -332,6 +350,7 @@ class AgentOutputTool(BaseTool):
             ended_at=execution.ended_at,
             outputs=dict(execution.outputs),
             inputs_summary=execution.inputs if execution.inputs else None,
+            node_executions=node_executions_data,
         )
 
         available_list = None
@@ -441,7 +460,7 @@ class AgentOutputTool(BaseTool):
             execution = await execution_db().get_graph_execution(
                 user_id=user_id,
                 execution_id=input_data.execution_id,
-                include_node_executions=False,
+                include_node_executions=input_data.show_execution_details,
             )
             if not execution:
                 return ErrorResponse(
@@ -497,6 +516,7 @@ class AgentOutputTool(BaseTool):
             time_start=time_start,
             time_end=time_end,
             include_running=wait_timeout > 0,
+            include_node_executions=input_data.show_execution_details,
         )
 
         if exec_error:
