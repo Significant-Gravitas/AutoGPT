@@ -1293,8 +1293,8 @@ async def _run_stream_attempt(
             # items are ToolUseBlocks) — such messages have no text output yet,
             # so we skip the wait_for_stash flush below.
             #
-            # Note: parallel execution of read-only tools is handled natively
-            # by the SDK CLI via readOnlyHint annotations on tool definitions.
+            # Note: parallel execution of tools is handled natively by the
+            # SDK CLI via readOnlyHint annotations on tool definitions.
             is_tool_only = False
             if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
                 is_tool_only = all(

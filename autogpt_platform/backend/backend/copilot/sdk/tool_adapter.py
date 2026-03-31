@@ -436,7 +436,7 @@ def _text_from_mcp_result(result: dict[str, Any]) -> str:
     )
 
 
-_READONLY_ANNOTATION = ToolAnnotations(readOnlyHint=True)
+_PARALLEL_ANNOTATION = ToolAnnotations(readOnlyHint=True)
 
 
 def create_copilot_mcp_server(*, use_e2b: bool = False):
@@ -520,7 +520,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             tool_name,
             base_tool.description,
             schema,
-            annotations=_READONLY_ANNOTATION,
+            annotations=_PARALLEL_ANNOTATION,
         )(_truncating(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
@@ -531,7 +531,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                 name,
                 desc,
                 schema,
-                annotations=_READONLY_ANNOTATION,
+                annotations=_PARALLEL_ANNOTATION,
             )(_truncating(handler, name))
             sdk_tools.append(decorated)
 
@@ -540,7 +540,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         _READ_TOOL_NAME,
         _READ_TOOL_DESCRIPTION,
         _READ_TOOL_SCHEMA,
-        annotations=_READONLY_ANNOTATION,
+        annotations=_PARALLEL_ANNOTATION,
     )(_truncating(_read_file_handler, _READ_TOOL_NAME))
     sdk_tools.append(read_tool)
 
