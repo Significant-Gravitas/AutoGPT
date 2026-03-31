@@ -178,15 +178,16 @@ def _truncate_uuid(uuid_str: str) -> str:
     return uuid_str.split("-")[0] if "-" in uuid_str else uuid_str[:8]
 
 
+_CREDIT_EXHAUSTION_MESSAGES = (
+    "you have no credits left to run an agent.",
+    "insufficientbalanceerror",
+)
+
+
 def _is_credit_exhaustion(error_str: str) -> bool:
     """Check if the error indicates credit/balance exhaustion."""
-    credit_indicators = [
-        "no credits left",
-        "insufficient balance",
-        "insufficientbalanceerror",
-    ]
     error_lower = error_str.lower()
-    return any(indicator in error_lower for indicator in credit_indicators)
+    return any(message in error_lower for message in _CREDIT_EXHAUSTION_MESSAGES)
 
 
 def _check_obvious_failure(
@@ -280,7 +281,7 @@ async def generate_activity_status_for_execution(
     if obvious_result is not None:
         logger.info(
             f"Skipping LLM analysis for {graph_exec_id}: "
-            f"obvious failure detected — {execution_stats.error}"
+            "obvious failure detected (credit exhaustion)"
         )
         return obvious_result
 

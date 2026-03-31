@@ -819,13 +819,11 @@ class TestObviousFailureDetection:
     def test_credit_exhaustion_detected(self):
         """Credit exhaustion errors should be detected."""
         assert _is_credit_exhaustion("You have no credits left to run an agent.")
-        assert _is_credit_exhaustion("Insufficient balance")
         assert _is_credit_exhaustion("InsufficientBalanceError: no credits")
 
     def test_credit_exhaustion_case_insensitive(self):
         """Detection should be case-insensitive."""
-        assert _is_credit_exhaustion("NO CREDITS LEFT")
-        assert _is_credit_exhaustion("INSUFFICIENT BALANCE")
+        assert _is_credit_exhaustion("YOU HAVE NO CREDITS LEFT TO RUN AN AGENT.")
         assert _is_credit_exhaustion("insufficientbalanceerror")
 
     def test_non_credit_errors_not_matched(self):
@@ -834,6 +832,7 @@ class TestObviousFailureDetection:
         assert not _is_credit_exhaustion("API rate limit exceeded")
         assert not _is_credit_exhaustion("Invalid credentials")
         assert not _is_credit_exhaustion("")
+        assert not _is_credit_exhaustion("Insufficient balance")
 
     def test_partial_word_no_false_positive(self):
         """Similar words like 'credential' should not match 'credit'."""
