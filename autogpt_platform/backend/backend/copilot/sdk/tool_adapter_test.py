@@ -783,10 +783,6 @@ class TestFiveConcurrentPrelaunchAllComplete:
 class TestSDKDisallowedTools:
     """Verify that dangerous SDK built-in tools are in the disallowed list."""
 
-    def test_task_tool_is_disallowed(self):
-        """Task is disallowed — AutoPilotBlock is preferred for Langfuse observability."""
-        assert "Task" in SDK_DISALLOWED_TOOLS
-
     def test_bash_tool_is_disallowed(self):
         assert "Bash" in SDK_DISALLOWED_TOOLS
 

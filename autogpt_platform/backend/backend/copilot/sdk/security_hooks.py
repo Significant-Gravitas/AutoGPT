@@ -128,8 +128,6 @@ def create_security_hooks(
     sdk_cwd: str | None = None,
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
-    max_web_searches: int = 50,
-    max_tool_calls: int = 500,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
@@ -145,11 +143,6 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
-        max_web_searches: Maximum WebSearch calls per turn (across all
-            sub-agents).  Prevents runaway research loops.  Note: hooks are
-            recreated per stream invocation, so counters reset each turn.
-        max_tool_calls: Maximum total tool calls per turn.  Acts as a hard
-            circuit breaker to cap cost and latency.
 
     Returns:
         Hooks configuration dict for ClaudeAgentOptions
@@ -161,13 +154,6 @@ def create_security_hooks(
         # Per-session tracking for Task sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
         task_tool_use_ids: set[str] = set()
-
-        # --- Circuit breaker counters ---
-        # Cap WebSearch calls per turn (across all sub-agents) to prevent
-        # runaway research loops (see incident d2f7cba3: 179 searches, $20.66).
-        # Note: hooks are recreated per stream invocation so these reset each turn.
-        web_search_count: list[int] = [0]  # mutable container for closure
-        total_tool_call_count: list[int] = [0]  # total tool calls this turn
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -206,56 +192,6 @@ def create_security_hooks(
                         ),
                     )
 
-            # --- Circuit breaker: WebSearch calls per turn ---
-            # Check WebSearch cap before incrementing the total counter so
-            # denied searches don't consume slots from the total budget.
-            budget_warnings: list[str] = []
-            if tool_name == "WebSearch":
-                web_search_count[0] += 1
-                if web_search_count[0] > max_web_searches:
-                    logger.warning(
-                        "[SDK] WebSearch cap reached (%d), user=%s",
-                        max_web_searches,
-                        user_id,
-                    )
-                    return cast(
-                        SyncHookJSONOutput,
-                        _deny(
-                            f"Maximum {max_web_searches} web searches per turn "
-                            "reached. Synthesize your answer from the information "
-                            "you have already gathered instead of searching again."
-                        ),
-                    )
-                ws_remaining = max_web_searches - web_search_count[0]
-                if ws_remaining <= max(1, int(max_web_searches * 0.2)):
-                    budget_warnings.append(
-                        f"Web search budget: {ws_remaining}/{max_web_searches} "
-                        "remaining this turn. Plan remaining searches carefully."
-                    )
-
-            # --- Circuit breaker: total tool calls per turn ---
-            total_tool_call_count[0] += 1
-            if total_tool_call_count[0] > max_tool_calls:
-                logger.warning(
-                    "[SDK] Total tool call cap reached (%d), user=%s",
-                    max_tool_calls,
-                    user_id,
-                )
-                return cast(
-                    SyncHookJSONOutput,
-                    _deny(
-                        f"Maximum {max_tool_calls} tool calls per turn reached. "
-                        "Please synthesize your answer from the information "
-                        "you have already gathered."
-                    ),
-                )
-            tc_remaining = max_tool_calls - total_tool_call_count[0]
-            if tc_remaining <= max(1, int(max_tool_calls * 0.2)):
-                budget_warnings.append(
-                    f"Total tool call budget: {tc_remaining}/{max_tool_calls} "
-                    "remaining this turn. Prioritize essential tool calls."
-                )
-
             # Strip MCP prefix for consistent validation
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
@@ -277,17 +213,6 @@ def create_security_hooks(
                 task_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
-            if budget_warnings:
-                return cast(
-                    SyncHookJSONOutput,
-                    {
-                        "hookSpecificOutput": {
-                            "hookEventName": "PreToolUse",
-                            "permissionDecision": "allow",
-                            "additionalContext": " ".join(budget_warnings),
-                        }
-                    },
-                )
             return cast(SyncHookJSONOutput, {})
 
         def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:

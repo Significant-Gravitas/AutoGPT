@@ -38,10 +38,6 @@ def _reason(result: dict) -> str:
     return result.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
 
 
-def _additional_context(result: dict) -> str:
-    return result.get("hookSpecificOutput", {}).get("additionalContext", "")
-
-
 # -- Blocked tools -----------------------------------------------------------
 
 
@@ -237,284 +233,126 @@ def _hooks():
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
-async def test_task_always_blocked(_hooks):
-    """Task is in BLOCKED_TOOLS — always denied regardless of input."""
+async def test_task_background_blocked(_hooks):
+    """Task with run_in_background=true must be denied."""
     pre, _, _ = _hooks
-    # Background Task
     result = await pre(
         {"tool_name": "Task", "tool_input": {"run_in_background": True, "prompt": "x"}},
         tool_use_id=None,
         context={},
     )
     assert _is_denied(result)
+    assert "foreground" in _reason(result).lower()
 
-    # Foreground Task
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_foreground_allowed(_hooks):
+    """Task without run_in_background should be allowed."""
+    pre, _, _ = _hooks
     result = await pre(
         {"tool_name": "Task", "tool_input": {"prompt": "do stuff"}},
         tool_use_id="tu-1",
         context={},
     )
-    assert _is_denied(result)
-    assert "blocked" in _reason(result).lower()
-
-
-# -- WebSearch cap -----------------------------------------------------------
-
-
-@pytest.fixture()
-def _hooks_search():
-    """Create security hooks with low search cap for testing."""
-    hooks = create_security_hooks(
-        user_id="u1",
-        sdk_cwd=SDK_CWD,
-        max_subtasks=2,
-        max_web_searches=3,
-        max_tool_calls=100,
-    )
-    pre = hooks["PreToolUse"][0].hooks[0]
-    return pre
+    assert not _is_denied(result)
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
-async def test_web_search_allowed_under_cap(_hooks_search):
-    """WebSearch calls under the cap should be allowed."""
-    pre = _hooks_search
-    for i in range(3):
-        result = await pre(
-            {"tool_name": "WebSearch", "tool_input": {"query": f"search {i}"}},
-            tool_use_id=f"ws-{i}",
-            context={},
-        )
-        assert not _is_denied(result), f"WebSearch {i} should be allowed"
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_web_search_denied_at_cap(_hooks_search):
-    """WebSearch calls exceeding the cap should be denied with synthesis message."""
-    pre = _hooks_search
-    # Use up the cap
-    for i in range(3):
-        await pre(
-            {"tool_name": "WebSearch", "tool_input": {"query": f"search {i}"}},
-            tool_use_id=f"ws-cap-{i}",
-            context={},
-        )
-    # Fourth should be denied
-    result = await pre(
-        {"tool_name": "WebSearch", "tool_input": {"query": "one more"}},
-        tool_use_id="ws-cap-3",
-        context={},
-    )
-    assert _is_denied(result)
-    reason = _reason(result)
-    assert "web search" in reason.lower()
-    assert "per turn" in reason.lower()
-    assert "synthesize" in reason.lower()
-
-
-# -- Total tool call cap -----------------------------------------------------
-
-
-@pytest.fixture()
-def _hooks_tool_cap():
-    """Create security hooks with low total tool call cap for testing."""
-    hooks = create_security_hooks(
-        user_id="u1",
-        sdk_cwd=SDK_CWD,
-        max_subtasks=2,
-        max_web_searches=100,
-        max_tool_calls=5,
-    )
-    pre = hooks["PreToolUse"][0].hooks[0]
-    return pre
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_total_tool_calls_allowed_under_cap(_hooks_tool_cap):
-    """Tool calls under the total cap should be allowed."""
-    pre = _hooks_tool_cap
-    for i in range(5):
-        result = await pre(
-            {"tool_name": "SomeTool", "tool_input": {"arg": i}},
-            tool_use_id=f"tc-{i}",
-            context={},
-        )
-        assert not _is_denied(result), f"Tool call {i} should be allowed"
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_total_tool_calls_denied_at_cap(_hooks_tool_cap):
-    """Tool calls exceeding the total cap should be denied."""
-    pre = _hooks_tool_cap
-    # Use up the cap
-    for i in range(5):
-        await pre(
-            {"tool_name": "SomeTool", "tool_input": {"arg": i}},
-            tool_use_id=f"tc-cap-{i}",
-            context={},
-        )
-    # Sixth should be denied
-    result = await pre(
-        {"tool_name": "SomeTool", "tool_input": {"arg": "over"}},
-        tool_use_id="tc-cap-5",
-        context={},
-    )
-    assert _is_denied(result)
-    reason = _reason(result)
-    assert "synthesize" in reason.lower()
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_task_blocked_regardless_of_slots(_hooks):
-    """Task is always blocked (in BLOCKED_TOOLS), slots are irrelevant."""
+async def test_task_limit_enforced(_hooks):
+    """Task spawns beyond max_subtasks should be denied."""
     pre, _, _ = _hooks
+    # First two should pass
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-limit-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Third should be denied (limit=2)
     result = await pre(
-        {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+        {"tool_name": "Task", "tool_input": {"prompt": "over limit"}},
+        tool_use_id="tu-limit-2",
+        context={},
+    )
+    assert _is_denied(result)
+    assert "Maximum" in _reason(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_slot_released_on_completion(_hooks):
+    """Completing a Task should free a slot so new Tasks can be spawned."""
+    pre, post, _ = _hooks
+    # Fill both slots
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-comp-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Third should be denied — at capacity
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-comp-2",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Complete first task — frees a slot
+    await post(
+        {"tool_name": "Task", "tool_input": {}},
+        tool_use_id="tu-comp-0",
+        context={},
+    )
+
+    # Now a new Task should be allowed
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "after release"}},
+        tool_use_id="tu-comp-3",
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_task_slot_released_on_failure(_hooks):
+    """A failed Task should also free its concurrency slot."""
+    pre, _, post_failure = _hooks
+    # Fill both slots
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-fail-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # At capacity
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-fail-2",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Fail first task — should free a slot
+    await post_failure(
+        {"tool_name": "Task", "tool_input": {}, "error": "something broke"},
         tool_use_id="tu-fail-0",
         context={},
     )
-    assert _is_denied(result)
 
-
-# -- WebSearch denial doesn't consume total budget ---------------------------
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_websearch_denials_do_not_consume_total_cap():
-    """Denied WebSearch calls should not count toward the total tool call budget."""
-    hooks = create_security_hooks(
-        user_id="u1",
-        sdk_cwd=SDK_CWD,
-        max_subtasks=2,
-        max_web_searches=3,
-        max_tool_calls=5,
-    )
-    pre = hooks["PreToolUse"][0].hooks[0]
-
-    # Exhaust the WebSearch cap (3 allowed)
-    for i in range(3):
-        result = await pre(
-            {"tool_name": "WebSearch", "tool_input": {"query": f"q{i}"}},
-            tool_use_id=f"ws-budget-{i}",
-            context={},
-        )
-        assert not _is_denied(result)
-
-    # Next WebSearch should be denied
+    # New Task should be allowed
     result = await pre(
-        {"tool_name": "WebSearch", "tool_input": {"query": "q3"}},
-        tool_use_id="ws-budget-3",
-        context={},
-    )
-    assert _is_denied(result)
-
-    # The 3 allowed WebSearches consumed 3 of 5 total budget slots.
-    # The denied one should NOT have consumed a slot.
-    # So we should have 2 remaining non-WebSearch calls.
-    for i in range(2):
-        result = await pre(
-            {"tool_name": "SomeTool", "tool_input": {}},
-            tool_use_id=f"other-{i}",
-            context={},
-        )
-        assert not _is_denied(result), f"SomeTool call {i} should be allowed"
-
-    # 6th total call (3 WebSearch + 2 SomeTool + 1 denied WS that shouldn't count)
-    # should be denied because we're at 5 total
-    result = await pre(
-        {"tool_name": "SomeTool", "tool_input": {}},
-        tool_use_id="other-2",
-        context={},
-    )
-    assert _is_denied(result), "Should hit total tool call cap"
-
-
-# -- Budget warnings ---------------------------------------------------------
-
-
-@pytest.fixture()
-def _hooks_warn_search():
-    """Create security hooks with cap=5 to test 80% warning at call 4+."""
-    hooks = create_security_hooks(
-        user_id="u1",
-        sdk_cwd=SDK_CWD,
-        max_subtasks=2,
-        max_web_searches=5,
-        max_tool_calls=500,
-    )
-    pre = hooks["PreToolUse"][0].hooks[0]
-    return pre
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_web_search_warning_at_threshold(_hooks_warn_search):
-    """WebSearch calls near the cap should include a budget warning."""
-    pre = _hooks_warn_search
-    # First 3 calls (of 5) should have no warning (below 80%)
-    for i in range(3):
-        result = await pre(
-            {"tool_name": "WebSearch", "tool_input": {"query": f"q{i}"}},
-            tool_use_id=f"ws-warn-{i}",
-            context={},
-        )
-        assert not _is_denied(result)
-        assert _additional_context(result) == "", f"Call {i} shouldn't warn"
-
-    # 4th call (80% used) should include a warning
-    result = await pre(
-        {"tool_name": "WebSearch", "tool_input": {"query": "q3"}},
-        tool_use_id="ws-warn-3",
+        {"tool_name": "Task", "tool_input": {"prompt": "after failure"}},
+        tool_use_id="tu-fail-3",
         context={},
     )
     assert not _is_denied(result)
-    ctx = _additional_context(result)
-    assert "remaining" in ctx.lower()
-    assert "web search" in ctx.lower()
-
-
-@pytest.fixture()
-def _hooks_warn_tool():
-    """Create security hooks with cap=5 to test 80% warning at call 4+."""
-    hooks = create_security_hooks(
-        user_id="u1",
-        sdk_cwd=SDK_CWD,
-        max_subtasks=2,
-        max_web_searches=100,
-        max_tool_calls=5,
-    )
-    pre = hooks["PreToolUse"][0].hooks[0]
-    return pre
-
-
-@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
-@pytest.mark.asyncio
-async def test_total_tool_call_warning_at_threshold(_hooks_warn_tool):
-    """Tool calls near the total cap should include a budget warning."""
-    pre = _hooks_warn_tool
-    # First 3 calls (of 5) should have no warning (below 80%)
-    for i in range(3):
-        result = await pre(
-            {"tool_name": "SomeTool", "tool_input": {"arg": i}},
-            tool_use_id=f"tc-warn-{i}",
-            context={},
-        )
-        assert not _is_denied(result)
-        assert _additional_context(result) == "", f"Call {i} shouldn't warn"
-
-    # 4th call (80% used) should include a warning
-    result = await pre(
-        {"tool_name": "SomeTool", "tool_input": {"arg": 3}},
-        tool_use_id="tc-warn-3",
-        context={},
-    )
-    assert not _is_denied(result)
-    ctx = _additional_context(result)
-    assert "remaining" in ctx.lower()
-    assert "tool call" in ctx.lower()

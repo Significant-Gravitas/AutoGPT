@@ -113,11 +113,10 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - Prefer fewer, well-targeted searches over many variations of the same query.
 - When spawning sub-agents for research, ensure each has a distinct
   non-overlapping scope to avoid redundant searches.
-- There is a hard cap on web searches — use them wisely.
 
 ### Sub-agent tasks
-- The SDK Task tool is disabled. Use the **AutoPilotBlock** via
-  `run_block` for sub-agent delegation (see below).
+- When using the Task tool, NEVER set `run_in_background` to true.
+  All tasks must run in the foreground.
 
 ### Delegating to another autopilot (sub-autopilot pattern)
 Use the **AutoPilotBlock** (`run_block` with block_id

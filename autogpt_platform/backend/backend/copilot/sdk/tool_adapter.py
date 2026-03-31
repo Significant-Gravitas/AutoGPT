@@ -767,7 +767,6 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # AskUserQuestion: interactive CLI tool — no terminal in copilot context.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
-    "Task",
     "WebFetch",
     "AskUserQuestion",
 ]
