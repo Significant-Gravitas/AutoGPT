@@ -757,6 +757,7 @@ async def run_interaction_loop(
             # Start new task in same workspace
             agent.state.task = next_task
             agent.event_history.episodes.clear()  # Clear history for fresh context
+            agent.event_history.cursor = 0
 
             # Reset cycle budget for new task
             cycles_remaining = _get_cycle_budget(

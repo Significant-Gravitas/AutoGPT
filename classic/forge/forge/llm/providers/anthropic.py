@@ -54,10 +54,11 @@ class AnthropicModelName(str, enum.Enum):
     CLAUDE4_SONNET_v1 = "claude-sonnet-4-20250514"
     CLAUDE4_OPUS_v1 = "claude-opus-4-20250514"
     CLAUDE4_5_OPUS_v1 = "claude-opus-4-5-20251101"
+    CLAUDE4_6_OPUS_v1 = "claude-opus-4-6-20260301"
 
     # Rolling aliases
     CLAUDE_SONNET = "claude-sonnet-4-20250514"
-    CLAUDE_OPUS = "claude-opus-4-5-20251101"
+    CLAUDE_OPUS = "claude-opus-4-6-20260301"
     CLAUDE_HAIKU = "claude-3-5-haiku-20241022"
 
 
@@ -143,12 +144,21 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
             supports_extended_thinking=True,
         ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_6_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
     ]
 }
 # Copy entries for aliased models
 chat_model_mapping = {
     AnthropicModelName.CLAUDE4_SONNET_v1: [AnthropicModelName.CLAUDE_SONNET],
-    AnthropicModelName.CLAUDE4_5_OPUS_v1: [AnthropicModelName.CLAUDE_OPUS],
+    AnthropicModelName.CLAUDE4_6_OPUS_v1: [AnthropicModelName.CLAUDE_OPUS],
     AnthropicModelName.CLAUDE3_5_HAIKU_v1: [AnthropicModelName.CLAUDE_HAIKU],
 }
 for base, copies in chat_model_mapping.items():

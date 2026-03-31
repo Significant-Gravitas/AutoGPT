@@ -249,29 +249,21 @@ class BaseOpenAIChatProvider(
                     )
 
                 if attempts < self._configuration.fix_failed_parse_tries:
+                    # Strip tool_calls from the assistant message before
+                    # appending, otherwise OpenAI will reject the next
+                    # request because there are no tool response messages
+                    # following the tool_calls.
+                    retry_msg = _assistant_msg.model_dump(exclude_none=True)
+                    retry_msg.pop("tool_calls", None)
                     openai_messages.append(
                         cast(
                             ChatCompletionAssistantMessageParam,
-                            _assistant_msg.model_dump(exclude_none=True),
+                            retry_msg,
                         )
                     )
-                    # If the assistant message had tool_calls, we must add
-                    # tool response messages before any other message,
-                    # otherwise the OpenAI API will reject the request.
-                    if _assistant_msg.tool_calls:
-                        for tc in _assistant_msg.tool_calls:
-                            openai_messages.append(
-                                {
-                                    "role": "tool",
-                                    "tool_call_id": tc.id,
-                                    "content": (
-                                        "[Parse error - tool call not executed]"
-                                    ),
-                                }
-                            )
                     openai_messages.append(
                         {
-                            "role": "user",
+                            "role": "system",
                             "content": (
                                 f"ERROR PARSING YOUR RESPONSE:\n\n{parse_errors_fmt}"
                             ),
@@ -346,21 +338,21 @@ class BaseOpenAIChatProvider(
 
         prepped_messages: list[ChatCompletionMessageParam] = []
         for message in prompt_messages:
-            msg = message.model_dump(  # type: ignore
+            msg_dict = message.model_dump(  # type: ignore
                 include={"role", "content", "tool_calls", "tool_call_id", "name"},
                 exclude_none=True,
             )
-            # OpenAI API expects tool_calls[].function.arguments as a JSON
-            # string, but our model stores it as a dict.
-            if "tool_calls" in msg:
-                for tc in msg["tool_calls"]:
+            # OpenAI requires tool_calls function arguments to be JSON strings,
+            # but our internal model stores them as dicts.
+            if "tool_calls" in msg_dict:
+                for tc in msg_dict["tool_calls"]:
                     if "function" in tc and isinstance(
                         tc["function"].get("arguments"), dict
                     ):
                         tc["function"]["arguments"] = json.dumps(
                             tc["function"]["arguments"]
                         )
-            prepped_messages.append(msg)  # type: ignore
+            prepped_messages.append(msg_dict)
 
         if "messages" in kwargs:
             prepped_messages += kwargs["messages"]

@@ -65,7 +65,7 @@ class EpisodicActionHistory(BaseModel, Generic[AnyProposal]):
 
     @property
     def current_episode(self) -> Episode[AnyProposal] | None:
-        if self.cursor == len(self):
+        if self.cursor >= len(self):
             return None
         return self[self.cursor]
 

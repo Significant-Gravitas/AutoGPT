@@ -5,7 +5,8 @@
       "WebFetch(domain:platform.openai.com)",
       "WebFetch(domain:openai.com)",
       "Bash(poetry run ruff format:*)",
-      "Bash(poetry run ruff check:*)"
+      "Bash(poetry run ruff check:*)",
+      "Bash(poetry run:*)"
     ]
   }
 }

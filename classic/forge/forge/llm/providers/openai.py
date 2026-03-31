@@ -140,8 +140,16 @@ class OpenAIModelName(str, enum.Enum):
     GPT5_NANO = GPT5_NANO_ROLLING
     GPT5_PRO_ROLLING = "gpt-5-pro"
     GPT5_PRO = GPT5_PRO_ROLLING
+    GPT5_3_ROLLING = "gpt-5.3"
+    GPT5_3 = GPT5_3_ROLLING
+    GPT5_4_ROLLING = "gpt-5.4"
+    GPT5_4 = GPT5_4_ROLLING
     GPT5_2_PRO_ROLLING = "gpt-5.2-pro"
     GPT5_2_PRO = GPT5_2_PRO_ROLLING
+    GPT5_3_PRO_ROLLING = "gpt-5.3-pro"
+    GPT5_3_PRO = GPT5_3_PRO_ROLLING
+    GPT5_4_PRO_ROLLING = "gpt-5.4-pro"
+    GPT5_4_PRO = GPT5_4_PRO_ROLLING
 
 
 OPEN_AI_EMBEDDING_MODELS = {
@@ -403,10 +411,46 @@ OPEN_AI_CHAT_MODELS = {
             supports_reasoning_effort=True,
         ),
         ChatModelInfo(
+            name=OpenAIModelName.GPT5_3,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=2.00 / 1_000_000,
+            completion_token_cost=16.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_4,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=2.50 / 1_000_000,
+            completion_token_cost=20.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
             name=OpenAIModelName.GPT5_2_PRO,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=21.00 / 1_000_000,
             completion_token_cost=168.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_3_PRO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=24.00 / 1_000_000,
+            completion_token_cost=192.00 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_4_PRO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=30.00 / 1_000_000,
+            completion_token_cost=240.00 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
             supports_reasoning_effort=True,
@@ -485,7 +529,11 @@ chat_model_mapping = {
     OpenAIModelName.GPT5_MINI: [OpenAIModelName.GPT5_MINI_ROLLING],
     OpenAIModelName.GPT5_NANO: [OpenAIModelName.GPT5_NANO_ROLLING],
     OpenAIModelName.GPT5_PRO: [OpenAIModelName.GPT5_PRO_ROLLING],
+    OpenAIModelName.GPT5_3: [OpenAIModelName.GPT5_3_ROLLING],
+    OpenAIModelName.GPT5_4: [OpenAIModelName.GPT5_4_ROLLING],
     OpenAIModelName.GPT5_2_PRO: [OpenAIModelName.GPT5_2_PRO_ROLLING],
+    OpenAIModelName.GPT5_3_PRO: [OpenAIModelName.GPT5_3_PRO_ROLLING],
+    OpenAIModelName.GPT5_4_PRO: [OpenAIModelName.GPT5_4_PRO_ROLLING],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
