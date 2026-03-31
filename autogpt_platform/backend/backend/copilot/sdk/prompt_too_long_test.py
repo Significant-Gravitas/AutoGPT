@@ -61,7 +61,8 @@ class TestFlattenAssistantContent:
         result = _flatten_assistant_content(blocks)
         assert "See this image:" in result
         # Unknown block types are dropped to prevent model mimicry
-        assert "image" not in result
+        assert "[__image__]" not in result
+        assert "base64" not in result
 
     def test_empty(self):
         assert _flatten_assistant_content([]) == ""
