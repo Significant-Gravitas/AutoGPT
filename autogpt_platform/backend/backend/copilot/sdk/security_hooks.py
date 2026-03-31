@@ -129,7 +129,7 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     max_web_searches: int = 50,
-    max_tool_calls: int = 100,
+    max_tool_calls: int = 500,
 ) -> dict[str, Any]:
     """Create the security hooks configuration for Claude Agent SDK.
 
