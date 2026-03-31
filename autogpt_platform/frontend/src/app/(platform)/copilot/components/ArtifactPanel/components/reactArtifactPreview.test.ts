@@ -22,7 +22,7 @@ describe("reactArtifactPreview", () => {
       "<style>.demo { color: red; }</style>",
     );
 
-    expect(srcDoc).toContain("react-dom.development.js");
+    expect(srcDoc).toContain("react-dom.production.min.js");
     expect(srcDoc).toContain(".demo { color: red; }");
     expect(srcDoc).toContain("Unsupported import in artifact preview");
     expect(srcDoc).toContain(
