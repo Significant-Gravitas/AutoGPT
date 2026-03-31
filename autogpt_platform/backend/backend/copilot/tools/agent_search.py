@@ -221,15 +221,18 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
         return
 
     async def _fetch(agent: AgentInfo) -> None:
+        graph_id = agent.graph_id
+        if not graph_id:
+            return
         try:
             graph = await get_graph_db().get_graph(
-                agent.graph_id, version=None, user_id=user_id  # type: ignore[arg-type]
+                graph_id, version=None, user_id=user_id
             )
             if graph is None:
-                logger.warning(f"Graph not found for agent {agent.graph_id}")
+                logger.warning(f"Graph not found for agent {graph_id}")
             agent.graph = graph
         except Exception as e:
-            logger.warning(f"Failed to fetch graph for agent {agent.graph_id}: {e}")
+            logger.warning(f"Failed to fetch graph for agent {graph_id}: {e}")
 
     await asyncio.gather(*[_fetch(a) for a in fetchable])
 
