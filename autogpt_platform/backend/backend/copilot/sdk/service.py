@@ -115,9 +115,10 @@ _MAX_STREAM_ATTEMPTS = 3
 
 # Hard circuit breaker: abort the stream if the model sends this many
 # consecutive tool calls with empty parameters (a sign of context
-# saturation or serialization failure).  Empty input ({}) is never
-# legitimate — even one is suspicious, three is conclusive.
-_EMPTY_TOOL_CALL_LIMIT = 3
+# saturation or serialization failure).  The MCP wrapper now returns
+# guidance on the first empty call, giving the model a chance to
+# self-correct.  The limit is generous to allow recovery attempts.
+_EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (

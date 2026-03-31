@@ -668,6 +668,26 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            # Empty tool args = model's output was truncated by the API's
+            # max_tokens limit.  Instead of letting the tool fail with a
+            # confusing error (and eventually tripping the circuit breaker),
+            # return clear guidance so the model can self-correct.
+            if not args and input_schema and input_schema.get("required"):
+                logger.warning(
+                    "[MCP] %s called with empty args (likely output "
+                    "token truncation) — returning guidance",
+                    tool_name,
+                )
+                return _mcp_error(
+                    f"Your call to {tool_name} had empty arguments — "
+                    f"this means your previous response was too long and "
+                    f"the tool call input was truncated by the API. "
+                    f"To fix this: break your work into smaller steps. "
+                    f"For file writes, write in chunks (e.g. one section "
+                    f"at a time using bash_exec with cat >> to append). "
+                    f"For commands, simplify the arguments."
+                )
+
             # Circuit breaker: stop infinite retry loops with identical args.
             # Use the original (pre-expansion) args for fingerprinting so
             # check and record always use the same key — @@agptfile:
