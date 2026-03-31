@@ -79,10 +79,17 @@ class ClarifyAgentRequestTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         del user_id  # unused; required by BaseTool contract
-        dimension = str(kwargs.get("dimension", "")).strip()
-        question = str(kwargs.get("question", "")).strip()
-        raw_options = kwargs.get("options", [])
-        options = [o.strip() for o in raw_options if isinstance(o, str) and o.strip()]
+        dimension_val = kwargs.get("dimension")
+        question_val = kwargs.get("question")
+        raw_options = kwargs.get("options")
+
+        dimension = dimension_val.strip() if isinstance(dimension_val, str) else ""
+        question = question_val.strip() if isinstance(question_val, str) else ""
+        options = (
+            [o.strip() for o in raw_options if isinstance(o, str) and o.strip()]
+            if isinstance(raw_options, list)
+            else []
+        )
         session_id = session.session_id if session else None
 
         if not dimension or dimension not in _VALID_DIMENSIONS:
