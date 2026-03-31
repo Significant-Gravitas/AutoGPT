@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Any, Literal
+from urllib.parse import quote
 
 from pydantic import SecretStr
 
@@ -52,6 +53,7 @@ class HeyGenCreateVideoBlock(Block):
             description="The text script for the avatar to speak",
             placeholder="e.g., 'Hello, welcome to our platform!'",
             title="Text Script",
+            min_length=1,
         )
         avatar_id: str = SchemaField(
             description="The HeyGen avatar ID to use for the video",
@@ -65,15 +67,17 @@ class HeyGenCreateVideoBlock(Block):
         )
         max_polling_attempts: int = SchemaField(
             description="Maximum number of polling attempts",
-            default=30,
+            default=60,
             ge=5,
+            le=120,
             title="Max Polling Attempts",
             advanced=True,
         )
         polling_interval: int = SchemaField(
             description="Interval between polling attempts in seconds",
-            default=10,
+            default=5,
             ge=5,
+            le=30,
             title="Polling Interval",
             advanced=True,
         )
@@ -135,20 +139,24 @@ class HeyGenCreateVideoBlock(Block):
         }
         response = await Requests().post(url, json=payload, headers=headers)
         result = response.json()
-        if result.get("error"):
-            raise RuntimeError(f"HeyGen API error: {result['error']}")
+        if result.get("error") or result.get("code") not in (None, 100):
+            error_detail = result.get("error") or result.get("message", "Unknown error")
+            raise RuntimeError(f"HeyGen API error: {error_detail}")
         return result.get("data", {})
 
     async def get_video_status(self, api_key: SecretStr, video_id: str) -> dict:
-        url = f"https://api.heygen.com/v1/video_status.get?video_id={video_id}"
+        url = (
+            "https://api.heygen.com/v1/video_status.get" f"?video_id={quote(video_id)}"
+        )
         headers = {
             "Accept": "application/json",
             "X-Api-Key": api_key.get_secret_value(),
         }
         response = await Requests().get(url, headers=headers)
         result = response.json()
-        if result.get("error"):
-            raise RuntimeError(f"HeyGen API error: {result['error']}")
+        if result.get("error") or result.get("code") not in (None, 100):
+            error_detail = result.get("error") or result.get("message", "Unknown error")
+            raise RuntimeError(f"HeyGen API error: {error_detail}")
         return result.get("data", {})
 
     async def run(
@@ -190,8 +198,11 @@ class HeyGenCreateVideoBlock(Block):
                 )
                 status = status_response.get("status")
                 logger.debug(
-                    f"Polling HeyGen video {video_id}: status={status} "
-                    f"(attempt {attempt + 1}/{input_data.max_polling_attempts})"
+                    "Polling HeyGen video %s: status=%s (attempt %d/%d)",
+                    video_id,
+                    status,
+                    attempt + 1,
+                    input_data.max_polling_attempts,
                 )
 
                 if status == "completed":
