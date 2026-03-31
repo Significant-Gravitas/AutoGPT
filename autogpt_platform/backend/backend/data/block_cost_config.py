@@ -60,19 +60,33 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 MODEL_COST: dict[LlmModel, int] = {
+    LlmModel.O4_MINI: 2,
+    LlmModel.O4_MINI_DEEP_RESEARCH: 5,
     LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,
+    LlmModel.O3_PRO: 30,
+    LlmModel.O3_DEEP_RESEARCH: 15,
     LlmModel.O1: 16,
     LlmModel.O1_MINI: 4,
     # GPT-5 models
+    LlmModel.GPT5_4: 5,
+    LlmModel.GPT5_4_MINI: 2,
+    LlmModel.GPT5_4_NANO: 1,
+    LlmModel.GPT5_4_PRO: 60,
+    LlmModel.GPT5_3: 5,
+    LlmModel.GPT5_3_CODEX: 5,
     LlmModel.GPT5_2: 6,
+    LlmModel.GPT5_2_PRO: 60,
     LlmModel.GPT5_1: 5,
+    LlmModel.GPT5_1_CODEX: 4,
     LlmModel.GPT5: 2,
     LlmModel.GPT5_MINI: 1,
     LlmModel.GPT5_NANO: 1,
+    LlmModel.GPT5_PRO: 30,
     LlmModel.GPT5_CHAT: 5,
     LlmModel.GPT41: 2,
     LlmModel.GPT41_MINI: 1,
+    LlmModel.GPT41_NANO: 1,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
@@ -288,6 +302,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_type=BlockCostType.RUN,
             cost_filter={
+                "model": CodexModel.GPT5_3_CODEX,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+            cost_amount=5,
+        ),
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
                 "model": CodexModel.GPT5_1_CODEX,
                 "credentials": {
                     "id": openai_credentials.id,
@@ -296,7 +322,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
             cost_amount=5,
-        )
+        ),
     ],
     CreateTalkingAvatarVideoBlock: [
         BlockCost(
