@@ -871,9 +871,14 @@ class TestObviousFailureDetection:
         )
         mock_db_client = AsyncMock()
 
-        with patch(
-            "backend.executor.activity_status_generator.is_feature_enabled",
-            return_value=True,
+        with (
+            patch(
+                "backend.executor.activity_status_generator.is_feature_enabled",
+                return_value=True,
+            ),
+            patch(
+                "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+            ) as mock_structured_block,
         ):
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
@@ -894,3 +899,4 @@ class TestObviousFailureDetection:
         mock_db_client.get_node_executions.assert_not_called()
         mock_db_client.get_graph_metadata.assert_not_called()
         mock_db_client.get_graph.assert_not_called()
+        mock_structured_block.assert_not_called()
