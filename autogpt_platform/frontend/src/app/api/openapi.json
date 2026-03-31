@@ -5457,6 +5457,280 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/platform-linking/chat/session": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Create a CoPilot session for a linked user (bot-facing)",
+        "description": "Creates a new CoPilot chat session on behalf of a linked user.",
+        "operationId": "postPlatform-linkingCreate a copilot session for a linked user (bot-facing)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BotChatRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotChatSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/chat/stream": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Stream a CoPilot response for a linked user (bot-facing)",
+        "description": "Send a message to CoPilot on behalf of a linked user and stream\nthe response back as Server-Sent Events.\n\nThe bot authenticates with its API key — no user JWT needed.",
+        "operationId": "postPlatform-linkingStream a copilot response for a linked user (bot-facing)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BotChatRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/links": {
+      "get": {
+        "tags": ["platform-linking"],
+        "summary": "List all platform links for the authenticated user",
+        "description": "Returns all platform identities linked to the current user's account.",
+        "operationId": "getPlatform-linkingList all platform links for the authenticated user",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/PlatformLinkInfo" },
+                  "type": "array",
+                  "title": "Response Getplatform-Linkinglist All Platform Links For The Authenticated User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/platform-linking/links/{link_id}": {
+      "delete": {
+        "tags": ["platform-linking"],
+        "summary": "Unlink a platform identity",
+        "description": "Removes a platform link. The user will need to re-link if they\nwant to use the bot on that platform again.",
+        "operationId": "deletePlatform-linkingUnlink a platform identity",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "link_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Link Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/DeleteLinkResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/resolve": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Resolve a platform identity to an AutoGPT user",
+        "description": "Called by the bot service on every incoming message to check if\nthe platform user has a linked AutoGPT account.",
+        "operationId": "postPlatform-linkingResolve a platform identity to an autogpt user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResolveRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResolveResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/tokens": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Create a link token for an unlinked platform user",
+        "description": "Called by the bot service when it encounters an unlinked user.\nGenerates a one-time token the user can use to link their account.",
+        "operationId": "postPlatform-linkingCreate a link token for an unlinked platform user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLinkTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LinkTokenResponse" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/tokens/{token}/confirm": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Confirm a link token (user must be authenticated)",
+        "description": "Called by the frontend when the user clicks the link and is logged in.\nConsumes the token and creates the platform link.\nUses atomic update_many to prevent race conditions on double-click.",
+        "operationId": "postPlatform-linkingConfirm a link token (user must be authenticated)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Token" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConfirmLinkResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/tokens/{token}/status": {
+      "get": {
+        "tags": ["platform-linking"],
+        "summary": "Check if a link token has been consumed",
+        "description": "Called by the bot service to check if a user has completed linking.",
+        "operationId": "getPlatform-linkingCheck if a link token has been consumed",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Token" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkTokenStatusResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/public/shared/{share_token}": {
       "get": {
         "tags": ["v1"],
@@ -8322,6 +8596,40 @@
         "required": ["file"],
         "title": "Body_postWorkspaceUpload file to workspace"
       },
+      "BotChatRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "The linked AutoGPT user ID"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "The user's message"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Existing chat session ID. If omitted, a new session is created."
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message"],
+        "title": "BotChatRequest",
+        "description": "Request from the bot to chat as a linked user."
+      },
+      "BotChatSessionResponse": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "BotChatSessionResponse",
+        "description": "Returned when creating a new session via the bot proxy."
+      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -8437,6 +8745,25 @@
         "title": "CoPilotUsageStatus",
         "description": "Current usage status for a user across all windows."
       },
+      "ConfirmLinkResponse": {
+        "properties": {
+          "success": { "type": "boolean", "title": "Success" },
+          "platform": { "type": "string", "title": "Platform" },
+          "platform_user_id": { "type": "string", "title": "Platform User Id" },
+          "platform_username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Platform Username"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "platform",
+          "platform_user_id",
+          "platform_username"
+        ],
+        "title": "ConfirmLinkResponse"
+      },
       "ContentType": {
         "type": "string",
         "enum": [
@@ -8513,6 +8840,41 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
+      },
+      "CreateLinkTokenRequest": {
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/Platform",
+            "description": "Platform name"
+          },
+          "platform_user_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Platform User Id",
+            "description": "The user's ID on the platform"
+          },
+          "platform_username": {
+            "anyOf": [
+              { "type": "string", "maxLength": 255 },
+              { "type": "null" }
+            ],
+            "title": "Platform Username",
+            "description": "Display name (best effort)"
+          },
+          "channel_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 255 },
+              { "type": "null" }
+            ],
+            "title": "Channel Id",
+            "description": "Channel ID for sending confirmation back"
+          }
+        },
+        "type": "object",
+        "required": ["platform", "platform_user_id"],
+        "title": "CreateLinkTokenRequest",
+        "description": "Request from the bot service to create a linking token."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -8700,6 +9062,12 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
+      },
+      "DeleteLinkResponse": {
+        "properties": { "success": { "type": "boolean", "title": "Success" } },
+        "type": "object",
+        "required": ["success"],
+        "title": "DeleteLinkResponse"
       },
       "DiscoverToolsRequest": {
         "properties": {
@@ -10482,6 +10850,36 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "LinkTokenResponse": {
+        "properties": {
+          "token": { "type": "string", "title": "Token" },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "link_url": { "type": "string", "title": "Link Url" }
+        },
+        "type": "object",
+        "required": ["token", "expires_at", "link_url"],
+        "title": "LinkTokenResponse"
+      },
+      "LinkTokenStatusResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending", "linked", "expired"],
+            "title": "Status"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "LinkTokenStatusResponse"
+      },
       "ListSessionsResponse": {
         "properties": {
           "sessions": {
@@ -11326,6 +11724,44 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "Platform": {
+        "type": "string",
+        "enum": [
+          "DISCORD",
+          "TELEGRAM",
+          "SLACK",
+          "TEAMS",
+          "WHATSAPP",
+          "GITHUB",
+          "LINEAR"
+        ],
+        "title": "Platform"
+      },
+      "PlatformLinkInfo": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "platform": { "type": "string", "title": "Platform" },
+          "platform_user_id": { "type": "string", "title": "Platform User Id" },
+          "platform_username": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Platform Username"
+          },
+          "linked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Linked At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "platform",
+          "platform_user_id",
+          "platform_username",
+          "linked_at"
+        ],
+        "title": "PlatformLinkInfo"
+      },
       "PostmarkBounceEnum": {
         "type": "integer",
         "enum": [
@@ -11847,6 +12283,33 @@
         "type": "object",
         "required": ["credit_amount"],
         "title": "RequestTopUp"
+      },
+      "ResolveRequest": {
+        "properties": {
+          "platform": { "$ref": "#/components/schemas/Platform" },
+          "platform_user_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Platform User Id"
+          }
+        },
+        "type": "object",
+        "required": ["platform", "platform_user_id"],
+        "title": "ResolveRequest",
+        "description": "Resolve a platform identity to an AutoGPT user."
+      },
+      "ResolveResponse": {
+        "properties": {
+          "linked": { "type": "boolean", "title": "Linked" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          }
+        },
+        "type": "object",
+        "required": ["linked"],
+        "title": "ResolveResponse"
       },
       "ResponseType": {
         "type": "string",

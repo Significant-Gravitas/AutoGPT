@@ -71,6 +71,9 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+
+  // Platform bot linking
+  PlatformLinks PlatformLink[]
 }
 
 enum OnboardingStep {
@@ -1301,4 +1304,51 @@ model OAuthRefreshToken {
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+}
+
+// ── Platform Bot Linking ──────────────────────────────────────────────
+// Links external chat platform identities (Discord, Telegram, Slack, etc.)
+// to AutoGPT user accounts, enabling the multi-platform CoPilot bot.
+
+enum PlatformType {
+  DISCORD
+  TELEGRAM
+  SLACK
+  TEAMS
+  WHATSAPP
+  GITHUB
+  LINEAR
+}
+
+// Maps a platform user identity to an AutoGPT account.
+// One AutoGPT user can have multiple platform links (e.g. Discord + Telegram).
+// Each platform identity can only link to one AutoGPT account.
+model PlatformLink {
+  id               String       @id @default(uuid())
+  userId           String
+  User             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform         PlatformType
+  platformUserId   String       // The user's ID on that platform
+  platformUsername String?      // Display name (best-effort, may go stale)
+  linkedAt         DateTime     @default(now())
+
+  @@unique([platform, platformUserId])
+  @@index([userId])
+}
+
+// One-time tokens for the account linking flow.
+// Generated when an unlinked user messages the bot; consumed when they
+// complete the link on the AutoGPT web app.
+model PlatformLinkToken {
+  id               String       @id @default(uuid())
+  token            String       @unique
+  platform         PlatformType
+  platformUserId   String
+  platformUsername String?
+  channelId        String?      // So the bot can send a confirmation message
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime     @default(now())
+
+  @@index([expiresAt])
 }
