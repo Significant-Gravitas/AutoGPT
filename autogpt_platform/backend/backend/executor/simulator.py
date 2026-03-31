@@ -41,15 +41,30 @@ from backend.util.clients import get_openai_client
 logger = logging.getLogger(__name__)
 
 
-# Use the same fast/cheap model the copilot uses for non-primary tasks.
-# Overridable via ChatConfig.title_model if ChatConfig is available.
-def _simulator_model() -> str:
-    try:
-        from backend.copilot.config import ChatConfig  # noqa: PLC0415
+# Default simulator model — Gemini 2.5 Flash via OpenRouter (fast, cheap, good at
+# JSON generation).  Configurable via SIMULATION_MODEL env var or
+# ChatConfig.simulation_model.
+_DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash"
 
-        model = ChatConfig().title_model
-    except Exception:
-        model = "openai/gpt-4o-mini"
+
+def _simulator_model() -> str:
+    # 1. Environment variable override (highest priority).
+    import os  # noqa: PLC0415
+
+    env_model = os.environ.get("SIMULATION_MODEL")
+    if env_model:
+        model = env_model
+    else:
+        # 2. ChatConfig.simulation_model (falls back to default).
+        try:
+            from backend.copilot.config import ChatConfig  # noqa: PLC0415
+
+            model = (
+                getattr(ChatConfig(), "simulation_model", "")
+                or _DEFAULT_SIMULATOR_MODEL
+            )
+        except Exception:
+            model = _DEFAULT_SIMULATOR_MODEL
 
     # get_openai_client() may return a direct OpenAI client (not OpenRouter).
     # Direct OpenAI expects bare model names ("gpt-4o-mini"), not the
@@ -59,10 +74,6 @@ def _simulator_model() -> str:
         from backend.util.settings import Settings  # noqa: PLC0415
 
         secrets = Settings().secrets
-        # get_openai_client() uses the direct OpenAI client whenever
-        # openai_internal_api_key is set, regardless of open_router_api_key.
-        # Strip the provider prefix (e.g. "openai/gpt-4o-mini" -> "gpt-4o-mini")
-        # so the model name is valid for the direct OpenAI API.
         if secrets.openai_internal_api_key and "/" in model:
             model = model.split("/", 1)[1]
     except Exception:
