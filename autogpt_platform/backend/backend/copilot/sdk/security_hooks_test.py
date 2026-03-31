@@ -38,6 +38,10 @@ def _reason(result: dict) -> str:
     return result.get("hookSpecificOutput", {}).get("permissionDecisionReason", "")
 
 
+def _additional_context(result: dict) -> str:
+    return result.get("hookSpecificOutput", {}).get("additionalContext", "")
+
+
 # -- Blocked tools -----------------------------------------------------------
 
 
@@ -429,3 +433,88 @@ async def test_websearch_denials_do_not_consume_total_cap():
         context={},
     )
     assert _is_denied(result), "Should hit total tool call cap"
+
+
+# -- Budget warnings ---------------------------------------------------------
+
+
+@pytest.fixture()
+def _hooks_warn_search():
+    """Create security hooks with cap=5 to test 80% warning at call 4+."""
+    hooks = create_security_hooks(
+        user_id="u1",
+        sdk_cwd=SDK_CWD,
+        max_subtasks=2,
+        max_web_searches=5,
+        max_tool_calls=500,
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+    return pre
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_web_search_warning_at_threshold(_hooks_warn_search):
+    """WebSearch calls near the cap should include a budget warning."""
+    pre = _hooks_warn_search
+    # First 3 calls (of 5) should have no warning (below 80%)
+    for i in range(3):
+        result = await pre(
+            {"tool_name": "WebSearch", "tool_input": {"query": f"q{i}"}},
+            tool_use_id=f"ws-warn-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+        assert _additional_context(result) == "", f"Call {i} shouldn't warn"
+
+    # 4th call (80% used) should include a warning
+    result = await pre(
+        {"tool_name": "WebSearch", "tool_input": {"query": "q3"}},
+        tool_use_id="ws-warn-3",
+        context={},
+    )
+    assert not _is_denied(result)
+    ctx = _additional_context(result)
+    assert "remaining" in ctx.lower()
+    assert "web search" in ctx.lower()
+
+
+@pytest.fixture()
+def _hooks_warn_tool():
+    """Create security hooks with cap=5 to test 80% warning at call 4+."""
+    hooks = create_security_hooks(
+        user_id="u1",
+        sdk_cwd=SDK_CWD,
+        max_subtasks=2,
+        max_web_searches=100,
+        max_tool_calls=5,
+    )
+    pre = hooks["PreToolUse"][0].hooks[0]
+    return pre
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_total_tool_call_warning_at_threshold(_hooks_warn_tool):
+    """Tool calls near the total cap should include a budget warning."""
+    pre = _hooks_warn_tool
+    # First 3 calls (of 5) should have no warning (below 80%)
+    for i in range(3):
+        result = await pre(
+            {"tool_name": "SomeTool", "tool_input": {"arg": i}},
+            tool_use_id=f"tc-warn-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+        assert _additional_context(result) == "", f"Call {i} shouldn't warn"
+
+    # 4th call (80% used) should include a warning
+    result = await pre(
+        {"tool_name": "SomeTool", "tool_input": {"arg": 3}},
+        tool_use_id="tc-warn-3",
+        context={},
+    )
+    assert not _is_denied(result)
+    ctx = _additional_context(result)
+    assert "remaining" in ctx.lower()
+    assert "tool call" in ctx.lower()

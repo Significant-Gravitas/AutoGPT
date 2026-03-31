@@ -209,6 +209,7 @@ def create_security_hooks(
             # --- Circuit breaker: WebSearch calls per turn ---
             # Check WebSearch cap before incrementing the total counter so
             # denied searches don't consume slots from the total budget.
+            budget_warnings: list[str] = []
             if tool_name == "WebSearch":
                 web_search_count[0] += 1
                 if web_search_count[0] > max_web_searches:
@@ -224,6 +225,12 @@ def create_security_hooks(
                             "reached. Synthesize your answer from the information "
                             "you have already gathered instead of searching again."
                         ),
+                    )
+                ws_remaining = max_web_searches - web_search_count[0]
+                if ws_remaining <= max(1, int(max_web_searches * 0.2)):
+                    budget_warnings.append(
+                        f"Web search budget: {ws_remaining}/{max_web_searches} "
+                        "remaining this turn. Plan remaining searches carefully."
                     )
 
             # --- Circuit breaker: total tool calls per turn ---
@@ -241,6 +248,12 @@ def create_security_hooks(
                         "Please synthesize your answer from the information "
                         "you have already gathered."
                     ),
+                )
+            tc_remaining = max_tool_calls - total_tool_call_count[0]
+            if tc_remaining <= max(1, int(max_tool_calls * 0.2)):
+                budget_warnings.append(
+                    f"Total tool call budget: {tc_remaining}/{max_tool_calls} "
+                    "remaining this turn. Prioritize essential tool calls."
                 )
 
             # Strip MCP prefix for consistent validation
@@ -264,6 +277,17 @@ def create_security_hooks(
                 task_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
+            if budget_warnings:
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PreToolUse",
+                            "permissionDecision": "allow",
+                            "additionalContext": " ".join(budget_warnings),
+                        }
+                    },
+                )
             return cast(SyncHookJSONOutput, {})
 
         def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
