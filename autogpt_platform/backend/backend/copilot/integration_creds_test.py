@@ -129,8 +129,15 @@ class TestGetProviderToken:
         assert result == "oauth-tok"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_oauth2_refresh_failure_returns_none(self):
-        """On refresh failure, return None instead of caching a stale token."""
+    async def test_oauth2_refresh_failure_returns_none_without_null_cache(self):
+        """On refresh failure, return None but do NOT cache in null_cache.
+
+        The user has credentials — they just couldn't be refreshed right now
+        (e.g. transient network error or event-loop mismatch in the copilot
+        executor).  Caching a negative result would block all credential
+        lookups for 60 s even though the creds exist and may refresh fine
+        on the next attempt.
+        """
         oauth_creds = _make_oauth2_creds("stale-oauth-tok")
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth_creds])
@@ -141,6 +148,8 @@ class TestGetProviderToken:
 
         # Stale tokens must NOT be returned — forces re-auth.
         assert result is None
+        # Must NOT cache negative result when refresh failed — next call retries.
+        assert (_USER, _PROVIDER) not in _null_cache
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_credentials_caches_null_entry(self):

@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import logging
@@ -306,12 +307,19 @@ def is_system_provider(provider: str) -> bool:
 class IntegrationCredentialsStore:
     def __init__(self):
         self._locks = None
+        self._locks_loop: asyncio.AbstractEventLoop | None = None
 
     async def locks(self) -> AsyncRedisKeyedMutex:
-        if self._locks:
+        # Recreate the mutex when the event loop has changed (e.g. copilot
+        # executor threads each create their own loop).  The internal
+        # asyncio.Lock inside AsyncRedisKeyedMutex is bound to the loop it was
+        # created on and raises "Future attached to a different loop" otherwise.
+        current_loop = asyncio.get_running_loop()
+        if self._locks and self._locks_loop is current_loop:
             return self._locks
 
         self._locks = AsyncRedisKeyedMutex(await get_redis_async())
+        self._locks_loop = current_loop
         return self._locks
 
     @property
