@@ -76,10 +76,10 @@ class TestCreateLinkTokenRequest:
     def test_invalid_platform_rejected(self):
         from pydantic import ValidationError
 
+        invalid_platform = "INVALID"
         with pytest.raises(ValidationError):
-            self.CreateLinkTokenRequest(
-                platform="INVALID",  # type: ignore[arg-type]
-                platform_user_id="123",
+            self.CreateLinkTokenRequest.model_validate(
+                {"platform": invalid_platform, "platform_user_id": "123"}
             )
 
 
