@@ -147,6 +147,7 @@ export function MessagePartRenderer({
     case "tool-run_agent":
     case "tool-schedule_agent":
       return <RunAgentTool key={key} part={part as ToolUIPart} />;
+    case "tool-clarify_agent_request":
     case "tool-create_agent":
       return <CreateAgentTool key={key} part={part as ToolUIPart} />;
     case "tool-edit_agent":
