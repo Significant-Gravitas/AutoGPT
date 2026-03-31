@@ -9,7 +9,7 @@ from email.mime.text import MIMEText
 from email.policy import SMTP
 from email.utils import getaddresses, parseaddr
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Protocol, runtime_checkable
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -70,7 +70,14 @@ def validate_email_recipients(recipients: list[str], field_name: str = "to") -> 
         )
 
 
-def validate_all_recipients(input_data) -> None:
+@runtime_checkable
+class HasRecipients(Protocol):
+    to: list[str]
+    cc: list[str]
+    bcc: list[str]
+
+
+def validate_all_recipients(input_data: HasRecipients) -> None:
     """Validate to/cc/bcc recipient fields on an input namespace.
 
     Calls ``validate_email_recipients`` for ``to`` (required) and
@@ -138,7 +145,6 @@ async def create_mime_message(
 ) -> str:
     """Create a MIME message with attachments and return base64-encoded raw message."""
 
-    # Validate all recipient lists before building the MIME message
     validate_all_recipients(input_data)
 
     message = MIMEMultipart()
@@ -1208,7 +1214,6 @@ async def _build_reply_message(
         references.append(headers["message-id"])
 
     # Create MIME message
-    # Validate all recipient lists before building the MIME message
     validate_all_recipients(input_data)
 
     msg = MIMEMultipart()
