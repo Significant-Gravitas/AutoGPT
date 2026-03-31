@@ -623,7 +623,7 @@ async def bot_chat_stream(
             if subscriber_queue is not None:
                 await stream_registry.unsubscribe_from_session(
                     session_id=session_id,
-                    user_id=user_id,
+                    subscriber_queue=subscriber_queue,
                 )
 
     return StreamingResponse(
