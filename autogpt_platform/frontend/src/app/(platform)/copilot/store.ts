@@ -31,6 +31,10 @@ interface CopilotUIState {
   showNotificationDialog: boolean;
   setShowNotificationDialog: (show: boolean) => void;
 
+  /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
+  copilotMode: "extended_thinking" | "fast";
+  setCopilotMode: (mode: "extended_thinking" | "fast") => void;
+
   clearCopilotLocalData: () => void;
 }
 
@@ -80,15 +84,25 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   showNotificationDialog: false,
   setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
+  copilotMode:
+    (storage.get(Key.COPILOT_MODE) as "extended_thinking" | "fast") ||
+    "extended_thinking",
+  setCopilotMode: (mode) => {
+    storage.set(Key.COPILOT_MODE, mode);
+    set({ copilotMode: mode });
+  },
+
   clearCopilotLocalData: () => {
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
+    storage.clean(Key.COPILOT_MODE);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
+      copilotMode: "extended_thinking",
     });
     document.title = "AutoGPT";
   },

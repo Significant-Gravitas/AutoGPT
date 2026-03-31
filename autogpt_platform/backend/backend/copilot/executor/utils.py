@@ -156,6 +156,9 @@ class CoPilotExecutionEntry(BaseModel):
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
+    mode: str | None = None
+    """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -175,6 +178,7 @@ async def enqueue_copilot_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
+    mode: str | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -197,6 +201,7 @@ async def enqueue_copilot_turn(
         is_user_message=is_user_message,
         context=context,
         file_ids=file_ids,
+        mode=mode,
     )
 
     queue_client = await get_async_copilot_queue()

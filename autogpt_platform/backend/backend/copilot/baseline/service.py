@@ -41,6 +41,12 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from backend.copilot.sdk.transcript import (
+    download_transcript,
+    upload_transcript,
+    validate_transcript,
+)
+from backend.copilot.sdk.transcript_builder import TranscriptBuilder
 from backend.copilot.service import (
     _build_system_prompt,
     _generate_session_title,
@@ -51,11 +57,7 @@ from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import (
-    compress_context,
-    estimate_token_count,
-    estimate_token_count_str,
-)
+from backend.util.prompt import compress_context
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
     LLMToolCall,
@@ -196,6 +198,7 @@ async def _baseline_tool_executor(
     state: _BaselineStreamState,
     user_id: str | None,
     session: ChatSession,
+    transcript_builder: TranscriptBuilder,
 ) -> ToolCallResult:
     """Execute a tool via the copilot tool registry.
 
@@ -217,6 +220,10 @@ async def _baseline_tool_executor(
                 output=parse_error,
                 success=False,
             )
+        )
+        transcript_builder.append_tool_result(
+            tool_use_id=tool_call_id,
+            content=parse_error,
         )
         return ToolCallResult(
             tool_call_id=tool_call_id,
@@ -248,6 +255,10 @@ async def _baseline_tool_executor(
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
+        transcript_builder.append_tool_result(
+            tool_use_id=tool_call_id,
+            content=tool_output,
+        )
         return ToolCallResult(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
@@ -269,6 +280,10 @@ async def _baseline_tool_executor(
                 success=False,
             )
         )
+        transcript_builder.append_tool_result(
+            tool_use_id=tool_call_id,
+            content=error_output,
+        )
         return ToolCallResult(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
@@ -281,6 +296,9 @@ def _baseline_conversation_updater(
     messages: list[dict[str, Any]],
     response: LLMLoopResponse,
     tool_results: list[ToolCallResult] | None = None,
+    *,
+    transcript_builder: TranscriptBuilder,
+    model: str = "",
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
@@ -300,6 +318,27 @@ def _baseline_conversation_updater(
             for tc in response.tool_calls
         ]
         messages.append(assistant_msg)
+        # Record assistant message (with tool_calls) to transcript
+        content_blocks: list[dict[str, Any]] = []
+        if response.response_text:
+            content_blocks.append({"type": "text", "text": response.response_text})
+        for tc in response.tool_calls:
+            try:
+                args = orjson.loads(tc.arguments) if tc.arguments else {}
+            except Exception:
+                args = {}
+            content_blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "input": args,
+                }
+            )
+        if content_blocks:
+            transcript_builder.append_assistant(
+                content_blocks=content_blocks, model=model
+            )
         for tr in tool_results:
             messages.append(
                 {
@@ -311,6 +350,11 @@ def _baseline_conversation_updater(
     else:
         if response.response_text:
             messages.append({"role": "assistant", "content": response.response_text})
+            # Record final text to transcript
+            transcript_builder.append_assistant(
+                content_blocks=[{"type": "text", "text": response.response_text}],
+                model=model,
+            )
 
 
 async def _update_title_async(
@@ -415,6 +459,34 @@ async def stream_chat_completion_baseline(
 
     session = await upsert_chat_session(session)
 
+    # --- Transcript support (feature parity with SDK path) ---
+    transcript_builder = TranscriptBuilder()
+    transcript_covers_prefix = True
+
+    if user_id and len(session.messages) > 1:
+        try:
+            dl = await download_transcript(user_id, session_id, log_prefix="[Baseline]")
+            if dl and validate_transcript(dl.content):
+                transcript_builder.load_previous(dl.content, log_prefix="[Baseline]")
+                logger.info(
+                    "[Baseline] Loaded transcript: %dB, msg_count=%d",
+                    len(dl.content),
+                    dl.message_count,
+                )
+            elif dl:
+                logger.warning("[Baseline] Downloaded transcript but invalid")
+                transcript_covers_prefix = False
+            else:
+                logger.debug("[Baseline] No transcript available")
+                transcript_covers_prefix = False
+        except Exception as e:
+            logger.warning("[Baseline] Transcript download failed: %s", e)
+            transcript_covers_prefix = False
+
+    # Append user message to transcript
+    if message:
+        transcript_builder.append_user(content=message)
+
     # Generate title for new sessions
     if is_user_message and not session.title:
         user_messages = [m for m in session.messages if m.role == "user"]
@@ -480,7 +552,17 @@ async def stream_chat_completion_baseline(
     # using functools.partial so they satisfy the Protocol signatures.
     _bound_llm_caller = partial(_baseline_llm_caller, state=state)
     _bound_tool_executor = partial(
-        _baseline_tool_executor, state=state, user_id=user_id, session=session
+        _baseline_tool_executor,
+        state=state,
+        user_id=user_id,
+        session=session,
+        transcript_builder=transcript_builder,
+    )
+
+    _bound_conversation_updater = partial(
+        _baseline_conversation_updater,
+        transcript_builder=transcript_builder,
+        model=config.model,
     )
 
     try:
@@ -490,7 +572,7 @@ async def stream_chat_completion_baseline(
             tools=tools,
             llm_call=_bound_llm_caller,
             execute_tool=_bound_tool_executor,
-            update_conversation=_baseline_conversation_updater,
+            update_conversation=_bound_conversation_updater,
             max_iterations=_MAX_TOOL_ROUNDS,
         ):
             # Drain buffered events after each iteration (real-time streaming)
@@ -558,6 +640,11 @@ async def stream_chat_completion_baseline(
             and state.turn_completion_tokens == 0
             and not (_stream_error and not state.assistant_text)
         ):
+            from backend.util.prompt import (
+                estimate_token_count,
+                estimate_token_count_str,
+            )
+
             state.turn_prompt_tokens = max(
                 estimate_token_count(openai_messages, model=config.model), 1
             )
@@ -592,6 +679,23 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+        # --- Upload transcript for next-turn continuity ---
+        if user_id and transcript_covers_prefix:
+            try:
+                _transcript_content = transcript_builder.to_jsonl()
+                if _transcript_content and validate_transcript(_transcript_content):
+                    await upload_transcript(
+                        user_id=user_id,
+                        session_id=session_id,
+                        content=_transcript_content,
+                        message_count=len(session.messages),
+                        log_prefix="[Baseline]",
+                    )
+                else:
+                    logger.debug("[Baseline] No valid transcript to upload")
+            except Exception as upload_err:
+                logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
     # Yield usage and finish AFTER try/finally (not inside finally).
     # PEP 525 prohibits yielding from finally in async generators during

@@ -38,6 +38,8 @@ interface UseCopilotStreamArgs {
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
+  /** Autopilot mode to use for requests. */
+  copilotMode: "extended_thinking" | "fast";
 }
 
 export function useCopilotStream({
@@ -45,6 +47,7 @@ export function useCopilotStream({
   hydratedMessages,
   hasActiveStream,
   refetchSession,
+  copilotMode,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
@@ -79,6 +82,7 @@ export function useCopilotStream({
                   is_user_message: last.role === "user",
                   context: null,
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+                  mode: copilotMode,
                 },
                 headers: await getAuthHeaders(),
               };
@@ -89,7 +93,7 @@ export function useCopilotStream({
             }),
           })
         : null,
-    [sessionId],
+    [sessionId, copilotMode],
   );
 
   // Reconnect state — use refs for values read inside callbacks to avoid
