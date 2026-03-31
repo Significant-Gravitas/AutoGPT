@@ -37,43 +37,49 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
     );
 
     return outputNodes
-      .flatMap((node) => {
+      .map((node) => {
         const executionResults = node.data.nodeExecutionResults || [];
-        if (executionResults.length === 0) return [];
 
-        return executionResults
+        const items = executionResults
           .filter((result) => result.output_data?.output !== undefined)
           .map((result) => {
-            const outputData = result.output_data?.output;
+            const outputData = result.output_data!.output;
             const renderer = globalRegistry.getRenderer(outputData);
+            return { value: outputData, renderer };
+          })
+          .filter(
+            (
+              item,
+            ): item is typeof item & {
+              renderer: NonNullable<typeof item.renderer>;
+            } => item.renderer !== null,
+          );
 
-            return {
-              metadata: {
-                name: node.data.hardcodedValues?.name || "Output",
-                description:
-                  node.data.hardcodedValues?.description ||
-                  "Output from the agent",
-              },
-              value: outputData ?? "No output yet",
-              renderer,
-            };
-          });
+        if (items.length === 0) return null;
+
+        return {
+          metadata: {
+            name: node.data.hardcodedValues?.name || "Output",
+            description:
+              node.data.hardcodedValues?.description ||
+              "Output from the agent",
+          },
+          items,
+        };
       })
       .filter(
-        (
-          output,
-        ): output is typeof output & {
-          renderer: NonNullable<typeof output.renderer>;
-        } => output.renderer !== null,
+        (group): group is NonNullable<typeof group> => group !== null,
       );
   }, [nodes]);
 
   const actionItems = useMemo(() => {
-    return outputs.map((output) => ({
-      value: output.value,
-      metadata: {},
-      renderer: output.renderer,
-    }));
+    return outputs.flatMap((group) =>
+      group.items.map((item) => ({
+        value: item.value,
+        metadata: {},
+        renderer: item.renderer,
+      })),
+    );
   }, [outputs]);
 
   return (
@@ -118,24 +124,27 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-6">
               {outputs && outputs.length > 0 ? (
-                outputs.map((output, i) => (
+                outputs.map((group, i) => (
                   <div key={i} className="space-y-2">
                     <div>
                       <Label className="text-base font-semibold">
-                        {output.metadata.name || "Unnamed Output"}
+                        {group.metadata.name || "Unnamed Output"}
                       </Label>
-                      {output.metadata.description && (
+                      {group.metadata.description && (
                         <Label className="mt-1 block text-sm text-gray-600">
-                          {output.metadata.description}
+                          {group.metadata.description}
                         </Label>
                       )}
                     </div>
 
-                    <OutputItem
-                      value={output.value}
-                      metadata={{}}
-                      renderer={output.renderer}
-                    />
+                    {group.items.map((item, j) => (
+                      <OutputItem
+                        key={j}
+                        value={item.value}
+                        metadata={{}}
+                        renderer={item.renderer}
+                      />
+                    ))}
                   </div>
                 ))
               ) : (
