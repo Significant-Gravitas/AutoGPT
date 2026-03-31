@@ -555,6 +555,70 @@ class TestAIConversationBlockValidation:
 
         assert outputs["response"] == "response from conversation"
 
+    @pytest.mark.asyncio
+    async def test_messages_with_empty_content_raises_error(self):
+        """Messages with empty content strings should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": ""}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_whitespace_content_raises_error(self):
+        """Messages with whitespace-only content should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": "   "}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_none_entry_raises_error(self):
+        """Messages list containing None should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[None],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_empty_dict_raises_error(self):
+        """Messages list containing empty dict should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
 
 class TestAITextSummarizerValidation:
     """Test that AITextSummarizerBlock validates LLM responses are strings."""
