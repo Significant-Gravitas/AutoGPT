@@ -85,8 +85,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
   copilotMode:
-    (storage.get(Key.COPILOT_MODE) as "extended_thinking" | "fast") ||
-    "extended_thinking",
+    storage.get(Key.COPILOT_MODE) === "fast" ? "fast" : "extended_thinking",
   setCopilotMode: (mode) => {
     storage.set(Key.COPILOT_MODE, mode);
     set({ copilotMode: mode });

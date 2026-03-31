@@ -12932,7 +12932,10 @@
             "title": "File Ids"
           },
           "mode": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "enum": ["fast", "extended_thinking"] },
+              { "type": "null" }
+            ],
             "title": "Mode",
             "description": "Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. If None, uses the server default (extended_thinking)."
           }

@@ -57,7 +57,11 @@ from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import compress_context
+from backend.util.prompt import (
+    compress_context,
+    estimate_token_count,
+    estimate_token_count_str,
+)
 from backend.util.tool_call_loop import (
     LLMLoopResponse,
     LLMToolCall,
@@ -640,11 +644,6 @@ async def stream_chat_completion_baseline(
             and state.turn_completion_tokens == 0
             and not (_stream_error and not state.assistant_text)
         ):
-            from backend.util.prompt import (
-                estimate_token_count,
-                estimate_token_count_str,
-            )
-
             state.turn_prompt_tokens = max(
                 estimate_token_count(openai_messages, model=config.model), 1
             )
@@ -685,12 +684,14 @@ async def stream_chat_completion_baseline(
             try:
                 _transcript_content = transcript_builder.to_jsonl()
                 if _transcript_content and validate_transcript(_transcript_content):
-                    await upload_transcript(
-                        user_id=user_id,
-                        session_id=session_id,
-                        content=_transcript_content,
-                        message_count=len(session.messages),
-                        log_prefix="[Baseline]",
+                    await asyncio.shield(
+                        upload_transcript(
+                            user_id=user_id,
+                            session_id=session_id,
+                            content=_transcript_content,
+                            message_count=len(session.messages),
+                            log_prefix="[Baseline]",
+                        )
                     )
                 else:
                     logger.debug("[Baseline] No valid transcript to upload")
