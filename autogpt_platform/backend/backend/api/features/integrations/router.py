@@ -44,11 +44,11 @@ from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
 )
-from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
