@@ -12,7 +12,9 @@ from .models import (
     ToolResponseBase,
 )
 
-_VALID_DIMENSIONS = frozenset({"output_format", "delivery_channel", "data_source", "trigger"})
+_VALID_DIMENSIONS = frozenset(
+    {"output_format", "delivery_channel", "data_source", "trigger"}
+)
 
 
 class ClarifyAgentRequestTool(BaseTool):
@@ -47,15 +49,11 @@ class ClarifyAgentRequestTool(BaseTool):
                 "dimension": {
                     "type": "string",
                     "enum": sorted(_VALID_DIMENSIONS),
-                    "description": (
-                        "Which dimension of the user's goal is ambiguous."
-                    ),
+                    "description": ("Which dimension of the user's goal is ambiguous."),
                 },
                 "question": {
                     "type": "string",
-                    "description": (
-                        "The single concrete question to ask the user."
-                    ),
+                    "description": ("The single concrete question to ask the user."),
                 },
                 "options": {
                     "type": "array",
