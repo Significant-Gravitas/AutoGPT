@@ -1304,8 +1304,10 @@ async def _run_stream_attempt(
                 # AssistantMessage.error (not as a Python exception).
                 # Re-raise so the outer retry loop can compact the
                 # transcript and retry with reduced context.
-                combined = f"{error_text} {error_preview}"
-                if _is_prompt_too_long(Exception(combined)):
+                # Only check error_text (the error field), not the
+                # content preview — content may contain arbitrary text
+                # that false-positives the pattern match.
+                if _is_prompt_too_long(Exception(error_text)):
                     logger.warning(
                         "%s Prompt-too-long detected via AssistantMessage "
                         "error — raising for retry",
