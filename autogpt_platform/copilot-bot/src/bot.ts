@@ -1,0 +1,215 @@
+/**
+ * CoPilot Bot — Multi-platform bot using Vercel Chat SDK.
+ *
+ * Handles:
+ * - Account linking (prompts unlinked users to link)
+ * - Message routing to CoPilot API
+ * - Streaming responses back to the user
+ */
+
+import { Chat } from "chat";
+import type { StateAdapter } from "chat";
+import { PlatformAPI } from "./platform-api.js";
+import type { Config } from "./config.js";
+
+// Thread state persisted across messages
+export interface BotThreadState {
+  /** Linked AutoGPT user ID */
+  userId?: string;
+  /** CoPilot chat session ID for this thread */
+  sessionId?: string;
+  /** Pending link token (if user hasn't linked yet) */
+  pendingLinkToken?: string;
+}
+
+export function createBot(config: Config, stateAdapter: StateAdapter) {
+  const api = new PlatformAPI(config.autogptApiUrl);
+
+  // Build adapters based on config
+  const adapters: Record<string, any> = {};
+
+  if (config.discord) {
+    // Dynamic import to avoid loading unused adapters
+    const { createDiscordAdapter } = require("@chat-adapter/discord");
+    adapters.discord = createDiscordAdapter();
+  }
+
+  if (config.telegram) {
+    const { createTelegramAdapter } = require("@chat-adapter/telegram");
+    adapters.telegram = createTelegramAdapter();
+  }
+
+  if (config.slack) {
+    const { createSlackAdapter } = require("@chat-adapter/slack");
+    adapters.slack = createSlackAdapter();
+  }
+
+  if (Object.keys(adapters).length === 0) {
+    throw new Error(
+      "No adapters enabled. Set at least one of: " +
+        "DISCORD_BOT_TOKEN, TELEGRAM_BOT_TOKEN, SLACK_BOT_TOKEN"
+    );
+  }
+
+  const bot = new Chat<typeof adapters, BotThreadState>({
+    userName: "copilot",
+    adapters,
+    state: stateAdapter,
+    streamingUpdateIntervalMs: 500,
+    fallbackStreamingPlaceholderText: "Thinking...",
+  });
+
+  // ── New mention (first message in a thread) ──────────────────────
+
+  bot.onNewMention(async (thread, message) => {
+    const adapterName = getAdapterName(thread);
+    const platformUserId = message.author.userId;
+
+    console.log(
+      `[bot] New mention from ${adapterName}:${platformUserId} in ${thread.id}`
+    );
+
+    // Check if user is linked
+    const resolved = await api.resolve(adapterName, platformUserId);
+
+    if (!resolved.linked) {
+      await handleUnlinkedUser(thread, message, adapterName, api);
+      return;
+    }
+
+    // User is linked — subscribe and handle the message
+    await thread.subscribe();
+    await thread.setState({ userId: resolved.user_id });
+
+    await handleCoPilotMessage(thread, message.text, resolved.user_id!, api);
+  });
+
+  // ── Subscribed messages (follow-ups in a thread) ─────────────────
+
+  bot.onSubscribedMessage(async (thread, message) => {
+    const state = await thread.state;
+
+    if (!state?.userId) {
+      // Somehow lost state — re-resolve
+      const adapterName = getAdapterName(thread);
+      const resolved = await api.resolve(adapterName, message.author.userId);
+
+      if (!resolved.linked) {
+        await handleUnlinkedUser(thread, message, adapterName, api);
+        return;
+      }
+
+      await thread.setState({ userId: resolved.user_id });
+      await handleCoPilotMessage(
+        thread,
+        message.text,
+        resolved.user_id!,
+        api
+      );
+      return;
+    }
+
+    await handleCoPilotMessage(thread, message.text, state.userId, api);
+  });
+
+  return bot;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Get the adapter/platform name from a thread.
+ */
+function getAdapterName(thread: any): string {
+  // Thread ID format is "adapter:channel:thread"
+  const parts = thread.id.split(":");
+  return parts[0] ?? "unknown";
+}
+
+/**
+ * Handle an unlinked user — create a link token and send them a prompt.
+ */
+async function handleUnlinkedUser(
+  thread: any,
+  message: any,
+  platform: string,
+  api: PlatformAPI
+) {
+  console.log(
+    `[bot] Unlinked user ${platform}:${message.author.userId}, sending link prompt`
+  );
+
+  try {
+    const linkResult = await api.createLinkToken({
+      platform,
+      platformUserId: message.author.userId,
+      platformUsername: message.author.fullName ?? message.author.username,
+    });
+
+    await thread.post(
+      `👋 To use CoPilot, link your AutoGPT account first.\n\n` +
+        `🔗 **Link your account:** ${linkResult.link_url}\n\n` +
+        `_This link expires in 30 minutes._`
+    );
+
+    // Store the pending token so we could poll later if needed
+    await thread.setState({ pendingLinkToken: linkResult.token });
+  } catch (err: any) {
+    if (err.message?.includes("409")) {
+      // Already linked (race condition) — retry resolve
+      const resolved = await api.resolve(platform, message.author.userId);
+      if (resolved.linked) {
+        await thread.subscribe();
+        await thread.setState({ userId: resolved.user_id });
+        await handleCoPilotMessage(
+          thread,
+          message.text,
+          resolved.user_id!,
+          api
+        );
+        return;
+      }
+    }
+
+    console.error("[bot] Failed to create link token:", err);
+    await thread.post(
+      "Sorry, I couldn't set up account linking right now. Please try again later."
+    );
+  }
+}
+
+/**
+ * Forward a message to CoPilot and stream the response back.
+ */
+async function handleCoPilotMessage(
+  thread: any,
+  text: string,
+  userId: string,
+  api: PlatformAPI
+) {
+  const state = await thread.state;
+  let sessionId = state?.sessionId;
+
+  // TODO: For now, we need a way to get a user token to call the chat API.
+  // This will require either:
+  // 1. A service-to-service token exchange endpoint
+  // 2. Storing user tokens during the linking flow
+  // 3. A bot-specific chat endpoint that accepts user_id directly
+  //
+  // For the MVP, we'll echo back to prove the pipeline works.
+  // The CoPilot integration comes in the next iteration.
+
+  console.log(
+    `[bot] Message from user ${userId.slice(-8)}: ${text.slice(0, 100)}`
+  );
+
+  await thread.startTyping();
+
+  // MVP: Echo back with user info to prove linking works
+  await thread.post(
+    `✅ **Connected as AutoGPT user** \`${userId.slice(-8)}\`\n\n` +
+      `> ${text}\n\n` +
+      `_CoPilot integration coming soon. ` +
+      `Session: ${sessionId ?? "new"}_`
+  );
+}

@@ -1,0 +1,197 @@
+/**
+ * Client for the AutoGPT Platform Linking & Chat APIs.
+ *
+ * Handles:
+ * - Resolving platform users → AutoGPT accounts
+ * - Creating link tokens for unlinked users
+ * - Checking link token status
+ * - Creating chat sessions and streaming messages
+ */
+
+export interface ResolveResult {
+  linked: boolean;
+  user_id?: string;
+  platform_username?: string;
+}
+
+export interface LinkTokenResult {
+  token: string;
+  expires_at: string;
+  link_url: string;
+}
+
+export interface LinkTokenStatus {
+  status: "pending" | "linked" | "expired";
+  user_id?: string;
+}
+
+export class PlatformAPI {
+  constructor(private baseUrl: string) {}
+
+  /**
+   * Check if a platform user is linked to an AutoGPT account.
+   */
+  async resolve(
+    platform: string,
+    platformUserId: string
+  ): Promise<ResolveResult> {
+    const res = await fetch(`${this.baseUrl}/api/platform-linking/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform: platform.toUpperCase(),
+        platform_user_id: platformUserId,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Platform resolve failed: ${res.status} ${await res.text()}`
+      );
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Create a link token for an unlinked platform user.
+   */
+  async createLinkToken(params: {
+    platform: string;
+    platformUserId: string;
+    platformUsername?: string;
+    channelId?: string;
+  }): Promise<LinkTokenResult> {
+    const res = await fetch(`${this.baseUrl}/api/platform-linking/tokens`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        platform: params.platform.toUpperCase(),
+        platform_user_id: params.platformUserId,
+        platform_username: params.platformUsername,
+        channel_id: params.channelId,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Create link token failed: ${res.status} ${await res.text()}`
+      );
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Check if a link token has been consumed.
+   */
+  async getLinkTokenStatus(token: string): Promise<LinkTokenStatus> {
+    const res = await fetch(
+      `${this.baseUrl}/api/platform-linking/tokens/${token}/status`
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        `Link token status failed: ${res.status} ${await res.text()}`
+      );
+    }
+
+    return res.json();
+  }
+
+  /**
+   * Create a new CoPilot chat session for a user.
+   * Returns the session ID.
+   */
+  async createChatSession(userToken: string): Promise<string> {
+    const res = await fetch(`${this.baseUrl}/api/chat/sessions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${userToken}`,
+      },
+    });
+
+    if (!res.ok) {
+      throw new Error(
+        `Create chat session failed: ${res.status} ${await res.text()}`
+      );
+    }
+
+    const data = await res.json();
+    return data.id;
+  }
+
+  /**
+   * Stream a chat message to CoPilot and yield text chunks.
+   * Uses SSE (Server-Sent Events) to stream the response.
+   */
+  async *streamChat(
+    sessionId: string,
+    message: string,
+    userToken: string
+  ): AsyncGenerator<string> {
+    const res = await fetch(
+      `${this.baseUrl}/api/chat/sessions/${sessionId}/stream`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userToken}`,
+          Accept: "text/event-stream",
+        },
+        body: JSON.stringify({
+          message,
+          is_user_message: true,
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(
+        `Stream chat failed: ${res.status} ${await res.text()}`
+      );
+    }
+
+    if (!res.body) {
+      throw new Error("No response body for SSE stream");
+    }
+
+    // Parse SSE stream
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      // Keep the last potentially incomplete line in the buffer
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") return;
+
+          try {
+            const parsed = JSON.parse(data);
+            // Extract text content from SSE events
+            if (parsed.type === "text" && parsed.content) {
+              yield parsed.content;
+            } else if (typeof parsed === "string") {
+              yield parsed;
+            }
+          } catch {
+            // Non-JSON data line, yield as-is if it has content
+            if (data && data !== "[DONE]") {
+              yield data;
+            }
+          }
+        }
+      }
+    }
+  }
+}
