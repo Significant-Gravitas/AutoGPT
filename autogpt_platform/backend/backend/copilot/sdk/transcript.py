@@ -714,12 +714,14 @@ def _flatten_assistant_content(blocks: list) -> str:
             if btype == "text":
                 parts.append(block.get("text", ""))
             elif btype == "tool_use":
-                # Use prose instead of bracket syntax — the model mimics
-                # [tool_use: name] patterns, producing broken text output
-                # instead of actual structured tool calls.
-                parts.append(f"(Called tool {block.get('name', '?')})")
+                # Drop tool_use entirely — any text representation gets
+                # mimicked by the model as plain text instead of actual
+                # structured tool calls. The tool results (in the
+                # following user/tool_result entry) provide sufficient
+                # context about what happened.
+                continue
             else:
-                parts.append(f"({btype} content omitted)")
+                continue
         elif isinstance(block, str):
             parts.append(block)
     return "\n".join(parts) if parts else ""

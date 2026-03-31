@@ -750,14 +750,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "unknown")
-                    lines.append(f"(You used the {tool_name} tool)")
+            # Omit tool_calls — any text representation gets mimicked
+            # by the model. Tool results below provide the context.
         elif msg.role == "tool":
             content = msg.content or ""
-            lines.append(f"(Tool returned: {content[:500]})")
+            lines.append(f"Tool output: {content[:500]}")
 
     if not lines:
         return None
