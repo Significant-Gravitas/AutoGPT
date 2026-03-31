@@ -614,6 +614,7 @@ export type CredentialsMetaResponse = {
   username?: string;
   host?: string;
   is_system?: boolean;
+  is_managed?: boolean;
 };
 
 /* Mirror of backend/api/features/integrations/router.py:CredentialsDeletionResponse */
@@ -743,7 +744,7 @@ export enum BlockUIType {
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
   MCP_TOOL = "a0a4b1c2-d3e4-4f56-a7b8-c9d0e1f2a3b4",
-  SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
+  TOOL_ORCHESTRATOR = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -964,6 +965,7 @@ export type AddUserCreditsResponse = {
   new_balance: number;
   transaction_key: string;
 };
+
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

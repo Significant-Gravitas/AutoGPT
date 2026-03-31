@@ -88,7 +88,7 @@ pandas = "^2.3.1"
 firecrawl-py = "^4.3.6"
 exa-py = "^1.14.20"
 croniter = "^6.0.0"
-stagehand = "^0.5.1"
+stagehand = "^3.4.0"
 gravitas-md2gdocs = "^0.1.0"
 posthog = "^7.6.0"
 fpdf2 = "^2.8.6"
@@ -155,6 +155,7 @@ asyncio_default_fixture_loop_scope = "session"
 addopts = "-p no:syrupy"
 markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
+    "integration: end-to-end tests that require a live database (skipped in CI)",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",

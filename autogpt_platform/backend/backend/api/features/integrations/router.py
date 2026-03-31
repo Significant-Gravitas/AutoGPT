@@ -34,16 +34,21 @@ from backend.data.model import (
     HostScopedCredentials,
     OAuth2Credentials,
     UserIntegrations,
+    is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -109,6 +114,7 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    is_managed: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -136,6 +142,19 @@ class CredentialsMetaResponse(BaseModel):
         ):
             return (cred.metadata or {}).get("mcp_server_url")
         return None
+
+
+def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
+    return CredentialsMetaResponse(
+        id=cred.id,
+        provider=cred.provider,
+        type=cred.type,
+        title=cred.title,
+        scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
+        username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+        host=CredentialsMetaResponse.get_host(cred),
+        is_managed=cred.is_managed,
+    )
 
 
 @router.post("/{provider}/callback", summary="Exchange OAuth code for tokens")
@@ -204,34 +223,20 @@ async def callback(
         f"and provider {provider.value}"
     )
 
-    return CredentialsMetaResponse(
-        id=credentials.id,
-        provider=credentials.provider,
-        type=credentials.type,
-        title=credentials.title,
-        scopes=credentials.scopes,
-        username=credentials.username,
-        host=(CredentialsMetaResponse.get_host(credentials)),
-    )
+    return to_meta_response(credentials)
 
 
 @router.get("/credentials", summary="List Credentials")
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    # Fire-and-forget: provision missing managed credentials in the background.
+    # The credential appears on the next page load; listing is never blocked.
+    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
-        CredentialsMetaResponse(
-            id=cred.id,
-            provider=cred.provider,
-            type=cred.type,
-            title=cred.title,
-            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
-            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=CredentialsMetaResponse.get_host(cred),
-        )
-        for cred in credentials
+        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
     ]
 
 
@@ -242,19 +247,11 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
-        CredentialsMetaResponse(
-            id=cred.id,
-            provider=cred.provider,
-            type=cred.type,
-            title=cred.title,
-            scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
-            username=cred.username if isinstance(cred, OAuth2Credentials) else None,
-            host=CredentialsMetaResponse.get_host(cred),
-        )
-        for cred in credentials
+        to_meta_response(cred) for cred in credentials if not is_sdk_default(cred.id)
     ]
 
 
@@ -267,18 +264,21 @@ async def get_credential(
     ],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Security(get_user_id)],
-) -> Credentials:
+) -> CredentialsMetaResponse:
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     credential = await creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if credential.provider != provider:
+    if not provider_matches(credential.provider, provider):
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Credentials do not match the specified provider",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    return credential
+    return to_meta_response(credential)
 
 
 @router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
@@ -288,16 +288,22 @@ async def create_credentials(
         ProviderName, Path(title="The provider to create credentials for")
     ],
     credentials: Credentials,
-) -> Credentials:
+) -> CredentialsMetaResponse:
+    if is_sdk_default(credentials.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create credentials with a reserved ID",
+        )
     credentials.provider = provider
     try:
         await creds_manager.create(user_id, credentials)
-    except Exception as e:
+    except Exception:
+        logger.exception("Failed to store credentials")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to store credentials: {str(e)}",
+            detail="Failed to store credentials",
         )
-    return credentials
+    return to_meta_response(credentials)
 
 
 class CredentialsDeletionResponse(BaseModel):
@@ -332,15 +338,29 @@ async def delete_credentials(
         bool, Query(title="Whether to proceed if any linked webhooks are still in use")
     ] = False,
 ) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if is_system_credential(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System-managed credentials cannot be deleted",
+        )
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
-    if creds.provider != provider:
+    if not provider_matches(creds.provider, provider):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Credentials do not match the specified provider",
+            detail="Credentials not found",
+        )
+    if creds.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AutoGPT-managed credentials cannot be deleted",
         )
 
     try:
