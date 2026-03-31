@@ -33,6 +33,17 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
+from backend.copilot.transcript import (
+    _run_compression,
+    cleanup_stale_project_dirs,
+    compact_transcript,
+    download_transcript,
+    read_compacted_entries,
+    upload_transcript,
+    validate_transcript,
+    write_transcript_to_tempfile,
+)
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -91,17 +102,6 @@ from .tool_adapter import (
     set_execution_context,
     wait_for_stash,
 )
-from .transcript import (
-    _run_compression,
-    cleanup_stale_project_dirs,
-    compact_transcript,
-    download_transcript,
-    read_compacted_entries,
-    upload_transcript,
-    validate_transcript,
-    write_transcript_to_tempfile,
-)
-from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()

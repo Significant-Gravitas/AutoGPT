@@ -41,12 +41,6 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from backend.copilot.sdk.transcript import (
-    download_transcript,
-    upload_transcript,
-    validate_transcript,
-)
-from backend.copilot.sdk.transcript_builder import TranscriptBuilder
 from backend.copilot.service import (
     _build_system_prompt,
     _generate_session_title,
@@ -56,6 +50,12 @@ from backend.copilot.service import (
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
+from backend.copilot.transcript import (
+    download_transcript,
+    upload_transcript,
+    validate_transcript,
+)
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
     compress_context,
