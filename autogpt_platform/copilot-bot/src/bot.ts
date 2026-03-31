@@ -190,26 +190,27 @@ async function handleCoPilotMessage(
   const state = await thread.state;
   let sessionId = state?.sessionId;
 
-  // TODO: For now, we need a way to get a user token to call the chat API.
-  // This will require either:
-  // 1. A service-to-service token exchange endpoint
-  // 2. Storing user tokens during the linking flow
-  // 3. A bot-specific chat endpoint that accepts user_id directly
-  //
-  // For the MVP, we'll echo back to prove the pipeline works.
-  // The CoPilot integration comes in the next iteration.
-
   console.log(
     `[bot] Message from user ${userId.slice(-8)}: ${text.slice(0, 100)}`
   );
 
   await thread.startTyping();
 
-  // MVP: Echo back with user info to prove linking works
-  await thread.post(
-    `✅ **Connected as AutoGPT user** \`${userId.slice(-8)}\`\n\n` +
-      `> ${text}\n\n` +
-      `_CoPilot integration coming soon. ` +
-      `Session: ${sessionId ?? "new"}_`
-  );
+  try {
+    // Create a session if we don't have one
+    if (!sessionId) {
+      sessionId = await api.createChatSession(userId);
+      await thread.setState({ ...state, sessionId });
+      console.log(`[bot] Created session ${sessionId} for user ${userId.slice(-8)}`);
+    }
+
+    // Stream CoPilot response directly to the chat platform
+    const stream = api.streamChat(userId, text, sessionId);
+    await thread.post(stream);
+  } catch (err: any) {
+    console.error(`[bot] CoPilot error for user ${userId.slice(-8)}:`, err.message);
+    await thread.post(
+      "Sorry, I ran into an issue processing your message. Please try again."
+    );
+  }
 }

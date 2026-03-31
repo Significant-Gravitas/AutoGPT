@@ -100,17 +100,24 @@ export class PlatformAPI {
   }
 
   /**
-   * Create a new CoPilot chat session for a user.
-   * Returns the session ID.
+   * Create a new CoPilot chat session for a linked user.
+   * Uses the bot chat proxy (no user JWT needed).
    */
-  async createChatSession(userToken: string): Promise<string> {
-    const res = await fetch(`${this.baseUrl}/api/chat/sessions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${userToken}`,
-      },
-    });
+  async createChatSession(userId: string): Promise<string> {
+    const res = await fetch(
+      `${this.baseUrl}/api/platform-linking/chat/session`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...this.botHeaders(),
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          message: "session_init",
+        }),
+      }
+    );
 
     if (!res.ok) {
       throw new Error(
@@ -119,30 +126,32 @@ export class PlatformAPI {
     }
 
     const data = await res.json();
-    return data.id;
+    return data.session_id;
   }
 
   /**
-   * Stream a chat message to CoPilot and yield text chunks.
-   * Uses SSE (Server-Sent Events) to stream the response.
+   * Stream a chat message to CoPilot on behalf of a linked user.
+   * Uses the bot chat proxy — authenticated via bot API key.
+   * Yields text chunks from the SSE stream.
    */
   async *streamChat(
-    sessionId: string,
+    userId: string,
     message: string,
-    userToken: string
+    sessionId?: string
   ): AsyncGenerator<string> {
     const res = await fetch(
-      `${this.baseUrl}/api/chat/sessions/${sessionId}/stream`,
+      `${this.baseUrl}/api/platform-linking/chat/stream`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${userToken}`,
           Accept: "text/event-stream",
+          ...this.botHeaders(),
         },
         body: JSON.stringify({
+          user_id: userId,
           message,
-          is_user_message: true,
+          session_id: sessionId,
         }),
       }
     );
@@ -168,7 +177,6 @@ export class PlatformAPI {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      // Keep the last potentially incomplete line in the buffer
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
@@ -178,14 +186,12 @@ export class PlatformAPI {
 
           try {
             const parsed = JSON.parse(data);
-            // Extract text content from SSE events
             if (parsed.type === "text" && parsed.content) {
               yield parsed.content;
             } else if (typeof parsed === "string") {
               yield parsed;
             }
           } catch {
-            // Non-JSON data line, yield as-is if it has content
             if (data && data !== "[DONE]") {
               yield data;
             }
@@ -193,5 +199,13 @@ export class PlatformAPI {
         }
       }
     }
+  }
+
+  private botHeaders(): Record<string, string> {
+    const key = process.env.PLATFORM_BOT_API_KEY;
+    if (key) {
+      return { "X-Bot-API-Key": key };
+    }
+    return {};
   }
 }
