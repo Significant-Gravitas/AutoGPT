@@ -58,7 +58,7 @@ export function buildReactArtifactSrcDoc(
   stylesMarkup: string,
 ) {
   const safeTitle = escapeHtml(title);
-  const runtime = JSON.stringify(compiledCode);
+  const runtime = JSON.stringify(compiledCode).replace(/</g, "\\u003c");
 
   return `<!doctype html>
 <html lang="en">
