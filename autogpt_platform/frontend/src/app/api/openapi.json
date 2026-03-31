@@ -7463,10 +7463,9 @@
           },
           "graph": {
             "anyOf": [
-              { "additionalProperties": true, "type": "object" },
+              { "$ref": "#/components/schemas/BaseGraph-Output" },
               { "type": "null" }
             ],
-            "title": "Graph",
             "description": "Full graph structure (nodes + links) when include_graph is requested"
           }
         },

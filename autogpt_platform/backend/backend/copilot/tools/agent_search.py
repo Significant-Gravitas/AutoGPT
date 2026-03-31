@@ -10,10 +10,10 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryAgent
     from backend.api.features.store.model import StoreAgent, StoreAgentDetails
 
+from backend.data.db_accessors import graph_db as get_graph_db
 from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
-from .agent_generator import get_agent_as_json
 from .models import (
     AgentInfo,
     AgentsFoundResponse,
@@ -222,12 +222,12 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
 
     async def _fetch(agent: AgentInfo) -> None:
         try:
-            graph_json = await get_agent_as_json(
-                agent.graph_id, user_id  # type: ignore[arg-type]
+            graph = await get_graph_db().get_graph(
+                agent.graph_id, version=None, user_id=user_id  # type: ignore[arg-type]
             )
-            if graph_json is None:
+            if graph is None:
                 logger.warning(f"Graph not found for agent {agent.graph_id}")
-            agent.graph = graph_json
+            agent.graph = graph
         except Exception as e:
             logger.warning(f"Failed to fetch graph for agent {agent.graph_id}: {e}")
 

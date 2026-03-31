@@ -177,20 +177,18 @@ class TestLibraryUUIDLookup:
         assert response.agents[0].name == "My Library Agent"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_include_graph_fetches_nodes_and_links(self):
-        """include_graph=True attaches full graph JSON to agent results."""
+    async def test_include_graph_fetches_graph(self):
+        """include_graph=True attaches BaseGraph to agent results."""
+        from backend.data.graph import BaseGraph
+
         agent_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
         mock_agent = self._make_mock_library_agent(agent_id)
-
         mock_lib_db = MagicMock()
         mock_lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=mock_agent)
 
-        fake_graph = {
-            "id": agent_id,
-            "name": "My Library Agent",
-            "nodes": [{"id": "node-1", "block_id": "block-1"}],
-            "links": [{"id": "link-1", "source_id": "node-1", "sink_id": "node-2"}],
-        }
+        fake_graph = BaseGraph(id=agent_id, name="My Library Agent", description="test")
+        mock_graph_db = MagicMock()
+        mock_graph_db.get_graph = AsyncMock(return_value=fake_graph)
 
         with (
             patch(
@@ -198,33 +196,35 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_agent_as_json",
-                new_callable=AsyncMock,
-                return_value=fake_graph,
-            ) as mock_get_json,
+                "backend.copilot.tools.agent_search.get_graph_db",
+                return_value=mock_graph_db,
+            ),
         ):
             response = await search_agents(
                 query=agent_id,
                 source="library",
-                session_id="test-session",
+                session_id="s",
                 user_id=_TEST_USER_ID,
                 include_graph=True,
             )
 
         assert isinstance(response, AgentsFoundResponse)
         assert response.agents[0].graph is not None
-        assert response.agents[0].graph["nodes"] == fake_graph["nodes"]
-        assert response.agents[0].graph["links"] == fake_graph["links"]
-        mock_get_json.assert_awaited_once_with(agent_id, _TEST_USER_ID)
+        assert response.agents[0].graph.id == agent_id
+        mock_graph_db.get_graph.assert_awaited_once_with(
+            agent_id, version=None, user_id=_TEST_USER_ID
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_include_graph_false_does_not_fetch(self):
+    async def test_include_graph_false_skips_fetch(self):
         """include_graph=False (default) does not fetch graph data."""
         agent_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
         mock_agent = self._make_mock_library_agent(agent_id)
-
         mock_lib_db = MagicMock()
         mock_lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=mock_agent)
+
+        mock_graph_db = MagicMock()
+        mock_graph_db.get_graph = AsyncMock()
 
         with (
             patch(
@@ -232,30 +232,32 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_agent_as_json",
-                new_callable=AsyncMock,
-            ) as mock_get_json,
+                "backend.copilot.tools.agent_search.get_graph_db",
+                return_value=mock_graph_db,
+            ),
         ):
             response = await search_agents(
                 query=agent_id,
                 source="library",
-                session_id="test-session",
+                session_id="s",
                 user_id=_TEST_USER_ID,
                 include_graph=False,
             )
 
         assert isinstance(response, AgentsFoundResponse)
         assert response.agents[0].graph is None
-        mock_get_json.assert_not_awaited()
+        mock_graph_db.get_graph.assert_not_awaited()
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_include_graph_handles_fetch_failure(self):
         """include_graph=True still returns agents when graph fetch fails."""
         agent_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
         mock_agent = self._make_mock_library_agent(agent_id)
-
         mock_lib_db = MagicMock()
         mock_lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=mock_agent)
+
+        mock_graph_db = MagicMock()
+        mock_graph_db.get_graph = AsyncMock(side_effect=Exception("DB down"))
 
         with (
             patch(
@@ -263,31 +265,31 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_agent_as_json",
-                new_callable=AsyncMock,
-                side_effect=Exception("DB connection failed"),
+                "backend.copilot.tools.agent_search.get_graph_db",
+                return_value=mock_graph_db,
             ),
         ):
             response = await search_agents(
                 query=agent_id,
                 source="library",
-                session_id="test-session",
+                session_id="s",
                 user_id=_TEST_USER_ID,
                 include_graph=True,
             )
 
         assert isinstance(response, AgentsFoundResponse)
-        assert response.count == 1
         assert response.agents[0].graph is None
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_include_graph_handles_none_return(self):
-        """include_graph=True handles get_agent_as_json returning None."""
+        """include_graph=True handles get_graph returning None."""
         agent_id = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
         mock_agent = self._make_mock_library_agent(agent_id)
-
         mock_lib_db = MagicMock()
         mock_lib_db.get_library_agent_by_graph_id = AsyncMock(return_value=mock_agent)
+
+        mock_graph_db = MagicMock()
+        mock_graph_db.get_graph = AsyncMock(return_value=None)
 
         with (
             patch(
@@ -295,19 +297,17 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_agent_as_json",
-                new_callable=AsyncMock,
-                return_value=None,
+                "backend.copilot.tools.agent_search.get_graph_db",
+                return_value=mock_graph_db,
             ),
         ):
             response = await search_agents(
                 query=agent_id,
                 source="library",
-                session_id="test-session",
+                session_id="s",
                 user_id=_TEST_USER_ID,
                 include_graph=True,
             )
 
         assert isinstance(response, AgentsFoundResponse)
-        assert response.count == 1
         assert response.agents[0].graph is None
