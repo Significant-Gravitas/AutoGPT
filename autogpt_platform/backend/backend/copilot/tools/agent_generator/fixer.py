@@ -34,11 +34,16 @@ _GMAIL_SEND_BLOCK_ID = "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
 _TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
 
 # Defaults applied to OrchestratorBlock nodes by the fixer.
-_SDM_DEFAULTS: dict[str, int | bool] = {
+# execution_mode and model match the copilot's default (extended thinking
+# with Opus) so generated agents inherit the same reasoning capabilities.
+# If the user explicitly sets these fields, the fixer won't override them.
+_SDM_DEFAULTS: dict[str, int | bool | str] = {
     "agent_mode_max_iterations": 10,
     "conversation_compaction": True,
     "retry": 3,
     "multiple_tool_calls": False,
+    "execution_mode": "extended_thinking",
+    "model": "claude-opus-4-6",
 }
 
 
