@@ -465,71 +465,59 @@ def create_tool_handler(base_tool: BaseTool):
             queue = queues[base_tool.name]
             if not queue.empty():
                 task, launch_args = queue.get_nowait()
-                # Sanity-check: warn if the args don't match — this can happen
-                # if the SDK dispatches tool calls in a different order than the
-                # ToolUseBlocks appeared in the AssistantMessage (unlikely but
-                # could occur in future SDK versions or with SDK bugs).
-                # We compare full values (not just keys) so that two run_block
-                # calls with different block_id values are caught even though
-                # both have the same key set.
+                # The SDK CLI may normalise args between the
+                # AssistantMessage (used by pre_launch_tool_call) and
+                # the MCP tools/call dispatch (received here) — e.g.
+                # injecting schema defaults or coercing types.  A
+                # strict equality check previously caused the
+                # pre-launched task to be discarded and re-executed,
+                # leading to duplicate side effects for blocks like
+                # LinearCreateIssueBlock.
+                #
+                # Trust the FIFO ordering instead: the SDK dispatches
+                # MCP tool calls in the same order as ToolUseBlocks in
+                # the AssistantMessage, so the N-th dequeue always
+                # corresponds to the N-th pre-launch.  Log a debug
+                # note when args differ for observability.
                 if launch_args != args:
-                    logger.warning(
-                        "Pre-launched task for %s: arg mismatch "
-                        "(launch_keys=%s, call_keys=%s) — cancelling "
-                        "pre-launched task and falling back to direct execution",
+                    logger.debug(
+                        "Pre-launched task for %s: args differ from SDK "
+                        "dispatch (likely CLI normalisation) — using "
+                        "pre-launched result (FIFO match)",
                         base_tool.name,
-                        (
-                            sorted(launch_args.keys())
-                            if isinstance(launch_args, dict)
-                            else type(launch_args).__name__
-                        ),
-                        (
-                            sorted(args.keys())
-                            if isinstance(args, dict)
-                            else type(args).__name__
-                        ),
                     )
-                    if not task.done():
-                        task.cancel()
-                        # Await cancellation to prevent duplicate concurrent
-                        # execution for blocks with side effects.
-                        try:
-                            await task
-                        except (asyncio.CancelledError, Exception):
-                            pass
-                    # Fall through to the direct-execution path below.
-                else:
-                    # Args match — await the pre-launched task.
-                    try:
-                        result = await task
-                    except asyncio.CancelledError:
-                        # Re-raise: CancelledError may be propagating from the
-                        # outer streaming loop being cancelled — swallowing it
-                        # would mask the cancellation and prevent proper cleanup.
-                        logger.warning(
-                            "Pre-launched tool %s was cancelled — re-raising",
-                            base_tool.name,
-                        )
-                        raise
-                    except Exception as e:
-                        logger.error(
-                            "Pre-launched tool %s failed: %s",
-                            base_tool.name,
-                            e,
-                            exc_info=True,
-                        )
-                        return _mcp_error(
-                            f"Failed to execute {base_tool.name}. "
-                            "Check server logs for details."
-                        )
 
-                    # Pre-truncate the result so the _truncating wrapper (which
-                    # wraps this handler) receives an already-within-budget
-                    # value. _truncating handles stashing — we must NOT stash
-                    # here or the output will be appended twice to the FIFO
-                    # queue and pop_pending_tool_output would return a duplicate
-                    # entry on the second call for the same tool.
-                    return truncate(result, _MCP_MAX_CHARS)
+                # Await the pre-launched task.
+                try:
+                    result = await task
+                except asyncio.CancelledError:
+                    # Re-raise: CancelledError may be propagating from the
+                    # outer streaming loop being cancelled — swallowing it
+                    # would mask the cancellation and prevent proper cleanup.
+                    logger.warning(
+                        "Pre-launched tool %s was cancelled — re-raising",
+                        base_tool.name,
+                    )
+                    raise
+                except Exception as e:
+                    logger.error(
+                        "Pre-launched tool %s failed: %s",
+                        base_tool.name,
+                        e,
+                        exc_info=True,
+                    )
+                    return _mcp_error(
+                        f"Failed to execute {base_tool.name}. "
+                        "Check server logs for details."
+                    )
+
+                # Pre-truncate the result so the _truncating wrapper (which
+                # wraps this handler) receives an already-within-budget
+                # value. _truncating handles stashing — we must NOT stash
+                # here or the output will be appended twice to the FIFO
+                # queue and pop_pending_tool_output would return a duplicate
+                # entry on the second call for the same tool.
+                return truncate(result, _MCP_MAX_CHARS)
 
         # No pre-launched task — execute directly (fallback for non-parallel calls).
         user_id, session = get_execution_context()

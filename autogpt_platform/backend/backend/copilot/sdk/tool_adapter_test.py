@@ -519,28 +519,29 @@ class TestCreateToolHandlerParallel:
         ], f"Expected FIFO dispatch order but got {call_order}"
 
     @pytest.mark.asyncio
-    async def test_arg_mismatch_falls_back_to_direct_execution(self):
-        """When pre-launched args differ from SDK args, handler cancels pre-launched
-        task and falls back to direct execution with the correct args."""
-        mock_tool = _make_mock_tool("run_block", output="direct-result")
+    async def test_arg_mismatch_uses_prelaunched_result(self):
+        """When pre-launched args differ from SDK args (e.g. CLI normalisation),
+        the handler trusts FIFO ordering and uses the pre-launched result
+        instead of re-executing — preventing duplicate side effects."""
+        mock_tool = _make_mock_tool("run_block", output="pre-launched-result")
 
         with patch(
             "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
             {"run_block": mock_tool},
         ):
-            # Pre-launch with args {"block_id": "wrong"}
-            await pre_launch_tool_call("run_block", {"block_id": "wrong"})
+            # Pre-launch with args {"block_id": "original"}
+            await pre_launch_tool_call("run_block", {"block_id": "original"})
             await asyncio.sleep(0)
 
-            # SDK dispatches with different args
+            # SDK dispatches with slightly different args (CLI normalisation)
             handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "correct"})
+            result = await handler({"block_id": "normalised"})
 
         assert result["isError"] is False
-        # The tool was called twice: once by pre-launch (wrong args), once by
-        # direct fallback (correct args). The result should come from the
-        # direct execution path.
-        assert mock_tool.execute.await_count == 2
+        assert "pre-launched-result" in result["content"][0]["text"]
+        # Tool should only be called ONCE (the pre-launched task).
+        # No duplicate execution.
+        assert mock_tool.execute.await_count == 1
 
     @pytest.mark.asyncio
     async def test_no_session_falls_back_gracefully(self):
