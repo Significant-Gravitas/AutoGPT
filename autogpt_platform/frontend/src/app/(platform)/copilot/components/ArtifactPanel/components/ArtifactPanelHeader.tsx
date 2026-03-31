@@ -20,6 +20,8 @@ interface Props {
   isMaximized: boolean;
   isSourceView: boolean;
   hasSourceToggle: boolean;
+  mobile?: boolean;
+  canCopy?: boolean;
   onBack: () => void;
   onClose: () => void;
   onMinimize: () => void;
@@ -44,6 +46,7 @@ function HeaderButton({
       type="button"
       onClick={onClick}
       title={title}
+      aria-label={title}
       className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
     >
       {children}
@@ -57,6 +60,8 @@ export function ArtifactPanelHeader({
   isMaximized,
   isSourceView,
   hasSourceToggle,
+  mobile,
+  canCopy = true,
   onBack,
   onClose,
   onMinimize,
@@ -103,23 +108,29 @@ export function ArtifactPanelHeader({
         {hasSourceToggle && (
           <SourceToggle isSourceView={isSourceView} onToggle={onSourceToggle} />
         )}
-        <HeaderButton onClick={onCopy} title="Copy">
-          <Copy size={16} />
-        </HeaderButton>
+        {canCopy && (
+          <HeaderButton onClick={onCopy} title="Copy">
+            <Copy size={16} />
+          </HeaderButton>
+        )}
         <HeaderButton onClick={onDownload} title="Download">
           <DownloadSimple size={16} />
         </HeaderButton>
-        <HeaderButton onClick={onMinimize} title="Minimize">
-          <Minus size={16} />
-        </HeaderButton>
-        {isMaximized ? (
-          <HeaderButton onClick={onRestore} title="Restore">
-            <ArrowsIn size={16} />
-          </HeaderButton>
-        ) : (
-          <HeaderButton onClick={onMaximize} title="Maximize">
-            <ArrowsOut size={16} />
-          </HeaderButton>
+        {!mobile && (
+          <>
+            <HeaderButton onClick={onMinimize} title="Minimize">
+              <Minus size={16} />
+            </HeaderButton>
+            {isMaximized ? (
+              <HeaderButton onClick={onRestore} title="Restore">
+                <ArrowsIn size={16} />
+              </HeaderButton>
+            ) : (
+              <HeaderButton onClick={onMaximize} title="Maximize">
+                <ArrowsOut size={16} />
+              </HeaderButton>
+            )}
+          </>
         )}
         <HeaderButton onClick={onClose} title="Close">
           <X size={16} />

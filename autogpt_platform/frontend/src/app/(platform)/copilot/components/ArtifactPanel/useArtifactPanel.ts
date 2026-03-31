@@ -50,11 +50,18 @@ export function useArtifactPanel() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [artifactPanel.isOpen, closeArtifactPanel]);
 
+  const canCopy =
+    classification != null &&
+    classification.type !== "image" &&
+    classification.type !== "download-only" &&
+    classification.label !== "PDF";
+
   function handleCopy() {
-    if (!activeArtifact) return;
+    if (!activeArtifact || !canCopy) return;
     fetch(activeArtifact.sourceUrl)
       .then((res) => res.text())
-      .then((text) => navigator.clipboard.writeText(text));
+      .then((text) => navigator.clipboard.writeText(text))
+      .catch(() => {});
   }
 
   function handleDownload() {
@@ -82,6 +89,7 @@ export function useArtifactPanel() {
     restoreArtifactPanel,
     setArtifactPanelWidth,
     goBackArtifact,
+    canCopy,
     handleCopy,
     handleDownload,
   };

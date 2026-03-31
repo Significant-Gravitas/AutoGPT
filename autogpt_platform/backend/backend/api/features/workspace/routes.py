@@ -131,8 +131,18 @@ class StorageUsageResponse(BaseModel):
     file_count: int
 
 
+class WorkspaceFileItem(BaseModel):
+    id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+    metadata: dict
+    created_at: str
+
+
 class ListFilesResponse(BaseModel):
-    files: list[dict]
+    files: list[WorkspaceFileItem]
     total_count: int
 
 
@@ -330,15 +340,15 @@ async def list_workspace_files(
 
     return ListFilesResponse(
         files=[
-            {
-                "id": f.id,
-                "name": f.name,
-                "path": f.path,
-                "mime_type": f.mime_type,
-                "size_bytes": f.size_bytes,
-                "metadata": f.metadata,
-                "created_at": f.created_at.isoformat(),
-            }
+            WorkspaceFileItem(
+                id=f.id,
+                name=f.name,
+                path=f.path,
+                mime_type=f.mime_type,
+                size_bytes=f.size_bytes,
+                metadata=f.metadata,
+                created_at=f.created_at.isoformat(),
+            )
             for f in files
         ],
         total_count=len(files),

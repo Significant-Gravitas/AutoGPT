@@ -126,7 +126,7 @@ function CSVTable({ value }: { value: string }) {
 function canRenderCSV(value: unknown, metadata?: OutputMetadata): boolean {
   if (typeof value !== "string") return false;
   if (metadata?.mimeType === "text/csv") return true;
-  if (metadata?.filename?.endsWith(".csv")) return true;
+  if (metadata?.filename?.toLowerCase().endsWith(".csv")) return true;
   return false;
 }
 

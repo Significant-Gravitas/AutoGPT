@@ -34,6 +34,7 @@ export function ArtifactPanel({ mobile }: Props) {
     restoreArtifactPanel,
     setArtifactPanelWidth,
     goBackArtifact,
+    canCopy,
     handleCopy,
     handleDownload,
   } = useArtifactPanel();
@@ -46,6 +47,8 @@ export function ArtifactPanel({ mobile }: Props) {
     isMaximized,
     isSourceView,
     hasSourceToggle: classification?.hasSourceToggle ?? false,
+    mobile: !!mobile,
+    canCopy,
     onBack: goBackArtifact,
     onClose: closeArtifactPanel,
     onMinimize: minimizeArtifactPanel,
