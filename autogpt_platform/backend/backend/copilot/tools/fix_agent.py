@@ -51,9 +51,9 @@ class FixAgentGraphTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_json: dict | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_json = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
         if not agent_json or not isinstance(agent_json, dict):
@@ -98,8 +98,7 @@ class FixAgentGraphTool(BaseTool):
         if is_valid:
             return FixResultResponse(
                 message=(
-                    f"Applied {len(fixes_applied)} fix(es). "
-                    "Agent graph is now valid!"
+                    f"Applied {len(fixes_applied)} fix(es). Agent graph is now valid!"
                 ),
                 fixed_agent_json=fixed_agent,
                 fixes_applied=fixes_applied,

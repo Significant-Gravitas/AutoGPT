@@ -279,7 +279,7 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should contain [DRY RUN] in message and success=True."""
+    """Dry-run response should match real execution message format and have success=True."""
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
@@ -300,7 +300,8 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "[DRY RUN]" in response.message
+    assert "executed successfully" in response.message
+    assert "[DRY RUN]" not in response.message  # must not leak to LLM context
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
 
@@ -348,23 +349,24 @@ async def test_execute_block_real_execution_unchanged():
 
 
 def test_run_block_tool_dry_run_param():
-    """RunBlockTool parameters should include 'dry_run'."""
+    """RunBlockTool parameters should include 'dry_run' as a required field."""
     tool = RunBlockTool()
     params = tool.parameters
     assert "dry_run" in params["properties"]
     assert params["properties"]["dry_run"]["type"] == "boolean"
+    assert "dry_run" in params["required"]
 
 
 def test_run_block_tool_dry_run_calls_execute():
-    """RunBlockTool._execute extracts dry_run from kwargs correctly.
+    """RunBlockTool._execute accepts dry_run as a typed parameter.
 
-    We verify the extraction logic directly by inspecting the source, then confirm
-    the kwarg is forwarded in the execute_block call site.
+    We verify the parameter exists in the signature and is forwarded to
+    execute_block.
     """
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is extracted from kwargs
+    # Verify dry_run is a typed parameter (not extracted from kwargs)
     assert "dry_run" in source
-    assert 'kwargs.get("dry_run"' in source
+    assert "dry_run: bool" in source
 
     # Scope to _execute method source only — module-wide search is brittle
     # and can match unrelated text/comments.
@@ -461,8 +463,7 @@ async def test_execute_block_dry_run_message_includes_completed_status():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "COMPLETED" in response.message
-    assert "[DRY RUN]" in response.message
+    assert "executed successfully" in response.message
 
 
 @pytest.mark.asyncio
@@ -471,11 +472,10 @@ async def test_execute_block_dry_run_simulator_error_returns_error_response():
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
-        msg = (
-            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] "
-            "No LLM client available (missing OpenAI/OpenRouter API key)."
+        yield (
+            "error",
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
         )
-        yield "error", msg
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error

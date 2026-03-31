@@ -25,7 +25,7 @@ from backend.copilot.sdk.compaction import (
 
 
 def _make_session() -> ChatSession:
-    return ChatSession.new(user_id="test-user")
+    return ChatSession.new(user_id="test-user", dry_run=False)
 
 
 # ---------------------------------------------------------------------------
