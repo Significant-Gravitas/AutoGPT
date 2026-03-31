@@ -443,10 +443,6 @@ class ListWorkspaceFilesTool(BaseTool):
         }
 
     @property
-    def read_only(self) -> bool:
-        return True
-
-    @property
     def requires_auth(self) -> bool:
         return True
 
@@ -562,10 +558,6 @@ class ReadWorkspaceFileTool(BaseTool):
             },
             "required": [],  # At least one of file_id or path must be provided
         }
-
-    @property
-    def read_only(self) -> bool:
-        return True
 
     @property
     def requires_auth(self) -> bool:

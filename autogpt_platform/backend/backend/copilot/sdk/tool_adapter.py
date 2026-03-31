@@ -80,11 +80,6 @@ _consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
     default=None,  # type: ignore[arg-type]
 )
 
-# Read-only E2B file tools.  Unlike TOOL_REGISTRY tools (which derive
-# from BaseTool.read_only), E2B tools are plain handler tuples, so
-# their read-only classification is listed explicitly here.
-_READ_ONLY_E2B_TOOLS = frozenset({"read_file", "glob", "grep"})
-
 
 def set_execution_context(
     user_id: str | None,
@@ -447,10 +442,8 @@ _READONLY_ANNOTATION = ToolAnnotations(readOnlyHint=True)
 def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
 
-    Tools with ``BaseTool.read_only = True`` are annotated with
-    ``readOnlyHint=True`` so the SDK CLI dispatches them in parallel.
-    New read-only tools should override the ``read_only`` property on
-    their ``BaseTool`` subclass rather than editing a separate list.
+    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
+    dispatches concurrent tool calls in parallel rather than sequentially.
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should

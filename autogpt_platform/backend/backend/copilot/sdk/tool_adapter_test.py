@@ -12,7 +12,6 @@ from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
-    _READ_ONLY_E2B_TOOLS,
     _text_from_mcp_result,
     create_tool_handler,
     pop_pending_tool_output,
@@ -338,39 +337,10 @@ class TestCreateToolHandler:
 
 
 class TestReadOnlyAnnotations:
-    """Tests that read-only tools get readOnlyHint=True via BaseTool.read_only."""
-
-    def test_read_only_tools_exist_in_registry(self):
-        """At least some tools in TOOL_REGISTRY have read_only=True."""
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        read_only_names = [name for name, t in TOOL_REGISTRY.items() if t.read_only]
-        assert len(read_only_names) > 0, "No read-only tools found in registry"
-
-    def test_known_read_only_tools_have_attribute(self):
-        """Key read-only tools should have read_only=True."""
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        for name in ["find_block", "search_docs", "list_workspace_files", "web_fetch"]:
-            if name in TOOL_REGISTRY:
-                assert TOOL_REGISTRY[name].read_only, f"{name} should be read_only"
-
-    def test_side_effect_tools_are_not_read_only(self):
-        """Key side-effect tools should have read_only=False."""
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        for name in ["run_block", "bash_exec", "create_agent", "run_agent"]:
-            if name in TOOL_REGISTRY:
-                assert not TOOL_REGISTRY[
-                    name
-                ].read_only, f"{name} should not be read_only"
+    """Tests that all tools get readOnlyHint=True for parallel dispatch."""
 
     def test_tool_annotations_creation(self):
         """ToolAnnotations(readOnlyHint=True) works correctly."""
         ann = ToolAnnotations(readOnlyHint=True)
         assert ann.readOnlyHint is True
         assert ann.destructiveHint is None
-
-    def test_read_only_e2b_tools_classification(self):
-        """E2B read-only tools should be read_file, glob, grep."""
-        assert _READ_ONLY_E2B_TOOLS == frozenset({"read_file", "glob", "grep"})
