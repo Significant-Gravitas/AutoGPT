@@ -56,12 +56,24 @@ async function main() {
       const runGateway = async () => {
         while (true) {
           try {
-            await discord.startGatewayListener(
-              {},
+            // Track background tasks so the listener stays alive
+            const pendingTasks: Promise<unknown>[] = [];
+            const waitUntil = (task: Promise<unknown>) => {
+              pendingTasks.push(task);
+            };
+
+            const response = await discord.startGatewayListener(
+              { waitUntil },
               10 * 60 * 1000, // 10 minutes
               undefined,
               webhookUrl
             );
+
+            // Wait for any background tasks to complete
+            if (pendingTasks.length > 0) {
+              await Promise.allSettled(pendingTasks);
+            }
+
             console.log("[gateway] Listener ended, restarting...");
           } catch (err) {
             console.error("[gateway] Error, restarting in 5s:", err);
