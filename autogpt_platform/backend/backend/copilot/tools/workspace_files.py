@@ -780,6 +780,28 @@ class WriteWorkspaceFileTool(BaseTool):
 
         filename: str = kwargs.get("filename", "")
         if not filename:
+            # When ALL parameters are missing, the most likely cause is
+            # output token truncation: the LLM tried to inline a very large
+            # file as `content`, the SDK silently truncated the tool call
+            # arguments to `{}`, and we receive nothing.  Return an
+            # actionable error instead of a generic "filename required".
+            has_any_content = any(
+                kwargs.get(k) for k in ("content", "content_base64", "source_path")
+            )
+            if not has_any_content:
+                return ErrorResponse(
+                    message=(
+                        "Tool call appears truncated (no arguments received). "
+                        "This happens when the content is too large for a "
+                        "single tool call. Instead of passing content inline, "
+                        "first write the file to the working directory using "
+                        "bash_exec (e.g. cat > /home/user/file.md << 'EOF'... "
+                        "EOF), then use source_path to copy it to workspace: "
+                        "write_workspace_file(filename='file.md', "
+                        "source_path='/home/user/file.md')"
+                    ),
+                    session_id=session_id,
+                )
             return ErrorResponse(
                 message="Please provide a filename", session_id=session_id
             )
