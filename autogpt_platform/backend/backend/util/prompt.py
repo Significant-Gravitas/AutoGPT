@@ -295,8 +295,7 @@ def get_context_window(model: str) -> int | None:
 def get_compression_target(model: str) -> int:
     """Compute a model-aware compression target for conversation history.
 
-    Returns ``context_window - overhead_reserve``, capped at
-    ``DEFAULT_TOKEN_THRESHOLD`` for models where the result would exceed it.
+    Returns ``context_window - overhead_reserve``, with a floor of 10K tokens.
     Falls back to ``DEFAULT_TOKEN_THRESHOLD`` for unknown models.
     """
     window = get_context_window(model)
