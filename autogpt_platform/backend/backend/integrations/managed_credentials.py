@@ -90,11 +90,16 @@ async def _ensure_one(
     store: IntegrationCredentialsStore,
     name: str,
     provider: ManagedCredentialProvider,
-) -> None:
-    """Provision a single managed credential under a distributed Redis lock."""
+) -> bool:
+    """Provision a single managed credential under a distributed Redis lock.
+
+    Returns ``True`` if the credential already exists or was successfully
+    provisioned, ``False`` on transient failure so the caller knows not to
+    cache the user as fully provisioned.
+    """
     try:
         if not await provider.is_available():
-            return
+            return True
         # Use a distributed Redis lock so the check-then-provision operation
         # is atomic across all workers, preventing duplicate external
         # resource provisioning (e.g. AgentMail API keys).
@@ -103,7 +108,7 @@ async def _ensure_one(
         async with locks.locked(key):
             # Re-check under lock to avoid duplicate provisioning.
             if await store.has_managed_credential(user_id, name):
-                return
+                return True
             credential = await provider.provision(user_id)
             await store.add_managed_credential(user_id, credential)
             logger.info(
@@ -111,6 +116,7 @@ async def _ensure_one(
                 name,
                 user_id,
             )
+            return True
     except Exception:
         logger.warning(
             "Failed to provision managed credential for provider=%s user=%s",
@@ -118,6 +124,7 @@ async def _ensure_one(
             user_id,
             exc_info=True,
         )
+        return False
 
 
 async def ensure_managed_credentials(
@@ -139,12 +146,15 @@ async def ensure_managed_credentials(
     if user_id in _provisioned_users:
         return
 
-    await asyncio.gather(
+    results = await asyncio.gather(
         *(_ensure_one(user_id, store, n, p) for n, p in _PROVIDERS.items())
     )
 
-    # All providers checked (successfully or not) — skip for TTL duration.
-    _provisioned_users[user_id] = True
+    # Only cache the user as provisioned when every provider succeeded or
+    # was already present.  A transient failure (network timeout, Redis
+    # blip) returns False, so the next page load will retry.
+    if all(results):
+        _provisioned_users[user_id] = True
 
 
 async def cleanup_managed_credentials(
