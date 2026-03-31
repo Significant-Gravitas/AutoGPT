@@ -118,6 +118,11 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    # Register managed credential providers (e.g. AgentMail)
+    from backend.integrations.managed_providers import register_all
+
+    register_all()
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()

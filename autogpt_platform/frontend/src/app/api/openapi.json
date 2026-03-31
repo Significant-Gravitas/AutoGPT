@@ -1059,9 +1059,22 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces run_block and run_agent calls to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CreateSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1075,6 +1088,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -7168,6 +7189,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "api_key",
@@ -8497,6 +8528,14 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
+      "ChatSessionMetadata": {
+        "properties": {
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+        },
+        "type": "object",
+        "title": "ChatSessionMetadata",
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
@@ -8630,6 +8669,15 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateSessionRequest": {
+        "properties": {
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8637,6 +8685,10 @@
           "user_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": { "dry_run": false }
           }
         },
         "type": "object",
@@ -8787,6 +8839,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
           }
         },
         "type": "object",
@@ -10018,6 +10075,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "host_scoped",
@@ -11111,6 +11178,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "oauth2",
@@ -11146,11 +11223,6 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
           }
         },
         "type": "object",
@@ -12235,6 +12307,10 @@
             "type": "integer",
             "title": "Total Completion Tokens",
             "default": 0
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": { "dry_run": false }
           }
         },
         "type": "object",
@@ -14825,6 +14901,16 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
           },
           "type": {
             "type": "string",

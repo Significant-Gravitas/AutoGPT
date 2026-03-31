@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -20,6 +20,9 @@ from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -470,6 +473,27 @@ async def unsubscribe_user_by_token(token: str) -> None:
         )
     except Exception as e:
         raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+
+
+async def cleanup_user_managed_credentials(
+    user_id: str,
+    store: Optional["IntegrationCredentialsStore"] = None,
+) -> None:
+    """Revoke all externally-provisioned managed credentials for *user_id*.
+
+    Call this before deleting a user account so that external resources
+    (e.g. AgentMail pods, pod-scoped API keys) are properly cleaned up.
+    The credential rows themselves are cascade-deleted with the User row.
+
+    Pass an existing *store* for testability; when omitted a fresh instance
+    is created.
+    """
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
+    from backend.integrations.managed_credentials import cleanup_managed_credentials
+
+    if store is None:
+        store = IntegrationCredentialsStore()
+    await cleanup_managed_credentials(user_id, store)
 
 
 async def update_user_timezone(user_id: str, timezone: str) -> User:
