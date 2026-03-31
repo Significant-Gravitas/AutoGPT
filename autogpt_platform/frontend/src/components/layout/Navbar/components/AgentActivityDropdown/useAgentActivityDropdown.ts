@@ -4,7 +4,7 @@ import { useExecutionEvents } from "@/hooks/useExecutionEvents";
 import { useLibraryAgents } from "@/hooks/useLibraryAgents/useLibraryAgents";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { GraphExecution, GraphID } from "@/lib/autogpt-server-api/types";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NotificationState,
   categorizeExecutions,
@@ -20,6 +20,7 @@ type AgentInfo = {
 
 const SEVENTY_TWO_HOURS_IN_MS = 72 * 60 * 60 * 1000;
 const MAX_AGENT_INFO_LOOKUPS = 25;
+const MAX_LOOKUP_FAILURES = 3;
 
 function toAgentInfo(agent: {
   name: string;
@@ -43,6 +44,8 @@ export function useAgentActivityDropdown() {
   const [resolvedAgentInfoMap, setResolvedAgentInfoMap] = useState<
     Map<string, AgentInfo>
   >(new Map());
+  const failedLookups = useRef<Map<string, number>>(new Map());
+  const prevMissingIdsKey = useRef<string>("");
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -95,12 +98,25 @@ export function useAgentActivityDropdown() {
         isActiveExecution(execution) ||
         (endedAt !== null && Number.isFinite(endedAt) && endedAt > cutoffTime);
 
-      if (isRelevant && !combinedAgentInfoMap.has(execution.graph_id)) {
+      if (
+        isRelevant &&
+        !combinedAgentInfoMap.has(execution.graph_id) &&
+        (failedLookups.current.get(execution.graph_id) ?? 0) <
+          MAX_LOOKUP_FAILURES
+      ) {
         ids.add(execution.graph_id);
       }
     }
 
-    return Array.from(ids).slice(0, MAX_AGENT_INFO_LOOKUPS);
+    const candidate = Array.from(ids).slice(0, MAX_AGENT_INFO_LOOKUPS);
+    const key = candidate.join(",");
+
+    // Stabilize reference: only return a new array when the actual IDs change
+    if (key === prevMissingIdsKey.current) {
+      return candidate.length === 0 ? [] : candidate;
+    }
+    prevMissingIdsKey.current = key;
+    return candidate;
   }, [combinedAgentInfoMap, executions]);
 
   const graphIds = useMemo(
@@ -148,11 +164,18 @@ export function useAgentActivityDropdown() {
         const nextMap = new Map(currentMap);
 
         results.forEach((result, index) => {
+          const graphId = missingGraphIds[index];
+
           if (result.status !== "fulfilled" || !result.value.graph_id) {
+            // Track failed lookups to prevent infinite retries
+            const count = failedLookups.current.get(graphId) ?? 0;
+            failedLookups.current.set(graphId, count + 1);
             return;
           }
 
-          const graphId = missingGraphIds[index];
+          // Clear failure count on success
+          failedLookups.current.delete(graphId);
+
           const nextInfo = toAgentInfo(result.value);
           const existingInfo = nextMap.get(graphId);
 
