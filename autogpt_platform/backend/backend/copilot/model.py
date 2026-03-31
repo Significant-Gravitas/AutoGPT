@@ -64,6 +64,7 @@ class ChatMessage(BaseModel):
     refusal: str | None = None
     tool_calls: list[dict] | None = None
     function_call: dict | None = None
+    duration_ms: int | None = None
 
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
@@ -76,6 +77,7 @@ class ChatMessage(BaseModel):
             refusal=prisma_message.refusal,
             tool_calls=_parse_json_field(prisma_message.toolCalls),
             function_call=_parse_json_field(prisma_message.functionCall),
+            duration_ms=prisma_message.durationMs,
         )
 
 
