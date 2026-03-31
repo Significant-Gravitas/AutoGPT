@@ -22,25 +22,24 @@ export interface BotThreadState {
   pendingLinkToken?: string;
 }
 
-export function createBot(config: Config, stateAdapter: StateAdapter) {
+export async function createBot(config: Config, stateAdapter: StateAdapter) {
   const api = new PlatformAPI(config.autogptApiUrl);
 
   // Build adapters based on config
   const adapters: Record<string, any> = {};
 
   if (config.discord) {
-    // Dynamic import to avoid loading unused adapters
-    const { createDiscordAdapter } = require("@chat-adapter/discord");
+    const { createDiscordAdapter } = await import("@chat-adapter/discord");
     adapters.discord = createDiscordAdapter();
   }
 
   if (config.telegram) {
-    const { createTelegramAdapter } = require("@chat-adapter/telegram");
+    const { createTelegramAdapter } = await import("@chat-adapter/telegram");
     adapters.telegram = createTelegramAdapter();
   }
 
   if (config.slack) {
-    const { createSlackAdapter } = require("@chat-adapter/slack");
+    const { createSlackAdapter } = await import("@chat-adapter/slack");
     adapters.slack = createSlackAdapter();
   }
 

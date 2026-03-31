@@ -36,7 +36,7 @@ async function main() {
   }
 
   // Create and start the bot
-  const bot = createBot(config, stateAdapter);
+  const bot = await createBot(config, stateAdapter);
 
   console.log("✅ CoPilot Bot ready.\n");
 

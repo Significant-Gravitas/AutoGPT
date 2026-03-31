@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const bot = getBotInstance();
+  const bot = await getBotInstance();
   await bot.initialize();
 
   const discord = bot.getAdapter("discord");

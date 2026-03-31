@@ -6,7 +6,7 @@
 import { getBotInstance } from "../_bot.js";
 
 export async function POST(request: Request) {
-  const bot = getBotInstance();
+  const bot = await getBotInstance();
   const handler = bot.webhooks.telegram;
 
   if (!handler) {
