@@ -230,7 +230,11 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    await ensure_managed_credentials(user_id, creds_manager.store)
+    # Fire-and-forget: provision missing managed credentials in the background.
+    # The credential appears on the next page load; listing is never blocked.
+    asyncio.create_task(
+        ensure_managed_credentials(user_id, creds_manager.store)
+    )
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -245,7 +249,9 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    await ensure_managed_credentials(user_id, creds_manager.store)
+    asyncio.create_task(
+        ensure_managed_credentials(user_id, creds_manager.store)
+    )
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [

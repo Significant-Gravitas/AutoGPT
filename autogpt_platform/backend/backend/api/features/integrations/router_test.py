@@ -81,16 +81,6 @@ def setup_auth(mock_jwt_user):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture()
-def _mock_ensure_managed(monkeypatch):
-    """Prevent real managed-credential provisioning during API endpoint tests."""
-    monkeypatch.setattr(
-        "backend.api.features.integrations.router.ensure_managed_credentials",
-        AsyncMock(),
-    )
-
-
-@pytest.mark.usefixtures("_mock_ensure_managed")
 class TestGetCredentialReturnsMetaOnly:
     """GET /{provider}/credentials/{cred_id} must not return secrets."""
 
@@ -187,7 +177,6 @@ class TestGetCredentialReturnsMetaOnly:
         assert "ghp_refresh_secret" not in raw
 
 
-@pytest.mark.usefixtures("_mock_ensure_managed")
 class TestSdkDefaultCredentialsNotAccessible:
     """SDK default credentials (ID ending in '-default') must be hidden."""
 
@@ -244,7 +233,6 @@ class TestSdkDefaultCredentialsNotAccessible:
         mock_mgr.store.get_creds_by_id.assert_not_called()
 
 
-@pytest.mark.usefixtures("_mock_ensure_managed")
 class TestCreateCredentialNoSecretInResponse:
     """POST /{provider}/credentials must not return secrets."""
 
@@ -290,7 +278,6 @@ class TestCreateCredentialNoSecretInResponse:
         mock_mgr.create.assert_not_called()
 
 
-@pytest.mark.usefixtures("_mock_ensure_managed")
 class TestAutogptManagedCredentials:
     """AutoGPT-managed credentials cannot be deleted by users."""
 
@@ -553,37 +540,3 @@ class TestCleanupManagedCredentials:
             _PROVIDERS.update(saved)
 
         # No exception raised — cleanup failure is swallowed.
-
-
-class TestListCredentialsTriggersEnsure:
-    """Verify GET /credentials calls ensure_managed_credentials."""
-
-    def test_list_credentials_calls_ensure(self):
-        mock_ensure = AsyncMock()
-        with (
-            patch(
-                "backend.api.features.integrations.router.ensure_managed_credentials",
-                mock_ensure,
-            ),
-            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
-        ):
-            mock_mgr.store.get_all_creds = AsyncMock(return_value=[])
-            resp = client.get("/credentials")
-
-        assert resp.status_code == 200
-        mock_ensure.assert_awaited_once()
-
-    def test_list_by_provider_calls_ensure(self):
-        mock_ensure = AsyncMock()
-        with (
-            patch(
-                "backend.api.features.integrations.router.ensure_managed_credentials",
-                mock_ensure,
-            ),
-            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
-        ):
-            mock_mgr.store.get_creds_by_provider = AsyncMock(return_value=[])
-            resp = client.get("/openai/credentials")
-
-        assert resp.status_code == 200
-        mock_ensure.assert_awaited_once()

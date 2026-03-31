@@ -287,11 +287,7 @@ DEFAULT_CREDENTIALS = [
 ]
 
 
-_MANAGED_CREDENTIAL_IDS: set[str] = set()
-
-SYSTEM_CREDENTIAL_IDS = {
-    cred.id for cred in DEFAULT_CREDENTIALS
-} | _MANAGED_CREDENTIAL_IDS
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
 
 # Set of providers that have system credentials available
 SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
@@ -635,12 +631,8 @@ class IntegrationCredentialsStore:
         self, user_id: str, credentials: list[Credentials]
     ) -> None:
         integrations = await self._get_user_integrations(user_id)
-        # Remove default and managed credentials from the list
-        credentials = [
-            c
-            for c in credentials
-            if c not in DEFAULT_CREDENTIALS and c.id not in _MANAGED_CREDENTIAL_IDS
-        ]
+        # Remove default credentials from the list
+        credentials = [c for c in credentials if c not in DEFAULT_CREDENTIALS]
         integrations.credentials = credentials
         await self.db_manager.update_user_integrations(user_id, integrations)
 

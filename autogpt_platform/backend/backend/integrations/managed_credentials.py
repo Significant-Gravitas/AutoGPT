@@ -7,8 +7,8 @@ with ``autogpt_managed=True``.  Users cannot update or delete them.
 New integrations register a :class:`ManagedCredentialProvider` at import time;
 the two entry-points consumed by the rest of the application are:
 
-* :func:`ensure_managed_credentials` – called from the credential-listing API
-  endpoints so that credentials are lazily created on first access.
+* :func:`ensure_managed_credentials` – fired as a background task from the
+  credential-listing endpoints (non-blocking).
 * :func:`cleanup_managed_credentials` – called during account deletion to
   revoke external resources (API keys, pods, etc.).
 """
@@ -109,6 +109,9 @@ async def _ensure_one(
                 name,
                 user_id,
             )
+        # Evict the lock after successful provisioning to prevent unbounded
+        # growth of _provision_locks (one entry per user×provider pair).
+        _provision_locks.pop((user_id, name), None)
     except Exception:
         logger.warning(
             "Failed to provision managed credential for provider=%s user=%s",
@@ -124,9 +127,9 @@ async def ensure_managed_credentials(
 ) -> None:
     """Provision missing managed credentials for *user_id*.
 
-    Called from the credential-listing API endpoints.  Failures are logged but
-    never propagated — the user simply will not see the managed credential and
-    can retry by refreshing the page.
+    Fired as a non-blocking background task from the credential-listing
+    endpoints.  Failures are logged but never propagated — the user simply
+    will not see the managed credential until the next page load.
 
     Providers are checked concurrently via ``asyncio.gather``.
     """

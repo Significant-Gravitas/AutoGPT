@@ -34,6 +34,12 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
         # for this user_id the SDK returns the existing pod.
         pod = await client.pods.create(client_id=user_id, name=f"{user_id}-pod")
 
+        # NOTE: api_keys.create() is NOT idempotent.  If the caller retries
+        # after a partial failure (pod created, key created, but store write
+        # failed), a second key will be created and the first becomes orphaned
+        # on AgentMail's side.  The double-check pattern in _ensure_one
+        # (has_managed_credential under lock) prevents this in normal flow;
+        # only a crash between key creation and store write can cause it.
         api_key_obj = await client.pods.api_keys.create(
             pod_id=pod.pod_id, name=f"{user_id}-agpt-managed"
         )
@@ -61,6 +67,19 @@ class AgentMailManagedProvider(ManagedCredentialProvider):
 
         client = AsyncAgentMail(api_key=settings.secrets.agentmail_api_key)
         try:
+            # Verify the pod actually belongs to this user before deleting,
+            # as a safety measure against cross-user deletion via the
+            # org-level API key.
+            pod = await client.pods.get(pod_id=pod_id)
+            if getattr(pod, "client_id", None) and pod.client_id != user_id:
+                logger.error(
+                    "Pod %s client_id=%s does not match user %s — "
+                    "refusing to delete",
+                    pod_id,
+                    pod.client_id,
+                    user_id,
+                )
+                return
             await client.pods.delete(pod_id=pod_id)
         except Exception:
             logger.warning(
