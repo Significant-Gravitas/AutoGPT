@@ -467,12 +467,26 @@ async def stream_chat_completion_baseline(
         try:
             dl = await download_transcript(user_id, session_id, log_prefix="[Baseline]")
             if dl and validate_transcript(dl.content):
-                transcript_builder.load_previous(dl.content, log_prefix="[Baseline]")
-                logger.info(
-                    "[Baseline] Loaded transcript: %dB, msg_count=%d",
-                    len(dl.content),
-                    dl.message_count,
-                )
+                # Reject stale transcripts: if msg_count is known and
+                # doesn't cover the current session, loading it would
+                # silently drop intermediate turns from the transcript.
+                session_msg_count = len(session.messages)
+                if dl.message_count and dl.message_count < session_msg_count - 1:
+                    logger.warning(
+                        "[Baseline] Transcript stale: covers %d of %d messages, skipping",
+                        dl.message_count,
+                        session_msg_count,
+                    )
+                    transcript_covers_prefix = False
+                else:
+                    transcript_builder.load_previous(
+                        dl.content, log_prefix="[Baseline]"
+                    )
+                    logger.info(
+                        "[Baseline] Loaded transcript: %dB, msg_count=%d",
+                        len(dl.content),
+                        dl.message_count,
+                    )
             elif dl:
                 logger.warning("[Baseline] Downloaded transcript but invalid")
                 transcript_covers_prefix = False
