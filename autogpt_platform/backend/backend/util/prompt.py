@@ -251,6 +251,60 @@ def estimate_token_count_str(
 DEFAULT_TOKEN_THRESHOLD = 120_000
 DEFAULT_KEEP_RECENT = 15
 
+# Reserve tokens for system prompt, tool definitions, and per-turn overhead.
+# The actual model context limit minus this reserve = compression target.
+_CONTEXT_OVERHEAD_RESERVE = 60_000
+
+# Known context window sizes by model name substring (longest match wins).
+# Used to compute a model-aware compression target.
+_MODEL_CONTEXT_WINDOWS: dict[str, int] = {
+    "claude-opus-4": 200_000,
+    "claude-sonnet-4": 200_000,
+    "claude-haiku-4": 200_000,
+    "claude-3-5-sonnet": 200_000,
+    "claude-3-5-haiku": 200_000,
+    "claude-3-opus": 200_000,
+    "claude-3-sonnet": 200_000,
+    "claude-3-haiku": 200_000,
+    "gpt-4o": 128_000,
+    "gpt-4-turbo": 128_000,
+    "gpt-4": 8_192,
+    "gpt-3.5": 16_385,
+}
+
+
+def get_context_window(model: str) -> int | None:
+    """Return the context window size for a model, or None if unknown.
+
+    Matches against known model name substrings. Strips common prefixes
+    like ``anthropic/`` or ``openai/`` from OpenRouter-style model names.
+    """
+    normalized = model.lower()
+    # Strip provider prefix (e.g. "anthropic/claude-opus-4.6")
+    if "/" in normalized:
+        normalized = normalized.split("/", 1)[1]
+    # Strip version suffixes (e.g. "claude-opus-4-6" -> "claude-opus-4")
+    for key, window in sorted(
+        _MODEL_CONTEXT_WINDOWS.items(), key=lambda kv: -len(kv[0])
+    ):
+        if key in normalized:
+            return window
+    return None
+
+
+def get_compression_target(model: str) -> int:
+    """Compute a model-aware compression target for conversation history.
+
+    Returns ``context_window - overhead_reserve``, capped at
+    ``DEFAULT_TOKEN_THRESHOLD`` for models where the result would exceed it.
+    Falls back to ``DEFAULT_TOKEN_THRESHOLD`` for unknown models.
+    """
+    window = get_context_window(model)
+    if window is None:
+        return DEFAULT_TOKEN_THRESHOLD
+    target = window - _CONTEXT_OVERHEAD_RESERVE
+    return max(target, 10_000)  # floor: never compress below 10K
+
 
 @dataclass
 class CompressResult:
@@ -660,7 +714,7 @@ async def _summarize_messages_llm(
 
 async def compress_context(
     messages: list[dict],
-    target_tokens: int = DEFAULT_TOKEN_THRESHOLD,
+    target_tokens: int | None = None,
     *,
     model: str = "gpt-4o",
     client: AsyncOpenAI | None = None,
@@ -671,6 +725,11 @@ async def compress_context(
 ) -> CompressResult:
     """
     Unified context compression that combines summarization and truncation strategies.
+
+    When ``target_tokens`` is None (the default), it is computed from the
+    model's context window via ``get_compression_target(model)``.  This
+    ensures large-context models (e.g. Opus 200K) retain more history
+    while smaller models compress more aggressively.
 
     Strategy (in order):
     1. **LLM summarization** – If client provided, summarize old messages into a
@@ -699,6 +758,10 @@ async def compress_context(
     -------
     CompressResult with compressed messages and metadata.
     """
+    # Resolve model-aware target when caller doesn't specify an explicit limit.
+    if target_tokens is None:
+        target_tokens = get_compression_target(model)
+
     # Guard clause for empty messages
     if not messages:
         return CompressResult(
