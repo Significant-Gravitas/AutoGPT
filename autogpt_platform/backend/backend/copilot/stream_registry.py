@@ -832,6 +832,9 @@ async def mark_session_completed(
     # Atomic compare-and-swap: only update if status is "running"
     result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
 
+    # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
+    _meta_ttl_refresh_at.pop(session_id, None)
+
     if result == 0:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
