@@ -39,7 +39,7 @@ export default function PlatformLinkPage() {
 
     async function checkToken() {
       try {
-        const res = await fetch(`/api/platform-linking/tokens/${token}/status`);
+        const res = await fetch(`/api/proxy/api/platform-linking/tokens/${token}/status`);
         if (!res.ok) {
           setState({
             status: "error",
@@ -106,7 +106,7 @@ export default function PlatformLinkPage() {
         return;
       }
 
-      const res = await fetch(`/api/platform-linking/tokens/${token}/confirm`, {
+      const res = await fetch(`/api/proxy/api/platform-linking/tokens/${token}/confirm`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
