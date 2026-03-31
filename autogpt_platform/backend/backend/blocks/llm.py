@@ -104,6 +104,18 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
+
+    @classmethod
+    def _missing_(cls, value: object) -> "LlmModel | None":
+        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
+        if isinstance(value, str) and "/" in value:
+            stripped = value.split("/", 1)[1]
+            try:
+                return cls(stripped)
+            except ValueError:
+                return None
+        return None
+
     # OpenAI models
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
@@ -712,6 +724,9 @@ def convert_openai_tool_fmt_to_anthropic(
 def extract_openai_reasoning(response) -> str | None:
     """Extract reasoning from OpenAI-compatible response if available."""
     """Note: This will likely not working since the reasoning is not present in another Response API"""
+    if not response.choices:
+        logger.warning("LLM response has empty choices in extract_openai_reasoning")
+        return None
     reasoning = None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
@@ -727,6 +742,9 @@ def extract_openai_reasoning(response) -> str | None:
 
 def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
     """Extract tool calls from OpenAI-compatible response."""
+    if not response.choices:
+        logger.warning("LLM response has empty choices in extract_openai_tool_calls")
+        return None
     if response.choices[0].message.tool_calls:
         return [
             ToolContentBlock(
@@ -960,6 +978,8 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
         )
+        if not response.choices:
+            raise ValueError("Groq returned empty choices in response")
         return LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
@@ -1019,12 +1039,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls_param,
         )
 
-        # If there's no response, raise an error
         if not response.choices:
-            if response:
-                raise ValueError(f"OpenRouter error: {response}")
-            else:
-                raise ValueError("No response from OpenRouter.")
+            raise ValueError(f"OpenRouter returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1061,12 +1077,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls_param,
         )
 
-        # If there's no response, raise an error
         if not response.choices:
-            if response:
-                raise ValueError(f"Llama API error: {response}")
-            else:
-                raise ValueError("No response from Llama API.")
+            raise ValueError(f"Llama API returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1096,6 +1108,8 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
         )
+        if not completion.choices:
+            raise ValueError("AI/ML API returned empty choices in response")
 
         return LLMResponse(
             raw_response=completion.choices[0].message,
@@ -1131,6 +1145,9 @@ async def llm_call(
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
         )
+
+        if not response.choices:
+            raise ValueError(f"v0 API returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1999,6 +2016,19 @@ class AIConversationBlock(AIBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        has_messages = any(
+            isinstance(m, dict)
+            and isinstance(m.get("content"), str)
+            and bool(m["content"].strip())
+            for m in (input_data.messages or [])
+        )
+        has_prompt = bool(input_data.prompt and input_data.prompt.strip())
+        if not has_messages and not has_prompt:
+            raise ValueError(
+                "Cannot call LLM with no messages and no prompt. "
+                "Provide at least one message or a non-empty prompt."
+            )
+
         response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=input_data.prompt,

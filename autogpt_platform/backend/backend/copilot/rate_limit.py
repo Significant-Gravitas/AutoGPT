@@ -36,6 +36,10 @@ class CoPilotUsageStatus(BaseModel):
 
     daily: UsageWindow
     weekly: UsageWindow
+    reset_cost: int = Field(
+        default=0,
+        description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+    )
 
 
 class RateLimitExceeded(Exception):
@@ -61,6 +65,7 @@ async def get_usage_status(
     user_id: str,
     daily_token_limit: int,
     weekly_token_limit: int,
+    rate_limit_reset_cost: int = 0,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -68,6 +73,7 @@ async def get_usage_status(
         user_id: The user's ID.
         daily_token_limit: Max tokens per day (0 = unlimited).
         weekly_token_limit: Max tokens per week (0 = unlimited).
+        rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
 
     Returns:
         CoPilotUsageStatus with current usage and limits.
@@ -97,6 +103,7 @@ async def get_usage_status(
             limit=weekly_token_limit,
             resets_at=_weekly_reset_time(now=now),
         ),
+        reset_cost=rate_limit_reset_cost,
     )
 
 
@@ -139,6 +146,110 @@ async def check_rate_limit(
 
     if weekly_token_limit > 0 and weekly_used >= weekly_token_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
+
+
+async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
+    """Reset a user's daily token usage counter in Redis.
+
+    Called after a user pays credits to extend their daily limit.
+    Also reduces the weekly usage counter by ``daily_token_limit`` tokens
+    (clamped to 0) so the user effectively gets one extra day's worth of
+    weekly capacity.
+
+    Args:
+        user_id: The user's ID.
+        daily_token_limit: The configured daily token limit. When positive,
+            the weekly counter is reduced by this amount.
+
+    Fails open: returns False if Redis is unavailable (consistent with
+    the fail-open design of this module).
+    """
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+
+        # Use a MULTI/EXEC transaction so that DELETE (daily) and DECRBY
+        # (weekly) either both execute or neither does.  This prevents the
+        # scenario where the daily counter is cleared but the weekly
+        # counter is not decremented — which would let the caller refund
+        # credits even though the daily limit was already reset.
+        d_key = _daily_key(user_id, now=now)
+        w_key = _weekly_key(user_id, now=now) if daily_token_limit > 0 else None
+
+        pipe = redis.pipeline(transaction=True)
+        pipe.delete(d_key)
+        if w_key is not None:
+            pipe.decrby(w_key, daily_token_limit)
+        results = await pipe.execute()
+
+        # Clamp negative weekly counter to 0 (best-effort; not critical).
+        if w_key is not None:
+            new_val = results[1]  # DECRBY result
+            if new_val < 0:
+                await redis.set(w_key, 0, keepttl=True)
+
+        logger.info("Reset daily usage for user %s", user_id[:8])
+        return True
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for resetting daily usage")
+        return False
+
+
+_RESET_LOCK_PREFIX = "copilot:reset_lock"
+_RESET_COUNT_PREFIX = "copilot:reset_count"
+
+
+async def acquire_reset_lock(user_id: str, ttl_seconds: int = 10) -> bool:
+    """Acquire a short-lived lock to serialize rate limit resets per user."""
+    try:
+        redis = await get_redis_async()
+        key = f"{_RESET_LOCK_PREFIX}:{user_id}"
+        return bool(await redis.set(key, "1", nx=True, ex=ttl_seconds))
+    except (RedisError, ConnectionError, OSError) as exc:
+        logger.warning("Redis unavailable for reset lock, rejecting reset: %s", exc)
+        return False
+
+
+async def release_reset_lock(user_id: str) -> None:
+    """Release the per-user reset lock."""
+    try:
+        redis = await get_redis_async()
+        await redis.delete(f"{_RESET_LOCK_PREFIX}:{user_id}")
+    except (RedisError, ConnectionError, OSError):
+        pass  # Lock will expire via TTL
+
+
+async def get_daily_reset_count(user_id: str) -> int | None:
+    """Get how many times the user has reset today.
+
+    Returns None when Redis is unavailable so callers can fail-closed
+    for billed operations (as opposed to failing open for read-only
+    rate-limit checks).
+    """
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
+        val = await redis.get(key)
+        return int(val or 0)
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for reading daily reset count")
+        return None
+
+
+async def increment_daily_reset_count(user_id: str) -> None:
+    """Increment and track how many resets this user has done today."""
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        key = f"{_RESET_COUNT_PREFIX}:{user_id}:{now.strftime('%Y-%m-%d')}"
+        pipe = redis.pipeline(transaction=True)
+        pipe.incr(key)
+        seconds_until_reset = int((_daily_reset_time(now=now) - now).total_seconds())
+        pipe.expire(key, max(seconds_until_reset, 1))
+        await pipe.execute()
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for tracking reset count")
 
 
 async def record_token_usage(
@@ -229,6 +340,67 @@ async def record_token_usage(
             "Redis unavailable for recording token usage (tokens=%d)",
             total,
         )
+
+
+async def get_global_rate_limits(
+    user_id: str,
+    config_daily: int,
+    config_weekly: int,
+) -> tuple[int, int]:
+    """Resolve global rate limits from LaunchDarkly, falling back to config.
+
+    Args:
+        user_id: User ID for LD flag evaluation context.
+        config_daily: Fallback daily limit from ChatConfig.
+        config_weekly: Fallback weekly limit from ChatConfig.
+
+    Returns:
+        (daily_token_limit, weekly_token_limit) tuple.
+    """
+    # Lazy import to avoid circular dependency:
+    # rate_limit -> feature_flag -> settings -> ... -> rate_limit
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    daily_raw = await get_feature_flag_value(
+        Flag.COPILOT_DAILY_TOKEN_LIMIT.value, user_id, config_daily
+    )
+    weekly_raw = await get_feature_flag_value(
+        Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value, user_id, config_weekly
+    )
+    try:
+        daily = max(0, int(daily_raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid LD value for daily token limit: %r", daily_raw)
+        daily = config_daily
+    try:
+        weekly = max(0, int(weekly_raw))
+    except (TypeError, ValueError):
+        logger.warning("Invalid LD value for weekly token limit: %r", weekly_raw)
+        weekly = config_weekly
+    return daily, weekly
+
+
+async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
+    """Reset a user's usage counters.
+
+    Always deletes the daily Redis key.  When *reset_weekly* is ``True``,
+    the weekly key is deleted as well.
+
+    Unlike read paths (``get_usage_status``, ``check_rate_limit``) which
+    fail-open on Redis errors, resets intentionally re-raise so the caller
+    knows the operation did not succeed.  A silent failure here would leave
+    the admin believing the counters were zeroed when they were not.
+    """
+    now = datetime.now(UTC)
+    keys_to_delete = [_daily_key(user_id, now=now)]
+    if reset_weekly:
+        keys_to_delete.append(_weekly_key(user_id, now=now))
+    try:
+        redis = await get_redis_async()
+        await redis.delete(*keys_to_delete)
+    except (RedisError, ConnectionError, OSError):
+        logger.warning("Redis unavailable for resetting user usage")
+        raise
 
 
 # ---------------------------------------------------------------------------
