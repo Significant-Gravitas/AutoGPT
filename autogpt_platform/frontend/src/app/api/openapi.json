@@ -7067,6 +7067,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "api_key",
@@ -8703,6 +8713,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
           }
         },
         "type": "object",
@@ -9934,6 +9949,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "host_scoped",
@@ -11027,6 +11052,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "oauth2",
@@ -11062,11 +11097,6 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
           }
         },
         "type": "object",
@@ -14730,6 +14760,16 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
           },
           "type": {
             "type": "string",
