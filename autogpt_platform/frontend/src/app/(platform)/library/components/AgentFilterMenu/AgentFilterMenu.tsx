@@ -24,9 +24,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
 
   return (
     <div className="flex items-center" data-testid="agent-filter-dropdown">
-      <span className="hidden whitespace-nowrap text-sm sm:inline">
-        filter
-      </span>
+      <span className="hidden whitespace-nowrap text-sm sm:inline">filter</span>
       <Select value={value} onValueChange={handleChange}>
         <SelectTrigger className="ml-1 w-fit space-x-1 border-none px-0 text-sm underline underline-offset-4 shadow-none">
           <FunnelIcon className="h-4 w-4 sm:hidden" />
@@ -35,9 +33,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
         <SelectContent>
           <SelectGroup>
             <SelectItem value="all">All Agents</SelectItem>
-            <SelectItem value="running">
-              Running ({summary.running})
-            </SelectItem>
+            <SelectItem value="running">Running ({summary.running})</SelectItem>
             <SelectItem value="attention">
               Needs Attention ({summary.error})
             </SelectItem>
@@ -47,9 +43,7 @@ export function AgentFilterMenu({ value, onChange, summary }: Props) {
             <SelectItem value="scheduled">
               Scheduled ({summary.scheduled})
             </SelectItem>
-            <SelectItem value="idle">
-              Idle / Stale ({summary.idle})
-            </SelectItem>
+            <SelectItem value="idle">Idle / Stale ({summary.idle})</SelectItem>
             <SelectItem value="healthy">Healthy</SelectItem>
           </SelectGroup>
         </SelectContent>

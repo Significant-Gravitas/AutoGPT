@@ -1,7 +1,6 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
-import { Button } from "@/components/atoms/Button/Button";
 import { ArrowRightIcon } from "@phosphor-icons/react";
 import NextLink from "next/link";
 import { StatusBadge } from "@/app/(platform)/library/components/StatusBadge/StatusBadge";

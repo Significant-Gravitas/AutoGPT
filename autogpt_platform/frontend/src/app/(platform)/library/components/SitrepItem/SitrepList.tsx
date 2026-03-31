@@ -36,11 +36,7 @@ export function SitrepList({ agentIDs, maxItems = 10 }: Props) {
       </div>
       <div className="space-y-1">
         {items.map((item) => (
-          <SitrepItem
-            key={item.id}
-            item={item}
-            onAskAutoPilot={sendPrompt}
-          />
+          <SitrepItem key={item.id} item={item} onAskAutoPilot={sendPrompt} />
         ))}
       </div>
     </div>

@@ -1,6 +1,9 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
+
+const STORAGE_KEY = "autopilot_pending_prompt";
 
 interface AutoPilotBridgeState {
   /** Pending prompt to be injected into AutoPilot chat. */
@@ -18,21 +21,33 @@ interface Props {
 }
 
 export function AutoPilotBridgeProvider({ children }: Props) {
-  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
+  const router = useRouter();
 
-  function sendPrompt(prompt: string) {
-    setPendingPrompt(prompt);
-    // Navigate to the Home / Copilot tab.
-    // Using window.location is the simplest approach that works across the
-    // Next.js app router without coupling to a specific router instance.
-    window.location.href = "/";
-  }
+  // Hydrate from sessionStorage in case we just navigated here
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return sessionStorage.getItem(STORAGE_KEY);
+  });
 
-  function consumePrompt(): string | null {
-    const prompt = pendingPrompt;
-    setPendingPrompt(null);
+  const sendPrompt = useCallback(
+    (prompt: string) => {
+      // Persist to sessionStorage so it survives client-side navigation
+      sessionStorage.setItem(STORAGE_KEY, prompt);
+      setPendingPrompt(prompt);
+      // Use Next.js router for client-side navigation (preserves React tree)
+      router.push("/");
+    },
+    [router],
+  );
+
+  const consumePrompt = useCallback((): string | null => {
+    const prompt = pendingPrompt ?? sessionStorage.getItem(STORAGE_KEY);
+    if (prompt) {
+      sessionStorage.removeItem(STORAGE_KEY);
+      setPendingPrompt(null);
+    }
     return prompt;
-  }
+  }, [pendingPrompt]);
 
   return (
     <AutoPilotBridgeContext.Provider

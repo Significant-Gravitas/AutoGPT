@@ -3,7 +3,10 @@
  * e.g. "3m ago", "2h ago", "5d ago".
  */
 export function formatTimeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
+  const parsed = new Date(isoDate).getTime();
+  if (Number.isNaN(parsed)) return "unknown";
+  const diff = Date.now() - parsed;
+  if (diff < 0) return "just now";
   const minutes = Math.floor(diff / 60000);
   if (minutes < 60) return `${minutes}m ago`;
   const hours = Math.floor(minutes / 60);

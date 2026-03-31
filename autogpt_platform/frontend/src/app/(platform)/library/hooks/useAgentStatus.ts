@@ -12,7 +12,10 @@ import type {
  * Derive health from status and recency.
  * TODO: Replace with real computation once backend provides the data.
  */
-function deriveHealth(status: AgentStatus, lastRunAt: string | null): AgentHealth {
+function deriveHealth(
+  status: AgentStatus,
+  lastRunAt: string | null,
+): AgentHealth {
   if (status === "error") return "attention";
   if (status === "idle" && lastRunAt) {
     const daysSince =
@@ -37,7 +40,7 @@ function mockStatusForAgent(agentID: string): AgentStatusInfo {
     "idle",
   ];
   const status = statuses[hash % statuses.length];
-  const progress = status === "running" ? ((hash * 17) % 100) : null;
+  const progress = status === "running" ? (hash * 17) % 100 : null;
   const totalRuns = (hash % 200) + 1;
   const daysAgo = (hash % 30) + 1;
   const lastRunAt = new Date(

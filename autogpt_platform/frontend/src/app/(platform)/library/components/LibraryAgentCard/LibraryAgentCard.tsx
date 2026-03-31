@@ -13,6 +13,7 @@ import Avatar, {
 } from "@/components/atoms/Avatar/Avatar";
 import { Link } from "@/components/atoms/Link/Link";
 import { Progress } from "@/components/atoms/Progress/Progress";
+import { cn } from "@/lib/utils";
 import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
@@ -61,11 +62,12 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         layoutId={`agent-card-${id}`}
         data-testid="library-agent-card"
         data-agent-id={id}
-        className={`group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-white hover:shadow-md ${
+        className={cn(
+          "group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-white hover:shadow-md",
           hasError
-            ? "border-l-2 border-l-red-400 border-t-zinc-100 border-r-zinc-100 border-b-zinc-100"
-            : "border-zinc-100"
-        }`}
+            ? "border-l-2 border-b-zinc-100 border-l-red-400 border-r-zinc-100 border-t-zinc-100"
+            : "border-zinc-100",
+        )}
         transition={{
           type: "spring",
           damping: 25,
@@ -206,4 +208,3 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
     </div>
   );
 }
-
