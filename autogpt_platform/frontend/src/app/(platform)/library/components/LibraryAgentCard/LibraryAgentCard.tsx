@@ -12,10 +12,15 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Link } from "@/components/atoms/Link/Link";
+import { Progress } from "@/components/atoms/Progress/Progress";
 import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
+import { StatusBadge } from "../StatusBadge/StatusBadge";
+import { ContextualActionButton } from "../ContextualActionButton/ContextualActionButton";
+import { useAgentStatus } from "../../hooks/useAgentStatus";
+import { formatTimeAgo } from "../../helpers";
 
 interface Props {
   agent: LibraryAgent;
@@ -25,6 +30,7 @@ interface Props {
 export function LibraryAgentCard({ agent, draggable = true }: Props) {
   const { id, name, graph_id, can_access_graph, image_url } = agent;
   const { triggerFavoriteAnimation } = useFavoriteAnimation();
+  const statusInfo = useAgentStatus(id);
 
   function handleDragStart(e: React.DragEvent<HTMLDivElement>) {
     e.dataTransfer.setData("application/agent-id", id);
@@ -42,6 +48,9 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
     onFavoriteAdd: triggerFavoriteAnimation,
   });
 
+  const hasError = statusInfo.status === "error";
+  const isRunning = statusInfo.status === "running";
+
   return (
     <div
       draggable={draggable}
@@ -52,7 +61,11 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
         layoutId={`agent-card-${id}`}
         data-testid="library-agent-card"
         data-agent-id={id}
-        className="group relative inline-flex h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border border-zinc-100 bg-white hover:shadow-md"
+        className={`group relative inline-flex h-auto min-h-[10.625rem] w-full max-w-[25rem] flex-col items-start justify-start gap-2.5 rounded-medium border bg-white hover:shadow-md ${
+          hasError
+            ? "border-l-2 border-l-red-400 border-t-zinc-100 border-r-zinc-100 border-b-zinc-100"
+            : "border-zinc-100"
+        }`}
         transition={{
           type: "spring",
           damping: 25,
@@ -79,6 +92,7 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             >
               {isFromMarketplace ? "FROM MARKETPLACE" : "Built by you"}
             </Text>
+            <StatusBadge status={statusInfo.status} className="ml-auto" />
           </div>
         </NextLink>
         <FavoriteButton
@@ -128,28 +142,68 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             )}
           </Link>
 
-          <div className="mt-auto flex w-full justify-start gap-6 border-t border-zinc-100 pb-1 pt-3">
-            <Link
-              href={`/library/agents/${id}`}
-              data-testid="library-agent-card-see-runs-link"
-              className="flex items-center gap-1 text-[13px]"
-            >
-              See runs <CaretCircleRightIcon size={20} />
-            </Link>
+          {/* Status details: progress bar, error message, stats */}
+          {isRunning && statusInfo.progress !== null && (
+            <div className="mt-1 flex items-center gap-2">
+              <Progress value={statusInfo.progress} className="h-1.5 flex-1" />
+              <Text variant="xsmall" className="text-blue-600">
+                {statusInfo.progress}%
+              </Text>
+            </div>
+          )}
 
-            {can_access_graph && (
-              <Link
-                href={`/build?flowID=${graph_id}`}
-                data-testid="library-agent-card-open-in-builder-link"
-                className="flex items-center gap-1 text-[13px]"
-                isExternal
-              >
-                Open in builder <CaretCircleRightIcon size={20} />
-              </Link>
+          {hasError && statusInfo.lastError && (
+            <Text variant="xsmall" className="mt-1 line-clamp-1 text-red-500">
+              {statusInfo.lastError}
+            </Text>
+          )}
+
+          <div className="mt-1 flex items-center gap-3">
+            <Text variant="xsmall" className="text-zinc-400">
+              {statusInfo.totalRuns} runs
+            </Text>
+            <Text variant="xsmall" className="text-zinc-400">
+              ${statusInfo.monthlySpend}
+            </Text>
+            {statusInfo.lastRunAt && (
+              <Text variant="xsmall" className="text-zinc-400">
+                {formatTimeAgo(statusInfo.lastRunAt)}
+              </Text>
             )}
+          </div>
+
+          <div className="mt-auto flex w-full items-center justify-between gap-2 border-t border-zinc-100 pb-1 pt-3">
+            <div className="flex gap-6">
+              <Link
+                href={`/library/agents/${id}`}
+                data-testid="library-agent-card-see-runs-link"
+                className="flex items-center gap-1 text-[13px]"
+              >
+                See runs <CaretCircleRightIcon size={20} />
+              </Link>
+
+              {can_access_graph && (
+                <Link
+                  href={`/build?flowID=${graph_id}`}
+                  data-testid="library-agent-card-open-in-builder-link"
+                  className="flex items-center gap-1 text-[13px]"
+                  isExternal
+                >
+                  Open in builder <CaretCircleRightIcon size={20} />
+                </Link>
+              )}
+            </div>
+            <div className="opacity-0 transition-opacity group-hover:opacity-100">
+              <ContextualActionButton
+                status={statusInfo.status}
+                agentID={id}
+                className="text-xs"
+              />
+            </div>
           </div>
         </div>
       </motion.div>
     </div>
   );
 }
+
