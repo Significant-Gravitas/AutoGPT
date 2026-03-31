@@ -146,6 +146,7 @@ jobs:
   e2e-label-gate:
     name: E2E label gate
     runs-on: ubuntu-latest
+    if: github.event.action != 'labeled' || github.event.label.name == 'ci-ready'
     steps:
       - name: Check for ci-ready label
         if: >-
