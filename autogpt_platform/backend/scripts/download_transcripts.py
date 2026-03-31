@@ -14,9 +14,21 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+# Only allow alphanumeric, dash, underscore in session IDs to prevent path traversal
+_SAFE_SESSION_RE = re.compile(r"[^0-9A-Za-z_-]")
+
+
+def _safe_session_filename(session_id: str) -> str:
+    """Sanitize session_id for use as a filename, preventing path traversal."""
+    cleaned = _SAFE_SESSION_RE.sub("", session_id or "")
+    if not cleaned:
+        raise ValueError(f"Invalid session_id after sanitization: {session_id!r}")
+    return cleaned
 
 
 async def try_download(user_id: str, session_id: str) -> tuple[str, int] | None:
@@ -40,7 +52,8 @@ async def download_for_session(session_id: str, output_dir: str) -> None:
         result = await try_download(user_id, session_id)
         if result:
             content, msg_count = result
-            out_path = os.path.join(output_dir, f"{session_id}.jsonl")
+            safe_sid = _safe_session_filename(session_id)
+            out_path = os.path.join(output_dir, f"{safe_sid}.jsonl")
             with open(out_path, "w") as f:
                 f.write(content)
             lines = len(content.strip().split("\n"))
@@ -49,7 +62,7 @@ async def download_for_session(session_id: str, output_dir: str) -> None:
                 f"{lines} entries, msg_count={msg_count}"
             )
 
-            meta_path = os.path.join(output_dir, f"{session_id}.meta.json")
+            meta_path = os.path.join(output_dir, f"{safe_sid}.meta.json")
             with open(meta_path, "w") as f:
                 json.dump(
                     {
