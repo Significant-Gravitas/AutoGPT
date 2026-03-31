@@ -38,7 +38,7 @@ class TestFlattenAssistantContent:
 
     def test_tool_use_blocks(self):
         blocks = [{"type": "tool_use", "name": "read_file", "input": {}}]
-        assert _flatten_assistant_content(blocks) == "[tool_use: read_file]"
+        assert _flatten_assistant_content(blocks) == ""
 
     def test_mixed_blocks(self):
         blocks = [
@@ -47,19 +47,21 @@ class TestFlattenAssistantContent:
         ]
         result = _flatten_assistant_content(blocks)
         assert "Let me read that." in result
-        assert "[tool_use: Read]" in result
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert "Read" not in result
 
     def test_raw_strings(self):
         assert _flatten_assistant_content(["hello", "world"]) == "hello\nworld"
 
-    def test_unknown_block_type_preserved_as_placeholder(self):
+    def test_unknown_block_type_dropped(self):
         blocks = [
             {"type": "text", "text": "See this image:"},
             {"type": "image", "source": {"type": "base64", "data": "..."}},
         ]
         result = _flatten_assistant_content(blocks)
         assert "See this image:" in result
-        assert "[__image__]" in result
+        # Unknown block types are dropped to prevent model mimicry
+        assert "image" not in result
 
     def test_empty(self):
         assert _flatten_assistant_content([]) == ""
@@ -279,7 +281,8 @@ class TestTranscriptToMessages:
         messages = _transcript_to_messages(content)
         assert len(messages) == 2
         assert "Let me check." in messages[0]["content"]
-        assert "[tool_use: read_file]" in messages[0]["content"]
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert "read_file" not in messages[0]["content"]
         assert messages[1]["content"] == "file contents"
 
 

@@ -904,14 +904,14 @@ class TestTranscriptEdgeCases:
         assert restored[1]["content"] == "Second"
 
     def test_flatten_assistant_with_only_tool_use(self):
-        """Assistant message with only tool_use blocks (no text)."""
+        """Assistant message with only tool_use blocks (no text) flattens to empty."""
         blocks = [
             {"type": "tool_use", "name": "bash", "input": {"cmd": "ls"}},
             {"type": "tool_use", "name": "read", "input": {"path": "/f"}},
         ]
         result = _flatten_assistant_content(blocks)
-        assert "[tool_use: bash]" in result
-        assert "[tool_use: read]" in result
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert result == ""
 
     def test_flatten_tool_result_nested_image(self):
         """Tool result containing image blocks uses placeholder."""
