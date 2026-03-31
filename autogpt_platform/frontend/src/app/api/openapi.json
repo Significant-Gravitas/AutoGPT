@@ -5457,6 +5457,88 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/platform-linking/chat/session": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Create a CoPilot session for a linked user (bot-facing)",
+        "description": "Creates a new CoPilot chat session on behalf of a linked user.",
+        "operationId": "postPlatform-linkingCreate a copilot session for a linked user (bot-facing)",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "query",
+            "required": true,
+            "schema": { "title": "Req" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BotChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotChatSessionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/platform-linking/chat/stream": {
+      "post": {
+        "tags": ["platform-linking"],
+        "summary": "Stream a CoPilot response for a linked user (bot-facing)",
+        "description": "Send a message to CoPilot on behalf of a linked user and stream\nthe response back as Server-Sent Events.\n\nThe bot authenticates with its API key — no user JWT needed.",
+        "operationId": "postPlatform-linkingStream a copilot response for a linked user (bot-facing)",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "query",
+            "required": true,
+            "schema": { "title": "Req" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BotChatRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/platform-linking/links": {
       "get": {
         "tags": ["platform-linking"],
@@ -8541,6 +8623,40 @@
         "type": "object",
         "required": ["file"],
         "title": "Body_postWorkspaceUpload file to workspace"
+      },
+      "BotChatRequest": {
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "title": "User Id",
+            "description": "The linked AutoGPT user ID"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 32000,
+            "minLength": 1,
+            "title": "Message",
+            "description": "The user's message"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Existing chat session ID. If omitted, a new session is created."
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "message"],
+        "title": "BotChatRequest",
+        "description": "Request from the bot to chat as a linked user."
+      },
+      "BotChatSessionResponse": {
+        "properties": {
+          "session_id": { "type": "string", "title": "Session Id" }
+        },
+        "type": "object",
+        "required": ["session_id"],
+        "title": "BotChatSessionResponse",
+        "description": "Returned when creating a new session via the bot proxy."
       },
       "BulkMoveAgentsRequest": {
         "properties": {
