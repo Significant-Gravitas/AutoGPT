@@ -29,7 +29,6 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
-    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
@@ -45,6 +44,7 @@ from backend.integrations.credentials_store import (
     is_system_credential,
     provider_matches,
 )
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
@@ -230,6 +230,7 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    await ensure_managed_credentials(user_id, creds_manager.store)
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -244,6 +245,7 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    await ensure_managed_credentials(user_id, creds_manager.store)
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
@@ -860,64 +862,6 @@ async def get_ayrshare_sso_url(
 
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
     return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
-
-
-class AgentMailConnectResponse(BaseModel):
-    pod_id: str
-
-
-@router.post("/agentmail/connect")
-async def connect_agentmail(
-    user_id: Annotated[str, Security(get_user_id)],
-) -> AgentMailConnectResponse:
-    """Provision an AgentMail pod for the current user.
-
-    Creates a pod via the org-level API key, generates a pod-scoped API key,
-    and stores it as an autogpt_managed credential. The pod key then appears
-    automatically in the credential dropdown for AgentMail blocks.
-
-    Idempotent: if a pod already exists for this user, returns its ID without
-    creating a duplicate.
-    """
-    from agentmail import AsyncAgentMail
-
-    org_api_key = settings.secrets.agentmail_api_key
-    if not org_api_key:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="AgentMail API key is not configured",
-        )
-
-    # Check if already provisioned
-    if await creds_manager.store.has_managed_credential(user_id, "agent_mail"):
-        user_integrations = await get_user_integrations(user_id)
-        cred = next(
-            c
-            for c in user_integrations.credentials
-            if c.provider == "agent_mail" and c.autogpt_managed
-        )
-        return AgentMailConnectResponse(pod_id=cred.metadata["pod_id"])
-
-    # Provision pod + API key via org-level key
-    client = AsyncAgentMail(api_key=org_api_key)
-    pod = await client.pods.create(client_id=user_id, name=f"{user_id}-pod")
-    api_key_obj = await client.pods.api_keys.create(
-        pod_id=pod.pod_id, name=f"{user_id}-agpt-managed"
-    )
-
-    await creds_manager.store.add_managed_credential(
-        user_id,
-        APIKeyCredentials(
-            provider="agent_mail",
-            title="AgentMail (managed by AutoGPT)",
-            api_key=SecretStr(api_key_obj.api_key),
-            expires_at=None,
-            autogpt_managed=True,
-            metadata={"pod_id": pod.pod_id},
-        ),
-    )
-
-    return AgentMailConnectResponse(pod_id=pod.pod_id)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
