@@ -290,7 +290,7 @@ const SidebarTrigger = React.forwardRef<
       variant="ghost"
       size="sm"
       className={cn(
-        "rounded-md p-1.5 text-neutral-600 transition-colors hover:bg-zinc-100",
+        "rounded-md p-1.5",
         className,
       )}
       onClick={(event) => {
