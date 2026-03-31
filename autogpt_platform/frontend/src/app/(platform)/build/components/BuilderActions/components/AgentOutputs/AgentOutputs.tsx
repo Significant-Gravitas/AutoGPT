@@ -78,7 +78,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
     return outputs.flatMap((group) =>
       group.items.map((item) => ({
         value: item.value,
-        metadata: {},
+        metadata: group.metadata,
         renderer: item.renderer,
       })),
     );
@@ -143,7 +143,7 @@ export const AgentOutputs = ({ flowID }: { flowID: string | null }) => {
                       <OutputItem
                         key={item.nodeExecID}
                         value={item.value}
-                        metadata={{}}
+                        metadata={group.metadata}
                         renderer={item.renderer}
                       />
                     ))}
