@@ -248,13 +248,7 @@ def estimate_token_count_str(
 # ---------------------------------------------------------------------------#
 
 # Default thresholds
-# Target 80K tokens for compressed history to leave ~120K headroom for:
-# - System prompt + business understanding context (~10-30K)
-# - MCP tool definitions (~10-20K)
-# - Per-turn content (thinking blocks, tool results)
-# Previous value of 120K left only ~80K headroom which was insufficient
-# for sessions with large system prompts or many MCP tools.
-DEFAULT_TOKEN_THRESHOLD = 80_000
+DEFAULT_TOKEN_THRESHOLD = 120_000
 DEFAULT_KEEP_RECENT = 15
 
 
