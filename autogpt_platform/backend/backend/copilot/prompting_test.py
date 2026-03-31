@@ -1,22 +1,21 @@
-"""Tests for prompting module — verifies supplement assembly."""
+"""Tests for agent generation guide — verifies clarification section."""
 
-from backend.copilot.prompting import get_baseline_supplement, get_sdk_supplement
+from pathlib import Path
 
 
-class TestSupplementContainsClarifyNote:
-    """_AGENT_CLARIFY_NOTE must be present in all supplement outputs."""
+class TestAgentGenerationGuideContainsClarifySection:
+    """The agent generation guide must include the clarification section."""
 
-    def test_sdk_supplement_local_includes_clarify_note(self):
-        result = get_sdk_supplement(use_e2b=False, cwd="/tmp")
-        assert "Clarifying ambiguous agent goals" in result
-        assert "find_block" in result
+    def test_guide_includes_clarify_before_building(self):
+        guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
+        content = guide_path.read_text(encoding="utf-8")
+        assert "Clarifying Before Building" in content
 
-    def test_sdk_supplement_e2b_includes_clarify_note(self):
-        result = get_sdk_supplement(use_e2b=True)
-        assert "Clarifying ambiguous agent goals" in result
-        assert "find_block" in result
-
-    def test_baseline_supplement_includes_clarify_note(self):
-        result = get_baseline_supplement()
-        assert "Clarifying ambiguous agent goals" in result
-        assert "find_block" in result
+    def test_guide_mentions_find_block_for_clarification(self):
+        guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
+        content = guide_path.read_text(encoding="utf-8")
+        # find_block must appear in the clarification section (before the workflow)
+        clarify_section = content.split("Clarifying Before Building")[1].split(
+            "### Workflow"
+        )[0]
+        assert "find_block" in clarify_section
