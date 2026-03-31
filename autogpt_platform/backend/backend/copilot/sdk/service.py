@@ -1311,10 +1311,7 @@ async def _run_stream_attempt(
                         "error — raising for retry",
                         ctx.log_prefix,
                     )
-                    raise RuntimeError(
-                        f"Prompt is too long (via AssistantMessage "
-                        f"error={sdk_error})"
-                    )
+                    raise RuntimeError("Prompt is too long")
 
                 # Intercept transient API errors (socket closed,
                 # ECONNRESET) — replace the raw message with a
@@ -1427,10 +1424,7 @@ async def _run_stream_attempt(
                     # and the retry/compaction mechanism is never invoked.
                     error_text = (sdk_msg.result or "").lower()
                     if any(p in error_text for p in _PROMPT_TOO_LONG_PATTERNS):
-                        raise RuntimeError(
-                            f"Prompt is too long (via ResultMessage "
-                            f"error={sdk_msg.result})"
-                        )
+                        raise RuntimeError("Prompt is too long")
 
                 # Capture token usage from ResultMessage.
                 # Anthropic reports cached tokens separately:
