@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Literal
 
@@ -204,16 +205,25 @@ async def _search_library(
     )
 
 
+_MAX_GRAPH_FETCHES = 10
+
+
 async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> None:
     """Fetch and attach full graph JSON (nodes + links) to each agent in-place."""
-    for agent in agents:
-        graph_id = agent.graph_id
-        if not graph_id:
-            continue
+    fetchable = [a for a in agents if a.graph_id][:_MAX_GRAPH_FETCHES]
+    if not fetchable:
+        return
+
+    async def _fetch(agent: AgentInfo) -> None:
         try:
-            agent.graph = await get_agent_as_json(graph_id, user_id)
+            graph_json = await get_agent_as_json(agent.graph_id, user_id)  # type: ignore[arg-type]
+            if graph_json is None:
+                logger.warning(f"Graph not found for agent {agent.graph_id}")
+            agent.graph = graph_json
         except Exception as e:
-            logger.warning(f"Failed to fetch graph for agent {graph_id}: {e}")
+            logger.warning(f"Failed to fetch graph for agent {agent.graph_id}: {e}")
+
+    await asyncio.gather(*[_fetch(a) for a in fetchable])
 
 
 def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:
