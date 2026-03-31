@@ -1,8 +1,8 @@
-import asyncio
 import base64
 import hashlib
 import logging
 import secrets
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -306,21 +306,21 @@ def is_system_provider(provider: str) -> bool:
 
 class IntegrationCredentialsStore:
     def __init__(self):
-        self._locks = None
-        self._locks_loop: asyncio.AbstractEventLoop | None = None
+        self._local = threading.local()
 
     async def locks(self) -> AsyncRedisKeyedMutex:
-        # Recreate the mutex when the event loop has changed (e.g. copilot
-        # executor threads each create their own loop).  The internal
+        # Each thread gets its own mutex via threading.local().  The copilot
+        # executor runs worker threads with separate event loops; the internal
         # asyncio.Lock inside AsyncRedisKeyedMutex is bound to the loop it was
-        # created on and raises "Future attached to a different loop" otherwise.
-        current_loop = asyncio.get_running_loop()
-        if self._locks and self._locks_loop is current_loop:
-            return self._locks
+        # created on.  Sharing a single mutex across threads would raise
+        # "Future attached to a different loop".
+        locks: AsyncRedisKeyedMutex | None = getattr(self._local, "locks", None)
+        if locks:
+            return locks
 
-        self._locks = AsyncRedisKeyedMutex(await get_redis_async())
-        self._locks_loop = current_loop
-        return self._locks
+        locks = AsyncRedisKeyedMutex(await get_redis_async())
+        self._local.locks = locks
+        return locks
 
     @property
     def db_manager(self):
