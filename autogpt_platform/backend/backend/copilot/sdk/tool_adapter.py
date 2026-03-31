@@ -53,13 +53,12 @@ _MCP_MAX_CHARS = 500_000
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 
-# Map from tool_name -> Queue of pre-launched (task, args) pairs.
+# Map from tool_name -> Queue of pre-launched tasks.
 # Initialised per-session in set_execution_context() so concurrent sessions
 # never share the same dict.
-_TaskQueueItem = tuple[asyncio.Task[dict[str, Any]], dict[str, Any]]
-_tool_task_queues: ContextVar[dict[str, asyncio.Queue[_TaskQueueItem]] | None] = (
-    ContextVar("_tool_task_queues", default=None)
-)
+_tool_task_queues: ContextVar[
+    dict[str, asyncio.Queue[asyncio.Task[dict[str, Any]]]] | None
+] = ContextVar("_tool_task_queues", default=None)
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -148,7 +147,7 @@ async def cancel_pending_tool_tasks() -> None:
     for tool_name, queue in list(queues.items()):
         cancelled = 0
         while not queue.empty():
-            task, _args = queue.get_nowait()
+            task = queue.get_nowait()
             if not task.done():
                 task.cancel()
                 cancelled_tasks.append(task)
@@ -281,11 +280,13 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     The tool_name may include an MCP prefix (e.g. ``mcp__copilot__run_block``);
     the prefix is stripped automatically before looking up the tool.
 
-    Ordering guarantee: the Claude Agent SDK dispatches MCP ``tools/call`` requests
-    in the same order as the ToolUseBlocks appear in the AssistantMessage.
-    Pre-launched tasks are queued FIFO per tool name, so the N-th handler for a
-    given tool name dequeues the N-th pre-launched task — result and args always
-    correspond when the SDK preserves order (which it does in the current SDK).
+    Ordering guarantee: the Claude Agent SDK dispatches MCP ``tools/call``
+    requests in the same order as the ToolUseBlocks appear in the
+    AssistantMessage.  Pre-launched tasks are queued FIFO per tool name, so
+    the N-th handler for a given tool name dequeues the N-th pre-launched
+    task.  The handler trusts this FIFO correspondence unconditionally — it
+    does not compare args, since the SDK CLI may normalise them between the
+    AssistantMessage and the MCP dispatch.
     """
     queues = _tool_task_queues.get()
     if queues is None:
@@ -341,10 +342,8 @@ async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
     )
 
     if bare_name not in queues:
-        queues[bare_name] = asyncio.Queue[_TaskQueueItem]()
-    # Store (task, args) so the handler can log a warning if the SDK dispatches
-    # calls in a different order than the ToolUseBlocks appeared in the message.
-    queues[bare_name].put_nowait((task, args))
+        queues[bare_name] = asyncio.Queue[asyncio.Task[dict[str, Any]]]()
+    queues[bare_name].put_nowait(task)
 
 
 async def _execute_tool_sync(
@@ -464,28 +463,19 @@ def create_tool_handler(base_tool: BaseTool):
         if queues and base_tool.name in queues:
             queue = queues[base_tool.name]
             if not queue.empty():
-                task, launch_args = queue.get_nowait()
-                # The SDK CLI may normalise args between the
-                # AssistantMessage (used by pre_launch_tool_call) and
-                # the MCP tools/call dispatch (received here) — e.g.
-                # injecting schema defaults or coercing types.  A
-                # strict equality check previously caused the
-                # pre-launched task to be discarded and re-executed,
-                # leading to duplicate side effects for blocks like
-                # LinearCreateIssueBlock.
+                task = queue.get_nowait()
+                # Trust FIFO ordering: the SDK dispatches MCP tool
+                # calls in the same order as ToolUseBlocks in the
+                # AssistantMessage, so the N-th dequeue always
+                # corresponds to the N-th pre-launch.
                 #
-                # Trust the FIFO ordering instead: the SDK dispatches
-                # MCP tool calls in the same order as ToolUseBlocks in
-                # the AssistantMessage, so the N-th dequeue always
-                # corresponds to the N-th pre-launch.  Log a debug
-                # note when args differ for observability.
-                if launch_args != args:
-                    logger.debug(
-                        "Pre-launched task for %s: args differ from SDK "
-                        "dispatch (likely CLI normalisation) — using "
-                        "pre-launched result (FIFO match)",
-                        base_tool.name,
-                    )
+                # We intentionally skip comparing args here.  The SDK
+                # CLI may normalise args between the AssistantMessage
+                # and the MCP tools/call dispatch (e.g. injecting
+                # schema defaults, coercing types).  A strict equality
+                # check previously caused the pre-launched task to be
+                # discarded and re-executed, leading to duplicate side
+                # effects for blocks like LinearCreateIssueBlock.
 
                 # Await the pre-launched task.
                 try:
