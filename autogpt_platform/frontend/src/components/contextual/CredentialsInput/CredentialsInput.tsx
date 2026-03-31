@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
 import { APIKeyCredentialsModal } from "./components/APIKeyCredentialsModal/APIKeyCredentialsModal";
 import { CredentialsFlatView } from "./components/CredentialsFlatView/CredentialsFlatView";
+import { CredentialTypeSelector } from "./components/CredentialTypeSelector/CredentialTypeSelector";
 import { HostScopedCredentialsModal } from "./components/HotScopedCredentialsModal/HotScopedCredentialsModal";
 import { OAuthFlowWaitingModal } from "./components/OAuthWaitingModal/OAuthWaitingModal";
 import { PasswordCredentialsModal } from "./components/PasswordCredentialsModal/PasswordCredentialsModal";
@@ -70,20 +71,25 @@ export function CredentialsInput({
     supportsOAuth2,
     supportsUserPassword,
     supportsHostScoped,
+    hasMultipleCredentialTypes,
+    supportedTypes,
     userCredentials,
     systemCredentials,
     oAuthError,
     isAPICredentialsModalOpen,
     isUserPasswordCredentialsModalOpen,
     isHostScopedCredentialsModalOpen,
+    isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
     oAuthPopupController,
     actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
     setHostScopedCredentialsModalOpen,
+    setCredentialTypeSelectorOpen,
     handleActionButtonClick,
     handleCredentialSelect,
+    handleOAuthLogin,
   } = hookData;
 
   const displayName = toDisplayName(provider);
@@ -116,7 +122,28 @@ export function CredentialsInput({
 
       {!readOnly && (
         <>
-          {supportsApiKey && (
+          {hasMultipleCredentialTypes && (
+            <CredentialTypeSelector
+              schema={schema}
+              open={isCredentialTypeSelectorOpen}
+              onClose={() => setCredentialTypeSelectorOpen(false)}
+              provider={provider}
+              providerName={providerName}
+              supportedTypes={supportedTypes}
+              onCredentialsCreate={(creds) => {
+                onSelectCredential(creds);
+              }}
+              onOAuthLogin={handleOAuthLogin}
+              onOpenPasswordModal={() =>
+                setUserPasswordCredentialsModalOpen(true)
+              }
+              onOpenHostScopedModal={() =>
+                setHostScopedCredentialsModalOpen(true)
+              }
+              siblingInputs={siblingInputs}
+            />
+          )}
+          {supportsApiKey && !hasMultipleCredentialTypes && (
             <APIKeyCredentialsModal
               schema={schema}
               open={isAPICredentialsModalOpen}

@@ -12,49 +12,73 @@ from backend.data.model import CredentialsMetaInput
 class ResponseType(str, Enum):
     """Types of tool responses."""
 
+    # General
+    ERROR = "error"
+    NO_RESULTS = "no_results"
+    NEED_LOGIN = "need_login"
+
+    # Agent discovery & execution
     AGENTS_FOUND = "agents_found"
     AGENT_DETAILS = "agent_details"
     SETUP_REQUIREMENTS = "setup_requirements"
+    INPUT_VALIDATION_ERROR = "input_validation_error"
     EXECUTION_STARTED = "execution_started"
-    NEED_LOGIN = "need_login"
-    ERROR = "error"
-    NO_RESULTS = "no_results"
     AGENT_OUTPUT = "agent_output"
     UNDERSTANDING_UPDATED = "understanding_updated"
-    AGENT_PREVIEW = "agent_preview"
-    AGENT_SAVED = "agent_saved"
-    CLARIFICATION_NEEDED = "clarification_needed"
+    SUGGESTED_GOAL = "suggested_goal"
+
+    # Agent builder (create / edit / validate / fix)
+    AGENT_BUILDER_GUIDE = "agent_builder_guide"
+    AGENT_BUILDER_PREVIEW = "agent_builder_preview"
+    AGENT_BUILDER_SAVED = "agent_builder_saved"
+    AGENT_BUILDER_CLARIFICATION_NEEDED = "agent_builder_clarification_needed"
+    AGENT_BUILDER_VALIDATION_RESULT = "agent_builder_validation_result"
+    AGENT_BUILDER_FIX_RESULT = "agent_builder_fix_result"
+
+    # Block
     BLOCK_LIST = "block_list"
     BLOCK_DETAILS = "block_details"
     BLOCK_OUTPUT = "block_output"
+    REVIEW_REQUIRED = "review_required"
+
+    # MCP
+    MCP_GUIDE = "mcp_guide"
+    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
+    MCP_TOOL_OUTPUT = "mcp_tool_output"
+
+    # Docs
     DOC_SEARCH_RESULTS = "doc_search_results"
     DOC_PAGE = "doc_page"
-    # Workspace response types
+
+    # Workspace files
     WORKSPACE_FILE_LIST = "workspace_file_list"
     WORKSPACE_FILE_CONTENT = "workspace_file_content"
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
-    # Long-running operation types
-    OPERATION_IN_PROGRESS = "operation_in_progress"
-    # Input validation
-    INPUT_VALIDATION_ERROR = "input_validation_error"
-    # Web fetch
-    WEB_FETCH = "web_fetch"
-    # Agent-browser multi-step automation (navigate, act, screenshot)
+
+    # Folder management
+    FOLDER_CREATED = "folder_created"
+    FOLDER_LIST = "folder_list"
+    FOLDER_UPDATED = "folder_updated"
+    FOLDER_MOVED = "folder_moved"
+    FOLDER_DELETED = "folder_deleted"
+    AGENTS_MOVED_TO_FOLDER = "agents_moved_to_folder"
+
+    # Browser automation
     BROWSER_NAVIGATE = "browser_navigate"
     BROWSER_ACT = "browser_act"
     BROWSER_SCREENSHOT = "browser_screenshot"
+
     # Code execution
     BASH_EXEC = "bash_exec"
-    # Feature request types
+
+    # Web
+    WEB_FETCH = "web_fetch"
+
+    # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
-    # Goal refinement
-    SUGGESTED_GOAL = "suggested_goal"
-    # MCP tool types
-    MCP_TOOLS_DISCOVERED = "mcp_tools_discovered"
-    MCP_TOOL_OUTPUT = "mcp_tool_output"
 
 
 # Base response model
@@ -85,6 +109,15 @@ class AgentInfo(BaseModel):
     has_external_trigger: bool | None = None
     new_output: bool | None = None
     graph_id: str | None = None
+    graph_version: int | None = None
+    input_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's inputs (for AgentExecutorBlock)",
+    )
+    output_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="JSON Schema for the agent's outputs (for AgentExecutorBlock)",
+    )
     inputs: dict[str, Any] | None = Field(
         default=None,
         description="Input schema for the agent, including field names, types, and defaults",
@@ -275,7 +308,7 @@ class ClarifyingQuestion(BaseModel):
 class AgentPreviewResponse(ToolResponseBase):
     """Response for previewing a generated agent before saving."""
 
-    type: ResponseType = ResponseType.AGENT_PREVIEW
+    type: ResponseType = ResponseType.AGENT_BUILDER_PREVIEW
     agent_json: dict[str, Any]
     agent_name: str
     description: str
@@ -286,7 +319,7 @@ class AgentPreviewResponse(ToolResponseBase):
 class AgentSavedResponse(ToolResponseBase):
     """Response when an agent is saved to the library."""
 
-    type: ResponseType = ResponseType.AGENT_SAVED
+    type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
     library_agent_id: str
@@ -297,7 +330,7 @@ class AgentSavedResponse(ToolResponseBase):
 class ClarificationNeededResponse(ToolResponseBase):
     """Response when the LLM needs more information from the user."""
 
-    type: ResponseType = ResponseType.CLARIFICATION_NEEDED
+    type: ResponseType = ResponseType.AGENT_BUILDER_CLARIFICATION_NEEDED
     questions: list[ClarifyingQuestion] = Field(default_factory=list)
 
 
@@ -374,6 +407,10 @@ class BlockInfoSummary(BaseModel):
         default_factory=dict,
         description="Full JSON schema for block outputs",
     )
+    static_output: bool = Field(
+        default=False,
+        description="Whether the block produces output without needing input",
+    )
     required_inputs: list[BlockInputFieldInfo] = Field(
         default_factory=list,
         description="List of input fields for this block",
@@ -422,16 +459,19 @@ class BlockOutputResponse(ToolResponseBase):
     success: bool = True
 
 
-# Long-running operation models
-class OperationInProgressResponse(ToolResponseBase):
-    """Response when an operation is already in progress.
+class ReviewRequiredResponse(ToolResponseBase):
+    """Response when a block requires human review before execution."""
 
-    Returned for idempotency when the same tool_call_id is requested again
-    while the background task is still running.
-    """
-
-    type: ResponseType = ResponseType.OPERATION_IN_PROGRESS
-    tool_call_id: str
+    type: ResponseType = ResponseType.REVIEW_REQUIRED
+    block_id: str
+    block_name: str
+    review_id: str = Field(description="The review ID for tracking approval status")
+    graph_exec_id: str = Field(
+        description="The graph execution ID for fetching review status"
+    )
+    input_data: dict[str, Any] = Field(
+        description="The input data that requires review"
+    )
 
 
 class WebFetchResponse(ToolResponseBase):
@@ -539,3 +579,105 @@ class BrowserScreenshotResponse(ToolResponseBase):
     type: ResponseType = ResponseType.BROWSER_SCREENSHOT
     file_id: str  # Workspace file ID — use read_workspace_file to retrieve
     filename: str
+
+
+# Agent generation tool response models
+
+
+class ValidationResultResponse(ToolResponseBase):
+    """Response for validate_agent_graph tool."""
+
+    type: ResponseType = ResponseType.AGENT_BUILDER_VALIDATION_RESULT
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    error_count: int = 0
+
+
+class FixResultResponse(ToolResponseBase):
+    """Response for fix_agent_graph tool."""
+
+    type: ResponseType = ResponseType.AGENT_BUILDER_FIX_RESULT
+    fixed_agent_json: dict[str, Any]
+    fixes_applied: list[str] = Field(default_factory=list)
+    fix_count: int = 0
+    valid_after_fix: bool = False
+    remaining_errors: list[str] = Field(default_factory=list)
+
+
+# Folder management models
+
+
+class FolderAgentSummary(BaseModel):
+    """Lightweight agent info for folder listings."""
+
+    id: str
+    name: str
+    description: str = ""
+
+
+class FolderInfo(BaseModel):
+    """Information about a folder."""
+
+    id: str
+    name: str
+    parent_id: str | None = None
+    icon: str | None = None
+    color: str | None = None
+    agent_count: int = 0
+    subfolder_count: int = 0
+    agents: list[FolderAgentSummary] | None = None
+
+
+class FolderTreeInfo(FolderInfo):
+    """Folder with nested children for tree display."""
+
+    children: list["FolderTreeInfo"] = []
+
+
+class FolderCreatedResponse(ToolResponseBase):
+    """Response when a folder is created."""
+
+    type: ResponseType = ResponseType.FOLDER_CREATED
+    folder: FolderInfo
+
+
+class FolderListResponse(ToolResponseBase):
+    """Response for listing folders."""
+
+    type: ResponseType = ResponseType.FOLDER_LIST
+    folders: list[FolderInfo] = Field(default_factory=list)
+    tree: list[FolderTreeInfo] | None = None
+    root_agents: list[FolderAgentSummary] | None = None
+    count: int = 0
+
+
+class FolderUpdatedResponse(ToolResponseBase):
+    """Response when a folder is updated."""
+
+    type: ResponseType = ResponseType.FOLDER_UPDATED
+    folder: FolderInfo
+
+
+class FolderMovedResponse(ToolResponseBase):
+    """Response when a folder is moved."""
+
+    type: ResponseType = ResponseType.FOLDER_MOVED
+    folder: FolderInfo
+    target_parent_id: str | None = None
+
+
+class FolderDeletedResponse(ToolResponseBase):
+    """Response when a folder is deleted."""
+
+    type: ResponseType = ResponseType.FOLDER_DELETED
+    folder_id: str
+
+
+class AgentsMovedToFolderResponse(ToolResponseBase):
+    """Response when agents are moved to a folder."""
+
+    type: ResponseType = ResponseType.AGENTS_MOVED_TO_FOLDER
+    agent_ids: list[str]
+    agent_names: list[str] = []
+    folder_id: str | None = None
+    count: int = 0

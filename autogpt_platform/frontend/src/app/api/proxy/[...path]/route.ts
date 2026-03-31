@@ -57,23 +57,25 @@ async function handleWorkspaceDownload(
     );
   }
 
-  // Get the content type from the backend response
+  // Fully buffer the response before forwarding.  Passing response.body as a
+  // ReadableStream causes silent truncation in Next.js / Vercel — the last
+  // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
+  const buffer = await response.arrayBuffer();
+
   const contentType =
     response.headers.get("Content-Type") || "application/octet-stream";
   const contentDisposition = response.headers.get("Content-Disposition");
 
-  // Stream the response body
   const responseHeaders: Record<string, string> = {
     "Content-Type": contentType,
+    "Content-Length": String(buffer.byteLength),
   };
 
   if (contentDisposition) {
     responseHeaders["Content-Disposition"] = contentDisposition;
   }
 
-  // Return the binary content
-  const arrayBuffer = await response.arrayBuffer();
-  return new NextResponse(arrayBuffer, {
+  return new NextResponse(buffer, {
     status: 200,
     headers: responseHeaders,
   });
@@ -255,7 +257,6 @@ async function handler(
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
       responseBody = await handleFormDataRequest(req, backendUrl);
-      responseHeaders["Content-Type"] = "text/plain";
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
       responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
     } else {

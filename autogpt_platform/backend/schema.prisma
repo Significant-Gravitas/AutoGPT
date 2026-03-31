@@ -281,7 +281,6 @@ model AgentGraph {
 
   Presets              AgentPreset[]
   LibraryAgents        LibraryAgent[]
-  StoreListings        StoreListing[]
   StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
@@ -506,6 +505,11 @@ model AgentBlock {
   inputSchema  String
   outputSchema String
 
+  // Block description synced from Python block definitions.
+  description          String?
+  // LLM-optimized description for agent generation (concise, actionable).
+  optimizedDescription String?
+
   // Prisma requires explicit back-references.
   ReferencedByAgentNode AgentNode[]
 }
@@ -561,8 +565,6 @@ model AgentGraphExecution {
   isShared   Boolean   @default(false)
   shareToken String?   @unique
   sharedAt   DateTime?
-
-  PendingHumanReviews PendingHumanReview[]
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
@@ -660,8 +662,7 @@ model PendingHumanReview {
   updatedAt     DateTime?    @updatedAt
   reviewedAt    DateTime?
 
-  User           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  GraphExecution AgentGraphExecution @relation(fields: [graphExecId], references: [id], onDelete: Cascade)
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
@@ -814,10 +815,8 @@ model Profile {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  // Only 1 of user or group can be set.
-  // The user this profile belongs to, if any.
-  userId String?
-  User   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   name        String
   username    String @unique
@@ -830,6 +829,7 @@ model Profile {
   isFeatured Boolean @default(false)
 
   LibraryAgents LibraryAgent[]
+  StoreListings StoreListing[]
 
   @@index([userId])
 }
@@ -860,9 +860,9 @@ view Creator {
 }
 
 view StoreAgent {
-  listing_id            String   @id
-  storeListingVersionId String
-  updated_at            DateTime
+  listing_id         String   @id
+  listing_version_id String
+  updated_at         DateTime
 
   slug              String
   agent_name        String
@@ -879,10 +879,12 @@ view StoreAgent {
   runs               Int
   rating             Float
   versions           String[]
-  agentGraphVersions String[]
-  agentGraphId       String
+  graph_id           String
+  graph_versions     String[]
   is_available       Boolean  @default(true)
-  useForOnboarding   Boolean  @default(false)
+  use_for_onboarding Boolean  @default(false)
+
+  recommended_schedule_cron String?
 
   // Materialized views used (refreshed every 15 minutes via pg_cron):
   // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
@@ -896,41 +898,52 @@ view StoreAgent {
 }
 
 view StoreSubmission {
-  listing_id               String           @id
-  user_id                  String
-  slug                     String
-  name                     String
-  sub_heading              String
-  description              String
-  image_urls               String[]
-  date_submitted           DateTime
-  status                   SubmissionStatus
-  runs                     Int
-  rating                   Float
-  agent_id                 String
-  agent_version            Int
-  store_listing_version_id String
-  reviewer_id              String?
-  review_comments          String?
-  internal_comments        String?
-  reviewed_at              DateTime?
-  changes_summary          String?
-  video_url                String?
-  categories               String[]
+  // From StoreListing:
+  listing_id String
+  user_id    String
+  slug       String
 
-  // Index or unique are not applied to views
+  // From StoreListingVersion:
+  listing_version_id String @id
+  listing_version    Int
+  graph_id           String
+  graph_version      Int
+
+  name                  String
+  sub_heading           String
+  description           String
+  instructions          String?
+  categories            String[]
+  image_urls            String[]
+  video_url             String?
+  agent_output_demo_url String?
+
+  submitted_at      DateTime?
+  changes_summary   String?
+  status            SubmissionStatus
+  reviewed_at       DateTime?
+  reviewer_id       String?
+  review_comments   String?
+  internal_comments String?
+
+  is_deleted Boolean
+
+  // Aggregated from AgentGraphExecutions and StoreListingReviews:
+  run_count         Int
+  review_count      Int
+  review_avg_rating Float
 }
 
 // Note: This is actually a MATERIALIZED VIEW in the database
 // Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
 view mv_agent_run_counts {
-  agentGraphId String @unique
-  run_count    Int
+  graph_id  String @unique
+  run_count Int // excluding runs by the graph's creator
 
-  // Pre-aggregated count of AgentGraphExecution records by agentGraphId
-  // Used by StoreAgent and Creator views for performance optimization
-  // Unique index created automatically on agentGraphId for fast lookups
-  // Refresh uses CONCURRENTLY to avoid blocking reads
+  // Pre-aggregated count of AgentGraphExecution records by agentGraphId.
+  // Used by StoreAgent, Creator, and StoreSubmission views for performance optimization.
+  // - Should have a unique index on graph_id for fast lookups
+  // - Refresh should use CONCURRENTLY to avoid blocking reads
 }
 
 // Note: This is actually a MATERIALIZED VIEW in the database
@@ -979,22 +992,18 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId      String
-  agentGraphVersion Int
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  agentGraphId String       @unique
 
-  owningUserId String
-  OwningUser   User   @relation(fields: [owningUserId], references: [id])
+  owningUserId   String
+  OwningUser     User    @relation(fields: [owningUserId], references: [id])
+  CreatorProfile Profile @relation(fields: [owningUserId], references: [userId], map: "StoreListing_owner_Profile_fkey", onDelete: Cascade)
 
   // Relations
   Versions StoreListingVersion[] @relation("ListingVersions")
 
-  // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
-  @@unique([agentGraphId])
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
-  @@index([agentGraphId, agentGraphVersion])
 }
 
 model StoreListingVersion {
@@ -1089,16 +1098,16 @@ model UnifiedContentEmbedding {
   // Search data
   embedding      Unsupported("vector(1536)") // pgvector embedding (extension in platform schema)
   searchableText String // Combined text for search and fallback
-  search         Unsupported("tsvector")? @default(dbgenerated("''::tsvector")) // Full-text search (auto-populated by trigger)
+  search         Unsupported("tsvector")?    @default(dbgenerated("''::tsvector")) // Full-text search (auto-populated by trigger)
   metadata       Json                        @default("{}") // Content-specific metadata
+  // NO @@index for search - GIN index "UnifiedContentEmbedding_search_idx" created via SQL migration
+  // Prisma may generate DROP INDEX on migrate dev - that's okay, migration recreates it
 
   @@unique([contentType, contentId, userId], map: "UnifiedContentEmbedding_contentType_contentId_userId_key")
   @@index([contentType])
   @@index([userId])
   @@index([contentType, userId])
   @@index([embedding], map: "UnifiedContentEmbedding_embedding_idx")
-  // NO @@index for search - GIN index "UnifiedContentEmbedding_search_idx" created via SQL migration
-  // Prisma may generate DROP INDEX on migrate dev - that's okay, migration recreates it
 }
 
 model StoreListingReview {
@@ -1115,8 +1124,9 @@ model StoreListingReview {
   score    Int
   comments String?
 
+  // Enforce one review per user per listing version
   @@unique([storeListingVersionId, reviewByUserId])
-  @@index([reviewByUserId])
+  @@index([storeListingVersionId])
 }
 
 enum SubmissionStatus {

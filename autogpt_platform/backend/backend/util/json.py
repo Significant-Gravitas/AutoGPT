@@ -72,19 +72,58 @@ def dumps(
 
 T = TypeVar("T")
 
+# Sentinel value to detect when fallback is not provided
+_NO_FALLBACK = object()
+
 
 @overload
-def loads(data: str | bytes, *args, target_type: Type[T], **kwargs) -> T: ...
+def loads(
+    data: str | bytes, *args, target_type: Type[T], fallback: T | None = None, **kwargs
+) -> T:
+    pass
 
 
 @overload
-def loads(data: str | bytes, *args, **kwargs) -> Any: ...
+def loads(data: str | bytes, *args, fallback: Any = None, **kwargs) -> Any:
+    pass
 
 
 def loads(
-    data: str | bytes, *args, target_type: Type[T] | None = None, **kwargs
+    data: str | bytes,
+    *args,
+    target_type: Type[T] | None = None,
+    fallback: Any = _NO_FALLBACK,
+    **kwargs,
 ) -> Any:
-    parsed = orjson.loads(data)
+    """Parse JSON with optional fallback on decode errors.
+
+    Args:
+        data: JSON string or bytes to parse
+        target_type: Optional type to validate/cast result to
+        fallback: Value to return on JSONDecodeError. If not provided, raises.
+        **kwargs: Additional arguments (unused, for compatibility)
+
+    Returns:
+        Parsed JSON data, or fallback value if parsing fails
+
+    Raises:
+        orjson.JSONDecodeError: Only if fallback is not provided
+
+    Examples:
+        >>> loads('{"valid": "json"}')
+        {'valid': 'json'}
+        >>> loads('invalid json', fallback=None)
+        None
+        >>> loads('invalid json', fallback={})
+        {}
+        >>> loads('invalid json')  # raises orjson.JSONDecodeError
+    """
+    try:
+        parsed = orjson.loads(data)
+    except orjson.JSONDecodeError:
+        if fallback is not _NO_FALLBACK:
+            return fallback
+        raise
 
     if target_type:
         return type_match(parsed, target_type)

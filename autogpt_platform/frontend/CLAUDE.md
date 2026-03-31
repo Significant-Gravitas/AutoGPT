@@ -44,6 +44,12 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 
 - Fully capitalize acronyms in symbols, e.g. `graphID`, `useBackendAPI`
 - Use function declarations (not arrow functions) for components/handlers
+- No `dark:` Tailwind classes — the design system handles dark mode
+- Use Next.js `<Link>` for internal navigation — never raw `<a>` tags
+- No `any` types unless the value genuinely can be anything
+- No linter suppressors (`// @ts-ignore`, `// eslint-disable`) — fix the actual issue
+- **File length** — keep files under ~200 lines; extract sub-components or hooks into their own files when a file grows beyond this
+- **Function/component length** — keep render functions and hooks under ~50 lines; extract named helpers or sub-components when they grow longer
 
 ## Architecture
 
@@ -78,7 +84,7 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
-5. **Testing**: Add Storybook stories for new components, Playwright for E2E
+5. **Testing**: Add Storybook stories for new components, Playwright for E2E. When fixing a bug, write a failing Playwright test first (use `.fixme` annotation), implement the fix, then remove the annotation.
 6. **Code conventions**:
    - Use function declarations (not arrow functions) for components/handlers
    - Do not use `useCallback` or `useMemo` unless asked to optimise a given function

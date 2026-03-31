@@ -2,18 +2,58 @@ import {
   getGetV2ListSessionsQueryKey,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
+  type getV2ListSessionsResponse,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { uploadFileDirect } from "@/lib/direct-upload";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
-import { getWebSocketToken } from "@/lib/supabase/actions";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { environment } from "@/services/environment";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+
+const TITLE_POLL_INTERVAL_MS = 2_000;
+const TITLE_POLL_MAX_ATTEMPTS = 5;
+
+/**
+ * Extract a prompt from the URL hash fragment.
+ * Supports: /copilot#prompt=URL-encoded-text
+ * Optionally auto-submits if ?autosubmit=true is in the query string.
+ * Returns null if no prompt is present.
+ */
+function extractPromptFromUrl(): {
+  prompt: string;
+  autosubmit: boolean;
+} | null {
+  if (typeof window === "undefined") return null;
+
+  const hash = window.location.hash;
+  if (!hash) return null;
+
+  const hashParams = new URLSearchParams(hash.slice(1));
+  const prompt = hashParams.get("prompt");
+
+  if (!prompt || !prompt.trim()) return null;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const autosubmit = searchParams.get("autosubmit") === "true";
+
+  // Clean up hash + autosubmit param only (preserve other query params)
+  const cleanURL = new URL(window.location.href);
+  cleanURL.hash = "";
+  cleanURL.searchParams.delete("autosubmit");
+  window.history.replaceState(
+    null,
+    "",
+    `${cleanURL.pathname}${cleanURL.search}`,
+  );
+
+  return { prompt: prompt.trim(), autosubmit };
+}
 
 interface UploadedFile {
   file_id: string;
@@ -56,6 +96,8 @@ export function useCopilotPage() {
     hasActiveStream,
     refetchSession,
   });
+
+  useCopilotNotifications(sessionId);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -121,53 +163,51 @@ export function useCopilotPage() {
     }
   }, [sessionId, pendingMessage, sendMessage]);
 
+  // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
+  const { setInitialPrompt } = useCopilotUIStore();
+  const hasProcessedUrlPrompt = useRef(false);
+  useEffect(() => {
+    if (hasProcessedUrlPrompt.current) return;
+
+    const urlPrompt = extractPromptFromUrl();
+    if (!urlPrompt) return;
+
+    hasProcessedUrlPrompt.current = true;
+
+    if (urlPrompt.autosubmit) {
+      setPendingMessage(urlPrompt.prompt);
+      void createSession().catch(() => {
+        setPendingMessage(null);
+        setInitialPrompt(urlPrompt.prompt);
+      });
+    } else {
+      setInitialPrompt(urlPrompt.prompt);
+    }
+  }, [createSession, setInitialPrompt]);
+
   async function uploadFiles(
     files: File[],
     sid: string,
   ): Promise<UploadedFile[]> {
-    // Upload directly to the Python backend, bypassing the Next.js serverless
-    // proxy.  Vercel's 4.5 MB function payload limit would reject larger files
-    // when routed through /api/workspace/files/upload.
-    const { token, error: tokenError } = await getWebSocketToken();
-    if (tokenError || !token) {
-      toast({
-        title: "Authentication error",
-        description: "Please sign in again.",
-        variant: "destructive",
-      });
-      return [];
-    }
-
-    const backendBase = environment.getAGPTServerBaseUrl();
-
     const results = await Promise.allSettled(
       files.map(async (file) => {
-        const formData = new FormData();
-        formData.append("file", file);
-        const url = new URL("/api/workspace/files/upload", backendBase);
-        url.searchParams.set("session_id", sid);
-        const res = await fetch(url.toString(), {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        if (!res.ok) {
-          const err = await res.text();
+        try {
+          const data = await uploadFileDirect(file, sid);
+          if (!data.file_id) throw new Error("No file_id returned");
+          return {
+            file_id: data.file_id,
+            name: data.name || file.name,
+            mime_type: data.mime_type || "application/octet-stream",
+          } as UploadedFile;
+        } catch (err) {
           console.error("File upload failed:", err);
           toast({
             title: "File upload failed",
             description: file.name,
             variant: "destructive",
           });
-          throw new Error(err);
+          throw err;
         }
-        const data = await res.json();
-        if (!data.file_id) throw new Error("No file_id returned");
-        return {
-          file_id: data.file_id,
-          name: data.name || file.name,
-          mime_type: data.mime_type || "application/octet-stream",
-        } as UploadedFile;
       }),
     );
     return results
@@ -257,6 +297,52 @@ export function useCopilotPage() {
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  // Start title polling when stream ends cleanly — sidebar title animates in
+  const titlePollRef = useRef<ReturnType<typeof setInterval>>();
+  const prevStatusRef = useRef(status);
+
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    const wasActive = prev === "streaming" || prev === "submitted";
+    const isNowReady = status === "ready";
+
+    if (!wasActive || !isNowReady || !sessionId || isReconnecting) return;
+
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
+    });
+    const sid = sessionId;
+    let attempts = 0;
+    clearInterval(titlePollRef.current);
+    titlePollRef.current = setInterval(() => {
+      const data = queryClient.getQueryData<getV2ListSessionsResponse>(
+        getGetV2ListSessionsQueryKey({ limit: 50 }),
+      );
+      const hasTitle =
+        data?.status === 200 &&
+        data.data.sessions.some((s) => s.id === sid && s.title);
+      if (hasTitle || attempts >= TITLE_POLL_MAX_ATTEMPTS) {
+        clearInterval(titlePollRef.current);
+        titlePollRef.current = undefined;
+        return;
+      }
+      attempts += 1;
+      queryClient.invalidateQueries({
+        queryKey: getGetV2ListSessionsQueryKey({ limit: 50 }),
+      });
+    }, TITLE_POLL_INTERVAL_MS);
+  }, [status, sessionId, isReconnecting, queryClient]);
+
+  // Clean up polling on session change or unmount
+  useEffect(() => {
+    return () => {
+      clearInterval(titlePollRef.current);
+      titlePollRef.current = undefined;
+    };
+  }, [sessionId]);
 
   // --- Mobile drawer handlers ---
   function handleOpenDrawer() {

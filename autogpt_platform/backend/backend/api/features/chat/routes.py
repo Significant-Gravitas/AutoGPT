@@ -8,10 +8,10 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -25,8 +25,16 @@ from backend.copilot.model import (
     delete_chat_session,
     get_chat_session,
     get_user_sessions,
+    update_session_title,
+)
+from backend.copilot.rate_limit import (
+    CoPilotUsageStatus,
+    RateLimitExceeded,
+    check_rate_limit,
+    get_usage_status,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
     AgentOutputResponse,
@@ -51,6 +59,7 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.redis_client import get_redis_async
 from backend.data.workspace import get_or_create_workspace
 from backend.util.exceptions import NotFoundError
 
@@ -116,6 +125,8 @@ class SessionDetailResponse(BaseModel):
     user_id: str | None
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
 
 
 class SessionSummaryResponse(BaseModel):
@@ -125,6 +136,7 @@ class SessionSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
+    is_processing: bool
 
 
 class ListSessionsResponse(BaseModel):
@@ -139,6 +151,20 @@ class CancelSessionResponse(BaseModel):
 
     cancelled: bool
     reason: str | None = None
+
+
+class UpdateSessionTitleRequest(BaseModel):
+    """Request model for updating a session's title."""
+
+    title: str
+
+    @field_validator("title")
+    @classmethod
+    def title_must_not_be_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Title must not be blank")
+        return stripped
 
 
 # ========== Routes ==========
@@ -169,6 +195,28 @@ async def list_sessions(
     """
     sessions, total_count = await get_user_sessions(user_id, limit, offset)
 
+    # Batch-check Redis for active stream status on each session
+    processing_set: set[str] = set()
+    if sessions:
+        try:
+            redis = await get_redis_async()
+            pipe = redis.pipeline(transaction=False)
+            for session in sessions:
+                pipe.hget(
+                    f"{config.session_meta_prefix}{session.session_id}",
+                    "status",
+                )
+            statuses = await pipe.execute()
+            processing_set = {
+                session.session_id
+                for session, st in zip(sessions, statuses)
+                if st == "running"
+            }
+        except Exception:
+            logger.warning(
+                "Failed to fetch processing status from Redis; defaulting to empty"
+            )
+
     return ListSessionsResponse(
         sessions=[
             SessionSummaryResponse(
@@ -176,6 +224,7 @@ async def list_sessions(
                 created_at=session.started_at.isoformat(),
                 updated_at=session.updated_at.isoformat(),
                 title=session.title,
+                is_processing=session.session_id in processing_set,
             )
             for session in sessions
         ],
@@ -187,7 +236,7 @@ async def list_sessions(
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -250,12 +299,12 @@ async def delete_session(
         )
 
     # Best-effort cleanup of the E2B sandbox (if any).
-    config = ChatConfig()
-    if config.use_e2b_sandbox and config.e2b_api_key:
-        from backend.copilot.tools.e2b_sandbox import kill_sandbox
-
+    # sandbox_id is in Redis; kill_sandbox() fetches it from there.
+    e2b_cfg = ChatConfig()
+    if e2b_cfg.e2b_active:
+        assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
         try:
-            await kill_sandbox(session_id, config.e2b_api_key)
+            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
         except Exception:
             logger.warning(
                 "[E2B] Failed to kill sandbox for session %s", session_id[:12]
@@ -264,12 +313,49 @@ async def delete_session(
     return Response(status_code=204)
 
 
+@router.patch(
+    "/sessions/{session_id}/title",
+    summary="Update session title",
+    dependencies=[Security(auth.requires_user)],
+    status_code=200,
+    responses={404: {"description": "Session not found or access denied"}},
+)
+async def update_session_title_route(
+    session_id: str,
+    request: UpdateSessionTitleRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> dict:
+    """
+    Update the title of a chat session.
+
+    Allows the user to rename their chat session.
+
+    Args:
+        session_id: The session ID to update.
+        request: Request body containing the new title.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        dict: Status of the update.
+
+    Raises:
+        HTTPException: 404 if session not found or not owned by user.
+    """
+    success = await update_session_title(session_id, user_id, request.title)
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    return {"status": "ok"}
+
+
 @router.get(
     "/sessions/{session_id}",
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -310,6 +396,10 @@ async def get_session(
             last_message_id=last_message_id,
         )
 
+    # Sum token usage from session
+    total_prompt = sum(u.prompt_tokens for u in session.usage)
+    total_completion = sum(u.completion_tokens for u in session.usage)
+
     return SessionDetailResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
@@ -317,6 +407,25 @@ async def get_session(
         user_id=session.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+    )
+
+
+@router.get(
+    "/usage",
+)
+async def get_copilot_usage(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> CoPilotUsageStatus:
+    """Get CoPilot usage status for the authenticated user.
+
+    Returns current token usage vs limits for daily and weekly windows.
+    """
+    return await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=config.daily_token_limit,
+        weekly_token_limit=config.weekly_token_limit,
     )
 
 
@@ -326,7 +435,7 @@ async def get_session(
 )
 async def cancel_session_task(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
@@ -371,7 +480,7 @@ async def cancel_session_task(
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -388,7 +497,7 @@ async def stream_chat_post(
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
-        user_id: Optional authenticated user ID.
+        user_id: Authenticated user ID.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -397,9 +506,7 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
-    log_meta = {"component": "ChatStream", "session_id": session_id}
-    if user_id:
-        log_meta["user_id"] = user_id
+    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
         f"[TIMING] stream_chat_post STARTED, session={session_id}, "
@@ -416,6 +523,18 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Pre-turn rate limit check (token-based).
+    # check_rate_limit short-circuits internally when both limits are 0.
+    if user_id:
+        try:
+            await check_rate_limit(
+                user_id=user_id,
+                daily_token_limit=config.daily_token_limit,
+                weekly_token_limit=config.weekly_token_limit,
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(status_code=429, detail=str(e)) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -651,7 +770,7 @@ async def stream_chat_post(
 )
 async def resume_session_stream(
     session_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Resume an active stream for a session.
@@ -753,7 +872,6 @@ async def resume_session_stream(
 @router.patch(
     "/sessions/{session_id}/assign-user",
     dependencies=[Security(auth.requires_user)],
-    status_code=200,
 )
 async def session_assign_user(
     session_id: str,

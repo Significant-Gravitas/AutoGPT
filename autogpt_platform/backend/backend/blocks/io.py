@@ -211,7 +211,7 @@ class AgentOutputBlock(Block):
         if input_data.format:
             try:
                 formatter = TextFormatter(autoescape=input_data.escape_html)
-                yield "output", formatter.format_string(
+                yield "output", await formatter.format_string(
                     input_data.format, {input_data.name: input_data.value}
                 )
             except Exception as e:

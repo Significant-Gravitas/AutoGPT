@@ -10,7 +10,7 @@ import {
   WarningDiamondIcon,
 } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { OrbitLoader } from "../../components/OrbitLoader/OrbitLoader";
+import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 
 export interface RunAgentInput {
   username_agent_slug?: string;
@@ -149,10 +149,10 @@ export function getAnimationText(part: {
       }
       if (isRunAgentNeedLoginOutput(output))
         return "Sign in required to run agent";
-      return "Error running agent";
+      return "Something went wrong";
     }
     case "output-error":
-      return "Error running agent";
+      return "Something went wrong";
     default:
       return actionPhrase;
   }
@@ -171,7 +171,7 @@ export function ToolIcon({
     );
   }
   if (isStreaming) {
-    return <OrbitLoader size={24} />;
+    return <ScaleLoader size={14} />;
   }
   return <PlayIcon size={14} weight="regular" className="text-neutral-400" />;
 }

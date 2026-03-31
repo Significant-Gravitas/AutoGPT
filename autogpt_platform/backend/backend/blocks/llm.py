@@ -31,10 +31,21 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.logging import TruncatedLogger
+from backend.util.openai_responses import (
+    convert_tools_to_responses_format,
+    extract_responses_content,
+    extract_responses_reasoning,
+    extract_responses_tool_calls,
+    extract_responses_usage,
+)
 from backend.util.prompt import compress_context, estimate_token_count
+from backend.util.request import validate_url_host
+from backend.util.settings import Settings
 from backend.util.text import TextFormatter
 
+settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
@@ -107,7 +118,6 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
-    GPT3_5_TURBO = "gpt-3.5-turbo"
     # Anthropic models
     CLAUDE_4_1_OPUS = "claude-opus-4-1-20250805"
     CLAUDE_4_OPUS = "claude-opus-4-20250514"
@@ -116,6 +126,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
     AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
@@ -135,19 +146,31 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenRouter models
     OPENAI_GPT_OSS_120B = "openai/gpt-oss-120b"
     OPENAI_GPT_OSS_20B = "openai/gpt-oss-20b"
-    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
-    GEMINI_3_PRO_PREVIEW = "google/gemini-3-pro-preview"
+    GEMINI_2_5_PRO_PREVIEW = "google/gemini-2.5-pro-preview-03-25"
+    GEMINI_2_5_PRO = "google/gemini-2.5-pro"
+    GEMINI_3_1_PRO_PREVIEW = "google/gemini-3.1-pro-preview"
+    GEMINI_3_FLASH_PREVIEW = "google/gemini-3-flash-preview"
     GEMINI_2_5_FLASH = "google/gemini-2.5-flash"
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
+    GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
+    MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
+    MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
+    MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
+    CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
+    COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
+    COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
+    COHERE_COMMAND_A_REASONING_08_2025 = "cohere/command-a-reasoning-08-2025"
+    COHERE_COMMAND_A_VISION_07_2025 = "cohere/command-a-vision-07-2025"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
     DEEPSEEK_R1_0528 = "deepseek/deepseek-r1-0528"
     PERPLEXITY_SONAR = "perplexity/sonar"
     PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
+    PERPLEXITY_SONAR_REASONING_PRO = "perplexity/sonar-reasoning-pro"
     PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
@@ -155,9 +178,11 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     AMAZON_NOVA_MICRO_V1 = "amazon/nova-micro-v1"
     AMAZON_NOVA_PRO_V1 = "amazon/nova-pro-v1"
     MICROSOFT_WIZARDLM_2_8X22B = "microsoft/wizardlm-2-8x22b"
+    MICROSOFT_PHI_4 = "microsoft/phi-4"
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
@@ -258,9 +283,6 @@ MODEL_METADATA = {
     LlmModel.GPT4_TURBO: ModelMetadata(
         "openai", 128000, 4096, "GPT-4 Turbo", "OpenAI", "OpenAI", 3
     ),  # gpt-4-turbo-2024-04-09
-    LlmModel.GPT3_5_TURBO: ModelMetadata(
-        "openai", 16385, 4096, "GPT-3.5 Turbo", "OpenAI", "OpenAI", 1
-    ),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
     LlmModel.CLAUDE_4_1_OPUS: ModelMetadata(
         "anthropic", 200000, 32000, "Claude Opus 4.1", "Anthropic", "Anthropic", 3
@@ -274,6 +296,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
+        "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
+    ),  # claude-sonnet-4-6
     LlmModel.CLAUDE_4_5_OPUS: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Opus 4.5", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-5-20251101
@@ -332,23 +357,56 @@ MODEL_METADATA = {
         "ollama", 32768, None, "Dolphin Mistral Latest", "Ollama", "Mistral AI", 1
     ),
     # https://openrouter.ai/models
-    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
+    LlmModel.GEMINI_2_5_PRO_PREVIEW: ModelMetadata(
         "open_router",
-        1050000,
-        8192,
+        1048576,
+        65536,
         "Gemini 2.5 Pro Preview 03.25",
         "OpenRouter",
         "Google",
         2,
     ),
-    LlmModel.GEMINI_3_PRO_PREVIEW: ModelMetadata(
-        "open_router", 1048576, 65535, "Gemini 3 Pro Preview", "OpenRouter", "Google", 2
+    LlmModel.GEMINI_2_5_PRO: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 2.5 Pro",
+        "OpenRouter",
+        "Google",
+        2,
+    ),
+    LlmModel.GEMINI_3_1_PRO_PREVIEW: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 3.1 Pro Preview",
+        "OpenRouter",
+        "Google",
+        2,
+    ),
+    LlmModel.GEMINI_3_FLASH_PREVIEW: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 3 Flash Preview",
+        "OpenRouter",
+        "Google",
+        1,
     ),
     LlmModel.GEMINI_2_5_FLASH: ModelMetadata(
         "open_router", 1048576, 65535, "Gemini 2.5 Flash", "OpenRouter", "Google", 1
     ),
     LlmModel.GEMINI_2_0_FLASH: ModelMetadata(
         "open_router", 1048576, 8192, "Gemini 2.0 Flash 001", "OpenRouter", "Google", 1
+    ),
+    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: ModelMetadata(
+        "open_router",
+        1048576,
+        65536,
+        "Gemini 3.1 Flash Lite Preview",
+        "OpenRouter",
+        "Google",
+        1,
     ),
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: ModelMetadata(
         "open_router",
@@ -371,11 +429,77 @@ MODEL_METADATA = {
     LlmModel.MISTRAL_NEMO: ModelMetadata(
         "open_router", 128000, 4096, "Mistral Nemo", "OpenRouter", "Mistral AI", 1
     ),
+    LlmModel.MISTRAL_LARGE_3: ModelMetadata(
+        "open_router",
+        262144,
+        None,
+        "Mistral Large 3 2512",
+        "OpenRouter",
+        "Mistral AI",
+        2,
+    ),
+    LlmModel.MISTRAL_MEDIUM_3_1: ModelMetadata(
+        "open_router",
+        131072,
+        None,
+        "Mistral Medium 3.1",
+        "OpenRouter",
+        "Mistral AI",
+        2,
+    ),
+    LlmModel.MISTRAL_SMALL_3_2: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Mistral Small 3.2 24B",
+        "OpenRouter",
+        "Mistral AI",
+        1,
+    ),
+    LlmModel.CODESTRAL: ModelMetadata(
+        "open_router",
+        256000,
+        None,
+        "Codestral 2508",
+        "OpenRouter",
+        "Mistral AI",
+        1,
+    ),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata(
         "open_router", 128000, 4096, "Command R 08.2024", "OpenRouter", "Cohere", 1
     ),
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata(
         "open_router", 128000, 4096, "Command R Plus 08.2024", "OpenRouter", "Cohere", 2
+    ),
+    LlmModel.COHERE_COMMAND_A_03_2025: ModelMetadata(
+        "open_router", 256000, 8192, "Command A 03.2025", "OpenRouter", "Cohere", 2
+    ),
+    LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: ModelMetadata(
+        "open_router",
+        128000,
+        8192,
+        "Command A Translate 08.2025",
+        "OpenRouter",
+        "Cohere",
+        2,
+    ),
+    LlmModel.COHERE_COMMAND_A_REASONING_08_2025: ModelMetadata(
+        "open_router",
+        256000,
+        32768,
+        "Command A Reasoning 08.2025",
+        "OpenRouter",
+        "Cohere",
+        3,
+    ),
+    LlmModel.COHERE_COMMAND_A_VISION_07_2025: ModelMetadata(
+        "open_router",
+        128000,
+        8192,
+        "Command A Vision 07.2025",
+        "OpenRouter",
+        "Cohere",
+        2,
     ),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata(
         "open_router", 64000, 2048, "DeepSeek Chat", "OpenRouter", "DeepSeek", 1
@@ -388,6 +512,15 @@ MODEL_METADATA = {
     ),
     LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata(
         "open_router", 200000, 8000, "Sonar Pro", "OpenRouter", "Perplexity", 2
+    ),
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: ModelMetadata(
+        "open_router",
+        128000,
+        8000,
+        "Sonar Reasoning Pro",
+        "OpenRouter",
+        "Perplexity",
+        2,
     ),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
@@ -434,6 +567,9 @@ MODEL_METADATA = {
     LlmModel.MICROSOFT_WIZARDLM_2_8X22B: ModelMetadata(
         "open_router", 65536, 4096, "WizardLM 2 8x22B", "OpenRouter", "Microsoft", 1
     ),
+    LlmModel.MICROSOFT_PHI_4: ModelMetadata(
+        "open_router", 16384, 16384, "Phi-4", "OpenRouter", "Microsoft", 1
+    ),
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata(
         "open_router", 4096, 4096, "MythoMax L2 13B", "OpenRouter", "Gryphe", 1
     ),
@@ -442,6 +578,15 @@ MODEL_METADATA = {
     ),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata(
         "open_router", 1048576, 1000000, "Llama 4 Maverick", "OpenRouter", "Meta", 1
+    ),
+    LlmModel.GROK_3: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Grok 3",
+        "OpenRouter",
+        "xAI",
+        2,
     ),
     LlmModel.GROK_4: ModelMetadata(
         "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
@@ -659,36 +804,53 @@ async def llm_call(
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
     if provider == "openai":
-        tools_param = tools if tools else openai.NOT_GIVEN
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
-        response_format = None
 
-        parallel_tool_calls = get_parallel_tool_calls_param(
-            llm_model, parallel_tool_calls
-        )
+        tools_param = convert_tools_to_responses_format(tools) if tools else openai.omit
 
+        text_config = openai.omit
         if force_json_output:
-            response_format = {"type": "json_object"}
+            text_config = {"format": {"type": "json_object"}}  # type: ignore
 
-        response = await oai_client.chat.completions.create(
+        response = await oai_client.responses.create(
             model=llm_model.value,
-            messages=prompt,  # type: ignore
-            response_format=response_format,  # type: ignore
-            max_completion_tokens=max_tokens,
-            tools=tools_param,  # type: ignore
-            parallel_tool_calls=parallel_tool_calls,
+            input=prompt,  # type: ignore[arg-type]
+            tools=tools_param,  # type: ignore[arg-type]
+            max_output_tokens=max_tokens,
+            parallel_tool_calls=get_parallel_tool_calls_param(
+                llm_model, parallel_tool_calls
+            ),
+            text=text_config,  # type: ignore[arg-type]
+            store=False,
         )
 
-        tool_calls = extract_openai_tool_calls(response)
-        reasoning = extract_openai_reasoning(response)
+        raw_tool_calls = extract_responses_tool_calls(response)
+        tool_calls = (
+            [
+                ToolContentBlock(
+                    id=tc["id"],
+                    type=tc["type"],
+                    function=ToolCall(
+                        name=tc["function"]["name"],
+                        arguments=tc["function"]["arguments"],
+                    ),
+                )
+                for tc in raw_tool_calls
+            ]
+            if raw_tool_calls
+            else None
+        )
+        reasoning = extract_responses_reasoning(response)
+        content = extract_responses_content(response)
+        prompt_tokens, completion_tokens = extract_responses_usage(response)
 
         return LLMResponse(
-            raw_response=response.choices[0].message,
+            raw_response=response,
             prompt=prompt,
-            response=response.choices[0].message.content or "",
+            response=content,
             tool_calls=tool_calls,
-            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
-            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
             reasoning=reasoning,
         )
     elif provider == "anthropic":
@@ -800,6 +962,11 @@ async def llm_call(
         if tools:
             raise ValueError("Ollama does not support tools.")
 
+        # Validate user-provided Ollama host to prevent SSRF etc.
+        await validate_url_host(
+            ollama_host, trusted_hostnames=[settings.config.ollama_host]
+        )
+
         client = ollama.AsyncClient(host=ollama_host)
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
@@ -821,7 +988,7 @@ async def llm_call(
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
+            base_url=OPENROUTER_BASE_URL,
             api_key=credentials.api_key.get_secret_value(),
         )
 
@@ -1129,8 +1296,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         values = input_data.prompt_values
         if values:
-            input_data.prompt = fmt.format_string(input_data.prompt, values)
-            input_data.sys_prompt = fmt.format_string(input_data.sys_prompt, values)
+            input_data.prompt = await fmt.format_string(input_data.prompt, values)
+            input_data.sys_prompt = await fmt.format_string(
+                input_data.sys_prompt, values
+            )
 
         if input_data.sys_prompt:
             prompt.append({"role": "system", "content": input_data.sys_prompt})

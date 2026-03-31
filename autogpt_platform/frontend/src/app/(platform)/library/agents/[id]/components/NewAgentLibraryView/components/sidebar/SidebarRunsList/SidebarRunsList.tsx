@@ -28,6 +28,7 @@ interface Props {
     tab?: "runs" | "scheduled" | "templates" | "triggers",
   ) => void;
   onClearSelectedRun?: () => void;
+  onScheduleDeleted?: (deletedScheduleId: string) => void;
   onTabChange?: (tab: "runs" | "scheduled" | "templates" | "triggers") => void;
   onCountsChange?: (info: {
     runsCount: number;
@@ -43,6 +44,7 @@ export function SidebarRunsList({
   selectedRunId,
   onSelectRun,
   onClearSelectedRun,
+  onScheduleDeleted,
   onTabChange,
   onCountsChange,
 }: Props) {
@@ -183,6 +185,8 @@ export function SidebarRunsList({
                     agent={agent}
                     selected={selectedRunId === s.id}
                     onClick={() => onSelectRun(s.id, "scheduled")}
+                    onDeleted={() => onScheduleDeleted?.(s.id)}
+                    onRunCreated={(runID) => onSelectRun(runID, "runs")}
                   />
                 </div>
               ))

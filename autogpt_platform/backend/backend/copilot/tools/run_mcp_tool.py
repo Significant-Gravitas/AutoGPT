@@ -14,7 +14,7 @@ from backend.blocks.mcp.helpers import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url
+from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -32,6 +32,11 @@ logger = logging.getLogger(__name__)
 
 # HTTP status codes that indicate authentication is required
 _AUTH_STATUS_CODES = {401, 403}
+
+
+def _service_name(host: str) -> str:
+    """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
+    return host[4:] if host.startswith("mcp.") else host
 
 
 class RunMCPToolTool(BaseTool):
@@ -53,11 +58,9 @@ class RunMCPToolTool(BaseTool):
     def description(self) -> str:
         return (
             "Connect to an MCP (Model Context Protocol) server to discover and execute its tools. "
-            "Call with just `server_url` to see available tools. "
-            "Then call again with `server_url`, `tool_name`, and `tool_arguments` to execute. "
-            "If the server requires authentication, the user will be prompted to connect it. "
-            "Find MCP servers at https://registry.modelcontextprotocol.io/ — hundreds of integrations "
-            "including GitHub, Postgres, Slack, filesystem, and more."
+            "Two-step: (1) call with server_url to list available tools, "
+            "(2) call again with server_url + tool_name + tool_arguments to execute. "
+            "Call get_mcp_guide for known server URLs and auth details."
         )
 
     @property
@@ -146,7 +149,7 @@ class RunMCPToolTool(BaseTool):
 
         # Validate URL to prevent SSRF — blocks loopback and private IP ranges
         try:
-            await validate_url(server_url, trusted_origins=[])
+            await validate_url_host(server_url)
         except ValueError as e:
             msg = str(e)
             if "Unable to resolve" in msg or "No IP addresses" in msg:
@@ -181,10 +184,12 @@ class RunMCPToolTool(BaseTool):
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
+            host = server_host(server_url)
+            logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
-                message=f"MCP server returned HTTP {e.status_code}: {e}",
+                message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
+                error=f"HTTP {e.status_code}: {str(e)[:300]}",
             )
 
         except MCPClientError as e:
@@ -305,8 +310,8 @@ class RunMCPToolTool(BaseTool):
             )
             return ErrorResponse(
                 message=(
-                    f"The MCP server at {server_host(server_url)} requires authentication, "
-                    "but no credential configuration was found."
+                    f"Unable to connect to {_service_name(server_host(server_url))} "
+                    "— no credentials configured."
                 ),
                 session_id=session_id,
             )
@@ -314,15 +319,13 @@ class RunMCPToolTool(BaseTool):
         missing_creds_list = list(missing_creds_dict.values())
 
         host = server_host(server_url)
+        service = _service_name(host)
         return SetupRequirementsResponse(
-            message=(
-                f"The MCP server at {host} requires authentication. "
-                "Please connect your credentials to continue."
-            ),
+            message=(f"To continue, sign in to {service} and approve access."),
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=server_url,
-                agent_name=f"MCP: {host}",
+                agent_name=service,
                 user_readiness=UserReadiness(
                     has_all_credentials=False,
                     missing_credentials=missing_creds_dict,

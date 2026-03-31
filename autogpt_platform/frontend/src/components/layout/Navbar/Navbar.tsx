@@ -11,6 +11,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
+import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
@@ -62,7 +63,7 @@ export function Navbar() {
           <PreviewBanner branchName={previewBranchName} />
         ) : null}
         <nav
-          className="inline-flex w-full items-center border border-none bg-[#FAFAFA] p-3 backdrop-blur-[26px]"
+          className="inline-flex w-full items-center bg-[#FAFAFA]/80 p-3 backdrop-blur-xl"
           style={{ height: NAVBAR_HEIGHT_PX }}
         >
           {/* Left section */}
@@ -95,6 +96,7 @@ export function Navbar() {
           {isLoggedIn && !isSmallScreen ? (
             <div className="flex flex-1 items-center justify-end gap-4">
               <div className="flex items-center gap-4">
+                <FeedbackButton />
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}
                 <AccountMenu

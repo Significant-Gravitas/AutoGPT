@@ -14,6 +14,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -347,7 +348,7 @@ async def extract_business_understanding(
     """
     settings = Settings()
     api_key = settings.secrets.open_router_api_key
-    client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
 
     try:
         response = await asyncio.wait_for(
@@ -394,15 +395,18 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             )
             return
 
-        # Check API key is configured
+        # Check required config is present
         settings = Settings()
-        if not settings.secrets.tally_api_key:
-            logger.debug("Tally: no API key configured, skipping")
+        if not settings.secrets.tally_api_key or not settings.secrets.tally_form_id:
+            logger.debug("Tally: Tally config incomplete, skipping")
+            return
+        if not settings.secrets.open_router_api_key:
+            logger.debug("Tally: no OpenRouter API key configured, skipping")
             return
 
         # Look up submission by email
         masked = _mask_email(email)
-        result = await find_submission_by_email(TALLY_FORM_ID, email)
+        result = await find_submission_by_email(settings.secrets.tally_form_id, email)
         if result is None:
             logger.debug(f"Tally: no submission found for {masked}")
             return

@@ -1,4 +1,4 @@
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getCurrentUser } from "@/lib/supabase/actions";
@@ -11,14 +11,7 @@ export function useTallyPopup() {
   const [userAgent, setUserAgent] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState<string>("");
-  const router = useRouter();
   const pathname = usePathname();
-
-  const [showTutorial, setShowTutorial] = useState(false);
-
-  useEffect(() => {
-    setShowTutorial(pathname.includes("build"));
-  }, [pathname]);
 
   useEffect(() => {
     // Set client-side values
@@ -104,13 +97,8 @@ export function useTallyPopup() {
     };
   }, []);
 
-  function handleResetTutorial() {
-    router.push("/build?resetTutorial=true");
-  }
-
   return {
     state: {
-      showTutorial,
       sentryReplayId,
       replayUrl,
       pageUrl,
@@ -119,8 +107,6 @@ export function useTallyPopup() {
       isFormVisible,
       userEmail,
     },
-    handlers: {
-      handleResetTutorial,
-    },
+    handlers: {},
   };
 }
