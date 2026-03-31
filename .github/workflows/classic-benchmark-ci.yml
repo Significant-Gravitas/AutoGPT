@@ -5,7 +5,6 @@ on:
     branches: [ master, dev, ci-test* ]
     paths:
       - 'classic/direct_benchmark/**'
-      - 'classic/benchmark/agbenchmark/challenges/**'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - .github/workflows/classic-benchmark-ci.yml
@@ -13,7 +12,6 @@ on:
     branches: [ master, dev, release-* ]
     paths:
       - 'classic/direct_benchmark/**'
-      - 'classic/benchmark/agbenchmark/challenges/**'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - .github/workflows/classic-benchmark-ci.yml
