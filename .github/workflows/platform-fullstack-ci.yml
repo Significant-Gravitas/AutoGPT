@@ -9,6 +9,7 @@ on:
       - ".github/workflows/scripts/get_package_version_from_lockfile.py"
       - "autogpt_platform/**"
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - ".github/workflows/platform-fullstack-ci.yml"
       - ".github/workflows/scripts/docker-ci-fix-compose-build-cache.py"
@@ -142,9 +143,28 @@ jobs:
         run: pnpm types
         if: success() || (steps.generate-api-client.outcome == 'success')
 
+  e2e-label-gate:
+    name: E2E label gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for ci-ready label
+        if: >-
+          github.event_name == 'pull_request'
+          && !contains(github.event.pull_request.labels.*.name, 'ci-ready')
+        run: |
+          echo "::error::The 'ci-ready' label is required to run E2E tests."
+          echo "Add the 'ci-ready' label to this PR to trigger E2E tests on the big-boi runner."
+          exit 1
+      - name: Label present or not a PR
+        if: >-
+          github.event_name != 'pull_request'
+          || contains(github.event.pull_request.labels.*.name, 'ci-ready')
+        run: echo "E2E tests authorized to run."
+
   e2e_test:
     name: end-to-end tests
     runs-on: big-boi
+    needs: [e2e-label-gate]
 
     steps:
       - name: Checkout repository
