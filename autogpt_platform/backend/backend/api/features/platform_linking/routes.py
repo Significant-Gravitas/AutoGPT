@@ -14,6 +14,7 @@ Flow:
      check on next message via GET /api/platform-linking/resolve.
 """
 
+import hmac
 import logging
 import os
 import secrets
@@ -22,7 +23,7 @@ from enum import Enum
 from typing import Annotated, Literal
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from prisma.models import PlatformLink, PlatformLinkToken
 from pydantic import BaseModel, Field
 
@@ -52,31 +53,22 @@ class Platform(str, Enum):
 BOT_API_KEY = os.getenv("PLATFORM_BOT_API_KEY", "")
 
 
-async def verify_bot_api_key(
-    authorization: str = Depends(lambda: ""),
-) -> None:
-    """Dependency that verifies the bot service API key."""
-    # If no key is configured, reject all requests in production
+async def get_bot_api_key(request: Request) -> str | None:
+    """Extract the bot API key from the X-Bot-API-Key header."""
+    return request.headers.get("x-bot-api-key")
+
+
+def _check_bot_api_key(api_key: str | None) -> None:
+    """Validate the bot API key. Uses constant-time comparison."""
     if not BOT_API_KEY:
+        # No key configured — allow in development only
         if os.getenv("ENV", "development") != "development":
             raise HTTPException(
                 status_code=503,
                 detail="Bot API key not configured.",
             )
-        # Allow in development without key
         return
-
-    # Check header
-
-    return None
-
-
-def _check_bot_api_key(request_api_key: str | None) -> None:
-    """Validate the bot API key from the X-Bot-API-Key header."""
-    if not BOT_API_KEY:
-        # Development mode: allow without key
-        return
-    if not request_api_key or request_api_key != BOT_API_KEY:
+    if not api_key or not hmac.compare_digest(api_key, BOT_API_KEY):
         raise HTTPException(status_code=401, detail="Invalid bot API key.")
 
 
@@ -156,9 +148,7 @@ class DeleteLinkResponse(BaseModel):
 )
 async def create_link_token(
     request: CreateLinkTokenRequest,
-    x_bot_api_key: str | None = Depends(
-        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
-    ),
+    x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> LinkTokenResponse:
     """
     Called by the bot service when it encounters an unlinked user.
@@ -230,9 +220,7 @@ async def create_link_token(
 )
 async def get_link_token_status(
     token: str,
-    x_bot_api_key: str | None = Depends(
-        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
-    ),
+    x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> LinkTokenStatusResponse:
     """
     Called by the bot service to check if a user has completed linking.
@@ -270,9 +258,7 @@ async def get_link_token_status(
 )
 async def resolve_platform_user(
     request: ResolveRequest,
-    x_bot_api_key: str | None = Depends(
-        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
-    ),
+    x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> ResolveResponse:
     """
     Called by the bot service on every incoming message to check if
@@ -354,15 +340,24 @@ async def confirm_link_token(
         )
         raise HTTPException(status_code=409, detail=detail)
 
-    # Create the link
-    await PlatformLink.prisma().create(
-        data={
-            "userId": user_id,
-            "platform": link_token.platform,
-            "platformUserId": link_token.platformUserId,
-            "platformUsername": link_token.platformUsername,
-        }
-    )
+    # Create the link — catch unique constraint race condition
+    try:
+        await PlatformLink.prisma().create(
+            data={
+                "userId": user_id,
+                "platform": link_token.platform,
+                "platformUserId": link_token.platformUserId,
+                "platformUsername": link_token.platformUsername,
+            }
+        )
+    except Exception as exc:
+        # Handle race condition: another request linked this identity
+        if "unique" in str(exc).lower() or "Unique" in str(exc):
+            raise HTTPException(
+                status_code=409,
+                detail="This platform account was just linked by another request.",
+            ) from exc
+        raise
 
     logger.info(
         "Linked %s:%s to user ...%s",
@@ -473,9 +468,7 @@ class BotChatSessionResponse(BaseModel):
 )
 async def bot_create_session(
     request: BotChatRequest,
-    x_bot_api_key: str | None = Depends(
-        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
-    ),
+    x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> BotChatSessionResponse:
     """
     Creates a new CoPilot chat session on behalf of a linked user.
@@ -503,9 +496,7 @@ async def bot_create_session(
 )
 async def bot_chat_stream(
     request: BotChatRequest,
-    x_bot_api_key: str | None = Depends(
-        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
-    ),
+    x_bot_api_key: str | None = Depends(get_bot_api_key),
 ):
     """
     Send a message to CoPilot on behalf of a linked user and stream

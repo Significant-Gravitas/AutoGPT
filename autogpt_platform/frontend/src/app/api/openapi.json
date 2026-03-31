@@ -5463,21 +5463,13 @@
         "summary": "Create a CoPilot session for a linked user (bot-facing)",
         "description": "Creates a new CoPilot chat session on behalf of a linked user.",
         "operationId": "postPlatform-linkingCreate a copilot session for a linked user (bot-facing)",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "query",
-            "required": true,
-            "schema": { "title": "Req" }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/BotChatRequest" }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -5507,21 +5499,13 @@
         "summary": "Stream a CoPilot response for a linked user (bot-facing)",
         "description": "Send a message to CoPilot on behalf of a linked user and stream\nthe response back as Server-Sent Events.\n\nThe bot authenticates with its API key — no user JWT needed.",
         "operationId": "postPlatform-linkingStream a copilot response for a linked user (bot-facing)",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "query",
-            "required": true,
-            "schema": { "title": "Req" }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/BotChatRequest" }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -5609,21 +5593,13 @@
         "summary": "Resolve a platform identity to an AutoGPT user",
         "description": "Called by the bot service on every incoming message to check if\nthe platform user has a linked AutoGPT account.",
         "operationId": "postPlatform-linkingResolve a platform identity to an autogpt user",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "query",
-            "required": true,
-            "schema": { "title": "Req" }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/ResolveRequest" }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -5651,23 +5627,15 @@
         "summary": "Create a link token for an unlinked platform user",
         "description": "Called by the bot service when it encounters an unlinked user.\nGenerates a one-time token the user can use to link their account.",
         "operationId": "postPlatform-linkingCreate a link token for an unlinked platform user",
-        "parameters": [
-          {
-            "name": "req",
-            "in": "query",
-            "required": true,
-            "schema": { "title": "Req" }
-          }
-        ],
         "requestBody": {
-          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateLinkTokenRequest"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -5739,12 +5707,6 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Token" }
-          },
-          {
-            "name": "req",
-            "in": "query",
-            "required": true,
-            "schema": { "title": "Req" }
           }
         ],
         "responses": {
