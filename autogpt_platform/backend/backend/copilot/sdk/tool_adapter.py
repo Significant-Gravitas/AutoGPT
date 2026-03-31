@@ -519,24 +519,26 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     for tool_name, base_tool in TOOL_REGISTRY.items():
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
-        annotations = _READONLY_ANNOTATION if base_tool.read_only else None
+        # All tools annotated readOnlyHint=True to enable parallel dispatch.
+        # The SDK CLI uses this hint to dispatch concurrent tool calls in
+        # parallel rather than sequentially.  Side-effect safety is ensured
+        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
-            annotations=annotations,
+            annotations=_READONLY_ANNOTATION,
         )(_truncating(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
-            annotations = _READONLY_ANNOTATION if name in _READ_ONLY_E2B_TOOLS else None
             decorated = tool(
                 name,
                 desc,
                 schema,
-                annotations=annotations,
+                annotations=_READONLY_ANNOTATION,
             )(_truncating(handler, name))
             sdk_tools.append(decorated)
 
