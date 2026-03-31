@@ -208,7 +208,7 @@ def _check_obvious_failure(
     if _is_credit_exhaustion(error_str):
         return {
             "activity_status": (
-                "This run couldn't start because your account has run out of credits. "
+                "This run couldn't complete because your account has run out of credits. "
                 "Please top up your credits to continue using this agent."
             ),
             "correctness_score": None,
