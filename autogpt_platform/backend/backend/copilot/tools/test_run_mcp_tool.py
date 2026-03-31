@@ -151,7 +151,7 @@ async def test_non_dict_tool_arguments_returns_error():
                 session=session,
                 server_url=_SERVER_URL,
                 tool_name="fetch",
-                tool_arguments=["this", "is", "a", "list"],  # wrong type
+                tool_arguments=["this", "is", "a", "list"],  # type: ignore[arg-type]  # intentionally wrong type to test validation
             )
 
     assert isinstance(response, ErrorResponse)

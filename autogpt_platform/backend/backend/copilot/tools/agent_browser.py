@@ -180,12 +180,14 @@ async def _save_browser_state(
     """
     try:
         # Gather state in parallel
-        (rc_url, url_out, _), (rc_ck, ck_out, _), (rc_ls, ls_out, _) = (
-            await asyncio.gather(
-                _run(session_name, "get", "url", timeout=10),
-                _run(session_name, "cookies", "get", "--json", timeout=10),
-                _run(session_name, "storage", "local", "--json", timeout=10),
-            )
+        (
+            (rc_url, url_out, _),
+            (rc_ck, ck_out, _),
+            (rc_ls, ls_out, _),
+        ) = await asyncio.gather(
+            _run(session_name, "get", "url", timeout=10),
+            _run(session_name, "cookies", "get", "--json", timeout=10),
+            _run(session_name, "storage", "local", "--json", timeout=10),
         )
 
         state = {
@@ -448,6 +450,8 @@ class BrowserNavigateTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        url: str = "",
+        wait_for: str = "networkidle",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Navigate to *url*, wait for the page to settle, and return a snapshot.
@@ -456,8 +460,8 @@ class BrowserNavigateTool(BaseTool):
         Note: for slow SPAs that never fully idle, the snapshot may reflect a
         partially-loaded state (the wait is best-effort).
         """
-        url: str = (kwargs.get("url") or "").strip()
-        wait_for: str = kwargs.get("wait_for") or "networkidle"
+        url = url.strip()
+        wait_for = wait_for or "networkidle"
         session_name = session.session_id
 
         if not url:
@@ -612,6 +616,10 @@ class BrowserActTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        action: str = "",
+        target: str = "",
+        value: str = "",
+        direction: str = "down",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Perform a browser action and return an updated page snapshot.
@@ -620,10 +628,10 @@ class BrowserActTool(BaseTool):
         ``agent-browser``, waits for the page to settle, and returns the
         accessibility-tree snapshot so the LLM can plan the next step.
         """
-        action: str = (kwargs.get("action") or "").strip()
-        target: str = (kwargs.get("target") or "").strip()
-        value: str = (kwargs.get("value") or "").strip()
-        direction: str = (kwargs.get("direction") or "down").strip()
+        action = action.strip()
+        target = target.strip()
+        value = value.strip()
+        direction = direction.strip()
         session_name = session.session_id
 
         if not action:
@@ -777,6 +785,8 @@ class BrowserScreenshotTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        annotate: bool | str = True,
+        filename: str = "screenshot.png",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Capture a PNG screenshot and upload it to the workspace.
@@ -786,12 +796,12 @@ class BrowserScreenshotTool(BaseTool):
         Returns a :class:`BrowserScreenshotResponse` with the workspace
         ``file_id`` the LLM should pass to ``read_workspace_file``.
         """
-        raw_annotate = kwargs.get("annotate", True)
+        raw_annotate = annotate
         if isinstance(raw_annotate, str):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}
         else:
             annotate = bool(raw_annotate)
-        filename: str = (kwargs.get("filename") or "screenshot.png").strip()
+        filename = filename.strip()
         session_name = session.session_id
 
         # Restore browser state from cloud if this is a different pod
