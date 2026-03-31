@@ -33,61 +33,17 @@ export default function PlatformLinkPage() {
 
   const [state, setState] = useState<LinkState>({ status: "loading" });
 
-  // Check token validity on mount
+  // Determine initial state based on auth
+  // Token validity is checked server-side on confirm — no need for a
+  // separate status call (which requires bot API key anyway).
   useEffect(() => {
     if (!token) return;
 
-    async function checkToken() {
-      try {
-        const res = await fetch(`/api/proxy/api/platform-linking/tokens/${token}/status`);
-        if (!res.ok) {
-          setState({
-            status: "error",
-            message: "This link is invalid or has expired.",
-          });
-          return;
-        }
-
-        const data = await res.json();
-
-        if (data.status === "linked") {
-          setState({
-            status: "success",
-            platform: "your platform",
-          });
-          return;
-        }
-
-        if (data.status === "expired") {
-          setState({
-            status: "error",
-            message: "This link has expired. Please ask the bot for a new one.",
-          });
-          return;
-        }
-
-        // Token is pending — check if user is logged in
-        if (!user) {
-          setState({ status: "not-authenticated" });
-          return;
-        }
-
-        // Fetch token details to show platform info
-        // The status endpoint doesn't return platform info,
-        // so we show a generic prompt
-        setState({
-          status: "ready",
-          platform: "your platform",
-        });
-      } catch {
-        setState({
-          status: "error",
-          message: "Something went wrong. Please try again.",
-        });
-      }
+    if (!user) {
+      setState({ status: "not-authenticated" });
+    } else {
+      setState({ status: "ready", platform: "your platform" });
     }
-
-    checkToken();
   }, [token, user]);
 
   // Handle the link confirmation
