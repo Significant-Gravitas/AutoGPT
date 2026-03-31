@@ -18,6 +18,7 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamHeartbeat,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -57,6 +58,14 @@ def test_system_non_init_emits_nothing():
     adapter = _adapter()
     results = adapter.convert_message(SystemMessage(subtype="other", data={}))
     assert results == []
+
+
+def test_task_progress_emits_heartbeat():
+    """task_progress events emit a StreamHeartbeat to keep Redis TTL alive."""
+    adapter = _adapter()
+    results = adapter.convert_message(SystemMessage(subtype="task_progress", data={}))
+    assert len(results) == 1
+    assert isinstance(results[0], StreamHeartbeat)
 
 
 # -- AssistantMessage with TextBlock -----------------------------------------
