@@ -1654,6 +1654,8 @@ class AgentFixer:
         2. ``conversation_compaction`` defaults to ``True``
         3. ``retry`` defaults to ``3``
         4. ``multiple_tool_calls`` defaults to ``False``
+        5. ``execution_mode`` defaults to ``"extended_thinking"``
+        6. ``model`` defaults to ``"claude-opus-4-6"``
 
         Args:
             agent: The agent dictionary to fix
