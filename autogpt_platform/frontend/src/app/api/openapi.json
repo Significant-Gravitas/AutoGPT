@@ -7460,6 +7460,14 @@
             ],
             "title": "Inputs",
             "description": "Input schema for the agent, including field names, types, and defaults"
+          },
+          "graph": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Graph",
+            "description": "Full graph structure (nodes + links) when include_graph is requested"
           }
         },
         "type": "object",

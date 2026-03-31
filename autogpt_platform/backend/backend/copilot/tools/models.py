@@ -122,6 +122,10 @@ class AgentInfo(BaseModel):
         default=None,
         description="Input schema for the agent, including field names, types, and defaults",
     )
+    graph: dict[str, Any] | None = Field(
+        default=None,
+        description="Full graph structure (nodes + links) when include_graph is requested",
+    )
 
 
 class AgentsFoundResponse(ToolResponseBase):

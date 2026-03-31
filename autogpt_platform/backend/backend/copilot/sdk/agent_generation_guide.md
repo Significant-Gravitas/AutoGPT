@@ -18,7 +18,7 @@ or trigger. If so:
 **Skip this** when the goal already specifies all dimensions (e.g.
 "scrape prices from Amazon and email me daily").
 
-### Workflow for Creating/Editing Agents
+### Workflow for Creating Agents
 
 1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
@@ -36,8 +36,25 @@ or trigger. If so:
    for errors
 6. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
-   the final `agent_json`
+7. **Save**: Call `create_agent` with the final `agent_json`
+
+### Workflow for Editing Agents
+
+1. **Fetch the current graph**: Call
+   `find_library_agent(query="<agent_id>", include_graph=true)` to get the
+   full graph structure (nodes + links). **Never edit blindly** — always
+   inspect the current graph first so you know exactly what to change.
+2. **Understand the graph**: Review the returned nodes, links, and
+   `input_default` values. Identify which nodes and links need changes.
+3. **Discover blocks** (if needed): Call `find_block` to look up new blocks
+   you need to add.
+4. **Modify the JSON**: Apply targeted changes to the agent JSON — add,
+   remove, or update specific nodes and links. Preserve unchanged parts.
+5. **Validate**: Call `validate_agent_graph` with the modified JSON.
+6. **Fix if needed**: Call `fix_agent_graph` or fix manually. Iterate until
+   valid.
+7. **Save**: Call `edit_agent` with the agent ID and the modified
+   `agent_json`
 
 ### Agent JSON Structure
 

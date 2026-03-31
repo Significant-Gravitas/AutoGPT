@@ -20,7 +20,8 @@ class FindLibraryAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Search user's library agents. Returns graph_id, schemas for sub-agent composition. "
-            "Omit query to list all."
+            "Omit query to list all. Set include_graph=true to also fetch the full "
+            "graph structure (nodes + links) for debugging or editing."
         )
 
     @property
@@ -31,6 +32,15 @@ class FindLibraryAgentTool(BaseTool):
                 "query": {
                     "type": "string",
                     "description": "Search by name/description. Omit to list all.",
+                },
+                "include_graph": {
+                    "type": "boolean",
+                    "description": (
+                        "When true, includes the full graph structure "
+                        "(nodes + links) for each found agent. "
+                        "Use when you need to inspect, debug, or edit an agent."
+                    ),
+                    "default": False,
                 },
             },
             "required": [],
@@ -52,4 +62,5 @@ class FindLibraryAgentTool(BaseTool):
             source="library",
             session_id=session.session_id,
             user_id=user_id,
+            include_graph=kwargs.get("include_graph", False),
         )

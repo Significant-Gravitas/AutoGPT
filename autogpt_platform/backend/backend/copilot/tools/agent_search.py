@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from backend.data.db_accessors import library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
+from .agent_generator import get_agent_as_json
 from .models import (
     AgentInfo,
     AgentsFoundResponse,
@@ -34,12 +35,13 @@ async def search_agents(
     source: SearchSource,
     session_id: str | None = None,
     user_id: str | None = None,
+    include_graph: bool = False,
 ) -> ToolResponseBase:
     """Search for agents in marketplace or user library."""
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(query, session_id, user_id)
+        return await _search_library(query, session_id, user_id, include_graph)
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -105,7 +107,10 @@ async def _search_marketplace(query: str, session_id: str | None) -> ToolRespons
 
 
 async def _search_library(
-    query: str, session_id: str | None, user_id: str | None
+    query: str,
+    session_id: str | None,
+    user_id: str | None,
+    include_graph: bool = False,
 ) -> ToolResponseBase:
     """Search user's library agents, with direct UUID lookup fallback."""
     if not user_id:
@@ -148,6 +153,9 @@ async def _search_library(
             error=str(e),
             session_id=session_id,
         )
+
+    if include_graph and agents:
+        await _enrich_agents_with_graph(agents, user_id)
 
     if not agents:
         if not query:
@@ -194,6 +202,18 @@ async def _search_library(
         count=len(agents),
         session_id=session_id,
     )
+
+
+async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> None:
+    """Fetch and attach full graph JSON (nodes + links) to each agent in-place."""
+    for agent in agents:
+        graph_id = agent.graph_id
+        if not graph_id:
+            continue
+        try:
+            agent.graph = await get_agent_as_json(graph_id, user_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch graph for agent {graph_id}: {e}")
 
 
 def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:
