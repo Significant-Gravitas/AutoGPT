@@ -517,12 +517,30 @@ async def stream_chat_completion_baseline(
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)
 
-    # Build OpenAI message list from session history
+    # Build OpenAI message list from session history.
+    # Include tool_calls on assistant messages and tool-role results so the
+    # model retains full context of what tools were invoked and their outcomes.
     openai_messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt}
     ]
     for msg in messages_for_context:
-        if msg.role in ("user", "assistant") and msg.content:
+        if msg.role == "assistant":
+            entry: dict[str, Any] = {"role": "assistant"}
+            if msg.content:
+                entry["content"] = msg.content
+            if msg.tool_calls:
+                entry["tool_calls"] = msg.tool_calls
+            if msg.content or msg.tool_calls:
+                openai_messages.append(entry)
+        elif msg.role == "tool" and msg.tool_call_id:
+            openai_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id,
+                    "content": msg.content or "",
+                }
+            )
+        elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
     tools = get_available_tools()
