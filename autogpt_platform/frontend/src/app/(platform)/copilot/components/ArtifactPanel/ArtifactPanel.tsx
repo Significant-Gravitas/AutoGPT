@@ -39,7 +39,7 @@ export function ArtifactPanel({ mobile }: Props) {
     handleDownload,
   } = useArtifactPanel();
 
-  if (!activeArtifact) return null;
+  if (!activeArtifact || (!isOpen && !mobile)) return null;
 
   const headerProps = {
     artifact: activeArtifact,

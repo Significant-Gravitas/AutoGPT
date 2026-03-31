@@ -137,7 +137,7 @@ class WorkspaceFileItem(BaseModel):
     path: str
     mime_type: str
     size_bytes: int
-    metadata: dict
+    metadata: dict = {}
     created_at: str
 
 
@@ -346,7 +346,7 @@ async def list_workspace_files(
                 path=f.path,
                 mime_type=f.mime_type,
                 size_bytes=f.size_bytes,
-                metadata=f.metadata,
+                metadata=f.metadata or {},
                 created_at=f.created_at.isoformat(),
             )
             for f in files

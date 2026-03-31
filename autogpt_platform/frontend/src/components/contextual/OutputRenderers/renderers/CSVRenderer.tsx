@@ -7,8 +7,9 @@ import {
 } from "../types";
 
 function parseCSV(text: string): { headers: string[]; rows: string[][] } {
-  const lines = text.trim().split("\n");
-  if (lines.length === 0) return { headers: [], rows: [] };
+  const normalized = text.replace(/\r\n?/g, "\n").trim();
+  if (normalized.length === 0) return { headers: [], rows: [] };
+  const lines = normalized.split("\n");
 
   const parseLine = (line: string): string[] => {
     const result: string[] = [];
@@ -85,17 +86,20 @@ function CSVTable({ value }: { value: string }) {
             {headers.map((header, i) => (
               <th
                 key={i}
-                className="cursor-pointer select-none px-3 py-2 text-left font-medium text-zinc-700 hover:bg-zinc-100"
-                onClick={() => handleSort(i)}
+                className="px-3 py-2 text-left font-medium text-zinc-700"
               >
-                <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  className="flex w-full cursor-pointer select-none items-center gap-1 hover:bg-zinc-100"
+                  onClick={() => handleSort(i)}
+                >
                   {header}
                   {sortCol === i && (
                     <span className="text-xs">
                       {sortAsc ? "\u25B2" : "\u25BC"}
                     </span>
                   )}
-                </span>
+                </button>
               </th>
             ))}
           </tr>

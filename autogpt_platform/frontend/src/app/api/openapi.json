@@ -10526,7 +10526,7 @@
       "ListFilesResponse": {
         "properties": {
           "files": {
-            "items": { "additionalProperties": true, "type": "object" },
+            "items": { "$ref": "#/components/schemas/WorkspaceFileItem" },
             "type": "array",
             "title": "Files"
           },
@@ -14990,6 +14990,32 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkspaceFileItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": { "type": "string", "title": "Created At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "mime_type",
+          "size_bytes",
+          "metadata",
+          "created_at"
+        ],
+        "title": "WorkspaceFileItem"
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {

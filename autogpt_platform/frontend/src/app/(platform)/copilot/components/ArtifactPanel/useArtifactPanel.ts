@@ -54,7 +54,7 @@ export function useArtifactPanel() {
     classification != null &&
     classification.type !== "image" &&
     classification.type !== "download-only" &&
-    classification.label !== "PDF";
+    classification.type !== "pdf";
 
   function handleCopy() {
     if (!activeArtifact || !canCopy) return;
@@ -73,8 +73,10 @@ export function useArtifactPanel() {
   }
 
   // Compute effective width
+  const viewportWidth =
+    typeof window !== "undefined" ? window.innerWidth : 1280;
   const effectiveWidth = artifactPanel.isMaximized
-    ? window.innerWidth * 0.85
+    ? viewportWidth * 0.85
     : artifactPanel.width;
 
   return {

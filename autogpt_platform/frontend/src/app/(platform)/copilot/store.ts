@@ -151,7 +151,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         ...state.artifactPanel,
         isOpen: false,
         isMinimized: false,
-        activeArtifact: null,
+        // Keep activeArtifact so exit animations can reference it
         history: [],
       },
     })),
