@@ -109,7 +109,7 @@
         "secret": false,
         "advanced": false,
         "description": "The function definition (text). This is what you would type on the first line of the function when programming.\n\ne.g \"def fake_people(n: int) -> list[dict]:\"",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -143,7 +143,7 @@
         "secret": false,
         "advanced": false,
         "description": "The function's inputs\n\ne.g \"20\"",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -177,7 +177,7 @@
         "secret": false,
         "advanced": false,
         "description": "Describe what the function does.\n\ne.g \"Generates n examples of fake data representing people, each with a name, DoB, Job title, and an age.\"",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {

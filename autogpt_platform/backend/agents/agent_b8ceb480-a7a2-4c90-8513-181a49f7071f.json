@@ -281,7 +281,7 @@
         "value": "",
         "advanced": false,
         "description": null,
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -600,7 +600,7 @@
         "value": "",
         "advanced": false,
         "description": null,
-        "options": [
+        "placeholder_values": [
           "Professional",
           "Friendly",
           "Casual",
@@ -638,7 +638,7 @@
         "value": "",
         "advanced": false,
         "description": "Minimum confidence score (0-100) required for automatic responses",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -1358,7 +1358,7 @@
         "value": "",
         "advanced": false,
         "description": "Email address where complex support requests that require human attention will be forwarded",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -2023,7 +2023,7 @@
         "value": "",
         "advanced": false,
         "description": null,
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -2235,7 +2235,7 @@
         "value": "",
         "advanced": false,
         "description": "To get your Airtable workspace ID is to open Airtable in a browser, select your workspace, and check the URL in your browser\u2019s address bar. The workspace ID is the string that starts with \"wsp\" in the URL (for example,\u00a0https://airtable.com/workspaces/wspsqMNxxxxxxxxxxxxx). Do not include the trailing question mark if present.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -3711,7 +3711,7 @@
           "input_default": {
             "name": "Documentation URL",
             "advanced": false,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3745,7 +3745,7 @@
           "input_default": {
             "name": "Question",
             "advanced": false,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3877,7 +3877,7 @@
             "title": "Auto-Reply Confidence Threshold",
             "advanced": false,
             "description": "Minimum confidence score (0-100) required for automatic responses",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {

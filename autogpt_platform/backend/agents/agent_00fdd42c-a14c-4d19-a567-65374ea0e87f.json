@@ -16,7 +16,7 @@
         "secret": false,
         "advanced": false,
         "description": "How would you like the newsletter to be written? ",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -511,7 +511,7 @@
         "secret": false,
         "advanced": false,
         "description": "Enter your topics of interest, separated by commas",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -986,7 +986,7 @@
         "secret": false,
         "advanced": false,
         "description": "Enter the email address at which you would like to receive the newsletter.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -1018,7 +1018,7 @@
         "secret": false,
         "advanced": false,
         "description": "For example, you could say one day to only receive news stories that happened in the past 24 hours before at the time of sending the newsletter, or you could say one week to receive news from that week",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -2191,7 +2191,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -2251,7 +2251,7 @@
             "secret": false,
             "advanced": true,
             "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\"",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -2344,7 +2344,7 @@
             "secret": false,
             "advanced": false,
             "description": "The Email Address to send the report to. i.e. your@email.com",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -2412,7 +2412,7 @@
             "secret": false,
             "advanced": false,
             "description": "The subject line for the email. i.e. \"Your Report\"",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -2716,7 +2716,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -2754,7 +2754,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {

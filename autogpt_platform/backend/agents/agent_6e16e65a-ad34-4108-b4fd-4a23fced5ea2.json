@@ -66,7 +66,7 @@
         "secret": false,
         "advanced": false,
         "description": "Enter a specific location (e.g. city, neighborhood, or address). For example: \u201cSan Francisco\u201d, \u201cPalo Alto\u201d, or \u201cSoHo, NYC\u201d. This helps narrow the search to a specific area.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -99,7 +99,7 @@
         "secret": false,
         "advanced": false,
         "description": "Defines how far around the specified location we\u2019ll look for businesses. For example, 5000 meters covers a large neighborhood or small city.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -132,7 +132,7 @@
         "secret": false,
         "advanced": false,
         "description": "The maximum number of businesses the agent will analyze from the search results. We\u2019ll attempt to identify the CEO or owner for each one.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -282,7 +282,7 @@
         "secret": false,
         "advanced": false,
         "description": "Describe the kind of businesses you're targeting. For example: \u201cAI startups\u201d, \u201cdigital marketing agencies\u201d, or \u201ccoffee roasters\u201d. This will be used in a Google Maps search.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -991,7 +991,7 @@
             "name": "Business Info",
             "secret": false,
             "advanced": false,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -1245,7 +1245,7 @@
             "value": "Why is the sky blue?",
             "secret": false,
             "advanced": false,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {

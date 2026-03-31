@@ -17,7 +17,7 @@
         "secret": false,
         "advanced": false,
         "description": "The voice and style for your content - choose the tone that best matches your brand and audience",
-        "options": [
+        "placeholder_values": [
           "Friendly",
           "Professional",
           "Technical",
@@ -180,7 +180,7 @@
         "secret": false,
         "advanced": false,
         "description": "Blog post length (500=quick reads, 1000=standard posts, 1500=detailed guides, 2000=comprehensive content)",
-        "options": [
+        "placeholder_values": [
           "500",
           "1000",
           "1500",
@@ -220,7 +220,7 @@
         "secret": false,
         "advanced": false,
         "description": "Your WordPress.com blog URL (e.g., https://yourblog.wordpress.com) - used for posting content via API",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -1378,7 +1378,7 @@
         "secret": false,
         "advanced": false,
         "description": "The main subject or theme your blog is about (e.g., 'AI Automation', 'Viral Marketing')",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -1421,7 +1421,7 @@
         "secret": false,
         "advanced": false,
         "description": "Describe your website, including its purpose, tone, and approach. \n\nFor example: \"A blog that makes AI approachable for the average person. We share clear, easy-to-follow guides and curated recommendations on which models and tools to use.\"",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -2942,7 +2942,7 @@
             "secret": false,
             "advanced": false,
             "description": "e.g aiespresso.wordpress.com - no \"http://\" or \"/\"s",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3463,7 +3463,7 @@
             "name": "AI Generated Text",
             "secret": false,
             "advanced": false,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3871,7 +3871,7 @@
             "secret": false,
             "advanced": false,
             "description": "A short phrase summarizing your main subject or niche. Example: \u201cAI for Everyday People.\u201d",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3901,7 +3901,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3931,7 +3931,7 @@
             "secret": false,
             "advanced": false,
             "description": "A brief explanation of your site\u2019s purpose, audience, and value. Example: \u201cA blog that makes AI approachable and easy to benefit from for the average person.\u201d",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -3961,7 +3961,7 @@
             "secret": false,
             "advanced": false,
             "description": "A list of your website's previous blog post titles",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -5198,7 +5198,7 @@
             "secret": false,
             "advanced": false,
             "description": "The seed keyword to lookup",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -5270,7 +5270,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -5308,7 +5308,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -6000,7 +6000,7 @@
             "secret": false,
             "advanced": false,
             "description": "The seed keyword to lookup",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -6031,7 +6031,7 @@
             "secret": false,
             "advanced": false,
             "description": "Positive whole number, e.g 1000",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {
@@ -6062,7 +6062,7 @@
             "secret": false,
             "advanced": false,
             "description": "Positive whole number, range from 0 to 100",
-            "options": []
+            "placeholder_values": []
           },
           "metadata": {
             "position": {

@@ -17,7 +17,7 @@
         "secret": false,
         "advanced": false,
         "description": "Specifies the overall writing style of the blog post. This determines how the content is presented, such as in a professional, conversational, academic, narrative, or persuasive manner.",
-        "options": [
+        "placeholder_values": [
           "Professional",
           "Conversational",
           "Academic",
@@ -132,7 +132,7 @@
         "secret": false,
         "advanced": false,
         "description": "Sets the target length of the blog post in words. This allows you to control the content length as needed. \nPlease note that due to the nature of LLMs this will not be exact.",
-        "options": [
+        "placeholder_values": [
           "100",
           "200",
           "300"
@@ -170,7 +170,7 @@
         "secret": false,
         "advanced": false,
         "description": "Defines the main goal or purpose of the blog post. It guides the focus of the content, whether it's meant to inform, persuade, entertain, analyze, educate, inspire, critique, or raise awareness about the topic.",
-        "options": [
+        "placeholder_values": [
           "Informative",
           "Persuasive",
           "Entertaining",
@@ -248,7 +248,7 @@
         "secret": false,
         "advanced": false,
         "description": "Indicates the level of complexity in the explanations. It tailors the content to the audience's understanding, ranging from clear and accessible language to detailed and technical descriptions.",
-        "options": [
+        "placeholder_values": [
           "Clear and Accessible",
           "Detailed and Technical",
           "Simple and Straightforward",
@@ -289,7 +289,7 @@
         "secret": false,
         "advanced": false,
         "description": "The number of videos to collect the transcripts of",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
@@ -378,7 +378,7 @@
         "secret": false,
         "advanced": false,
         "description": " Sets the mood or attitude conveyed through the writing. This affects how the reader perceives the content, with options like engaging, serious, light-hearted, friendly, formal, optimistic, or urgent.",
-        "options": [
+        "placeholder_values": [
           "Engaging",
           "Serious",
           "Light-hearted",
@@ -543,7 +543,7 @@
         "secret": false,
         "advanced": false,
         "description": "Represents the perspective or stance taken in the blog post. This shapes the viewpoint presented to the reader, whether it's positive, negative, neutral, balanced, critical, supportive, or skeptical.",
-        "options": [
+        "placeholder_values": [
           "Positive",
           "Negative",
           "Neutral",
@@ -657,7 +657,7 @@
         "secret": false,
         "advanced": false,
         "description": "The topic of the post you want to write. This is also the query that will be searched on YouTube for research.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {

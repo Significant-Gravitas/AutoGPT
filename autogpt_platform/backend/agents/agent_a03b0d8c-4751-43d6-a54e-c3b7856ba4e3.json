@@ -382,7 +382,7 @@
         "secret": false,
         "advanced": false,
         "description": "Type a broad topic (e.g. \u2018Climate Tech\u2019) or paste an exact headline (e.g. \u2018IBM unveils quantum roadmap\u2019) to generate a short-form video about it.",
-        "options": []
+        "placeholder_values": []
       },
       "metadata": {
         "position": {
