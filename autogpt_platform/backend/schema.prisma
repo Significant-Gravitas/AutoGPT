@@ -1350,6 +1350,5 @@ model PlatformLinkToken {
   usedAt           DateTime?
   createdAt        DateTime     @default(now())
 
-  @@index([token])
   @@index([expiresAt])
 }

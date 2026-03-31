@@ -5503,11 +5503,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Deleteplatform-Linkingunlink A Platform Identity"
-                }
+                "schema": { "$ref": "#/components/schemas/DeleteLinkResponse" }
               }
             }
           },
@@ -5531,13 +5527,21 @@
         "summary": "Resolve a platform identity to an AutoGPT user",
         "description": "Called by the bot service on every incoming message to check if\nthe platform user has a linked AutoGPT account.",
         "operationId": "postPlatform-linkingResolve a platform identity to an autogpt user",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "query",
+            "required": true,
+            "schema": { "title": "Req" }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": { "$ref": "#/components/schemas/ResolveRequest" }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -5563,17 +5567,25 @@
       "post": {
         "tags": ["platform-linking"],
         "summary": "Create a link token for an unlinked platform user",
-        "description": "Called by the bot service when it encounters an unlinked user.\nGenerates a one-time token the user can use to link their account.\n\nTODO: Add API key auth for bot service (for now, open for development).",
+        "description": "Called by the bot service when it encounters an unlinked user.\nGenerates a one-time token the user can use to link their account.",
         "operationId": "postPlatform-linkingCreate a link token for an unlinked platform user",
+        "parameters": [
+          {
+            "name": "req",
+            "in": "query",
+            "required": true,
+            "schema": { "title": "Req" }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateLinkTokenRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -5599,7 +5611,7 @@
       "post": {
         "tags": ["platform-linking"],
         "summary": "Confirm a link token (user must be authenticated)",
-        "description": "Called by the frontend when the user clicks the link and is logged in.\nConsumes the token and creates the platform link.",
+        "description": "Called by the frontend when the user clicks the link and is logged in.\nConsumes the token and creates the platform link.\nUses atomic update_many to prevent race conditions on double-click.",
         "operationId": "postPlatform-linkingConfirm a link token (user must be authenticated)",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -5645,6 +5657,12 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Token" }
+          },
+          {
+            "name": "req",
+            "in": "query",
+            "required": true,
+            "schema": { "title": "Req" }
           }
         ],
         "responses": {
@@ -8738,22 +8756,29 @@
       "CreateLinkTokenRequest": {
         "properties": {
           "platform": {
-            "type": "string",
-            "title": "Platform",
-            "description": "Platform name: DISCORD, TELEGRAM, SLACK, TEAMS, WHATSAPP, GITHUB, LINEAR"
+            "$ref": "#/components/schemas/Platform",
+            "description": "Platform name"
           },
           "platform_user_id": {
             "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
             "title": "Platform User Id",
             "description": "The user's ID on the platform"
           },
           "platform_username": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 255 },
+              { "type": "null" }
+            ],
             "title": "Platform Username",
             "description": "Display name (best effort)"
           },
           "channel_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 255 },
+              { "type": "null" }
+            ],
             "title": "Channel Id",
             "description": "Channel ID for sending confirmation back"
           }
@@ -8944,6 +8969,12 @@
         "type": "object",
         "required": ["version_counts"],
         "title": "DeleteGraphResponse"
+      },
+      "DeleteLinkResponse": {
+        "properties": { "success": { "type": "boolean", "title": "Success" } },
+        "type": "object",
+        "required": ["success"],
+        "title": "DeleteLinkResponse"
       },
       "DiscoverToolsRequest": {
         "properties": {
@@ -10732,7 +10763,11 @@
       },
       "LinkTokenStatusResponse": {
         "properties": {
-          "status": { "type": "string", "title": "Status" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "linked", "expired"],
+            "title": "Status"
+          },
           "user_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
@@ -11581,6 +11616,19 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "Platform": {
+        "type": "string",
+        "enum": [
+          "DISCORD",
+          "TELEGRAM",
+          "SLACK",
+          "TEAMS",
+          "WHATSAPP",
+          "GITHUB",
+          "LINEAR"
+        ],
+        "title": "Platform"
+      },
       "PlatformLinkInfo": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -12130,8 +12178,13 @@
       },
       "ResolveRequest": {
         "properties": {
-          "platform": { "type": "string", "title": "Platform" },
-          "platform_user_id": { "type": "string", "title": "Platform User Id" }
+          "platform": { "$ref": "#/components/schemas/Platform" },
+          "platform_user_id": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Platform User Id"
+          }
         },
         "type": "object",
         "required": ["platform", "platform_user_id"],
@@ -12144,10 +12197,6 @@
           "user_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
-          },
-          "platform_username": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Platform Username"
           }
         },
         "type": "object",

@@ -15,12 +15,14 @@ Flow:
 """
 
 import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from enum import Enum
+from typing import Annotated, Literal
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Security
 from prisma.models import PlatformLink, PlatformLinkToken
 from pydantic import BaseModel, Field
 
@@ -29,16 +31,53 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 LINK_TOKEN_EXPIRY_MINUTES = 30
+LINK_BASE_URL = os.getenv("PLATFORM_LINK_BASE_URL", "https://platform.agpt.co/link")
 
-VALID_PLATFORMS = {
-    "DISCORD",
-    "TELEGRAM",
-    "SLACK",
-    "TEAMS",
-    "WHATSAPP",
-    "GITHUB",
-    "LINEAR",
-}
+
+# ── Platform enum (mirrors Prisma PlatformType) ───────────────────────
+
+
+class Platform(str, Enum):
+    DISCORD = "DISCORD"
+    TELEGRAM = "TELEGRAM"
+    SLACK = "SLACK"
+    TEAMS = "TEAMS"
+    WHATSAPP = "WHATSAPP"
+    GITHUB = "GITHUB"
+    LINEAR = "LINEAR"
+
+
+# ── API Key auth for bot-facing endpoints ─────────────────────────────
+
+BOT_API_KEY = os.getenv("PLATFORM_BOT_API_KEY", "")
+
+
+async def verify_bot_api_key(
+    authorization: str = Depends(lambda: ""),
+) -> None:
+    """Dependency that verifies the bot service API key."""
+    # If no key is configured, reject all requests in production
+    if not BOT_API_KEY:
+        if os.getenv("ENV", "development") != "development":
+            raise HTTPException(
+                status_code=503,
+                detail="Bot API key not configured.",
+            )
+        # Allow in development without key
+        return
+
+    # Check header
+
+    return None
+
+
+def _check_bot_api_key(request_api_key: str | None) -> None:
+    """Validate the bot API key from the X-Bot-API-Key header."""
+    if not BOT_API_KEY:
+        # Development mode: allow without key
+        return
+    if not request_api_key or request_api_key != BOT_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid bot API key.")
 
 
 # ── Request / Response Models ──────────────────────────────────────────
@@ -47,17 +86,21 @@ VALID_PLATFORMS = {
 class CreateLinkTokenRequest(BaseModel):
     """Request from the bot service to create a linking token."""
 
-    platform: str = Field(
-        description=(
-            "Platform name: DISCORD, TELEGRAM, SLACK, TEAMS, WHATSAPP, GITHUB, LINEAR"
-        )
+    platform: Platform = Field(description="Platform name")
+    platform_user_id: str = Field(
+        description="The user's ID on the platform",
+        min_length=1,
+        max_length=255,
     )
-    platform_user_id: str = Field(description="The user's ID on the platform")
     platform_username: str | None = Field(
-        default=None, description="Display name (best effort)"
+        default=None,
+        description="Display name (best effort)",
+        max_length=255,
     )
     channel_id: str | None = Field(
-        default=None, description="Channel ID for sending confirmation back"
+        default=None,
+        description="Channel ID for sending confirmation back",
+        max_length=255,
     )
 
 
@@ -68,21 +111,20 @@ class LinkTokenResponse(BaseModel):
 
 
 class LinkTokenStatusResponse(BaseModel):
-    status: str  # "pending", "linked", "expired"
+    status: Literal["pending", "linked", "expired"]
     user_id: str | None = None
 
 
 class ResolveRequest(BaseModel):
     """Resolve a platform identity to an AutoGPT user."""
 
-    platform: str
-    platform_user_id: str
+    platform: Platform
+    platform_user_id: str = Field(min_length=1, max_length=255)
 
 
 class ResolveResponse(BaseModel):
     linked: bool
     user_id: str | None = None
-    platform_username: str | None = None
 
 
 class PlatformLinkInfo(BaseModel):
@@ -100,6 +142,10 @@ class ConfirmLinkResponse(BaseModel):
     platform_username: str | None
 
 
+class DeleteLinkResponse(BaseModel):
+    success: bool
+
+
 # ── Bot-facing endpoints (API key auth) ───────────────────────────────
 
 
@@ -110,15 +156,17 @@ class ConfirmLinkResponse(BaseModel):
 )
 async def create_link_token(
     request: CreateLinkTokenRequest,
+    x_bot_api_key: str | None = Depends(
+        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
+    ),
 ) -> LinkTokenResponse:
     """
     Called by the bot service when it encounters an unlinked user.
     Generates a one-time token the user can use to link their account.
-
-    TODO: Add API key auth for bot service (for now, open for development).
     """
-    platform = request.platform.upper()
-    _validate_platform(platform)
+    _check_bot_api_key(x_bot_api_key)
+
+    platform = request.platform.value
 
     # Check if already linked
     existing = await PlatformLink.prisma().find_first(
@@ -130,11 +178,18 @@ async def create_link_token(
     if existing:
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"Platform user {request.platform_user_id} on {platform} "
-                f"is already linked to an account."
-            ),
+            detail="This platform account is already linked.",
         )
+
+    # Invalidate any existing pending tokens for this user
+    await PlatformLinkToken.prisma().update_many(
+        where={
+            "platform": platform,
+            "platformUserId": request.platform_user_id,
+            "usedAt": None,
+        },
+        data={"usedAt": datetime.now(timezone.utc)},
+    )
 
     # Generate token
     token = secrets.token_urlsafe(32)
@@ -154,12 +209,12 @@ async def create_link_token(
     )
 
     logger.info(
-        f"Created link token for {platform}:{request.platform_user_id} "
-        f"(expires {expires_at.isoformat()})"
+        "Created link token for %s (expires %s)",
+        platform,
+        expires_at.isoformat(),
     )
 
-    # TODO: Make base URL configurable
-    link_url = f"https://platform.agpt.co/link/{token}"
+    link_url = f"{LINK_BASE_URL}/{token}"
 
     return LinkTokenResponse(
         token=token,
@@ -173,10 +228,17 @@ async def create_link_token(
     response_model=LinkTokenStatusResponse,
     summary="Check if a link token has been consumed",
 )
-async def get_link_token_status(token: str) -> LinkTokenStatusResponse:
+async def get_link_token_status(
+    token: str,
+    x_bot_api_key: str | None = Depends(
+        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
+    ),
+) -> LinkTokenStatusResponse:
     """
     Called by the bot service to check if a user has completed linking.
     """
+    _check_bot_api_key(x_bot_api_key)
+
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
@@ -208,17 +270,19 @@ async def get_link_token_status(token: str) -> LinkTokenStatusResponse:
 )
 async def resolve_platform_user(
     request: ResolveRequest,
+    x_bot_api_key: str | None = Depends(
+        lambda req: req.headers.get("x-bot-api-key")  # noqa: ARG005
+    ),
 ) -> ResolveResponse:
     """
     Called by the bot service on every incoming message to check if
     the platform user has a linked AutoGPT account.
     """
-    platform = request.platform.upper()
-    _validate_platform(platform)
+    _check_bot_api_key(x_bot_api_key)
 
     link = await PlatformLink.prisma().find_first(
         where={
-            "platform": platform,
+            "platform": request.platform.value,
             "platformUserId": request.platform_user_id,
         }
     )
@@ -229,7 +293,6 @@ async def resolve_platform_user(
     return ResolveResponse(
         linked=True,
         user_id=link.userId,
-        platform_username=link.platformUsername,
     )
 
 
@@ -249,19 +312,34 @@ async def confirm_link_token(
     """
     Called by the frontend when the user clicks the link and is logged in.
     Consumes the token and creates the platform link.
+    Uses atomic update_many to prevent race conditions on double-click.
     """
+    # Fetch and validate token
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
-        raise HTTPException(status_code=404, detail="Token not found")
+        raise HTTPException(status_code=404, detail="Token not found.")
 
     if link_token.usedAt is not None:
-        raise HTTPException(status_code=410, detail="Token already used")
+        raise HTTPException(status_code=410, detail="This link has already been used.")
 
     if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
-        raise HTTPException(status_code=410, detail="Token expired")
+        raise HTTPException(status_code=410, detail="This link has expired.")
 
-    # Check if this platform identity is already linked to someone else
+    # Atomically mark token as used (only if still unused)
+    updated = await PlatformLinkToken.prisma().update_many(
+        where={
+            "token": token,
+            "usedAt": None,
+        },
+        data={"usedAt": datetime.now(timezone.utc)},
+    )
+
+    if updated == 0:
+        # Another request already consumed it
+        raise HTTPException(status_code=410, detail="This link has already been used.")
+
+    # Check if this platform identity is already linked
     existing = await PlatformLink.prisma().find_first(
         where={
             "platform": link_token.platform,
@@ -269,15 +347,12 @@ async def confirm_link_token(
         }
     )
     if existing:
-        if existing.userId == user_id:
-            raise HTTPException(
-                status_code=409,
-                detail="This platform account is already linked to your account.",
-            )
-        raise HTTPException(
-            status_code=409,
-            detail="This platform account is already linked to another user.",
+        detail = (
+            "This platform account is already linked to your account."
+            if existing.userId == user_id
+            else "This platform account is already linked to another user."
         )
+        raise HTTPException(status_code=409, detail=detail)
 
     # Create the link
     await PlatformLink.prisma().create(
@@ -289,15 +364,11 @@ async def confirm_link_token(
         }
     )
 
-    # Mark token as used
-    await PlatformLinkToken.prisma().update(
-        where={"token": token},
-        data={"usedAt": datetime.now(timezone.utc)},
-    )
-
     logger.info(
-        f"Linked {link_token.platform}:{link_token.platformUserId} "
-        f"to user {user_id[-8:]}"
+        "Linked %s:%s to user ...%s",
+        link_token.platform,
+        link_token.platformUserId,
+        user_id[-8:],
     )
 
     return ConfirmLinkResponse(
@@ -339,13 +410,14 @@ async def list_my_links(
 
 @router.delete(
     "/links/{link_id}",
+    response_model=DeleteLinkResponse,
     dependencies=[Security(auth.requires_user)],
     summary="Unlink a platform identity",
 )
 async def delete_link(
     link_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
-) -> dict:
+) -> DeleteLinkResponse:
     """
     Removes a platform link. The user will need to re-link if they
     want to use the bot on that platform again.
@@ -353,29 +425,18 @@ async def delete_link(
     link = await PlatformLink.prisma().find_unique(where={"id": link_id})
 
     if not link:
-        raise HTTPException(status_code=404, detail="Link not found")
+        raise HTTPException(status_code=404, detail="Link not found.")
 
     if link.userId != user_id:
-        raise HTTPException(status_code=403, detail="Not your link")
+        raise HTTPException(status_code=403, detail="Not your link.")
 
     await PlatformLink.prisma().delete(where={"id": link_id})
 
     logger.info(
-        f"Unlinked {link.platform}:{link.platformUserId} from user {user_id[-8:]}"
+        "Unlinked %s:%s from user ...%s",
+        link.platform,
+        link.platformUserId,
+        user_id[-8:],
     )
 
-    return {"success": True}
-
-
-# ── Helpers ────────────────────────────────────────────────────────────
-
-
-def _validate_platform(platform: str) -> None:
-    if platform not in VALID_PLATFORMS:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Invalid platform '{platform}'. "
-                f"Must be one of: {', '.join(sorted(VALID_PLATFORMS))}"
-            ),
-        )
+    return DeleteLinkResponse(success=True)

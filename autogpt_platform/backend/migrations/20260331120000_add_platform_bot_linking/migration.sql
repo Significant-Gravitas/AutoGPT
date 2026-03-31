@@ -38,9 +38,6 @@ CREATE INDEX "PlatformLink_userId_idx" ON "PlatformLink"("userId");
 CREATE UNIQUE INDEX "PlatformLinkToken_token_key" ON "PlatformLinkToken"("token");
 
 -- CreateIndex
-CREATE INDEX "PlatformLinkToken_token_idx" ON "PlatformLinkToken"("token");
-
--- CreateIndex
 CREATE INDEX "PlatformLinkToken_expiresAt_idx" ON "PlatformLinkToken"("expiresAt");
 
 -- AddForeignKey
