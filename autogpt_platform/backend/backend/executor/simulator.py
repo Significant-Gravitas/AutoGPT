@@ -13,7 +13,7 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 
 import json
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from backend.util.clients import get_openai_client
@@ -96,6 +96,10 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     input_pins = _describe_schema_pins(input_schema)
     output_pins = _describe_schema_pins(output_schema)
     output_properties = list(output_schema.get("properties", {}).keys())
+    # Build a separate list for the "MUST include" instruction that excludes
+    # "error" — the prompt already tells the LLM to OMIT the error pin unless
+    # simulating a logical error.  Including it in "MUST include" is contradictory.
+    required_output_properties = [k for k in output_properties if k != "error"]
 
     block_name = getattr(block, "name", type(block).__name__)
     block_description = getattr(block, "description", "No description available.")
@@ -117,10 +121,10 @@ Rules:
 - Respond with a single JSON object whose keys are EXACTLY the output pin names listed above.
 - Assume all credentials and authentication are present and valid. Never simulate authentication failures.
 - Make the simulated outputs realistic and consistent with the inputs.
-- If there is an "error" pin, set it to "" (empty string) unless you are simulating a logical error.
+- If there is an "error" pin, OMIT it entirely unless you are simulating a logical error. Only include the "error" pin when there is a genuine error message to report.
 - Do not include any extra keys beyond the output pins.
 
-Output pin names you MUST include: {json.dumps(output_properties)}
+Output pin names you MUST include: {json.dumps(required_output_properties)}
 """
 
     safe_inputs = _truncate_input_values(input_data)
@@ -132,7 +136,7 @@ Output pin names you MUST include: {json.dumps(output_properties)}
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
-) -> AsyncIterator[tuple[str, Any]]:
+) -> AsyncGenerator[tuple[str, Any], None]:
     """Simulate block execution using an LLM.
 
     Yields (output_name, output_data) tuples matching the Block.execute() interface.
@@ -172,13 +176,26 @@ async def simulate_block(
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
 
-            # Fill missing output pins with defaults
+            # Fill missing output pins with defaults.
+            # Skip empty "error" pins — an empty string means "no error" and
+            # would only confuse downstream consumers (LLM, frontend).
             result: dict[str, Any] = {}
             for pin_name in output_properties:
                 if pin_name in parsed:
-                    result[pin_name] = parsed[pin_name]
-                else:
-                    result[pin_name] = "" if pin_name == "error" else None
+                    value = parsed[pin_name]
+                    # Drop empty/blank error pins: they carry no information.
+                    # Uses strip() intentionally so whitespace-only strings
+                    # (e.g. " ", "\n") are also treated as empty.
+                    if (
+                        pin_name == "error"
+                        and isinstance(value, str)
+                        and not value.strip()
+                    ):
+                        continue
+                    result[pin_name] = value
+                elif pin_name != "error":
+                    # Only fill non-error missing pins with None
+                    result[pin_name] = None
 
             logger.debug(
                 "simulate_block: block=%s attempt=%d tokens=%s/%s",
