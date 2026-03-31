@@ -28,13 +28,16 @@ from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
-from backend.util.security import SENSITIVE_FIELD_NAMES
+from backend.util.security import filter_sensitive_fields
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
     from backend.executor.manager import ExecutionProcessor
 
 logger = logging.getLogger(__name__)
+
+# Anthropic imposes a 64-character limit on tool/function names.
+MAX_TOOL_NAME_LENGTH = 64
 
 
 class ToolInfo(BaseModel):
@@ -304,7 +307,7 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
         # Skip suffixes that collide with existing (e.g. user-named) tools
         while True:
             suffix = f"_{counters[name]}"
-            candidate = f"{name[: 64 - len(suffix)]}{suffix}"
+            candidate = f"{name[: MAX_TOOL_NAME_LENGTH - len(suffix)]}{suffix}"
             if candidate not in taken:
                 break
             counters[name] += 1
@@ -576,16 +579,12 @@ class OrchestratorBlock(Block):
         # Store hardcoded defaults (non-linked inputs) for disambiguation.
         # Exclude linked fields, private fields, and credential/auth fields
         # to avoid leaking sensitive data into tool descriptions.
-        linked_fields = {link.sink_name for link in links}
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
-            {
-                k: v
-                for k, v in defaults.items()
-                if k not in linked_fields
-                and not k.startswith("_")
-                and k.lower() not in SENSITIVE_FIELD_NAMES
-            }
+            filter_sensitive_fields(
+                defaults,
+                linked_fields={link.sink_name for link in links},
+            )
             if isinstance(defaults, dict)
             else {}
         )
@@ -667,17 +666,14 @@ class OrchestratorBlock(Block):
         # Store hardcoded defaults (non-linked inputs) for disambiguation.
         # Exclude linked fields, private fields, agent meta fields, and
         # credential/auth fields to avoid leaking sensitive data.
-        linked_fields = {link.sink_name for link in links}
+        _AGENT_META_FIELDS = frozenset({"graph_id", "graph_version", "input_schema"})
         defaults = sink_node.input_default
         tool_function["_hardcoded_defaults"] = (
-            {
-                k: v
-                for k, v in defaults.items()
-                if k not in linked_fields
-                and k not in ("graph_id", "graph_version", "input_schema")
-                and not k.startswith("_")
-                and k.lower() not in SENSITIVE_FIELD_NAMES
-            }
+            filter_sensitive_fields(
+                defaults,
+                linked_fields={link.sink_name for link in links},
+                extra_excludes=_AGENT_META_FIELDS,
+            )
             if isinstance(defaults, dict)
             else {}
         )

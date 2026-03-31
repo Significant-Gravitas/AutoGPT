@@ -1484,3 +1484,210 @@ async def test_disambiguation_does_not_modify_parameters():
         assert "properties" in params
         assert "text" in params["properties"]
         assert params["type"] == "object"
+
+
+# ---------------------------------------------------------------------------
+# Substring sensitive-field matching
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_substring_sensitive_field_matching():
+    """Fields like 'my_api_key' should be filtered by substring match."""
+    block = MatchTextPatternBlock()
+    node_a = _make_mock_node(
+        block,
+        "node_a",
+        input_default={
+            "match": "foo",
+            "my_api_key": "sk-secret-123",
+            "custom_token_field": "tok-456",
+            "service_password_hash": "hashed",
+        },
+    )
+    node_b = _make_mock_node(
+        block,
+        "node_b",
+        input_default={
+            "match": "bar",
+            "private_key_path": "/etc/key",
+            "client_secret_id": "cs-789",
+        },
+    )
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    for tool in tools:
+        desc = tool["function"].get("description", "")
+        # Substring-matched sensitive fields must NOT appear
+        assert "sk-secret-123" not in desc
+        assert "tok-456" not in desc
+        assert "hashed" not in desc
+        assert "my_api_key=" not in desc
+        assert "custom_token_field=" not in desc
+        assert "service_password_hash=" not in desc
+        assert "private_key_path=" not in desc
+        assert "client_secret_id=" not in desc
+
+    # Non-sensitive 'match' should still appear
+    all_descs = " ".join(t["function"].get("description", "") for t in tools)
+    assert "match=" in all_descs
+
+
+# ---------------------------------------------------------------------------
+# Nested dict sensitive-field scanning
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_nested_sensitive_fields_filtered():
+    """Secrets inside nested dicts must not leak through benign top-level keys."""
+    block = MatchTextPatternBlock()
+    node_a = _make_mock_node(
+        block,
+        "node_a",
+        input_default={
+            "match": "foo",
+            "config": {"api_key": "sk-nested-secret", "mode": "fast"},
+        },
+    )
+    node_b = _make_mock_node(
+        block,
+        "node_b",
+        input_default={
+            "match": "bar",
+            "settings": {"password": "hunter2", "retries": 3},
+        },
+    )
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    for tool in tools:
+        desc = tool["function"].get("description", "")
+        # Nested sensitive values must NOT leak
+        assert "sk-nested-secret" not in desc
+        assert "hunter2" not in desc
+
+    # Non-sensitive nested values should still appear
+    all_descs = " ".join(t["function"].get("description", "") for t in tools)
+    assert "mode" in all_descs or "retries" in all_descs
+
+
+# ---------------------------------------------------------------------------
+# Non-dict input_default path
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_non_dict_input_default_produces_empty_defaults():
+    """When input_default is not a dict, _hardcoded_defaults should be {}."""
+    block = MatchTextPatternBlock()
+    # Simulate a node with non-dict input_default (e.g., None stored as-is)
+    node_a = _make_mock_node(block, "node_a")
+    node_a.input_default = None  # Force non-dict
+    node_b = _make_mock_node(block, "node_b")
+    node_b.input_default = None
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        # Should not crash
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    # Tools should still be created (even if names are suffixed)
+    assert len(tools) == 2
+
+
+# ---------------------------------------------------------------------------
+# Expanded SENSITIVE_FIELD_NAMES coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_expanded_sensitive_field_names():
+    """Newly added sensitive field names should be filtered."""
+    block = MatchTextPatternBlock()
+    node_a = _make_mock_node(
+        block,
+        "node_a",
+        input_default={
+            "match": "foo",
+            "private_key": "-----BEGIN RSA PRIVATE KEY-----",
+            "client_secret": "cs-secret-value",
+            "secret_key": "sk-key-value",
+            "passphrase": "my-passphrase",
+            "webhook_secret": "whsec-123",
+            "bearer_token": "bt-456",
+        },
+    )
+    node_b = _make_mock_node(
+        block,
+        "node_b",
+        input_default={"match": "bar"},
+    )
+
+    link_a = _make_mock_link("tools_^_a_~_text", "text", "node_a", "orch")
+    link_b = _make_mock_link("tools_^_b_~_text", "text", "node_b", "orch")
+
+    mock_db = AsyncMock()
+    mock_db.get_connected_output_nodes.return_value = [
+        (link_a, node_a),
+        (link_b, node_b),
+    ]
+
+    with patch(
+        "backend.blocks.orchestrator.get_database_manager_async_client",
+        return_value=mock_db,
+    ):
+        tools = await OrchestratorBlock._create_tool_node_signatures("orch")
+
+    for tool in tools:
+        desc = tool["function"].get("description", "")
+        assert "BEGIN RSA PRIVATE KEY" not in desc
+        assert "cs-secret-value" not in desc
+        assert "sk-key-value" not in desc
+        assert "my-passphrase" not in desc
+        assert "whsec-123" not in desc
+        assert "bt-456" not in desc
+        assert "private_key=" not in desc
+        assert "client_secret=" not in desc
+        assert "secret_key=" not in desc
+        assert "passphrase=" not in desc
+        assert "webhook_secret=" not in desc
+        assert "bearer_token=" not in desc
