@@ -17,7 +17,7 @@
         "secret": false,
         "advanced": false,
         "description": "The *format or structure* in which you present your content. It's about *how* you package your message to make it engaging and accessible.",
-        "placeholder_values": [
+        "options": [
           "Personal Achievement Story",
           "Lesson Learned",
           "Thought Leadership",
@@ -57,7 +57,7 @@
         "secret": false,
         "advanced": false,
         "description": "The main message or purpose of your post\u2014the core idea or topic you want to convey to your audience.",
-        "placeholder_values": [
+        "options": [
           "Hot Take",
           "Key Takeaways",
           "Thought Leadership",
@@ -149,7 +149,7 @@
         "secret": false,
         "advanced": false,
         "description": "Focuses on the tone, voice, and language used in your post\u2014the manner in which you express your ideas. It's about the way you communicate.",
-        "placeholder_values": [
+        "options": [
           "Conversational",
           "Storytelling",
           "Analytical",
@@ -516,7 +516,7 @@
         "secret": false,
         "advanced": false,
         "description": "Add the URL of the YouTube video you want to write a LinkedIn Post about.",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {

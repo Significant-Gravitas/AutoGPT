@@ -152,7 +152,7 @@
         "secret": false,
         "advanced": false,
         "description": "Pitch your product!",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {

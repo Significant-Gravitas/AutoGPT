@@ -518,7 +518,7 @@
         "secret": false,
         "advanced": false,
         "description": "The work email address you use for your meetings. \nYour daily briefings will be sent to you here.",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {
@@ -1248,7 +1248,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -1459,7 +1459,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -2844,7 +2844,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -2904,7 +2904,7 @@
             "secret": false,
             "advanced": true,
             "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\"",
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -2997,7 +2997,7 @@
             "secret": false,
             "advanced": false,
             "description": "The Email Address to send the report to. i.e. your@email.com",
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -3065,7 +3065,7 @@
             "secret": false,
             "advanced": false,
             "description": "The subject line for the email. i.e. \"Your Report\"",
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -3307,7 +3307,7 @@
             "name": "Email to Research",
             "secret": false,
             "advanced": false,
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -3544,7 +3544,7 @@
             "name": "Your Email",
             "secret": false,
             "advanced": false,
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {
@@ -4290,7 +4290,7 @@
             "secret": false,
             "advanced": false,
             "description": null,
-            "placeholder_values": []
+            "options": []
           },
           "metadata": {
             "position": {

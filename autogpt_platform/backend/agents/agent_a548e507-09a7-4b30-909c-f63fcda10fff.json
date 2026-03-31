@@ -961,7 +961,7 @@
         "secret": false,
         "advanced": false,
         "description": "The type of Business you're looking for, for example Hotels, Gyms or Restaurants.",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {
@@ -994,7 +994,7 @@
         "secret": false,
         "advanced": false,
         "description": "The area you want to search, for example London, New York or Tokyo.",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {
@@ -1027,7 +1027,7 @@
         "secret": false,
         "advanced": false,
         "description": "How far around the are to look for results (Max 50000 metres)",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {
@@ -1060,7 +1060,7 @@
         "secret": false,
         "advanced": false,
         "description": "The maximum number of results to return from the search, the actual result may be less. (max 60).",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {

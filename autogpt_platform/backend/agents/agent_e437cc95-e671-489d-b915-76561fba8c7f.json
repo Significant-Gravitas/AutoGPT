@@ -17,7 +17,7 @@
         "secret": false,
         "advanced": false,
         "description": "Enter the URL of the YouTube video you want to convert to a blog post",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {
@@ -85,7 +85,7 @@
         "secret": false,
         "advanced": false,
         "description": "Select the desired tone for the blog post",
-        "placeholder_values": [
+        "options": [
           "Professional",
           "Casual",
           "Educational",
@@ -168,7 +168,7 @@
         "secret": false,
         "advanced": false,
         "description": "Enter the desired word count for the blog post",
-        "placeholder_values": []
+        "options": []
       },
       "metadata": {
         "position": {
