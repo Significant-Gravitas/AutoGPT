@@ -54,6 +54,31 @@ class TestBashExecE2BTokenInjection:
         assert isinstance(result, BashExecResponse)
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_git_identity_env_vars_always_set(self):
+        """Git author/committer env vars are always present in sandbox envs."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+        sandbox = _make_sandbox(stdout="ok")
+
+        with patch(
+            "backend.copilot.tools.bash_exec.get_integration_env_vars",
+            new=AsyncMock(return_value={}),
+        ):
+            await tool._execute_on_e2b(
+                sandbox=sandbox,
+                command="git commit -m test",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+
+        call_kwargs = sandbox.commands.run.call_args[1]
+        assert call_kwargs["envs"]["GIT_AUTHOR_NAME"] == "AutoGPT"
+        assert call_kwargs["envs"]["GIT_AUTHOR_EMAIL"] == "autopilot@agpt.co"
+        assert call_kwargs["envs"]["GIT_COMMITTER_NAME"] == "AutoGPT"
+        assert call_kwargs["envs"]["GIT_COMMITTER_EMAIL"] == "autopilot@agpt.co"
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_no_token_injection_when_user_id_is_none(self):
         """When user_id is None, get_integration_env_vars must NOT be called."""
         tool = _make_tool()
@@ -75,4 +100,7 @@ class TestBashExecE2BTokenInjection:
         mock_get_env.assert_not_called()
         call_kwargs = sandbox.commands.run.call_args[1]
         assert "GH_TOKEN" not in call_kwargs["envs"]
+        # Git identity env vars should still be present even without user_id
+        assert call_kwargs["envs"]["GIT_AUTHOR_EMAIL"] == "autopilot@agpt.co"
+        assert call_kwargs["envs"]["GIT_COMMITTER_EMAIL"] == "autopilot@agpt.co"
         assert isinstance(result, BashExecResponse)

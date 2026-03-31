@@ -331,7 +331,13 @@ class ClaudeCodeBlock(Block):
                     template=self.DEFAULT_TEMPLATE,
                     api_key=e2b_api_key,
                     timeout=timeout,
-                    envs={"ANTHROPIC_API_KEY": anthropic_api_key},
+                    envs={
+                        "ANTHROPIC_API_KEY": anthropic_api_key,
+                        "GIT_AUTHOR_NAME": "AutoGPT",
+                        "GIT_AUTHOR_EMAIL": "autopilot@agpt.co",
+                        "GIT_COMMITTER_NAME": "AutoGPT",
+                        "GIT_COMMITTER_EMAIL": "autopilot@agpt.co",
+                    },
                 )
 
                 # Install Claude Code from npm (ensures we get the latest version)

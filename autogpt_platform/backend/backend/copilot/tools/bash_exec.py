@@ -149,6 +149,10 @@ class BashExecTool(BaseTool):
         """
         envs: dict[str, str] = {
             "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+            "GIT_AUTHOR_NAME": "AutoGPT",
+            "GIT_AUTHOR_EMAIL": "autopilot@agpt.co",
+            "GIT_COMMITTER_NAME": "AutoGPT",
+            "GIT_COMMITTER_EMAIL": "autopilot@agpt.co",
         }
         # Collect injected secret values so we can scrub them from output.
         secret_values: list[str] = []
