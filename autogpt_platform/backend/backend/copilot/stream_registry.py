@@ -26,6 +26,7 @@ import orjson
 from redis.exceptions import RedisError
 
 from backend.api.model import CopilotCompletionPayload
+from backend.data.db_accessors import chat_db
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
@@ -111,6 +112,14 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
     ``session_id`` is used as a fallback for ``turn_id`` when the meta hash
     pre-dates the turn_id field (backward compat for in-flight sessions).
     """
+    created_at = datetime.now(timezone.utc)
+    created_at_raw = meta.get("created_at")
+    if created_at_raw:
+        try:
+            created_at = datetime.fromisoformat(str(created_at_raw))
+        except (ValueError, TypeError):
+            pass
+
     return ActiveSession(
         session_id=meta.get("session_id", "") or session_id,
         user_id=meta.get("user_id", "") or None,
@@ -119,6 +128,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
         turn_id=meta.get("turn_id", "") or session_id,
         blocking=meta.get("blocking") == "1",
         status=meta.get("status", "running"),  # type: ignore[arg-type]
+        created_at=created_at,
     )
 
 
@@ -801,6 +811,33 @@ async def mark_session_completed(
             logger.warning(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
+
+    # Compute wall-clock duration from session created_at.
+    # Only persist when (a) the session completed successfully and
+    # (b) created_at was actually present in Redis meta (not a fallback).
+    duration_ms: int | None = None
+    if meta and not error_message:
+        created_at_raw = meta.get("created_at")
+        if created_at_raw:
+            try:
+                created_at = datetime.fromisoformat(str(created_at_raw))
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                elapsed = datetime.now(timezone.utc) - created_at
+                duration_ms = max(0, int(elapsed.total_seconds() * 1000))
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Failed to compute session duration for %s (created_at=%r)",
+                    session_id,
+                    created_at_raw,
+                )
+
+    # Persist duration on the last assistant message
+    if duration_ms is not None:
+        try:
+            await chat_db().set_turn_duration(session_id, duration_ms)
+        except Exception as e:
+            logger.warning(f"Failed to save turn duration for {session_id}: {e}")
 
     # Publish StreamFinish AFTER status is set to "completed"/"failed".
     # This is the SINGLE place that publishes StreamFinish — services and

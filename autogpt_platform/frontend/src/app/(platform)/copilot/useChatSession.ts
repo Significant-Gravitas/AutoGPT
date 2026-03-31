@@ -61,13 +61,21 @@ export function useChatSession() {
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
-  const hydratedMessages = useMemo(() => {
-    if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
-    return convertChatSessionMessagesToUiMessages(
+  const { hydratedMessages, historicalDurations } = useMemo(() => {
+    if (sessionQuery.data?.status !== 200 || !sessionId)
+      return {
+        hydratedMessages: undefined,
+        historicalDurations: new Map<string, number>(),
+      };
+    const result = convertChatSessionMessagesToUiMessages(
       sessionId,
       sessionQuery.data.data.messages ?? [],
       { isComplete: !hasActiveStream },
     );
+    return {
+      hydratedMessages: result.messages,
+      historicalDurations: result.durations,
+    };
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
   const { mutateAsync: createSessionMutation, isPending: isCreatingSession } =
@@ -122,6 +130,7 @@ export function useChatSession() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    historicalDurations,
     hasActiveStream,
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
