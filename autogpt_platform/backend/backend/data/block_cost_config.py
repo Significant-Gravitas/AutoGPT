@@ -739,3 +739,13 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
 }
+
+# Ensure every CodexModel has a corresponding CodeGenerationBlock cost entry
+for _codex_model in CodexModel:
+    if not any(
+        block_cost.cost_filter.get("model") == _codex_model
+        for block_cost in BLOCK_COSTS[CodeGenerationBlock]
+    ):
+        raise ValueError(
+            f"Missing CodeGenerationBlock cost for Codex model: {_codex_model}"
+        )
