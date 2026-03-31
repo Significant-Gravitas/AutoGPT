@@ -37,7 +37,10 @@ export class PlatformAPI {
   ): Promise<ResolveResult> {
     const res = await fetch(`${this.baseUrl}/api/platform-linking/resolve`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...this.botHeaders(),
+      },
       body: JSON.stringify({
         platform: platform.toUpperCase(),
         platform_user_id: platformUserId,
@@ -64,7 +67,10 @@ export class PlatformAPI {
   }): Promise<LinkTokenResult> {
     const res = await fetch(`${this.baseUrl}/api/platform-linking/tokens`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...this.botHeaders(),
+      },
       body: JSON.stringify({
         platform: params.platform.toUpperCase(),
         platform_user_id: params.platformUserId,
@@ -87,7 +93,8 @@ export class PlatformAPI {
    */
   async getLinkTokenStatus(token: string): Promise<LinkTokenStatus> {
     const res = await fetch(
-      `${this.baseUrl}/api/platform-linking/tokens/${token}/status`
+      `${this.baseUrl}/api/platform-linking/tokens/${token}/status`,
+      { headers: this.botHeaders() }
     );
 
     if (!res.ok) {

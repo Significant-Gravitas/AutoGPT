@@ -5,6 +5,11 @@
  * the Discord Gateway for receiving messages.
  */
 
+// Load .env BEFORE any other imports so env vars are available
+// when Chat SDK adapters auto-detect credentials at import time.
+import { config } from "dotenv";
+config();
+
 import { loadConfig } from "./config.js";
 import { createBot } from "./bot.js";
 
