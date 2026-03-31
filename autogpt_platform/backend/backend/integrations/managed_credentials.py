@@ -20,6 +20,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from cachetools import TTLCache
+
 if TYPE_CHECKING:
     from backend.data.model import Credentials
     from backend.integrations.credentials_store import IntegrationCredentialsStore
@@ -61,6 +63,12 @@ _PROVIDERS: dict[str, ManagedCredentialProvider] = {}
 
 # Per-(user, provider) lock to prevent concurrent provisioning races.
 _provision_locks: dict[tuple[str, str], asyncio.Lock] = {}
+
+# Users whose managed credentials have already been verified recently.
+# Avoids redundant DB checks on every GET /credentials call.
+# maxsize caps memory; TTL re-checks periodically (e.g. when new providers
+# are added).  ~100K entries ≈ 4-8 MB.
+_provisioned_users: TTLCache[str, bool] = TTLCache(maxsize=100_000, ttl=3600)
 
 
 def register_managed_provider(provider: ManagedCredentialProvider) -> None:
@@ -131,11 +139,21 @@ async def ensure_managed_credentials(
     endpoints.  Failures are logged but never propagated — the user simply
     will not see the managed credential until the next page load.
 
+    Skips entirely if this user has already been checked during the current
+    process lifetime (in-memory cache).  Resets on restart — just a
+    performance optimisation, not a correctness guarantee.
+
     Providers are checked concurrently via ``asyncio.gather``.
     """
+    if user_id in _provisioned_users:
+        return
+
     await asyncio.gather(
         *(_ensure_one(user_id, store, n, p) for n, p in _PROVIDERS.items())
     )
+
+    # All providers checked (successfully or not) — skip for TTL duration.
+    _provisioned_users[user_id] = True
 
 
 async def cleanup_managed_credentials(
