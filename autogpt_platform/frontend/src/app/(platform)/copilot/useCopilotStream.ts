@@ -486,6 +486,11 @@ export function useCopilotStream({
   // indefinitely (e.g. when the SSE connection dies silently without a
   // disconnect event).
   useEffect(() => {
+    // rawMessages is intentionally in the dependency array: each SSE event
+    // updates rawMessages, which re-runs this effect and resets the timer.
+    // Referencing its length here satisfies the exhaustive-deps rule.
+    void rawMessages.length;
+
     const isActive = status === "streaming" || status === "submitted";
     if (!isActive) {
       clearTimeout(streamTimeoutRef.current);
@@ -509,8 +514,6 @@ export function useCopilotStream({
       clearTimeout(streamTimeoutRef.current);
       streamTimeoutRef.current = undefined;
     };
-    // rawMessages changes on every SSE event, resetting the timeout.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, rawMessages]);
 
   // True while reconnecting or backend has active stream but we haven't connected yet.
