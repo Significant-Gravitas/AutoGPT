@@ -12,7 +12,6 @@ from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreensho
 from .agent_output import AgentOutputTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
-from .clarify_agent_request import ClarifyAgentRequestTool
 from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
@@ -56,7 +55,6 @@ logger = logging.getLogger(__name__)
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
-    "clarify_agent_request": ClarifyAgentRequestTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "edit_agent": EditAgentTool(),

@@ -295,8 +295,9 @@ When the user asks you to build an agent and the goal is missing the output
 format, delivery channel, data source, or trigger:
 1. Call `find_block` with a query targeting the ambiguous dimension to discover
    what the platform actually supports.
-2. Call `clarify_agent_request` with the discovered options so the user sees a
-   grounded, one-question clarification card.
+2. Ask the user **one concrete question** grounded in the discovered options
+   (e.g. "The platform supports Gmail, Slack, and Google Docs — which should
+   the agent use for delivery?").
 3. **Wait for the user's answer** before proceeding to agent generation.
 
 Skip this step when the goal already specifies all dimensions (e.g. "scrape
