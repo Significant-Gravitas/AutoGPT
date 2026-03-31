@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import (
     Any,
@@ -254,9 +255,23 @@ class BaseOpenAIChatProvider(
                             _assistant_msg.model_dump(exclude_none=True),
                         )
                     )
+                    # If the assistant message had tool_calls, we must add
+                    # tool response messages before any other message,
+                    # otherwise the OpenAI API will reject the request.
+                    if _assistant_msg.tool_calls:
+                        for tc in _assistant_msg.tool_calls:
+                            openai_messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tc.id,
+                                    "content": (
+                                        "[Parse error - tool call not executed]"
+                                    ),
+                                }
+                            )
                     openai_messages.append(
                         {
-                            "role": "system",
+                            "role": "user",
                             "content": (
                                 f"ERROR PARSING YOUR RESPONSE:\n\n{parse_errors_fmt}"
                             ),
@@ -329,13 +344,23 @@ class BaseOpenAIChatProvider(
             kwargs["extra_headers"] = kwargs.get("extra_headers", {})  # type: ignore
             kwargs["extra_headers"].update(extra_headers.copy())  # type: ignore
 
-        prepped_messages: list[ChatCompletionMessageParam] = [
-            message.model_dump(  # type: ignore
+        prepped_messages: list[ChatCompletionMessageParam] = []
+        for message in prompt_messages:
+            msg = message.model_dump(  # type: ignore
                 include={"role", "content", "tool_calls", "tool_call_id", "name"},
                 exclude_none=True,
             )
-            for message in prompt_messages
-        ]
+            # OpenAI API expects tool_calls[].function.arguments as a JSON
+            # string, but our model stores it as a dict.
+            if "tool_calls" in msg:
+                for tc in msg["tool_calls"]:
+                    if "function" in tc and isinstance(
+                        tc["function"].get("arguments"), dict
+                    ):
+                        tc["function"]["arguments"] = json.dumps(
+                            tc["function"]["arguments"]
+                        )
+            prepped_messages.append(msg)  # type: ignore
 
         if "messages" in kwargs:
             prepped_messages += kwargs["messages"]

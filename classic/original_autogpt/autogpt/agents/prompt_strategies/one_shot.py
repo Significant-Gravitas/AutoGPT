@@ -274,25 +274,39 @@ class OneShotAgentPromptStrategy(PromptStrategy):
         self,
         response: AssistantChatMessage,
     ) -> OneShotAgentActionProposal:
-        if not response.content:
-            raise InvalidAgentResponseError("Assistant response has no text content")
+        # Always expect tool calls - native tool calling is always enabled
+        if not response.tool_calls:
+            raise InvalidAgentResponseError("Assistant did not use a tool")
 
-        self.logger.debug(
-            "LLM response content:"
-            + (
-                f"\n{response.content}"
-                if "\n" in response.content
-                else f" '{response.content}'"
+        if response.content:
+            self.logger.debug(
+                "LLM response content:"
+                + (
+                    f"\n{response.content}"
+                    if "\n" in response.content
+                    else f" '{response.content}'"
+                )
             )
-        )
-        assistant_reply_dict = extract_dict_from_json(response.content)
+            assistant_reply_dict = extract_dict_from_json(response.content)
+        else:
+            # LLM returned tool calls without text content (common with native
+            # tool calling). Provide minimal thoughts so parsing can proceed.
+            self.logger.debug("LLM response has no text content, using tool calls only")
+            assistant_reply_dict: dict = {
+                "thoughts": {
+                    "observations": "Executing tool call",
+                    "text": "Proceeding with tool execution",
+                    "reasoning": "",
+                    "self_criticism": "",
+                    "plan": ["- Execute the requested tool call"],
+                    "speak": "Working on your task.",
+                }
+            }
+
         self.logger.debug(
             "Parsing object extracted from LLM response:\n"
             f"{json.dumps(assistant_reply_dict, indent=4)}"
         )
-        # Always expect tool calls - native tool calling is always enabled
-        if not response.tool_calls:
-            raise InvalidAgentResponseError("Assistant did not use a tool")
         assistant_reply_dict["use_tool"] = response.tool_calls[0].function
         # Capture all tool calls for parallel execution
         if len(response.tool_calls) > 1:
