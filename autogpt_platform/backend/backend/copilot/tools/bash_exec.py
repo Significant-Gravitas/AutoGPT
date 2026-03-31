@@ -76,6 +76,8 @@ class BashExecTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        command: str = "",
+        timeout: int = 30,
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Run a bash command on E2B (if available) or in a bubblewrap sandbox.
@@ -88,8 +90,8 @@ class BashExecTool(BaseTool):
         """
         session_id = session.session_id if session else None
 
-        command: str = (kwargs.get("command") or "").strip()
-        timeout: int = int(kwargs.get("timeout", 30))
+        command = command.strip()
+        timeout = int(timeout)
 
         if not command:
             return ErrorResponse(

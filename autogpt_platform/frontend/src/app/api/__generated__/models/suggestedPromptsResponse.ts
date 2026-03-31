@@ -5,7 +5,7 @@
  * This server is used to execute agents that are created by the AutoGPT system.
  * OpenAPI spec version: 0.1
  */
-import type { SuggestedTheme } from "./suggestedTheme";
+import type { SuggestedTheme } from './suggestedTheme';
 
 /**
  * Response model for user-specific suggested prompts grouped by theme.
