@@ -35,10 +35,8 @@ class ClarifyAgentRequestTool(BaseTool):
     def description(self) -> str:
         return (
             "Ask the user a clarifying question grounded in real platform "
-            "options before building an agent. Call find_block first to "
-            "discover available options for the ambiguous dimension (output "
-            "format, delivery channel, data source, or trigger), then call "
-            "this tool with a concrete question listing those options. "
+            "options before building an agent. Provide the ambiguous "
+            "dimension, the concrete question, and the available options. "
             "Skip this tool when the user's goal is already specific."
         )
 
@@ -47,11 +45,22 @@ class ClarifyAgentRequestTool(BaseTool):
         return {
             "type": "object",
             "properties": {
+                "dimension": {
+                    "type": "string",
+                    "enum": [
+                        "output_format",
+                        "delivery_channel",
+                        "data_source",
+                        "trigger",
+                    ],
+                    "description": (
+                        "Which dimension of the user's goal is ambiguous."
+                    ),
+                },
                 "question": {
                     "type": "string",
                     "description": (
-                        "The single concrete question to ask, listing the real "
-                        "platform options discovered via find_block."
+                        "The single concrete question to ask the user."
                     ),
                 },
                 "options": {
@@ -59,12 +68,12 @@ class ClarifyAgentRequestTool(BaseTool):
                     "items": {"type": "string"},
                     "minItems": 1,
                     "description": (
-                        "Real platform options discovered via find_block for the "
-                        "user to choose from (e.g. ['Email', 'Slack', 'Google Docs'])."
+                        "Real platform options for the user to choose from "
+                        "(e.g. ['Email', 'Slack', 'Google Docs'])."
                     ),
                 },
             },
-            "required": ["question", "options"],
+            "required": ["dimension", "question", "options"],
         }
 
     @property
@@ -78,9 +87,17 @@ class ClarifyAgentRequestTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         del user_id  # unused; required by BaseTool contract
+        dimension = str(kwargs.get("dimension", "")).strip()
         question = str(kwargs.get("question", "")).strip()
         options: list[str] = kwargs.get("options", [])
         session_id = session.session_id if session else None
+
+        if not dimension:
+            return ErrorResponse(
+                message="clarify_agent_request requires a dimension.",
+                error="missing_dimension",
+                session_id=session_id,
+            )
 
         if not question:
             return ErrorResponse(
@@ -98,7 +115,7 @@ class ClarifyAgentRequestTool(BaseTool):
 
         clarifying_question = ClarifyingQuestion(
             question=question,
-            keyword="",
+            keyword=dimension,
             example=", ".join(options),
         )
         return ClarificationNeededResponse(
