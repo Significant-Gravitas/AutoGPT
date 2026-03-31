@@ -683,8 +683,9 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                     f"this means your previous response was too long and "
                     f"the tool call input was truncated by the API. "
                     f"To fix this: break your work into smaller steps. "
-                    f"For file writes, write in chunks using bash_exec "
-                    f"with cat >> to append section by section. "
+                    f"For large content, first write it to a file using "
+                    f"bash_exec with cat >> (append section by section), "
+                    f"then pass it via @@agptfile:filename reference. "
                     f"Do NOT retry with the same approach — it will "
                     f"be truncated again."
                 )
