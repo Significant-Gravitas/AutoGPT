@@ -5,9 +5,13 @@ generate the agent JSON yourself using block schemas, then validate and save.
 
 ### Workflow for Creating/Editing Agents
 
-1. **Clarify intent**: Call `clarify_agent_request` first to confirm
-   the user's intent — output format, delivery channel, data source, and
-   trigger. Wait for the user's answer before continuing.
+1. **Clarify intent (if ambiguous)**: If the user's goal is missing the
+   output format, delivery channel, data source, or trigger, call
+   `find_block` for the ambiguous dimension, then call
+   `clarify_agent_request` with the discovered options. Wait for the
+   user's answer before continuing. **Skip this step** if the goal already
+   specifies all dimensions (e.g. "scrape prices from Amazon and email me
+   daily" — output, source, channel, and trigger are all clear).
 2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas.

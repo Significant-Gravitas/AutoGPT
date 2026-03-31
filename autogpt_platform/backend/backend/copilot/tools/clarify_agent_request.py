@@ -17,12 +17,14 @@ logger = logging.getLogger(__name__)
 
 
 class ClarifyAgentRequestTool(BaseTool):
-    """Confirm the user's intent before starting agent generation.
+    """Present a clarifying question with concrete platform options to the user.
 
-    Always called as step 1 of the agent generation workflow
-    (agent_generation_guide.md) to confirm output format, delivery channel,
-    data source, and trigger. Call find_block first to discover real platform
-    options, then call this tool with a concrete question listing those options.
+    Called when the user's agent-building goal is ambiguous (missing output
+    format, delivery channel, data source, or trigger). The caller must first
+    use ``find_block`` to discover real platform options, then pass them here
+    so the question is grounded in what the platform actually supports.
+
+    Skipped when the goal already specifies all dimensions.
     """
 
     @property
@@ -32,12 +34,12 @@ class ClarifyAgentRequestTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Confirm the user's intent before building an agent. "
-            "Call this as the first step of agent generation. "
-            "Call find_block first to discover real platform options for the "
-            "relevant dimension (output format, delivery channel, data source, "
-            "trigger), then call this tool with a concrete question listing "
-            "those options."
+            "Ask the user a clarifying question grounded in real platform "
+            "options before building an agent. Call find_block first to "
+            "discover available options for the ambiguous dimension (output "
+            "format, delivery channel, data source, or trigger), then call "
+            "this tool with a concrete question listing those options. "
+            "Skip this tool when the user's goal is already specific."
         )
 
     @property
@@ -55,17 +57,14 @@ class ClarifyAgentRequestTool(BaseTool):
                 "options": {
                     "type": "array",
                     "items": {"type": "string"},
+                    "minItems": 1,
                     "description": (
                         "Real platform options discovered via find_block for the "
                         "user to choose from (e.g. ['Email', 'Slack', 'Google Docs'])."
                     ),
                 },
-                "keyword": {
-                    "type": "string",
-                    "description": "The find_block search term used to discover the options.",
-                },
             },
-            "required": ["question"],
+            "required": ["question", "options"],
         }
 
     @property
@@ -81,7 +80,6 @@ class ClarifyAgentRequestTool(BaseTool):
         del user_id  # unused; required by BaseTool contract
         question = str(kwargs.get("question", "")).strip()
         options: list[str] = kwargs.get("options", [])
-        keyword: str = kwargs.get("keyword", "")
         session_id = session.session_id if session else None
 
         if not question:
@@ -91,11 +89,17 @@ class ClarifyAgentRequestTool(BaseTool):
                 session_id=session_id,
             )
 
-        example = ", ".join(options) if options else None
+        if not options:
+            return ErrorResponse(
+                message="clarify_agent_request requires at least one option.",
+                error="missing_options",
+                session_id=session_id,
+            )
+
         clarifying_question = ClarifyingQuestion(
             question=question,
-            keyword=keyword,
-            example=example,
+            keyword="",
+            example=", ".join(options),
         )
         return ClarificationNeededResponse(
             message=question,
