@@ -517,6 +517,7 @@ async def get_graph_executions(
     created_time_gte: Optional[datetime] = None,
     created_time_lte: Optional[datetime] = None,
     limit: Optional[int] = None,
+    workspace_id: Optional[str] = None,
 ) -> list[GraphExecutionMeta]:
     """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
     where_filter: AgentGraphExecutionWhereInput = {
@@ -524,7 +525,10 @@ async def get_graph_executions(
     }
     if graph_exec_id:
         where_filter["id"] = graph_exec_id
-    if user_id:
+    # Prefer workspace_id scoping over user_id when available
+    if workspace_id:
+        where_filter["orgWorkspaceId"] = workspace_id
+    elif user_id:
         where_filter["userId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
