@@ -136,11 +136,13 @@ def create_security_hooks(
     - PostToolUse: Log successful tool executions
     - PostToolUseFailure: Log and handle failed tool executions
     - PreCompact: Log context compaction events (SDK handles compaction automatically)
+    - SubagentStart: Log sub-agent lifecycle start
+    - SubagentStop: Log sub-agent lifecycle end
 
     Args:
         user_id: Current user ID for isolation validation
         sdk_cwd: SDK working directory for workspace-scoped tool validation
-        max_subtasks: Maximum concurrent Task (sub-agent) spawns allowed per session
+        max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
 
@@ -151,8 +153,10 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
-        # Per-session tracking for Task sub-agent concurrency.
+        # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
+        # The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
+        _SUBAGENT_TOOLS = {"Task", "Agent"}
         task_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
@@ -165,12 +169,13 @@ def create_security_hooks(
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
 
-            # Rate-limit Task (sub-agent) spawns per session
-            if tool_name == "Task":
+            # Rate-limit sub-agent spawns per session.
+            # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
+            if tool_name in _SUBAGENT_TOOLS:
                 # Block background task execution first — denied calls
                 # should not consume a subtask slot.
                 if tool_input.get("run_in_background"):
-                    logger.info(f"[SDK] Blocked background Task, user={user_id}")
+                    logger.info(f"[SDK] Blocked background {tool_name}, user={user_id}")
                     return cast(
                         SyncHookJSONOutput,
                         _deny(
@@ -181,7 +186,8 @@ def create_security_hooks(
                     )
                 if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
-                        f"[SDK] Task limit reached ({max_subtasks}), user={user_id}"
+                        f"[SDK] Sub-agent limit reached ({max_subtasks}), "
+                        f"user={user_id}"
                     )
                     return cast(
                         SyncHookJSONOutput,
@@ -208,16 +214,16 @@ def create_security_hooks(
             if result:
                 return cast(SyncHookJSONOutput, result)
 
-            # Reserve the Task slot only after all validations pass
-            if tool_name == "Task" and tool_use_id is not None:
+            # Reserve the sub-agent slot only after all validations pass
+            if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
                 task_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
 
         def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
-            """Release a Task concurrency slot if one was reserved."""
-            if tool_name == "Task" and tool_use_id in task_tool_use_ids:
+            """Release a sub-agent concurrency slot if one was reserved."""
+            if tool_name in _SUBAGENT_TOOLS and tool_use_id in task_tool_use_ids:
                 task_tool_use_ids.discard(tool_use_id)
                 logger.info(
                     "[SDK] Task slot released, active=%d/%d, user=%s",
@@ -322,6 +328,42 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
+        async def subagent_start_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Log when a sub-agent starts execution."""
+            _ = context, tool_use_id
+            agent_id = input_data.get("agent_id", "?")
+            agent_type = input_data.get("agent_type", "?")
+            logger.info(
+                "[SDK] SubagentStart: agent_id=%s, type=%s, user=%s",
+                agent_id,
+                agent_type,
+                user_id,
+            )
+            return cast(SyncHookJSONOutput, {})
+
+        async def subagent_stop_hook(
+            input_data: HookInput,
+            tool_use_id: str | None,
+            context: HookContext,
+        ) -> SyncHookJSONOutput:
+            """Log when a sub-agent stops."""
+            _ = context, tool_use_id
+            agent_id = input_data.get("agent_id", "?")
+            agent_type = input_data.get("agent_type", "?")
+            transcript = input_data.get("agent_transcript_path", "")
+            logger.info(
+                "[SDK] SubagentStop: agent_id=%s, type=%s, user=%s, " "transcript=%s",
+                agent_id,
+                agent_type,
+                user_id,
+                str(transcript)[:200],
+            )
+            return cast(SyncHookJSONOutput, {})
+
         hooks: dict[str, Any] = {
             "PreToolUse": [HookMatcher(matcher="*", hooks=[pre_tool_use_hook])],
             "PostToolUse": [HookMatcher(matcher="*", hooks=[post_tool_use_hook])],
@@ -329,6 +371,8 @@ def create_security_hooks(
                 HookMatcher(matcher="*", hooks=[post_tool_failure_hook])
             ],
             "PreCompact": [HookMatcher(matcher="*", hooks=[pre_compact_hook])],
+            "SubagentStart": [HookMatcher(matcher="*", hooks=[subagent_start_hook])],
+            "SubagentStop": [HookMatcher(matcher="*", hooks=[subagent_stop_hook])],
         }
 
         return hooks

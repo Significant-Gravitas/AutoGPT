@@ -356,3 +356,144 @@ async def test_task_slot_released_on_failure(_hooks):
         context={},
     )
     assert not _is_denied(result)
+
+
+# ---------------------------------------------------------------------------
+# "Agent" tool name (SDK v2.x+ renamed "Task" → "Agent")
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_agent_background_blocked(_hooks):
+    """Agent with run_in_background=true must be denied (same as Task)."""
+    pre, _, _ = _hooks
+    result = await pre(
+        {
+            "tool_name": "Agent",
+            "tool_input": {"run_in_background": True, "prompt": "x"},
+        },
+        tool_use_id=None,
+        context={},
+    )
+    assert _is_denied(result)
+    assert "foreground" in _reason(result).lower()
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_agent_foreground_allowed(_hooks):
+    """Agent without run_in_background should be allowed."""
+    pre, _, _ = _hooks
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "do stuff"}},
+        tool_use_id="tu-agent-1",
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_agent_limit_enforced(_hooks):
+    """Agent spawns beyond max_subtasks should be denied."""
+    pre, _, _ = _hooks
+    # First two should pass
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Agent", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-agent-limit-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Third should be denied (limit=2)
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "over limit"}},
+        tool_use_id="tu-agent-limit-2",
+        context={},
+    )
+    assert _is_denied(result)
+    assert "Maximum" in _reason(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_agent_slot_released_on_completion(_hooks):
+    """Completing an Agent should free a slot so new Agents can be spawned."""
+    pre, post, _ = _hooks
+    # Fill both slots
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Agent", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-agent-comp-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # Third should be denied — at capacity
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-agent-comp-2",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Complete first agent — frees a slot
+    await post(
+        {"tool_name": "Agent", "tool_input": {}},
+        tool_use_id="tu-agent-comp-0",
+        context={},
+    )
+
+    # Now a new Agent should be allowed
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "after release"}},
+        tool_use_id="tu-agent-comp-3",
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_mixed_task_agent_share_slots(_hooks):
+    """Task and Agent share the same concurrency pool."""
+    pre, post, _ = _hooks
+    # Fill one slot with Task, one with Agent
+    result = await pre(
+        {"tool_name": "Task", "tool_input": {"prompt": "ok"}},
+        tool_use_id="tu-mix-task",
+        context={},
+    )
+    assert not _is_denied(result)
+
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "ok"}},
+        tool_use_id="tu-mix-agent",
+        context={},
+    )
+    assert not _is_denied(result)
+
+    # Third (either name) should be denied
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-mix-over",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Release the Task slot
+    await post(
+        {"tool_name": "Task", "tool_input": {}},
+        tool_use_id="tu-mix-task",
+        context={},
+    )
+
+    # Now an Agent should be allowed
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "after task release"}},
+        tool_use_id="tu-mix-new",
+        context={},
+    )
+    assert not _is_denied(result)
