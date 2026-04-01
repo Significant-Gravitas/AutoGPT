@@ -1502,7 +1502,7 @@ class TestStreamChatCompletionRetryIntegration:
         """
         import contextlib
 
-        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+        from claude_agent_sdk import ResultMessage
 
         from backend.copilot.response_model import StreamError, StreamStart
         from backend.copilot.sdk.service import stream_chat_completion_sdk
@@ -1525,11 +1525,6 @@ class TestStreamChatCompletionRetryIntegration:
             attempt_count[0] += 1
 
             async def _receive_error():
-                yield AssistantMessage(
-                    content=[TextBlock(text="Prompt is too long")],
-                    model="<synthetic>",
-                    error="invalid_request",
-                )
                 yield error_result
 
             async def _receive_success():
@@ -1609,7 +1604,9 @@ class TestStreamChatCompletionRetryIntegration:
             attempt_count[0] += 1
 
             async def _receive_error():
-                # SDK returns invalid_request with "Prompt is too long" in content
+                # SDK returns invalid_request with "Prompt is too long" in content.
+                # ResultMessage.result is a non-PTL value ("done") to isolate
+                # the AssistantMessage content detection path exclusively.
                 yield AssistantMessage(
                     content=[TextBlock(text="Prompt is too long")],
                     model="<synthetic>",
@@ -1617,7 +1614,7 @@ class TestStreamChatCompletionRetryIntegration:
                 )
                 yield ResultMessage(
                     subtype="success",
-                    result="Prompt is too long",
+                    result="done",
                     duration_ms=100,
                     duration_api_ms=0,
                     is_error=False,
