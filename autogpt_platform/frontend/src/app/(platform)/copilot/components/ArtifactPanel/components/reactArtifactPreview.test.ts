@@ -22,7 +22,12 @@ describe("reactArtifactPreview", () => {
       "<style>.demo { color: red; }</style>",
     );
 
-    expect(srcDoc).toContain("react-dom.production.min.js");
+    expect(srcDoc).toContain("react@18.3.1/umd/react.production.min.js");
+    expect(srcDoc).toContain(
+      "react-dom@18.3.1/umd/react-dom.production.min.js",
+    );
+    expect(srcDoc).toContain('integrity="sha384-');
+    expect(srcDoc).toContain("Content-Security-Policy");
     expect(srcDoc).toContain(".demo { color: red; }");
     expect(srcDoc).toContain("Unsupported import in artifact preview");
     expect(srcDoc).toContain(

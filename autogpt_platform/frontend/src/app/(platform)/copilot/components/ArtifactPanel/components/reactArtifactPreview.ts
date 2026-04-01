@@ -1,3 +1,25 @@
+/**
+ * React artifact preview — security threat model
+ *
+ * AI-generated TSX source is transpiled (TypeScript) and executed inside a
+ * sandboxed iframe (`sandbox="allow-scripts"` without `allow-same-origin`).
+ *
+ * What's isolated:
+ *   - No access to parent page cookies, localStorage, or sessionStorage
+ *   - No form submissions or popups (no allow-forms / allow-popups)
+ *   - Treated as a unique opaque origin by the browser
+ *
+ * What's allowed inside the iframe:
+ *   - Inline script execution (needed to render React components)
+ *   - `new Function()` is used to evaluate the compiled code (eval-equivalent)
+ *   - Full DOM access within the iframe
+ *   - Network requests via fetch/XHR (mitigated by CSP below)
+ *
+ * The CSP meta tag restricts the iframe to only load scripts from the pinned
+ * unpkg React CDN URLs (with SRI hashes) and inline scripts/styles. All other
+ * network access (fetch, img src, etc.) is blocked by `default-src 'none'`.
+ */
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -42,14 +64,18 @@ export async function transpileReactArtifactSource(
   return result.outputText;
 }
 
+/** Minimal CSS reset for React artifact previews.
+ *
+ * Previously this copied ALL host stylesheets (200KB+ Tailwind) into every
+ * preview iframe. Now we provide a self-contained reset and let artifacts
+ * declare their own styles. This avoids tight coupling between the app's CSS
+ * and artifact rendering, and keeps the srcdoc size small.
+ */
 export function collectPreviewStyles() {
-  if (typeof document === "undefined") {
-    return "";
-  }
-
-  return Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-    .map((node) => node.outerHTML)
-    .join("\n");
+  return `<style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; }
+  </style>`;
 }
 
 export function buildReactArtifactSrcDoc(
@@ -100,8 +126,9 @@ export function buildReactArtifactSrcDoc(
         white-space: pre-wrap;
       }
     </style>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline'; img-src data: blob:; font-src data:;">
+    <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script>
   </head>
   <body>
     <div id="root"></div>

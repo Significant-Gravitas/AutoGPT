@@ -325,18 +325,20 @@ async def get_storage_usage(
 async def list_workspace_files(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     session_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
 
     When session_id is provided, only files for that session are returned.
-    Otherwise, all files across sessions are listed.
+    Otherwise, all files across sessions are listed (capped by limit).
     """
     workspace = await get_or_create_workspace(user_id)
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
     files = await manager.list_files(include_all_sessions=include_all)
+    files = files[:limit]
 
     return ListFilesResponse(
         files=[

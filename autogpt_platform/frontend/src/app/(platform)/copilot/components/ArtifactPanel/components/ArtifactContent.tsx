@@ -178,7 +178,12 @@ function ArtifactRenderer({
 
   if (classification.type === "pdf" && pdfUrl) {
     return (
-      <iframe src={pdfUrl} className="h-full w-full" title={artifact.title} />
+      <iframe
+        src={pdfUrl}
+        sandbox=""
+        className="h-full w-full"
+        title={artifact.title}
+      />
     );
   }
 
@@ -194,10 +199,17 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "html") {
+    // Inject a strict CSP to block network requests from AI-generated HTML.
+    // Scripts can run (needed for charts/dashboards) but cannot fetch external
+    // URLs, preventing data exfiltration from artifact content.
+    const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:;">`;
+    const sandboxedContent = content.includes("<head>")
+      ? content.replace("<head>", `<head>${csp}`)
+      : `${csp}${content}`;
     return (
       <iframe
         sandbox="allow-scripts"
-        srcDoc={content}
+        srcDoc={sandboxedContent}
         className="h-full w-full border-0"
         title={artifact.title}
       />
