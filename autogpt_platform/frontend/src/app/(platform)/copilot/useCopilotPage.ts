@@ -39,6 +39,7 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    historicalDurations,
     hasActiveStream,
     isLoadingSession,
     isSessionError,
@@ -54,7 +55,10 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
@@ -349,6 +353,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
@@ -373,5 +378,10 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }

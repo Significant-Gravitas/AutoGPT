@@ -3,6 +3,21 @@
 You can create, edit, and customize agents directly. You ARE the brain —
 generate the agent JSON yourself using block schemas, then validate and save.
 
+### Clarifying Before Building
+
+Before starting the workflow below, check whether the user's goal is
+**ambiguous** — missing the output format, delivery channel, data source,
+or trigger. If so:
+1. Call `find_block` with a query targeting the ambiguous dimension to
+   discover what the platform actually supports.
+2. Ask the user **one concrete question** grounded in the discovered
+   options (e.g. "The platform supports Gmail, Slack, and Google Docs —
+   which should the agent use for delivery?").
+3. **Wait for the user's answer** before proceeding.
+
+**Skip this** when the goal already specifies all dimensions (e.g.
+"scrape prices from Amazon and email me daily").
+
 ### Workflow for Creating/Editing Agents
 
 1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
@@ -67,9 +82,17 @@ These define the agent's interface — what it accepts and what it produces.
 **AgentInputBlock** (ID: `c0a8e994-ebf1-4a9c-a4d8-89d09c86741b`):
 - Defines a user-facing input field on the agent
 - Required `input_default` fields: `name` (str), `value` (default: null)
-- Optional: `title`, `description`, `placeholder_values` (for dropdowns)
+- Optional: `title`, `description`
 - Output: `result` — the user-provided value at runtime
 - Create one AgentInputBlock per distinct input the agent needs
+- For dropdown/select inputs, use **AgentDropdownInputBlock** instead (see below)
+
+**AgentDropdownInputBlock** (ID: `655d6fdf-a334-421c-b733-520549c07cd1`):
+- Specialized input block that presents a dropdown/select to the user
+- Required `input_default` fields: `name` (str), `placeholder_values` (list of options, must have at least one)
+- Optional: `title`, `description`, `value` (default selection)
+- Output: `result` — the user-selected value at runtime
+- Use this instead of AgentInputBlock when the user should pick from a fixed set of options
 
 **AgentOutputBlock** (ID: `363ae599-353e-4804-937e-b2ee3cef3da4`):
 - Defines a user-facing output displayed after the agent runs

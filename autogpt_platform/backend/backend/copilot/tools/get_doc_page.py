@@ -68,6 +68,7 @@ class GetDocPageTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        path: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         """Fetch full content of a documentation page.
@@ -81,7 +82,7 @@ class GetDocPageTool(BaseTool):
             DocPageResponse: Full document content
             ErrorResponse: Error message
         """
-        path = kwargs.get("path", "").strip()
+        path = path.strip()
         session_id = session.session_id if session else None
 
         if not path:
