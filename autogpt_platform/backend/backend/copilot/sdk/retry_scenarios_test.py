@@ -124,8 +124,11 @@ class TestScenarioCompactAndRetry:
         assert result != original  # Must be different
         assert validate_transcript(result)
         msgs = _transcript_to_messages(result)
-        assert len(msgs) == 2
+        # 3 messages: compressed prefix (2) + preserved last assistant (1)
+        assert len(msgs) == 3
         assert msgs[0]["content"] == "[summary of conversation]"
+        # Last assistant preserved verbatim
+        assert msgs[2]["content"] == "Long answer 2"
 
     def test_compacted_transcript_loads_into_builder(self):
         """TranscriptBuilder can load a compacted transcript and continue."""
@@ -737,7 +740,10 @@ class TestRetryEdgeCases:
         assert result is not None
         assert result != transcript
         msgs = _transcript_to_messages(result)
-        assert len(msgs) == 2
+        # 3 messages: compressed prefix (2) + preserved last assistant (1)
+        assert len(msgs) == 3
+        # Last assistant preserved verbatim
+        assert msgs[2]["content"] == "Answer 19"
 
     def test_messages_to_transcript_roundtrip_preserves_content(self):
         """Verify messages → transcript → messages preserves all content."""
@@ -1004,7 +1010,7 @@ def _make_sdk_patches(
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
-        (f"{_SVC}._build_sdk_env", dict(return_value=None)),
+        (f"{_SVC}.build_sdk_env", dict(return_value=None)),
         (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
         (f"{_SVC}.set_execution_context", {}),
         (

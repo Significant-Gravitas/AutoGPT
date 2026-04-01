@@ -12,6 +12,7 @@ from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
+    SDK_DISALLOWED_TOOLS,
     _text_from_mcp_result,
     create_tool_handler,
     pop_pending_tool_output,
@@ -344,3 +345,19 @@ class TestReadOnlyAnnotations:
         ann = ToolAnnotations(readOnlyHint=True)
         assert ann.readOnlyHint is True
         assert ann.destructiveHint is None
+
+
+# ---------------------------------------------------------------------------
+# SDK_DISALLOWED_TOOLS
+# ---------------------------------------------------------------------------
+
+
+class TestSDKDisallowedTools:
+    """Verify that dangerous SDK built-in tools are in the disallowed list."""
+
+    def test_bash_tool_is_disallowed(self):
+        assert "Bash" in SDK_DISALLOWED_TOOLS
+
+    def test_webfetch_tool_is_disallowed(self):
+        """WebFetch is disallowed due to SSRF risk."""
+        assert "WebFetch" in SDK_DISALLOWED_TOOLS

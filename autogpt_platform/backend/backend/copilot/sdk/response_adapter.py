@@ -15,6 +15,7 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -26,6 +27,7 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamHeartbeat,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -75,6 +77,12 @@ class SDKResponseAdapter:
                 # Open the first step (matches non-SDK: StreamStart then StreamStartStep)
                 responses.append(StreamStartStep())
                 self.step_open = True
+            elif sdk_message.subtype == "task_progress":
+                # Emit a heartbeat so publish_chunk is called during long
+                # sub-agent runs. Without this, the Redis stream and meta
+                # key TTLs expire during gaps where no real chunks are
+                # produced (task_progress events were previously silent).
+                responses.append(StreamHeartbeat())
 
         elif isinstance(sdk_message, AssistantMessage):
             # Flush any SDK built-in tool calls that didn't get a UserMessage
@@ -99,6 +107,11 @@ class SDKResponseAdapter:
                         responses.append(
                             StreamTextDelta(id=self.text_block_id, delta=block.text)
                         )
+
+                elif isinstance(block, ThinkingBlock):
+                    # Thinking blocks are preserved in the transcript but
+                    # not streamed to the frontend — skip silently.
+                    pass
 
                 elif isinstance(block, ToolUseBlock):
                     self._end_text_if_open(responses)
