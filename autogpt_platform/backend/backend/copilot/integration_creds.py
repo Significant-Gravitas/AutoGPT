@@ -123,6 +123,7 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
         [c for c in creds_list if c.type == "oauth2"],
         key=lambda c: 0 if "repo" in (cast(OAuth2Credentials, c).scopes or []) else 1,
     )
+    refresh_failed = False
     for creds in oauth2_creds:
         if creds.type == "oauth2":
             try:
@@ -141,6 +142,7 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
                 # Do NOT fall back to the stale token — it is likely expired
                 # or revoked.  Returning None forces the caller to re-auth,
                 # preventing the LLM from receiving a non-functional token.
+                refresh_failed = True
                 continue
             _token_cache[cache_key] = token
             return token
@@ -152,8 +154,12 @@ async def get_provider_token(user_id: str, provider: str) -> str | None:
             _token_cache[cache_key] = token
             return token
 
-    # No credentials found — cache to avoid repeated DB hits.
-    _null_cache[cache_key] = True
+    # Only cache "not connected" when the user truly has no credentials for this
+    # provider.  If we had OAuth credentials but refresh failed (e.g. transient
+    # network error, event-loop mismatch), do NOT cache the negative result —
+    # the next call should retry the refresh instead of being blocked for 60 s.
+    if not refresh_failed:
+        _null_cache[cache_key] = True
     return None
 
 
