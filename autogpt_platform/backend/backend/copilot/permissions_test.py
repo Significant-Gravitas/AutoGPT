@@ -544,6 +544,7 @@ class TestApplyToolPermissions:
 class TestSdkBuiltinToolNames:
     def test_expected_builtins_present(self):
         expected = {
+            "Agent",
             "Read",
             "Write",
             "Edit",
