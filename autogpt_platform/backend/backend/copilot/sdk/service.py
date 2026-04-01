@@ -60,11 +60,14 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
+    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
 )
@@ -82,11 +85,9 @@ from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
-    cancel_pending_tool_tasks,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
-    pre_launch_tool_call,
     reset_stash_event,
     reset_tool_failure_counters,
     set_execution_context,
@@ -116,9 +117,10 @@ _MAX_STREAM_ATTEMPTS = 3
 
 # Hard circuit breaker: abort the stream if the model sends this many
 # consecutive tool calls with empty parameters (a sign of context
-# saturation or serialization failure).  Empty input ({}) is never
-# legitimate — even one is suspicious, three is conclusive.
-_EMPTY_TOOL_CALL_LIMIT = 3
+# saturation or serialization failure).  The MCP wrapper now returns
+# guidance on the first empty call, giving the model a chance to
+# self-correct.  The limit is generous to allow recovery attempts.
+_EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -747,15 +749,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "unknown")
-                    tool_args = func.get("arguments", "")
-                    lines.append(f"You called tool: {tool_name}({tool_args})")
+            # Omit tool_calls — any text representation gets mimicked
+            # by the model. Tool results below provide the context.
         elif msg.role == "tool":
             content = msg.content or ""
-            lines.append(f"Tool result: {content}")
+            lines.append(f"Tool output: {content[:500]}")
 
     if not lines:
         return None
@@ -1309,6 +1307,21 @@ async def _run_stream_attempt(
                     error_preview,
                 )
 
+                # Intercept prompt-too-long errors surfaced as
+                # AssistantMessage.error (not as a Python exception).
+                # Re-raise so the outer retry loop can compact the
+                # transcript and retry with reduced context.
+                # Only check error_text (the error field), not the
+                # content preview — content may contain arbitrary text
+                # that false-positives the pattern match.
+                if _is_prompt_too_long(Exception(error_text)):
+                    logger.warning(
+                        "%s Prompt-too-long detected via AssistantMessage "
+                        "error — raising for retry",
+                        ctx.log_prefix,
+                    )
+                    raise RuntimeError("Prompt is too long")
+
                 # Intercept transient API errors (socket closed,
                 # ECONNRESET) — replace the raw message with a
                 # user-friendly error text and use the retryable
@@ -1336,28 +1349,17 @@ async def _run_stream_attempt(
                     ended_with_stream_error = True
                     break
 
-            # Parallel tool execution: pre-launch every ToolUseBlock as an
-            # asyncio.Task the moment its AssistantMessage arrives.  The SDK
-            # sends one AssistantMessage per tool call when issuing parallel
-            # calls, so each message is pre-launched independently.  The MCP
-            # handlers will await the already-running task instead of executing
-            # fresh, making all concurrent tool calls run in parallel.
-            #
-            # Also determine if the message is a tool-only batch (all content
+            # Determine if the message is a tool-only batch (all content
             # items are ToolUseBlocks) — such messages have no text output yet,
             # so we skip the wait_for_stash flush below.
+            #
+            # Note: parallel execution of tools is handled natively by the
+            # SDK CLI via readOnlyHint annotations on tool definitions.
             is_tool_only = False
             if isinstance(sdk_msg, AssistantMessage) and sdk_msg.content:
-                is_tool_only = True
-                # NOTE: Pre-launches are sequential (each await completes
-                # file-ref expansion before the next starts).  This is fine
-                # since expansion is typically sub-ms; a future optimisation
-                # could gather all pre-launches concurrently.
-                for tool_use in sdk_msg.content:
-                    if isinstance(tool_use, ToolUseBlock):
-                        await pre_launch_tool_call(tool_use.name, tool_use.input)
-                    else:
-                        is_tool_only = False
+                is_tool_only = all(
+                    isinstance(item, ToolUseBlock) for item in sdk_msg.content
+                )
 
             # Race-condition fix: SDK hooks (PostToolUse) are
             # executed asynchronously via start_soon() — the next
@@ -1413,6 +1415,13 @@ async def _run_stream_attempt(
                         ctx.log_prefix,
                         sdk_msg.result or "(no error message provided)",
                     )
+                    # If the CLI itself rejected the prompt as too long
+                    # (pre-API check, duration_api_ms=0), re-raise as an
+                    # exception so the retry loop can trigger compaction.
+                    # Without this, the ResultMessage is silently consumed
+                    # and the retry/compaction mechanism is never invoked.
+                    if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
+                        raise RuntimeError("Prompt is too long")
 
                 # Capture token usage from ResultMessage.
                 # Anthropic reports cached tokens separately:
@@ -2050,13 +2059,22 @@ async def stream_chat_completion_sdk(
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
-                    if not isinstance(event, StreamHeartbeat):
+                    if not isinstance(
+                        event,
+                        (
+                            StreamHeartbeat,
+                            # Compaction UI events are cosmetic and must not
+                            # block retry — they're emitted before the SDK
+                            # query on compacted attempts.
+                            StreamStartStep,
+                            StreamFinishStep,
+                            StreamToolInputStart,
+                            StreamToolInputAvailable,
+                            StreamToolOutputAvailable,
+                        ),
+                    ):
                         events_yielded += 1
                     yield event
-                # Cancel any pre-launched tasks that were never dispatched
-                # by the SDK (e.g. edge-case SDK behaviour changes). Symmetric
-                # with the three error-path await cancel_pending_tool_tasks() calls.
-                await cancel_pending_tool_tasks()
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
                 logger.warning(
@@ -2065,9 +2083,6 @@ async def stream_chat_completion_sdk(
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                 )
-                # Cancel any pre-launched tasks so they don't continue executing
-                # against a rolled-back or abandoned session.
-                await cancel_pending_tool_tasks()
                 raise
             except _HandledStreamError as exc:
                 # _run_stream_attempt already yielded a StreamError and
@@ -2099,8 +2114,6 @@ async def stream_chat_completion_sdk(
                     retryable=True,
                 )
                 ended_with_stream_error = True
-                # Cancel any pre-launched tasks from the failed attempt.
-                await cancel_pending_tool_tasks()
                 break
             except Exception as e:
                 stream_err = e
@@ -2117,9 +2130,6 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
-                # Cancel any pre-launched tasks from the failed attempt so they
-                # don't continue executing against the rolled-back session.
-                await cancel_pending_tool_tasks()
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent

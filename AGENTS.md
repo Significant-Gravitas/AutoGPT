@@ -1,6 +1,6 @@
 # AutoGPT Platform Contribution Guide
 
-This guide provides context for Codex when updating the **autogpt_platform** folder.
+This guide provides context for coding agents when updating the **autogpt_platform** folder.
 
 ## Directory overview
 
