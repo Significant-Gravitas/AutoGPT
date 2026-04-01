@@ -732,6 +732,41 @@ def test_end_text_if_open_emits_text_end_before_finish_step():
     )
 
 
+def test_step_open_must_reset_after_compaction_finish_step():
+    """Adapter step_open must be reset when compaction emits StreamFinishStep.
+
+    Compaction events bypass the adapter, so service.py must explicitly clear
+    step_open after yielding a StreamFinishStep from compaction. Without this,
+    the next AssistantMessage skips StreamStartStep because the adapter still
+    thinks a step is open.
+    """
+    adapter = _adapter()
+
+    # Open a step + text block via an AssistantMessage
+    msg = AssistantMessage(content=[TextBlock(text="thinking...")], model="test")
+    adapter.convert_message(msg)
+    assert adapter.step_open is True
+
+    # Simulate what service.py does: close text, then check compaction events
+    pre_close: list[StreamBaseResponse] = []
+    adapter._end_text_if_open(pre_close)
+
+    events = list(compaction_events("Compacted transcript"))
+    if any(isinstance(ev, StreamFinishStep) for ev in events):
+        adapter.step_open = False
+
+    assert (
+        adapter.step_open is False
+    ), "step_open must be False after compaction emits StreamFinishStep"
+
+    # Next AssistantMessage must open a new step
+    msg2 = AssistantMessage(content=[TextBlock(text="continued")], model="test")
+    results = adapter.convert_message(msg2)
+    assert any(
+        isinstance(r, StreamStartStep) for r in results
+    ), "A new StreamStartStep must be emitted after compaction closed the step"
+
+
 def test_end_text_if_open_no_op_when_no_text_open():
     """_end_text_if_open emits nothing when no text block is open."""
     adapter = _adapter()

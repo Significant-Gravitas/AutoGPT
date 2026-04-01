@@ -1470,6 +1470,13 @@ async def _run_stream_attempt(
                 # "text-end for missing text part" errors on the frontend.
                 pre_close: list[StreamBaseResponse] = []
                 state.adapter._end_text_if_open(pre_close)
+                # Compaction events bypass the adapter, so sync step state
+                # when a StreamFinishStep is present — otherwise the adapter
+                # will skip StreamStartStep on the next AssistantMessage.
+                if any(
+                    isinstance(ev, StreamFinishStep) for ev in compact_result.events
+                ):
+                    state.adapter.step_open = False
                 for r in pre_close:
                     yield r
             for ev in compact_result.events:
