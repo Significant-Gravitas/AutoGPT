@@ -6,7 +6,6 @@ import type { SetUserTierRequest } from "@/app/api/__generated__/models/setUserT
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
   getV2GetUserRateLimit,
-  getV2GetUserRateLimitTier,
   postV2ResetUserRateLimitUsage,
   postV2SetUserRateLimitTier,
 } from "@/app/api/__generated__/endpoints/admin/admin";
@@ -58,9 +57,7 @@ export function useRateLimitManager() {
       if (response.status !== 200) {
         throw new Error("Failed to fetch rate limit");
       }
-      const tier = await fetchTier(response.data.user_id);
-      const data = tier ? { ...response.data, tier } : response.data;
-      setRateLimitData(data as typeof response.data);
+      setRateLimitData(response.data);
       setSelectedUser({
         user_id: response.data.user_id,
         user_email: response.data.user_email ?? response.data.user_id,
@@ -127,18 +124,6 @@ export function useRateLimitManager() {
     }
   }
 
-  async function fetchTier(userId: string): Promise<string | undefined> {
-    try {
-      const res = await getV2GetUserRateLimitTier({ user_id: userId });
-      if (res.status === 200) {
-        return res.data.tier;
-      }
-    } catch {
-      // Tier fetch is best-effort — falls back to "PRO" in the display.
-    }
-    return undefined;
-  }
-
   async function fetchRateLimit(userId: string) {
     setIsLoadingRateLimit(true);
     try {
@@ -146,10 +131,7 @@ export function useRateLimitManager() {
       if (response.status !== 200) {
         throw new Error("Failed to fetch rate limit");
       }
-      // Fetch the user's tier in parallel so the dropdown shows the correct value.
-      const tier = await fetchTier(userId);
-      const data = tier ? { ...response.data, tier } : response.data;
-      setRateLimitData(data as typeof response.data);
+      setRateLimitData(response.data);
     } catch (error) {
       console.error("Error fetching rate limit:", error);
       toast({
@@ -209,20 +191,13 @@ export function useRateLimitManager() {
       throw new Error("Failed to update tier");
     }
 
-    // Re-fetch rate limit data to reflect new tier limits.
-    // Use a direct fetch so errors propagate to the caller's catch block
-    // (fetchRateLimit swallows errors internally with its own toast).
+    // Re-fetch rate limit data to reflect new tier-adjusted limits.
     try {
       const refreshResponse = await getV2GetUserRateLimit({
         user_id: rateLimitData.user_id,
       });
       if (refreshResponse.status === 200) {
-        // Merge tier into refreshed data (same pattern as fetchRateLimit).
-        const tier = await fetchTier(rateLimitData.user_id);
-        const data = tier
-          ? { ...refreshResponse.data, tier }
-          : refreshResponse.data;
-        setRateLimitData(data as typeof refreshResponse.data);
+        setRateLimitData(refreshResponse.data);
       }
     } catch {
       // Tier was changed server-side; UI will be stale but not incorrect.
