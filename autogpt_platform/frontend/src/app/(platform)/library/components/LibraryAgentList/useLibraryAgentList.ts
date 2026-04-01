@@ -25,6 +25,8 @@ import { useEffect, useRef, useState } from "react";
 import type { AgentStatusFilter } from "../../types";
 import { mockStatusForAgent } from "../../hooks/useAgentStatus";
 
+const FILTER_EXHAUST_THRESHOLD = 3;
+
 interface Props {
   searchTerm: string;
   librarySort: LibraryAgentSort;
@@ -47,6 +49,8 @@ export function useLibraryAgentList({
   const stableQueryClient = getQueryClient();
   const queryClient = useQueryClient();
   const prevSortRef = useRef<LibraryAgentSort | null>(null);
+  const consecutiveEmptyPagesRef = useRef(0);
+  const prevFilteredLengthRef = useRef(0);
 
   const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(
     null,
@@ -210,6 +214,39 @@ export function useLibraryAgentList({
   // Client-side filter by status using mock data until the real API supports it.
   const filteredAgents = filterAgentsByStatus(agents, statusFilter);
 
+  // Track consecutive pages that produced no new filtered items
+  useEffect(() => {
+    if (statusFilter === "all") {
+      consecutiveEmptyPagesRef.current = 0;
+      prevFilteredLengthRef.current = filteredAgents.length;
+      return;
+    }
+
+    const newFilteredCount = filteredAgents.length;
+    const previousCount = prevFilteredLengthRef.current;
+
+    if (newFilteredCount > previousCount) {
+      // New filtered items were added, reset counter
+      consecutiveEmptyPagesRef.current = 0;
+    } else if (!isFetchingNextPage && previousCount > 0) {
+      // No new items and not currently fetching means last fetch was empty
+      consecutiveEmptyPagesRef.current++;
+    }
+
+    prevFilteredLengthRef.current = newFilteredCount;
+  }, [filteredAgents.length, statusFilter, isFetchingNextPage]);
+
+  // Reset counter when statusFilter changes
+  useEffect(() => {
+    consecutiveEmptyPagesRef.current = 0;
+    prevFilteredLengthRef.current = 0;
+  }, [statusFilter]);
+
+  // Derive filteredExhausted: stop fetching when threshold reached
+  const filteredExhausted =
+    statusFilter !== "all" &&
+    consecutiveEmptyPagesRef.current >= FILTER_EXHAUST_THRESHOLD;
+
   // When a filter is active, show the filtered count instead of the API total.
   const displayedCount =
     statusFilter === "all" ? allAgentsCount : filteredAgents.length;
@@ -229,7 +266,7 @@ export function useLibraryAgentList({
     allAgentIDs,
     favoritesCount: favoriteAgentsData.agentCount,
     agents: filteredAgents,
-    hasNextPage: agentsHasNextPage,
+    hasNextPage: agentsHasNextPage && !filteredExhausted,
     isFetchingNextPage: agentsIsFetchingNextPage,
     fetchNextPage: agentsFetchNextPage,
     foldersData,
