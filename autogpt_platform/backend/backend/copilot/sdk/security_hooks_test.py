@@ -233,16 +233,15 @@ def _hooks():
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
-async def test_task_background_blocked(_hooks):
-    """Task with run_in_background=true must be denied."""
+async def test_task_background_allowed(_hooks):
+    """Task with run_in_background=true is allowed (SDK handles async lifecycle)."""
     pre, _, _ = _hooks
     result = await pre(
         {"tool_name": "Task", "tool_input": {"run_in_background": True, "prompt": "x"}},
-        tool_use_id=None,
+        tool_use_id="tu-bg-1",
         context={},
     )
-    assert _is_denied(result)
-    assert "foreground" in _reason(result).lower()
+    assert not _is_denied(result)
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
@@ -365,19 +364,18 @@ async def test_task_slot_released_on_failure(_hooks):
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
-async def test_agent_background_blocked(_hooks):
-    """Agent with run_in_background=true must be denied (same as Task)."""
+async def test_agent_background_allowed(_hooks):
+    """Agent with run_in_background=true is allowed (SDK handles async lifecycle)."""
     pre, _, _ = _hooks
     result = await pre(
         {
             "tool_name": "Agent",
             "tool_input": {"run_in_background": True, "prompt": "x"},
         },
-        tool_use_id=None,
+        tool_use_id="tu-agent-bg-1",
         context={},
     )
-    assert _is_denied(result)
-    assert "foreground" in _reason(result).lower()
+    assert not _is_denied(result)
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
@@ -391,6 +389,35 @@ async def test_agent_foreground_allowed(_hooks):
         context={},
     )
     assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_background_agent_counts_against_limit(_hooks):
+    """Background agents still consume concurrency slots."""
+    pre, _, _ = _hooks
+    # Two background agents fill the limit
+    for i in range(2):
+        result = await pre(
+            {
+                "tool_name": "Agent",
+                "tool_input": {"run_in_background": True, "prompt": "bg"},
+            },
+            tool_use_id=f"tu-bglimit-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+    # Third (background or foreground) should be denied
+    result = await pre(
+        {
+            "tool_name": "Agent",
+            "tool_input": {"run_in_background": True, "prompt": "over"},
+        },
+        tool_use_id="tu-bglimit-2",
+        context={},
+    )
+    assert _is_denied(result)
+    assert "Maximum" in _reason(result)
 
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")

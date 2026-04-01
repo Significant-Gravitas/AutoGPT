@@ -185,18 +185,9 @@ def create_security_hooks(
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
             if tool_name in _SUBAGENT_TOOLS:
-                # Block background task execution first — denied calls
-                # should not consume a subtask slot.
-                if tool_input.get("run_in_background"):
-                    logger.info(f"[SDK] Blocked background {tool_name}, user={user_id}")
-                    return cast(
-                        SyncHookJSONOutput,
-                        _deny(
-                            "Background task execution is not supported. "
-                            "Run tasks in the foreground instead "
-                            "(remove the run_in_background parameter)."
-                        ),
-                    )
+                # Background agents are allowed — the SDK returns immediately
+                # with {isAsync: true} and the model polls via TaskOutput.
+                # Still count them against the concurrency limit.
                 if len(task_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
