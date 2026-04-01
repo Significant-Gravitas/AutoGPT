@@ -226,7 +226,7 @@ def create_security_hooks(
             if tool_name in _SUBAGENT_TOOLS and tool_use_id in task_tool_use_ids:
                 task_tool_use_ids.discard(tool_use_id)
                 logger.info(
-                    "[SDK] Task slot released, active=%d/%d, user=%s",
+                    "[SDK] Sub-agent slot released, active=%d/%d, user=%s",
                     len(task_tool_use_ids),
                     max_subtasks,
                     user_id,
@@ -356,7 +356,7 @@ def create_security_hooks(
             agent_type = input_data.get("agent_type", "?")
             transcript = input_data.get("agent_transcript_path", "")
             logger.info(
-                "[SDK] SubagentStop: agent_id=%s, type=%s, user=%s, " "transcript=%s",
+                "[SDK] SubagentStop: agent_id=%s, type=%s, user=%s, transcript=%s",
                 agent_id,
                 agent_type,
                 user_id,
