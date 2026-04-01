@@ -417,8 +417,22 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id="test-org",
+            workspace_id="test-workspace",
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_workspace_admin=True,
+            is_workspace_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.execute_graph(
             user_id=user_id,
+            ctx=ctx,
             graph_id=graph_id,
             graph_version=graph_version,
             inputs=node_input or {},
@@ -441,7 +455,22 @@ class AgentServer(backend.util.service.AppProcess):
         create_graph: backend.api.features.v1.CreateGraph,
         user_id: str,
     ):
-        return await backend.api.features.v1.create_new_graph(create_graph, user_id)
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id="test-org",
+            workspace_id="test-workspace",
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_workspace_admin=True,
+            is_workspace_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.create_new_graph(
+            create_graph, user_id, ctx
+        )
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):

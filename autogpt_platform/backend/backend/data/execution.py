@@ -730,6 +730,8 @@ async def create_graph_execution(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
     is_dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    org_workspace_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -768,6 +770,9 @@ async def create_graph_execution(
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
             **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
+            # Tenancy dual-write fields
+            **({"organizationId": organization_id} if organization_id else {}),
+            **({"orgWorkspaceId": org_workspace_id} if org_workspace_id else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )

@@ -869,6 +869,8 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    org_workspace_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -948,6 +950,8 @@ async def add_graph_execution(
             preset_id=preset_id,
             parent_graph_exec_id=parent_exec_id,
             is_dry_run=dry_run,
+            organization_id=organization_id,
+            org_workspace_id=org_workspace_id,
         )
 
         logger.info(
