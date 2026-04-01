@@ -245,13 +245,43 @@ class GmailBase(Block, ABC):
                     # Keep extraction resilient if html2text is unavailable or fails.
                     return html_content
 
-        # Handle content stored as attachment
-        if body.get("attachmentId"):
+        # Handle content stored as attachment (only for text parts)
+        if body.get("attachmentId") and mime_type.startswith("text/"):
             attachment_data = await self._download_attachment_body(
                 body["attachmentId"], msg_id, service
             )
             if attachment_data:
-                return self._decode_base64(attachment_data)
+                decoded = self._decode_base64(attachment_data)
+                if decoded and mime_type == "text/html":
+                    try:
+                        import html2text
+
+                        h = html2text.HTML2Text()
+                        h.ignore_links = False
+                        h.ignore_images = True
+                        return h.handle(decoded)
+                    except Exception:
+                        return decoded
+                return decoded
+
+        # For multipart/alternative, collect candidates and prefer text/plain
+        if mime_type == "multipart/alternative":
+            plain_text = None
+            html_text = None
+            for sub_part in part.get("parts", []):
+                sub_mime = sub_part.get("mimeType", "")
+                text = await self._walk_for_body(
+                    sub_part, msg_id, service, depth + 1
+                )
+                if text:
+                    if sub_mime == "text/plain":
+                        plain_text = text
+                    elif sub_mime == "text/html":
+                        html_text = text
+                    elif plain_text is None and html_text is None:
+                        # Nested multipart or other type; keep as fallback
+                        html_text = text
+            return plain_text or html_text
 
         # Recursively search in parts
         for sub_part in part.get("parts", []):

@@ -250,3 +250,111 @@ class TestGmailReadBlock:
 
         result = await self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "This email does not contain a readable body."
+
+    @pytest.mark.asyncio
+    async def test_non_text_attachment_ignored(self):
+        """Test that non-text attachments are not fetched as body content."""
+        plain_text = "Actual email body."
+        msg = {
+            "id": "test_msg_10",
+            "payload": {
+                "mimeType": "multipart/mixed",
+                "parts": [
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"data": self._encode_base64(plain_text)},
+                    },
+                    {
+                        "mimeType": "image/png",
+                        "body": {"attachmentId": "img_attachment_1"},
+                    },
+                ],
+            },
+        }
+
+        result = await self.gmail_block._get_email_body(msg, self.mock_service)
+        assert result == plain_text
+
+    @pytest.mark.asyncio
+    async def test_multipart_alternative_prefers_plain_over_html(self):
+        """Test that multipart/alternative prefers text/plain even if HTML comes first."""
+        plain_text = "Plain text version."
+        html_text = "<html><body><p>HTML version.</p></body></html>"
+
+        msg = {
+            "id": "test_msg_11",
+            "payload": {
+                "mimeType": "multipart/alternative",
+                "parts": [
+                    {
+                        "mimeType": "text/html",
+                        "body": {"data": self._encode_base64(html_text)},
+                    },
+                    {
+                        "mimeType": "text/plain",
+                        "body": {"data": self._encode_base64(plain_text)},
+                    },
+                ],
+            },
+        }
+
+        with patch("html2text.HTML2Text") as mock_html2text:
+            mock_converter = Mock()
+            mock_converter.handle.return_value = "HTML version."
+            mock_html2text.return_value = mock_converter
+
+            result = await self.gmail_block._get_email_body(msg, self.mock_service)
+            # Should prefer plain text even though HTML appears first
+            assert result == plain_text
+
+    @pytest.mark.asyncio
+    async def test_multipart_alternative_falls_back_to_html(self):
+        """Test that multipart/alternative falls back to HTML when no plain text."""
+        html_text = "<html><body><p>Only HTML.</p></body></html>"
+
+        msg = {
+            "id": "test_msg_12",
+            "payload": {
+                "mimeType": "multipart/alternative",
+                "parts": [
+                    {
+                        "mimeType": "text/html",
+                        "body": {"data": self._encode_base64(html_text)},
+                    },
+                ],
+            },
+        }
+
+        with patch("html2text.HTML2Text") as mock_html2text:
+            mock_converter = Mock()
+            mock_converter.handle.return_value = "Only HTML."
+            mock_html2text.return_value = mock_converter
+
+            result = await self.gmail_block._get_email_body(msg, self.mock_service)
+            assert result == "Only HTML."
+
+    @pytest.mark.asyncio
+    async def test_html_attachment_body_converted(self):
+        """Test that HTML body stored as attachment is converted to plain text."""
+        html_text = "<html><body><p>Attachment HTML.</p></body></html>"
+        attachment_data = self._encode_base64(html_text)
+
+        msg = {
+            "id": "test_msg_13",
+            "payload": {
+                "mimeType": "text/html",
+                "body": {"attachmentId": "html_att_1"},
+            },
+        }
+
+        self.mock_service.users().messages().attachments().get().execute.return_value = {
+            "data": attachment_data
+        }
+
+        with patch("html2text.HTML2Text") as mock_html2text:
+            mock_converter = Mock()
+            mock_converter.handle.return_value = "Attachment HTML."
+            mock_html2text.return_value = mock_converter
+
+            result = await self.gmail_block._get_email_body(msg, self.mock_service)
+            assert result == "Attachment HTML."
