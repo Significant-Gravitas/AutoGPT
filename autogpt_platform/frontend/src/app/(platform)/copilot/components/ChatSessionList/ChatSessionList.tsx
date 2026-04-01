@@ -28,12 +28,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { DeleteChatDialog } from "@/app/(platform)/copilot/components/DeleteChatDialog/DeleteChatDialog";
 import { UsageLimits } from "@/app/(platform)/copilot/components/UsageLimits/UsageLimits";
 import { NotificationToggle } from "@/app/(platform)/copilot/components/ChatSidebar/components/NotificationToggle/NotificationToggle";
 
 export function ChatSessionList() {
+  const isMobile = useIsMobile();
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const {
     sessionToDelete,
@@ -355,12 +357,14 @@ export function ChatSessionList() {
         )}
       </div>
 
-      <DeleteChatDialog
-        session={sessionToDelete}
-        isDeleting={isDeleting}
-        onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
-      />
+      {!isMobile && (
+        <DeleteChatDialog
+          session={sessionToDelete}
+          isDeleting={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCancelDelete}
+        />
+      )}
     </>
   );
 }
