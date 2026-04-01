@@ -19,6 +19,7 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import thread_cached
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -304,15 +305,12 @@ def is_system_provider(provider: str) -> bool:
 
 
 class IntegrationCredentialsStore:
-    def __init__(self):
-        self._locks = None
-
+    @thread_cached
     async def locks(self) -> AsyncRedisKeyedMutex:
-        if self._locks:
-            return self._locks
-
-        self._locks = AsyncRedisKeyedMutex(await get_redis_async())
-        return self._locks
+        # Per-thread: copilot executor runs worker threads with separate event
+        # loops; AsyncRedisKeyedMutex's internal asyncio.Lock is bound to the
+        # loop it was created on.
+        return AsyncRedisKeyedMutex(await get_redis_async())
 
     @property
     def db_manager(self):

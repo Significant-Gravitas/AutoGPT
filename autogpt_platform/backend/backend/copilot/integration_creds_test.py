@@ -129,8 +129,15 @@ class TestGetProviderToken:
         assert result == "oauth-tok"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_oauth2_refresh_failure_returns_none(self):
-        """On refresh failure, return None instead of caching a stale token."""
+    async def test_oauth2_refresh_failure_returns_none_without_null_cache(self):
+        """On refresh failure, return None but do NOT cache in null_cache.
+
+        The user has credentials — they just couldn't be refreshed right now
+        (e.g. transient network error or event-loop mismatch in the copilot
+        executor).  Caching a negative result would block all credential
+        lookups for 60 s even though the creds exist and may refresh fine
+        on the next attempt.
+        """
         oauth_creds = _make_oauth2_creds("stale-oauth-tok")
         mock_manager = MagicMock()
         mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth_creds])
@@ -141,6 +148,8 @@ class TestGetProviderToken:
 
         # Stale tokens must NOT be returned — forces re-auth.
         assert result is None
+        # Must NOT cache negative result when refresh failed — next call retries.
+        assert (_USER, _PROVIDER) not in _null_cache
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_credentials_caches_null_entry(self):
@@ -174,6 +183,96 @@ class TestGetProviderToken:
         assert _null_cache.ttl == _NULL_CACHE_TTL
         assert _token_cache.ttl == _TOKEN_CACHE_TTL
         assert _NULL_CACHE_TTL < _TOKEN_CACHE_TTL
+
+
+class TestThreadSafetyLocks:
+    """Bug reproduction: shared AsyncRedisKeyedMutex across threads caused
+    'Future attached to a different loop' when copilot workers accessed
+    credentials from different event loops."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_store_locks_returns_per_thread_instance(self):
+        """IntegrationCredentialsStore.locks() must return different instances
+        for different threads (via @thread_cached)."""
+        import asyncio
+        import concurrent.futures
+
+        from backend.integrations.credentials_store import IntegrationCredentialsStore
+
+        store = IntegrationCredentialsStore()
+
+        async def get_locks_id():
+            mock_redis = AsyncMock()
+            with patch(
+                "backend.integrations.credentials_store.get_redis_async",
+                return_value=mock_redis,
+            ):
+                locks = await store.locks()
+                return id(locks)
+
+        # Get locks from main thread
+        main_id = await get_locks_id()
+
+        # Get locks from a worker thread
+        def run_in_thread():
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(get_locks_id())
+            finally:
+                loop.close()
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            worker_id = await asyncio.get_event_loop().run_in_executor(
+                pool, run_in_thread
+            )
+
+        assert main_id != worker_id, (
+            "Store.locks() returned the same instance across threads. "
+            "This would cause 'Future attached to a different loop' errors."
+        )
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_manager_delegates_to_store_locks(self):
+        """IntegrationCredentialsManager.locks() should delegate to store."""
+        from backend.integrations.creds_manager import IntegrationCredentialsManager
+
+        manager = IntegrationCredentialsManager()
+        mock_redis = AsyncMock()
+
+        with patch(
+            "backend.integrations.credentials_store.get_redis_async",
+            return_value=mock_redis,
+        ):
+            locks = await manager.locks()
+
+        # Should have gotten it from the store
+        assert locks is not None
+
+
+class TestRefreshUnlockedPath:
+    """Bug reproduction: copilot worker threads need lock-free refresh because
+    Redis-backed asyncio.Lock created on one event loop can't be used on another."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_refresh_if_needed_lock_false_skips_redis(self):
+        """refresh_if_needed(lock=False) must not touch Redis locks at all."""
+        from backend.integrations.creds_manager import IntegrationCredentialsManager
+
+        manager = IntegrationCredentialsManager()
+        creds = _make_oauth2_creds()
+
+        mock_handler = MagicMock()
+        mock_handler.needs_refresh = MagicMock(return_value=False)
+
+        with patch(
+            "backend.integrations.creds_manager._get_provider_oauth_handler",
+            new_callable=AsyncMock,
+            return_value=mock_handler,
+        ):
+            result = await manager.refresh_if_needed(_USER, creds, lock=False)
+
+        # Should return credentials without touching locks
+        assert result.id == creds.id
 
 
 class TestGetIntegrationEnvVars:
