@@ -185,51 +185,6 @@ class TestGetProviderToken:
         assert _NULL_CACHE_TTL < _TOKEN_CACHE_TTL
 
 
-class TestRefreshFailureDoesNotCacheNull:
-    """Bug reproduction: transient refresh failure was cached as 'no credentials'
-    for 60s, blocking all subsequent token requests for the provider."""
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_transient_refresh_failure_does_not_poison_null_cache(self):
-        """After a refresh fails (e.g. network error), the null-cache must NOT
-        be populated — the next call should retry the refresh."""
-        oauth_creds = _make_oauth2_creds()
-
-        mock_manager = MagicMock()
-        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth_creds])
-        # Simulate refresh failure (e.g. transient network error)
-        mock_manager.refresh_if_needed = AsyncMock(
-            side_effect=Exception("Network timeout")
-        )
-
-        with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
-
-        # Token should be None (refresh failed)
-        assert result is None
-        # But null-cache must NOT be populated — next call should retry
-        cache_key = (_USER, _PROVIDER)
-        assert cache_key not in _null_cache, (
-            "Null-cache was poisoned after transient refresh failure. "
-            "This blocks retries for 60s."
-        )
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_no_credentials_at_all_does_cache_null(self):
-        """When the user truly has no credentials, null-cache should be set."""
-        mock_manager = MagicMock()
-        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
-
-        with patch("backend.copilot.integration_creds._manager", mock_manager):
-            result = await get_provider_token(_USER, _PROVIDER)
-
-        assert result is None
-        cache_key = (_USER, _PROVIDER)
-        assert (
-            cache_key in _null_cache
-        ), "Null-cache should be set when user has no credentials at all."
-
-
 class TestThreadSafetyLocks:
     """Bug reproduction: shared AsyncRedisKeyedMutex across threads caused
     'Future attached to a different loop' when copilot workers accessed

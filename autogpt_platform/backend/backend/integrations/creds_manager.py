@@ -196,14 +196,19 @@ class IntegrationCredentialsManager:
             return await self._refresh_locked(user_id, credentials)
         return await self._refresh_unlocked(user_id, credentials)
 
+    async def _get_oauth_handler(
+        self, credentials: OAuth2Credentials
+    ) -> "BaseOAuthHandler":
+        """Resolve the appropriate OAuth handler for the given credentials."""
+        if provider_matches(credentials.provider, ProviderName.MCP.value):
+            return create_mcp_oauth_handler(credentials)
+        return await _get_provider_oauth_handler(credentials.provider)
+
     async def _refresh_locked(
         self, user_id: str, credentials: OAuth2Credentials
     ) -> OAuth2Credentials:
         async with self._locked(user_id, credentials.id, "refresh"):
-            if provider_matches(credentials.provider, ProviderName.MCP.value):
-                oauth_handler = create_mcp_oauth_handler(credentials)
-            else:
-                oauth_handler = await _get_provider_oauth_handler(credentials.provider)
+            oauth_handler = await self._get_oauth_handler(credentials)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
                     "Refreshing '%s' credentials #%s",
@@ -238,10 +243,7 @@ class IntegrationCredentialsManager:
         is not possible.  Concurrent refreshes are tolerated: the last writer
         wins, and stale tokens are overwritten.
         """
-        if provider_matches(credentials.provider, ProviderName.MCP.value):
-            oauth_handler = create_mcp_oauth_handler(credentials)
-        else:
-            oauth_handler = await _get_provider_oauth_handler(credentials.provider)
+        oauth_handler = await self._get_oauth_handler(credentials)
         if oauth_handler.needs_refresh(credentials):
             logger.debug(
                 "Refreshing '%s' credentials #%s (lock-free)",
@@ -299,7 +301,6 @@ class IntegrationCredentialsManager:
 
     async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
-        await (await self.locks()).release_all_locks()
         await (await self.store.locks()).release_all_locks()
 
 
