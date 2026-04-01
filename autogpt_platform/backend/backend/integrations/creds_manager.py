@@ -107,8 +107,10 @@ class IntegrationCredentialsManager:
         self.store = IntegrationCredentialsStore()
 
     async def locks(self) -> AsyncRedisKeyedMutex:
-        # Delegate to the store's thread-cached locks — both need per-thread
-        # AsyncRedisKeyedMutex instances (copilot workers have separate event loops).
+        # Delegate to store's @thread_cached locks.  Manager uses these for
+        # fine-grained per-credential locking (refresh, acquire); the store
+        # uses its own for coarse per-user integrations locking.  Same mutex
+        # type, different key spaces — no collision.
         return await self.store.locks()
 
     async def create(self, user_id: str, credentials: Credentials) -> None:
