@@ -198,12 +198,14 @@ export default function UserIntegrationsPage() {
                 </small>
               </TableCell>
               <TableCell className="w-0 whitespace-nowrap">
-                <Button
-                  variant="destructive"
-                  onClick={() => removeCredentials(cred.provider, cred.id)}
-                >
-                  <Trash2Icon className="mr-1.5 size-4" /> Delete
-                </Button>
+                {!cred.is_managed && (
+                  <Button
+                    variant="destructive"
+                    onClick={() => removeCredentials(cred.provider, cred.id)}
+                  >
+                    <Trash2Icon className="mr-1.5 size-4" /> Delete
+                  </Button>
+                )}
               </TableCell>
             </TableRow>
           ))}
