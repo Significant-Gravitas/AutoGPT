@@ -1860,19 +1860,19 @@ async def stream_chat_completion_sdk(
         # Fail fast when no API credentials are available at all.
         sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
 
-        # Route the CLI's temp directory and project data into the
-        # per-session workspace so that sub-agent output files, tool-result
-        # persisted JSON, and .claude/projects/ state all land inside
-        # sdk_cwd — accessible to is_allowed_local_path() and file_ref
-        # expansion without widening the security boundary.
+        # Route the CLI's temp directory into the per-session workspace so
+        # sub-agent output files land inside sdk_cwd — accessible to
+        # is_allowed_local_path() and @@agptfile: expansion without
+        # widening the security boundary.
         #
-        # Without this, the CLI writes to:
-        #   /tmp/claude-<uid>/   (CLAUDE_CODE_TMPDIR default)
-        #   $HOME/.claude/       (project state)
-        # Both are outside sdk_cwd and inaccessible (PermissionError in E2B,
-        # file-not-found for @@agptfile: expansion).
+        # Without this, the CLI writes sub-agent output to
+        # /tmp/claude-<uid>/ which is outside sdk_cwd and inaccessible
+        # (file-not-found for @@agptfile: expansion).
+        #
+        # NOTE: We intentionally do NOT override HOME here. The CLI
+        # stores auth credentials in $HOME/.claude/ — overriding HOME
+        # would break subscription mode (claude login) authentication.
         sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        sdk_env["HOME"] = sdk_cwd
 
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
