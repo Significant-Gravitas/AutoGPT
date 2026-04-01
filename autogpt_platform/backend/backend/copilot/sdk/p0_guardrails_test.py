@@ -61,6 +61,7 @@ class TestResolveFallbackModel:
 
             result = _resolve_fallback_model()
 
+        assert result is not None
         assert "." not in result
         assert result == "claude-sonnet-4-5-20250514"
 
