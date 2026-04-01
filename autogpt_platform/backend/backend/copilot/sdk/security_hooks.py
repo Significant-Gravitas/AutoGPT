@@ -299,10 +299,14 @@ def create_security_hooks(
             """Log failed tool executions for debugging."""
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
-            error = input_data.get("error", "Unknown error")
+            error = _sanitize(str(input_data.get("error", "Unknown error")))
+            safe_tool_use_id = _sanitize(str(tool_use_id or ""))
             logger.warning(
-                f"[SDK] Tool failed: {tool_name}, error={error}, "
-                f"user={user_id}, tool_use_id={tool_use_id}"
+                "[SDK] Tool failed: %s, error=%s, user=%s, tool_use_id=%s",
+                tool_name,
+                error,
+                user_id,
+                safe_tool_use_id,
             )
 
             _release_task_slot(tool_name, tool_use_id)
@@ -320,7 +324,7 @@ def create_security_hooks(
             This hook provides visibility into when compaction happens.
             """
             _ = context, tool_use_id
-            trigger = input_data.get("trigger", "auto")
+            trigger = _sanitize(str(input_data.get("trigger", "auto")), max_len=50)
             # Sanitize untrusted input: strip control chars for logging AND
             # for the value passed downstream.  read_compacted_entries()
             # validates against _projects_base() as defence-in-depth, but
