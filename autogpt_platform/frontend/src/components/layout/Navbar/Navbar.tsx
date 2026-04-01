@@ -2,7 +2,8 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
-import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/__legacy__/ui/icons";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
@@ -84,8 +85,8 @@ export function Navbar() {
           ) : null}
 
           {/* Centered logo */}
-          <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
-            <IconAutoGPTLogo className="h-full w-full" />
+          <div className="static md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
+            <AutoGPTLogo className="h-auto w-[4.5rem] md:w-[5.5rem]" />
           </div>
 
           {/* Right section */}

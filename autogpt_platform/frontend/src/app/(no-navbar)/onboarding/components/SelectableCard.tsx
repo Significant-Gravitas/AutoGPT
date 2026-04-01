@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -7,22 +8,38 @@ interface Props {
   label: string;
   selected: boolean;
   onClick: () => void;
+  className?: string;
 }
 
-export function SelectableCard({ icon, label, selected, onClick }: Props) {
+export function SelectableCard({
+  icon,
+  label,
+  selected,
+  onClick,
+  className,
+}: Props) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-xl border-2 bg-white p-4 transition-all hover:shadow-sm",
+        "flex h-[9rem] w-[10.375rem] shrink-0 flex-col items-center justify-center gap-3 rounded-xl border-2 bg-white px-6 py-5 transition-all hover:shadow-sm md:shrink lg:gap-4 lg:px-10 lg:py-8",
+        className,
         selected
-          ? "border-primary bg-primary/5 shadow-sm"
+          ? "border-purple-500 bg-purple-50 shadow-sm"
           : "border-transparent",
       )}
     >
-      <span className="text-2xl">{icon}</span>
-      <span className="text-sm font-medium">{label}</span>
+      <Text
+        variant="lead"
+        as="span"
+        className={selected ? "text-neutral-900" : "text-purple-600"}
+      >
+        {icon}
+      </Text>
+      <Text variant="body-medium" as="span" className="whitespace-nowrap">
+        {label}
+      </Text>
     </button>
   );
 }

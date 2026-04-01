@@ -225,7 +225,7 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={props.id} className="flex flex-col gap-2">
+    <label htmlFor={props.id} className="flex w-full flex-col gap-2">
       <div className="flex items-center justify-between">
         <Text variant="large-medium" as="span" className="text-black">
           {label}
