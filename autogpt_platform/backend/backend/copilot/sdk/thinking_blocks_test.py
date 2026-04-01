@@ -392,7 +392,7 @@ class TestFlattenThinkingBlocks:
         assert result == ""
 
     def test_mixed_thinking_text_tool(self):
-        """Mixed blocks: only text and tool_use survive flattening."""
+        """Mixed blocks: only text survives flattening; thinking and tool_use dropped."""
         blocks = [
             {"type": "thinking", "thinking": "hmm", "signature": "sig"},
             {"type": "redacted_thinking", "data": "xyz"},
@@ -403,7 +403,8 @@ class TestFlattenThinkingBlocks:
         assert "hmm" not in result
         assert "xyz" not in result
         assert "I'll read the file." in result
-        assert "[tool_use: Read]" in result
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert "Read" not in result
 
 
 # ---------------------------------------------------------------------------

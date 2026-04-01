@@ -13,6 +13,7 @@ from .transcript import (
     delete_transcript,
     read_compacted_entries,
     strip_progress_entries,
+    strip_stale_thinking_blocks,
     validate_transcript,
     write_transcript_to_tempfile,
 )
@@ -1200,3 +1201,170 @@ class TestCleanupStaleProjectDirs:
         removed = cleanup_stale_project_dirs(encoded_cwd="some-other-project")
         assert removed == 0
         assert non_copilot.exists()
+
+
+# ---------------------------------------------------------------------------
+# strip_stale_thinking_blocks
+# ---------------------------------------------------------------------------
+
+
+class TestStripStaleThinkingBlocks:
+    """Tests for strip_stale_thinking_blocks — removes thinking/redacted_thinking
+    blocks from non-last assistant entries to reduce transcript bloat."""
+
+    def _asst_entry(
+        self, msg_id: str, content: list, uuid: str = "u1", parent: str = ""
+    ) -> dict:
+        return {
+            "type": "assistant",
+            "uuid": uuid,
+            "parentUuid": parent,
+            "message": {
+                "role": "assistant",
+                "id": msg_id,
+                "type": "message",
+                "content": content,
+            },
+        }
+
+    def _user_entry(self, text: str, uuid: str = "u0", parent: str = "") -> dict:
+        return {
+            "type": "user",
+            "uuid": uuid,
+            "parentUuid": parent,
+            "message": {"role": "user", "content": text},
+        }
+
+    def test_strips_thinking_from_older_assistant(self) -> None:
+        """Thinking blocks in non-last assistant entries should be removed."""
+        old_asst = self._asst_entry(
+            "msg_old",
+            [
+                {"type": "thinking", "thinking": "deep thoughts..."},
+                {"type": "text", "text": "hello"},
+                {"type": "redacted_thinking", "data": "secret"},
+            ],
+            uuid="a1",
+        )
+        new_asst = self._asst_entry(
+            "msg_new",
+            [
+                {"type": "thinking", "thinking": "latest thoughts"},
+                {"type": "text", "text": "world"},
+            ],
+            uuid="a2",
+            parent="a1",
+        )
+        content = _make_jsonl(old_asst, new_asst)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+
+        # Old assistant should have thinking blocks stripped
+        old_content = lines[0]["message"]["content"]
+        assert len(old_content) == 1
+        assert old_content[0]["type"] == "text"
+
+        # New (last) assistant should be untouched
+        new_content = lines[1]["message"]["content"]
+        assert len(new_content) == 2
+        assert new_content[0]["type"] == "thinking"
+        assert new_content[1]["type"] == "text"
+
+    def test_preserves_last_assistant_thinking(self) -> None:
+        """The last assistant entry's thinking blocks must be preserved."""
+        entry = self._asst_entry(
+            "msg_only",
+            [
+                {"type": "thinking", "thinking": "must keep"},
+                {"type": "text", "text": "response"},
+            ],
+        )
+        content = _make_jsonl(entry)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+        assert len(lines[0]["message"]["content"]) == 2
+
+    def test_no_assistant_entries_returns_unchanged(self) -> None:
+        """Transcripts with only user entries should pass through unchanged."""
+        user = self._user_entry("hello")
+        content = _make_jsonl(user)
+        assert strip_stale_thinking_blocks(content) == content
+
+    def test_empty_content_returns_unchanged(self) -> None:
+        assert strip_stale_thinking_blocks("") == ""
+
+    def test_multiple_turns_strips_all_but_last(self) -> None:
+        """With 3 assistant turns, only the last keeps thinking blocks."""
+        entries = [
+            self._asst_entry(
+                "msg_1",
+                [
+                    {"type": "thinking", "thinking": "t1"},
+                    {"type": "text", "text": "a1"},
+                ],
+                uuid="a1",
+            ),
+            self._user_entry("q2", uuid="u2", parent="a1"),
+            self._asst_entry(
+                "msg_2",
+                [
+                    {"type": "thinking", "thinking": "t2"},
+                    {"type": "text", "text": "a2"},
+                ],
+                uuid="a2",
+                parent="u2",
+            ),
+            self._user_entry("q3", uuid="u3", parent="a2"),
+            self._asst_entry(
+                "msg_3",
+                [
+                    {"type": "thinking", "thinking": "t3"},
+                    {"type": "text", "text": "a3"},
+                ],
+                uuid="a3",
+                parent="u3",
+            ),
+        ]
+        content = _make_jsonl(*entries)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+
+        # msg_1: thinking stripped
+        assert len(lines[0]["message"]["content"]) == 1
+        assert lines[0]["message"]["content"][0]["type"] == "text"
+        # msg_2: thinking stripped
+        assert len(lines[2]["message"]["content"]) == 1
+        # msg_3 (last): thinking preserved
+        assert len(lines[4]["message"]["content"]) == 2
+        assert lines[4]["message"]["content"][0]["type"] == "thinking"
+
+    def test_same_msg_id_multi_entry_turn(self) -> None:
+        """Multiple entries sharing the same message.id (same turn) are preserved."""
+        entries = [
+            self._asst_entry(
+                "msg_old",
+                [{"type": "thinking", "thinking": "old"}],
+                uuid="a1",
+            ),
+            self._asst_entry(
+                "msg_last",
+                [{"type": "thinking", "thinking": "t_part1"}],
+                uuid="a2",
+                parent="a1",
+            ),
+            self._asst_entry(
+                "msg_last",
+                [{"type": "text", "text": "response"}],
+                uuid="a3",
+                parent="a2",
+            ),
+        ]
+        content = _make_jsonl(*entries)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+
+        # Old entry stripped
+        assert lines[0]["message"]["content"] == []
+        # Both entries of last turn (msg_last) preserved
+        assert lines[1]["message"]["content"][0]["type"] == "thinking"
+        assert lines[2]["message"]["content"][0]["type"] == "text"
