@@ -1090,6 +1090,7 @@ async def get_graph(
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
+    workspace_id: str | None = None,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -1103,14 +1104,18 @@ async def get_graph(
     graph = None
 
     # Only search graph directly on owned graph (or access check is skipped)
-    if skip_access_check or user_id is not None:
+    if skip_access_check or user_id is not None or workspace_id is not None:
         graph_where_clause: AgentGraphWhereInput = {
             "id": graph_id,
         }
         if version is not None:
             graph_where_clause["version"] = version
-        if not skip_access_check and user_id is not None:
-            graph_where_clause["userId"] = user_id
+        # Prefer workspace_id scoping over user_id when both are available
+        if not skip_access_check:
+            if workspace_id is not None:
+                graph_where_clause["orgWorkspaceId"] = workspace_id
+            elif user_id is not None:
+                graph_where_clause["userId"] = user_id
 
         graph = await AgentGraph.prisma().find_first(
             where=graph_where_clause,
@@ -1333,10 +1338,19 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
 
 
 async def get_graph_all_versions(
-    graph_id: str, user_id: str, limit: int = MAX_GRAPH_VERSIONS_FETCH
+    graph_id: str,
+    user_id: str,
+    limit: int = MAX_GRAPH_VERSIONS_FETCH,
+    workspace_id: str | None = None,
 ) -> list[GraphModel]:
+    where_clause: AgentGraphWhereInput = {"id": graph_id}
+    if workspace_id is not None:
+        where_clause["orgWorkspaceId"] = workspace_id
+    else:
+        where_clause["userId"] = user_id
+
     graph_versions = await AgentGraph.prisma().find_many(
-        where={"id": graph_id, "userId": user_id},
+        where=where_clause,
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
         take=limit,
