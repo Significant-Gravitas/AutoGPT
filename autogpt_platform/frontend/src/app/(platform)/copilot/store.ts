@@ -115,6 +115,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       isNotificationsEnabled: false,
       isSoundEnabled: true,
     });
-    document.title = ORIGINAL_TITLE;
+    if (isClient) {
+      document.title = ORIGINAL_TITLE;
+    }
   },
 }));

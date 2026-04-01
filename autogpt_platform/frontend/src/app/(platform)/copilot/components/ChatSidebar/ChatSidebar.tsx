@@ -124,7 +124,7 @@ export function ChatSidebar() {
   useEffect(() => {
     if (!sessionId || !completedSessionIDs.has(sessionId)) return;
     clearCompletedSession(sessionId);
-    const remaining = completedSessionIDs.size - 1;
+    const remaining = Math.max(0, completedSessionIDs.size - 1);
     document.title = formatNotificationTitle(remaining);
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
