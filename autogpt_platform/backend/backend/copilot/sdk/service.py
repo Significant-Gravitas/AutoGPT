@@ -572,14 +572,18 @@ def _resolve_sdk_model() -> str | None:
 def _resolve_fallback_model() -> str | None:
     """Resolve the fallback model name with the same provider-aware logic.
 
-    Applies the same dot-to-hyphen normalisation as :func:`_resolve_sdk_model`
-    so the fallback model works correctly with both OpenRouter (dots) and
-    direct Anthropic (hyphens).  Returns ``None`` when no fallback is
-    configured (empty string).
+    Applies the same provider-prefix stripping and dot-to-hyphen
+    normalisation as :func:`_resolve_sdk_model` so the fallback model
+    works correctly with both OpenRouter (dots) and direct Anthropic
+    (hyphens).  Returns ``None`` when no fallback is configured (empty
+    string).
     """
     raw = config.claude_agent_fallback_model
     if not raw:
         return None
+    # Strip OpenRouter provider prefix (e.g. "anthropic/claude-sonnet-4-...")
+    if "/" in raw:
+        raw = raw.split("/", 1)[1]
     if not config.openrouter_active:
         raw = raw.replace(".", "-")
     return raw
@@ -2033,8 +2037,10 @@ async def stream_chat_completion_sdk(
             Mutates outer ``transient_retries`` via nonlocal.
             """
             nonlocal transient_retries
+            if events_yielded > 0:
+                return None
             transient_retries += 1
-            if events_yielded > 0 or transient_retries >= max_transient:
+            if transient_retries > max_transient:
                 return None
             return 2 ** (transient_retries - 1)  # 1s, 2s, 4s, ...
 
