@@ -1310,10 +1310,16 @@ async def _run_stream_attempt(
                 # AssistantMessage.error (not as a Python exception).
                 # Re-raise so the outer retry loop can compact the
                 # transcript and retry with reduced context.
-                # Only check error_text (the error field), not the
-                # content preview — content may contain arbitrary text
-                # that false-positives the pattern match.
-                if _is_prompt_too_long(Exception(error_text)):
+                # Check both error_text and error_preview: sdk_error
+                # being set confirms this is an error message (not user
+                # content), so checking content is safe. The actual
+                # error description (e.g. "Prompt is too long") may be
+                # in the content, not the error type field
+                # (e.g. error="invalid_request", content="Prompt is
+                # too long").
+                if _is_prompt_too_long(Exception(error_text)) or _is_prompt_too_long(
+                    Exception(error_preview)
+                ):
                     logger.warning(
                         "%s Prompt-too-long detected via AssistantMessage "
                         "error — raising for retry",
@@ -1414,13 +1420,16 @@ async def _run_stream_attempt(
                         ctx.log_prefix,
                         sdk_msg.result or "(no error message provided)",
                     )
-                    # If the CLI itself rejected the prompt as too long
-                    # (pre-API check, duration_api_ms=0), re-raise as an
-                    # exception so the retry loop can trigger compaction.
-                    # Without this, the ResultMessage is silently consumed
-                    # and the retry/compaction mechanism is never invoked.
-                    if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
-                        raise RuntimeError("Prompt is too long")
+
+                # Check for prompt-too-long regardless of subtype — the
+                # SDK may return subtype="success" with result="Prompt is
+                # too long" when the CLI rejects the prompt before calling
+                # the API (cost_usd=0, no tokens consumed).  If we only
+                # check the "error" subtype path, the stream appears to
+                # complete normally, the synthetic error text is stored
+                # in the transcript, and the session grows without bound.
+                if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
+                    raise RuntimeError("Prompt is too long")
 
                 # Capture token usage from ResultMessage.
                 # Anthropic reports cached tokens separately:
