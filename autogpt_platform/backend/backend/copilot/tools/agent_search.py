@@ -245,8 +245,13 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
         except Exception as e:
             logger.warning("Failed to fetch graph for agent %s: %s", graph_id, e)
 
-    async with asyncio.timeout(_GRAPH_FETCH_TIMEOUT):
-        await asyncio.gather(*[_fetch(a) for a in fetchable])
+    try:
+        async with asyncio.timeout(_GRAPH_FETCH_TIMEOUT):
+            await asyncio.gather(*[_fetch(a) for a in fetchable])
+    except TimeoutError:
+        logger.warning(
+            "include_graph: timed out after %ds fetching graphs", _GRAPH_FETCH_TIMEOUT
+        )
 
     skipped = len(with_graph_id) - len(fetchable)
     if skipped > 0:
