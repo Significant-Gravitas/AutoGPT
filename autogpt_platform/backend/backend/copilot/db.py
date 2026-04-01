@@ -19,7 +19,13 @@ from pydantic import BaseModel
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSession, ChatSessionInfo
+from .model import (
+    ChatMessage,
+    ChatSession,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    invalidate_session_cache,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +161,7 @@ async def get_chat_messages_paginated(
 async def create_chat_session(
     session_id: str,
     user_id: str,
+    metadata: ChatSessionMetadata | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
@@ -163,6 +170,7 @@ async def create_chat_session(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
+        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
     return ChatSessionInfo.from_db(prisma_session)
@@ -177,7 +185,12 @@ async def update_chat_session(
     total_completion_tokens: int | None = None,
     title: str | None = None,
 ) -> ChatSession | None:
-    """Update a chat session's metadata."""
+    """Update a chat session's mutable fields.
+
+    Note: ``metadata`` (which includes ``dry_run``) is intentionally omitted —
+    it is set once at creation time and treated as immutable for the lifetime
+    of the session.
+    """
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
 
     if credentials is not None:
@@ -337,6 +350,9 @@ async def add_chat_messages_batch(
                     if msg.get("function_call") is not None:
                         data["functionCall"] = SafeJson(msg["function_call"])
 
+                    if msg.get("duration_ms") is not None:
+                        data["durationMs"] = msg["duration_ms"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -479,3 +495,22 @@ async def update_tool_message_content(
             f"tool_call_id {tool_call_id}: {e}"
         )
         return False
+
+
+async def set_turn_duration(session_id: str, duration_ms: int) -> None:
+    """Set durationMs on the last assistant message in a session.
+
+    Also invalidates the Redis session cache so the next GET returns
+    the updated duration.
+    """
+    last_msg = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "role": "assistant"},
+        order={"sequence": "desc"},
+    )
+    if last_msg:
+        await PrismaChatMessage.prisma().update(
+            where={"id": last_msg.id},
+            data={"durationMs": duration_ms},
+        )
+        # Invalidate cache so the session is re-fetched from DB with durationMs
+        await invalidate_session_cache(session_id)

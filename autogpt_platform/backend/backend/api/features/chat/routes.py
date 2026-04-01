@@ -11,7 +11,7 @@ from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -21,6 +21,7 @@ from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
     append_and_save_message,
     create_chat_session,
     delete_chat_session,
@@ -113,12 +114,25 @@ class StreamChatRequest(BaseModel):
     )  # Workspace file IDs attached to this message
 
 
+class CreateSessionRequest(BaseModel):
+    """Request model for creating a new chat session.
+
+    ``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.
+    Extra/unknown fields are rejected (422) to prevent silent mis-use.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool = False
+
+
 class CreateSessionResponse(BaseModel):
     """Response model containing information on a newly created chat session."""
 
     id: str
     created_at: str
     user_id: str | None
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
 
 
 class ActiveStreamInfo(BaseModel):
@@ -141,6 +155,7 @@ class SessionDetailResponse(BaseModel):
     oldest_sequence: int | None = None
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
 
 
 class SessionSummaryResponse(BaseModel):
@@ -251,6 +266,7 @@ async def list_sessions(
 )
 async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
+    request: CreateSessionRequest | None = None,
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -259,22 +275,28 @@ async def create_session(
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
+        request: Optional request body. When provided, ``dry_run=True``
+            forces run_block and run_agent calls to use dry-run simulation.
 
     Returns:
         CreateSessionResponse: Details of the created session.
 
     """
+    dry_run = request.dry_run if request else False
+
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
+        f"{', dry_run=True' if dry_run else ''}"
     )
 
-    session = await create_chat_session(user_id)
+    session = await create_chat_session(user_id, dry_run=dry_run)
 
     return CreateSessionResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
+        metadata=session.metadata,
     )
 
 
@@ -441,6 +463,7 @@ async def get_session(
         oldest_sequence=page.oldest_sequence,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
+        metadata=session.metadata,
     )
 
 
@@ -1195,7 +1218,7 @@ async def health_check() -> dict:
     )
 
     # Create and retrieve session to verify full data layer
-    session = await create_chat_session(health_check_user_id)
+    session = await create_chat_session(health_check_user_id, dry_run=False)
     await get_chat_session(session.session_id, health_check_user_id)
 
     return {

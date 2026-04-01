@@ -30,6 +30,8 @@ export interface ChatContainerProps {
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
   onDroppedFilesConsumed?: () => void;
+  /** Duration in ms for historical turns, keyed by message ID. */
+  historicalDurations?: Map<string, number>;
 }
 export const ChatContainer = ({
   messages,
@@ -50,6 +52,7 @@ export const ChatContainer = ({
   onLoadMore,
   droppedFiles,
   onDroppedFilesConsumed,
+  historicalDurations,
 }: ChatContainerProps) => {
   const isBusy =
     status === "streaming" ||
@@ -90,6 +93,7 @@ export const ChatContainer = ({
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
+                historicalDurations={historicalDurations}
               />
               <motion.div
                 initial={{ opacity: 0 }}

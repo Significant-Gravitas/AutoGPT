@@ -91,7 +91,7 @@ export function useLoadMoreMessages({
         sessionId,
         olderRawMessages,
         { isComplete: true, extraToolOutputs },
-      );
+      ).messages;
     }, [sessionId, olderRawMessages, initialPageRawMessages]);
 
   async function loadMore() {

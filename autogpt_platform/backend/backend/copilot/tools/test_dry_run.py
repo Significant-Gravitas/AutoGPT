@@ -73,7 +73,10 @@ def make_openai_response(
 
 @pytest.mark.asyncio
 async def test_simulate_block_basic():
-    """simulate_block returns correct (output_name, output_data) tuples."""
+    """simulate_block returns correct (output_name, output_data) tuples.
+
+    Empty "error" pins are dropped at source — only non-empty errors are yielded.
+    """
     mock_block = make_mock_block()
     mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(
@@ -88,7 +91,8 @@ async def test_simulate_block_basic():
             outputs.append((name, data))
 
     assert ("result", "simulated output") in outputs
-    assert ("error", "") in outputs
+    # Empty error pin is dropped at the simulator level
+    assert ("error", "") not in outputs
 
 
 @pytest.mark.asyncio
@@ -113,6 +117,8 @@ async def test_simulate_block_json_retry():
 
     assert mock_client.chat.completions.create.call_count == 3
     assert ("result", "ok") in outputs
+    # Empty error pin is dropped
+    assert ("error", "") not in outputs
 
 
 @pytest.mark.asyncio
@@ -141,7 +147,7 @@ async def test_simulate_block_all_retries_exhausted():
 
 @pytest.mark.asyncio
 async def test_simulate_block_missing_output_pins():
-    """LLM response missing some output pins; verify they're filled with None."""
+    """LLM response missing some output pins; verify non-error pins filled with None."""
     mock_block = make_mock_block(
         output_props={
             "result": {"type": "string"},
@@ -164,7 +170,29 @@ async def test_simulate_block_missing_output_pins():
 
     assert outputs["result"] == "hello"
     assert outputs["count"] is None  # missing pin filled with None
-    assert outputs["error"] == ""  # "error" pin filled with ""
+    assert "error" not in outputs  # missing error pin is omitted entirely
+
+
+@pytest.mark.asyncio
+async def test_simulate_block_keeps_nonempty_error():
+    """simulate_block keeps non-empty error pins (simulated logical errors)."""
+    mock_block = make_mock_block()
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(
+        return_value=make_openai_response(
+            '{"result": "", "error": "API rate limit exceeded"}'
+        )
+    )
+
+    with patch(
+        "backend.executor.simulator.get_openai_client", return_value=mock_client
+    ):
+        outputs = []
+        async for name, data in simulate_block(mock_block, {"query": "test"}):
+            outputs.append((name, data))
+
+    assert ("result", "") in outputs
+    assert ("error", "API rate limit exceeded") in outputs
 
 
 @pytest.mark.asyncio
@@ -198,6 +226,19 @@ async def test_simulate_block_truncates_long_inputs():
     # And the total length of the value in the prompt should be well under 30k chars
     parsed = json.loads(user_prompt.split("## Current Inputs\n", 1)[1])
     assert len(parsed["text"]) < 25000
+
+
+def test_build_simulation_prompt_excludes_error_from_must_include():
+    """The 'MUST include' prompt line should NOT list 'error' — the prompt
+    already instructs the LLM to OMIT error unless simulating a logical error.
+    Including it in 'MUST include' would be contradictory."""
+    block = make_mock_block()  # default output_props has "result" and "error"
+    system_prompt, _ = build_simulation_prompt(block, {"query": "test"})
+    must_include_line = [
+        line for line in system_prompt.splitlines() if "MUST include" in line
+    ][0]
+    assert '"result"' in must_include_line
+    assert '"error"' not in must_include_line
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +279,7 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should contain [DRY RUN] in message and success=True."""
+    """Dry-run response should match real execution message format and have success=True."""
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
@@ -259,7 +300,8 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "[DRY RUN]" in response.message
+    assert "executed successfully" in response.message
+    assert "[DRY RUN]" not in response.message  # must not leak to LLM context
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
 
@@ -307,23 +349,24 @@ async def test_execute_block_real_execution_unchanged():
 
 
 def test_run_block_tool_dry_run_param():
-    """RunBlockTool parameters should include 'dry_run'."""
+    """RunBlockTool parameters should include 'dry_run' as a required field."""
     tool = RunBlockTool()
     params = tool.parameters
     assert "dry_run" in params["properties"]
     assert params["properties"]["dry_run"]["type"] == "boolean"
+    assert "dry_run" in params["required"]
 
 
 def test_run_block_tool_dry_run_calls_execute():
-    """RunBlockTool._execute extracts dry_run from kwargs correctly.
+    """RunBlockTool._execute accepts dry_run as a typed parameter.
 
-    We verify the extraction logic directly by inspecting the source, then confirm
-    the kwarg is forwarded in the execute_block call site.
+    We verify the parameter exists in the signature and is forwarded to
+    execute_block.
     """
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is extracted from kwargs
+    # Verify dry_run is a typed parameter (not extracted from kwargs)
     assert "dry_run" in source
-    assert 'kwargs.get("dry_run"' in source
+    assert "dry_run: bool" in source
 
     # Scope to _execute method source only — module-wide search is brittle
     # and can match unrelated text/comments.
@@ -333,12 +376,106 @@ def test_run_block_tool_dry_run_calls_execute():
 
 
 @pytest.mark.asyncio
+async def test_execute_block_dry_run_no_empty_error_from_simulator():
+    """The simulator no longer yields empty error pins, so execute_block
+    simply passes through whatever the simulator produces.
+
+    Since the fix is at the simulator level, even if a simulator somehow
+    yields only non-error outputs, they pass through unchanged.
+    """
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        # Simulator now omits empty error pins at source
+        yield "result", "simulated output"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.success is True
+    assert response.is_dry_run is True
+    assert "error" not in response.outputs
+    assert response.outputs == {"result": ["simulated output"]}
+
+
+@pytest.mark.asyncio
+async def test_execute_block_dry_run_keeps_nonempty_error_pin():
+    """Dry-run should keep the 'error' pin when it contains a real error message."""
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", ""
+        yield "error", "API rate limit exceeded"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.success is True
+    # Non-empty error should be preserved
+    assert "error" in response.outputs
+    assert response.outputs["error"] == ["API rate limit exceeded"]
+
+
+@pytest.mark.asyncio
+async def test_execute_block_dry_run_message_includes_completed_status():
+    """Dry-run message should clearly indicate COMPLETED status."""
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", "simulated"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert "executed successfully" in response.message
+
+
+@pytest.mark.asyncio
 async def test_execute_block_dry_run_simulator_error_returns_error_response():
     """When simulate_block yields a SIMULATOR ERROR tuple, execute_block returns ErrorResponse."""
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
-        yield "error", "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key)."
+        yield (
+            "error",
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
+        )
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error

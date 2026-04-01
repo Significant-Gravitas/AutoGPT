@@ -411,7 +411,12 @@ class AgentOutputTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the agent_output tool."""
+        """Execute the agent_output tool.
+
+        Note: This tool accepts **kwargs and delegates to AgentOutputInput
+        for validation because the parameter set has cross-field validators
+        defined in the Pydantic model.
+        """
         session_id = session.session_id
 
         # Parse and validate input

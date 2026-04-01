@@ -15,6 +15,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import {
   buildRenderSegments,
@@ -42,6 +43,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
+  historicalDurations?: Map<string, number>;
 }
 
 function renderSegments(
@@ -204,6 +206,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
+  historicalDurations,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -248,6 +251,25 @@ export function ChatMessagesContainer({
 
   const showThinking =
     status === "submitted" || (status === "streaming" && !hasInflight);
+
+  const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
+  // Reset when a new streaming turn begins.
+  const frozenElapsedRef = useRef(0);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isActivelyStreaming) {
+      if (!wasStreamingRef.current) {
+        frozenElapsedRef.current = 0;
+      }
+      if (elapsedSeconds > 0) {
+        frozenElapsedRef.current = elapsedSeconds;
+      }
+    }
+    wasStreamingRef.current = isActivelyStreaming;
+  });
 
   return (
     <Conversation
@@ -362,10 +384,19 @@ export function ChatMessagesContainer({
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}
+                    elapsedSeconds={
+                      messageIndex === messages.length - 1
+                        ? frozenElapsedRef.current
+                        : undefined
+                    }
+                    durationMs={historicalDurations?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (
-                  <ThinkingIndicator active={showThinking} />
+                  <ThinkingIndicator
+                    active={showThinking}
+                    elapsedSeconds={elapsedSeconds}
+                  />
                 )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
@@ -391,7 +422,10 @@ export function ChatMessagesContainer({
         {showThinking && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
-              <ThinkingIndicator active={showThinking} />
+              <ThinkingIndicator
+                active={showThinking}
+                elapsedSeconds={elapsedSeconds}
+              />
             </MessageContent>
           </Message>
         )}

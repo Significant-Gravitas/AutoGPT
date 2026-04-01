@@ -42,6 +42,7 @@ export function useCopilotPage() {
     setSessionId,
     hydratedMessages,
     rawSessionMessages,
+    historicalDurations,
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,
@@ -399,6 +400,8 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
