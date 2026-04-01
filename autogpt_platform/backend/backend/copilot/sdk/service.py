@@ -1453,6 +1453,16 @@ async def _run_stream_attempt(
             # Emit compaction end if SDK finished compacting.
             # Sync TranscriptBuilder with the CLI's active context.
             compact_result = await ctx.compaction.emit_end_if_ready(ctx.session)
+            if compact_result.events:
+                # Compaction events end with StreamFinishStep, which maps to
+                # Vercel AI SDK's "finish-step" — that clears activeTextParts.
+                # Close any open text block BEFORE the compaction events so
+                # the text-end arrives before finish-step, preventing
+                # "text-end for missing text part" errors on the frontend.
+                pre_close: list[StreamBaseResponse] = []
+                state.adapter._end_text_if_open(pre_close)
+                for r in pre_close:
+                    yield r
             for ev in compact_result.events:
                 yield ev
             entries_replaced = False
