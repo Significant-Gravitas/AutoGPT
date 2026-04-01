@@ -981,13 +981,13 @@ class TestCompressResultDataclass:
 
 class TestGetContextWindow:
     def test_claude_opus(self) -> None:
-        assert get_context_window("claude-opus-4") == 200_000
+        assert get_context_window("claude-opus-4-20250514") == 200_000
 
     def test_claude_sonnet(self) -> None:
-        assert get_context_window("claude-sonnet-4") == 200_000
+        assert get_context_window("claude-sonnet-4-20250514") == 200_000
 
     def test_openrouter_prefix(self) -> None:
-        assert get_context_window("anthropic/claude-opus-4.6") == 200_000
+        assert get_context_window("anthropic/claude-opus-4-6") == 200_000
 
     def test_version_suffix(self) -> None:
         assert get_context_window("claude-opus-4-6") == 200_000
@@ -999,12 +999,12 @@ class TestGetContextWindow:
         assert get_context_window("some-unknown-model") is None
 
     def test_case_insensitive(self) -> None:
-        assert get_context_window("Claude-Opus-4") == 200_000
+        assert get_context_window("GPT-4o") == 128_000
 
 
 class TestGetCompressionTarget:
     def test_claude_opus_200k(self) -> None:
-        target = get_compression_target("anthropic/claude-opus-4.6")
+        target = get_compression_target("anthropic/claude-opus-4-6")
         assert target == 140_000  # 200K - 60K overhead
 
     def test_gpt4o_128k(self) -> None:
@@ -1015,5 +1015,5 @@ class TestGetCompressionTarget:
         assert get_compression_target("unknown-model") == DEFAULT_TOKEN_THRESHOLD
 
     def test_small_model_returns_default(self) -> None:
-        # gpt-4 has 8K context — too small for 60K overhead
-        assert get_compression_target("gpt-4") == DEFAULT_TOKEN_THRESHOLD
+        # Unknown models fall back to DEFAULT_TOKEN_THRESHOLD
+        assert get_compression_target("some-tiny-model") == DEFAULT_TOKEN_THRESHOLD

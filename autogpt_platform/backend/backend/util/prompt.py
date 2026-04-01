@@ -255,41 +255,29 @@ DEFAULT_KEEP_RECENT = 15
 # The actual model context limit minus this reserve = compression target.
 _CONTEXT_OVERHEAD_RESERVE = 60_000
 
-# Known context window sizes by model name substring (longest match wins).
-# Used to compute a model-aware compression target.
-_MODEL_CONTEXT_WINDOWS: dict[str, int] = {
-    "claude-opus-4": 200_000,
-    "claude-sonnet-4": 200_000,
-    "claude-haiku-4": 200_000,
-    "claude-3-5-sonnet": 200_000,
-    "claude-3-5-haiku": 200_000,
-    "claude-3-opus": 200_000,
-    "claude-3-sonnet": 200_000,
-    "claude-3-haiku": 200_000,
-    "gpt-4o": 128_000,
-    "gpt-4-turbo": 128_000,
-    "gpt-4": 8_192,
-    "gpt-3.5": 16_385,
-}
-
 
 def get_context_window(model: str) -> int | None:
     """Return the context window size for a model, or None if unknown.
 
-    Matches against known model name substrings. Strips common prefixes
-    like ``anthropic/`` or ``openai/`` from OpenRouter-style model names.
+    Looks up the model in the :class:`LlmModel` enum (which already
+    carries ``context_window`` via ``MODEL_METADATA``).  Handles
+    provider-prefixed names (``anthropic/claude-opus-4-6``) and
+    case-insensitive input automatically.
     """
-    normalized = model.lower()
-    # Strip provider prefix (e.g. "anthropic/claude-opus-4.6")
-    if "/" in normalized:
-        normalized = normalized.split("/", 1)[1]
-    # Strip version suffixes (e.g. "claude-opus-4-6" -> "claude-opus-4")
-    for key, window in sorted(
-        _MODEL_CONTEXT_WINDOWS.items(), key=lambda kv: -len(kv[0])
-    ):
-        if key in normalized:
-            return window
-    return None
+    from backend.blocks.llm import LlmModel  # lazy to avoid circular import
+
+    try:
+        llm_model = LlmModel(model)
+        return llm_model.context_window
+    except (ValueError, KeyError):
+        pass
+
+    # Retry with lowercase for case-insensitive lookup
+    try:
+        llm_model = LlmModel(model.lower())
+        return llm_model.context_window
+    except (ValueError, KeyError):
+        return None
 
 
 def get_compression_target(model: str) -> int:
