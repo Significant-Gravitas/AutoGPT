@@ -38,6 +38,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.org_migration
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -124,6 +125,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.data.org_migration.run_migration()
 
     with launch_darkly_context():
         yield
