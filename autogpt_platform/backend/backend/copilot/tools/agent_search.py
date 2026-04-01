@@ -252,6 +252,10 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
         logger.warning(
             "include_graph: timed out after %ds fetching graphs", _GRAPH_FETCH_TIMEOUT
         )
+        # Clear partially-enriched graphs so callers see consistent state
+        # (all-or-nothing) rather than a mix of enriched and non-enriched agents.
+        for a in fetchable:
+            a.graph = None
 
     skipped = len(with_graph_id) - len(fetchable)
     if skipped > 0:

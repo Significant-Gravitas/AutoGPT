@@ -1,0 +1,100 @@
+{
+  "agents": [
+    {
+      "id": "d8285a7b-bae7-4d3e-9769-bd24747a94d6",
+      "graph_id": "2edecbe8-1e63-43fe-aff0-2b001b828daf",
+      "graph_version": 1,
+      "image_url": null,
+      "creator_name": "Unknown",
+      "creator_image_url": "",
+      "status": "COMPLETED",
+      "created_at": "2026-04-01T06:46:11.502000Z",
+      "updated_at": "2026-04-01T06:46:11.502000Z",
+      "name": "Add Two Numbers",
+      "description": "A simple agent that takes two numbers as input and returns their sum.",
+      "instructions": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "credentials_input_schema": null,
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "has_sensitive_action": false,
+      "trigger_setup_info": null,
+      "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
+      "can_access_graph": true,
+      "is_latest_version": true,
+      "is_favorite": false,
+      "folder_id": null,
+      "folder_name": null,
+      "recommended_schedule_cron": null,
+      "settings": {
+        "human_in_the_loop_safe_mode": true,
+        "sensitive_action_safe_mode": true
+      },
+      "marketplace_listing": null
+    },
+    {
+      "id": "a6ed2d00-cbd6-4dbd-ae84-f4bc5be76907",
+      "graph_id": "93ef0a8b-5b74-4b57-92aa-6c9637ee55dd",
+      "graph_version": 1,
+      "image_url": null,
+      "creator_name": "Unknown",
+      "creator_image_url": "",
+      "status": "COMPLETED",
+      "created_at": "2026-04-01T06:44:10.752000Z",
+      "updated_at": "2026-04-01T06:44:10.752000Z",
+      "name": "Test Agent PR-12622",
+      "description": "Simple test agent for include_graph",
+      "instructions": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "credentials_input_schema": null,
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "has_sensitive_action": false,
+      "trigger_setup_info": null,
+      "new_output": false,
+      "execution_count": 0,
+      "success_rate": null,
+      "avg_correctness_score": null,
+      "recent_executions": [],
+      "can_access_graph": true,
+      "is_latest_version": true,
+      "is_favorite": false,
+      "folder_id": null,
+      "folder_name": null,
+      "recommended_schedule_cron": null,
+      "settings": {
+        "human_in_the_loop_safe_mode": true,
+        "sensitive_action_safe_mode": false
+      },
+      "marketplace_listing": null
+    }
+  ],
+  "pagination": {
+    "total_items": 2,
+    "total_pages": 1,
+    "current_page": 1,
+    "page_size": 15
+  }
+}
