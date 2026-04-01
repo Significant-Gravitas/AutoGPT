@@ -276,7 +276,10 @@ def _run_in_transaction(
             {col: _serialize_value(val) for col, val in zip(columns, row)}
             for row in rows
         ]
-    finally:
+    except Exception:
+        conn.execute(text("ROLLBACK"))
+        raise
+    else:
         conn.execute(text("ROLLBACK" if read_only else "COMMIT"))
     return results, columns, affected
 
