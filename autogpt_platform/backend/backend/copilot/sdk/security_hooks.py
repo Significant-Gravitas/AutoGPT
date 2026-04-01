@@ -358,7 +358,9 @@ def create_security_hooks(
             _ = context, tool_use_id
             agent_id = _sanitize(str(input_data.get("agent_id", "?")))
             agent_type = _sanitize(str(input_data.get("agent_type", "?")))
-            transcript = _sanitize(str(input_data.get("agent_transcript_path", "")))
+            transcript = _sanitize(
+                str(input_data.get("agent_transcript_path", "")), max_len=500
+            )
             logger.info(
                 "[SDK] SubagentStop: agent_id=%s, type=%s, user=%s, transcript=%s",
                 agent_id,

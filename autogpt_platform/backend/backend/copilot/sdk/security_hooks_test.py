@@ -535,3 +535,72 @@ async def test_mixed_task_agent_share_slots(_hooks):
         context={},
     )
     assert not _is_denied(result)
+
+
+# ---------------------------------------------------------------------------
+# SubagentStart / SubagentStop hooks
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def _subagent_hooks():
+    """Create hooks and return (subagent_start, subagent_stop) handlers."""
+    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    start = hooks["SubagentStart"][0].hooks[0]
+    stop = hooks["SubagentStop"][0].hooks[0]
+    return start, stop
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_subagent_start_hook_returns_empty(_subagent_hooks):
+    """SubagentStart hook should return an empty dict (logging only)."""
+    start, _ = _subagent_hooks
+    result = await start(
+        {"agent_id": "sa-123", "agent_type": "research"},
+        tool_use_id=None,
+        context={},
+    )
+    assert result == {}
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_subagent_stop_hook_returns_empty(_subagent_hooks):
+    """SubagentStop hook should return an empty dict (logging only)."""
+    _, stop = _subagent_hooks
+    result = await stop(
+        {
+            "agent_id": "sa-123",
+            "agent_type": "research",
+            "agent_transcript_path": "/tmp/transcript.txt",
+        },
+        tool_use_id=None,
+        context={},
+    )
+    assert result == {}
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_subagent_hooks_sanitize_inputs(_subagent_hooks):
+    """SubagentStart/Stop should sanitize control chars from inputs."""
+    start, stop = _subagent_hooks
+    # Inject control characters — hook should not raise
+    result = await start(
+        {"agent_id": "sa\n-injected\r\x00", "agent_type": "type\ttab"},
+        tool_use_id=None,
+        context={},
+    )
+    assert result == {}
+
+    result = await stop(
+        {
+            "agent_id": "sa\n-injected",
+            "agent_type": "type\r",
+            "agent_transcript_path": "/tmp/\x00malicious\npath",
+        },
+        tool_use_id=None,
+        context={},
+    )
+    assert result == {}
