@@ -196,7 +196,7 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_graph_db",
+                "backend.copilot.tools.agent_search.graph_db",
                 return_value=mock_graph_db,
             ),
         ):
@@ -212,7 +212,10 @@ class TestLibraryUUIDLookup:
         assert response.agents[0].graph is not None
         assert response.agents[0].graph.id == agent_id
         mock_graph_db.get_graph.assert_awaited_once_with(
-            agent_id, version=None, user_id=_TEST_USER_ID
+            agent_id,
+            version=1,
+            user_id=_TEST_USER_ID,
+            for_export=True,
         )
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -232,7 +235,7 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_graph_db",
+                "backend.copilot.tools.agent_search.graph_db",
                 return_value=mock_graph_db,
             ),
         ):
@@ -265,7 +268,7 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_graph_db",
+                "backend.copilot.tools.agent_search.graph_db",
                 return_value=mock_graph_db,
             ),
         ):
@@ -297,7 +300,7 @@ class TestLibraryUUIDLookup:
                 return_value=mock_lib_db,
             ),
             patch(
-                "backend.copilot.tools.agent_search.get_graph_db",
+                "backend.copilot.tools.agent_search.graph_db",
                 return_value=mock_graph_db,
             ),
         ):

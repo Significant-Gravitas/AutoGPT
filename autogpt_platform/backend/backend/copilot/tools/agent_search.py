@@ -10,8 +10,7 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryAgent
     from backend.api.features.store.model import StoreAgent, StoreAgentDetails
 
-from backend.data.db_accessors import graph_db as get_graph_db
-from backend.data.db_accessors import library_db, store_db
+from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -208,39 +207,56 @@ async def _search_library(
 _MAX_GRAPH_FETCHES = 10
 
 
+_GRAPH_FETCH_TIMEOUT = 15  # seconds
+
+
 async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> None:
     """Fetch and attach full Graph (nodes + links) to each agent in-place.
 
     Only the first ``_MAX_GRAPH_FETCHES`` agents with a ``graph_id`` are
     enriched.  If some agents are skipped, a warning is logged so callers
     are aware of the truncation.
+
+    Graphs are fetched with ``for_export=True`` so that credentials, API keys,
+    and other secrets in ``input_default`` are stripped before the data reaches
+    the LLM context.
     """
     with_graph_id = [a for a in agents if a.graph_id]
     fetchable = with_graph_id[:_MAX_GRAPH_FETCHES]
     if not fetchable:
         return
 
+    gdb = graph_db()
+
     async def _fetch(agent: AgentInfo) -> None:
         graph_id = agent.graph_id
         if not graph_id:
             return
         try:
-            graph = await get_graph_db().get_graph(
-                graph_id, version=None, user_id=user_id
+            graph = await gdb.get_graph(
+                graph_id,
+                version=agent.graph_version,
+                user_id=user_id,
+                for_export=True,
             )
             if graph is None:
-                logger.warning(f"Graph not found for agent {graph_id}")
+                logger.warning("Graph not found for agent %s", graph_id)
             agent.graph = graph
         except Exception as e:
-            logger.warning(f"Failed to fetch graph for agent {graph_id}: {e}")
+            logger.warning("Failed to fetch graph for agent %s: %s", graph_id, e)
 
-    await asyncio.gather(*[_fetch(a) for a in fetchable])
+    async with asyncio.timeout(_GRAPH_FETCH_TIMEOUT):
+        await asyncio.gather(*[_fetch(a) for a in fetchable])
 
     skipped = len(with_graph_id) - len(fetchable)
     if skipped > 0:
         logger.warning(
-            f"include_graph: fetched graphs for {len(fetchable)}/{len(with_graph_id)} "
-            f"agents (_MAX_GRAPH_FETCHES={_MAX_GRAPH_FETCHES}, {skipped} skipped)"
+            "include_graph: fetched graphs for %d/%d agents "
+            "(_MAX_GRAPH_FETCHES=%d, %d skipped)",
+            len(fetchable),
+            len(with_graph_id),
+            _MAX_GRAPH_FETCHES,
+            skipped,
         )
 
 
