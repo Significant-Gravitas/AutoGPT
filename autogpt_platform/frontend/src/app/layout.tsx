@@ -59,8 +59,7 @@ export default async function RootLayout({
               host={host}
               ga={{
                 gaId:
-                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID ||
-                  "G-FH2XK2W4GN",
+                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
               }}
             />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">

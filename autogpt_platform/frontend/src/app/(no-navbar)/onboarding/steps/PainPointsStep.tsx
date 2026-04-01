@@ -70,7 +70,12 @@ const ALL_PAIN_POINTS = [
 
 // Top pain points per role — shown first, rest follow in default order
 const ROLE_TOP_PICKS: Record<string, string[]> = {
-  "Founder/CEO": ["Finding leads", "Reports & data", "Email & outreach", "Scheduling"],
+  "Founder/CEO": [
+    "Finding leads",
+    "Reports & data",
+    "Email & outreach",
+    "Scheduling",
+  ],
   Operations: ["CRM & data entry", "Scheduling", "Reports & data"],
   "Sales/BD": ["Finding leads", "Email & outreach", "CRM & data entry"],
   Marketing: ["Social media", "Email & outreach", "Research"],
