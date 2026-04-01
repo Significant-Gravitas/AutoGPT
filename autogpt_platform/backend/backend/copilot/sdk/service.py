@@ -59,11 +59,14 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
+    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
 )
@@ -113,9 +116,10 @@ _MAX_STREAM_ATTEMPTS = 3
 
 # Hard circuit breaker: abort the stream if the model sends this many
 # consecutive tool calls with empty parameters (a sign of context
-# saturation or serialization failure).  Empty input ({}) is never
-# legitimate — even one is suspicious, three is conclusive.
-_EMPTY_TOOL_CALL_LIMIT = 3
+# saturation or serialization failure).  The MCP wrapper now returns
+# guidance on the first empty call, giving the model a chance to
+# self-correct.  The limit is generous to allow recovery attempts.
+_EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -744,15 +748,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "unknown")
-                    tool_args = func.get("arguments", "")
-                    lines.append(f"You called tool: {tool_name}({tool_args})")
+            # Omit tool_calls — any text representation gets mimicked
+            # by the model. Tool results below provide the context.
         elif msg.role == "tool":
             content = msg.content or ""
-            lines.append(f"Tool result: {content}")
+            lines.append(f"Tool output: {content[:500]}")
 
     if not lines:
         return None
@@ -1306,6 +1306,21 @@ async def _run_stream_attempt(
                     error_preview,
                 )
 
+                # Intercept prompt-too-long errors surfaced as
+                # AssistantMessage.error (not as a Python exception).
+                # Re-raise so the outer retry loop can compact the
+                # transcript and retry with reduced context.
+                # Only check error_text (the error field), not the
+                # content preview — content may contain arbitrary text
+                # that false-positives the pattern match.
+                if _is_prompt_too_long(Exception(error_text)):
+                    logger.warning(
+                        "%s Prompt-too-long detected via AssistantMessage "
+                        "error — raising for retry",
+                        ctx.log_prefix,
+                    )
+                    raise RuntimeError("Prompt is too long")
+
                 # Intercept transient API errors (socket closed,
                 # ECONNRESET) — replace the raw message with a
                 # user-friendly error text and use the retryable
@@ -1399,6 +1414,13 @@ async def _run_stream_attempt(
                         ctx.log_prefix,
                         sdk_msg.result or "(no error message provided)",
                     )
+                    # If the CLI itself rejected the prompt as too long
+                    # (pre-API check, duration_api_ms=0), re-raise as an
+                    # exception so the retry loop can trigger compaction.
+                    # Without this, the ResultMessage is silently consumed
+                    # and the retry/compaction mechanism is never invoked.
+                    if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
+                        raise RuntimeError("Prompt is too long")
 
                 # Capture token usage from ResultMessage.
                 # Anthropic reports cached tokens separately:
@@ -2031,7 +2053,20 @@ async def stream_chat_completion_sdk(
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
-                    if not isinstance(event, StreamHeartbeat):
+                    if not isinstance(
+                        event,
+                        (
+                            StreamHeartbeat,
+                            # Compaction UI events are cosmetic and must not
+                            # block retry — they're emitted before the SDK
+                            # query on compacted attempts.
+                            StreamStartStep,
+                            StreamFinishStep,
+                            StreamToolInputStart,
+                            StreamToolInputAvailable,
+                            StreamToolOutputAvailable,
+                        ),
+                    ):
                         events_yielded += 1
                     yield event
                 break  # Stream completed — exit retry loop
