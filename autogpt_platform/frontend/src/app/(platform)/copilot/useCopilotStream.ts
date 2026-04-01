@@ -255,6 +255,8 @@ export function useCopilotStream({
   // latest version without needing it in the effect dependency array.
   async function stop() {
     isUserStoppingRef.current = true;
+    clearTimeout(streamTimeoutRef.current);
+    streamTimeoutRef.current = undefined;
     sdkStop();
     // Resolve pending tool calls and inject a cancellation marker so the UI
     // shows "You manually stopped this chat" immediately (the backend writes

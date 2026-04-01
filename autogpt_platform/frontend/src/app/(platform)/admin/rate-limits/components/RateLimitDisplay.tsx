@@ -5,8 +5,12 @@ import { Button } from "@/components/atoms/Button/Button";
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import { UsageBar } from "../../components/UsageBar";
 
+/** Extend generated type with optional fields returned by the backend
+ *  but not yet present in the generated OpenAPI schema on this branch. */
+type RateLimitData = UserRateLimitResponse & { user_email?: string | null };
+
 interface Props {
-  data: UserRateLimitResponse;
+  data: RateLimitData;
   onReset: (resetWeekly: boolean) => Promise<void>;
   /** Override the outer container classes (default: bordered card). */
   className?: string;

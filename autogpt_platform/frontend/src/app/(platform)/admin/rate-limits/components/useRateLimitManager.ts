@@ -49,17 +49,23 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
+      // The backend accepts either user_id or email, but the generated type
+      // only knows about user_id — cast to satisfy the compiler until the
+      // OpenAPI spec on this branch is updated.
       const params = looksLikeEmail(trimmed)
-        ? { email: trimmed }
+        ? ({ email: trimmed } as unknown as { user_id: string })
         : { user_id: trimmed };
       const response = await getV2GetUserRateLimit(params);
       if (response.status !== 200) {
         throw new Error("Failed to fetch rate limit");
       }
       setRateLimitData(response.data);
+      const data = response.data as typeof response.data & {
+        user_email?: string | null;
+      };
       setSelectedUser({
-        user_id: response.data.user_id,
-        user_email: response.data.user_email ?? response.data.user_id,
+        user_id: data.user_id,
+        user_email: data.user_email ?? data.user_id,
       });
     } catch (error) {
       console.error("Error fetching rate limit:", error);
