@@ -4,24 +4,25 @@ import { Button } from "@/components/atoms/Button/Button";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
 import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import { CheckCircle, LinkBreak, Spinner } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
-/** Platform display names and icons */
-const PLATFORM_INFO: Record<string, { name: string; icon: string }> = {
-  DISCORD: { name: "Discord", icon: "🎮" },
-  TELEGRAM: { name: "Telegram", icon: "✈️" },
-  SLACK: { name: "Slack", icon: "💬" },
-  TEAMS: { name: "Teams", icon: "👥" },
-  WHATSAPP: { name: "WhatsApp", icon: "📱" },
-  GITHUB: { name: "GitHub", icon: "🐙" },
-  LINEAR: { name: "Linear", icon: "📐" },
+/** Platform display names */
+const PLATFORM_NAMES: Record<string, string> = {
+  DISCORD: "Discord",
+  TELEGRAM: "Telegram",
+  SLACK: "Slack",
+  TEAMS: "Teams",
+  WHATSAPP: "WhatsApp",
+  GITHUB: "GitHub",
+  LINEAR: "Linear",
 };
 
 type LinkState =
   | { status: "loading" }
   | { status: "not-authenticated" }
-  | { status: "ready"; platform: string; platformUsername?: string }
+  | { status: "ready" }
   | { status: "linking" }
   | { status: "success"; platform: string }
   | { status: "error"; message: string };
@@ -33,7 +34,7 @@ export default function PlatformLinkPage() {
 
   const [state, setState] = useState<LinkState>({ status: "loading" });
 
-  // Determine initial state based on auth
+  // Determine initial state based on auth.
   // Token validity is checked server-side on confirm — no need for a
   // separate status call (which requires bot API key anyway).
   useEffect(() => {
@@ -42,15 +43,17 @@ export default function PlatformLinkPage() {
     if (!user) {
       setState({ status: "not-authenticated" });
     } else {
-      setState({ status: "ready", platform: "your platform" });
+      setState({ status: "ready" });
     }
   }, [token, user]);
 
-  // Handle the link confirmation
-  const handleLink = useCallback(async () => {
+  async function handleLink() {
     if (!supabase) return;
 
     setState({ status: "linking" });
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30_000);
 
     try {
       const {
@@ -62,13 +65,17 @@ export default function PlatformLinkPage() {
         return;
       }
 
-      const res = await fetch(`/api/proxy/api/platform-linking/tokens/${token}/confirm`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
+      // The proxy injects auth from the server-side Supabase session,
+      // so we don't need to send Authorization ourselves.
+      const res = await fetch(
+        `/api/proxy/api/platform-linking/tokens/${token}/confirm`,
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
         },
-      });
+      );
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -80,18 +87,25 @@ export default function PlatformLinkPage() {
       }
 
       const data = await res.json();
-      const platformInfo = PLATFORM_INFO[data.platform];
-      setState({
-        status: "success",
-        platform: platformInfo?.name ?? data.platform,
-      });
-    } catch {
-      setState({
-        status: "error",
-        message: "Something went wrong. Please try again.",
-      });
+      const platformName = PLATFORM_NAMES[data.platform] ?? data.platform;
+      setState({ status: "success", platform: platformName });
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setState({
+          status: "error",
+          message:
+            "Request timed out. Please go back to your chat and try again.",
+        });
+      } else {
+        setState({
+          status: "error",
+          message: "Something went wrong. Please try again.",
+        });
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-  }, [token, supabase]);
+  }
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
@@ -101,13 +115,7 @@ export default function PlatformLinkPage() {
         <NotAuthenticatedView token={token} />
       )}
 
-      {state.status === "ready" && (
-        <ReadyView
-          platform={state.platform}
-          platformUsername={state.platformUsername}
-          onLink={handleLink}
-        />
-      )}
+      {state.status === "ready" && <ReadyView onLink={handleLink} />}
 
       {state.status === "linking" && <LinkingView />}
 
@@ -126,7 +134,7 @@ function LoadingView() {
   return (
     <AuthCard title="Link your account">
       <div className="flex flex-col items-center gap-4">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+        <Spinner size={48} className="animate-spin text-primary" />
         <Text variant="body-medium" className="text-muted-foreground">
           Verifying link...
         </Text>
@@ -159,28 +167,13 @@ function NotAuthenticatedView({ token }: { token: string }) {
   );
 }
 
-function ReadyView({
-  platform,
-  platformUsername,
-  onLink,
-}: {
-  platform: string;
-  platformUsername?: string;
-  onLink: () => void;
-}) {
+function ReadyView({ onLink }: { onLink: () => void }) {
   return (
     <AuthCard title="Link your account">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="rounded-xl bg-slate-50 p-6 text-center">
           <Text variant="body-medium" className="text-muted-foreground">
-            Connect your <strong>{platform}</strong> account
-            {platformUsername && (
-              <>
-                {" "}
-                (<strong>{platformUsername}</strong>)
-              </>
-            )}{" "}
-            to your AutoGPT account to use CoPilot.
+            Connect your chat platform account to AutoGPT to use CoPilot.
           </Text>
         </div>
         <Button onClick={onLink} className="w-full">
@@ -195,7 +188,7 @@ function LinkingView() {
   return (
     <AuthCard title="Linking...">
       <div className="flex flex-col items-center gap-4">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-primary" />
+        <Spinner size={48} className="animate-spin text-primary" />
         <Text variant="body-medium" className="text-muted-foreground">
           Connecting your accounts...
         </Text>
@@ -209,7 +202,7 @@ function SuccessView({ platform }: { platform: string }) {
     <AuthCard title="Account linked!">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-          <span className="text-3xl">✅</span>
+          <CheckCircle size={40} weight="fill" className="text-green-600" />
         </div>
         <Text
           variant="body-medium"
@@ -229,7 +222,7 @@ function ErrorView({ message }: { message: string }) {
     <AuthCard title="Link failed">
       <div className="flex w-full flex-col items-center gap-6">
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
-          <span className="text-3xl">❌</span>
+          <LinkBreak size={40} weight="bold" className="text-red-600" />
         </div>
         <Text
           variant="body-medium"
