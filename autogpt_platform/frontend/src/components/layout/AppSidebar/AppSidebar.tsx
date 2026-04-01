@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -105,38 +106,35 @@ export function AppSidebar({ dynamicContent }: Props) {
       collapsible="icon"
       className="border-r border-zinc-100"
     >
-      <SidebarHeader className="border-b border-zinc-100 px-3 py-4">
-        <div
-          className={cn(
-            "flex items-center",
-            isCollapsed ? "justify-center" : "justify-between",
-          )}
-        >
-          {!isCollapsed && (
+      <SidebarHeader
+        className={cn(
+          "border-b border-zinc-100 px-3",
+          isCollapsed ? "flex items-center justify-center py-0" : "py-4",
+        )}
+        style={isCollapsed ? { height: NAVBAR_HEIGHT_PX } : undefined}
+      >
+        {!isCollapsed && (
+          <div className="flex items-center justify-between">
             <Link href={homeHref}>
               <IconAutoGPTLogo className="h-8 w-24" />
             </Link>
-          )}
-          {!isCollapsed && (
             <div className="flex items-center gap-1">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <SidebarTrigger />
+                  <SidebarTrigger className="size-10 p-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&>svg]:!size-5" />
                 </TooltipTrigger>
                 <TooltipContent side="right">Close sidebar</TooltipContent>
               </Tooltip>
             </div>
-          )}
-        </div>
-        {isCollapsed && (
-          <div className="mt-2 flex justify-center">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <SidebarTrigger />
-              </TooltipTrigger>
-              <TooltipContent side="right">Open sidebar</TooltipContent>
-            </Tooltip>
           </div>
+        )}
+        {isCollapsed && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SidebarTrigger className="size-10 p-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [&>svg]:!size-5" />
+            </TooltipTrigger>
+            <TooltipContent side="right">Open sidebar</TooltipContent>
+          </Tooltip>
         )}
       </SidebarHeader>
 
