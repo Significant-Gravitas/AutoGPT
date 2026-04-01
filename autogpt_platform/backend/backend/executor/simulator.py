@@ -216,9 +216,12 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
     block_description = getattr(block, "description", "No description available.")
 
     # Include the block's run() source code so the LLM knows exactly how
-    # inputs are transformed to outputs.
+    # inputs are transformed to outputs.  Truncate to avoid blowing up the
+    # prompt for very large blocks.
     try:
         run_source = inspect.getsource(block.run)
+        if len(run_source) > _MAX_INPUT_VALUE_CHARS:
+            run_source = run_source[:_MAX_INPUT_VALUE_CHARS] + "\n# ... [TRUNCATED]"
     except (TypeError, OSError):
         run_source = ""
 
