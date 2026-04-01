@@ -155,7 +155,9 @@ def create_security_hooks(
 
         def _sanitize(value: str, max_len: int = 200) -> str:
             """Strip control characters and truncate for safe logging."""
-            return value.replace("\n", "").replace("\r", "")[:max_len]
+            # Remove all C0 control chars (U+0000–U+001F) and DEL (U+007F).
+            cleaned = "".join(c for c in value if c >= " " and c != "\x7f")
+            return cleaned[:max_len]
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.

@@ -1859,8 +1859,6 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
-        if sdk_env is None:
-            sdk_env = {}
 
         # Route the CLI's temp directory into the per-session workspace so
         # sub-agent output files land inside sdk_cwd — accessible to
