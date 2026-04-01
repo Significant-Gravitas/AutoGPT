@@ -21,7 +21,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentStatusFilter } from "../../types";
 import { mockStatusForAgent } from "../../hooks/useAgentStatus";
 
@@ -205,18 +205,10 @@ export function useLibraryAgentList({
 
   // All loaded agent IDs (unfiltered) — used by AgentBriefingPanel so the
   // sitrep always covers the full fleet, not just the currently filtered view.
-  const allAgentIDs = useMemo(() => agents.map((a) => a.id), [agents]);
+  const allAgentIDs = agents.map((a) => a.id);
 
   // Client-side filter by status using mock data until the real API supports it.
-  const filteredAgents = useMemo(() => {
-    if (statusFilter === "all") return agents;
-    return agents.filter((agent) => {
-      const info = mockStatusForAgent(agent.id);
-      if (statusFilter === "attention") return info.health === "attention";
-      if (statusFilter === "healthy") return info.health === "good";
-      return info.status === statusFilter;
-    });
-  }, [agents, statusFilter]);
+  const filteredAgents = filterAgentsByStatus(agents, statusFilter);
 
   // When a filter is active, show the filtered count instead of the API total.
   const displayedCount =
@@ -250,4 +242,17 @@ export function useLibraryAgentList({
     handleAgentDrop,
     handleFolderDeleted,
   };
+}
+
+function filterAgentsByStatus<T extends { id: string }>(
+  agents: T[],
+  statusFilter: AgentStatusFilter,
+): T[] {
+  if (statusFilter === "all") return agents;
+  return agents.filter((agent) => {
+    const info = mockStatusForAgent(agent.id);
+    if (statusFilter === "attention") return info.health === "attention";
+    if (statusFilter === "healthy") return info.health === "good";
+    return info.status === statusFilter;
+  });
 }

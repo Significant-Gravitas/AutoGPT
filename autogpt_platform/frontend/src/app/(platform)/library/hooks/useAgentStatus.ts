@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   AgentStatus,
   AgentHealth,
@@ -90,10 +90,7 @@ export function useAgentStatus(agentID: string): AgentStatusInfo {
  * TODO: Wire to `GET /agents/summary`.
  */
 export function useFleetSummary(agentIDs: string[]): FleetSummary {
-  // NOTE: useState initializer runs once on mount; changes to agentIDs after
-  // mount do NOT recompute the summary. Replace with a real API call wired to
-  // the agentIDs prop once the backend endpoint is available.
-  const [summary] = useState<FleetSummary>(() => {
+  const summary = useMemo<FleetSummary>(() => {
     const counts: FleetSummary = {
       running: 0,
       error: 0,
@@ -109,7 +106,7 @@ export function useFleetSummary(agentIDs: string[]): FleetSummary {
     }
     counts.monthlySpend = Number(counts.monthlySpend.toFixed(2));
     return counts;
-  });
+  }, [agentIDs]);
   return summary;
 }
 

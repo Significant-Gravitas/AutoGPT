@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo } from "react";
 import { mockStatusForAgent } from "../../hooks/useAgentStatus";
 import type { SitrepItemData, SitrepPriority } from "./SitrepItem";
 import type { AgentStatus } from "../../types";
@@ -15,10 +15,7 @@ export function useSitrepItems(
   agentIDs: string[],
   maxItems: number,
 ): SitrepItemData[] {
-  // NOTE: useState initializer runs once on mount; changes to agentIDs or
-  // maxItems after mount do NOT recompute items. Replace with useMemo (or a
-  // real API call) once live data is wired up.
-  const [items] = useState<SitrepItemData[]>(() => {
+  const items = useMemo<SitrepItemData[]>(() => {
     const raw: SitrepItemData[] = agentIDs.map((id) => {
       const info = mockStatusForAgent(id);
       return {
@@ -40,7 +37,7 @@ export function useSitrepItems(
     raw.sort((a, b) => order[a.priority] - order[b.priority]);
 
     return raw.slice(0, maxItems);
-  });
+  }, [agentIDs, maxItems]);
 
   return items;
 }
