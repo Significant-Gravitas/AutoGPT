@@ -212,17 +212,17 @@ async def test_simulate_block_truncates_long_inputs():
     assert len(parsed["text"]) < 25000
 
 
-def test_build_simulation_prompt_excludes_error_from_must_include():
-    """The 'MUST include' prompt line should NOT list 'error' — the prompt
-    already instructs the LLM to OMIT error unless simulating a logical error.
-    Including it in 'MUST include' would be contradictory."""
+def test_build_simulation_prompt_lists_available_output_pins():
+    """The prompt should list available output pins (including error) so the LLM
+    knows what keys are valid, but the instructions tell it to omit error unless
+    simulating a logical failure."""
     block = make_mock_block()  # default output_props has "result" and "error"
     system_prompt, _ = build_simulation_prompt(block, {"query": "test"})
-    must_include_line = [
-        line for line in system_prompt.splitlines() if "MUST include" in line
+    available_line = [
+        line for line in system_prompt.splitlines() if "Available output pins" in line
     ][0]
-    assert '"result"' in must_include_line
-    assert '"error"' not in must_include_line
+    assert '"result"' in available_line
+    assert '"error"' in available_line
 
 
 # ---------------------------------------------------------------------------
