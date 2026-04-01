@@ -53,6 +53,7 @@ def _make_session(
         totalPromptTokens=0,
         totalCompletionTokens=0,
         title=None,
+        metadata={},
         Messages=messages or [],
     )
     return session

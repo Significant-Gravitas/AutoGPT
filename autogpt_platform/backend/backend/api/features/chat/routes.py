@@ -463,7 +463,7 @@ async def get_session(
         oldest_sequence=page.oldest_sequence,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
-        metadata=session.metadata,
+        metadata=page.session.metadata,
     )
 
 
