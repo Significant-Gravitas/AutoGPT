@@ -30,6 +30,7 @@ import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.orgs.routes as org_routes
+import backend.api.features.orgs.workspace_routes
 import backend.api.features.otto.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.store.model
@@ -368,6 +369,11 @@ app.include_router(
     org_routes.router,
     tags=["v2", "orgs"],
     prefix="/api/orgs",
+)
+app.include_router(
+    backend.api.features.orgs.workspace_routes.router,
+    tags=["v2", "orgs", "workspaces"],
+    prefix="/api/orgs/{org_id}/workspaces",
 )
 
 app.mount("/external-api", external_api)
