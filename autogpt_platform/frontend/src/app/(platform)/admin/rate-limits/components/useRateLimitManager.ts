@@ -82,7 +82,6 @@ export function useRateLimitManager() {
   }
 
   /** Search users by partial name/email via the User table. */
-  /** Search users by partial name/email via the User table. */
   async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
