@@ -102,7 +102,8 @@ export function LibraryAgentList({
   const {
     isFavoritesTab,
     agentLoading,
-    allAgentsCount,
+    displayedCount,
+    allAgentIDs,
     favoritesCount,
     agents,
     hasNextPage,
@@ -126,15 +127,13 @@ export function LibraryAgentList({
     statusFilter,
   });
 
-  const agentIDs = agents.map((a) => a.id);
-
   return (
     <>
       {!selectedFolderId && fleetSummary && (
         <div className="mb-4">
           <AgentBriefingPanel
             summary={fleetSummary}
-            agentIDs={agentIDs}
+            agentIDs={allAgentIDs}
             onFilterChange={onStatusFilterChange}
             activeFilter={statusFilter}
           />
@@ -146,7 +145,7 @@ export function LibraryAgentList({
           tabs={tabs}
           activeTab={activeTab}
           onTabChange={onTabChange}
-          allCount={allAgentsCount}
+          allCount={displayedCount}
           favoritesCount={favoritesCount}
           setLibrarySort={setLibrarySort}
           statusFilter={statusFilter}

@@ -65,7 +65,7 @@ function PulseChip({ chip, onClick }: ChipProps) {
         <Text variant="small-medium" className="truncate text-zinc-900">
           {chip.name}
         </Text>
-        <Text variant="xsmall" className="truncate text-zinc-500">
+        <Text variant="small" className="truncate text-zinc-500">
           {chip.shortMessage}
         </Text>
       </div>

@@ -203,6 +203,10 @@ export function useLibraryAgentList({
 
   const showFolders = !isFavoritesTab;
 
+  // All loaded agent IDs (unfiltered) — used by AgentBriefingPanel so the
+  // sitrep always covers the full fleet, not just the currently filtered view.
+  const allAgentIDs = useMemo(() => agents.map((a) => a.id), [agents]);
+
   // Client-side filter by status using mock data until the real API supports it.
   const filteredAgents = useMemo(() => {
     if (statusFilter === "all") return agents;
@@ -213,6 +217,10 @@ export function useLibraryAgentList({
       return info.status === statusFilter;
     });
   }, [agents, statusFilter]);
+
+  // When a filter is active, show the filtered count instead of the API total.
+  const displayedCount =
+    statusFilter === "all" ? allAgentsCount : filteredAgents.length;
 
   function handleFolderDeleted() {
     if (selectedFolderId === deletingFolder?.id) {
@@ -225,6 +233,8 @@ export function useLibraryAgentList({
     agentLoading,
     agentCount,
     allAgentsCount,
+    displayedCount,
+    allAgentIDs,
     favoritesCount: favoriteAgentsData.agentCount,
     agents: filteredAgents,
     hasNextPage: agentsHasNextPage,

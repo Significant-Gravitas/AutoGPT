@@ -84,7 +84,7 @@ export function StatsGrid({ summary, activeFilter, onFilterChange }: Props) {
           >
             <div className="flex items-center gap-1.5">
               <Icon size={14} className={tile.color} />
-              <Text variant="xsmall" className="text-zinc-500">
+              <Text variant="small" className="text-zinc-500">
                 {tile.label}
               </Text>
             </div>

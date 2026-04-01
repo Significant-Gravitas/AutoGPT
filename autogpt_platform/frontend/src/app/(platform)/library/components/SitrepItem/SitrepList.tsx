@@ -30,7 +30,7 @@ export function SitrepList({ agentIDs, maxItems = 10 }: Props) {
         <Text variant="small-medium" className="text-zinc-700">
           AI Summary
         </Text>
-        <Text variant="xsmall" className="text-zinc-400">
+        <Text variant="small" className="text-zinc-400">
           Updated just now
         </Text>
       </div>

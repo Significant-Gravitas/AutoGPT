@@ -148,27 +148,27 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
           {isRunning && statusInfo.progress !== null && (
             <div className="mt-1 flex items-center gap-2">
               <Progress value={statusInfo.progress} className="h-1.5 flex-1" />
-              <Text variant="xsmall" className="text-blue-600">
+              <Text variant="small" className="text-blue-600">
                 {statusInfo.progress}%
               </Text>
             </div>
           )}
 
           {hasError && statusInfo.lastError && (
-            <Text variant="xsmall" className="mt-1 line-clamp-1 text-red-500">
+            <Text variant="small" className="mt-1 line-clamp-1 text-red-500">
               {statusInfo.lastError}
             </Text>
           )}
 
           <div className="mt-1 flex items-center gap-3">
-            <Text variant="xsmall" className="text-zinc-400">
+            <Text variant="small" className="text-zinc-400">
               {statusInfo.totalRuns} runs
             </Text>
-            <Text variant="xsmall" className="text-zinc-400">
+            <Text variant="small" className="text-zinc-400">
               ${statusInfo.monthlySpend}
             </Text>
             {statusInfo.lastRunAt && (
-              <Text variant="xsmall" className="text-zinc-400">
+              <Text variant="small" className="text-zinc-400">
                 {formatTimeAgo(statusInfo.lastRunAt)}
               </Text>
             )}
