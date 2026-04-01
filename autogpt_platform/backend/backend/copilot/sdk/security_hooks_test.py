@@ -457,6 +457,44 @@ async def test_agent_slot_released_on_completion(_hooks):
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
+async def test_agent_slot_released_on_failure(_hooks):
+    """A failed Agent should also free its concurrency slot."""
+    pre, _, post_failure = _hooks
+    # Fill both slots
+    for i in range(2):
+        result = await pre(
+            {"tool_name": "Agent", "tool_input": {"prompt": "ok"}},
+            tool_use_id=f"tu-agent-fail-{i}",
+            context={},
+        )
+        assert not _is_denied(result)
+
+    # At capacity
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "over"}},
+        tool_use_id="tu-agent-fail-2",
+        context={},
+    )
+    assert _is_denied(result)
+
+    # Fail first agent — should free a slot
+    await post_failure(
+        {"tool_name": "Agent", "tool_input": {}, "error": "something broke"},
+        tool_use_id="tu-agent-fail-0",
+        context={},
+    )
+
+    # New Agent should be allowed
+    result = await pre(
+        {"tool_name": "Agent", "tool_input": {"prompt": "after failure"}},
+        tool_use_id="tu-agent-fail-3",
+        context={},
+    )
+    assert not _is_denied(result)
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
 async def test_mixed_task_agent_share_slots(_hooks):
     """Task and Agent share the same concurrency pool."""
     pre, post, _ = _hooks

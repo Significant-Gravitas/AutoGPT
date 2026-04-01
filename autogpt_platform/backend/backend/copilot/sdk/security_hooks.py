@@ -356,21 +356,15 @@ def create_security_hooks(
         ) -> SyncHookJSONOutput:
             """Log when a sub-agent stops."""
             _ = context, tool_use_id
-            agent_id = input_data.get("agent_id", "?")
-            agent_type = input_data.get("agent_type", "?")
-            # Sanitize transcript path: strip control chars to prevent
-            # log injection (same pattern as pre_compact_hook).
-            transcript = (
-                str(input_data.get("agent_transcript_path", ""))
-                .replace("\n", "")
-                .replace("\r", "")
-            )
+            agent_id = _sanitize(str(input_data.get("agent_id", "?")))
+            agent_type = _sanitize(str(input_data.get("agent_type", "?")))
+            transcript = _sanitize(str(input_data.get("agent_transcript_path", "")))
             logger.info(
                 "[SDK] SubagentStop: agent_id=%s, type=%s, user=%s, transcript=%s",
                 agent_id,
                 agent_type,
                 user_id,
-                transcript[:200],
+                transcript,
             )
             return cast(SyncHookJSONOutput, {})
 
