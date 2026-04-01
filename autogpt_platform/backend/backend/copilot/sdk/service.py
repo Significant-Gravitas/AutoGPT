@@ -2153,7 +2153,9 @@ async def stream_chat_completion_sdk(
                 # duplicate StreamError.
                 session.messages = session.messages[:pre_attempt_msg_count]
                 # Check if this is a transient error we can retry with backoff.
-                if exc.code == "transient" or is_transient_api_error(str(exc)):
+                if exc.code == "transient_api_error" or is_transient_api_error(
+                    str(exc)
+                ):
                     backoff = _can_retry_transient()
                     if backoff is not None:
                         logger.warning(
