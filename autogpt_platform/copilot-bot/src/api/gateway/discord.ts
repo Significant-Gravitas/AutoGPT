@@ -28,7 +28,7 @@ export async function GET(request: Request) {
 
   const baseUrl = process.env.WEBHOOK_BASE_URL ?? "http://localhost:3000";
   const webhookUrl = `${baseUrl}/api/webhooks/discord`;
-  const durationMs = 10 * 60 * 1000; // 10 minutes
+  const durationMs = 9 * 60 * 1000; // 9 minutes (matches cron interval)
 
   return (discord as any).startGatewayListener(
     {},

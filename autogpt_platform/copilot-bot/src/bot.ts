@@ -7,8 +7,8 @@
  * - Streaming responses back to the user
  */
 
-import { Chat } from "chat";
-import type { StateAdapter } from "chat";
+import { Chat, Message } from "chat";
+import type { Adapter, StateAdapter, Thread } from "chat";
 import { PlatformAPI } from "./platform-api.js";
 import type { Config } from "./config.js";
 
@@ -22,11 +22,13 @@ export interface BotThreadState {
   pendingLinkToken?: string;
 }
 
+type BotThread = Thread<BotThreadState>;
+
 export async function createBot(config: Config, stateAdapter: StateAdapter) {
   const api = new PlatformAPI(config.autogptApiUrl);
 
   // Build adapters based on config
-  const adapters: Record<string, any> = {};
+  const adapters: Record<string, Adapter> = {};
 
   if (config.discord) {
     const { createDiscordAdapter } = await import("@chat-adapter/discord");
@@ -118,9 +120,9 @@ export async function createBot(config: Config, stateAdapter: StateAdapter) {
 
 /**
  * Get the adapter/platform name from a thread.
+ * Thread ID format is "adapter:channel:thread".
  */
-function getAdapterName(thread: any): string {
-  // Thread ID format is "adapter:channel:thread"
+function getAdapterName(thread: BotThread): string {
   const parts = thread.id.split(":");
   return parts[0] ?? "unknown";
 }
@@ -129,8 +131,8 @@ function getAdapterName(thread: any): string {
  * Handle an unlinked user — create a link token and send them a prompt.
  */
 async function handleUnlinkedUser(
-  thread: any,
-  message: any,
+  thread: BotThread,
+  message: Message,
   platform: string,
   api: PlatformAPI
 ) {
@@ -142,7 +144,7 @@ async function handleUnlinkedUser(
     const linkResult = await api.createLinkToken({
       platform,
       platformUserId: message.author.userId,
-      platformUsername: message.author.fullName ?? message.author.username,
+      platformUsername: message.author.fullName ?? message.author.userName,
     });
 
     await thread.post(
@@ -153,8 +155,9 @@ async function handleUnlinkedUser(
 
     // Store the pending token so we could poll later if needed
     await thread.setState({ pendingLinkToken: linkResult.token });
-  } catch (err: any) {
-    if (err.message?.includes("409")) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (errMsg.includes("409")) {
       // Already linked (race condition) — retry resolve
       const resolved = await api.resolve(platform, message.author.userId);
       if (resolved.linked) {
@@ -181,7 +184,7 @@ async function handleUnlinkedUser(
  * Forward a message to CoPilot and stream the response back.
  */
 async function handleCoPilotMessage(
-  thread: any,
+  thread: BotThread,
   text: string,
   userId: string,
   api: PlatformAPI
@@ -203,11 +206,12 @@ async function handleCoPilotMessage(
       console.log(`[bot] Created session ${sessionId} for user ${userId.slice(-8)}`);
     }
 
-    // Stream CoPilot response directly to the chat platform
+    // Stream CoPilot response — thread.post() accepts AsyncIterable<string>
     const stream = api.streamChat(userId, text, sessionId);
     await thread.post(stream);
-  } catch (err: any) {
-    console.error(`[bot] CoPilot error for user ${userId.slice(-8)}:`, err.message);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[bot] CoPilot error for user ${userId.slice(-8)}:`, errMsg);
     await thread.post(
       "Sorry, I ran into an issue processing your message. Please try again."
     );
