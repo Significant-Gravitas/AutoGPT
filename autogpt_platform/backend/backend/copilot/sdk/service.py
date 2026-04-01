@@ -2116,6 +2116,12 @@ async def stream_chat_completion_sdk(
                 state.usage.reset()
 
             pre_attempt_msg_count = len(session.messages)
+            # Snapshot transcript builder state — it maintains an
+            # independent _entries list from session.messages, so rolling
+            # back session.messages alone would leave duplicate entries
+            # from the failed attempt in the uploaded transcript.
+            pre_transcript_entries = list(state.transcript_builder._entries)
+            pre_transcript_uuid = state.transcript_builder._last_uuid
             events_yielded = 0
 
             try:
@@ -2152,6 +2158,8 @@ async def stream_chat_completion_sdk(
                 # stream_err so the post-loop code won't emit a
                 # duplicate StreamError.
                 session.messages = session.messages[:pre_attempt_msg_count]
+                state.transcript_builder._entries = pre_transcript_entries
+                state.transcript_builder._last_uuid = pre_transcript_uuid
                 # Check if this is a transient error we can retry with backoff.
                 if exc.code == "transient_api_error" or is_transient_api_error(
                     str(exc)
@@ -2215,6 +2223,8 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
+                state.transcript_builder._entries = pre_transcript_entries
+                state.transcript_builder._last_uuid = pre_transcript_uuid
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
