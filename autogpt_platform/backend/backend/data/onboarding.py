@@ -442,10 +442,18 @@ def format_onboarding_for_extraction(
     pain_points: list[str],
 ) -> str:
     """Format onboarding wizard answers as Q&A text for LLM extraction."""
+
+    def normalize(value: str) -> str:
+        return " ".join(value.strip().split())
+
+    name = normalize(user_name)
+    role = normalize(user_role)
+    points = [normalize(p) for p in pain_points if normalize(p)]
+
     lines = [
-        f"Q: What is your name?\nA: {user_name}",
-        f"Q: What best describes your role?\nA: {user_role}",
-        f"Q: What tasks are eating your time?\nA: {', '.join(pain_points)}",
+        f"Q: What is your name?\nA: {name}",
+        f"Q: What best describes your role?\nA: {role}",
+        f"Q: What tasks are eating your time?\nA: {', '.join(points)}",
     ]
     return "\n\n".join(lines)
 

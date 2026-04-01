@@ -128,7 +128,7 @@ export function PainPointsStep() {
             What&apos;s eating your time?
           </Text>
           <Text variant="lead" className="!text-zinc-500">
-            Pick the tasks you&apos;d love to hand off to AutoPilot
+            Pick the tasks you&apos;d love to hand off to Autopilot
           </Text>
         </div>
 

@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import logging
 import time
 import uuid
@@ -70,7 +71,10 @@ from backend.data.onboarding import (
     update_user_onboarding,
 )
 from backend.data.tally import extract_business_understanding
-from backend.data.understanding import upsert_business_understanding
+from backend.data.understanding import (
+    BusinessUnderstandingInput,
+    upsert_business_understanding,
+)
 from backend.data.user import (
     get_or_create_user,
     get_user_by_id,
@@ -287,9 +291,9 @@ async def get_onboarding_agents(
 class OnboardingProfileRequest(pydantic.BaseModel):
     """Request body for onboarding profile submission."""
 
-    user_name: str
-    user_role: str
-    pain_points: list[str]
+    user_name: str = pydantic.Field(min_length=1, max_length=100)
+    user_role: str = pydantic.Field(min_length=1, max_length=100)
+    pain_points: list[str] = pydantic.Field(default_factory=list, max_length=20)
 
 
 class OnboardingStatusResponse(pydantic.BaseModel):
@@ -328,6 +332,7 @@ async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     "/onboarding/profile",
     summary="Submit onboarding profile",
     tags=["onboarding"],
+    dependencies=[Security(requires_user)],
 )
 async def submit_onboarding_profile(
     data: OnboardingProfileRequest,
@@ -339,7 +344,10 @@ async def submit_onboarding_profile(
         pain_points=data.pain_points,
     )
 
-    understanding_input = await extract_business_understanding(formatted)
+    try:
+        understanding_input = await extract_business_understanding(formatted)
+    except (asyncio.TimeoutError, json.JSONDecodeError):
+        understanding_input = BusinessUnderstandingInput.model_construct()
 
     # Ensure the direct fields are set even if LLM missed them
     understanding_input.user_name = data.user_name

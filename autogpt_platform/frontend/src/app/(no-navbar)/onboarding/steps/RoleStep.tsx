@@ -61,7 +61,7 @@ export function RoleStep() {
             What best describes you, {name}?
           </Text>
           <Text variant="lead" className="!text-zinc-500">
-            AutoPilot will tailor automations to your world
+            Autopilot will tailor automations to your world
           </Text>
         </div>
 

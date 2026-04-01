@@ -26,7 +26,8 @@ export function PreparingStep({ onComplete }: Props) {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    setTimeout(() => setStarted(true), 300);
+    const timer = setTimeout(() => setStarted(true), 300);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {

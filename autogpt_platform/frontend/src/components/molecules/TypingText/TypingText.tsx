@@ -13,7 +13,10 @@ export function TypingText({ text, active, speed = 30, delay = 0 }: Props) {
   const [charCount, setCharCount] = useState(0);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      setCharCount(0);
+      return;
+    }
 
     setCharCount(0);
 

@@ -29,14 +29,16 @@ export function useOnboardingPage() {
   const reset = useOnboardingWizardStore((s) => s.reset);
   const [isLoading, setIsLoading] = useState(true);
   const hasSubmitted = useRef(false);
+  const hasInitialized = useRef(false);
 
   // Initialise store from URL on mount, reset form data
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
     const urlStep = parseStep(searchParams.get("step"));
     reset();
     goToStep(urlStep);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams, reset, goToStep]);
 
   // Sync store → URL when step changes
   useEffect(() => {
@@ -94,11 +96,16 @@ export function useOnboardingPage() {
   }, [currentStep, name, role, otherRole, painPoints, otherPainPoint]);
 
   const handlePreparingComplete = useCallback(async () => {
-    try {
-      await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
-    } catch {
-      // Best effort
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
+        router.replace("/copilot");
+        return;
+      } catch {
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+      }
     }
+    // Final fallback — navigate anyway to avoid trapping user
     router.replace("/copilot");
   }, [router]);
 

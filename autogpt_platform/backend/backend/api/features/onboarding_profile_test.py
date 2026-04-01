@@ -49,8 +49,8 @@ def test_onboarding_profile_success(mocker):
         },
     )
     assert response.status_code == 200
-    mock_extract.assert_called_once()
-    mock_upsert.assert_called_once()
+    mock_extract.assert_awaited_once()
+    mock_upsert.assert_awaited_once()
 
 
 def test_onboarding_profile_missing_fields():

@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { QuestionIcon } from "@phosphor-icons/react";
+import { Question } from "@phosphor-icons/react";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { useOnboardingWizardStore } from "../store";
 
@@ -46,7 +46,13 @@ export function WelcomeStep() {
                 <TooltipProvider delayDuration={400}>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <QuestionIcon size={14} className="text-purple-500" />
+                      <button
+                        type="button"
+                        aria-label="What is Autopilot?"
+                        className="inline-flex text-purple-500"
+                      >
+                        <Question size={14} />
+                      </button>
                     </TooltipTrigger>
                     <TooltipContent>
                       Autopilot is AutoGPT&apos;s AI assistant that watches your
