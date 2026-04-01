@@ -39,7 +39,7 @@ export function DialogWrap({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
-  const accessibleTitle = title ?? "Dialog";
+  const accessibleTitle = title || "Dialog";
   const hasVisibleTitle = Boolean(title);
 
   const closeButton = (
