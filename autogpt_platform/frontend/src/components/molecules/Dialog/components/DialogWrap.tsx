@@ -39,6 +39,29 @@ export function DialogWrap({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [hasVerticalScrollbar, setHasVerticalScrollbar] = useState(false);
+  const accessibleTitle = title ?? "Dialog";
+  const hasVisibleTitle = Boolean(title);
+
+  const closeButton = (
+    <Button
+      variant="icon"
+      size="icon"
+      onClick={handleClose}
+      aria-label="Close"
+      className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
+      withTooltip={false}
+    >
+      <X width="1rem" />
+    </Button>
+  );
+
+  const titleNode = hasVisibleTitle ? (
+    <RXDialog.Title className={modalStyles.title}>
+      {accessibleTitle}
+    </RXDialog.Title>
+  ) : (
+    <RXDialog.Title className="sr-only">{accessibleTitle}</RXDialog.Title>
+  );
 
   // Prevent dialog from closing when external picker is open or when forceOpen is true
   const handleInteractOutside = useCallback(
@@ -103,32 +126,12 @@ export function DialogWrap({
       >
         <div
           className={`flex items-center justify-between ${
-            title ? "pb-6" : "pb-0"
+            hasVisibleTitle ? "pb-6" : "pb-0"
           }`}
         >
-          {title ? (
-            <RXDialog.Title className={modalStyles.title}>
-              {title}
-            </RXDialog.Title>
-          ) : (
-            <span className="sr-only">
-              {/* Title is required for a11y compliance even if not displayed so screen readers can announce it */}
-              <RXDialog.Title>{title}</RXDialog.Title>
-            </span>
-          )}
+          {titleNode}
 
-          {isForceOpen && !handleClose ? null : (
-            <Button
-              variant="icon"
-              size="icon"
-              onClick={handleClose}
-              aria-label="Close"
-              className="absolute right-4 top-4 z-50 size-[2.5rem] bg-white"
-              withTooltip={false}
-            >
-              <X width="1rem" />
-            </Button>
-          )}
+          {isForceOpen && !handleClose ? null : closeButton}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
           <div
