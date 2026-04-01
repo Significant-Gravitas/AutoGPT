@@ -1872,7 +1872,8 @@ async def stream_chat_completion_sdk(
         # NOTE: We intentionally do NOT override HOME here. The CLI
         # stores auth credentials in $HOME/.claude/ — overriding HOME
         # would break subscription mode (claude login) authentication.
-        sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
 
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
