@@ -45,9 +45,6 @@ export function useAgentActivityDropdown() {
     Map<string, AgentInfo>
   >(new Map());
   const failedLookups = useRef<Map<string, number>>(new Map());
-  const prevMissingIdsKey = useRef<string>("");
-  const prevMissingIds = useRef<string[]>([]);
-
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
     recentCompletions: [],
@@ -83,9 +80,9 @@ export function useAgentActivityDropdown() {
     return merged;
   }, [agentInfoMap, resolvedAgentInfoMap]);
 
-  const missingGraphIds = useMemo(() => {
+  const missingGraphIdsKey = useMemo(() => {
     if (!executions) {
-      return [];
+      return "";
     }
 
     const cutoffTime = Date.now() - SEVENTY_TWO_HOURS_IN_MS;
@@ -109,31 +106,32 @@ export function useAgentActivityDropdown() {
       }
     }
 
-    const candidate = Array.from(ids).slice(0, MAX_AGENT_INFO_LOOKUPS);
-    const key = candidate.join(",");
-
-    // Stabilize reference: only return a new array when the actual IDs change
-    if (key === prevMissingIdsKey.current) {
-      return prevMissingIds.current;
-    }
-    prevMissingIdsKey.current = key;
-    prevMissingIds.current = candidate;
-    return candidate;
+    return Array.from(ids).slice(0, MAX_AGENT_INFO_LOOKUPS).join(",");
   }, [combinedAgentInfoMap, executions]);
+
+  // Stabilize the array reference: only update when the computed key changes
+  const [missingGraphIds, setMissingGraphIds] = useState<string[]>([]);
+  useEffect(() => {
+    setMissingGraphIds(missingGraphIdsKey ? missingGraphIdsKey.split(",") : []);
+  }, [missingGraphIdsKey]);
 
   const graphIds = useMemo(
     () => Array.from(combinedAgentInfoMap.keys()),
     [combinedAgentInfoMap],
   );
 
-  const handleExecutionEvent = useCallback(
-    (execution: GraphExecution) => {
-      setNotifications((currentState) =>
-        handleExecutionUpdate(currentState, execution, combinedAgentInfoMap),
-      );
-    },
-    [combinedAgentInfoMap],
-  );
+  const combinedAgentInfoMapRef = useRef(combinedAgentInfoMap);
+  combinedAgentInfoMapRef.current = combinedAgentInfoMap;
+
+  const handleExecutionEvent = useCallback((execution: GraphExecution) => {
+    setNotifications((currentState) =>
+      handleExecutionUpdate(
+        currentState,
+        execution,
+        combinedAgentInfoMapRef.current,
+      ),
+    );
+  }, []);
 
   useEffect(() => {
     if (!executions || !executionsSuccess) {
