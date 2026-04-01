@@ -195,25 +195,14 @@ class TestRefreshFailureDoesNotCacheNull:
         be populated — the next call should retry the refresh."""
         oauth_creds = _make_oauth2_creds()
 
-        mock_store = AsyncMock()
-        mock_store.get_all_creds = AsyncMock(return_value=[oauth_creds])
-
-        mock_manager = AsyncMock()
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[oauth_creds])
         # Simulate refresh failure (e.g. transient network error)
         mock_manager.refresh_if_needed = AsyncMock(
             side_effect=Exception("Network timeout")
         )
 
-        with (
-            patch(
-                "backend.copilot.integration_creds._get_store",
-                return_value=mock_store,
-            ),
-            patch(
-                "backend.copilot.integration_creds._get_manager",
-                return_value=mock_manager,
-            ),
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         # Token should be None (refresh failed)
@@ -228,13 +217,10 @@ class TestRefreshFailureDoesNotCacheNull:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_credentials_at_all_does_cache_null(self):
         """When the user truly has no credentials, null-cache should be set."""
-        mock_store = AsyncMock()
-        mock_store.get_all_creds = AsyncMock(return_value=[])
+        mock_manager = MagicMock()
+        mock_manager.store.get_creds_by_provider = AsyncMock(return_value=[])
 
-        with patch(
-            "backend.copilot.integration_creds._get_store",
-            return_value=mock_store,
-        ):
+        with patch("backend.copilot.integration_creds._manager", mock_manager):
             result = await get_provider_token(_USER, _PROVIDER)
 
         assert result is None
