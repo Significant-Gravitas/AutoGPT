@@ -196,6 +196,7 @@ async def test_create_store_submission(mocker):
         userId="user-id",
         createdAt=now,
         isActive=True,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         StoreListingVersions=[],
         User=mock_user,
     )

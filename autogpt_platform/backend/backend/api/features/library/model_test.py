@@ -1,5 +1,6 @@
 import datetime
 
+import prisma.enums
 import prisma.models
 import pytest
 
@@ -20,6 +21,7 @@ async def test_agent_preset_from_db(test_user_id: str):
         isActive=True,
         userId=test_user_id,
         isDeleted=False,
+        visibility=prisma.enums.ResourceVisibility.PRIVATE,
         InputPresets=[
             prisma.models.AgentNodeExecutionInputOutput.model_validate(
                 {

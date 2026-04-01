@@ -69,6 +69,20 @@ export const customMutator = async <
         error,
       );
     }
+
+    // Inject org/workspace context headers
+    try {
+      const activeOrgID = localStorage.getItem("active-org-id");
+      const activeWorkspaceID = localStorage.getItem("active-workspace-id");
+      if (activeOrgID) {
+        headers["X-Org-Id"] = activeOrgID;
+      }
+      if (activeWorkspaceID) {
+        headers["X-Workspace-Id"] = activeWorkspaceID;
+      }
+    } catch (error) {
+      console.error("Org context: Failed to access localStorage:", error);
+    }
   }
 
   const isFormData = data instanceof FormData;
