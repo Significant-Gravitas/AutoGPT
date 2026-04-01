@@ -5350,6 +5350,41 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/onboarding/profile": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Submit onboarding profile",
+        "operationId": "postV1Submit onboarding profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/onboarding/reset": {
       "post": {
         "tags": ["v1", "onboarding"],
@@ -11109,6 +11144,21 @@
         "required": ["name", "scopes"],
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
+      },
+      "OnboardingProfileRequest": {
+        "properties": {
+          "user_name": { "type": "string", "title": "User Name" },
+          "user_role": { "type": "string", "title": "User Role" },
+          "pain_points": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Pain Points"
+          }
+        },
+        "type": "object",
+        "required": ["user_name", "user_role", "pain_points"],
+        "title": "OnboardingProfileRequest",
+        "description": "Request body for onboarding profile submission."
       },
       "OnboardingStatusResponse": {
         "properties": {

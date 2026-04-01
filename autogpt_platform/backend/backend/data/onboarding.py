@@ -436,6 +436,20 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     return [StoreAgentDetails.from_db(agent) for agent in recommended_agents]
 
 
+def format_onboarding_for_extraction(
+    user_name: str,
+    user_role: str,
+    pain_points: list[str],
+) -> str:
+    """Format onboarding wizard answers as Q&A text for LLM extraction."""
+    lines = [
+        f"Q: What is your name?\nA: {user_name}",
+        f"Q: What best describes your role?\nA: {user_role}",
+        f"Q: What tasks are eating your time?\nA: {', '.join(pain_points)}",
+    ]
+    return "\n\n".join(lines)
+
+
 @cached(maxsize=1, ttl_seconds=300)  # Cache for 5 minutes since this rarely changes
 async def onboarding_enabled() -> bool:
     """

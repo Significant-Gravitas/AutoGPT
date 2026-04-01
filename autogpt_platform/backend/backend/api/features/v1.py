@@ -63,12 +63,15 @@ from backend.data.onboarding import (
     UserOnboardingUpdate,
     complete_onboarding_step,
     complete_re_run_agent,
+    format_onboarding_for_extraction,
     get_recommended_agents,
     get_user_onboarding,
     onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
 )
+from backend.data.tally import extract_business_understanding
+from backend.data.understanding import upsert_business_understanding
 from backend.data.user import (
     get_or_create_user,
     get_user_by_id,
@@ -282,6 +285,14 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
+class OnboardingProfileRequest(pydantic.BaseModel):
+    """Request body for onboarding profile submission."""
+
+    user_name: str
+    user_role: str
+    pain_points: list[str]
+
+
 class OnboardingStatusResponse(pydantic.BaseModel):
     """Response for onboarding status check."""
 
@@ -298,13 +309,16 @@ class OnboardingStatusResponse(pydantic.BaseModel):
 async def is_onboarding_enabled(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OnboardingStatusResponse:
-    # Check if chat is enabled for user
     is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
 
-    # If chat is enabled, skip legacy onboarding
     if is_chat_enabled:
+        # New autopilot onboarding: enabled if user hasn't completed VISIT_COPILOT
+        user_onboarding = await get_user_onboarding(user_id)
+        needs_onboarding = (
+            OnboardingStep.VISIT_COPILOT not in user_onboarding.completedSteps
+        )
         return OnboardingStatusResponse(
-            is_onboarding_enabled=False,
+            is_onboarding_enabled=needs_onboarding,
             is_chat_enabled=True,
         )
 
@@ -323,6 +337,34 @@ async def is_onboarding_enabled(
 )
 async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await reset_user_onboarding(user_id)
+
+
+@v1_router.post(
+    "/onboarding/profile",
+    summary="Submit onboarding profile",
+    tags=["onboarding"],
+)
+async def submit_onboarding_profile(
+    data: OnboardingProfileRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+):
+    formatted = format_onboarding_for_extraction(
+        user_name=data.user_name,
+        user_role=data.user_role,
+        pain_points=data.pain_points,
+    )
+
+    understanding_input = await extract_business_understanding(formatted)
+
+    # Ensure the direct fields are set even if LLM missed them
+    understanding_input.user_name = data.user_name
+    understanding_input.user_role = data.user_role
+    if not understanding_input.pain_points:
+        understanding_input.pain_points = data.pain_points
+
+    await upsert_business_understanding(user_id, understanding_input)
+
+    return {"status": "ok"}
 
 
 ########################################################

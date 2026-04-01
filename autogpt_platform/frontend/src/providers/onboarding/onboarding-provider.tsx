@@ -142,13 +142,17 @@ export default function OnboardingProvider({
 
     async function initializeOnboarding() {
       try {
-        // Check onboarding enabled only for onboarding routes
+        const status = await resolveResponse(getV1IsOnboardingEnabled());
+
         if (isOnOnboardingRoute) {
-          const enabled = await resolveResponse(getV1IsOnboardingEnabled());
-          if (!enabled) {
-            router.push("/");
+          if (!status.is_onboarding_enabled) {
+            router.push("/copilot");
             return;
           }
+        } else if (status.is_onboarding_enabled && status.is_chat_enabled) {
+          // User hasn't completed new onboarding — redirect them there
+          router.push("/onboarding");
+          return;
         }
 
         const onboarding = await fetchOnboarding();
@@ -158,7 +162,7 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push("/");
+          router.push("/copilot");
         }
       } catch (error) {
         console.error("Failed to initialize onboarding:", error);
