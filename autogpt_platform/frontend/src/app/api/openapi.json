@@ -5348,11 +5348,11 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/enabled": {
+    "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Is onboarding enabled",
-        "operationId": "getV1Is onboarding enabled",
+        "summary": "Check if onboarding is completed",
+        "operationId": "getV1Check if onboarding is completed",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -11234,16 +11234,12 @@
       },
       "OnboardingStatusResponse": {
         "properties": {
-          "is_onboarding_enabled": {
-            "type": "boolean",
-            "title": "Is Onboarding Enabled"
-          },
-          "is_chat_enabled": { "type": "boolean", "title": "Is Chat Enabled" }
+          "is_completed": { "type": "boolean", "title": "Is Completed" }
         },
         "type": "object",
-        "required": ["is_onboarding_enabled", "is_chat_enabled"],
+        "required": ["is_completed"],
         "title": "OnboardingStatusResponse",
-        "description": "Response for onboarding status check."
+        "description": "Response for onboarding completion check."
       },
       "OnboardingStep": {
         "type": "string",

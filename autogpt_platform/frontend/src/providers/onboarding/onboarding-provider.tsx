@@ -1,6 +1,6 @@
 "use client";
 import {
-  getV1IsOnboardingEnabled,
+  getV1CheckIfOnboardingIsCompleted,
   getV1OnboardingState,
   patchV1UpdateOnboardingState,
   postV1CompleteOnboardingStep,
@@ -142,16 +142,15 @@ export default function OnboardingProvider({
 
     async function initializeOnboarding() {
       try {
-        const status = await resolveResponse(getV1IsOnboardingEnabled());
+        const { is_completed } = await resolveResponse(
+          getV1CheckIfOnboardingIsCompleted(),
+        );
 
-        if (isOnOnboardingRoute) {
-          if (!status.is_onboarding_enabled) {
-            router.push("/copilot");
-            return;
-          }
-        } else if (status.is_onboarding_enabled && status.is_chat_enabled) {
-          // User hasn't completed new onboarding — redirect them there
+        if (!is_completed && !isOnOnboardingRoute) {
           router.push("/onboarding");
+          return;
+        } else if (is_completed && isOnOnboardingRoute) {
+          router.push("/copilot");
           return;
         }
 

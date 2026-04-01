@@ -1,5 +1,5 @@
 import type { InfiniteData } from "@tanstack/react-query";
-import { getV1IsOnboardingEnabled } from "./__generated__/endpoints/onboarding/onboarding";
+import { getV1CheckIfOnboardingIsCompleted } from "./__generated__/endpoints/onboarding/onboarding";
 import { Pagination } from "./__generated__/models/pagination";
 
 export type OKData<TResponse extends { status: number; data?: any }> =
@@ -175,8 +175,8 @@ export async function resolveResponse<
 }
 
 export async function getOnboardingStatus() {
-  const status = await resolveResponse(getV1IsOnboardingEnabled());
+  const status = await resolveResponse(getV1CheckIfOnboardingIsCompleted());
   return {
-    shouldShowOnboarding: status.is_onboarding_enabled,
+    shouldShowOnboarding: !status.is_completed,
   };
 }

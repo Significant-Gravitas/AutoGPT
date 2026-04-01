@@ -66,7 +66,6 @@ from backend.data.onboarding import (
     format_onboarding_for_extraction,
     get_recommended_agents,
     get_user_onboarding,
-    onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
 )
@@ -294,37 +293,23 @@ class OnboardingProfileRequest(pydantic.BaseModel):
 
 
 class OnboardingStatusResponse(pydantic.BaseModel):
-    """Response for onboarding status check."""
+    """Response for onboarding completion check."""
 
-    is_onboarding_enabled: bool
-    is_chat_enabled: bool
+    is_completed: bool
 
 
 @v1_router.get(
-    "/onboarding/enabled",
-    summary="Is onboarding enabled",
+    "/onboarding/completed",
+    summary="Check if onboarding is completed",
     tags=["onboarding", "public"],
     response_model=OnboardingStatusResponse,
 )
-async def is_onboarding_enabled(
+async def is_onboarding_completed(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OnboardingStatusResponse:
-    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
-
-    if is_chat_enabled:
-        # New autopilot onboarding: enabled if user hasn't completed VISIT_COPILOT
-        user_onboarding = await get_user_onboarding(user_id)
-        needs_onboarding = (
-            OnboardingStep.VISIT_COPILOT not in user_onboarding.completedSteps
-        )
-        return OnboardingStatusResponse(
-            is_onboarding_enabled=needs_onboarding,
-            is_chat_enabled=True,
-        )
-
+    user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_onboarding_enabled=await onboarding_enabled(),
-        is_chat_enabled=False,
+        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
     )
 
 

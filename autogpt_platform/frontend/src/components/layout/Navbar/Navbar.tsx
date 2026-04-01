@@ -9,7 +9,6 @@ import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
@@ -25,7 +24,6 @@ export function Navbar() {
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
   const dynamicMenuItems = getAccountMenuItems(user?.role);
-  const isChatEnabled = useGetFlag(Flag.CHAT);
   const previewBranchName = environment.getPreviewStealingDev();
   const logoutInProgress = isLogoutInProgress();
 
@@ -44,11 +42,9 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
-  const homeHref = isChatEnabled === true ? "/copilot" : "/library";
-
   const actualLoggedInLinks = [
-    { name: "Home", href: homeHref },
-    ...(isChatEnabled === true ? [{ name: "Agents", href: "/library" }] : []),
+    { name: "Home", href: "/copilot" },
+    { name: "Agents", href: "/library" },
     ...loggedInLinks,
   ];
 
