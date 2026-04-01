@@ -1,6 +1,5 @@
 import logging
 import os
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Coroutine
@@ -9,7 +8,6 @@ from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
-from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import (
     IntegrationCredentialsStore,
     provider_matches,
@@ -107,21 +105,11 @@ class IntegrationCredentialsManager:
 
     def __init__(self):
         self.store = IntegrationCredentialsStore()
-        self._local = threading.local()
 
     async def locks(self) -> AsyncRedisKeyedMutex:
-        # Each thread gets its own mutex via threading.local().  The copilot
-        # executor runs worker threads with separate event loops; the internal
-        # asyncio.Lock inside AsyncRedisKeyedMutex is bound to the loop it was
-        # created on.  Sharing a single mutex across threads would raise
-        # "Future attached to a different loop".
-        locks: AsyncRedisKeyedMutex | None = getattr(self._local, "locks", None)
-        if locks:
-            return locks
-
-        locks = AsyncRedisKeyedMutex(await get_redis_async())
-        self._local.locks = locks
-        return locks
+        # Delegate to the store's thread-cached locks — both need per-thread
+        # AsyncRedisKeyedMutex instances (copilot workers have separate event loops).
+        return await self.store.locks()
 
     async def create(self, user_id: str, credentials: Credentials) -> None:
         result = await self.store.add_creds(user_id, credentials)

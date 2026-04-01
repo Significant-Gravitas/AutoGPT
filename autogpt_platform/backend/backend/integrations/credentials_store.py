@@ -2,7 +2,6 @@ import base64
 import hashlib
 import logging
 import secrets
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -20,6 +19,7 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import thread_cached
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -305,22 +305,12 @@ def is_system_provider(provider: str) -> bool:
 
 
 class IntegrationCredentialsStore:
-    def __init__(self):
-        self._local = threading.local()
-
+    @thread_cached
     async def locks(self) -> AsyncRedisKeyedMutex:
-        # Each thread gets its own mutex via threading.local().  The copilot
-        # executor runs worker threads with separate event loops; the internal
-        # asyncio.Lock inside AsyncRedisKeyedMutex is bound to the loop it was
-        # created on.  Sharing a single mutex across threads would raise
-        # "Future attached to a different loop".
-        locks: AsyncRedisKeyedMutex | None = getattr(self._local, "locks", None)
-        if locks:
-            return locks
-
-        locks = AsyncRedisKeyedMutex(await get_redis_async())
-        self._local.locks = locks
-        return locks
+        # Per-thread: copilot executor runs worker threads with separate event
+        # loops; AsyncRedisKeyedMutex's internal asyncio.Lock is bound to the
+        # loop it was created on.
+        return AsyncRedisKeyedMutex(await get_redis_async())
 
     @property
     def db_manager(self):
