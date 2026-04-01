@@ -15,11 +15,12 @@ import {
   PencilSimple,
 } from "@phosphor-icons/react";
 
-import { FadeIn } from "../components/FadeIn";
+import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
+import { useMemo } from "react";
 import { SelectableCard } from "../components/SelectableCard";
 import { useOnboardingWizardStore } from "../store";
 
-const PAIN_POINTS = [
+const ALL_PAIN_POINTS = [
   {
     id: "Finding leads",
     label: "Finding leads",
@@ -67,7 +68,31 @@ const PAIN_POINTS = [
   },
 ] as const;
 
+// Top pain points per role — shown first, rest follow in default order
+const ROLE_TOP_PICKS: Record<string, string[]> = {
+  "Founder/CEO": ["Finding leads", "Reports & data", "Email & outreach", "Scheduling"],
+  Operations: ["CRM & data entry", "Scheduling", "Reports & data"],
+  "Sales/BD": ["Finding leads", "Email & outreach", "CRM & data entry"],
+  Marketing: ["Social media", "Email & outreach", "Research"],
+  "Product/PM": ["Research", "Reports & data", "Scheduling"],
+  Engineering: ["Research", "Reports & data", "CRM & data entry"],
+  "HR/People": ["Scheduling", "Email & outreach", "CRM & data entry"],
+};
+
+function getPainPointsForRole(role: string) {
+  const topIDs = ROLE_TOP_PICKS[role] ?? [];
+  const top = topIDs
+    .map((id) => ALL_PAIN_POINTS.find((p) => p.id === id))
+    .filter((p): p is (typeof ALL_PAIN_POINTS)[number] => p != null);
+  const rest = ALL_PAIN_POINTS.filter(
+    (p) => !topIDs.includes(p.id) && p.id !== "Something else",
+  );
+  const somethingElse = ALL_PAIN_POINTS.find((p) => p.id === "Something else")!;
+  return [...top, ...rest, somethingElse];
+}
+
 export function PainPointsStep() {
+  const role = useOnboardingWizardStore((s) => s.role);
   const painPoints = useOnboardingWizardStore((s) => s.painPoints);
   const otherPainPoint = useOnboardingWizardStore((s) => s.otherPainPoint);
   const togglePainPoint = useOnboardingWizardStore((s) => s.togglePainPoint);
@@ -76,6 +101,7 @@ export function PainPointsStep() {
   );
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
 
+  const orderedPainPoints = useMemo(() => getPainPointsForRole(role), [role]);
   const hasSomethingElse = painPoints.includes("Something else");
   const canContinue =
     painPoints.length > 0 && (!hasSomethingElse || otherPainPoint.trim());
@@ -103,7 +129,7 @@ export function PainPointsStep() {
 
         <div className="flex w-full flex-col items-center gap-4">
           <div className="flex w-full max-w-[100vw] flex-nowrap gap-4 overflow-x-auto px-8 scrollbar-none md:grid md:grid-cols-3 md:overflow-hidden md:px-0">
-            {PAIN_POINTS.map((p) => (
+            {orderedPainPoints.map((p) => (
               <SelectableCard
                 key={p.id}
                 icon={p.icon}

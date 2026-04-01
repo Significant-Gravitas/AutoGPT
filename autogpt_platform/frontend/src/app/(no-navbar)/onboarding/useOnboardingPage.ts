@@ -5,21 +5,46 @@ import {
 import { customMutator } from "@/app/api/mutators/custom-mutator";
 import { resolveResponse } from "@/app/api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useOnboardingWizardStore } from "./store";
+import { Step, useOnboardingWizardStore } from "./store";
+
+function parseStep(value: string | null): Step {
+  const n = Number(value);
+  if (n >= 1 && n <= 4) return n as Step;
+  return 1;
+}
 
 export function useOnboardingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLoggedIn } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
+  const goToStep = useOnboardingWizardStore((s) => s.goToStep);
   const name = useOnboardingWizardStore((s) => s.name);
   const role = useOnboardingWizardStore((s) => s.role);
   const otherRole = useOnboardingWizardStore((s) => s.otherRole);
   const painPoints = useOnboardingWizardStore((s) => s.painPoints);
   const otherPainPoint = useOnboardingWizardStore((s) => s.otherPainPoint);
+  const reset = useOnboardingWizardStore((s) => s.reset);
   const [isLoading, setIsLoading] = useState(true);
   const hasSubmitted = useRef(false);
+
+  // Initialise store from URL on mount, reset form data
+  useEffect(() => {
+    const urlStep = parseStep(searchParams.get("step"));
+    reset();
+    goToStep(urlStep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sync store → URL when step changes
+  useEffect(() => {
+    const urlStep = parseStep(searchParams.get("step"));
+    if (currentStep !== urlStep) {
+      router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
+    }
+  }, [currentStep, router, searchParams]);
 
   // Check if onboarding already completed
   useEffect(() => {

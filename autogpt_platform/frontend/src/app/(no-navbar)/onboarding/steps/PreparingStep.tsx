@@ -1,11 +1,11 @@
 "use client";
 
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { Text } from "@/components/atoms/Text/Text";
+import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
 import { Check } from "@phosphor-icons/react";
-import Image from "next/image";
 import { useEffect, useState } from "react";
-import { FadeIn } from "../components/FadeIn";
 
 const CHECKLIST = [
   "Personalizing your experience",
@@ -21,10 +21,17 @@ interface Props {
 }
 
 export function PreparingStep({ onComplete }: Props) {
+  const [started, setStarted] = useState(false);
   const [completedItems, setCompletedItems] = useState(0);
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
+    setTimeout(() => setStarted(true), 300);
+  }, []);
+
+  useEffect(() => {
+    if (!started) return;
+
     const startTime = Date.now();
 
     const progressInterval = setInterval(() => {
@@ -45,55 +52,58 @@ export function PreparingStep({ onComplete }: Props) {
     }, 50);
 
     return () => clearInterval(progressInterval);
-  }, [onComplete]);
+  }, [started, onComplete]);
 
   return (
-    <FadeIn>
-      <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">
-        <div className="flex flex-col items-center gap-4">
-          <Image
-            src="/autogpt-logo-light-bg.png"
-            alt="AutoGPT"
-            width={64}
-            height={64}
+    <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">
+      <div className="flex flex-col items-center gap-4">
+        <AutoGPTLogo
+          className="relative right-[3rem] h-24 w-[12rem]"
+          hideText
+        />
+        <Text variant="h3" className="text-center">
+          <TypingText
+            text="Preparing your workspace..."
+            active={started}
+            delay={400}
+            speed={60}
           />
-          <Text variant="h3">Preparing your workspace...</Text>
-        </div>
-
-        <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-100 ease-linear"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-
-        <ul className="flex flex-col gap-3">
-          {CHECKLIST.map((item, i) => (
-            <li key={item} className="flex items-center gap-3">
-              <div
-                className={cn(
-                  "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
-                  i < completedItems
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-gray-200 text-gray-400",
-                )}
-              >
-                <Check size={14} weight="bold" />
-              </div>
-              <Text
-                variant="body"
-                as="span"
-                className={cn(
-                  "transition-colors",
-                  i < completedItems ? "!text-black" : "!text-zinc-500",
-                )}
-              >
-                {item}
-              </Text>
-            </li>
-          ))}
-        </ul>
+        </Text>
       </div>
-    </FadeIn>
+
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+        <div
+          className="h-full rounded-full bg-purple-500 transition-all duration-100 ease-linear"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <ul className="flex flex-col gap-3">
+        {CHECKLIST.map((item, i) => (
+          <li key={item} className="flex items-center gap-3">
+            <div
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full transition-colors",
+                i < completedItems
+                  ? "bg-neutral-900 text-white"
+                  : "bg-gray-200 text-gray-400",
+              )}
+            >
+              <Check size={14} weight="bold" />
+            </div>
+            <Text
+              variant="body"
+              as="span"
+              className={cn(
+                "transition-colors",
+                i < completedItems ? "!text-black" : "!text-zinc-500",
+              )}
+            >
+              {item}
+            </Text>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

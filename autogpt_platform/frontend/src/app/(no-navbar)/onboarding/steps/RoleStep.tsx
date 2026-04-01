@@ -12,7 +12,7 @@ import hammerImg from "../assets/hammer.png";
 import laptopImg from "../assets/laptop.png";
 import loudspeakerImg from "../assets/loudspeaker.png";
 import whiteFlagImg from "../assets/white_flag.png";
-import { FadeIn } from "../components/FadeIn";
+import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { SelectableCard } from "../components/SelectableCard";
 import { useOnboardingWizardStore } from "../store";
 

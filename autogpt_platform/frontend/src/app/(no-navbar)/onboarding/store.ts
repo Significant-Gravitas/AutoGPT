@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type Step = 1 | 2 | 3 | 4;
+export type Step = 1 | 2 | 3 | 4;
 
 interface OnboardingWizardState {
   currentStep: Step;
@@ -17,6 +17,7 @@ interface OnboardingWizardState {
   nextStep(): void;
   prevStep(): void;
   goToStep(step: Step): void;
+  reset(): void;
 }
 
 export const useOnboardingWizardStore = create<OnboardingWizardState>(
@@ -61,6 +62,16 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     },
     goToStep(step) {
       set({ currentStep: step });
+    },
+    reset() {
+      set({
+        currentStep: 1,
+        name: "",
+        role: "",
+        otherRole: "",
+        painPoints: [],
+        otherPainPoint: "",
+      });
     },
   }),
 );

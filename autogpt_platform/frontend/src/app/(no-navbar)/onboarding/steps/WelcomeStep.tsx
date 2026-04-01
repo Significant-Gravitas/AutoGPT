@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { QuestionIcon } from "@phosphor-icons/react";
-import { FadeIn } from "../components/FadeIn";
+import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { useOnboardingWizardStore } from "../store";
 
 export function WelcomeStep() {

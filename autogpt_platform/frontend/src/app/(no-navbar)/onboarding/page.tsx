@@ -21,9 +21,13 @@ export default function OnboardingPage() {
   const showDots = currentStep <= 3;
   const showBack = currentStep > 1 && currentStep <= 3;
 
+  const showProgressBar = currentStep <= 3;
+
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
-      <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
+      {showProgressBar && (
+        <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
+      )}
 
       {showBack && (
         <button
