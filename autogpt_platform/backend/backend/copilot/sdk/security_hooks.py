@@ -153,6 +153,10 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
+        def _sanitize(value: str, max_len: int = 200) -> str:
+            """Strip control characters and truncate for safe logging."""
+            return value.replace("\n", "").replace("\r", "")[:max_len]
+
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
         # The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
@@ -313,10 +317,8 @@ def create_security_hooks(
             # validates against _projects_base() as defence-in-depth, but
             # sanitizing here prevents log injection and rejects obviously
             # malformed paths early.
-            transcript_path = (
-                str(input_data.get("transcript_path", ""))
-                .replace("\n", "")
-                .replace("\r", "")
+            transcript_path = _sanitize(
+                str(input_data.get("transcript_path", "")), max_len=500
             )
             logger.info(
                 "[SDK] Context compaction triggered: %s, user=%s, transcript_path=%s",
@@ -327,10 +329,6 @@ def create_security_hooks(
             if on_compact is not None:
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
-
-        def _sanitize(value: str, max_len: int = 200) -> str:
-            """Strip control characters and truncate for safe logging."""
-            return value.replace("\n", "").replace("\r", "")[:max_len]
 
         async def subagent_start_hook(
             input_data: HookInput,
