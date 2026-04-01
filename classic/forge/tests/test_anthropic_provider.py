@@ -104,6 +104,21 @@ class TestAnthropicModels:
         ]:
             assert ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is True
 
+    def test_pre_claude4_models_do_not_support_extended_thinking(self):
+        """Only Claude 4+ supports extended thinking. Flagging earlier models
+        would cause API errors when thinking_budget_tokens is configured."""
+        for name in [
+            AnthropicModelName.CLAUDE3_OPUS_v1,
+            AnthropicModelName.CLAUDE3_SONNET_v1,
+            AnthropicModelName.CLAUDE3_HAIKU_v1,
+            AnthropicModelName.CLAUDE3_5_SONNET_v1,
+            AnthropicModelName.CLAUDE3_5_SONNET_v2,
+            AnthropicModelName.CLAUDE3_5_HAIKU_v1,
+        ]:
+            assert (
+                ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is False
+            ), f"{name} should NOT support extended thinking"
+
 
 # ---------------------------------------------------------------------------
 # AnthropicCredentials
@@ -544,3 +559,34 @@ class TestAnthropicTokenLimits:
     def test_all_models_have_200k_context(self, provider):
         for name, info in ANTHROPIC_CHAT_MODELS.items():
             assert info.max_tokens == 200000, f"{name} has unexpected context size"
+
+
+class TestAnthropicTokenCounting:
+    def test_count_tokens_returns_positive(self, provider):
+        count = provider.count_tokens(
+            "hello world this is a test", AnthropicModelName.CLAUDE4_SONNET_v1
+        )
+        assert count > 0
+
+    def test_count_tokens_longer_text_has_more_tokens(self, provider):
+        short = provider.count_tokens("hi", AnthropicModelName.CLAUDE4_SONNET_v1)
+        long = provider.count_tokens(
+            "this is a much longer sentence with many words in it",
+            AnthropicModelName.CLAUDE4_SONNET_v1,
+        )
+        assert long > short
+
+    def test_count_message_tokens_returns_positive(self, provider):
+        msg = ChatMessage.user("hello world")
+        count = provider.count_message_tokens(msg, AnthropicModelName.CLAUDE4_SONNET_v1)
+        assert count > 0
+
+    def test_count_message_tokens_accepts_list(self, provider):
+        msgs = [ChatMessage.user("hello"), ChatMessage.system("be helpful")]
+        count = provider.count_message_tokens(
+            msgs, AnthropicModelName.CLAUDE4_SONNET_v1
+        )
+        single = provider.count_message_tokens(
+            msgs[0], AnthropicModelName.CLAUDE4_SONNET_v1
+        )
+        assert count > single

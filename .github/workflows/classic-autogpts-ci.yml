@@ -10,7 +10,7 @@ on:
       - '.github/workflows/classic-autogpts-ci.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
-      - 'classic/benchmark/**'
+      - 'classic/direct_benchmark/**'
       - '!**/*.md'
   pull_request:
     branches: [ master, dev, release-* ]
@@ -18,7 +18,7 @@ on:
       - '.github/workflows/classic-autogpts-ci.yml'
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
-      - 'classic/benchmark/**'
+      - 'classic/direct_benchmark/**'
       - '!**/*.md'
 
 defaults:

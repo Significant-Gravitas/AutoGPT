@@ -106,7 +106,6 @@ ANTHROPIC_CHAT_MODELS = {
             completion_token_cost=15 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
-            supports_extended_thinking=True,
         ),
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_5_HAIKU_v1,
@@ -241,14 +240,20 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         return tiktoken.encoding_for_model(model_name)
 
     def count_tokens(self, text: str, model_name: AnthropicModelName) -> int:
-        return 0  # HACK: No official tokenizer is available for Claude 3
+        # Approximate using tiktoken's cl100k_base (~90% accuracy for Claude)
+        return len(tiktoken.get_encoding("cl100k_base").encode(text))
 
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
         model_name: AnthropicModelName,
     ) -> int:
-        return 0  # HACK: No official tokenizer is available for Claude 3
+        if isinstance(messages, ChatMessage):
+            messages = [messages]
+        return self.count_tokens(
+            "\n\n".join(f"{m.role.upper()}: {m.content}" for m in messages),
+            model_name,
+        )
 
     async def create_chat_completion(
         self,

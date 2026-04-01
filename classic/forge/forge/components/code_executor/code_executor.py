@@ -212,7 +212,7 @@ class CodeExecutorComponent(
     def execute_python_file(
         self,
         filename: str | Path,
-        args: list[str] = [],
+        args: list[str] | None = None,
         timeout: int = 120,
         env_vars: dict[str, str] | None = None,
     ) -> str:
@@ -227,6 +227,8 @@ class CodeExecutorComponent(
         Returns:
             str: The output of the file
         """
+        if args is None:
+            args = []
         logger.info(f"Executing python file '{filename}'")
 
         if not str(filename).endswith(".py"):
@@ -402,14 +404,9 @@ class CodeExecutorComponent(
             logger.info(f"Command '{command_line}' not allowed")
             raise OperationNotAllowedError("This shell command is not allowed.")
 
-        current_dir = Path.cwd()
-        # Change dir into workspace if necessary
-        if not current_dir.is_relative_to(self.workspace.root):
-            os.chdir(self.workspace.root)
+        cwd = self.workspace.root
 
-        logger.info(
-            f"Executing command '{command_line}' in working directory '{os.getcwd()}'"
-        )
+        logger.info(f"Executing command '{command_line}' in working directory '{cwd}'")
 
         do_not_show_output = subprocess.DEVNULL
         process = subprocess.Popen(
@@ -417,10 +414,8 @@ class CodeExecutorComponent(
             shell=allow_shell,
             stdout=do_not_show_output,
             stderr=do_not_show_output,
+            cwd=cwd,
         )
-
-        # Change back to whatever the prior working dir was
-        os.chdir(current_dir)
 
         return f"Subprocess started with PID:'{str(process.pid)}'"
 
