@@ -29,6 +29,7 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 import inspect
 import json
 import logging
+import os
 import re
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -49,8 +50,6 @@ _DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash"
 
 def _simulator_model() -> str:
     # 1. Environment variable override (highest priority).
-    import os  # noqa: PLC0415
-
     env_model = os.environ.get("SIMULATION_MODEL")
     if env_model:
         model = env_model
@@ -59,10 +58,7 @@ def _simulator_model() -> str:
         try:
             from backend.copilot.config import ChatConfig  # noqa: PLC0415
 
-            model = (
-                getattr(ChatConfig(), "simulation_model", "")
-                or _DEFAULT_SIMULATOR_MODEL
-            )
+            model = ChatConfig().simulation_model or _DEFAULT_SIMULATOR_MODEL
         except Exception:
             model = _DEFAULT_SIMULATOR_MODEL
 
@@ -262,11 +258,18 @@ Available output pins: {json.dumps(required_output_properties)}
 """
 
     # Strip credentials from input so the LLM doesn't see null/empty creds
-    # and incorrectly simulate auth failures.
+    # and incorrectly simulate auth failures.  Use the block's schema to
+    # detect credential fields when available, falling back to common names.
+    _COMMON_CRED_KEYS = {"credentials", "api_key", "token", "secret"}
+    try:
+        cred_fields = set(block.input_schema.get_credentials_fields())
+    except (AttributeError, TypeError):
+        cred_fields = set()
+    exclude_keys = cred_fields | _COMMON_CRED_KEYS
     safe_inputs = {
         k: v
         for k, v in _truncate_input_values(input_data).items()
-        if k not in ("credentials", "api_key", "token", "secret")
+        if k not in exclude_keys
     }
     user_prompt = f"## Current Inputs\n{json.dumps(safe_inputs, indent=2)}"
 
