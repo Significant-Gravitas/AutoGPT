@@ -1,5 +1,9 @@
 """Prompt regression tests AND functional tests for the dry-run verification loop.
 
+NOTE: This file lives in test/copilot/ rather than being colocated with a
+single source module because it is a cross-cutting test spanning multiple
+modules: prompting.py, service.py, agent_generation_guide.md, and run_agent.py.
+
 These tests verify that the create -> dry-run -> fix iterative workflow is
 properly communicated through tool descriptions, the prompting supplement,
 and the agent building guide.
