@@ -191,6 +191,7 @@ async def enqueue_copilot_turn(
         is_user_message: Whether the message is from the user (vs system/assistant)
         context: Optional context for the message (e.g., {url: str, content: str})
         file_ids: Optional workspace file IDs attached to the user's message
+        mode: Autopilot mode override ('fast' or 'extended_thinking'). None = server default.
     """
     from backend.util.clients import get_async_copilot_queue
 
