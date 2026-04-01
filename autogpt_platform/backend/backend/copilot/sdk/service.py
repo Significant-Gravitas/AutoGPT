@@ -569,6 +569,22 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
+def _resolve_fallback_model() -> str | None:
+    """Resolve the fallback model name with the same provider-aware logic.
+
+    Applies the same dot-to-hyphen normalisation as :func:`_resolve_sdk_model`
+    so the fallback model works correctly with both OpenRouter (dots) and
+    direct Anthropic (hyphens).  Returns ``None`` when no fallback is
+    configured (empty string).
+    """
+    raw = config.claude_agent_fallback_model
+    if not raw:
+        return None
+    if not config.openrouter_active:
+        raw = raw.replace(".", "-")
+    return raw
+
+
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
 
@@ -1859,6 +1875,19 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
+
+        # --- Security & isolation env vars (all auth modes) ---
+        # Route CLI temp files into the per-session workspace so they are
+        # isolated and cleaned up automatically.
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+        # Prevent loading untrusted workspace .claude.md files, persisting
+        # prompt history, writing auto-memory, and non-essential traffic.
+        sdk_env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
+        sdk_env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
+        sdk_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+        sdk_env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
@@ -1901,6 +1930,15 @@ async def stream_chat_completion_sdk(
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
             "stderr": _on_stderr,
+            # --- P0 guardrails ---
+            # fallback_model: SDK auto-retries with this cheaper model on
+            # 529 (overloaded) errors, avoiding user-visible failures.
+            "fallback_model": _resolve_fallback_model(),
+            # max_turns: hard cap on agentic tool-use loops per query to
+            # prevent runaway execution from burning budget.
+            "max_turns": config.claude_agent_max_turns,
+            # max_budget_usd: per-query spend ceiling enforced by the CLI.
+            "max_budget_usd": config.claude_agent_max_budget_usd,
         }
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
@@ -1982,6 +2020,24 @@ async def stream_chat_completion_sdk(
         attempts_exhausted = False
         stream_err: Exception | None = None
 
+        # Transient retry helper — deduplicates the logic shared between
+        # _HandledStreamError and the generic except-Exception handler.
+        transient_retries = 0
+        max_transient = config.claude_agent_max_transient_retries
+
+        def _can_retry_transient() -> int | None:
+            """Check if a transient retry is possible.
+
+            Returns the backoff seconds if a retry should be attempted,
+            or ``None`` if the error should be surfaced to the user.
+            Mutates outer ``transient_retries`` via nonlocal.
+            """
+            nonlocal transient_retries
+            transient_retries += 1
+            if events_yielded > 0 or transient_retries >= max_transient:
+                return None
+            return 2 ** (transient_retries - 1)  # 1s, 2s, 4s, ...
+
         state = _RetryState(
             options=options,
             query_message=query_message,
@@ -1995,6 +2051,10 @@ async def stream_chat_completion_sdk(
         )
 
         for attempt in range(_MAX_STREAM_ATTEMPTS):
+            # Reset transient retry counter per context-level attempt so
+            # each attempt (original, compacted, no-transcript) gets the
+            # full retry budget for transient errors.
+            transient_retries = 0
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
             reset_stash_event()
@@ -2084,6 +2144,27 @@ async def stream_chat_completion_sdk(
                 # session messages and set the error flag — do NOT set
                 # stream_err so the post-loop code won't emit a
                 # duplicate StreamError.
+                session.messages = session.messages[:pre_attempt_msg_count]
+                # Check if this is a transient error we can retry with backoff.
+                if exc.code == "transient" or is_transient_api_error(str(exc)):
+                    backoff = _can_retry_transient()
+                    if backoff is not None:
+                        logger.warning(
+                            "%s Transient error — retrying in %ds (%d/%d)",
+                            log_prefix,
+                            backoff,
+                            transient_retries,
+                            max_transient,
+                        )
+                        yield StreamStatus(
+                            message=f"Connection interrupted, retrying in {backoff}s…"
+                        )
+                        await asyncio.sleep(backoff)
+                        state.adapter = SDKResponseAdapter(
+                            message_id=message_id, session_id=session_id
+                        )
+                        state.usage.reset()
+                        continue  # retry the same context-level attempt
                 logger.warning(
                     "%s Stream error handled in attempt "
                     "(attempt %d/%d, code=%s, events_yielded=%d)",
@@ -2093,7 +2174,6 @@ async def stream_chat_completion_sdk(
                     exc.code or "transient",
                     events_yielded,
                 )
-                session.messages = session.messages[:pre_attempt_msg_count]
                 # transcript_builder still contains entries from the aborted
                 # attempt that no longer match session.messages.  Skip upload
                 # so a future --resume doesn't replay rolled-back content.
@@ -2112,13 +2192,15 @@ async def stream_chat_completion_sdk(
             except Exception as e:
                 stream_err = e
                 is_context_error = _is_prompt_too_long(e)
+                is_transient = is_transient_api_error(str(e))
                 logger.warning(
                     "%s Stream error (attempt %d/%d, context_error=%s, "
-                    "events_yielded=%d): %s",
+                    "transient=%s, events_yielded=%d): %s",
                     log_prefix,
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                     is_context_error,
+                    is_transient,
                     events_yielded,
                     stream_err,
                     exc_info=True,
@@ -2136,9 +2218,32 @@ async def stream_chat_completion_sdk(
                     skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
+                # Transient API errors (ECONNRESET, 429, 5xx) — retry
+                # with exponential backoff via the shared helper.
+                if is_transient:
+                    backoff = _can_retry_transient()
+                    if backoff is not None:
+                        logger.warning(
+                            "%s Transient exception — retrying in %ds (%d/%d)",
+                            log_prefix,
+                            backoff,
+                            transient_retries,
+                            max_transient,
+                        )
+                        yield StreamStatus(
+                            message=f"Connection interrupted, retrying "
+                            f"in {backoff}s…"
+                        )
+                        await asyncio.sleep(backoff)
+                        state.adapter = SDKResponseAdapter(
+                            message_id=message_id, session_id=session_id
+                        )
+                        state.usage.reset()
+                        continue  # retry same context-level attempt
+
                 if not is_context_error:
-                    # Non-context errors (network, auth, rate-limit) should
-                    # not trigger compaction — surface the error immediately.
+                    # Non-context, non-transient errors (auth, fatal)
+                    # should not trigger compaction — surface immediately.
                     skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
