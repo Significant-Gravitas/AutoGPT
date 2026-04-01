@@ -97,49 +97,43 @@ class TestResolveFallbackModel:
 
 
 class TestSecurityEnvVars:
-    """Verify security env vars are set correctly in stream_chat_completion_sdk.
+    """Verify the env-var contract in the service module.
 
-    These are set inline after build_sdk_env() returns, so we verify the
-    contract: the env dict passed to ClaudeAgentOptions must contain these.
+    The production code sets CLAUDE_CODE_TMPDIR and security env vars
+    inline after ``build_sdk_env()`` returns.  We grep for these string
+    literals in ``service.py`` to ensure they aren't accidentally removed.
     """
 
-    def test_tmpdir_set_when_sdk_cwd_provided(self):
-        """CLAUDE_CODE_TMPDIR routes CLI temp files into the workspace."""
-        env: dict[str, str] = {}
-        sdk_cwd = "/tmp/copilot-test-session/"
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        assert env["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-test-session/"
+    _SERVICE_PATH = "autogpt_platform/backend/backend/copilot/sdk/service.py"
 
-    def test_tmpdir_not_set_when_sdk_cwd_is_none(self):
-        """Without sdk_cwd, CLAUDE_CODE_TMPDIR is absent."""
-        env: dict[str, str] = {}
-        sdk_cwd = None
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        assert "CLAUDE_CODE_TMPDIR" not in env
+    @staticmethod
+    def _read_service_source() -> str:
+        import pathlib
 
-    def test_home_not_set(self):
-        """HOME is NOT overridden — would break git/ssh/npm child processes."""
-        env: dict[str, str] = {}
-        sdk_cwd = "/tmp/copilot-test-session/"
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        # Intentionally NOT setting HOME
-        assert "HOME" not in env
+        # Walk up from this test file to the repo root
+        repo = pathlib.Path(__file__).resolve().parents[5]
+        return (repo / TestSecurityEnvVars._SERVICE_PATH).read_text()
 
-    def test_security_env_vars_present(self):
-        """All four security env vars are set to '1'."""
-        env: dict[str, str] = {}
-        env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
-        env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
-        env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-        env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    def test_tmpdir_env_var_present_in_source(self):
+        """CLAUDE_CODE_TMPDIR must be set when sdk_cwd is provided."""
+        src = self._read_service_source()
+        assert 'sdk_env["CLAUDE_CODE_TMPDIR"]' in src
 
-        assert env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] == "1"
-        assert env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] == "1"
-        assert env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] == "1"
-        assert env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1"
+    def test_home_not_overridden_in_source(self):
+        """HOME must NOT be overridden — would break git/ssh/npm."""
+        src = self._read_service_source()
+        assert 'sdk_env["HOME"]' not in src
+
+    def test_security_env_vars_present_in_source(self):
+        """All four security env vars must be set in the service module."""
+        src = self._read_service_source()
+        for var in (
+            "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
+            "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
+            "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        ):
+            assert var in src, f"{var} not found in service.py"
 
 
 # ---------------------------------------------------------------------------
