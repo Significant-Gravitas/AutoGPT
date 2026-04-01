@@ -30,7 +30,6 @@ import inspect
 import json
 import logging
 import os
-import re
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -351,10 +350,26 @@ async def simulate_block(
         return
 
     if isinstance(block, AgentOutputBlock):
-        # AgentOutputBlock passes through "value" as "output" (+ "name").
-        yield "output", input_data.get("value")
-        if "name" in input_data:
-            yield "name", input_data["name"]
+        # Mirror AgentOutputBlock.run(): if a format string is provided,
+        # apply Jinja2 formatting and yield only "output"; otherwise yield
+        # both "output" (raw value) and "name".
+        fmt = input_data.get("format", "")
+        value = input_data.get("value")
+        name = input_data.get("name", "")
+        if fmt:
+            try:
+                from backend.util.text import TextFormatter  # noqa: PLC0415
+
+                escape_html = input_data.get("escape_html", False)
+                formatter = TextFormatter(autoescape=escape_html)
+                formatted = await formatter.format_string(fmt, {name: value})
+                yield "output", formatted
+            except Exception as e:
+                yield "output", f"Error: {e}, {value}"
+        else:
+            yield "output", value
+            if name:
+                yield "name", name
         return
 
     output_schema = block.output_schema.jsonschema()

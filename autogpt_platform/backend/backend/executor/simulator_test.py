@@ -245,7 +245,7 @@ class TestSimulateBlockPassthrough:
         assert outputs == [("result", "option1")]
 
     @pytest.mark.asyncio
-    async def test_output_block_passthrough(self) -> None:
+    async def test_output_block_passthrough_no_format(self) -> None:
         from backend.blocks.io import AgentOutputBlock
 
         block = AgentOutputBlock()
@@ -258,6 +258,48 @@ class TestSimulateBlockPassthrough:
 
         assert ("output", "result data") in outputs
         assert ("name", "output_name") in outputs
+
+    @pytest.mark.asyncio
+    async def test_output_block_with_format_applies_jinja2(self) -> None:
+        """When a format string is provided, AgentOutputBlock simulation should
+        apply Jinja2 formatting and yield only 'output' (no 'name' pin)."""
+        from backend.blocks.io import AgentOutputBlock
+
+        block = AgentOutputBlock()
+
+        outputs = []
+        async for name, data in simulate_block(
+            block,
+            {
+                "value": "Hello, World!",
+                "name": "output_1",
+                "format": "{{ output_1 }}!!",
+            },
+        ):
+            outputs.append((name, data))
+
+        assert len(outputs) == 1
+        assert outputs[0] == ("output", "Hello, World!!!")
+
+    @pytest.mark.asyncio
+    async def test_output_block_with_format_no_name_pin(self) -> None:
+        """When format is provided, the 'name' pin must NOT be yielded."""
+        from backend.blocks.io import AgentOutputBlock
+
+        block = AgentOutputBlock()
+
+        output_names = []
+        async for name, data in simulate_block(
+            block,
+            {
+                "value": "42",
+                "name": "output_2",
+                "format": "{{ output_2 }}",
+            },
+        ):
+            output_names.append(name)
+
+        assert "name" not in output_names
 
     @pytest.mark.asyncio
     async def test_input_block_no_value_no_name_empty_placeholders(self) -> None:
