@@ -30,6 +30,7 @@ import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.otto.routes
+import backend.api.features.platform_linking.chat_proxy
 import backend.api.features.platform_linking.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.store.model
@@ -364,6 +365,11 @@ app.include_router(
 )
 app.include_router(
     backend.api.features.platform_linking.routes.router,
+    tags=["platform-linking"],
+    prefix="/api/platform-linking",
+)
+app.include_router(
+    backend.api.features.platform_linking.chat_proxy.router,
     tags=["platform-linking"],
     prefix="/api/platform-linking",
 )

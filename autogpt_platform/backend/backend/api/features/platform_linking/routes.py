@@ -14,128 +14,39 @@ Flow:
      check on next message via GET /api/platform-linking/resolve.
 """
 
-import hmac
 import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Request, Security
+from fastapi import APIRouter, Depends, HTTPException, Path, Security
 from prisma.models import PlatformLink, PlatformLinkToken
-from pydantic import BaseModel, Field
+
+from .auth import check_bot_api_key, get_bot_api_key
+from .models import (
+    ConfirmLinkResponse,
+    CreateLinkTokenRequest,
+    DeleteLinkResponse,
+    LinkTokenResponse,
+    LinkTokenStatusResponse,
+    PlatformLinkInfo,
+    ResolveRequest,
+    ResolveResponse,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 LINK_TOKEN_EXPIRY_MINUTES = 30
-LINK_BASE_URL = os.getenv("PLATFORM_LINK_BASE_URL", "https://platform.agpt.co/link")
 
-
-# ── Platform enum (mirrors Prisma PlatformType) ───────────────────────
-
-
-class Platform(str, Enum):
-    DISCORD = "DISCORD"
-    TELEGRAM = "TELEGRAM"
-    SLACK = "SLACK"
-    TEAMS = "TEAMS"
-    WHATSAPP = "WHATSAPP"
-    GITHUB = "GITHUB"
-    LINEAR = "LINEAR"
-
-
-# ── API Key auth for bot-facing endpoints ─────────────────────────────
-
-BOT_API_KEY = os.getenv("PLATFORM_BOT_API_KEY", "")
-
-
-async def get_bot_api_key(request: Request) -> str | None:
-    """Extract the bot API key from the X-Bot-API-Key header."""
-    return request.headers.get("x-bot-api-key")
-
-
-def _check_bot_api_key(api_key: str | None) -> None:
-    """Validate the bot API key. Uses constant-time comparison."""
-    if not BOT_API_KEY:
-        # No key configured — allow in development only
-        if os.getenv("ENV", "development") != "development":
-            raise HTTPException(
-                status_code=503,
-                detail="Bot API key not configured.",
-            )
-        return
-    if not api_key or not hmac.compare_digest(api_key, BOT_API_KEY):
-        raise HTTPException(status_code=401, detail="Invalid bot API key.")
-
-
-# ── Request / Response Models ──────────────────────────────────────────
-
-
-class CreateLinkTokenRequest(BaseModel):
-    """Request from the bot service to create a linking token."""
-
-    platform: Platform = Field(description="Platform name")
-    platform_user_id: str = Field(
-        description="The user's ID on the platform",
-        min_length=1,
-        max_length=255,
-    )
-    platform_username: str | None = Field(
-        default=None,
-        description="Display name (best effort)",
-        max_length=255,
-    )
-    channel_id: str | None = Field(
-        default=None,
-        description="Channel ID for sending confirmation back",
-        max_length=255,
-    )
-
-
-class LinkTokenResponse(BaseModel):
-    token: str
-    expires_at: datetime
-    link_url: str
-
-
-class LinkTokenStatusResponse(BaseModel):
-    status: Literal["pending", "linked", "expired"]
-    user_id: str | None = None
-
-
-class ResolveRequest(BaseModel):
-    """Resolve a platform identity to an AutoGPT user."""
-
-    platform: Platform
-    platform_user_id: str = Field(min_length=1, max_length=255)
-
-
-class ResolveResponse(BaseModel):
-    linked: bool
-    user_id: str | None = None
-
-
-class PlatformLinkInfo(BaseModel):
-    id: str
-    platform: str
-    platform_user_id: str
-    platform_username: str | None
-    linked_at: datetime
-
-
-class ConfirmLinkResponse(BaseModel):
-    success: bool
-    platform: str
-    platform_user_id: str
-    platform_username: str | None
-
-
-class DeleteLinkResponse(BaseModel):
-    success: bool
+# Path parameter with validation for link tokens
+TokenPath = Annotated[
+    str,
+    Path(max_length=64, pattern=r"^[A-Za-z0-9_-]+$"),
+]
 
 
 # ── Bot-facing endpoints (API key auth) ───────────────────────────────
@@ -154,7 +65,7 @@ async def create_link_token(
     Called by the bot service when it encounters an unlinked user.
     Generates a one-time token the user can use to link their account.
     """
-    _check_bot_api_key(x_bot_api_key)
+    check_bot_api_key(x_bot_api_key)
 
     platform = request.platform.value
 
@@ -204,7 +115,10 @@ async def create_link_token(
         expires_at.isoformat(),
     )
 
-    link_url = f"{LINK_BASE_URL}/{token}"
+    link_base_url = os.getenv(
+        "PLATFORM_LINK_BASE_URL", "https://platform.agpt.co/link"
+    )
+    link_url = f"{link_base_url}/{token}"
 
     return LinkTokenResponse(
         token=token,
@@ -219,13 +133,13 @@ async def create_link_token(
     summary="Check if a link token has been consumed",
 )
 async def get_link_token_status(
-    token: str,
+    token: TokenPath,
     x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> LinkTokenStatusResponse:
     """
     Called by the bot service to check if a user has completed linking.
     """
-    _check_bot_api_key(x_bot_api_key)
+    check_bot_api_key(x_bot_api_key)
 
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
@@ -264,7 +178,7 @@ async def resolve_platform_user(
     Called by the bot service on every incoming message to check if
     the platform user has a linked AutoGPT account.
     """
-    _check_bot_api_key(x_bot_api_key)
+    check_bot_api_key(x_bot_api_key)
 
     link = await PlatformLink.prisma().find_first(
         where={
@@ -276,10 +190,7 @@ async def resolve_platform_user(
     if not link:
         return ResolveResponse(linked=False)
 
-    return ResolveResponse(
-        linked=True,
-        user_id=link.userId,
-    )
+    return ResolveResponse(linked=True, user_id=link.userId)
 
 
 # ── User-facing endpoints (JWT auth) ──────────────────────────────────
@@ -292,7 +203,7 @@ async def resolve_platform_user(
     summary="Confirm a link token (user must be authenticated)",
 )
 async def confirm_link_token(
-    token: str,
+    token: TokenPath,
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> ConfirmLinkResponse:
     """
@@ -300,7 +211,6 @@ async def confirm_link_token(
     Consumes the token and creates the platform link.
     Uses atomic update_many to prevent race conditions on double-click.
     """
-    # Fetch and validate token
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
@@ -314,15 +224,11 @@ async def confirm_link_token(
 
     # Atomically mark token as used (only if still unused)
     updated = await PlatformLinkToken.prisma().update_many(
-        where={
-            "token": token,
-            "usedAt": None,
-        },
+        where={"token": token, "usedAt": None},
         data={"usedAt": datetime.now(timezone.utc)},
     )
 
     if updated == 0:
-        # Another request already consumed it
         raise HTTPException(status_code=410, detail="This link has already been used.")
 
     # Check if this platform identity is already linked
@@ -351,8 +257,7 @@ async def confirm_link_token(
             }
         )
     except Exception as exc:
-        # Handle race condition: another request linked this identity
-        if "unique" in str(exc).lower() or "Unique" in str(exc):
+        if "unique" in str(exc).lower():
             raise HTTPException(
                 status_code=409,
                 detail="This platform account was just linked by another request.",
@@ -383,9 +288,7 @@ async def confirm_link_token(
 async def list_my_links(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> list[PlatformLinkInfo]:
-    """
-    Returns all platform identities linked to the current user's account.
-    """
+    """Returns all platform identities linked to the current user's account."""
     links = await PlatformLink.prisma().find_many(
         where={"userId": user_id},
         order={"linkedAt": "desc"},
@@ -435,194 +338,3 @@ async def delete_link(
     )
 
     return DeleteLinkResponse(success=True)
-
-
-# ── Bot Chat Proxy ────────────────────────────────────────────────────
-# Allows the bot service to send messages to CoPilot on behalf of
-# linked users, authenticated via bot API key.
-
-
-class BotChatRequest(BaseModel):
-    """Request from the bot to chat as a linked user."""
-
-    user_id: str = Field(description="The linked AutoGPT user ID")
-    message: str = Field(
-        description="The user's message", min_length=1, max_length=32000
-    )
-    session_id: str | None = Field(
-        default=None,
-        description="Existing chat session ID. If omitted, a new session is created.",
-    )
-
-
-class BotChatSessionResponse(BaseModel):
-    """Returned when creating a new session via the bot proxy."""
-
-    session_id: str
-
-
-@router.post(
-    "/chat/session",
-    response_model=BotChatSessionResponse,
-    summary="Create a CoPilot session for a linked user (bot-facing)",
-)
-async def bot_create_session(
-    request: BotChatRequest,
-    x_bot_api_key: str | None = Depends(get_bot_api_key),
-) -> BotChatSessionResponse:
-    """
-    Creates a new CoPilot chat session on behalf of a linked user.
-    """
-    _check_bot_api_key(x_bot_api_key)
-
-    # Verify this user has a platform link (bot shouldn't call for unlinked users)
-    link = await PlatformLink.prisma().find_first(where={"userId": request.user_id})
-    if not link:
-        raise HTTPException(
-            status_code=404,
-            detail="User has no platform links.",
-        )
-
-    from backend.copilot.model import create_chat_session
-
-    session = await create_chat_session(request.user_id)
-
-    return BotChatSessionResponse(session_id=session.session_id)
-
-
-@router.post(
-    "/chat/stream",
-    summary="Stream a CoPilot response for a linked user (bot-facing)",
-)
-async def bot_chat_stream(
-    request: BotChatRequest,
-    x_bot_api_key: str | None = Depends(get_bot_api_key),
-):
-    """
-    Send a message to CoPilot on behalf of a linked user and stream
-    the response back as Server-Sent Events.
-
-    The bot authenticates with its API key — no user JWT needed.
-    """
-    import asyncio
-    from uuid import uuid4
-
-    from fastapi.responses import StreamingResponse
-
-    from backend.copilot import stream_registry
-    from backend.copilot.executor.utils import enqueue_copilot_turn
-    from backend.copilot.model import (
-        ChatMessage,
-        append_and_save_message,
-        create_chat_session,
-        get_chat_session,
-    )
-    from backend.copilot.response_model import StreamFinish
-
-    _check_bot_api_key(x_bot_api_key)
-
-    user_id = request.user_id
-
-    # Verify user has a platform link
-    link = await PlatformLink.prisma().find_first(where={"userId": user_id})
-    if not link:
-        raise HTTPException(
-            status_code=404,
-            detail="User has no platform links.",
-        )
-
-    # Get or create session
-    session_id = request.session_id
-    if session_id:
-        session = await get_chat_session(session_id, user_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found.")
-    else:
-        session = await create_chat_session(user_id)
-        session_id = session.session_id
-
-    # Save user message
-    message = ChatMessage(role="user", content=request.message)
-    await append_and_save_message(session_id, message)
-
-    # Create a turn and enqueue
-    turn_id = str(uuid4())
-
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id="chat_stream",
-        tool_name="chat",
-        turn_id=turn_id,
-    )
-
-    subscribe_from_id = "0-0"
-
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=user_id,
-        message=request.message,
-        turn_id=turn_id,
-        is_user_message=True,
-    )
-
-    logger.info(
-        "Bot chat: user ...%s, session %s, turn %s",
-        user_id[-8:],
-        session_id,
-        turn_id,
-    )
-
-    # Stream SSE response
-    async def event_generator():
-        subscriber_queue = None
-        try:
-            subscriber_queue = await stream_registry.subscribe_to_session(
-                session_id=session_id,
-                user_id=user_id,
-                last_message_id=subscribe_from_id,
-            )
-
-            if subscriber_queue is None:
-                yield StreamFinish().to_sse()
-                yield "data: [DONE]\n\n"
-                return
-
-            while True:
-                try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
-
-                    if isinstance(chunk, str):
-                        yield chunk
-                    else:
-                        yield chunk.to_sse()
-
-                    if isinstance(chunk, StreamFinish) or (
-                        isinstance(chunk, str) and "[DONE]" in chunk
-                    ):
-                        break
-
-                except asyncio.TimeoutError:
-                    # Send keepalive
-                    yield ": keepalive\n\n"
-
-        except Exception:
-            logger.exception("Bot chat stream error for session %s", session_id)
-            yield 'data: {"type": "error", "content": "Stream error"}\n\n'
-            yield "data: [DONE]\n\n"
-        finally:
-            if subscriber_queue is not None:
-                await stream_registry.unsubscribe_from_session(
-                    session_id=session_id,
-                    subscriber_queue=subscriber_queue,
-                )
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Session-Id": session_id,
-        },
-    )

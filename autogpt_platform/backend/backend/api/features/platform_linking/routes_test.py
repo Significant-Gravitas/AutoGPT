@@ -5,7 +5,15 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
-from backend.api.features.platform_linking.routes import Platform, _check_bot_api_key
+from backend.api.features.platform_linking.auth import check_bot_api_key
+from backend.api.features.platform_linking.models import (
+    ConfirmLinkResponse,
+    CreateLinkTokenRequest,
+    DeleteLinkResponse,
+    LinkTokenStatusResponse,
+    Platform,
+    ResolveRequest,
+)
 
 
 class TestPlatformEnum:
@@ -20,35 +28,40 @@ class TestPlatformEnum:
 
 
 class TestBotApiKeyAuth:
-    @patch("backend.api.features.platform_linking.routes.BOT_API_KEY", "")
-    def test_no_key_configured_allows_in_dev(self):
-        # No key configured = dev mode, should not raise
-        _check_bot_api_key(None)
+    @patch.dict("os.environ", {"PLATFORM_BOT_API_KEY": ""}, clear=False)
+    @patch("backend.api.features.platform_linking.auth.Settings")
+    def test_no_key_configured_allows_when_auth_disabled(self, mock_settings_cls):
+        mock_settings_cls.return_value.config.enable_auth = False
+        check_bot_api_key(None)
 
-    @patch("backend.api.features.platform_linking.routes.BOT_API_KEY", "secret123")
+    @patch.dict("os.environ", {"PLATFORM_BOT_API_KEY": ""}, clear=False)
+    @patch("backend.api.features.platform_linking.auth.Settings")
+    def test_no_key_configured_rejects_when_auth_enabled(self, mock_settings_cls):
+        mock_settings_cls.return_value.config.enable_auth = True
+        with pytest.raises(HTTPException) as exc_info:
+            check_bot_api_key(None)
+        assert exc_info.value.status_code == 503
+
+    @patch.dict("os.environ", {"PLATFORM_BOT_API_KEY": "secret123"}, clear=False)
     def test_valid_key(self):
-        _check_bot_api_key("secret123")
+        check_bot_api_key("secret123")
 
-    @patch("backend.api.features.platform_linking.routes.BOT_API_KEY", "secret123")
+    @patch.dict("os.environ", {"PLATFORM_BOT_API_KEY": "secret123"}, clear=False)
     def test_invalid_key_rejected(self):
         with pytest.raises(HTTPException) as exc_info:
-            _check_bot_api_key("wrong")
+            check_bot_api_key("wrong")
         assert exc_info.value.status_code == 401
 
-    @patch("backend.api.features.platform_linking.routes.BOT_API_KEY", "secret123")
+    @patch.dict("os.environ", {"PLATFORM_BOT_API_KEY": "secret123"}, clear=False)
     def test_missing_key_rejected(self):
         with pytest.raises(HTTPException) as exc_info:
-            _check_bot_api_key(None)
+            check_bot_api_key(None)
         assert exc_info.value.status_code == 401
 
 
 class TestCreateLinkTokenRequest:
-    """Test request validation."""
-
-    from backend.api.features.platform_linking.routes import CreateLinkTokenRequest
-
     def test_valid_request(self):
-        req = self.CreateLinkTokenRequest(
+        req = CreateLinkTokenRequest(
             platform=Platform.DISCORD,
             platform_user_id="353922987235213313",
         )
@@ -59,7 +72,7 @@ class TestCreateLinkTokenRequest:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
-            self.CreateLinkTokenRequest(
+            CreateLinkTokenRequest(
                 platform=Platform.DISCORD,
                 platform_user_id="",
             )
@@ -68,7 +81,7 @@ class TestCreateLinkTokenRequest:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
-            self.CreateLinkTokenRequest(
+            CreateLinkTokenRequest(
                 platform=Platform.DISCORD,
                 platform_user_id="x" * 256,
             )
@@ -76,18 +89,15 @@ class TestCreateLinkTokenRequest:
     def test_invalid_platform_rejected(self):
         from pydantic import ValidationError
 
-        invalid_platform = "INVALID"
         with pytest.raises(ValidationError):
-            self.CreateLinkTokenRequest.model_validate(
-                {"platform": invalid_platform, "platform_user_id": "123"}
+            CreateLinkTokenRequest.model_validate(
+                {"platform": "INVALID", "platform_user_id": "123"}
             )
 
 
 class TestResolveRequest:
-    from backend.api.features.platform_linking.routes import ResolveRequest
-
     def test_valid_request(self):
-        req = self.ResolveRequest(
+        req = ResolveRequest(
             platform=Platform.TELEGRAM,
             platform_user_id="123456789",
         )
@@ -97,33 +107,25 @@ class TestResolveRequest:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
-            self.ResolveRequest(
+            ResolveRequest(
                 platform=Platform.SLACK,
                 platform_user_id="",
             )
 
 
 class TestResponseModels:
-    """Test that response models are properly typed."""
-
-    from backend.api.features.platform_linking.routes import (
-        ConfirmLinkResponse,
-        DeleteLinkResponse,
-        LinkTokenStatusResponse,
-    )
-
     def test_link_token_status_literal(self):
-        resp = self.LinkTokenStatusResponse(status="pending")
+        resp = LinkTokenStatusResponse(status="pending")
         assert resp.status == "pending"
 
-        resp = self.LinkTokenStatusResponse(status="linked", user_id="abc")
+        resp = LinkTokenStatusResponse(status="linked", user_id="abc")
         assert resp.status == "linked"
 
-        resp = self.LinkTokenStatusResponse(status="expired")
+        resp = LinkTokenStatusResponse(status="expired")
         assert resp.status == "expired"
 
     def test_confirm_link_response(self):
-        resp = self.ConfirmLinkResponse(
+        resp = ConfirmLinkResponse(
             success=True,
             platform="DISCORD",
             platform_user_id="123",
@@ -132,5 +134,5 @@ class TestResponseModels:
         assert resp.success is True
 
     def test_delete_link_response(self):
-        resp = self.DeleteLinkResponse(success=True)
+        resp = DeleteLinkResponse(success=True)
         assert resp.success is True
