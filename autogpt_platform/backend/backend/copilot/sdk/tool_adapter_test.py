@@ -597,11 +597,12 @@ class TestBug3CancelRace:
 class TestReadOnlyAnnotations:
     """Tests that all tools get readOnlyHint=True for parallel dispatch."""
 
-    def test_tool_annotations_creation(self):
-        """ToolAnnotations(readOnlyHint=True) works correctly."""
-        ann = ToolAnnotations(readOnlyHint=True)
-        assert ann.readOnlyHint is True
-        assert ann.destructiveHint is None
+    def test_parallel_annotation_constant(self):
+        """_PARALLEL_ANNOTATION is a ToolAnnotations with readOnlyHint=True."""
+        from .tool_adapter import _PARALLEL_ANNOTATION
+
+        assert isinstance(_PARALLEL_ANNOTATION, ToolAnnotations)
+        assert _PARALLEL_ANNOTATION.readOnlyHint is True
 
 
 # ---------------------------------------------------------------------------

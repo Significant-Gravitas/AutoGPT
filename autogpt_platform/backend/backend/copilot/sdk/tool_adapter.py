@@ -444,6 +444,10 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
     All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
     dispatches concurrent tool calls in parallel rather than sequentially.
+    This is a deliberate override: even side-effect tools use the hint
+    because the MCP tools are already individually sandboxed and the
+    pre-launch duplicate-execution bug (SECRT-2204) is worse than
+    sequential dispatch.
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
