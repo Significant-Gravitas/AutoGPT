@@ -84,12 +84,12 @@ class TestToolDescriptionsDryRunLoop:
         assert "dry_run" in params["properties"]
         assert params["properties"]["dry_run"]["type"] == "boolean"
 
-    def test_run_agent_dry_run_param_mentions_preview(self):
-        """After deduplication the dry_run param description mentions preview mode."""
+    def test_run_agent_dry_run_param_mentions_simulation(self):
+        """After deduplication the dry_run param description mentions simulation."""
         schema = TOOL_REGISTRY["run_agent"].as_openai_tool()
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         dry_run_desc = params["properties"]["dry_run"]["description"]
-        assert "preview mode" in dry_run_desc.lower()
+        assert "simulat" in dry_run_desc.lower()
 
 
 class TestPromptingSupplementContent:
