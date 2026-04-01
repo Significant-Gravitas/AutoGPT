@@ -161,3 +161,100 @@ class TestConfigDefaults:
     def test_max_transient_retries_default(self):
         cfg = _make_config()
         assert cfg.claude_agent_max_transient_retries == 3
+
+
+# ---------------------------------------------------------------------------
+# build_sdk_env — all 3 auth modes
+# ---------------------------------------------------------------------------
+
+_ENV = "backend.copilot.sdk.env"
+
+
+class TestBuildSdkEnv:
+    """Verify build_sdk_env returns correct dicts for each auth mode."""
+
+    def test_subscription_mode_clears_keys(self):
+        """Mode 1: subscription clears API key / auth token / base URL."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with (
+            patch(f"{_ENV}.config", cfg),
+            patch(f"{_ENV}.validate_subscription"),
+        ):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env(session_id="s1", user_id="u1")
+
+        assert env["ANTHROPIC_API_KEY"] == ""
+        assert env["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert env["ANTHROPIC_BASE_URL"] == ""
+
+    def test_direct_anthropic_returns_empty_dict(self):
+        """Mode 2: direct Anthropic returns {} (inherits from parent env)."""
+        cfg = _make_config(
+            use_claude_code_subscription=False,
+            use_openrouter=False,
+        )
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert env == {}
+
+    def test_openrouter_sets_base_url_and_auth(self):
+        """Mode 3: OpenRouter sets base URL, auth token, and clears API key."""
+        cfg = _make_config(
+            use_claude_code_subscription=False,
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env(session_id="sess-1", user_id="user-1")
+
+        assert env["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+        assert env["ANTHROPIC_AUTH_TOKEN"] == "sk-or-test"
+        assert env["ANTHROPIC_API_KEY"] == ""
+        assert "x-session-id: sess-1" in env["ANTHROPIC_CUSTOM_HEADERS"]
+        assert "x-user-id: user-1" in env["ANTHROPIC_CUSTOM_HEADERS"]
+
+    def test_openrouter_no_headers_when_ids_empty(self):
+        """Mode 3: No custom headers when session_id/user_id are not given."""
+        cfg = _make_config(
+            use_claude_code_subscription=False,
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert "ANTHROPIC_CUSTOM_HEADERS" not in env
+
+    def test_all_modes_return_mutable_dict(self):
+        """build_sdk_env must return a mutable dict (not None) so callers
+        can add security env vars like CLAUDE_CODE_TMPDIR."""
+        for cfg in (
+            _make_config(use_claude_code_subscription=True),
+            _make_config(use_openrouter=False),
+            _make_config(
+                use_openrouter=True,
+                api_key="k",
+                base_url="https://openrouter.ai/api/v1",
+            ),
+        ):
+            with (
+                patch(f"{_ENV}.config", cfg),
+                patch(f"{_ENV}.validate_subscription"),
+            ):
+                from backend.copilot.sdk.env import build_sdk_env
+
+                env = build_sdk_env()
+
+            assert isinstance(env, dict)
+            env["CLAUDE_CODE_TMPDIR"] = "/tmp/test"
+            assert env["CLAUDE_CODE_TMPDIR"] == "/tmp/test"
