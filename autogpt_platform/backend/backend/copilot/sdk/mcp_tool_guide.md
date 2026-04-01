@@ -15,6 +15,7 @@ Use these URLs directly without asking the user:
 |---|---|
 | Notion | `https://mcp.notion.com/mcp` |
 | Linear | `https://mcp.linear.app/mcp` |
+| Sentry | `https://mcp.sentry.dev/mcp` |
 | Stripe | `https://mcp.stripe.com` |
 | Intercom | `https://mcp.intercom.com/mcp` |
 | Cloudflare | `https://mcp.cloudflare.com/mcp` |

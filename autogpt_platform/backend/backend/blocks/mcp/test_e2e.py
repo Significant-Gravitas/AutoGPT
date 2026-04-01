@@ -1,9 +1,12 @@
 """
-End-to-end tests against a real public MCP server.
+End-to-end tests against real public and authenticated MCP servers.
 
-These tests hit the OpenAI docs MCP server (https://developers.openai.com/mcp)
-which is publicly accessible without authentication and returns SSE responses.
+These tests hit live MCP servers and require network access:
+  - OpenAI docs (https://developers.openai.com/mcp) — no auth required
+  - Sentry (https://mcp.sentry.dev/mcp) — requires SENTRY_MCP_TOKEN env var
+  - Linear (https://mcp.linear.app/mcp) — requires LINEAR_MCP_TOKEN env var
 
+All tests are skipped unless the respective environment variables are set.
 Mark: These are tagged with ``@pytest.mark.e2e`` so they can be run/skipped
 independently of the rest of the test suite (they require network access).
 """
@@ -17,6 +20,10 @@ from backend.blocks.mcp.client import MCPClient
 
 # Public MCP server that requires no authentication
 OPENAI_DOCS_MCP_URL = "https://developers.openai.com/mcp"
+
+# Authenticated MCP servers
+SENTRY_MCP_URL = "https://mcp.sentry.dev/mcp"
+LINEAR_MCP_URL = "https://mcp.linear.app/mcp"
 
 # Skip all tests in this module unless RUN_E2E env var is set
 pytestmark = pytest.mark.skipif(
@@ -104,6 +111,123 @@ class TestRealMCPServer:
         assert "protocolVersion" in result
 
         # Also verify list_tools works (another SSE response)
+        tools = await client.list_tools()
+        assert len(tools) > 0
+        assert all(hasattr(t, "name") for t in tools)
+
+
+def _assert_has_relevant_tool(tool_names: set[str], keywords: list[str], server: str) -> None:
+    """Assert that at least one tool name contains one of the expected keywords."""
+    assert any(
+        kw in name.lower() for name in tool_names for kw in keywords
+    ), f"Expected a tool containing {keywords} on {server}, got: {sorted(tool_names)}"
+
+
+class TestSentryMCPServer:
+    """Tests against the live Sentry MCP server (https://mcp.sentry.dev/mcp).
+
+    Requires SENTRY_MCP_TOKEN to be set to a valid Sentry OAuth access token.
+    Skipped automatically when the token is not present.
+    """
+
+    @pytest.fixture
+    def sentry_token(self) -> str:
+        token = os.environ.get("SENTRY_MCP_TOKEN")
+        if not token:
+            pytest.skip("SENTRY_MCP_TOKEN not set")
+        return token
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_initialize(self, sentry_token):
+        """Verify we can complete the MCP handshake with Sentry."""
+        client = MCPClient(SENTRY_MCP_URL, auth_token=sentry_token)
+        result = await client.initialize()
+
+        assert "protocolVersion" in result
+        assert "serverInfo" in result
+        assert "tools" in result.get("capabilities", {})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_list_tools(self, sentry_token):
+        """Verify we can discover tools from the Sentry MCP server."""
+        client = MCPClient(SENTRY_MCP_URL, auth_token=sentry_token)
+        await client.initialize()
+        tools = await client.list_tools()
+
+        assert len(tools) >= 1
+        tool_names = {t.name for t in tools}
+        _assert_has_relevant_tool(
+            tool_names, ["issue", "event", "error"], "mcp.sentry.dev"
+        )
+
+        for tool in tools:
+            assert tool.name
+            assert isinstance(tool.input_schema, dict)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_sse_response_handling(self, sentry_token):
+        """Verify the client handles SSE responses from the Sentry server."""
+        client = MCPClient(SENTRY_MCP_URL, auth_token=sentry_token)
+        result = await client.initialize()
+
+        assert isinstance(result, dict)
+        assert "protocolVersion" in result
+
+        tools = await client.list_tools()
+        assert len(tools) > 0
+        assert all(hasattr(t, "name") for t in tools)
+
+
+class TestLinearMCPServer:
+    """Tests against the live Linear MCP server (https://mcp.linear.app/mcp).
+
+    Requires LINEAR_MCP_TOKEN to be set to a valid Linear OAuth access token.
+    Skipped automatically when the token is not present.
+    """
+
+    @pytest.fixture
+    def linear_token(self) -> str:
+        token = os.environ.get("LINEAR_MCP_TOKEN")
+        if not token:
+            pytest.skip("LINEAR_MCP_TOKEN not set")
+        return token
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_initialize(self, linear_token):
+        """Verify we can complete the MCP handshake with Linear."""
+        client = MCPClient(LINEAR_MCP_URL, auth_token=linear_token)
+        result = await client.initialize()
+
+        assert "protocolVersion" in result
+        assert "serverInfo" in result
+        assert "tools" in result.get("capabilities", {})
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_list_tools(self, linear_token):
+        """Verify we can discover tools from the Linear MCP server."""
+        client = MCPClient(LINEAR_MCP_URL, auth_token=linear_token)
+        await client.initialize()
+        tools = await client.list_tools()
+
+        assert len(tools) >= 1
+        tool_names = {t.name for t in tools}
+        _assert_has_relevant_tool(
+            tool_names, ["issue", "project", "team"], "mcp.linear.app"
+        )
+
+        for tool in tools:
+            assert tool.name
+            assert isinstance(tool.input_schema, dict)
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_sse_response_handling(self, linear_token):
+        """Verify the client handles SSE responses from the Linear server."""
+        client = MCPClient(LINEAR_MCP_URL, auth_token=linear_token)
+        result = await client.initialize()
+
+        assert isinstance(result, dict)
+        assert "protocolVersion" in result
+
         tools = await client.list_tools()
         assert len(tools) > 0
         assert all(hasattr(t, "name") for t in tools)
