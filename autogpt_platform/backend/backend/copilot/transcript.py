@@ -710,11 +710,14 @@ def _flatten_assistant_content(blocks: list) -> str:
             if btype == "text":
                 parts.append(block.get("text", ""))
             elif btype == "tool_use":
-                parts.append(f"[tool_use: {block.get('name', '?')}]")
+                # Drop tool_use entirely — any text representation gets
+                # mimicked by the model as plain text instead of actual
+                # structured tool calls. The tool results (in the
+                # following user/tool_result entry) provide sufficient
+                # context about what happened.
+                continue
             else:
-                # Preserve non-text blocks (e.g. image) as placeholders.
-                # Use __prefix__ to distinguish from literal user text.
-                parts.append(f"[__{btype}__]")
+                continue
         elif isinstance(block, str):
             parts.append(block)
     return "\n".join(parts) if parts else ""
