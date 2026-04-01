@@ -55,6 +55,7 @@ class FindLibraryAgentTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         query: str = "",
+        include_graph: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         return await search_agents(
@@ -62,5 +63,5 @@ class FindLibraryAgentTool(BaseTool):
             source="library",
             session_id=session.session_id,
             user_id=user_id,
-            include_graph=kwargs.get("include_graph", False),
+            include_graph=include_graph,
         )
