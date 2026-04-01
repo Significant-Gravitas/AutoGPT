@@ -95,7 +95,8 @@ export function useChatSession() {
   async function createSession() {
     if (sessionId) return sessionId;
     try {
-      const response = await createSessionMutation();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const response = await (createSessionMutation as any)({ data: null });
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
