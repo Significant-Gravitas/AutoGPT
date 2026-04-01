@@ -7,7 +7,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import { Brain, Zap } from "lucide-react";
+import { Brain, Lightning } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { FileChips } from "./components/FileChips";
@@ -188,7 +188,7 @@ export function ChatInput({
                 </>
               ) : (
                 <>
-                  <Zap size={14} />
+                  <Lightning size={14} />
                   Fast
                 </>
               )}
