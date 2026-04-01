@@ -156,7 +156,7 @@ def create_security_hooks(
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
         # The SDK CLI uses "Task" in older versions and "Agent" in v2.x+.
-        _SUBAGENT_TOOLS = {"Task", "Agent"}
+        _subagent_tools: frozenset[str] = frozenset({"Task", "Agent"})
         task_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
@@ -171,7 +171,7 @@ def create_security_hooks(
 
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
-            if tool_name in _SUBAGENT_TOOLS:
+            if tool_name in _subagent_tools:
                 # Block background task execution first — denied calls
                 # should not consume a subtask slot.
                 if tool_input.get("run_in_background"):
@@ -215,7 +215,7 @@ def create_security_hooks(
                 return cast(SyncHookJSONOutput, result)
 
             # Reserve the sub-agent slot only after all validations pass
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
+            if tool_name in _subagent_tools and tool_use_id is not None:
                 task_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
@@ -223,7 +223,7 @@ def create_security_hooks(
 
         def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
             """Release a sub-agent concurrency slot if one was reserved."""
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id in task_tool_use_ids:
+            if tool_name in _subagent_tools and tool_use_id in task_tool_use_ids:
                 task_tool_use_ids.discard(tool_use_id)
                 logger.info(
                     "[SDK] Sub-agent slot released, active=%d/%d, user=%s",
@@ -328,6 +328,10 @@ def create_security_hooks(
                 on_compact(transcript_path)
             return cast(SyncHookJSONOutput, {})
 
+        def _sanitize(value: str, max_len: int = 200) -> str:
+            """Strip control characters and truncate for safe logging."""
+            return value.replace("\n", "").replace("\r", "")[:max_len]
+
         async def subagent_start_hook(
             input_data: HookInput,
             tool_use_id: str | None,
@@ -335,8 +339,8 @@ def create_security_hooks(
         ) -> SyncHookJSONOutput:
             """Log when a sub-agent starts execution."""
             _ = context, tool_use_id
-            agent_id = input_data.get("agent_id", "?")
-            agent_type = input_data.get("agent_type", "?")
+            agent_id = _sanitize(str(input_data.get("agent_id", "?")))
+            agent_type = _sanitize(str(input_data.get("agent_type", "?")))
             logger.info(
                 "[SDK] SubagentStart: agent_id=%s, type=%s, user=%s",
                 agent_id,
