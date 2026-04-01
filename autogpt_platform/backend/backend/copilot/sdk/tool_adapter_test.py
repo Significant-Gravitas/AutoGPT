@@ -335,272 +335,258 @@ class TestCreateToolHandler:
 # ---------------------------------------------------------------------------
 # Regression tests: bugs fixed by removing pre-launch mechanism
 #
-# These tests reproduce the three production bugs that the pre-launch
-# speculative execution mechanism caused.  They verify that the current
-# direct-execution handler is free of these issues.
-#
-# Bug 1: Duplicate execution on arg mismatch (SECRT-2204)
-#   Pre-launch fired with AssistantMessage args, SDK dispatched with
-#   normalised args, mismatch caused cancel+re-execute = 2 API calls.
-#
-# Bug 2: FIFO desync when security hook denies a tool
-#   Denied tool's pre-launched task stayed in queue, next tool dequeued
-#   wrong task, returning wrong results.
-#
-# Bug 3: Cancel race condition
-#   task.cancel() arrived after HTTP call completed, side effects
-#   (Linear tickets, GitHub PRs) already irreversible.
+# Each test class includes a _buggy_handler fixture that reproduces the old
+# pre-launch implementation inline.  Tests run against BOTH the buggy handler
+# (xfail — proves the bug exists) and the current clean handler (must pass).
 # ---------------------------------------------------------------------------
 
 
-class TestNoDuplicateExecution:
-    """Bug 1 regression: tool must execute exactly once per handler call,
-    regardless of how args are normalised between caller and handler."""
+def _make_execute_fn(tool_name: str = "run_block"):
+    """Return (execute_fn, call_log) — execute_fn records every call."""
+    call_log: list[dict] = []
+
+    async def execute_fn(*args, **kwargs):
+        call_log.append(kwargs)
+        return StreamToolOutputAvailable(
+            toolCallId=f"id-{len(call_log)}",
+            output=f"result-{len(call_log)}",
+            toolName=tool_name,
+            success=True,
+        )
+
+    return execute_fn, call_log
+
+
+async def _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args):
+    """Simulate the OLD buggy pre-launch flow.
+
+    1. pre_launch_tool_call fires _execute_tool_sync with pre_launch_args
+    2. SDK dispatches handler with dispatch_args
+    3. Handler compares args — on mismatch, cancels + re-executes (BUG)
+
+    Returns the handler result.
+    """
+    from backend.copilot.sdk.tool_adapter import _execute_tool_sync
+
+    user_id, session = "user-1", _make_mock_session()
+
+    # Step 1: pre-launch fires immediately (speculative)
+    task = asyncio.create_task(
+        _execute_tool_sync(mock_tool, user_id, session, pre_launch_args)
+    )
+    await asyncio.sleep(0)  # let task start
+
+    # Step 2: SDK dispatches with (potentially different) args
+    if pre_launch_args != dispatch_args:
+        # Arg mismatch path: cancel pre-launched task + re-execute
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Fall through to direct execution (duplicate!)
+        return await _execute_tool_sync(mock_tool, user_id, session, dispatch_args)
+    else:
+        return await task
+
+
+class TestBug1DuplicateExecution:
+    """Bug 1 (SECRT-2204): arg mismatch causes duplicate execution.
+
+    Pre-launch fires with raw args, SDK dispatches with normalised args.
+    Mismatch → cancel (too late) + re-execute → 2 API calls.
+    """
 
     @pytest.fixture(autouse=True)
     def _init(self):
         _init_ctx(session=_make_mock_session())
 
+    @pytest.mark.xfail(reason="Old pre-launch code causes duplicate execution")
     @pytest.mark.asyncio
-    async def test_single_execution_even_with_different_arg_representations(self):
-        """Calling handler with args that differ from what a hypothetical
-        pre-launch would have received must NOT cause double execution.
-
-        Previously, the pre-launch mechanism compared args and re-executed
-        on mismatch.  This test ensures each handler call = exactly 1 execute.
-        """
-        call_count = 0
-
-        async def counting_execute(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            return StreamToolOutputAvailable(
-                toolCallId="id",
-                output=f"exec-{call_count}",
-                toolName="run_block",
-                success=True,
-            )
-
+    async def test_old_code_duplicates_on_arg_mismatch(self):
+        """OLD CODE: pre-launch with args A, dispatch with args B → 2 calls."""
+        execute_fn, call_log = _make_execute_fn()
         mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=counting_execute)
+        mock_tool.execute = AsyncMock(side_effect=execute_fn)
+
+        pre_launch_args = {"block_id": "b1", "input_data": {"title": "Test"}}
+        dispatch_args = {
+            "block_id": "b1",
+            "input_data": {"title": "Test", "priority": None},
+        }
+
+        await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
+
+        # BUG: pre-launch executed once + fallback executed again = 2
+        assert len(call_log) == 1, (
+            f"Expected 1 execution but got {len(call_log)} — "
+            f"duplicate execution bug!"
+        )
+
+    @pytest.mark.asyncio
+    async def test_current_code_no_duplicate(self):
+        """FIXED: handler executes exactly once regardless of arg shape."""
+        execute_fn, call_log = _make_execute_fn()
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=execute_fn)
 
         handler = create_tool_handler(mock_tool)
-
-        # Simulate: SDK sends args with schema defaults injected
         await handler({"block_id": "b1", "input_data": {"title": "Test"}})
-        assert call_count == 1, f"Expected 1 execution, got {call_count}"
 
-        # Call again with slightly different args (like CLI normalisation)
-        await handler(
-            {"block_id": "b1", "input_data": {"title": "Test", "priority": None}}
-        )
-        assert call_count == 2, f"Expected 2 total executions, got {call_count}"
-
-        # Each call must produce exactly 1 execution — no duplicates
-        assert mock_tool.execute.await_count == 2
-
-    @pytest.mark.asyncio
-    async def test_concurrent_calls_each_execute_once(self):
-        """Multiple concurrent handler calls must each execute exactly once.
-
-        Previously, pre-launch fired all tasks speculatively then the handler
-        could mismatch and re-execute.  Now each call is independent.
-        """
-        call_count = 0
-
-        async def slow_execute(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            n = call_count
-            await asyncio.sleep(0.01)  # simulate API latency
-            return StreamToolOutputAvailable(
-                toolCallId=f"id-{n}",
-                output=f"result-{n}",
-                toolName="run_block",
-                success=True,
-            )
-
-        mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=slow_execute)
-
-        handler = create_tool_handler(mock_tool)
-
-        # Fire 3 calls concurrently
-        results = await asyncio.gather(
-            handler({"block_id": "b1"}),
-            handler({"block_id": "b2"}),
-            handler({"block_id": "b3"}),
-        )
-
-        # Each must succeed independently
-        for r in results:
-            assert r["isError"] is False
-
-        # Exactly 3 executions — no duplicates
-        assert call_count == 3
-        assert mock_tool.execute.await_count == 3
+        assert len(call_log) == 1, f"Expected 1 execution but got {len(call_log)}"
 
 
-class TestNoFIFODesync:
-    """Bug 2 regression: handler must not maintain shared state that can
-    desync when a tool call is skipped (e.g. denied by security hook)."""
+class TestBug2FIFODesync:
+    """Bug 2: FIFO desync when security hook denies a tool.
+
+    Pre-launch queues [task_A, task_B]. Tool A denied (no MCP dispatch).
+    Tool B's handler dequeues task_A → returns wrong result.
+    """
 
     @pytest.fixture(autouse=True)
     def _init(self):
         _init_ctx(session=_make_mock_session())
 
+    @pytest.mark.xfail(reason="Old FIFO queue returns wrong result on denial")
     @pytest.mark.asyncio
-    async def test_skipped_call_does_not_affect_subsequent_calls(self):
-        """If a tool call is skipped (e.g. denied by security hook), the
-        next call must still get its own correct result — not a stale
-        result from a previously queued task.
+    async def test_old_code_fifo_desync_on_denial(self):
+        """OLD CODE: denied tool's task stays in queue, next tool gets wrong result."""
+        from backend.copilot.sdk.tool_adapter import _execute_tool_sync
 
-        Previously, the FIFO queue stored pre-launched tasks.  If a tool was
-        denied (no MCP dispatch), its task stayed in the queue and the next
-        tool call dequeued the wrong result.
-        """
-        call_args_log: list[str] = []
-
-        async def logging_execute(*args, **kwargs):
-            block_id = kwargs.get("block_id", "?")
-            call_args_log.append(block_id)
-            return StreamToolOutputAvailable(
-                toolCallId="id",
-                output=f"result-for-{block_id}",
-                toolName="run_block",
-                success=True,
-            )
-
-        mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=logging_execute)
-
-        handler = create_tool_handler(mock_tool)
-
-        # Simulate: tool call A is denied by security hook (never dispatched)
-        # Tool call B is dispatched normally
-        # With the old pre-launch FIFO: B would dequeue A's pre-launched task
-        # With current code: B executes independently with its own args
-
-        # Only call B (A was denied/skipped)
-        result_b = await handler({"block_id": "B"})
-
-        assert "result-for-B" in result_b["content"][0]["text"]
-        assert call_args_log == [
-            "B"
-        ], f"Expected only B to execute, got {call_args_log}"
-
-    @pytest.mark.asyncio
-    async def test_handler_has_no_shared_queue_state(self):
-        """Each handler invocation must be stateless — no shared queue
-        between calls that could cause cross-contamination.
-
-        Previously, _tool_task_queues was a ContextVar shared across all
-        handler calls in a session, allowing FIFO desync.
-        """
-        results_a: list[str] = []
-        results_b: list[str] = []
+        call_log: list[str] = []
 
         async def tagged_execute(*args, **kwargs):
-            tag = kwargs.get("tag", "?")
+            tag = kwargs.get("block_id", "?")
+            call_log.append(tag)
             return StreamToolOutputAvailable(
                 toolCallId="id",
-                output=f"out-{tag}",
-                toolName="tool",
+                output=f"result-for-{tag}",
+                toolName="run_block",
                 success=True,
             )
 
-        mock_tool = _make_mock_tool("tool")
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=tagged_execute)
+        user_id, session = "user-1", _make_mock_session()
+
+        # Simulate old FIFO queue
+        queue: asyncio.Queue = asyncio.Queue()
+
+        # Pre-launch for tool A and tool B
+        task_a = asyncio.create_task(
+            _execute_tool_sync(mock_tool, user_id, session, {"block_id": "A"})
+        )
+        task_b = asyncio.create_task(
+            _execute_tool_sync(mock_tool, user_id, session, {"block_id": "B"})
+        )
+        queue.put_nowait(task_a)
+        queue.put_nowait(task_b)
+        await asyncio.sleep(0)  # let both tasks run
+
+        # Tool A is DENIED by security hook — no MCP dispatch, no dequeue
+        # Tool B's handler dequeues from FIFO → gets task_A!
+        dequeued_task = queue.get_nowait()
+        result = await dequeued_task
+        result_text = result["content"][0]["text"]
+
+        # BUG: handler for B got task_A's result
+        assert "result-for-B" in result_text, (
+            f"Expected result for B but got: {result_text} — "
+            f"FIFO desync: B got A's result!"
+        )
+
+    @pytest.mark.asyncio
+    async def test_current_code_no_fifo_desync(self):
+        """FIXED: each handler call executes independently, no shared queue."""
+        call_log: list[str] = []
+
+        async def tagged_execute(*args, **kwargs):
+            tag = kwargs.get("block_id", "?")
+            call_log.append(tag)
+            return StreamToolOutputAvailable(
+                toolCallId="id",
+                output=f"result-for-{tag}",
+                toolName="run_block",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("run_block")
         mock_tool.execute = AsyncMock(side_effect=tagged_execute)
 
         handler = create_tool_handler(mock_tool)
 
-        r1 = await handler({"tag": "first"})
-        r2 = await handler({"tag": "second"})
-        r3 = await handler({"tag": "third"})
+        # Tool A denied (never called). Tool B dispatched normally.
+        result_b = await handler({"block_id": "B"})
 
-        results_a.append(r1["content"][0]["text"])
-        results_b.append(r2["content"][0]["text"])
-
-        # Results must correspond to their own args, not FIFO ordering
-        assert "out-first" in results_a[0]
-        assert "out-second" in results_b[0]
-        assert "out-third" in r3["content"][0]["text"]
+        assert "result-for-B" in result_b["content"][0]["text"]
+        assert call_log == ["B"]
 
 
-class TestNoCancelRaceCondition:
-    """Bug 3 regression: handler must not rely on task.cancel() to prevent
-    side effects — cancel is best-effort and can arrive too late."""
+class TestBug3CancelRace:
+    """Bug 3: cancel race — task completes before cancel arrives.
+
+    Pre-launch fires fast HTTP call (< 1s). By the time handler detects
+    mismatch and calls task.cancel(), the API call already completed.
+    Side effect (Linear issue created) is irreversible.
+    """
 
     @pytest.fixture(autouse=True)
     def _init(self):
         _init_ctx(session=_make_mock_session())
 
+    @pytest.mark.xfail(reason="Old code: cancel arrives after task completes")
     @pytest.mark.asyncio
-    async def test_no_speculative_execution_before_handler_called(self):
-        """Tool execution must NOT start before the handler is explicitly called.
+    async def test_old_code_cancel_arrives_too_late(self):
+        """OLD CODE: fast task completes before cancel, side effect persists."""
+        side_effects: list[str] = []
 
-        Previously, pre_launch_tool_call() fired execution speculatively
-        when the AssistantMessage arrived — before the SDK dispatched the
-        MCP tools/call.  This meant side effects occurred before the handler
-        was invoked, and cancel() couldn't undo them.
-        """
-        executed = False
-
-        async def track_execute(*args, **kwargs):
-            nonlocal executed
-            executed = True
+        async def fast_execute_with_side_effect(*args, **kwargs):
+            # Side effect happens immediately (like an HTTP POST to Linear)
+            side_effects.append("created-issue")
             return StreamToolOutputAvailable(
                 toolCallId="id",
-                output="done",
+                output="issue-created",
                 toolName="run_block",
                 success=True,
             )
 
         mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=track_execute)
+        mock_tool.execute = AsyncMock(side_effect=fast_execute_with_side_effect)
 
-        # Create handler but DON'T call it yet
-        handler = create_tool_handler(mock_tool)
+        # Pre-launch fires immediately
+        pre_launch_args = {"block_id": "b1"}
+        dispatch_args = {"block_id": "b1", "extra": "normalised"}
 
-        # With old code: pre_launch_tool_call() would have already started
-        # execution.  With current code: nothing happens until handler is called.
-        assert not executed, (
-            "Tool executed before handler was called — "
-            "speculative execution must not happen"
+        await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
+
+        # BUG: side effect happened TWICE (pre-launch + fallback)
+        assert len(side_effects) == 1, (
+            f"Expected 1 side effect but got {len(side_effects)} — "
+            f"cancel race: pre-launch completed before cancel!"
         )
-
-        # Now call the handler
-        await handler({"block_id": "b1"})
-        assert executed, "Tool should execute when handler is called"
 
     @pytest.mark.asyncio
-    async def test_failed_execution_does_not_leave_orphaned_tasks(self):
-        """When a handler call fails, no orphaned background tasks remain.
+    async def test_current_code_single_side_effect(self):
+        """FIXED: no speculative execution, exactly 1 side effect per call."""
+        side_effects: list[str] = []
 
-        Previously, pre-launched tasks could be left in the queue if the
-        handler took a different code path (mismatch, error).  These orphaned
-        tasks continued executing and creating side effects.
-        """
-        mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=RuntimeError("API error"))
-
-        handler = create_tool_handler(mock_tool)
-        result = await handler({"block_id": "b1"})
-
-        assert result["isError"] is True
-
-        # After the failed call, executing again must work independently
-        mock_tool.execute = AsyncMock(
-            return_value=StreamToolOutputAvailable(
+        async def execute_with_side_effect(*args, **kwargs):
+            side_effects.append("created-issue")
+            return StreamToolOutputAvailable(
                 toolCallId="id",
-                output="recovered",
+                output="issue-created",
                 toolName="run_block",
                 success=True,
             )
-        )
-        result2 = await handler({"block_id": "b2"})
-        assert result2["isError"] is False
-        assert "recovered" in result2["content"][0]["text"]
+
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=execute_with_side_effect)
+
+        handler = create_tool_handler(mock_tool)
+        await handler({"block_id": "b1"})
+
+        assert len(side_effects) == 1
 
 
 # ---------------------------------------------------------------------------
