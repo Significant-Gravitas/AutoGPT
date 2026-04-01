@@ -10,10 +10,9 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy.exc import OperationalError
 
-from backend.blocks.sql_query_block import (
+from backend.blocks.sql_query_block import SQLQueryBlock, UserPasswordCredentials
+from backend.blocks.sql_query_helpers import (
     DatabaseType,
-    SQLQueryBlock,
-    UserPasswordCredentials,
     _sanitize_error,
     _serialize_value,
     _validate_query_is_read_only,
