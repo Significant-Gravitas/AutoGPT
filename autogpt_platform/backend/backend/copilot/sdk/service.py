@@ -1432,8 +1432,7 @@ async def _run_stream_attempt(
                     # exception so the retry loop can trigger compaction.
                     # Without this, the ResultMessage is silently consumed
                     # and the retry/compaction mechanism is never invoked.
-                    error_text = (sdk_msg.result or "").lower()
-                    if any(p in error_text for p in _PROMPT_TOO_LONG_PATTERNS):
+                    if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
                         raise RuntimeError("Prompt is too long")
 
                 # Capture token usage from ResultMessage.
