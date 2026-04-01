@@ -77,9 +77,9 @@ from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
 from .compaction import CompactionTracker, filter_compaction_messages
+from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
-from .subscription import validate_subscription as _validate_claude_code_subscription
 from .tool_adapter import (
     cancel_pending_tool_tasks,
     create_copilot_mcp_server,
@@ -182,6 +182,24 @@ def _is_prompt_too_long(err: BaseException) -> bool:
         if any(p in msg for p in _PROMPT_TOO_LONG_PATTERNS):
             return True
         current = current.__cause__ or current.__context__
+    return False
+
+
+def _is_sdk_disconnect_error(exc: BaseException) -> bool:
+    """Return True if *exc* is an expected SDK cleanup error from client disconnect.
+
+    Two known patterns occur when ``GeneratorExit`` tears down the async
+    generator and the SDK's ``__aexit__`` runs in a different context/task:
+
+    * ``RuntimeError``: cancel scope exited in wrong task (anyio)
+    * ``ValueError``: ContextVar token created in a different Context (OTEL)
+
+    These are suppressed to avoid polluting Sentry with non-actionable noise.
+    """
+    if isinstance(exc, RuntimeError) and "cancel scope" in str(exc):
+        return True
+    if isinstance(exc, ValueError) and "was created in a different Context" in str(exc):
+        return True
     return False
 
 
@@ -409,6 +427,63 @@ _HEARTBEAT_INTERVAL = 10.0  # seconds
 STREAM_LOCK_PREFIX = "copilot:stream:lock:"
 
 
+async def _safe_close_sdk_client(
+    sdk_client: ClaudeSDKClient,
+    log_prefix: str,
+) -> None:
+    """Close a ClaudeSDKClient, suppressing errors from client disconnect.
+
+    When the SSE client disconnects mid-stream, ``GeneratorExit`` propagates
+    through the async generator stack and causes ``ClaudeSDKClient.__aexit__``
+    to run in a different async context or task than where the client was
+    opened.  This triggers two known error classes:
+
+    * ``ValueError``: ``<Token var=<ContextVar name='current_context'>>
+      was created in a different Context`` — OpenTelemetry's
+      ``context.detach()`` fails because the OTEL context token was
+      created in the original generator coroutine but detach runs in
+      the GC / cleanup coroutine (Sentry: AUTOGPT-SERVER-8BT).
+
+    * ``RuntimeError``: ``Attempted to exit cancel scope in a different
+      task than it was entered in`` — anyio's ``TaskGroup.__aexit__``
+      detects that the cancel scope was entered in one task but is
+      being exited in another (Sentry: AUTOGPT-SERVER-8BW).
+
+    Both are harmless — the TCP connection is already dead and no
+    resources leak.  Logging them at ``debug`` level keeps observability
+    without polluting Sentry.
+    """
+    try:
+        await sdk_client.__aexit__(None, None, None)
+    except (ValueError, RuntimeError) as exc:
+        if _is_sdk_disconnect_error(exc):
+            # Expected during client disconnect — suppress to avoid Sentry noise.
+            logger.debug(
+                "%s SDK client cleanup error suppressed (client disconnect): %s: %s",
+                log_prefix,
+                type(exc).__name__,
+                exc,
+            )
+        else:
+            raise
+    except GeneratorExit:
+        # GeneratorExit can propagate through __aexit__ — suppress it here
+        # since the generator is already being torn down.
+        logger.debug(
+            "%s SDK client cleanup GeneratorExit suppressed (client disconnect)",
+            log_prefix,
+        )
+    except Exception:
+        # Unexpected cleanup error — log at error level so Sentry captures it
+        # (via its logging integration), but don't propagate since we're in
+        # teardown and the caller cannot meaningfully handle this.
+        logger.error(
+            "%s Unexpected SDK client cleanup error",
+            log_prefix,
+            exc_info=True,
+        )
+
+
 async def _iter_sdk_messages(
     client: ClaudeSDKClient,
 ) -> AsyncGenerator[Any, None]:
@@ -492,60 +567,6 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
-def _build_sdk_env(
-    session_id: str | None = None,
-    user_id: str | None = None,
-) -> dict[str, str]:
-    """Build env vars for the SDK CLI subprocess.
-
-    Three modes (checked in order):
-    1. **Subscription** — clears all keys; CLI uses `claude login` auth.
-    2. **Direct Anthropic** — returns `{}`; subprocess inherits
-       `ANTHROPIC_API_KEY` from the parent environment.
-    3. **OpenRouter** (default) — overrides base URL and auth token to
-       route through the proxy, with Langfuse trace headers.
-    """
-    # --- Mode 1: Claude Code subscription auth ---
-    if config.use_claude_code_subscription:
-        _validate_claude_code_subscription()
-        return {
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        }
-
-    # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    # `openrouter_active` checks the flag *and* credential presence.
-    if not config.openrouter_active:
-        return {}
-
-    # --- Mode 3: OpenRouter proxy ---
-    # Strip /v1 suffix — SDK expects the base URL without a version path.
-    base = (config.base_url or "").rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-    env: dict[str, str] = {
-        "ANTHROPIC_BASE_URL": base,
-        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
-        "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-    }
-
-    # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-    def _safe(v: str) -> str:
-        """Sanitise a header value: strip newlines/whitespace and cap length."""
-        return v.replace("\r", "").replace("\n", "").strip()[:128]
-
-    parts = []
-    if session_id:
-        parts.append(f"x-session-id: {_safe(session_id)}")
-    if user_id:
-        parts.append(f"x-user-id: {_safe(user_id)}")
-    if parts:
-        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
-
-    return env
-
-
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
 
@@ -595,7 +616,9 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
     """Convert SDK content blocks to transcript format.
 
     Handles TextBlock, ToolUseBlock, ToolResultBlock, and ThinkingBlock.
-    Unknown block types are logged and skipped.
+    Raw dicts (e.g. ``redacted_thinking`` blocks that the SDK may not have
+    a typed class for) are passed through verbatim to preserve them in the
+    transcript.  Unknown typed block objects are logged and skipped.
     """
     result: list[dict[str, Any]] = []
     for block in blocks or []:
@@ -627,6 +650,9 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
                     "signature": block.signature,
                 }
             )
+        elif isinstance(block, dict) and "type" in block:
+            # Preserve raw dict blocks (e.g. redacted_thinking) verbatim.
+            result.append(block)
         else:
             logger.warning(
                 f"[SDK] Unknown content block type: {type(block).__name__}. "
@@ -1188,7 +1214,25 @@ async def _run_stream_attempt(
 
     consecutive_empty_tool_calls = 0
 
-    async with ClaudeSDKClient(options=state.options) as client:
+    # --- Intermediate persistence tracking ---
+    # Flush session messages to DB periodically so page reloads show progress
+    # during long-running turns (see incident d2f7cba3: 82-min turn lost on refresh).
+    _last_flush_time = time.monotonic()
+    _msgs_since_flush = 0
+    _FLUSH_INTERVAL_SECONDS = 30.0
+    _FLUSH_MESSAGE_THRESHOLD = 10
+
+    # Use manual __aenter__/__aexit__ instead of ``async with`` so we can
+    # suppress SDK cleanup errors that occur when the SSE client disconnects
+    # mid-stream.  GeneratorExit causes the SDK's ``__aexit__`` to run in a
+    # different async context/task than where the client was opened, which
+    # triggers:
+    #   - ValueError: ContextVar token mismatch (AUTOGPT-SERVER-8BT)
+    #   - RuntimeError: cancel scope in wrong task  (AUTOGPT-SERVER-8BW)
+    # Both are harmless — the TCP connection is already dead.
+    sdk_client = ClaudeSDKClient(options=state.options)
+    client = await sdk_client.__aenter__()
+    try:
         logger.info(
             "%s Sending query — resume=%s, total_msgs=%d, "
             "query_len=%d, attached_files=%d, image_blocks=%d",
@@ -1446,8 +1490,38 @@ async def _run_stream_attempt(
                     model=sdk_msg.model,
                 )
 
+            # --- Intermediate persistence ---
+            # Flush session messages to DB periodically so page reloads
+            # show progress during long-running turns.
+            _msgs_since_flush += 1
+            now = time.monotonic()
+            if (
+                _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
+                or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
+            ):
+                try:
+                    await asyncio.shield(upsert_chat_session(ctx.session))
+                    logger.debug(
+                        "%s Intermediate flush: %d messages "
+                        "(msgs_since=%d, elapsed=%.1fs)",
+                        ctx.log_prefix,
+                        len(ctx.session.messages),
+                        _msgs_since_flush,
+                        now - _last_flush_time,
+                    )
+                except Exception as flush_err:
+                    logger.warning(
+                        "%s Intermediate flush failed: %s",
+                        ctx.log_prefix,
+                        flush_err,
+                    )
+                _last_flush_time = now
+                _msgs_since_flush = 0
+
             if acc.stream_completed:
                 break
+    finally:
+        await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
 
     # --- Post-stream processing (only on success) ---
     if state.adapter.has_unresolved_tool_calls:
@@ -1775,7 +1849,7 @@ async def stream_chat_completion_sdk(
         )
 
         # Fail fast when no API credentials are available at all.
-        sdk_env = _build_sdk_env(session_id=session_id, user_id=user_id)
+        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
@@ -2169,9 +2243,16 @@ async def stream_chat_completion_sdk(
             error_msg = "Operation cancelled"
         else:
             error_msg = str(e) or type(e).__name__
-            # SDK cleanup RuntimeError is expected during cancellation, log as warning
-            if isinstance(e, RuntimeError) and "cancel scope" in str(e):
-                logger.warning("%s SDK cleanup error: %s", log_prefix, error_msg)
+            # SDK cleanup errors are expected during client disconnect —
+            # log as warning rather than error to reduce Sentry noise.
+            # These are normally caught by _safe_close_sdk_client but
+            # can escape in edge cases (e.g. GeneratorExit timing).
+            if _is_sdk_disconnect_error(e):
+                logger.warning(
+                    "%s SDK cleanup error (client disconnect): %s",
+                    log_prefix,
+                    error_msg,
+                )
             else:
                 logger.error("%s Error: %s", log_prefix, error_msg, exc_info=True)
 
@@ -2193,10 +2274,11 @@ async def stream_chat_completion_sdk(
             )
 
         # Yield StreamError for immediate feedback (only for non-cancellation errors)
-        # Skip for CancelledError and RuntimeError cleanup issues (both are cancellations)
-        is_cancellation = isinstance(e, asyncio.CancelledError) or (
-            isinstance(e, RuntimeError) and "cancel scope" in str(e)
-        )
+        # Skip for CancelledError and SDK disconnect cleanup errors — these
+        # are not actionable by the user and the SSE connection is already dead.
+        is_cancellation = isinstance(
+            e, asyncio.CancelledError
+        ) or _is_sdk_disconnect_error(e)
         if not is_cancellation:
             yield StreamError(errorText=display_msg, code=code)
 
