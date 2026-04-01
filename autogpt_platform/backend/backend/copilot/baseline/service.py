@@ -382,6 +382,10 @@ async def _compress_session_messages(
         msg_dict: dict[str, Any] = {"role": msg.role}
         if msg.content:
             msg_dict["content"] = msg.content
+        if msg.tool_calls:
+            msg_dict["tool_calls"] = msg.tool_calls
+        if msg.tool_call_id:
+            msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
     try:
@@ -408,7 +412,12 @@ async def _compress_session_messages(
             result.messages_dropped,
         )
         return [
-            ChatMessage(role=m["role"], content=m.get("content"))
+            ChatMessage(
+                role=m["role"],
+                content=m.get("content"),
+                tool_calls=m.get("tool_calls"),
+                tool_call_id=m.get("tool_call_id"),
+            )
             for m in result.messages
         ]
 
