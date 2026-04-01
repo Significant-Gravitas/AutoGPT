@@ -2057,11 +2057,18 @@ async def stream_chat_completion_sdk(
         )
 
         attempt = 0
+        _last_reset_attempt = -1
         while attempt < _MAX_STREAM_ATTEMPTS:
             # Reset transient retry counter per context-level attempt so
             # each attempt (original, compacted, no-transcript) gets the
             # full retry budget for transient errors.
-            transient_retries = 0
+            # Only reset when the attempt number actually changes —
+            # transient retries `continue` back to the loop top without
+            # incrementing `attempt`, so resetting unconditionally would
+            # create an infinite retry loop.
+            if attempt != _last_reset_attempt:
+                transient_retries = 0
+                _last_reset_attempt = attempt
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
             reset_stash_event()
