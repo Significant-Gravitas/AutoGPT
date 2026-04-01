@@ -221,9 +221,21 @@ async def create_session(
     return session
 
 
+_meta_ttl_refresh_at: dict[str, float] = {}
+"""Tracks the last time the session meta key TTL was refreshed.
+
+Used by `publish_chunk` to avoid refreshing on every single chunk
+(expensive). Refreshes at most once every 60 seconds per session.
+"""
+
+_META_TTL_REFRESH_INTERVAL = 60  # seconds
+
+
 async def publish_chunk(
     turn_id: str,
     chunk: StreamBaseResponse,
+    *,
+    session_id: str | None = None,
 ) -> str:
     """Publish a chunk to Redis Stream.
 
@@ -232,6 +244,9 @@ async def publish_chunk(
     Args:
         turn_id: Turn ID (per-turn UUID) identifying the stream
         chunk: The stream response chunk to publish
+        session_id: Chat session ID — when provided, the session meta key
+            TTL is refreshed periodically to prevent expiration during
+            long-running turns (see SECRT-2178).
 
     Returns:
         The Redis Stream message ID
@@ -264,6 +279,23 @@ async def publish_chunk(
 
         # Set TTL on stream to match session metadata TTL
         await redis.expire(stream_key, config.stream_ttl)
+
+        # Periodically refresh session-related TTLs so they don't expire
+        # during long-running turns. Without this, turns exceeding stream_ttl
+        # (default 1h) lose their "running" status and stream data, making
+        # the session invisible to the resume endpoint (empty on page reload).
+        # Both meta key AND stream key are refreshed: the stream key's expire
+        # above only fires when publish_chunk is called, but during long
+        # sub-agent gaps (task_progress events don't produce chunks), neither
+        # key gets refreshed.
+        if session_id:
+            now = time.perf_counter()
+            last_refresh = _meta_ttl_refresh_at.get(session_id, 0)
+            if now - last_refresh >= _META_TTL_REFRESH_INTERVAL:
+                meta_key = _get_session_meta_key(session_id)
+                await redis.expire(meta_key, config.stream_ttl)
+                await redis.expire(stream_key, config.stream_ttl)
+                _meta_ttl_refresh_at[session_id] = now
 
         total_time = (time.perf_counter() - start_time) * 1000
         # Only log timing for significant chunks or slow operations
@@ -331,7 +363,7 @@ async def stream_and_publish(
     async for event in stream:
         if turn_id and not isinstance(event, (StreamFinish, StreamError)):
             try:
-                await publish_chunk(turn_id, event)
+                await publish_chunk(turn_id, event, session_id=session_id)
             except (RedisError, ConnectionError, OSError):
                 if not publish_failed_once:
                     publish_failed_once = True
@@ -799,6 +831,9 @@ async def mark_session_completed(
 
     # Atomic compare-and-swap: only update if status is "running"
     result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
+
+    # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
+    _meta_ttl_refresh_at.pop(session_id, None)
 
     if result == 0:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
