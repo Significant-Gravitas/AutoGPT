@@ -313,8 +313,7 @@ def create_security_hooks(
                 .replace("\r", "")
             )
             logger.info(
-                "[SDK] Context compaction triggered: %s, user=%s, "
-                "transcript_path=%s",
+                "[SDK] Context compaction triggered: %s, user=%s, transcript_path=%s",
                 trigger,
                 user_id,
                 transcript_path,
