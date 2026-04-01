@@ -69,10 +69,13 @@ function ArtifactContentLoader({ artifact, isSourceView }: Props) {
         })
         .then((blob) => {
           objectUrl = URL.createObjectURL(blob);
-          if (!cancelled) {
-            setPdfUrl(objectUrl);
-            setIsLoading(false);
+          if (cancelled) {
+            URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+            return;
           }
+          setPdfUrl(objectUrl);
+          setIsLoading(false);
         })
         .catch((err) => {
           if (!cancelled) {
