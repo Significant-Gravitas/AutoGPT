@@ -46,6 +46,7 @@ export function useAgentActivityDropdown() {
   >(new Map());
   const failedLookups = useRef<Map<string, number>>(new Map());
   const prevMissingIdsKey = useRef<string>("");
+  const prevMissingIds = useRef<string[]>([]);
 
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],
@@ -113,9 +114,10 @@ export function useAgentActivityDropdown() {
 
     // Stabilize reference: only return a new array when the actual IDs change
     if (key === prevMissingIdsKey.current) {
-      return candidate.length === 0 ? [] : candidate;
+      return prevMissingIds.current;
     }
     prevMissingIdsKey.current = key;
+    prevMissingIds.current = candidate;
     return candidate;
   }, [combinedAgentInfoMap, executions]);
 
