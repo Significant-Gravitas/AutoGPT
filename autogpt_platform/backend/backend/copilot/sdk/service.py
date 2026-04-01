@@ -2056,7 +2056,8 @@ async def stream_chat_completion_sdk(
             usage=_TokenUsage(),
         )
 
-        for attempt in range(_MAX_STREAM_ATTEMPTS):
+        attempt = 0
+        while attempt < _MAX_STREAM_ATTEMPTS:
             # Reset transient retry counter per context-level attempt so
             # each attempt (original, compacted, no-transcript) gets the
             # full retry budget for transient errors.
@@ -2253,10 +2254,11 @@ async def stream_chat_completion_sdk(
                     skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
+                attempt += 1  # advance to next context-level attempt
                 continue
         else:
-            # All retry attempts exhausted (loop ended without break)
-            # skip_transcript_upload is already set by _reduce_context
+            # while condition became False — all attempts exhausted without
+            # break.  skip_transcript_upload is already set by _reduce_context
             # when the transcript was dropped (transcript_lost=True).
             ended_with_stream_error = True
             attempts_exhausted = True
