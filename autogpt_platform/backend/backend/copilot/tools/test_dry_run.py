@@ -213,16 +213,18 @@ async def test_simulate_block_truncates_long_inputs():
 
 
 def test_build_simulation_prompt_lists_available_output_pins():
-    """The prompt should list available output pins (including error) so the LLM
-    knows what keys are valid, but the instructions tell it to omit error unless
-    simulating a logical failure."""
+    """The prompt should list available output pins (excluding error) so the LLM
+    knows which keys it MUST include.  Error is excluded because the prompt
+    tells the LLM to omit it unless simulating a logical failure."""
     block = make_mock_block()  # default output_props has "result" and "error"
     system_prompt, _ = build_simulation_prompt(block, {"query": "test"})
     available_line = [
         line for line in system_prompt.splitlines() if "Available output pins" in line
     ][0]
     assert '"result"' in available_line
-    assert '"error"' in available_line
+    # "error" is intentionally excluded from the required output pins list
+    # since the prompt instructs the LLM to omit it unless simulating errors
+    assert '"error"' not in available_line
 
 
 # ---------------------------------------------------------------------------
