@@ -124,8 +124,10 @@ def _sanitize_error(
         )
 
     # Replace the database name to avoid leaking internal infrastructure names.
+    # Use word-boundary regex to prevent mangling when the database name is a
+    # common substring (e.g. "test", "data", "on").
     if database:
-        sanitized = sanitized.replace(database, "<database>")
+        sanitized = re.sub(r"\b" + re.escape(database) + r"\b", "<database>", sanitized)
 
     return sanitized
 

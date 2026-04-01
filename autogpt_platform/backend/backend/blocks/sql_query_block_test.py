@@ -294,6 +294,22 @@ class TestSanitizeError:
         # The actual error type is preserved for the LLM
         assert "password authentication failed" in result
 
+    def test_database_name_scrubbed(self):
+        """Database name must be replaced with <database>."""
+        conn = "postgresql://user:pass@1.2.3.4:5432/analytics_prod"
+        error = 'database "analytics_prod" does not exist'
+        result = _sanitize_error(error, conn, database="analytics_prod")
+        assert "analytics_prod" not in result
+        assert "<database>" in result
+
+    def test_database_name_word_boundary_prevents_mangling(self):
+        """Common database names must not mangle unrelated words."""
+        conn = "postgresql://user:pass@1.2.3.4:5432/test"
+        error = 'FATAL: database "test" does not exist (tested connection)'
+        result = _sanitize_error(error, conn, database="test")
+        assert "tested" in result
+        assert '"<database>"' in result
+
 
 # ---------------------------------------------------------------------------
 # Helpers for run()-level integration tests
