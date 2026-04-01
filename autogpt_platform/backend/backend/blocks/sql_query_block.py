@@ -222,14 +222,19 @@ class SQLQueryBlock(Block):
             port=port,
             database=input_data.database,
         )
-        sanitize_kwargs = dict(
-            host=pinned_host,
-            original_host=host,
-            username=username,
-            port=port,
-            database=input_data.database,
-        )
         conn_str = connection_url.render_as_string(hide_password=True)
+        db_name = input_data.database
+
+        def _sanitize(err: Exception) -> str:
+            return _sanitize_error(
+                str(err).strip(),
+                conn_str,
+                host=pinned_host,
+                original_host=host,
+                username=username,
+                port=port,
+                database=db_name,
+            )
 
         try:
             results, columns, affected = await asyncio.to_thread(
@@ -247,15 +252,14 @@ class SQLQueryBlock(Block):
             if affected >= 0:
                 yield "affected_rows", affected
         except OperationalError as e:
-            yield "error", self._format_operational_error(
-                e, conn_str, input_data.timeout, **sanitize_kwargs
+            yield "error", self._classify_operational_error(
+                _sanitize(e),
+                input_data.timeout,
             )
         except ProgrammingError as e:
-            msg = _sanitize_error(str(e).strip(), conn_str, **sanitize_kwargs)
-            yield "error", f"SQL error: {msg}"
+            yield "error", f"SQL error: {_sanitize(e)}"
         except DBAPIError as e:
-            msg = _sanitize_error(str(e).strip(), conn_str, **sanitize_kwargs)
-            yield "error", f"Database error: {msg}"
+            yield "error", f"Database error: {_sanitize(e)}"
         except ModuleNotFoundError:
             yield "error", (
                 f"Database driver not available for "
@@ -290,16 +294,11 @@ class SQLQueryBlock(Block):
         return host, resolved_ips[0], None
 
     @staticmethod
-    def _format_operational_error(
-        e: OperationalError,
-        conn_str: str,
-        timeout: int,
-        **sanitize_kwargs: Any,
-    ) -> str:
-        """Sanitize and classify an OperationalError for user display."""
-        msg = _sanitize_error(str(e).strip(), conn_str, **sanitize_kwargs)
-        if "timeout" in msg.lower() or "cancel" in msg.lower():
+    def _classify_operational_error(sanitized_msg: str, timeout: int) -> str:
+        """Classify an already-sanitized OperationalError for user display."""
+        lower = sanitized_msg.lower()
+        if "timeout" in lower or "cancel" in lower:
             return f"Query timed out after {timeout}s."
-        if "connect" in msg.lower():
-            return f"Failed to connect to database: {msg}"
-        return f"Database error: {msg}"
+        if "connect" in lower:
+            return f"Failed to connect to database: {sanitized_msg}"
+        return f"Database error: {sanitized_msg}"
