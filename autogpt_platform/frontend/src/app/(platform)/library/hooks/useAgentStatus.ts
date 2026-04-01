@@ -79,6 +79,8 @@ function simpleHash(str: string): number {
  * TODO: Wire to `GET /agents/:id/status` + WebSocket `/agents/live`.
  */
 export function useAgentStatus(agentID: string): AgentStatusInfo {
+  // NOTE: useState initializer runs once on mount; a new agentID prop will not
+  // re-derive info. Replace with a real API call wired to the agentID param.
   const [info] = useState(() => mockStatusForAgent(agentID));
   return info;
 }
@@ -88,6 +90,9 @@ export function useAgentStatus(agentID: string): AgentStatusInfo {
  * TODO: Wire to `GET /agents/summary`.
  */
 export function useFleetSummary(agentIDs: string[]): FleetSummary {
+  // NOTE: useState initializer runs once on mount; changes to agentIDs after
+  // mount do NOT recompute the summary. Replace with a real API call wired to
+  // the agentIDs prop once the backend endpoint is available.
   const [summary] = useState<FleetSummary>(() => {
     const counts: FleetSummary = {
       running: 0,

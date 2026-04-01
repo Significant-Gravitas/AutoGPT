@@ -123,6 +123,7 @@ export function LibraryAgentList({
     selectedFolderId,
     onFolderSelect,
     activeTab,
+    statusFilter,
   });
 
   const agentIDs = agents.map((a) => a.id);

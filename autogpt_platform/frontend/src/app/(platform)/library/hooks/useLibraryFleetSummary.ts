@@ -10,6 +10,9 @@ import type { FleetSummary } from "../types";
  * For now, returns deterministic mock data so the UI renders correctly.
  */
 export function useLibraryFleetSummary(): FleetSummary {
+  // NOTE: useState initializer runs once on mount; the hardcoded mock values
+  // will not update if the component re-renders. Replace with a real API call
+  // once the backend endpoint is available.
   const [summary] = useState<FleetSummary>(() => ({
     running: 3,
     error: 2,

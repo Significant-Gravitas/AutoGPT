@@ -21,7 +21,9 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { AgentStatusFilter } from "../../types";
+import { mockStatusForAgent } from "../../hooks/useAgentStatus";
 
 interface Props {
   searchTerm: string;
@@ -29,6 +31,7 @@ interface Props {
   selectedFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
   activeTab: string;
+  statusFilter?: AgentStatusFilter;
 }
 
 export function useLibraryAgentList({
@@ -37,6 +40,7 @@ export function useLibraryAgentList({
   selectedFolderId,
   onFolderSelect,
   activeTab,
+  statusFilter = "all",
 }: Props) {
   const isFavoritesTab = activeTab === "favorites";
   const { toast } = useToast();
@@ -199,6 +203,17 @@ export function useLibraryAgentList({
 
   const showFolders = !isFavoritesTab;
 
+  // Client-side filter by status using mock data until the real API supports it.
+  const filteredAgents = useMemo(() => {
+    if (statusFilter === "all") return agents;
+    return agents.filter((agent) => {
+      const info = mockStatusForAgent(agent.id);
+      if (statusFilter === "attention") return info.health === "attention";
+      if (statusFilter === "healthy") return info.health === "good";
+      return info.status === statusFilter;
+    });
+  }, [agents, statusFilter]);
+
   function handleFolderDeleted() {
     if (selectedFolderId === deletingFolder?.id) {
       onFolderSelect(null);
@@ -211,7 +226,7 @@ export function useLibraryAgentList({
     agentCount,
     allAgentsCount,
     favoritesCount: favoriteAgentsData.agentCount,
-    agents,
+    agents: filteredAgents,
     hasNextPage: agentsHasNextPage,
     isFetchingNextPage: agentsIsFetchingNextPage,
     fetchNextPage: agentsFetchNextPage,

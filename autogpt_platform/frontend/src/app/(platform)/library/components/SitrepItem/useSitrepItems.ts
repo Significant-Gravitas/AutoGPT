@@ -15,6 +15,9 @@ export function useSitrepItems(
   agentIDs: string[],
   maxItems: number,
 ): SitrepItemData[] {
+  // NOTE: useState initializer runs once on mount; changes to agentIDs or
+  // maxItems after mount do NOT recompute items. Replace with useMemo (or a
+  // real API call) once live data is wired up.
   const [items] = useState<SitrepItemData[]>(() => {
     const raw: SitrepItemData[] = agentIDs.map((id) => {
       const info = mockStatusForAgent(id);

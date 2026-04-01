@@ -42,7 +42,7 @@ export function AutoPilotBridgeProvider({ children }: Props) {
 
   const consumePrompt = useCallback((): string | null => {
     const prompt = pendingPrompt ?? sessionStorage.getItem(STORAGE_KEY);
-    if (prompt) {
+    if (prompt !== null) {
       sessionStorage.removeItem(STORAGE_KEY);
       setPendingPrompt(null);
     }
