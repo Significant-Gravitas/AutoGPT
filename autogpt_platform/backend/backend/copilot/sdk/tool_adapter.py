@@ -581,13 +581,14 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # Security hooks validate that file paths stay within sdk_cwd.
 # Bash is NOT included — use the sandboxed MCP bash_exec tool instead,
 # which provides kernel-level network isolation via unshare --net.
-# Task allows spawning sub-agents (rate-limited by security hooks).
+# Task/Agent allows spawning sub-agents (rate-limited by security hooks).
+#   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.

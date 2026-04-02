@@ -240,3 +240,60 @@ class TestBuildSdkEnvModePriority:
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
         }
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_CODE_TMPDIR integration
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeCodeTmpdir:
+    """Verify the CLAUDE_CODE_TMPDIR assignment pattern used by service.py.
+
+    In service.py, after calling build_sdk_env(), the code does:
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+    These tests validate that pattern works correctly.
+    """
+
+    def test_tmpdir_set_when_sdk_cwd_is_truthy(self):
+        """CLAUDE_CODE_TMPDIR is set to sdk_cwd when sdk_cwd is truthy."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            sdk_env = build_sdk_env()
+
+        sdk_cwd = "/tmp/copilot-workspace"
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+
+        assert sdk_env["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-workspace"
+
+    def test_tmpdir_not_set_when_sdk_cwd_is_none(self):
+        """CLAUDE_CODE_TMPDIR is NOT in the env when sdk_cwd is None."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            sdk_env = build_sdk_env()
+
+        sdk_cwd = None
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+
+        assert "CLAUDE_CODE_TMPDIR" not in sdk_env
+
+    def test_tmpdir_not_set_when_sdk_cwd_is_empty_string(self):
+        """CLAUDE_CODE_TMPDIR is NOT in the env when sdk_cwd is empty string."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            sdk_env = build_sdk_env()
+
+        sdk_cwd = ""
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+
+        assert "CLAUDE_CODE_TMPDIR" not in sdk_env

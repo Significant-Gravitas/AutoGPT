@@ -1885,6 +1885,22 @@ async def stream_chat_completion_sdk(
 
         # Fail fast when no API credentials are available at all.
         sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
+
+        # Route the CLI's temp directory into the per-session workspace so
+        # sub-agent output files land inside sdk_cwd — accessible to
+        # is_allowed_local_path() and @@agptfile: expansion without
+        # widening the security boundary.
+        #
+        # Without this, the CLI writes sub-agent output to
+        # /tmp/claude-<uid>/ which is outside sdk_cwd and inaccessible
+        # (file-not-found for @@agptfile: expansion).
+        #
+        # NOTE: We intentionally do NOT override HOME here. The CLI
+        # stores auth credentials in $HOME/.claude/ — overriding HOME
+        # would break subscription mode (claude login) authentication.
+        if sdk_cwd:
+            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
