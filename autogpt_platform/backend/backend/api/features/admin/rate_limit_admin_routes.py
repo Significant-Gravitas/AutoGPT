@@ -195,15 +195,22 @@ async def set_user_rate_limit_tier(
     admin_user_id: str = Security(get_user_id),
 ) -> UserTierResponse:
     """Set a user's rate-limit tier. Admin-only."""
-    resolved_email = await get_user_email_by_id(request.user_id)
-    if resolved_email is None:
-        raise HTTPException(status_code=404, detail=f"User {request.user_id} not found")
-
     old_tier = await get_user_tier(request.user_id)
+
+    # Resolve email for audit logging (non-blocking — don't fail the
+    # tier change if email lookup fails).
+    try:
+        resolved_email = await get_user_email_by_id(request.user_id)
+    except Exception:
+        logger.warning(
+            "Failed to resolve email for user %s", request.user_id, exc_info=True
+        )
+        resolved_email = None
     logger.info(
-        "Admin %s changing tier for user %s: %s -> %s",
+        "Admin %s changing tier for user %s (%s): %s -> %s",
         admin_user_id,
         request.user_id,
+        resolved_email or "unknown",
         old_tier.value,
         request.tier.value,
     )
