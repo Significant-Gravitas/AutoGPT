@@ -31,6 +31,7 @@ type Props = {
   onSelectCredential: (credentialId: string) => void;
   onClearCredential: () => void;
   onAddCredential: () => void;
+  onDeleteCredential?: (credential: { id: string; title: string }) => void;
 };
 
 export function CredentialsFlatView({
@@ -47,6 +48,7 @@ export function CredentialsFlatView({
   onSelectCredential,
   onClearCredential,
   onAddCredential,
+  onDeleteCredential,
 }: Props) {
   const hasCredentials = credentials.length > 0;
 
@@ -99,6 +101,15 @@ export function CredentialsFlatView({
                   provider={provider}
                   displayName={displayName}
                   onSelect={() => onSelectCredential(credential.id)}
+                  onDelete={
+                    onDeleteCredential
+                      ? () =>
+                          onDeleteCredential({
+                            id: credential.id,
+                            title: credential.title || credential.id,
+                          })
+                      : undefined
+                  }
                   readOnly={readOnly}
                 />
               ))}

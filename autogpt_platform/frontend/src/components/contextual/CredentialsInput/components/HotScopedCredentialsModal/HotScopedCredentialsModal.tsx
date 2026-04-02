@@ -89,7 +89,20 @@ export function HostScopedCredentialsModal({
     return null;
   }
 
-  const { provider, providerName, createHostScopedCredentials } = credentials;
+  const {
+    provider,
+    providerName,
+    savedCredentials,
+    createHostScopedCredentials,
+    deleteCredentials,
+  } = credentials;
+
+  const hasExistingForHost = savedCredentials.some(
+    (c) =>
+      c.type === "host_scoped" &&
+      "host" in c &&
+      c.host === (currentHost || form.getValues("host")),
+  );
 
   const addHeaderPair = () => {
     setHeaderPairs([...headerPairs, { key: "", value: "" }]);
@@ -123,9 +136,18 @@ export function HostScopedCredentialsModal({
       {} as Record<string, string>,
     );
 
+    // Delete existing host-scoped credentials for the same host to avoid duplicates
+    const host = values.host;
+    const existingForHost = savedCredentials.filter(
+      (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+    );
+    for (const existing of existingForHost) {
+      await deleteCredentials(existing.id, true);
+    }
+
     const newCredentials = await createHostScopedCredentials({
-      host: values.host,
-      title: currentHost || values.host,
+      host,
+      title: currentHost || host,
       headers,
     });
 
@@ -139,7 +161,11 @@ export function HostScopedCredentialsModal({
 
   return (
     <Dialog
-      title={`Add sensitive headers for ${providerName}`}
+      title={
+        hasExistingForHost
+          ? `Update sensitive headers for ${providerName}`
+          : `Add sensitive headers for ${providerName}`
+      }
       controlled={{
         isOpen: open,
         set: (isOpen) => {
@@ -241,7 +267,9 @@ export function HostScopedCredentialsModal({
 
             <div className="pt-8">
               <Button type="submit" className="w-full" size="small">
-                Save & use these credentials
+                {hasExistingForHost
+                  ? "Update & use these credentials"
+                  : "Save & use these credentials"}
               </Button>
             </div>
           </form>

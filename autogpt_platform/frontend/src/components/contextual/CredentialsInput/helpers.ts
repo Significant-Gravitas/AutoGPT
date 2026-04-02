@@ -148,7 +148,7 @@ export function getActionButtonText(
     if (supportsOAuth2) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
     if (supportsUserPassword) return "Add a new username and password";
-    if (supportsHostScoped) return "Add new headers";
+    if (supportsHostScoped) return "Update headers";
     return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
