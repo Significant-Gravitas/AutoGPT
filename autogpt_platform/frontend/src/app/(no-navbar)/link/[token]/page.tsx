@@ -30,7 +30,7 @@ type LinkState =
 export default function PlatformLinkPage() {
   const params = useParams();
   const token = params.token as string;
-  const { user, supabase, isUserLoading } = useSupabase();
+  const { user, isUserLoading } = useSupabase();
 
   const [state, setState] = useState<LinkState>({ status: "loading" });
 
