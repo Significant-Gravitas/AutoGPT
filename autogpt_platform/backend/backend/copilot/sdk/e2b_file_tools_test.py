@@ -465,6 +465,41 @@ class TestBridgeToSandbox:
         sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_small_binary_file_preserves_bytes(self, tmp_path):
+        """A small binary file is bridged to /tmp via base64 without corruption."""
+        binary_data = bytes(range(256))
+        f = tmp_path / "image.png"
+        f.write_bytes(binary_data)
+        sandbox = _make_bridge_sandbox()
+
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        expected = _expected_bridge_path(str(f))
+        assert result == expected
+        sandbox.commands.run.assert_called_once()
+        cmd = sandbox.commands.run.call_args[0][0]
+        assert "base64" in cmd
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_large_binary_file_writes_raw_bytes(self, tmp_path):
+        """A large binary file is bridged to /home/user/ as raw bytes."""
+        binary_data = bytes(range(256)) * 200
+        f = tmp_path / "photo.jpg"
+        f.write_bytes(binary_data)
+        sandbox = _make_bridge_sandbox()
+
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        expected = _expected_bridge_path(str(f), prefix="/home/user")
+        assert result == expected
+        sandbox.files.write.assert_called_once()
+        call_args = sandbox.files.write.call_args[0]
+        assert call_args[0] == expected
+        assert call_args[1] == binary_data
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_very_large_file_skipped(self, tmp_path):
         """Files > 50 MB are skipped entirely."""
         f = tmp_path / "huge.bin"

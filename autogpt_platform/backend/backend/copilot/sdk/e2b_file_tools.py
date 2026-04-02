@@ -8,6 +8,7 @@ SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
+import base64
 import hashlib
 import itertools
 import json
@@ -90,7 +91,7 @@ def _get_sandbox_and_path(
     return sandbox, remote
 
 
-async def _sandbox_write(sandbox: Any, path: str, content: str) -> None:
+async def _sandbox_write(sandbox: Any, path: str, content: str | bytes) -> None:
     """Write *content* to *path* inside the sandbox.
 
     The E2B filesystem API (``sandbox.files.write``) and the command API
@@ -103,11 +104,14 @@ async def _sandbox_write(sandbox: Any, path: str, content: str) -> None:
     To work around this, writes targeting ``/tmp`` are performed via
     ``tee`` through the command API, which runs as the sandbox ``user``
     and can therefore always overwrite user-owned files.
+
+    *content* may be ``str`` (text) or ``bytes`` (binary).  Both paths
+    are handled correctly: text is encoded to bytes for the base64 shell
+    pipe, and raw bytes are passed through without any encoding.
     """
     if path == "/tmp" or path.startswith("/tmp/"):
-        import base64 as _b64
-
-        encoded = _b64.b64encode(content.encode()).decode()
+        raw = content.encode() if isinstance(content, str) else content
+        encoded = base64.b64encode(raw).decode()
         result = await sandbox.commands.run(
             f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}",
             cwd=E2B_WORKDIR,
@@ -366,17 +370,18 @@ async def _bridge_to_sandbox(
             )
             return None
         with open(expanded, "rb") as fh:
-            content = fh.read()
+            raw_content = fh.read()
+        try:
+            text_content: str | None = raw_content.decode("utf-8")
+        except UnicodeDecodeError:
+            text_content = None
+        data: str | bytes = text_content if text_content is not None else raw_content
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
             sandbox_path = f"/tmp/{unique_name}"
-            await _sandbox_write(
-                sandbox, sandbox_path, content.decode("utf-8", errors="replace")
-            )
+            await _sandbox_write(sandbox, sandbox_path, data)
         else:
             sandbox_path = f"/home/user/{unique_name}"
-            await sandbox.files.write(
-                sandbox_path, content.decode("utf-8", errors="replace")
-            )
+            await sandbox.files.write(sandbox_path, data)
         logger.info(
             "[E2B] Bridged SDK file to sandbox: %s -> %s", basename, sandbox_path
         )
