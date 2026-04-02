@@ -108,13 +108,15 @@ export function AppSidebar({ dynamicContent }: Props) {
     >
       <SidebarHeader
         className={cn(
-          "border-b border-zinc-100 px-3",
-          isCollapsed ? "flex items-center justify-center py-0" : "py-4",
+          "!flex-row border-b border-zinc-100 px-3",
+          isCollapsed
+            ? "items-center justify-center py-0"
+            : "items-center py-0",
         )}
-        style={isCollapsed ? { height: NAVBAR_HEIGHT_PX } : undefined}
+        style={{ height: NAVBAR_HEIGHT_PX }}
       >
         {!isCollapsed && (
-          <div className="flex items-center justify-between">
+          <div className="flex w-full items-center justify-between">
             <Link href={homeHref}>
               <IconAutoGPTLogo className="h-8 w-24" />
             </Link>
