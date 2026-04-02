@@ -3,7 +3,6 @@
 import logging
 from typing import Optional
 
-import prisma.errors
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
 from pydantic import BaseModel
@@ -196,6 +195,10 @@ async def set_user_rate_limit_tier(
     admin_user_id: str = Security(get_user_id),
 ) -> UserTierResponse:
     """Set a user's rate-limit tier. Admin-only."""
+    resolved_email = await get_user_email_by_id(request.user_id)
+    if resolved_email is None:
+        raise HTTPException(status_code=404, detail=f"User {request.user_id} not found")
+
     old_tier = await get_user_tier(request.user_id)
     logger.info(
         "Admin %s changing tier for user %s: %s -> %s",
@@ -206,10 +209,6 @@ async def set_user_rate_limit_tier(
     )
     try:
         await set_user_tier(request.user_id, request.tier)
-    except prisma.errors.RecordNotFoundError as e:
-        raise HTTPException(
-            status_code=404, detail=f"User {request.user_id} not found"
-        ) from e
     except Exception as e:
         logger.exception("Failed to set user tier")
         raise HTTPException(status_code=500, detail="Failed to set tier") from e
