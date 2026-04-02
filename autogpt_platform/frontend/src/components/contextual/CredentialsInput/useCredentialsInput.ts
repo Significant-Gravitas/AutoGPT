@@ -4,6 +4,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import {
   OAUTH_ERROR_FLOW_CANCELED,
@@ -299,7 +300,7 @@ export function useCredentialsInput({
     setCredentialToDelete(credential);
   }
 
-  async function handleDeleteConfirm() {
+  async function handleDeleteConfirm(force: boolean = false) {
     if (
       !credentialToDelete ||
       !credentials ||
@@ -309,11 +310,32 @@ export function useCredentialsInput({
 
     setIsDeletingCredential(true);
     try {
-      await credentials.deleteCredentials(credentialToDelete.id);
-      if (selectedCredential?.id === credentialToDelete.id) {
-        onSelectCredential(undefined);
+      const result = await credentials.deleteCredentials(
+        credentialToDelete.id,
+        force,
+      );
+
+      if (result.deleted) {
+        if (selectedCredential?.id === credentialToDelete.id) {
+          onSelectCredential(undefined);
+        }
+        setCredentialToDelete(null);
+      } else if ("need_confirmation" in result && result.need_confirmation) {
+        toast({
+          title: "Credential is in use",
+          description: result.message,
+          variant: "destructive",
+          duration: 8000,
+        });
       }
-      setCredentialToDelete(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong";
+      toast({
+        title: "Failed to delete credential",
+        description: message,
+        variant: "destructive",
+      });
     } finally {
       setIsDeletingCredential(false);
     }
