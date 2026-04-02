@@ -390,10 +390,13 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         #
         # When E2B is active, also copy the file into the sandbox so
         # bash_exec can process it (the model often uses Read then bash).
+        text = "".join(selected)
         sandbox = _current_sandbox.get(None)
         if sandbox is not None:
-            await _bridge_to_sandbox(sandbox, file_path, offset, limit)
-        return _mcp_ok("".join(selected))
+            bridged = await _bridge_to_sandbox(sandbox, file_path, offset, limit)
+            if bridged:
+                text += f"\n[Sandbox copy available at {bridged}]"
+        return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
     except Exception as e:

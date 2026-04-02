@@ -141,7 +141,11 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         if not result.get("isError"):
             sandbox = _get_sandbox()
             if sandbox is not None:
-                await _bridge_to_sandbox(sandbox, file_path, offset, limit)
+                bridged = await _bridge_to_sandbox(sandbox, file_path, offset, limit)
+                if bridged:
+                    result["content"][0][
+                        "text"
+                    ] += f"\n[Sandbox copy available at {bridged}]"
         return result
 
     result = _get_sandbox_and_path(file_path)
@@ -321,7 +325,7 @@ _BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
 
 async def _bridge_to_sandbox(
     sandbox: Any, file_path: str, offset: int, limit: int
-) -> None:
+) -> str | None:
     """Best-effort copy of a host-side SDK file into the E2B sandbox.
 
     When the model reads an SDK-internal file (e.g. tool-results), it often
@@ -331,6 +335,8 @@ async def _bridge_to_sandbox(
     Only copies when offset=0 and limit is large enough to indicate the model
     wants the full file.  Errors are logged but never propagated.
 
+    Returns the sandbox path on success, or ``None`` on skip/failure.
+
     Size handling:
     - <= 5 MB: written to ``/tmp/<basename>`` via shell base64 (``_sandbox_write``).
     - 5-50 MB: written to ``/home/user/<basename>`` via ``sandbox.files.write()``
@@ -338,7 +344,7 @@ async def _bridge_to_sandbox(
     - > 50 MB: skipped entirely with a warning.
     """
     if offset != 0 or limit < 2000:
-        return
+        return None
     basename = os.path.basename(file_path)
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
@@ -365,12 +371,14 @@ async def _bridge_to_sandbox(
         logger.info(
             "[E2B] Bridged SDK file to sandbox: %s -> %s", basename, sandbox_path
         )
+        return sandbox_path
     except Exception:
         logger.debug(
             "[E2B] Failed to bridge SDK file to sandbox: %s",
             basename,
             exc_info=True,
         )
+        return None
 
 
 # Local read (for SDK-internal paths)

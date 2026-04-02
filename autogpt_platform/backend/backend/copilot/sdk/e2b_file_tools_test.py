@@ -380,8 +380,9 @@ class TestBridgeToSandbox:
         f.write_text('{"ok": true}')
         sandbox = _make_bridge_sandbox()
 
-        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
 
+        assert result == "/tmp/result.json"
         sandbox.commands.run.assert_called_once()
         cmd = sandbox.commands.run.call_args[0][0]
         assert "result.json" in cmd
@@ -394,8 +395,9 @@ class TestBridgeToSandbox:
         f.write_text("content")
         sandbox = _make_bridge_sandbox()
 
-        await _bridge_to_sandbox(sandbox, str(f), offset=10, limit=2000)
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=10, limit=2000)
 
+        assert result is None
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
 
@@ -424,14 +426,16 @@ class TestBridgeToSandbox:
         sandbox.files.write.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_sandbox_write_failure_does_not_raise(self, tmp_path):
-        """If sandbox write fails, the error is swallowed (best-effort)."""
+    async def test_sandbox_write_failure_returns_none(self, tmp_path):
+        """If sandbox write fails, returns None (best-effort)."""
         f = tmp_path / "data.txt"
         f.write_text("content")
         sandbox = _make_bridge_sandbox()
         sandbox.commands.run.side_effect = RuntimeError("E2B timeout")
 
-        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_large_file_uses_files_api(self, tmp_path):
@@ -440,8 +444,9 @@ class TestBridgeToSandbox:
         f.write_bytes(b"x" * (_BRIDGE_SHELL_MAX_BYTES + 1))
         sandbox = _make_bridge_sandbox()
 
-        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
 
+        assert result == "/home/user/big.json"
         sandbox.files.write.assert_called_once()
         call_args = sandbox.files.write.call_args[0]
         assert call_args[0] == "/home/user/big.json"
@@ -457,7 +462,9 @@ class TestBridgeToSandbox:
             fh.write(b"\0")
         sandbox = _make_bridge_sandbox()
 
-        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        assert result is None
 
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
