@@ -370,7 +370,7 @@ def get_dry_run_credentials(
         return None
 
 
-def _default_for_input_result(result_schema: dict[str, Any], name: str) -> Any:
+def _default_for_input_result(result_schema: dict[str, Any], name: str | None) -> Any:
     """Return a type-appropriate sample value for an AgentInputBlock's result pin.
 
     Typed subclasses (AgentNumberInputBlock, AgentDateInputBlock, etc.)
@@ -398,7 +398,7 @@ def _default_for_input_result(result_schema: dict[str, Any], name: str) -> Any:
     if fmt == "time":
         return "00:00:00"
     # Default: use the block's name as a sample string.
-    return name
+    return name or "sample input"
 
 
 async def simulate_block(
