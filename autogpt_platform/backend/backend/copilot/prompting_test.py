@@ -6,16 +6,23 @@ from pathlib import Path
 class TestAgentGenerationGuideContainsClarifySection:
     """The agent generation guide must include the clarification section."""
 
-    def test_guide_includes_clarify_before_building(self):
+    def test_guide_includes_clarify_section(self):
         guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
         content = guide_path.read_text(encoding="utf-8")
-        assert "Clarifying Before Building" in content
+        assert "Before or During Building" in content
 
     def test_guide_mentions_find_block_for_clarification(self):
         guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
         content = guide_path.read_text(encoding="utf-8")
-        # find_block must appear in the clarification section (before the workflow)
-        clarify_section = content.split("Clarifying Before Building")[1].split(
+        clarify_section = content.split("Before or During Building")[1].split(
             "### Workflow"
         )[0]
         assert "find_block" in clarify_section
+
+    def test_guide_mentions_ask_question_tool(self):
+        guide_path = Path(__file__).parent / "sdk" / "agent_generation_guide.md"
+        content = guide_path.read_text(encoding="utf-8")
+        clarify_section = content.split("Before or During Building")[1].split(
+            "### Workflow"
+        )[0]
+        assert "ask_question" in clarify_section
