@@ -33,7 +33,17 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
-from backend.copilot.rate_limit import get_user_tier
+from backend.copilot.transcript import (
+    _run_compression,
+    cleanup_stale_project_dirs,
+    compact_transcript,
+    download_transcript,
+    read_compacted_entries,
+    upload_transcript,
+    validate_transcript,
+    write_transcript_to_tempfile,
+)
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -93,17 +103,6 @@ from .tool_adapter import (
     set_execution_context,
     wait_for_stash,
 )
-from .transcript import (
-    _run_compression,
-    cleanup_stale_project_dirs,
-    compact_transcript,
-    download_transcript,
-    read_compacted_entries,
-    upload_transcript,
-    validate_transcript,
-    write_transcript_to_tempfile,
-)
-from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -1944,20 +1943,15 @@ async def stream_chat_completion_sdk(
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
-        _user_tier = await get_user_tier(user_id) if user_id else None
-        _otel_metadata: dict[str, str] = {
-            "resume": str(use_resume),
-            "conversation_turn": str(turn),
-        }
-        if _user_tier:
-            _otel_metadata["subscription_tier"] = _user_tier.value
-
         _otel_ctx = propagate_attributes(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-sdk",
             tags=["sdk"],
-            metadata=_otel_metadata,
+            metadata={
+                "resume": str(use_resume),
+                "conversation_turn": str(turn),
+            },
         )
         _otel_ctx.__enter__()
 

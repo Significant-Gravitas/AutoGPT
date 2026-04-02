@@ -38,6 +38,8 @@ interface UseCopilotStreamArgs {
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
+  /** Autopilot mode to use for requests. */
+  copilotMode: "extended_thinking" | "fast";
 }
 
 export function useCopilotStream({
@@ -45,10 +47,16 @@ export function useCopilotStream({
   hydratedMessages,
   hasActiveStream,
   refetchSession,
+  copilotMode,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   const dismissRateLimit = useCallback(() => setRateLimitMessage(null), []);
+  // Use a ref for copilotMode so the transport closure always reads the
+  // latest value without recreating the DefaultChatTransport (which would
+  // reset useChat's internal Chat instance and break mid-session streaming).
+  const copilotModeRef = useRef(copilotMode);
+  copilotModeRef.current = copilotMode;
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -79,6 +87,7 @@ export function useCopilotStream({
                   is_user_message: last.role === "user",
                   context: null,
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+                  mode: copilotModeRef.current,
                 },
                 headers: await getAuthHeaders(),
               };

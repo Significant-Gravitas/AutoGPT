@@ -403,7 +403,7 @@ class TestCompactTranscript:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -438,7 +438,7 @@ class TestCompactTranscript:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -462,7 +462,7 @@ class TestCompactTranscript:
             ]
         )
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LLM unavailable"),
         ):
@@ -568,11 +568,11 @@ class TestRunCompressionTimeout:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value="fake-client",
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_mock_compress,
             ),
         ):
@@ -602,11 +602,11 @@ class TestRunCompressionTimeout:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=None,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=truncation_result,
             ) as mock_compress,

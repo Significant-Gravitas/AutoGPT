@@ -51,6 +51,12 @@ from backend.copilot.service import (
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
+from backend.copilot.transcript import (
+    download_transcript,
+    upload_transcript,
+    validate_transcript,
+)
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
     compress_context,
@@ -108,7 +114,7 @@ async def _baseline_llm_caller(
         if tools:
             typed_tools = cast(list[ChatCompletionToolParam], tools)
             response = await client.chat.completions.create(
-                model=config.model,
+                model=config.fast_model,
                 messages=typed_messages,
                 tools=typed_tools,
                 stream=True,
@@ -116,7 +122,7 @@ async def _baseline_llm_caller(
             )
         else:
             response = await client.chat.completions.create(
-                model=config.model,
+                model=config.fast_model,
                 messages=typed_messages,
                 stream=True,
                 stream_options={"include_usage": True},
@@ -282,6 +288,9 @@ def _baseline_conversation_updater(
     messages: list[dict[str, Any]],
     response: LLMLoopResponse,
     tool_results: list[ToolCallResult] | None = None,
+    *,
+    transcript_builder: TranscriptBuilder,
+    model: str = "",
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
@@ -301,6 +310,29 @@ def _baseline_conversation_updater(
             for tc in response.tool_calls
         ]
         messages.append(assistant_msg)
+        # Record assistant message (with tool_calls) to transcript
+        content_blocks: list[dict[str, Any]] = []
+        if response.response_text:
+            content_blocks.append({"type": "text", "text": response.response_text})
+        for tc in response.tool_calls:
+            try:
+                args = orjson.loads(tc.arguments) if tc.arguments else {}
+            except Exception:
+                args = {}
+            content_blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "input": args,
+                }
+            )
+        if content_blocks:
+            transcript_builder.append_assistant(
+                content_blocks=content_blocks,
+                model=model,
+                stop_reason="tool_use",
+            )
         for tr in tool_results:
             messages.append(
                 {
@@ -309,9 +341,22 @@ def _baseline_conversation_updater(
                     "content": tr.content,
                 }
             )
+            # Record tool result to transcript AFTER the assistant tool_use
+            # block to maintain correct Anthropic API ordering:
+            # assistant(tool_use) → user(tool_result)
+            transcript_builder.append_tool_result(
+                tool_use_id=tr.tool_call_id,
+                content=tr.content,
+            )
     else:
         if response.response_text:
             messages.append({"role": "assistant", "content": response.response_text})
+            # Record final text to transcript
+            transcript_builder.append_assistant(
+                content_blocks=[{"type": "text", "text": response.response_text}],
+                model=model,
+                stop_reason="end_turn",
+            )
 
 
 async def _update_title_async(
@@ -340,19 +385,23 @@ async def _compress_session_messages(
         msg_dict: dict[str, Any] = {"role": msg.role}
         if msg.content:
             msg_dict["content"] = msg.content
+        if msg.tool_calls:
+            msg_dict["tool_calls"] = msg.tool_calls
+        if msg.tool_call_id:
+            msg_dict["tool_call_id"] = msg.tool_call_id
         messages_dict.append(msg_dict)
 
     try:
         result = await compress_context(
             messages=messages_dict,
-            model=config.model,
+            model=config.fast_model,
             client=_get_openai_client(),
         )
     except Exception as e:
         logger.warning("[Baseline] Context compression with LLM failed: %s", e)
         result = await compress_context(
             messages=messages_dict,
-            model=config.model,
+            model=config.fast_model,
             client=None,
         )
 
@@ -366,7 +415,12 @@ async def _compress_session_messages(
             result.messages_dropped,
         )
         return [
-            ChatMessage(role=m["role"], content=m.get("content"))
+            ChatMessage(
+                role=m["role"],
+                content=m.get("content"),
+                tool_calls=m.get("tool_calls"),
+                tool_call_id=m.get("tool_call_id"),
+            )
             for m in result.messages
         ]
 
@@ -397,7 +451,8 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
-    # Append user message
+    # Append user message (skip if it's an exact duplicate of the last message,
+    # e.g. from a network retry)
     new_role = "user" if is_user_message else "assistant"
     if message and (
         len(session.messages) == 0
@@ -415,6 +470,54 @@ async def stream_chat_completion_baseline(
             )
 
     session = await upsert_chat_session(session)
+
+    # --- Transcript support (feature parity with SDK path) ---
+    transcript_builder = TranscriptBuilder()
+    transcript_covers_prefix = True
+
+    if user_id and len(session.messages) > 1:
+        try:
+            dl = await download_transcript(user_id, session_id, log_prefix="[Baseline]")
+            if dl and validate_transcript(dl.content):
+                # Reject stale transcripts: if msg_count is known and
+                # doesn't cover the current session, loading it would
+                # silently drop intermediate turns from the transcript.
+                session_msg_count = len(session.messages)
+                if dl.message_count and dl.message_count < session_msg_count - 1:
+                    logger.warning(
+                        "[Baseline] Transcript stale: covers %d of %d messages, skipping",
+                        dl.message_count,
+                        session_msg_count,
+                    )
+                    transcript_covers_prefix = False
+                else:
+                    transcript_builder.load_previous(
+                        dl.content, log_prefix="[Baseline]"
+                    )
+                    logger.info(
+                        "[Baseline] Loaded transcript: %dB, msg_count=%d",
+                        len(dl.content),
+                        dl.message_count,
+                    )
+            elif dl:
+                logger.warning("[Baseline] Downloaded transcript but invalid")
+                transcript_covers_prefix = False
+            else:
+                logger.debug("[Baseline] No transcript available")
+                transcript_covers_prefix = False
+        except Exception as e:
+            logger.warning("[Baseline] Transcript download failed: %s", e)
+            transcript_covers_prefix = False
+
+    # Append user message to transcript.
+    # Always append when the message is present and is from the user,
+    # even on duplicate-suppressed retries (is_new_message=False).
+    # The loaded transcript may be stale (uploaded before the previous
+    # attempt stored this message), so skipping it would leave the
+    # transcript without the user turn, creating a malformed
+    # assistant-after-assistant structure when the LLM reply is added.
+    if message and is_user_message:
+        transcript_builder.append_user(content=message)
 
     # Generate title for new sessions
     if is_user_message and not session.title:
@@ -448,12 +551,30 @@ async def stream_chat_completion_baseline(
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(session.messages)
 
-    # Build OpenAI message list from session history
+    # Build OpenAI message list from session history.
+    # Include tool_calls on assistant messages and tool-role results so the
+    # model retains full context of what tools were invoked and their outcomes.
     openai_messages: list[dict[str, Any]] = [
         {"role": "system", "content": system_prompt}
     ]
     for msg in messages_for_context:
-        if msg.role in ("user", "assistant") and msg.content:
+        if msg.role == "assistant":
+            entry: dict[str, Any] = {"role": "assistant"}
+            if msg.content:
+                entry["content"] = msg.content
+            if msg.tool_calls:
+                entry["tool_calls"] = msg.tool_calls
+            if msg.content or msg.tool_calls:
+                openai_messages.append(entry)
+        elif msg.role == "tool" and msg.tool_call_id:
+            openai_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id,
+                    "content": msg.content or "",
+                }
+            )
+        elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
     tools = get_available_tools()
@@ -487,6 +608,12 @@ async def stream_chat_completion_baseline(
         _baseline_tool_executor, state=state, user_id=user_id, session=session
     )
 
+    _bound_conversation_updater = partial(
+        _baseline_conversation_updater,
+        transcript_builder=transcript_builder,
+        model=config.fast_model,
+    )
+
     try:
         loop_result = None
         async for loop_result in tool_call_loop(
@@ -494,7 +621,7 @@ async def stream_chat_completion_baseline(
             tools=tools,
             llm_call=_bound_llm_caller,
             execute_tool=_bound_tool_executor,
-            update_conversation=_baseline_conversation_updater,
+            update_conversation=_bound_conversation_updater,
             max_iterations=_MAX_TOOL_ROUNDS,
         ):
             # Drain buffered events after each iteration (real-time streaming)
@@ -563,10 +690,10 @@ async def stream_chat_completion_baseline(
             and not (_stream_error and not state.assistant_text)
         ):
             state.turn_prompt_tokens = max(
-                estimate_token_count(openai_messages, model=config.model), 1
+                estimate_token_count(openai_messages, model=config.fast_model), 1
             )
             state.turn_completion_tokens = estimate_token_count_str(
-                state.assistant_text, model=config.model
+                state.assistant_text, model=config.fast_model
             )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
@@ -596,6 +723,25 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+        # --- Upload transcript for next-turn continuity ---
+        if user_id and transcript_covers_prefix:
+            try:
+                _transcript_content = transcript_builder.to_jsonl()
+                if _transcript_content and validate_transcript(_transcript_content):
+                    await asyncio.shield(
+                        upload_transcript(
+                            user_id=user_id,
+                            session_id=session_id,
+                            content=_transcript_content,
+                            message_count=len(session.messages),
+                            log_prefix="[Baseline]",
+                        )
+                    )
+                else:
+                    logger.debug("[Baseline] No valid transcript to upload")
+            except Exception as upload_err:
+                logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
     # Yield usage and finish AFTER try/finally (not inside finally).
     # PEP 525 prohibits yielding from finally in async generators during

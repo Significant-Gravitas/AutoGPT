@@ -15,6 +15,7 @@ export enum Key {
   COPILOT_NOTIFICATIONS_ENABLED = "copilot-notifications-enabled",
   COPILOT_NOTIFICATION_BANNER_DISMISSED = "copilot-notification-banner-dismissed",
   COPILOT_NOTIFICATION_DIALOG_DISMISSED = "copilot-notification-dialog-dismissed",
+  COPILOT_MODE = "copilot-mode",
 }
 
 function get(key: Key) {

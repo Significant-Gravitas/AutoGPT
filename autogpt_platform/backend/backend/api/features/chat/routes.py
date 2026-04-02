@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -111,6 +111,11 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
+    mode: Literal["fast", "extended_thinking"] | None = Field(
+        default=None,
+        description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
+        "If None, uses the server default (extended_thinking).",
+    )
 
 
 class CreateSessionRequest(BaseModel):
@@ -840,6 +845,7 @@ async def stream_chat_post(
         is_user_message=request.is_user_message,
         context=request.context,
         file_ids=sanitized_file_ids,
+        mode=request.mode,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000

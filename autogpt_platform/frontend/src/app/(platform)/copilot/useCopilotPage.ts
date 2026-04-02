@@ -32,8 +32,13 @@ export function useCopilotPage() {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { sessionToDelete, setSessionToDelete, isDrawerOpen, setDrawerOpen } =
-    useCopilotUIStore();
+  const {
+    sessionToDelete,
+    setSessionToDelete,
+    isDrawerOpen,
+    setDrawerOpen,
+    copilotMode,
+  } = useCopilotUIStore();
 
   const {
     sessionId,
@@ -64,6 +69,7 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     refetchSession,
+    copilotMode,
   });
 
   useCopilotNotifications(sessionId);

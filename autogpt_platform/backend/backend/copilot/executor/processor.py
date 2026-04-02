@@ -251,20 +251,31 @@ class CoPilotProcessor:
                 stream_fn = stream_chat_completion_dummy
                 log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
             else:
-                use_sdk = (
-                    config.use_claude_code_subscription
-                    or await is_feature_enabled(
-                        Flag.COPILOT_SDK,
-                        entry.user_id or "anonymous",
-                        default=config.use_claude_agent_sdk,
+                # Per-request mode override from the frontend takes priority.
+                # 'fast' → baseline (OpenAI-compatible), 'extended_thinking' → SDK.
+                if entry.mode == "fast":
+                    use_sdk = False
+                elif entry.mode == "extended_thinking":
+                    use_sdk = True
+                else:
+                    # No mode specified — fall back to feature flag / config.
+                    use_sdk = (
+                        config.use_claude_code_subscription
+                        or await is_feature_enabled(
+                            Flag.COPILOT_SDK,
+                            entry.user_id or "anonymous",
+                            default=config.use_claude_agent_sdk,
+                        )
                     )
-                )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk
                     if use_sdk
                     else stream_chat_completion_baseline
                 )
-                log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+                log.info(
+                    f"Using {'SDK' if use_sdk else 'baseline'} service "
+                    f"(mode={entry.mode or 'default'})"
+                )
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
