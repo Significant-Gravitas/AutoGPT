@@ -360,8 +360,8 @@ class TestSubscriptionTier:
         assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 20
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60
 
-    def test_default_tier_is_pro(self):
-        assert DEFAULT_TIER == SubscriptionTier.PRO
+    def test_default_tier_is_free(self):
+        assert DEFAULT_TIER == SubscriptionTier.FREE
 
     def test_usage_status_includes_tier(self):
         now = datetime.now(UTC)
@@ -601,15 +601,14 @@ class TestSetUserTier:
 class TestGetGlobalRateLimitsWithTiers:
     @staticmethod
     def _ld_side_effect(daily: int, weekly: int):
-        """Return an async side_effect that returns daily on first call, weekly on second."""
-        call_count = 0
+        """Return an async side_effect that dispatches by flag_key."""
 
-        async def _side_effect(flag_key, user_id, default):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
+        async def _side_effect(flag_key: str, _uid: str, default: int) -> int:
+            if "daily" in flag_key.lower():
                 return daily
-            return weekly
+            if "weekly" in flag_key.lower():
+                return weekly
+            return default
 
         return _side_effect
 
@@ -717,12 +716,13 @@ class TestTierLimitsRespected:
 
     @staticmethod
     def _ld_side_effect(daily: int, weekly: int):
-        call_count = 0
 
-        async def _side_effect(flag_key, user_id, default):
-            nonlocal call_count
-            call_count += 1
-            return daily if call_count == 1 else weekly
+        async def _side_effect(flag_key: str, _uid: str, default: int) -> int:
+            if "daily" in flag_key.lower():
+                return daily
+            if "weekly" in flag_key.lower():
+                return weekly
+            return default
 
         return _side_effect
 

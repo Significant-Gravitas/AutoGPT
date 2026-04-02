@@ -8578,7 +8578,7 @@
           "weekly": { "$ref": "#/components/schemas/UsageWindow" },
           "tier": {
             "$ref": "#/components/schemas/SubscriptionTier",
-            "default": "PRO"
+            "default": "FREE"
           },
           "reset_cost": {
             "type": "integer",

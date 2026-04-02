@@ -88,7 +88,8 @@ async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | Non
     Returns a list of ``(user_id, email)`` tuples, up to *limit* results.
     Searches the User table directly — no dependency on credit history.
     """
-    if not query or not query.strip():
+    query = query.strip()
+    if not query or len(query) < 3:
         return []
     users = await prisma.user.find_many(
         where={

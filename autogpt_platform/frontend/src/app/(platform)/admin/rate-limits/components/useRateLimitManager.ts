@@ -6,6 +6,7 @@ import type { SetUserTierRequest } from "@/app/api/__generated__/models/setUserT
 import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userRateLimitResponse";
 import {
   getV2GetUserRateLimit,
+  getV2SearchUsersByNameOrEmail,
   postV2ResetUserRateLimitUsage,
   postV2SetUserRateLimitTier,
 } from "@/app/api/__generated__/endpoints/admin/admin";
@@ -78,7 +79,6 @@ export function useRateLimitManager() {
     }
   }
 
-  /** Search users by partial name/email via the User table. */
   async function handleFuzzySearch(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);
@@ -86,14 +86,18 @@ export function useRateLimitManager() {
     setRateLimitData(null);
 
     try {
-      const response = await fetch(
-        `/api/proxy/api/copilot/admin/rate_limit/search_users?query=${encodeURIComponent(trimmed)}&limit=20`,
-      );
-      if (!response.ok) {
+      const response = await getV2SearchUsersByNameOrEmail({
+        query: trimmed,
+        limit: 20,
+      });
+      if (response.status !== 200) {
         throw new Error("Failed to search users");
       }
 
-      const users: UserOption[] = await response.json();
+      const users = (response.data ?? []).map((u) => ({
+        user_id: u.user_id,
+        user_email: u.user_email ?? u.user_id,
+      }));
       if (users.length === 0) {
         toast({ title: "No results", description: "No users found." });
       }

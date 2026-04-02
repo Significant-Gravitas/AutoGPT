@@ -227,6 +227,11 @@ async def admin_search_users(
     Queries the User table directly — returns results even for users
     without credit transaction history.
     """
+    if len(query.strip()) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail="Search query must be at least 3 characters.",
+        )
     logger.info("Admin %s searching users with query=%r", admin_user_id, query)
     results = await search_users(query, limit=min(limit, 50))
     return [UserSearchResult(user_id=uid, user_email=email) for uid, email in results]

@@ -49,7 +49,7 @@ TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
     SubscriptionTier.ENTERPRISE: 60,
 }
 
-DEFAULT_TIER = SubscriptionTier.PRO
+DEFAULT_TIER = SubscriptionTier.FREE
 
 
 class UsageWindow(BaseModel):
@@ -377,18 +377,20 @@ async def record_token_usage(
         )
 
 
-@cached(maxsize=1000, ttl_seconds=300)
+@cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Fetch the user's rate-limit tier from the database (cached).
+    """Fetch the user's rate-limit tier from the database (cached via Redis).
+
+    Uses ``shared_cache=True`` so that tier changes propagate across all pods
+    immediately when the cache entry is invalidated (via ``cache_delete``).
 
     Only successful DB lookups are cached.  Raises on DB errors so the
     ``@cached`` decorator does **not** store a fallback value.
 
     Note: when the user is not found or ``subscriptionTier`` is ``None``,
-    ``DEFAULT_TIER`` is returned and **cached**.  This is acceptable because
-    the Prisma schema enforces ``@default(PRO)`` on the column, so ``None``
-    only occurs in edge cases (e.g. partial row creation) and caching PRO
-    for 5 minutes is safe.
+    ``DEFAULT_TIER`` (FREE) is returned and **cached**.  The Prisma schema
+    enforces ``@default(PRO)`` on the column, so ``None`` only occurs in
+    edge cases (e.g. partial row creation).
     """
     user = await PrismaUser.prisma().find_unique(where={"id": user_id})
     if user and user.subscriptionTier:
@@ -483,7 +485,7 @@ async def get_global_rate_limits(
 
     # Apply tier multiplier
     tier = await get_user_tier(user_id)
-    multiplier = TIER_MULTIPLIERS[tier]
+    multiplier = TIER_MULTIPLIERS.get(tier, 1)
     if multiplier != 1:
         daily = daily * multiplier
         weekly = weekly * multiplier
