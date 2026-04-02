@@ -44,6 +44,7 @@ export function AskQuestionTool({ part }: Props) {
       <ClarificationQuestionsCard
         questions={normalizeClarifyingQuestions(output.questions ?? [])}
         message={output.message}
+        sessionId={output.session_id}
         onSubmitAnswers={handleAnswers}
       />
     );

@@ -72,8 +72,12 @@ class AskQuestionTool(BaseTool):
         if not isinstance(question_raw, str) or not question_raw.strip():
             raise ValueError("ask_question requires a non-empty 'question' string")
         question = question_raw.strip()
-        options: list[str] = kwargs.get("options", [])
-        keyword: str = kwargs.get("keyword", "")
+        raw_options = kwargs.get("options", [])
+        if not isinstance(raw_options, list):
+            raw_options = []
+        options: list[str] = [str(o) for o in raw_options if o]
+        raw_keyword = kwargs.get("keyword", "")
+        keyword: str = str(raw_keyword) if raw_keyword else ""
         session_id = session.session_id if session else None
 
         example = ", ".join(options) if options else None

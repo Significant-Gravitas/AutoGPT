@@ -80,3 +80,20 @@ async def test_execute_rejects_empty_question(
 
     with pytest.raises(ValueError, match="non-empty"):
         await tool._execute(user_id=None, session=session, question="   ")
+
+
+@pytest.mark.asyncio
+async def test_execute_coerces_invalid_options(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """LLM may send options as a string instead of a list; should not crash."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        question="Pick one",
+        options="not-a-list",  # type: ignore[arg-type]
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    q = result.questions[0]
+    assert q.example is None
