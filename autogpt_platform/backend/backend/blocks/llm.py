@@ -205,6 +205,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    XIAOMI_MIMO_V2_PRO = "xiaomi/mimo-v2-pro"
+    XIAOMI_MIMO_V2_OMNI = "xiaomi/mimo-v2-omni"
+    XIAOMI_MIMO_V2_FLASH = "xiaomi/mimo-v2-flash"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
@@ -629,6 +632,15 @@ MODEL_METADATA = {
     ),
     LlmModel.QWEN3_CODER: ModelMetadata(
         "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
+    ),
+    LlmModel.XIAOMI_MIMO_V2_PRO: ModelMetadata(
+        "open_router", 1048576, 131072, "MiMo-V2 Pro", "OpenRouter", "Xiaomi", 2
+    ),
+    LlmModel.XIAOMI_MIMO_V2_OMNI: ModelMetadata(
+        "open_router", 262144, 65536, "MiMo-V2 Omni", "OpenRouter", "Xiaomi", 2
+    ),
+    LlmModel.XIAOMI_MIMO_V2_FLASH: ModelMetadata(
+        "open_router", 262144, 65536, "MiMo-V2 Flash", "OpenRouter", "Xiaomi", 1
     ),
     # Llama API models
     LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata(
