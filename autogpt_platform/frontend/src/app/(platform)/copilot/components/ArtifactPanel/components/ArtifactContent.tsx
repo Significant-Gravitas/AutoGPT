@@ -177,10 +177,12 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "pdf" && pdfUrl) {
+    // No sandbox — Chrome/Edge block PDF rendering in sandboxed iframes
+    // (Chromium bug #413851). The blob URL has a null origin so it can't
+    // access the parent page regardless.
     return (
       <iframe
         src={pdfUrl}
-        sandbox=""
         className="h-full w-full"
         title={artifact.title}
       />
