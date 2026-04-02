@@ -113,7 +113,6 @@ class TestAnthropicModels:
             AnthropicModelName.CLAUDE3_HAIKU_v1,
             AnthropicModelName.CLAUDE3_5_SONNET_v1,
             AnthropicModelName.CLAUDE3_5_SONNET_v2,
-            AnthropicModelName.CLAUDE3_5_HAIKU_v1,
         ]:
             assert (
                 ANTHROPIC_CHAT_MODELS[name].supports_extended_thinking is False

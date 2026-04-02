@@ -51,28 +51,28 @@ MODEL_PRESETS: dict[str, ModelConfig] = {
     # Claude configurations
     "claude": ModelConfig(
         name="claude",
-        smart_llm="claude-sonnet-4-20250514",
-        fast_llm="claude-3-5-haiku-20241022",
+        smart_llm="claude-sonnet-4-6",
+        fast_llm="claude-haiku-4-5-20251001",
     ),
     "claude-smart": ModelConfig(
         name="claude-smart",
-        smart_llm="claude-sonnet-4-20250514",
-        fast_llm="claude-sonnet-4-20250514",
+        smart_llm="claude-sonnet-4-6",
+        fast_llm="claude-sonnet-4-6",
     ),
     "claude-fast": ModelConfig(
         name="claude-fast",
-        smart_llm="claude-3-5-haiku-20241022",
-        fast_llm="claude-3-5-haiku-20241022",
+        smart_llm="claude-haiku-4-5-20251001",
+        fast_llm="claude-haiku-4-5-20251001",
     ),
     "claude-opus": ModelConfig(
         name="claude-opus",
-        smart_llm="claude-opus-4-5-20251101",
-        fast_llm="claude-sonnet-4-20250514",
+        smart_llm="claude-opus-4-6",
+        fast_llm="claude-sonnet-4-6",
     ),
     "claude-opus-only": ModelConfig(
         name="claude-opus-only",
-        smart_llm="claude-opus-4-5-20251101",
-        fast_llm="claude-opus-4-5-20251101",
+        smart_llm="claude-opus-4-6",
+        fast_llm="claude-opus-4-6",
     ),
     # OpenAI configurations
     "openai": ModelConfig(
@@ -113,32 +113,32 @@ MODEL_PRESETS: dict[str, ModelConfig] = {
     # Claude extended thinking configurations
     "claude-thinking-10k": ModelConfig(
         name="claude-thinking-10k",
-        smart_llm="claude-sonnet-4-20250514",
-        fast_llm="claude-3-5-haiku-20241022",
+        smart_llm="claude-sonnet-4-6",
+        fast_llm="claude-haiku-4-5-20251001",
         thinking_budget_tokens=10000,
     ),
     "claude-thinking-25k": ModelConfig(
         name="claude-thinking-25k",
-        smart_llm="claude-sonnet-4-20250514",
-        fast_llm="claude-3-5-haiku-20241022",
+        smart_llm="claude-sonnet-4-6",
+        fast_llm="claude-haiku-4-5-20251001",
         thinking_budget_tokens=25000,
     ),
     "claude-thinking-50k": ModelConfig(
         name="claude-thinking-50k",
-        smart_llm="claude-sonnet-4-20250514",
-        fast_llm="claude-3-5-haiku-20241022",
+        smart_llm="claude-sonnet-4-6",
+        fast_llm="claude-haiku-4-5-20251001",
         thinking_budget_tokens=50000,
     ),
     "claude-opus-thinking": ModelConfig(
         name="claude-opus-thinking",
-        smart_llm="claude-opus-4-5-20251101",
-        fast_llm="claude-sonnet-4-20250514",
+        smart_llm="claude-opus-4-6",
+        fast_llm="claude-sonnet-4-6",
         thinking_budget_tokens=25000,
     ),
     "claude-opus-thinking-50k": ModelConfig(
         name="claude-opus-thinking-50k",
-        smart_llm="claude-opus-4-5-20251101",
-        fast_llm="claude-sonnet-4-20250514",
+        smart_llm="claude-opus-4-6",
+        fast_llm="claude-sonnet-4-6",
         thinking_budget_tokens=50000,
     ),
     # OpenAI reasoning effort configurations

@@ -48,7 +48,6 @@ class AnthropicModelName(str, enum.Enum):
     # Claude 3.5 models (legacy)
     CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
     CLAUDE3_5_SONNET_v2 = "claude-3-5-sonnet-20241022"
-    CLAUDE3_5_HAIKU_v1 = "claude-3-5-haiku-20241022"
 
     # Claude 4 models (legacy)
     CLAUDE4_SONNET_v1 = "claude-sonnet-4-20250514"
@@ -110,14 +109,6 @@ ANTHROPIC_CHAT_MODELS = {
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=3 / 1e6,
             completion_token_cost=15 / 1e6,
-            max_tokens=200000,
-            has_function_call_api=True,
-        ),
-        ChatModelInfo(
-            name=AnthropicModelName.CLAUDE3_5_HAIKU_v1,
-            provider_name=ModelProviderName.ANTHROPIC,
-            prompt_token_cost=0.80 / 1e6,
-            completion_token_cost=4 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
         ),
