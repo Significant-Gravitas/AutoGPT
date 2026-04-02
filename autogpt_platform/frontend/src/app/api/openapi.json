@@ -7582,6 +7582,13 @@
             ],
             "title": "Inputs",
             "description": "Input schema for the agent, including field names, types, and defaults"
+          },
+          "graph": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BaseGraph-Output" },
+              { "type": "null" }
+            ],
+            "description": "Full graph structure (nodes + links) when include_graph is requested"
           }
         },
         "type": "object",
