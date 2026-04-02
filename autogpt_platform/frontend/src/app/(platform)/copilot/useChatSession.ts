@@ -95,7 +95,9 @@ export function useChatSession() {
   async function createSession() {
     if (sessionId) return sessionId;
     try {
-      const response = await createSessionMutation({ data: null } as never);
+      // The generated mutation type expects a body but create-session needs none.
+      // @ts-expect-error generated type requires data but API accepts empty body
+      const response = await createSessionMutation({ data: null });
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {

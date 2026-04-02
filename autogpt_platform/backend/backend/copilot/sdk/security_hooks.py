@@ -26,6 +26,34 @@ logger = logging.getLogger(__name__)
 # Shared across all sessions — used by security hooks for sub-agent detection.
 _SUBAGENT_TOOLS: frozenset[str] = frozenset({"Task", "Agent"})
 
+# Unicode ranges stripped by _sanitize():
+#   - BiDi overrides (U+202A-U+202E, U+2066-U+2069) can trick reviewers
+#     into misreading code/logs.
+#   - Zero-width characters (U+200B-U+200F, U+FEFF) can hide content.
+_BIDI_AND_ZW_CHARS = set(
+    chr(c)
+    for r in (range(0x202A, 0x202F), range(0x2066, 0x206A), range(0x200B, 0x2010))
+    for c in r
+) | {"\ufeff"}
+
+
+def _sanitize(value: str, max_len: int = 200) -> str:
+    """Strip control characters and truncate for safe logging.
+
+    Removes C0 (U+0000-U+001F), DEL (U+007F), C1 (U+0080-U+009F),
+    Unicode BiDi overrides, and zero-width characters to prevent
+    log injection and visual spoofing.
+    """
+    cleaned = "".join(
+        c
+        for c in value
+        if c >= " "
+        and c != "\x7f"
+        and not ("\x80" <= c <= "\x9f")
+        and c not in _BIDI_AND_ZW_CHARS
+    )
+    return cleaned[:max_len]
+
 
 def _deny(reason: str) -> dict[str, Any]:
     """Return a hook denial response."""
@@ -157,19 +185,18 @@ def create_security_hooks(
         from claude_agent_sdk import HookMatcher
         from claude_agent_sdk.types import HookContext, HookInput, SyncHookJSONOutput
 
-        def _sanitize(value: str, max_len: int = 200) -> str:
-            """Strip control characters and truncate for safe logging."""
-            # Remove C0 (U+0000-U+001F), DEL (U+007F), and C1 (U+0080-U+009F)
-            # control characters to prevent log injection.
-            cleaned = "".join(
-                c
-                for c in value
-                if c >= " " and c != "\x7f" and not ("\x80" <= c <= "\x9f")
-            )
-            return cleaned[:max_len]
-
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
+        #
+        # LIMITATION: For background (async) agents the SDK returns the
+        # Agent/Task tool immediately with {isAsync: true}, which triggers
+        # PostToolUse and releases the slot while the agent is still running.
+        # SubagentStop fires later when the background process finishes but
+        # does not currently hold a slot.  This means the concurrency limit
+        # only gates *launches*, not true concurrent execution.  To fix this
+        # we would need to track background agent_ids separately and release
+        # in SubagentStop, but the SDK does not guarantee SubagentStop fires
+        # for every background agent (e.g. on session abort).
         subagent_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
