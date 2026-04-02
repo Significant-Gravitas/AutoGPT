@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { getHostFromUrl } from "@/lib/utils/url";
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 
@@ -35,6 +36,7 @@ export function HostScopedCredentialsModal({
   siblingInputs,
 }: Props) {
   const credentials = useCredentials(schema, siblingInputs);
+  const allProviders = useContext(CredentialsProvidersContext);
 
   // Get current host from siblingInputs or discriminator_values
   const currentUrl = credentials?.discriminatorValue;
@@ -92,12 +94,17 @@ export function HostScopedCredentialsModal({
   const {
     provider,
     providerName,
-    savedCredentials,
     createHostScopedCredentials,
     deleteCredentials,
   } = credentials;
 
-  const hasExistingForHost = savedCredentials.some(
+  // Use the unfiltered credential list from the provider context for deduplication.
+  // The hook's savedCredentials is pre-filtered by discriminatorValue, which may be
+  // empty when no URL is entered yet — causing deduplication to miss existing creds.
+  const allProviderCredentials =
+    allProviders?.[provider]?.savedCredentials ?? [];
+
+  const hasExistingForHost = allProviderCredentials.some(
     (c) =>
       c.type === "host_scoped" &&
       "host" in c &&
@@ -136,9 +143,10 @@ export function HostScopedCredentialsModal({
       {} as Record<string, string>,
     );
 
-    // Delete existing host-scoped credentials for the same host to avoid duplicates
+    // Delete existing host-scoped credentials for the same host to avoid duplicates.
+    // Uses unfiltered provider credentials (not the hook's pre-filtered list).
     const host = values.host;
-    const existingForHost = savedCredentials.filter(
+    const existingForHost = allProviderCredentials.filter(
       (c) => c.type === "host_scoped" && "host" in c && c.host === host,
     );
     for (const existing of existingForHost) {
