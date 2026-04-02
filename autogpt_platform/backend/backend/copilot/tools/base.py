@@ -92,9 +92,9 @@ async def _persist_and_summarize(
         f"Use read_workspace_file("
         f'path="{file_path}", offset=<char_offset>, length=50000) '
         f"to read any section. "
-        f"To process the file in the sandbox, use "
+        f"To process the file in the sandbox/working dir, use "
         f"read_workspace_file("
-        f'path="{file_path}", save_to_path="/home/user/{tool_call_id}.json") '
+        f'path="{file_path}", save_to_path="<working_dir>/{tool_call_id}.json") '
         f"first, then use bash_exec to work with the local copy."
     )
     # Use workspace:// prefix so the model doesn't confuse the workspace path

@@ -221,7 +221,7 @@ def _build_storage_supplement(
 
 ### Moving files between storages
 - **{file_move_name_1_to_2}**: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
-- **{file_move_name_2_to_1}**: `read_workspace_file(path="tool-outputs/data.json", save_to_path="/home/user/data.json")`
+- **{file_move_name_2_to_1}**: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
 
 ### File persistence
 Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
@@ -235,7 +235,7 @@ To read these files, use `Read` — it reads from the host filesystem.
 When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
-- To process in the sandbox, use `read_workspace_file(path="...", save_to_path="/home/user/file.json")` first, then use `bash_exec` on the local copy.
+- To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
 {_SHARED_TOOL_NOTES}{extra_notes}"""
 
 
