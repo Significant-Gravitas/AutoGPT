@@ -316,6 +316,16 @@ def test_set_user_tier(
     target_user_id: str,
 ) -> None:
     """Test setting a user's rate-limit tier (upgrade)."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.FREE,
+    )
     mock_set = mocker.patch(
         f"{_MOCK_MODULE}.set_user_tier",
         new_callable=AsyncMock,
@@ -338,6 +348,11 @@ def test_set_user_tier_downgrade(
     target_user_id: str,
 ) -> None:
     """Test downgrading a user's tier from PRO to FREE."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_tier",
         new_callable=AsyncMock,
@@ -390,17 +405,24 @@ def test_set_user_tier_invalid_tier_uppercase(
     assert "detail" in body
 
 
-def test_set_user_tier_user_not_found(
+def test_set_user_tier_email_lookup_failure_non_blocking(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
 ) -> None:
-    """Test that setting tier for nonexistent user returns 404."""
-    import prisma.errors
-
+    """Test that email lookup failure doesn't block tier change."""
     mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        side_effect=Exception("DB connection failed"),
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.FREE,
+    )
+    mock_set = mocker.patch(
         f"{_MOCK_MODULE}.set_user_tier",
         new_callable=AsyncMock,
-        side_effect=prisma.errors.RecordNotFoundError({"error": "Record not found"}),
     )
 
     response = client.post(
@@ -408,7 +430,8 @@ def test_set_user_tier_user_not_found(
         json={"user_id": target_user_id, "tier": "PRO"},
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    mock_set.assert_awaited_once()
 
 
 def test_set_user_tier_db_failure(
@@ -416,6 +439,16 @@ def test_set_user_tier_db_failure(
     target_user_id: str,
 ) -> None:
     """Test that DB failure on set tier returns 500."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.FREE,
+    )
     mocker.patch(
         f"{_MOCK_MODULE}.set_user_tier",
         new_callable=AsyncMock,
