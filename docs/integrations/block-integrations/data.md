@@ -259,7 +259,7 @@ Supported database types: PostgreSQL, MySQL, and MSSQL.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | database_type | Database engine | "postgres" \| "mysql" \| "mssql" | No |
-| host | Database hostname or IP address | str (secret) | Yes |
+| host | Database hostname or IP address | str (password) | Yes |
 | port | Database port (leave empty for default: PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
 | database | Name of the database to connect to | str | Yes |
 | query | SQL query to execute | str | Yes |
