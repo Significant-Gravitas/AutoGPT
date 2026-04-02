@@ -36,10 +36,6 @@ _DISALLOWED_KEYWORDS = {
     "DISCARD",
     "NOTIFY",
     "DO",
-    # SELECT ... INTO creates tables (PG/MSSQL) or writes files (MySQL OUTFILE/DUMPFILE)
-    "INTO",
-    "OUTFILE",
-    "DUMPFILE",
 }
 
 # Map DatabaseType enum values to the expected SQLAlchemy driver prefix.
@@ -152,13 +148,62 @@ def _extract_keyword_tokens(parsed: sqlparse.sql.Statement) -> list[str]:
     ]
 
 
+def _has_disallowed_into(stmt: sqlparse.sql.Statement) -> bool:
+    """Check if a statement contains a disallowed ``INTO`` clause.
+
+    ``SELECT ... INTO @variable`` is a valid read-only MySQL syntax that stores
+    a query result into a session-scoped user variable.  All other forms of
+    ``INTO`` are data-modifying or file-writing and must be blocked:
+
+    * ``SELECT ... INTO new_table``  (PostgreSQL / MSSQL – creates a table)
+    * ``SELECT ... INTO OUTFILE``    (MySQL – writes to the filesystem)
+    * ``SELECT ... INTO DUMPFILE``   (MySQL – writes to the filesystem)
+    * ``INSERT INTO ...``            (already blocked by INSERT being in the
+      disallowed set, but we reject INTO as well for defense-in-depth)
+
+    Returns ``True`` if the statement contains a disallowed ``INTO``.
+    """
+    flat = list(stmt.flatten())
+    for i, token in enumerate(flat):
+        if not (
+            token.ttype in (sqlparse.tokens.Keyword,)
+            and token.normalized.upper() == "INTO"
+        ):
+            continue
+
+        # Look at the first non-whitespace token after INTO.
+        j = i + 1
+        while j < len(flat) and flat[j].ttype is sqlparse.tokens.Text.Whitespace:
+            j += 1
+
+        if j >= len(flat):
+            # INTO at the very end – malformed, block it.
+            return True
+
+        next_token = flat[j]
+        # MySQL user variable: either a single Name starting with "@"
+        # (e.g. ``@total``) or a bare ``@`` Operator token followed by a Name.
+        if next_token.ttype is sqlparse.tokens.Name and next_token.value.startswith(
+            "@"
+        ):
+            continue
+        if next_token.ttype is sqlparse.tokens.Operator and next_token.value == "@":
+            continue
+
+        # Everything else (table name, OUTFILE, DUMPFILE, etc.) is disallowed.
+        return True
+
+    return False
+
+
 def _validate_query_is_read_only(stmt: sqlparse.sql.Statement) -> str | None:
     """Validate that a parsed SQL statement is read-only (SELECT/WITH only).
 
     Accepts an already-parsed statement from ``_validate_single_statement``
     to avoid re-parsing. Checks:
     1. Statement type must be SELECT (sqlparse classifies WITH...SELECT as SELECT)
-    2. No disallowed keywords (INSERT, UPDATE, DELETE, DROP, INTO, etc.)
+    2. No disallowed keywords (INSERT, UPDATE, DELETE, DROP, etc.)
+    3. No disallowed INTO clauses (allows MySQL ``SELECT ... INTO @variable``)
 
     Returns an error message if the query is not read-only, None otherwise.
     """
@@ -172,6 +217,10 @@ def _validate_query_is_read_only(stmt: sqlparse.sql.Statement) -> str | None:
         base_kw = kw.split()[0] if " " in kw else kw
         if base_kw in _DISALLOWED_KEYWORDS:
             return f"Disallowed SQL keyword: {kw}"
+
+    # Contextual check for INTO: allow MySQL @variable syntax, block everything else
+    if _has_disallowed_into(stmt):
+        return "Disallowed SQL keyword: INTO"
 
     return None
 

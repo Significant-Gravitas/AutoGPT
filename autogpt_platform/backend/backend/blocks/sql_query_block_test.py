@@ -90,6 +90,9 @@ class TestValidateQueryIsReadOnly:
             "SELECT * FROM users",
             "SELECT * FROM users WHERE id = 1",
             "  SELECT 1  ",
+            # MySQL INTO @variable syntax is read-only (session variable assignment)
+            "SELECT COUNT(*) INTO @total FROM users",
+            "SELECT name, age INTO @n, @a FROM users WHERE id = 1",
         ],
     )
     def test_valid_select_queries(self, query: str):
@@ -112,6 +115,23 @@ class TestValidateQueryIsReadOnly:
         assert stmt is not None
         result = _validate_query_is_read_only(stmt)
         assert result is not None
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            # SELECT INTO table creates a new table (PostgreSQL/MSSQL)
+            "SELECT * INTO new_table FROM users",
+            # SELECT INTO OUTFILE/DUMPFILE writes to the filesystem (MySQL)
+            "SELECT * INTO OUTFILE '/tmp/data.csv' FROM users",
+            "SELECT * INTO DUMPFILE '/tmp/data.bin' FROM users",
+        ],
+    )
+    def test_select_into_non_variable_rejected(self, query: str):
+        _, stmt = _validate_single_statement(query)
+        assert stmt is not None
+        result = _validate_query_is_read_only(stmt)
+        assert result is not None
+        assert "INTO" in result
 
 
 class TestSerializeValue:
