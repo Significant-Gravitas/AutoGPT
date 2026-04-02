@@ -12,8 +12,13 @@ import { Toaster } from "@/components/molecules/Toast/toaster";
 import { SetupAnalytics } from "@/services/analytics";
 import { VercelAnalyticsWrapper } from "@/services/analytics/VercelAnalyticsWrapper";
 import { environment } from "@/services/environment";
-import { Agentation } from "agentation";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import dynamic from "next/dynamic";
+
+const Agentation = dynamic(
+  () => import("agentation").then((mod) => mod.Agentation),
+  { ssr: false },
+);
 import { headers } from "next/headers";
 
 const isDev = environment.isDev();
@@ -79,7 +84,8 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <CookieConsentBanner />
-            {process.env.NEXT_PUBLIC_AGENTATION_DEVTOOL && <Agentation />}
+            {(isLocal || isDev) &&
+              process.env.NEXT_PUBLIC_AGENTATION_DEVTOOL && <Agentation />}
           </Providers>
         </ErrorBoundary>
       </body>
