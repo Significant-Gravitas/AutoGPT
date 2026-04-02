@@ -127,27 +127,33 @@ class OpenAIModelName(str, enum.Enum):
     O4_MINI_ROLLING = "o4-mini"
     O4_MINI = O4_MINI_ROLLING
 
-    # GPT-5 models (~200K context)
+    # GPT-5 models (~400K context, 5.4 has 1M)
     GPT5_ROLLING = "gpt-5"
     GPT5 = GPT5_ROLLING
     GPT5_1_ROLLING = "gpt-5.1"
     GPT5_1 = GPT5_1_ROLLING
     GPT5_2_ROLLING = "gpt-5.2"
     GPT5_2 = GPT5_2_ROLLING
+    GPT5_3_ROLLING = "gpt-5.3"
+    GPT5_3 = GPT5_3_ROLLING
     GPT5_MINI_ROLLING = "gpt-5-mini"
     GPT5_MINI = GPT5_MINI_ROLLING
     GPT5_NANO_ROLLING = "gpt-5-nano"
     GPT5_NANO = GPT5_NANO_ROLLING
     GPT5_PRO_ROLLING = "gpt-5-pro"
     GPT5_PRO = GPT5_PRO_ROLLING
-    GPT5_3_ROLLING = "gpt-5.3"
-    GPT5_3 = GPT5_3_ROLLING
-    GPT5_4_ROLLING = "gpt-5.4"
-    GPT5_4 = GPT5_4_ROLLING
     GPT5_2_PRO_ROLLING = "gpt-5.2-pro"
     GPT5_2_PRO = GPT5_2_PRO_ROLLING
     GPT5_3_PRO_ROLLING = "gpt-5.3-pro"
     GPT5_3_PRO = GPT5_3_PRO_ROLLING
+
+    # GPT-5.4 models (flagship, 1M context)
+    GPT5_4_ROLLING = "gpt-5.4"
+    GPT5_4 = GPT5_4_ROLLING
+    GPT5_4_MINI_ROLLING = "gpt-5.4-mini"
+    GPT5_4_MINI = GPT5_4_MINI_ROLLING
+    GPT5_4_NANO_ROLLING = "gpt-5.4-nano"
+    GPT5_4_NANO = GPT5_4_NANO_ROLLING
     GPT5_4_PRO_ROLLING = "gpt-5.4-pro"
     GPT5_4_PRO = GPT5_4_PRO_ROLLING
 
@@ -423,7 +429,25 @@ OPEN_AI_CHAT_MODELS = {
             name=OpenAIModelName.GPT5_4,
             provider_name=ModelProviderName.OPENAI,
             prompt_token_cost=2.50 / 1_000_000,
-            completion_token_cost=20.00 / 1_000_000,
+            completion_token_cost=15.00 / 1_000_000,
+            max_tokens=1_000_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_4_MINI,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.75 / 1_000_000,
+            completion_token_cost=4.50 / 1_000_000,
+            max_tokens=400_000,
+            has_function_call_api=True,
+            supports_reasoning_effort=True,
+        ),
+        ChatModelInfo(
+            name=OpenAIModelName.GPT5_4_NANO,
+            provider_name=ModelProviderName.OPENAI,
+            prompt_token_cost=0.20 / 1_000_000,
+            completion_token_cost=1.25 / 1_000_000,
             max_tokens=400_000,
             has_function_call_api=True,
             supports_reasoning_effort=True,
@@ -531,6 +555,8 @@ chat_model_mapping = {
     OpenAIModelName.GPT5_PRO: [OpenAIModelName.GPT5_PRO_ROLLING],
     OpenAIModelName.GPT5_3: [OpenAIModelName.GPT5_3_ROLLING],
     OpenAIModelName.GPT5_4: [OpenAIModelName.GPT5_4_ROLLING],
+    OpenAIModelName.GPT5_4_MINI: [OpenAIModelName.GPT5_4_MINI_ROLLING],
+    OpenAIModelName.GPT5_4_NANO: [OpenAIModelName.GPT5_4_NANO_ROLLING],
     OpenAIModelName.GPT5_2_PRO: [OpenAIModelName.GPT5_2_PRO_ROLLING],
     OpenAIModelName.GPT5_3_PRO: [OpenAIModelName.GPT5_3_PRO_ROLLING],
     OpenAIModelName.GPT5_4_PRO: [OpenAIModelName.GPT5_4_PRO_ROLLING],

@@ -556,9 +556,12 @@ class TestAnthropicTokenLimits:
             == ANTHROPIC_CHAT_MODELS[AnthropicModelName.CLAUDE4_SONNET_v1].max_tokens
         )
 
-    def test_all_models_have_200k_context(self, provider):
+    def test_all_models_have_expected_context(self, provider):
         for name, info in ANTHROPIC_CHAT_MODELS.items():
-            assert info.max_tokens == 200000, f"{name} has unexpected context size"
+            assert info.max_tokens in (
+                200000,
+                1000000,
+            ), f"{name} has unexpected context size {info.max_tokens}"
 
 
 class TestAnthropicTokenCounting:

@@ -261,12 +261,17 @@ class TestOpenAIModelDefinitions:
             OpenAIModelName.GPT5_2_PRO,
             OpenAIModelName.GPT5_3_PRO,
             OpenAIModelName.GPT5_4_PRO,
+            OpenAIModelName.GPT5_4_MINI,
+            OpenAIModelName.GPT5_4_NANO,
         ]
         for model in gpt5_models:
             info = OPEN_AI_CHAT_MODELS[model]
             assert info.supports_reasoning_effort is True, f"{model} missing reasoning"
             assert info.has_function_call_api is True, f"{model} missing function calls"
-            assert info.max_tokens == 400_000, f"{model} wrong context size"
+            assert info.max_tokens in (
+                400_000,
+                1_000_000,
+            ), f"{model} unexpected context size {info.max_tokens}"
 
     def test_pro_models_cost_more_than_base(self):
         """Pro variants must cost more than their base counterparts."""

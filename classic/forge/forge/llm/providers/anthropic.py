@@ -40,32 +40,38 @@ _P = ParamSpec("_P")
 
 
 class AnthropicModelName(str, enum.Enum):
-    # Claude 3 models (legacy)
+    # Claude 3 models (deprecated)
     CLAUDE3_OPUS_v1 = "claude-3-opus-20240229"
     CLAUDE3_SONNET_v1 = "claude-3-sonnet-20240229"
-    CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"
+    CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"  # retiring 2026-04-19
 
-    # Claude 3.5 models
+    # Claude 3.5 models (legacy)
     CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
     CLAUDE3_5_SONNET_v2 = "claude-3-5-sonnet-20241022"
     CLAUDE3_5_HAIKU_v1 = "claude-3-5-haiku-20241022"
 
-    # Claude 4 models
+    # Claude 4 models (legacy)
     CLAUDE4_SONNET_v1 = "claude-sonnet-4-20250514"
     CLAUDE4_OPUS_v1 = "claude-opus-4-20250514"
+    CLAUDE4_1_OPUS_v1 = "claude-opus-4-1-20250805"
+    CLAUDE4_5_SONNET_v1 = "claude-sonnet-4-5-20250929"
     CLAUDE4_5_OPUS_v1 = "claude-opus-4-5-20251101"
-    CLAUDE4_6_OPUS_v1 = "claude-opus-4-6-20260301"
+    CLAUDE4_5_HAIKU_v1 = "claude-haiku-4-5-20251001"
 
-    # Rolling aliases
-    CLAUDE_SONNET = "claude-sonnet-4-20250514"
-    CLAUDE_OPUS = "claude-opus-4-6-20260301"
-    CLAUDE_HAIKU = "claude-3-5-haiku-20241022"
+    # Claude 4.6 models (current)
+    CLAUDE4_6_SONNET_v1 = "claude-sonnet-4-6"
+    CLAUDE4_6_OPUS_v1 = "claude-opus-4-6"
+
+    # Rolling aliases (point to latest)
+    CLAUDE_SONNET = "claude-sonnet-4-6"
+    CLAUDE_OPUS = "claude-opus-4-6"
+    CLAUDE_HAIKU = "claude-haiku-4-5-20251001"
 
 
 ANTHROPIC_CHAT_MODELS = {
     info.name: info
     for info in [
-        # Claude 3 models (legacy)
+        # Claude 3 models (deprecated)
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_OPUS_v1,
             provider_name=ModelProviderName.ANTHROPIC,
@@ -90,7 +96,7 @@ ANTHROPIC_CHAT_MODELS = {
             max_tokens=200000,
             has_function_call_api=True,
         ),
-        # Claude 3.5 models
+        # Claude 3.5 models (legacy)
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_5_SONNET_v1,
             provider_name=ModelProviderName.ANTHROPIC,
@@ -115,7 +121,7 @@ ANTHROPIC_CHAT_MODELS = {
             max_tokens=200000,
             has_function_call_api=True,
         ),
-        # Claude 4 models
+        # Claude 4 models (legacy)
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE4_SONNET_v1,
             provider_name=ModelProviderName.ANTHROPIC,
@@ -135,7 +141,7 @@ ANTHROPIC_CHAT_MODELS = {
             supports_extended_thinking=True,
         ),
         ChatModelInfo(
-            name=AnthropicModelName.CLAUDE4_5_OPUS_v1,
+            name=AnthropicModelName.CLAUDE4_1_OPUS_v1,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=15 / 1e6,
             completion_token_cost=75 / 1e6,
@@ -144,11 +150,48 @@ ANTHROPIC_CHAT_MODELS = {
             supports_extended_thinking=True,
         ),
         ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=5 / 1e6,
+            completion_token_cost=25 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=1 / 1e6,
+            completion_token_cost=5 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        # Claude 4.6 models (current, 1M context)
+        ChatModelInfo(
             name=AnthropicModelName.CLAUDE4_6_OPUS_v1,
             provider_name=ModelProviderName.ANTHROPIC,
-            prompt_token_cost=15 / 1e6,
-            completion_token_cost=75 / 1e6,
-            max_tokens=200000,
+            prompt_token_cost=5 / 1e6,
+            completion_token_cost=25 / 1e6,
+            max_tokens=1000000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_6_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=1000000,
             has_function_call_api=True,
             supports_extended_thinking=True,
         ),
@@ -156,9 +199,9 @@ ANTHROPIC_CHAT_MODELS = {
 }
 # Copy entries for aliased models
 chat_model_mapping = {
-    AnthropicModelName.CLAUDE4_SONNET_v1: [AnthropicModelName.CLAUDE_SONNET],
+    AnthropicModelName.CLAUDE4_6_SONNET_v1: [AnthropicModelName.CLAUDE_SONNET],
     AnthropicModelName.CLAUDE4_6_OPUS_v1: [AnthropicModelName.CLAUDE_OPUS],
-    AnthropicModelName.CLAUDE3_5_HAIKU_v1: [AnthropicModelName.CLAUDE_HAIKU],
+    AnthropicModelName.CLAUDE4_5_HAIKU_v1: [AnthropicModelName.CLAUDE_HAIKU],
 }
 for base, copies in chat_model_mapping.items():
     for copy in copies:
