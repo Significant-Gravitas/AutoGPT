@@ -17,6 +17,7 @@ from typing import Any, cast
 import orjson
 from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from opentelemetry import trace as otel_trace
 
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import (
@@ -556,8 +557,6 @@ async def stream_chat_completion_baseline(
         # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
             try:
-                from opentelemetry import trace as otel_trace
-
                 span = otel_trace.get_current_span()
                 if span and span.is_recording():
                     span.set_attribute(
