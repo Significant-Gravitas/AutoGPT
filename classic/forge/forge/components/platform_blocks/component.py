@@ -73,6 +73,7 @@ class PlatformBlocksComponent(
         yield self.execute_block
         yield self.find_agent
         yield self.run_agent
+        yield self.get_agent_result
 
     async def _get_blocks(self) -> list[dict[str, Any]]:
         """Get blocks from API, with caching."""
@@ -317,4 +318,55 @@ class PlatformBlocksComponent(
             )
         except Exception as e:
             logger.error(f"Error running agent {agent_slug}: {e}")
+            return json.dumps({"error": str(e)})
+
+    @command(
+        names=["get_agent_result", "check_agent_result"],
+        description=(
+            "Get the result of an agent execution started with run_agent. "
+            "run_agent returns immediately with a graph_id and execution_id — "
+            "use this command to poll for the result. "
+            "If status is not 'completed', wait and try again."
+        ),
+        parameters={
+            "graph_id": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Graph ID from run_agent response",
+                required=True,
+            ),
+            "execution_id": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description="Execution ID from run_agent response",
+                required=True,
+            ),
+        },
+    )
+    async def get_agent_result(self, graph_id: str, execution_id: str) -> str:
+        """Get results from a platform agent execution.
+
+        Args:
+            graph_id: The graph (agent) ID.
+            execution_id: The execution ID from run_agent.
+
+        Returns:
+            JSON string with execution status and outputs.
+        """
+        try:
+            result = await self.client.get_execution_results(graph_id, execution_id)
+            return json.dumps(result, indent=2)
+        except PlatformClientError as e:
+            logger.error(
+                f"Platform API error getting results "
+                f"(graph={graph_id}, exec={execution_id}): {e}"
+            )
+            return json.dumps(
+                {
+                    "error": str(e),
+                    "graph_id": graph_id,
+                    "execution_id": execution_id,
+                    "status_code": e.status_code,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error getting agent result: {e}")
             return json.dumps({"error": str(e)})

@@ -263,7 +263,7 @@ class TestConfiguration:
             config=PlatformBlocksConfig(enabled=True, api_key=SecretStr("test-key"))
         )
         commands = list(component.get_commands())
-        assert len(commands) == 4
+        assert len(commands) == 5
 
 
 class TestProtocols:

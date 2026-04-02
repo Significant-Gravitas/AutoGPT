@@ -169,3 +169,38 @@ class PlatformClient:
                     return await resp.json()
             except aiohttp.ClientError as e:
                 raise PlatformClientError(f"Connection error: {e}") from e
+
+    async def get_execution_results(
+        self,
+        graph_id: str,
+        execution_id: str,
+    ) -> dict[str, Any]:
+        """Get results from a graph/agent execution.
+
+        Args:
+            graph_id: The graph (agent) ID.
+            execution_id: The execution ID returned by run_agent.
+
+        Returns:
+            Execution results with status and outputs.
+
+        Raises:
+            PlatformClientError: If the API request fails.
+        """
+        url = (
+            f"{self.base_url}/external-api/v1/graphs/{graph_id}"
+            f"/executions/{execution_id}/results"
+        )
+
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            try:
+                async with session.get(url, headers=self._headers()) as resp:
+                    if resp.status >= 400:
+                        error_text = await resp.text()
+                        raise PlatformClientError(
+                            f"Platform API error: {error_text}",
+                            status_code=resp.status,
+                        )
+                    return await resp.json()
+            except aiohttp.ClientError as e:
+                raise PlatformClientError(f"Connection error: {e}") from e
