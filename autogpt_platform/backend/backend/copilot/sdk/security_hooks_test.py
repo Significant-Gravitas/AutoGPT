@@ -137,8 +137,20 @@ def test_read_tool_results_allowed():
         _current_project_dir.reset(token)
 
 
+def test_read_tool_outputs_allowed():
+    """tool-outputs/ paths should be allowed, same as tool-results/."""
+    home = os.path.expanduser("~")
+    path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-outputs/12345.txt"
+    token = _current_project_dir.set("-tmp-copilot-abc123")
+    try:
+        result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
+        assert result == {}
+    finally:
+        _current_project_dir.reset(token)
+
+
 def test_read_claude_projects_settings_json_denied():
-    """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/ is."""
+    """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/tool-outputs is."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/settings.json"
     token = _current_project_dir.set("-tmp-copilot-abc123")
