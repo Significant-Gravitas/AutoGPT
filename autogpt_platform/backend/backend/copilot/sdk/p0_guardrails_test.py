@@ -102,43 +102,43 @@ class TestResolveFallbackModel:
 
 
 class TestSecurityEnvVars:
-    """Verify the env-var contract in the service module.
+    """Verify the env-var contract in the env module.
 
     The production code sets CLAUDE_CODE_TMPDIR and security env vars
-    inline after ``build_sdk_env()`` returns.  We grep for these string
-    literals in ``service.py`` to ensure they aren't accidentally removed.
+    inside ``build_sdk_env()`` in ``env.py``.  We grep for these string
+    literals to ensure they aren't accidentally removed.
     """
 
-    _SERVICE_PATH = "autogpt_platform/backend/backend/copilot/sdk/service.py"
+    _ENV_PATH = "autogpt_platform/backend/backend/copilot/sdk/env.py"
 
     @staticmethod
-    def _read_service_source() -> str:
+    def _read_env_source() -> str:
         import pathlib
 
         # Walk up from this test file to the repo root
         repo = pathlib.Path(__file__).resolve().parents[5]
-        return (repo / TestSecurityEnvVars._SERVICE_PATH).read_text()
+        return (repo / TestSecurityEnvVars._ENV_PATH).read_text()
 
     def test_tmpdir_env_var_present_in_source(self):
         """CLAUDE_CODE_TMPDIR must be set when sdk_cwd is provided."""
-        src = self._read_service_source()
-        assert 'sdk_env["CLAUDE_CODE_TMPDIR"]' in src
+        src = self._read_env_source()
+        assert 'env["CLAUDE_CODE_TMPDIR"]' in src
 
     def test_home_not_overridden_in_source(self):
         """HOME must NOT be overridden — would break git/ssh/npm."""
-        src = self._read_service_source()
-        assert 'sdk_env["HOME"]' not in src
+        src = self._read_env_source()
+        assert 'env["HOME"]' not in src
 
     def test_security_env_vars_present_in_source(self):
-        """All four security env vars must be set in the service module."""
-        src = self._read_service_source()
+        """All four security env vars must be set in the env module."""
+        src = self._read_env_source()
         for var in (
             "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
             "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
             "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
         ):
-            assert var in src, f"{var} not found in service.py"
+            assert var in src, f"{var} not found in env.py"
 
 
 # ---------------------------------------------------------------------------

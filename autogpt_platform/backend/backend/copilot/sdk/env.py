@@ -79,4 +79,11 @@ def build_sdk_env(
     if sdk_cwd:
         env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
 
+    # Prevent loading untrusted workspace .claude.md files, persisting
+    # prompt history, writing auto-memory, and non-essential traffic.
+    env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
+    env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+
     return env
