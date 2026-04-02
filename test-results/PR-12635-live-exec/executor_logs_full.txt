@@ -1,0 +1,143 @@
+2026-04-02 07:33:11,703 [34mINFO[0m  [E2B] Paused sandbox i677qtohrgyo for session 26c95d9f-931
+2026-04-02 08:00:43,080 [34mINFO[0m  [CoPilotExecutor] Acquired cluster lock for 0c547784-14b3-407f-8b3e-4e3c92565df3, executor_id=f60d4787-2d35-47fa-9bc9-bac56d7aa412 
+2026-04-02 08:00:43,090 [34mINFO[0m  [CoPilotExecutor|session_id:0c547784-14b3-407f-8b3e-4e3c92565df3|user_id:85d23dba-e21b-4a62-a185-f965a34a34ad] Starting execution 
+2026-04-02 08:00:43,108 [34mINFO[0m  [CoPilotExecutor|session_id:0c547784-14b3-407f-8b3e-4e3c92565df3|user_id:85d23dba-e21b-4a62-a185-f965a34a34ad] Using SDK service (mode=extended_thinking) 
+2026-04-02 08:00:43,115 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=1, roles=['user']
+2026-04-02 08:00:43,173 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=1, roles=['user']
+2026-04-02 08:00:43,204 [34mINFO[0m  Request POST https://api.e2b.app/sandboxes
+2026-04-02 08:00:43,205 [34mINFO[0m  Request: POST https://api.e2b.app/sandboxes
+2026-04-02 08:00:43,747 [34mINFO[0m  Response: 201 https://api.e2b.app/sandboxes
+2026-04-02 08:00:43,748 [34mINFO[0m  Response 201
+2026-04-02 08:00:43,754 [34mINFO[0m  [E2B] Created sandbox ipyfucuz2lyj for session 0c547784-14b
+2026-04-02 08:00:43,758 [34mINFO[0m  [TIMING] publish_chunk StreamStart in 2.4ms (xadd=1.5ms)
+2026-04-02 08:00:43,791 [34mINFO[0m  Using bundled Claude Code CLI: /app/autogpt_platform/backend/.venv/lib/python3.13/site-packages/claude_agent_sdk/_bundled/claude
+2026-04-02 08:00:44,052 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=1, roles=['user']
+2026-04-02 08:00:44,418 [34mINFO[0m  [SDK][0c547784-14b][T1] Sending query — resume=False, total_msgs=1, query_len=272, attached_files=0, image_blocks=0
+2026-04-02 08:00:44,438 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: SystemMessage init (unresolved=0, current=0, resolved=0)
+2026-04-02 08:00:54,087 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-04-02 08:00:54,088 [34mINFO[0m  [SDK] [0c547784-14b] Flush called but all 0 tool(s) already resolved
+2026-04-02 08:00:54,088 [34mINFO[0m  [TIMING] publish_chunk StreamTextStart in 0.8ms (xadd=0.5ms)
+2026-04-02 08:00:54,090 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-04-02 08:00:54,090 [34mINFO[0m  [SDK] [0c547784-14b] Flush called but all 0 tool(s) already resolved
+2026-04-02 08:00:54,090 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=0, current=0, resolved=0)
+2026-04-02 08:00:54,091 [34mINFO[0m  [TIMING] publish_chunk StreamTextEnd in 0.5ms (xadd=0.3ms)
+2026-04-02 08:00:54,091 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=Agent
+2026-04-02 08:00:54,092 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.5ms (xadd=0.2ms)
+2026-04-02 08:00:54,092 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=1, current=1, resolved=0)
+2026-04-02 08:00:54,093 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=Agent
+2026-04-02 08:00:54,101 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 7.7ms (xadd=0.3ms)
+2026-04-02 08:00:54,101 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=2, current=2, resolved=0)
+2026-04-02 08:00:54,105 [34mINFO[0m  [SDK] SubagentStart: agent_id=a22c293e5d53004ba, type=general-purpose, user=85d23dba-e21b-4a62-a185-f965a34a34ad
+2026-04-02 08:00:54,106 [34mINFO[0m  [SDK] SubagentStart: agent_id=af654d1b68dd3631f, type=general-purpose, user=85d23dba-e21b-4a62-a185-f965a34a34ad
+2026-04-02 08:00:56,106 [33mWARNING[0m  [33m[SDK][0c547784-14b][T1] Timed out waiting for PostToolUse hook stash (2 unresolved tool calls)[0m
+2026-04-02 08:00:56,108 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: SystemMessage task_started (unresolved=2, current=2, resolved=0)
+2026-04-02 08:00:56,109 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: SystemMessage task_started (unresolved=2, current=2, resolved=0)
+2026-04-02 08:00:56,109 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=2, current=2, resolved=0)
+2026-04-02 08:00:56,110 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:00:56,111 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=2, current=2, resolved=0)
+2026-04-02 08:00:56,111 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:00:56,133 [34mINFO[0m  Saving 1 new messages to DB for session 0c547784-14b3-407f-8b3e-4e3c92565df3: roles=['assistant'], start_sequence=1
+2026-04-02 08:00:56,152 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=1, roles=['user']
+2026-04-02 08:00:57,606 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=2, current=2, resolved=0)
+2026-04-02 08:00:57,611 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:00:57,613 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.9ms (xadd=0.5ms)
+2026-04-02 08:00:57,614 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=3, current=3, resolved=0)
+2026-04-02 08:00:57,618 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:00:57,620 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.9ms (xadd=0.5ms)
+2026-04-02 08:00:57,659 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=4, current=4, resolved=0)
+2026-04-02 08:00:57,660 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:00:57,660 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.5ms (xadd=0.2ms)
+2026-04-02 08:00:57,661 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=5, current=5, resolved=0)
+2026-04-02 08:00:57,662 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:00:57,663 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.9ms (xadd=0.6ms)
+2026-04-02 08:00:57,664 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=6, current=6, resolved=0)
+2026-04-02 08:00:57,665 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:00:57,665 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.4ms (xadd=0.2ms)
+2026-04-02 08:01:24,678 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:01:24,679 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (4138 chars): {'query': 'top Python web frameworks 2026', 'results': ['Here\'s a comprehensive overview of the **t...
+2026-04-02 08:01:24,680 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=7, current=7, resolved=0)
+2026-04-02 08:01:24,680 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:01:24,680 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=4154
+2026-04-02 08:01:24,680 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 0.5ms (xadd=0.3ms)
+2026-04-02 08:01:27,225 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:01:27,226 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (3231 chars): {'query': 'FastAPI 2026 updates new features', 'results': ['Here\'s a summary of the latest **FastAP...
+2026-04-02 08:01:27,229 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=6, current=7, resolved=1)
+2026-04-02 08:01:27,229 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:01:27,229 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=3266
+2026-04-02 08:01:27,231 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 1.3ms (xadd=0.8ms)
+2026-04-02 08:01:27,247 [34mINFO[0m  Saving 2 new messages to DB for session 0c547784-14b3-407f-8b3e-4e3c92565df3: roles=['tool', 'tool'], start_sequence=2
+2026-04-02 08:01:27,258 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=2, roles=['user', 'assistant']
+2026-04-02 08:01:29,570 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:01:29,571 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (3984 chars): {'query': 'Django 2026 updates new features', 'results': ["Here's a summary of the latest Django 202...
+2026-04-02 08:01:29,572 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=5, current=7, resolved=2)
+2026-04-02 08:01:29,572 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:01:29,572 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=4038
+2026-04-02 08:01:29,573 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 0.6ms (xadd=0.3ms)
+2026-04-02 08:01:32,219 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=4, current=7, resolved=3)
+2026-04-02 08:01:32,225 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:01:32,226 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 1.2ms (xadd=0.8ms)
+2026-04-02 08:01:34,062 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:01:34,063 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (4768 chars): {'query': 'best JavaScript frameworks 2026 updates', 'results': ['Here\'s a comprehensive overview o...
+2026-04-02 08:01:34,064 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=5, current=8, resolved=3)
+2026-04-02 08:01:34,065 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:01:34,065 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=4842
+2026-04-02 08:01:34,066 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 0.8ms (xadd=0.5ms)
+2026-04-02 08:01:34,672 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:01:34,672 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (5102 chars): {'query': 'top JavaScript frameworks 2026', 'results': ['Here\'s a comprehensive overview of the **t...
+2026-04-02 08:01:34,677 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=4, current=8, resolved=4)
+2026-04-02 08:01:34,677 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:01:34,677 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=5149
+2026-04-02 08:01:34,678 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 0.9ms (xadd=0.6ms)
+2026-04-02 08:01:38,310 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=3, current=8, resolved=5)
+2026-04-02 08:01:38,313 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:01:38,315 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 1.3ms (xadd=0.8ms)
+2026-04-02 08:01:38,316 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=4, current=9, resolved=5)
+2026-04-02 08:01:38,318 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:01:38,319 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.9ms (xadd=0.5ms)
+2026-04-02 08:01:38,320 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: AssistantMessage  (unresolved=5, current=10, resolved=5)
+2026-04-02 08:01:38,321 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolInputAvailable, tool=WebSearch
+2026-04-02 08:01:38,322 [34mINFO[0m  [TIMING] publish_chunk StreamToolInputAvailable in 0.6ms (xadd=0.2ms)
+2026-04-02 08:02:00,533 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:02:00,534 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (3181 chars): {'query': 'Flask 2026 updates new release features', 'results': ["Here's a summary of the latest Fla...
+2026-04-02 08:02:00,537 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=6, current=11, resolved=5)
+2026-04-02 08:02:00,538 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:02:00,538 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=3186
+2026-04-02 08:02:00,539 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 1.3ms (xadd=0.8ms)
+2026-04-02 08:02:00,570 [34mINFO[0m  Saving 4 new messages to DB for session 0c547784-14b3-407f-8b3e-4e3c92565df3: roles=['tool', 'tool', 'tool', 'tool'], start_sequence=4
+2026-04-02 08:02:00,581 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=4, roles=['user', 'assistant', 'tool', 'tool']
+2026-04-02 08:02:11,528 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:02:11,529 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (4210 chars): {'query': 'Next.js 2026 new features updates', 'results': ['Here\'s a comprehensive overview of the ...
+2026-04-02 08:02:11,537 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=5, current=11, resolved=6)
+2026-04-02 08:02:11,538 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:02:11,538 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=4302
+2026-04-02 08:02:11,540 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 1.0ms (xadd=0.6ms)
+2026-04-02 08:02:12,282 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:02:12,283 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (4019 chars): {'query': 'React 2026 updates React Compiler Server Components', 'results': ['Here\'s a comprehensiv...
+2026-04-02 08:02:12,287 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=4, current=11, resolved=7)
+2026-04-02 08:02:12,287 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:02:12,287 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=4058
+2026-04-02 08:02:12,288 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 0.8ms (xadd=0.5ms)
+2026-04-02 08:02:15,944 [34mINFO[0m  [SDK] SubagentStop: agent_id=a22c293e5d53004ba, type=general-purpose, user=85d23dba-e21b-4a62-a185-f965a34a34ad, transcript=/root/.claude/projects/-tmp-copilot-0c547784-14b3-407f-8b3e-4e3c92565df3/d6a7fb4a-79fe-46f9-9d2c-3621664dc51c/subagents/agent-a22c293e5d53004ba.jsonl
+2026-04-02 08:02:15,958 [34mINFO[0m  [SDK] Sub-agent slot released, active=1/10, user=85d23dba-e21b-4a62-a185-f965a34a34ad
+2026-04-02 08:02:15,958 [34mINFO[0m  [SDK] PostToolUse: Agent (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:02:15,958 [34mINFO[0m  [SDK] Stashing builtin output for Agent (3937 chars): {'status': 'completed', 'prompt': "Research the top 3 Python web frameworks in 2026. For each framew...
+2026-04-02 08:02:15,962 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=3, current=11, resolved=8)
+2026-04-02 08:02:15,962 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=None
+2026-04-02 08:02:15,962 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=Agent, output_len=3937
+2026-04-02 08:02:15,964 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 1.0ms (xadd=0.6ms)
+2026-04-02 08:02:16,315 [34mINFO[0m  [SDK] PostToolUse: WebSearch (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:02:16,316 [34mINFO[0m  [SDK] Stashing builtin output for WebSearch (5064 chars): {'query': 'Svelte 5 SvelteKit 2026 updates runes', 'results': ['Here\'s a comprehensive overview of ...
+2026-04-02 08:02:16,318 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=2, current=11, resolved=9)
+2026-04-02 08:02:16,319 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=toolu_bdrk_0
+2026-04-02 08:02:16,319 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=WebSearch, output_len=5096
+2026-04-02 08:02:16,321 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 1.5ms (xadd=1.0ms)
+2026-04-02 08:05:15,835 [34mINFO[0m  [SDK] SubagentStop: agent_id=af654d1b68dd3631f, type=general-purpose, user=85d23dba-e21b-4a62-a185-f965a34a34ad, transcript=/root/.claude/projects/-tmp-copilot-0c547784-14b3-407f-8b3e-4e3c92565df3/d6a7fb4a-79fe-46f9-9d2c-3621664dc51c/subagents/agent-af654d1b68dd3631f.jsonl
+2026-04-02 08:05:15,854 [34mINFO[0m  [SDK] Sub-agent slot released, active=0/10, user=85d23dba-e21b-4a62-a185-f965a34a34ad
+2026-04-02 08:05:15,854 [34mINFO[0m  [SDK] PostToolUse: Agent (builtin=True, tool_use_id=toolu_bdrk_0)
+2026-04-02 08:05:15,854 [34mINFO[0m  [SDK] Stashing builtin output for Agent (920 chars): {'status': 'completed', 'prompt': "Research the top 3 JavaScript frameworks in 2026. For each framew...
+2026-04-02 08:05:15,859 [34mINFO[0m  [SDK][0c547784-14b][T1] Received: UserMessage  (unresolved=1, current=11, resolved=10)
+2026-04-02 08:05:15,860 [34mINFO[0m  [SDK] [0c547784-14b] UserMessage: 1 blocks, content_type=list, parent_tool_use_id=None
+2026-04-02 08:05:15,860 [34mINFO[0m  [SDK][0c547784-14b][T1] Tool event: StreamToolOutputAvailable, tool=Agent, output_len=928
+2026-04-02 08:05:15,861 [34mINFO[0m  [TIMING] publish_chunk StreamToolOutputAvailable in 0.8ms (xadd=0.4ms)
+2026-04-02 08:05:15,916 [34mINFO[0m  Saving 5 new messages to DB for session 0c547784-14b3-407f-8b3e-4e3c92565df3: roles=['tool', 'tool', 'tool', 'tool', 'tool'], start_sequence=8
+2026-04-02 08:05:15,932 [34mINFO[0m  Loading session 0c547784-14b3-407f-8b3e-4e3c92565df3 from cache: message_count=8, roles=['user', 'assistant', 'tool', 'tool', 'tool', 'tool', 'tool', 'tool']
