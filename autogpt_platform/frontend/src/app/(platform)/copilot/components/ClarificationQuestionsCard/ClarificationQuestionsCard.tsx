@@ -7,7 +7,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { ChatTeardropDotsIcon, CheckCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import type { ClarifyingQuestion } from "../../clarifying-questions";
+import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
 
 interface Props {
   questions: ClarifyingQuestion[];
