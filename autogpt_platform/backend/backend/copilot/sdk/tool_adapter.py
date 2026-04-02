@@ -393,7 +393,7 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         text = "".join(selected)
         sandbox = _current_sandbox.get(None)
         if sandbox is not None:
-            bridged = await _bridge_to_sandbox(sandbox, file_path, offset, limit)
+            bridged = await _bridge_to_sandbox(sandbox, resolved, offset, limit)
             if bridged:
                 text += f"\n[Sandbox copy available at {bridged}]"
         return _mcp_ok(text)

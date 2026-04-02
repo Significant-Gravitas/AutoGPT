@@ -355,7 +355,7 @@ async def _bridge_to_sandbox(
                 file_size,
                 basename,
             )
-            return
+            return None
         with open(expanded, "rb") as fh:
             content = fh.read()
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
