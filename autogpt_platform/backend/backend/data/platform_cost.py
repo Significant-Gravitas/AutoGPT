@@ -118,6 +118,7 @@ class PlatformCostDashboard(BaseModel):
     by_user: list[UserCostSummary]
     total_cost_microdollars: int
     total_requests: int
+    total_users: int
 
 
 def _build_where(
@@ -178,6 +179,16 @@ async def get_platform_cost_dashboard(
 
     where_p, params_p = _build_where(start, end, provider, user_id, "p")
 
+    user_count_rows = await query_raw_with_schema(
+        f"""
+        SELECT COUNT(DISTINCT p."userId")::bigint AS cnt
+        FROM {{schema_prefix}}"PlatformCostLog" p
+        WHERE {where_p}
+        """,
+        *params_p,
+    )
+    total_users = user_count_rows[0]["cnt"] if user_count_rows else 0
+
     by_user_rows = await query_raw_with_schema(
         f"""
         SELECT
@@ -224,6 +235,7 @@ async def get_platform_cost_dashboard(
         ],
         total_cost_microdollars=total_cost,
         total_requests=total_requests,
+        total_users=total_users,
     )
 
 
@@ -248,6 +260,8 @@ async def get_platform_cost_logs(
     total = count_rows[0]["cnt"] if count_rows else 0
 
     offset = (page - 1) * page_size
+    limit_idx = len(params) + 1
+    offset_idx = len(params) + 2
     rows = await query_raw_with_schema(
         f"""
         SELECT
@@ -267,9 +281,11 @@ async def get_platform_cost_logs(
         LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
         WHERE {where_sql}
         ORDER BY p."createdAt" DESC
-        LIMIT {page_size} OFFSET {offset}
+        LIMIT ${limit_idx} OFFSET ${offset_idx}
         """,
         *params,
+        page_size,
+        offset,
     )
 
     logs = [

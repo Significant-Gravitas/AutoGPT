@@ -988,6 +988,7 @@ export type PlatformCostDashboard = {
   by_user: UserCostSummary[];
   total_cost_microdollars: number;
   total_requests: number;
+  total_users: number;
 };
 
 export type CostLogRow = {

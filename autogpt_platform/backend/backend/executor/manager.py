@@ -674,12 +674,13 @@ class ExecutionProcessor:
             stats=graph_stats,
         )
 
-        # Log platform cost if system credentials were used
-        await _log_system_credential_cost(
-            node_exec=node_exec,
-            block=node.block,
-            stats=execution_stats,
-        )
+        # Log platform cost if system credentials were used (only on success)
+        if status == ExecutionStatus.COMPLETED:
+            await _log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+            )
 
         return execution_stats
 
@@ -2046,7 +2047,13 @@ async def _log_system_credential_cost(
     block: "Block",
     stats: NodeExecutionStats,
 ) -> None:
-    """Check if a system credential was used and log the platform cost."""
+    """Check if a system credential was used and log the platform cost.
+
+    Note: costMicrodollars is left null for now. To populate it, we would
+    need per-token pricing tables or extract cost from provider responses
+    (e.g. OpenRouter returns a cost field). The credit_cost in metadata
+    captures our internal credit charge as a proxy.
+    """
     input_data = node_exec.inputs
     input_model = cast(type[BlockSchema], block.input_schema)
 
@@ -2059,8 +2066,10 @@ async def _log_system_credential_cost(
             continue
 
         model_name = input_data.get("model")
-        if isinstance(model_name, dict):
-            model_name = None
+        if model_name is not None and not isinstance(model_name, str):
+            model_name = str(model_name) if not isinstance(model_name, dict) else None
+
+        credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
 
         await log_platform_cost_safe(
             PlatformCostEntry(
@@ -2078,6 +2087,7 @@ async def _log_system_credential_cost(
                 data_size=stats.output_size or None,
                 duration=stats.walltime or None,
                 model=model_name,
+                metadata={"credit_cost": credit_cost} if credit_cost else None,
             )
         )
         return  # One log per execution is enough
