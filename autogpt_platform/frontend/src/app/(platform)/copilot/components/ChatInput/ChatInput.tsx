@@ -162,6 +162,7 @@ export function ChatInput({
             />
             <button
               type="button"
+              disabled={isStreaming}
               onClick={() =>
                 setCopilotMode(
                   copilotMode === "extended_thinking"
@@ -174,7 +175,13 @@ export function ChatInput({
                 copilotMode === "extended_thinking"
                   ? "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
                   : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
+                isStreaming && "cursor-not-allowed opacity-50",
               )}
+              aria-label={
+                copilotMode === "extended_thinking"
+                  ? "Switch to Fast mode"
+                  : "Switch to Extended Thinking mode"
+              }
               title={
                 copilotMode === "extended_thinking"
                   ? "Extended Thinking mode — deeper reasoning (click to switch to Fast mode)"
