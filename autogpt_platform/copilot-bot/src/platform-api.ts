@@ -193,15 +193,16 @@ export class PlatformAPI {
 
           try {
             const parsed = JSON.parse(data);
-            if (parsed.type === "text" && parsed.content) {
-              yield parsed.content;
-            } else if (typeof parsed === "string") {
-              yield parsed;
+            // Backend sends: text_delta (streaming chunks), text_start/text_end,
+            // start/finish (lifecycle), step_start/step_finish, error, etc.
+            if (parsed.type === "text_delta" && parsed.delta) {
+              yield parsed.delta;
+            } else if (parsed.type === "error" && parsed.content) {
+              yield `Error: ${parsed.content}`;
             }
+            // Ignore start/finish/step lifecycle events — they carry no text
           } catch {
-            if (data && data !== "[DONE]") {
-              yield data;
-            }
+            // Non-JSON data line — skip
           }
         }
       }

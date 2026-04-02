@@ -206,9 +206,22 @@ async function handleCoPilotMessage(
       console.log(`[bot] Created session ${sessionId} for user ${userId.slice(-8)}`);
     }
 
-    // Stream CoPilot response — thread.post() accepts AsyncIterable<string>
+    // Stream CoPilot response — collect chunks, then post.
+    // We collect first because thread.post() with an empty stream
+    // causes Discord "Cannot send an empty message" errors.
     const stream = api.streamChat(userId, text, sessionId);
-    await thread.post(stream);
+    let response = "";
+    for await (const chunk of stream) {
+      response += chunk;
+    }
+
+    if (response.trim()) {
+      await thread.post(response);
+    } else {
+      await thread.post(
+        "I processed your message but didn't generate a response. Please try again."
+      );
+    }
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error(`[bot] CoPilot error for user ${userId.slice(-8)}:`, errMsg);
