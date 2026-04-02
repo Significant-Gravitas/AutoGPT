@@ -553,8 +553,24 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
-        # Close Langfuse trace context
+        # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
+            try:
+                from opentelemetry import trace as otel_trace
+
+                span = otel_trace.get_current_span()
+                if span and span.is_recording():
+                    span.set_attribute(
+                        "gen_ai.usage.prompt_tokens", state.turn_prompt_tokens
+                    )
+                    span.set_attribute(
+                        "gen_ai.usage.completion_tokens",
+                        state.turn_completion_tokens,
+                    )
+                    if state.cost_usd is not None:
+                        span.set_attribute("gen_ai.usage.cost_usd", state.cost_usd)
+            except Exception:
+                logger.debug("[Baseline] Failed to set OTEL cost attributes")
             try:
                 _trace_ctx.__exit__(None, None, None)
             except Exception:
