@@ -49,11 +49,17 @@ class AgentExecutorBlock(Block):
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
             required_fields = cls.get_input_schema(data).get("required", [])
-            return set(required_fields) - set(data)
+            # Check against the nested `inputs` dict, not the top-level node
+            # data — required fields like "topic" live inside data["inputs"],
+            # not at data["topic"].
+            provided = data.get("inputs", {})
+            return set(required_fields) - set(provided)
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
-            return validate_with_jsonschema(cls.get_input_schema(data), data)
+            return validate_with_jsonschema(
+                cls.get_input_schema(data), data.get("inputs", {})
+            )
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field that could clash with graph outputs
