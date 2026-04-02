@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Text } from "@/components/atoms/Text/Text";
-import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { CheckCircle, LinkBreak, Spinner } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -30,7 +30,7 @@ type LinkState =
 export default function PlatformLinkPage() {
   const params = useParams();
   const token = params.token as string;
-  const { user, supabase } = useSupabaseStore();
+  const { user, supabase, isUserLoading } = useSupabase();
 
   const [state, setState] = useState<LinkState>({ status: "loading" });
 
@@ -39,13 +39,15 @@ export default function PlatformLinkPage() {
   // separate status call (which requires bot API key anyway).
   useEffect(() => {
     if (!token) return;
+    // Wait for Supabase to finish loading before deciding auth state
+    if (isUserLoading) return;
 
     if (!user) {
       setState({ status: "not-authenticated" });
     } else {
       setState({ status: "ready" });
     }
-  }, [token, user]);
+  }, [token, user, isUserLoading]);
 
   async function handleLink() {
     if (!supabase) return;
