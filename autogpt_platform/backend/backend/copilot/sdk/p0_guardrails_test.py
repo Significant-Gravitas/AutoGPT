@@ -375,3 +375,17 @@ class TestConfigValidators:
         assert cfg_low.claude_agent_max_budget_usd == 0.01
         cfg_high = _make_config(claude_agent_max_budget_usd=100.0)
         assert cfg_high.claude_agent_max_budget_usd == 100.0
+
+    def test_max_transient_retries_rejects_negative(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_transient_retries=-1)
+
+    def test_max_transient_retries_rejects_above_10(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_transient_retries=11)
+
+    def test_max_transient_retries_accepts_boundary_values(self):
+        cfg_low = _make_config(claude_agent_max_transient_retries=0)
+        assert cfg_low.claude_agent_max_transient_retries == 0
+        cfg_high = _make_config(claude_agent_max_transient_retries=10)
+        assert cfg_high.claude_agent_max_transient_retries == 10

@@ -150,6 +150,8 @@ class ChatConfig(BaseSettings):
     )
     claude_agent_max_transient_retries: int = Field(
         default=3,
+        ge=0,
+        le=10,
         description="Maximum number of retries for transient API errors "
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
     )
