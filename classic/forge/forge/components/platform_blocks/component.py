@@ -1,6 +1,7 @@
-"""Platform blocks component for classic agents.
+"""Platform integration component for classic agents.
 
-Provides search_blocks and execute_block commands that call the platform API.
+Provides commands to search/execute blocks and find/run agents via the
+AutoGPT Platform API.
 """
 
 import json
@@ -23,7 +24,7 @@ class PlatformBlocksComponent(
     CommandProvider,
     ConfigurableComponent[PlatformBlocksConfig],
 ):
-    """Provides search_blocks and execute_block commands via platform API."""
+    """Provides block and agent commands via the AutoGPT Platform API."""
 
     config_class = PlatformBlocksConfig
 
@@ -59,8 +60,9 @@ class PlatformBlocksComponent(
         """Describe available resources."""
         if self.is_configured:
             yield (
-                "Access to platform blocks via search_blocks and execute_block "
-                "commands. Use search_blocks first to discover available blocks."
+                "Access to AutoGPT Platform via search_blocks, execute_block, "
+                "find_agent, and run_agent commands. Use search commands first "
+                "to discover available blocks and agents."
             )
 
     def get_commands(self) -> Iterator[Command]:
@@ -69,6 +71,8 @@ class PlatformBlocksComponent(
             return
         yield self.search_blocks
         yield self.execute_block
+        yield self.find_agent
+        yield self.run_agent
 
     async def _get_blocks(self) -> list[dict[str, Any]]:
         """Get blocks from API, with caching."""
@@ -212,4 +216,105 @@ class PlatformBlocksComponent(
             )
         except Exception as e:
             logger.error(f"Error executing block {block_id}: {e}")
+            return json.dumps({"error": str(e)})
+
+    @command(
+        names=["find_agent", "search_agents"],
+        description=(
+            "Search for agents in the AutoGPT Platform marketplace. "
+            "Describe what you need and it will find matching agents. "
+            "Use run_agent with the agent slug to execute one."
+        ),
+        parameters={
+            "query": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description=(
+                    "Describe what kind of agent you need "
+                    "(e.g. 'social media content creator', 'data analyzer')"
+                ),
+                required=True,
+            ),
+        },
+    )
+    async def find_agent(self, query: str) -> str:
+        """Search for agents in the platform marketplace.
+
+        Args:
+            query: Description of the agent capabilities needed.
+
+        Returns:
+            JSON string with matching agents.
+        """
+        try:
+            result = await self.client.find_agent(query)
+            return json.dumps(result, indent=2)
+        except PlatformClientError as e:
+            logger.error(f"Platform API error finding agent: {e}")
+            return json.dumps({"error": str(e), "status_code": e.status_code})
+        except Exception as e:
+            logger.error(f"Error finding agent: {e}")
+            return json.dumps({"error": str(e)})
+
+    @command(
+        names=["run_agent", "execute_agent"],
+        description=(
+            "Run an agent from the AutoGPT Platform marketplace. "
+            "Use find_agent FIRST to get the agent slug. "
+            "If required inputs are missing, the response will tell you "
+            "what inputs are needed."
+        ),
+        parameters={
+            "agent_slug": JSONSchema(
+                type=JSONSchema.Type.STRING,
+                description=(
+                    "Agent slug from find_agent results " "(e.g. 'username/agent-name')"
+                ),
+                required=True,
+            ),
+            "inputs": JSONSchema(
+                type=JSONSchema.Type.OBJECT,
+                description="Input values for the agent (check find_agent for schema)",
+                required=False,
+            ),
+            "use_defaults": JSONSchema(
+                type=JSONSchema.Type.BOOLEAN,
+                description="Run with default input values if available",
+                required=False,
+            ),
+        },
+    )
+    async def run_agent(
+        self,
+        agent_slug: str,
+        inputs: dict[str, Any] | None = None,
+        use_defaults: bool = False,
+    ) -> str:
+        """Run an agent from the platform marketplace.
+
+        Args:
+            agent_slug: Agent slug (e.g. 'username/agent-name').
+            inputs: Input values for the agent.
+            use_defaults: Whether to run with default values.
+
+        Returns:
+            JSON string with execution result or setup requirements.
+        """
+        try:
+            result = await self.client.run_agent(
+                agent_slug=agent_slug,
+                inputs=inputs,
+                use_defaults=use_defaults,
+            )
+            return json.dumps(result, indent=2)
+        except PlatformClientError as e:
+            logger.error(f"Platform API error running agent {agent_slug}: {e}")
+            return json.dumps(
+                {
+                    "error": str(e),
+                    "agent_slug": agent_slug,
+                    "status_code": e.status_code,
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error running agent {agent_slug}: {e}")
             return json.dumps({"error": str(e)})

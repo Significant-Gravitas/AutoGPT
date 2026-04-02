@@ -1,7 +1,7 @@
 """HTTP client for platform API.
 
 This client handles communication with the AutoGPT Platform API,
-for listing blocks, executing them, and managing credentials.
+for listing blocks, executing them, finding agents, and running agents.
 """
 
 import logging
@@ -89,6 +89,76 @@ class PlatformClient:
             try:
                 async with session.post(
                     url, headers=self._headers(), json=input_data
+                ) as resp:
+                    if resp.status >= 400:
+                        error_text = await resp.text()
+                        raise PlatformClientError(
+                            f"Platform API error: {error_text}",
+                            status_code=resp.status,
+                        )
+                    return await resp.json()
+            except aiohttp.ClientError as e:
+                raise PlatformClientError(f"Connection error: {e}") from e
+
+    async def find_agent(self, query: str) -> dict[str, Any]:
+        """Search for agents in the platform marketplace.
+
+        Args:
+            query: Search query describing what kind of agent is needed.
+
+        Returns:
+            Search results with matching agents.
+
+        Raises:
+            PlatformClientError: If the API request fails.
+        """
+        url = f"{self.base_url}/external-api/v1/tools/find-agent"
+
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            try:
+                async with session.post(
+                    url, headers=self._headers(), json={"query": query}
+                ) as resp:
+                    if resp.status >= 400:
+                        error_text = await resp.text()
+                        raise PlatformClientError(
+                            f"Platform API error: {error_text}",
+                            status_code=resp.status,
+                        )
+                    return await resp.json()
+            except aiohttp.ClientError as e:
+                raise PlatformClientError(f"Connection error: {e}") from e
+
+    async def run_agent(
+        self,
+        agent_slug: str,
+        inputs: dict[str, Any] | None = None,
+        use_defaults: bool = False,
+    ) -> dict[str, Any]:
+        """Run an agent from the platform marketplace.
+
+        Args:
+            agent_slug: Agent slug (e.g. 'username/agent-name').
+            inputs: Input values for the agent.
+            use_defaults: Whether to run with default values.
+
+        Returns:
+            Execution result or setup requirements if inputs are missing.
+
+        Raises:
+            PlatformClientError: If the API request fails.
+        """
+        url = f"{self.base_url}/external-api/v1/tools/run-agent"
+        payload: dict[str, Any] = {"username_agent_slug": agent_slug}
+        if inputs:
+            payload["inputs"] = inputs
+        if use_defaults:
+            payload["use_defaults"] = True
+
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            try:
+                async with session.post(
+                    url, headers=self._headers(), json=payload
                 ) as resp:
                     if resp.status >= 400:
                         error_text = await resp.text()
