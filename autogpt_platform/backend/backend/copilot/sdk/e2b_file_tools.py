@@ -32,7 +32,7 @@ from backend.copilot.context import (
 logger = logging.getLogger(__name__)
 
 # Default number of lines returned by ``read_file`` when the caller does not
-# specify a limit.  Also used as the threshold in ``_bridge_to_sandbox`` to
+# specify a limit.  Also used as the threshold in ``bridge_to_sandbox`` to
 # decide whether the model is requesting the full file (and thus whether the
 # bridge copy is worthwhile).
 _DEFAULT_READ_LIMIT = 2000
@@ -153,11 +153,11 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
         if not result.get("isError"):
             sandbox = _get_sandbox()
             if sandbox is not None:
-                bridged = await _bridge_to_sandbox(sandbox, file_path, offset, limit)
-                if bridged:
-                    result["content"][0][
-                        "text"
-                    ] += f"\n[Sandbox copy available at {bridged}]"
+                annotation = await bridge_and_annotate(
+                    sandbox, file_path, offset, limit
+                )
+                if annotation:
+                    result["content"][0]["text"] += annotation
         return result
 
     result = _get_sandbox_and_path(file_path)
@@ -336,7 +336,7 @@ _BRIDGE_SHELL_MAX_BYTES = 32 * 1024  # 32 KB
 _BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
-async def _bridge_to_sandbox(
+async def bridge_to_sandbox(
     sandbox: Any, file_path: str, offset: int, limit: int
 ) -> str | None:
     """Best-effort copy of a host-side SDK file into the E2B sandbox.
@@ -404,6 +404,22 @@ async def _bridge_to_sandbox(
             exc_info=True,
         )
         return None
+
+
+async def bridge_and_annotate(
+    sandbox: Any, file_path: str, offset: int, limit: int
+) -> str | None:
+    """Bridge a host file to the sandbox and return a newline-prefixed annotation.
+
+    Combines ``bridge_to_sandbox`` with the standard annotation suffix so
+    callers don't need to duplicate the pattern.  Returns a string like
+    ``"\\n[Sandbox copy available at /tmp/abc-file.txt]"`` on success, or
+    ``None`` if bridging was skipped or failed.
+    """
+    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit)
+    if sandbox_path is None:
+        return None
+    return f"\n[Sandbox copy available at {sandbox_path}]"
 
 
 # Local read (for SDK-internal paths)

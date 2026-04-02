@@ -17,10 +17,11 @@ from .e2b_file_tools import (
     _BRIDGE_SHELL_MAX_BYTES,
     _BRIDGE_SKIP_BYTES,
     _DEFAULT_READ_LIMIT,
-    _bridge_to_sandbox,
     _check_sandbox_symlink_escape,
     _read_local,
     _sandbox_write,
+    bridge_and_annotate,
+    bridge_to_sandbox,
     resolve_sandbox_path,
 )
 
@@ -371,12 +372,12 @@ class TestSandboxWrite:
 
 
 # ---------------------------------------------------------------------------
-# _bridge_to_sandbox — copy SDK-internal files into E2B sandbox
+# bridge_to_sandbox — copy SDK-internal files into E2B sandbox
 # ---------------------------------------------------------------------------
 
 
 def _make_bridge_sandbox() -> SimpleNamespace:
-    """Build a sandbox mock suitable for _bridge_to_sandbox tests."""
+    """Build a sandbox mock suitable for bridge_to_sandbox tests."""
     run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
     commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
     files = SimpleNamespace(write=AsyncMock())
@@ -391,7 +392,7 @@ class TestBridgeToSandbox:
         f.write_text('{"ok": true}')
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -409,7 +410,7 @@ class TestBridgeToSandbox:
         f.write_text("content")
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=10, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -424,7 +425,7 @@ class TestBridgeToSandbox:
         f.write_text("content")
         sandbox = _make_bridge_sandbox()
 
-        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=100)
+        await bridge_to_sandbox(sandbox, str(f), offset=0, limit=100)
 
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
@@ -434,7 +435,7 @@ class TestBridgeToSandbox:
         """Bridging a non-existent file logs but does not propagate errors."""
         sandbox = _make_bridge_sandbox()
 
-        await _bridge_to_sandbox(
+        await bridge_to_sandbox(
             sandbox, str(tmp_path / "ghost.txt"), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -449,7 +450,7 @@ class TestBridgeToSandbox:
         sandbox = _make_bridge_sandbox()
         sandbox.commands.run.side_effect = RuntimeError("E2B timeout")
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -462,7 +463,7 @@ class TestBridgeToSandbox:
         f.write_bytes(b"x" * (_BRIDGE_SHELL_MAX_BYTES + 1))
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -481,7 +482,7 @@ class TestBridgeToSandbox:
         f.write_bytes(binary_data)
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -500,7 +501,7 @@ class TestBridgeToSandbox:
         f.write_bytes(binary_data)
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -522,7 +523,7 @@ class TestBridgeToSandbox:
             fh.write(b"\0")
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(
+        result = await bridge_to_sandbox(
             sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
@@ -530,3 +531,37 @@ class TestBridgeToSandbox:
 
         sandbox.commands.run.assert_not_called()
         sandbox.files.write.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# bridge_and_annotate — shared helper wrapping bridge_to_sandbox + annotation
+# ---------------------------------------------------------------------------
+
+
+class TestBridgeAndAnnotate:
+    @pytest.mark.asyncio
+    async def test_returns_annotation_on_success(self, tmp_path):
+        """On success, returns a newline-prefixed annotation with the sandbox path."""
+        f = tmp_path / "data.json"
+        f.write_text('{"ok": true}')
+        sandbox = _make_bridge_sandbox()
+
+        annotation = await bridge_and_annotate(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        expected_path = _expected_bridge_path(str(f))
+        assert annotation == f"\n[Sandbox copy available at {expected_path}]"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_skipped(self, tmp_path):
+        """When bridging is skipped (e.g. offset != 0), returns None."""
+        f = tmp_path / "data.json"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+
+        annotation = await bridge_and_annotate(
+            sandbox, str(f), offset=10, limit=_DEFAULT_READ_LIMIT
+        )
+
+        assert annotation is None
