@@ -1,14 +1,11 @@
 """AskQuestionTool - Ask the user a clarifying question before proceeding."""
 
-import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
-
-logger = logging.getLogger(__name__)
 
 
 class AskQuestionTool(BaseTool):

@@ -2,7 +2,7 @@
 
 import { ChatTeardropDotsIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import type { ToolUIPart } from "ai";
-import { ClarificationQuestionsCard } from "../CreateAgent/components/ClarificationQuestionsCard";
+import { ClarificationQuestionsCard } from "../../components/ClarificationQuestionsCard/ClarificationQuestionsCard";
 import { useCopilotChatActions } from "../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { MorphingTextAnimation } from "../../components/MorphingTextAnimation/MorphingTextAnimation";
 import { normalizeClarifyingQuestions } from "../clarifying-questions";
