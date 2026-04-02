@@ -1932,11 +1932,11 @@ async def stream_chat_completion_sdk(
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
             # Detect SDK fallback-model activation.  The CLI logs a
             # message containing "fallback" when it switches models
-            # after a 529/overloaded error.
+            # after a 529/overloaded error.  Only match "fallback" —
+            # "overloaded" alone indicates a transient error, not that
+            # the SDK actually switched to the fallback model.
             lower = line.lower()
-            if not fallback_model_activated and (
-                "fallback" in lower or "overloaded" in lower
-            ):
+            if not fallback_model_activated and "fallback" in lower:
                 fallback_model_activated = True
                 logger.warning(
                     "[SDK] [%s] Fallback model activated — primary model "
@@ -2149,6 +2149,7 @@ async def stream_chat_completion_sdk(
             pre_transcript_entries = list(state.transcript_builder._entries)
             pre_transcript_uuid = state.transcript_builder._last_uuid
             events_yielded = 0
+            fallback_model_activated = False
             fallback_notified = False
 
             try:
