@@ -448,9 +448,9 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
-    # Append user message
+    # Append user message (skip if it's an exact duplicate of the last message,
+    # e.g. from a network retry)
     new_role = "user" if is_user_message else "assistant"
-    is_new_message = False
     if message and (
         len(session.messages) == 0
         or not (
@@ -459,7 +459,6 @@ async def stream_chat_completion_baseline(
         )
     ):
         session.messages.append(ChatMessage(role=new_role, content=message))
-        is_new_message = True
         if is_user_message:
             track_user_message(
                 user_id=user_id,
@@ -507,8 +506,14 @@ async def stream_chat_completion_baseline(
             logger.warning("[Baseline] Transcript download failed: %s", e)
             transcript_covers_prefix = False
 
-    # Append user message to transcript only if it was actually stored
-    if message and is_new_message:
+    # Append user message to transcript.
+    # Always append when the message is present and is from the user,
+    # even on duplicate-suppressed retries (is_new_message=False).
+    # The loaded transcript may be stale (uploaded before the previous
+    # attempt stored this message), so skipping it would leave the
+    # transcript without the user turn, creating a malformed
+    # assistant-after-assistant structure when the LLM reply is added.
+    if message and is_user_message:
         transcript_builder.append_user(content=message)
 
     # Generate title for new sessions
