@@ -383,6 +383,18 @@ async def record_token_usage(
         )
 
 
+class _UserNotFoundError(Exception):
+    """Raised when a user record is missing or has no subscription tier.
+
+    Used internally by ``_fetch_user_tier`` to signal a cache-miss condition:
+    by raising instead of returning ``DEFAULT_TIER``, we prevent the ``@cached``
+    decorator from storing the fallback value.  This avoids a race condition
+    where a non-existent user's DEFAULT_TIER is cached, then the user is
+    created with a higher tier but receives the stale cached FREE tier for
+    up to 5 minutes.
+    """
+
+
 @cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     """Fetch the user's rate-limit tier from the database (cached via Redis).
@@ -390,18 +402,16 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     Uses ``shared_cache=True`` so that tier changes propagate across all pods
     immediately when the cache entry is invalidated (via ``cache_delete``).
 
-    Only successful DB lookups are cached.  Raises on DB errors so the
-    ``@cached`` decorator does **not** store a fallback value.
-
-    Note: when the user is not found or ``subscriptionTier`` is ``None``,
-    ``DEFAULT_TIER`` (FREE) is returned and **cached**.  The Prisma schema
-    enforces ``@default(PRO)`` on the column, so ``None`` only occurs in
-    edge cases (e.g. partial row creation).
+    Only successful DB lookups of existing users with a valid tier are cached.
+    Raises ``_UserNotFoundError`` when the user is missing or has no tier, so
+    the ``@cached`` decorator does **not** store a fallback value.  This
+    prevents a race condition where a non-existent user's ``DEFAULT_TIER`` is
+    cached and then persists after the user is created with a higher tier.
     """
     user = await PrismaUser.prisma().find_unique(where={"id": user_id})
     if user and user.subscriptionTier:  # type: ignore[reportAttributeAccessIssue]
         return SubscriptionTier(user.subscriptionTier)  # type: ignore[reportAttributeAccessIssue]
-    return DEFAULT_TIER
+    raise _UserNotFoundError(user_id)
 
 
 async def get_user_tier(user_id: str) -> SubscriptionTier:

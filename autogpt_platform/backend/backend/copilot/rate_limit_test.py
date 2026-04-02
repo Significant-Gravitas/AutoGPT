@@ -503,6 +503,41 @@ class TestGetUserTier:
 
         assert tier == DEFAULT_TIER
 
+    @pytest.mark.asyncio
+    async def test_user_not_found_is_not_cached(self):
+        """Non-existent user should NOT cache DEFAULT_TIER.
+
+        Regression test: when ``get_user_tier`` is called before a user record
+        exists, the DEFAULT_TIER fallback must not be cached.  Otherwise, a
+        newly created user with a higher tier (e.g. PRO) would receive the
+        stale cached FREE tier for up to 5 minutes.
+        """
+        # First call: user does not exist yet
+        missing_prisma = AsyncMock()
+        missing_prisma.find_unique = AsyncMock(return_value=None)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=missing_prisma,
+        ):
+            tier1 = await get_user_tier(_USER)
+        assert tier1 == DEFAULT_TIER
+
+        # Second call: user now exists with PRO tier
+        mock_user = MagicMock()
+        mock_user.subscriptionTier = "PRO"
+        ok_prisma = AsyncMock()
+        ok_prisma.find_unique = AsyncMock(return_value=mock_user)
+
+        with patch(
+            "backend.copilot.rate_limit.PrismaUser.prisma",
+            return_value=ok_prisma,
+        ):
+            tier2 = await get_user_tier(_USER)
+
+        # Should get PRO — the not-found result was not cached
+        assert tier2 == SubscriptionTier.PRO
+
 
 # ---------------------------------------------------------------------------
 # set_user_tier
