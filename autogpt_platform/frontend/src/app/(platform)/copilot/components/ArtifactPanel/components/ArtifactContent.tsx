@@ -197,13 +197,11 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "html") {
-    // Inject Tailwind CDN so AI-generated HTML with Tailwind classes renders correctly
+    // Always inject Tailwind CDN so AI-generated HTML with Tailwind classes renders correctly
     const tailwindScript = `<script src="https://cdn.tailwindcss.com"></script>`;
-    const htmlWithTailwind = content.includes("tailwindcss.com")
-      ? content
-      : content.includes("<head>")
-        ? content.replace("<head>", `<head>${tailwindScript}`)
-        : `${tailwindScript}${content}`;
+    const htmlWithTailwind = content.includes("<head>")
+      ? content.replace("<head>", `<head>${tailwindScript}`)
+      : `${tailwindScript}${content}`;
     return (
       <iframe
         sandbox="allow-scripts"
