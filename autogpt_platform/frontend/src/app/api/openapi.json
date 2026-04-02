@@ -1605,7 +1605,7 @@
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Get User Rate Limit Tier",
-        "description": "Get a user's current rate-limit tier. Admin-only.",
+        "description": "Get a user's current rate-limit tier. Admin-only.\n\nReturns 404 if the user does not exist in the database.",
         "operationId": "getV2Get user rate limit tier",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

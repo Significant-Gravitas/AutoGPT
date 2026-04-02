@@ -172,8 +172,16 @@ async def get_user_rate_limit_tier(
     user_id: str,
     admin_user_id: str = Security(get_user_id),
 ) -> UserTierResponse:
-    """Get a user's current rate-limit tier. Admin-only."""
+    """Get a user's current rate-limit tier. Admin-only.
+
+    Returns 404 if the user does not exist in the database.
+    """
     logger.info("Admin %s checking tier for user %s", admin_user_id, user_id)
+
+    resolved_email = await get_user_email_by_id(user_id)
+    if resolved_email is None:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+
     tier = await get_user_tier(user_id)
     return UserTierResponse(user_id=user_id, tier=tier)
 

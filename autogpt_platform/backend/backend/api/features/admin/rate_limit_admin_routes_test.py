@@ -277,6 +277,11 @@ def test_get_user_tier(
 ) -> None:
     """Test getting a user's rate-limit tier."""
     mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=_TARGET_EMAIL,
+    )
+    mocker.patch(
         f"{_MOCK_MODULE}.get_user_tier",
         new_callable=AsyncMock,
         return_value=SubscriptionTier.PRO,
@@ -290,11 +295,27 @@ def test_get_user_tier(
     assert data["tier"] == "PRO"
 
 
+def test_get_user_tier_user_not_found(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that getting tier for a non-existent user returns 404."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.get("/admin/rate_limit/tier", params={"user_id": target_user_id})
+
+    assert response.status_code == 404
+
+
 def test_set_user_tier(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
 ) -> None:
-    """Test setting a user's rate-limit tier."""
+    """Test setting a user's rate-limit tier (upgrade)."""
     mock_set = mocker.patch(
         f"{_MOCK_MODULE}.set_user_tier",
         new_callable=AsyncMock,
@@ -310,6 +331,33 @@ def test_set_user_tier(
     assert data["user_id"] == target_user_id
     assert data["tier"] == "ENTERPRISE"
     mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.ENTERPRISE)
+
+
+def test_set_user_tier_downgrade(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test downgrading a user's tier from PRO to FREE."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_tier",
+        new_callable=AsyncMock,
+        return_value=SubscriptionTier.PRO,
+    )
+    mock_set = mocker.patch(
+        f"{_MOCK_MODULE}.set_user_tier",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "FREE"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == target_user_id
+    assert data["tier"] == "FREE"
+    mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.FREE)
 
 
 def test_set_user_tier_invalid_tier(
@@ -439,3 +487,11 @@ def test_search_users_empty_results(
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_search_users_requires_admin_role(mock_jwt_user) -> None:
+    """Test that the search_users endpoint requires admin role."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+
+    response = client.get("/admin/rate_limit/search_users", params={"query": "test"})
+    assert response.status_code == 403
