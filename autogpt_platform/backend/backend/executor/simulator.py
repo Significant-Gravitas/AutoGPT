@@ -431,10 +431,15 @@ async def simulate_block(
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
 
-        # Yield only pins that have meaningful values
+        # Yield only pins present in the LLM response with meaningful values.
+        # We skip None and empty strings but preserve valid falsy values
+        # like False, 0, and [].
         for pin_name in output_properties:
-            value = parsed.get(pin_name)
-            if value is not None and value != "":
-                yield pin_name, value
+            if pin_name not in parsed:
+                continue
+            value = parsed[pin_name]
+            if value is None or value == "":
+                continue
+            yield pin_name, value
     except (RuntimeError, ValueError) as e:
         yield "error", str(e)

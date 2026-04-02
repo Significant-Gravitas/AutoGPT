@@ -427,6 +427,33 @@ class TestSimulateBlockPassthrough:
             assert "error" not in outputs
 
     @pytest.mark.asyncio
+    async def test_generic_block_preserves_falsy_values(self) -> None:
+        """Valid falsy values like False, 0, and [] must be yielded, not dropped."""
+        block = _make_block(
+            output_schema={
+                "properties": {
+                    "flag": {"type": "boolean"},
+                    "count": {"type": "integer"},
+                    "items": {"type": "array"},
+                },
+                "required": ["flag", "count", "items"],
+            }
+        )
+
+        with patch(
+            "backend.executor.simulator._call_llm_for_simulation",
+            new_callable=AsyncMock,
+            return_value={"flag": False, "count": 0, "items": []},
+        ):
+            outputs: dict[str, Any] = {}
+            async for name, data in simulate_block(block, {"query": "test"}):
+                outputs[name] = data
+
+            assert outputs["flag"] is False
+            assert outputs["count"] == 0
+            assert outputs["items"] == []
+
+    @pytest.mark.asyncio
     async def test_llm_failure_yields_error(self) -> None:
         """When LLM fails, should yield an error tuple."""
         block = _make_block()

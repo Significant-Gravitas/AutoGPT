@@ -487,17 +487,22 @@ async def test_execute_block_dry_run_simulator_error_returns_error_response():
 
 
 def test_prepare_dry_run_orchestrator_block():
-    """prepare_dry_run caps iterations but keeps the user's model."""
+    """prepare_dry_run caps iterations and overrides model to simulation model."""
     from backend.blocks.orchestrator import OrchestratorBlock
 
     block = OrchestratorBlock()
     input_data = {"prompt": "hello", "model": "gpt-4o", "agent_mode_max_iterations": 10}
-    result = prepare_dry_run(block, input_data)
+    with patch(
+        "backend.executor.simulator._get_platform_openrouter_key",
+        return_value="sk-or-test-key",
+    ):
+        result = prepare_dry_run(block, input_data)
 
     assert result is not None
-    # Model is NOT swapped -- the user's own model/credentials are preserved.
-    assert result["model"] == "gpt-4o"
+    # Model is overridden to the simulation model (not the user's model).
+    assert result["model"] != "gpt-4o"
     assert result["agent_mode_max_iterations"] == 1
+    assert result["_dry_run_api_key"] == "sk-or-test-key"
     # Original input_data should not be mutated.
     assert input_data["model"] == "gpt-4o"
 
