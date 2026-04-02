@@ -69,6 +69,66 @@ def test_get_logs_success(
     assert data["pagination"]["total_items"] == 0
 
 
+def test_get_dashboard_with_filters(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_dashboard = AsyncMock(
+        return_value=AsyncMock(
+            by_provider=[],
+            by_user=[],
+            total_cost_microdollars=0,
+            total_requests=0,
+            total_users=0,
+            model_dump=lambda **_: {
+                "by_provider": [],
+                "by_user": [],
+                "total_cost_microdollars": 0,
+                "total_requests": 0,
+                "total_users": 0,
+            },
+        )
+    )
+    mocker.patch(
+        "backend.api.features.admin.platform_cost_routes.get_platform_cost_dashboard",
+        mock_dashboard,
+    )
+
+    response = client.get(
+        "/admin/platform_costs/dashboard",
+        params={
+            "start": "2026-01-01T00:00:00",
+            "end": "2026-04-01T00:00:00",
+            "provider": "openai",
+            "user_id": "test-user-123",
+        },
+    )
+    assert response.status_code == 200
+    mock_dashboard.assert_called_once()
+    call_kwargs = mock_dashboard.call_args.kwargs
+    assert call_kwargs["provider"] == "openai"
+    assert call_kwargs["user_id"] == "test-user-123"
+    assert call_kwargs["start"] is not None
+    assert call_kwargs["end"] is not None
+
+
+def test_get_logs_with_pagination(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.admin.platform_cost_routes.get_platform_cost_logs",
+        AsyncMock(return_value=([], 0)),
+    )
+
+    response = client.get(
+        "/admin/platform_costs/logs",
+        params={"page": 2, "page_size": 25, "provider": "anthropic"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pagination"]["current_page"] == 2
+    assert data["pagination"]["page_size"] == 25
+
+
 def test_get_dashboard_requires_admin() -> None:
     app.dependency_overrides.clear()
     response = client.get("/admin/platform_costs/dashboard")
