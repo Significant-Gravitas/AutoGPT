@@ -95,7 +95,7 @@ export function CredentialsInput({
     handleDeleteConfirm,
     credentialToDelete,
     setCredentialToDelete,
-    deleteCredentialsMutation,
+    isDeletingCredential,
   } = hookData;
 
   const displayName = toDisplayName(provider);
@@ -202,7 +202,7 @@ export function CredentialsInput({
 
           <DeleteConfirmationModal
             credentialToDelete={credentialToDelete}
-            isDeleting={deleteCredentialsMutation.isPending}
+            isDeleting={isDeletingCredential}
             onClose={() => setCredentialToDelete(null)}
             onConfirm={handleDeleteConfirm}
           />

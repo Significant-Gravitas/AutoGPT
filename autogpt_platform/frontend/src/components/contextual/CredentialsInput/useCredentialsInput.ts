@@ -1,10 +1,10 @@
-import { useDeleteV1DeleteCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
 } from "@/lib/autogpt-server-api/types";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { postV2InitiateOauthLoginForAnMcpServer } from "@/app/api/__generated__/endpoints/mcp/mcp";
 import {
   OAUTH_ERROR_FLOW_CANCELED,
@@ -12,7 +12,6 @@ import {
   OAUTH_ERROR_WINDOW_CLOSED,
   openOAuthPopup,
 } from "@/lib/oauth-popup";
-import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   countSupportedTypes,
@@ -61,10 +60,10 @@ export function useCredentialsInput({
   } | null>(null);
 
   const api = useBackendAPI();
-  const queryClient = useQueryClient();
   const credentials = useCredentials(schema, siblingInputs);
   const hasAttemptedAutoSelect = useRef(false);
   const oauthAbortRef = useRef<((reason?: string) => void) | null>(null);
+  const [isDeletingCredential, setIsDeletingCredential] = useState(false);
 
   // Clean up on unmount
   useEffect(() => {
@@ -72,23 +71,6 @@ export function useCredentialsInput({
       oauthAbortRef.current?.();
     };
   }, []);
-
-  const deleteCredentialsMutation = useDeleteV1DeleteCredentials({
-    mutation: {
-      onSuccess: () => {
-        queryClient.invalidateQueries({
-          queryKey: ["/api/integrations/credentials"],
-        });
-        queryClient.invalidateQueries({
-          queryKey: [`/api/integrations/${credentials?.provider}/credentials`],
-        });
-        setCredentialToDelete(null);
-        if (selectedCredential?.id === credentialToDelete?.id) {
-          onSelectCredential(undefined);
-        }
-      },
-    },
-  });
 
   useEffect(() => {
     if (onLoaded) {
@@ -318,12 +300,44 @@ export function useCredentialsInput({
     setCredentialToDelete(credential);
   }
 
-  function handleDeleteConfirm() {
-    if (credentialToDelete && credentials) {
-      deleteCredentialsMutation.mutate({
-        provider: credentials.provider,
-        credId: credentialToDelete.id,
+  async function handleDeleteConfirm(force: boolean = false) {
+    if (
+      !credentialToDelete ||
+      !credentials ||
+      !("deleteCredentials" in credentials)
+    )
+      return;
+
+    setIsDeletingCredential(true);
+    try {
+      const result = await credentials.deleteCredentials(
+        credentialToDelete.id,
+        force,
+      );
+
+      if (result.deleted) {
+        if (selectedCredential?.id === credentialToDelete.id) {
+          onSelectCredential(undefined);
+        }
+        setCredentialToDelete(null);
+      } else if ("need_confirmation" in result && result.need_confirmation) {
+        toast({
+          title: "Credential is in use",
+          description: result.message,
+          variant: "destructive",
+          duration: 8000,
+        });
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong";
+      toast({
+        title: "Failed to delete credential",
+        description: message,
+        variant: "destructive",
       });
+    } finally {
+      setIsDeletingCredential(false);
     }
   }
 
@@ -350,7 +364,7 @@ export function useCredentialsInput({
     isOAuth2FlowInProgress,
     cancelOAuthFlow,
     credentialToDelete,
-    deleteCredentialsMutation,
+    isDeletingCredential,
     actionButtonText: getActionButtonText(
       supportsOAuth2,
       supportsApiKey,
