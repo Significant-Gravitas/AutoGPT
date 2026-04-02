@@ -240,3 +240,54 @@ class TestBuildSdkEnvModePriority:
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
         }
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_CODE_TMPDIR integration
+# ---------------------------------------------------------------------------
+
+
+class TestClaudeCodeTmpdir:
+    """Verify build_sdk_env() sets CLAUDE_CODE_TMPDIR from *sdk_cwd*."""
+
+    def test_tmpdir_set_when_sdk_cwd_is_truthy(self):
+        """CLAUDE_CODE_TMPDIR is set to sdk_cwd when sdk_cwd is truthy."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(sdk_cwd="/tmp/copilot-workspace")
+
+        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/copilot-workspace"
+
+    def test_tmpdir_not_set_when_sdk_cwd_is_none(self):
+        """CLAUDE_CODE_TMPDIR is NOT in the env when sdk_cwd is None."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(sdk_cwd=None)
+
+        assert "CLAUDE_CODE_TMPDIR" not in result
+
+    def test_tmpdir_not_set_when_sdk_cwd_is_empty_string(self):
+        """CLAUDE_CODE_TMPDIR is NOT in the env when sdk_cwd is empty string."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(sdk_cwd="")
+
+        assert "CLAUDE_CODE_TMPDIR" not in result
+
+    @patch("backend.copilot.sdk.env.validate_subscription")
+    def test_tmpdir_set_in_subscription_mode(self, mock_validate):
+        """CLAUDE_CODE_TMPDIR is set even in subscription mode."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(sdk_cwd="/tmp/sub-workspace")
+
+        assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/sub-workspace"
+        assert result["ANTHROPIC_API_KEY"] == ""
