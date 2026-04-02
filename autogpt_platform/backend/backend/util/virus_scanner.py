@@ -30,7 +30,7 @@ class VirusScanResult(BaseModel):
 
 class VirusScannerSettings(BaseSettings):
     # Tunables for the scanner layer (NOT the ClamAV daemon).
-    clamav_service_host: str = "localhost"
+    clamav_service_host: str = "clamav"
     clamav_service_port: int = 3310
     clamav_service_timeout: int = 60
     clamav_service_enabled: bool = True
