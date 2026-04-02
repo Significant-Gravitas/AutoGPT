@@ -8658,7 +8658,10 @@
             "format": "date-time",
             "title": "Created At"
           },
-          "user_id": { "type": "string", "title": "User Id" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
           "email": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Email"
@@ -8691,7 +8694,7 @@
           }
         },
         "type": "object",
-        "required": ["id", "created_at", "user_id", "block_name", "provider"],
+        "required": ["id", "created_at", "block_name", "provider"],
         "title": "CostLogRow"
       },
       "CountResponse": {
@@ -14898,7 +14901,10 @@
       },
       "UserCostSummary": {
         "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
           "email": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Email"
@@ -14919,7 +14925,6 @@
         },
         "type": "object",
         "required": [
-          "user_id",
           "total_cost_microdollars",
           "total_input_tokens",
           "total_output_tokens",
