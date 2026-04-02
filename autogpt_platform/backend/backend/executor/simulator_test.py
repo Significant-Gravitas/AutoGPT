@@ -272,7 +272,7 @@ class TestSimulateBlockPassthrough:
 
         outputs = []
         async for name, data in simulate_block(
-            block, {"placeholder_values": ["option1", "option2"]}
+            block, {"options": ["option1", "option2"]}
         ):
             outputs.append((name, data))
 
@@ -336,9 +336,9 @@ class TestSimulateBlockPassthrough:
         assert "name" not in output_names
 
     @pytest.mark.asyncio
-    async def test_input_block_no_value_no_name_empty_placeholders(self) -> None:
+    async def test_input_block_no_value_no_name_empty_options(self) -> None:
         """AgentInputBlock with value=None, name=None, and empty
-        placeholder_values list must not crash.
+        options list must not crash.
 
         When the ``name`` key is present but explicitly ``None``,
         ``dict.get("name", "sample input")`` returns ``None`` (the key
@@ -350,7 +350,7 @@ class TestSimulateBlockPassthrough:
 
         outputs = []
         async for name, data in simulate_block(
-            block, {"value": None, "name": None, "placeholder_values": []}
+            block, {"value": None, "name": None, "options": []}
         ):
             outputs.append((name, data))
 

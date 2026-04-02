@@ -72,7 +72,6 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
     dry_run: bool
-    simulation_context: dict[str, Any] | None = None
 
     @field_validator(
         "username_agent_slug",
@@ -477,7 +476,6 @@ class RunAgentTool(BaseTool):
         inputs: dict[str, Any],
         dry_run: bool,
         wait_for_result: int = 0,
-        simulation_context: dict[str, Any] | None = None,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id

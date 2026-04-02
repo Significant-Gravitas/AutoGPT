@@ -573,7 +573,7 @@ async def test_simulate_agent_dropdown_input_block_passthrough():
         {
             "value": "Option B",
             "name": "sev",
-            "placeholder_values": ["Option A", "Option B"],
+            "options": ["Option A", "Option B"],
         },
     ):
         outputs.append((name, data))

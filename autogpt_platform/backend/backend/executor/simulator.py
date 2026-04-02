@@ -404,7 +404,6 @@ def _default_for_input_result(result_schema: dict[str, Any], name: str) -> Any:
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
-    simulation_context: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
     """Simulate block execution using an LLM.
 
@@ -427,7 +426,9 @@ async def simulate_block(
             # then coerce to a type-appropriate fallback so typed subclasses
             # (e.g. AgentNumberInputBlock → int, AgentDateInputBlock → date)
             # don't fail validation with a plain string.
-            placeholder = input_data.get("placeholder_values")
+            placeholder = input_data.get("options") or input_data.get(
+                "placeholder_values"
+            )
             if placeholder and isinstance(placeholder, list) and placeholder:
                 value = placeholder[0]
             else:
