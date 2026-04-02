@@ -103,6 +103,7 @@ ToolName = Literal[
     "web_fetch",
     "write_workspace_file",
     # SDK built-ins
+    "Agent",
     "Edit",
     "Glob",
     "Grep",
