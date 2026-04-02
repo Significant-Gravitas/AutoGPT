@@ -156,17 +156,23 @@ def write_function():
 # format_function_def_for_openai
 # ---------------------------------------------------------------------------
 class TestFormatFunctionDefForOpenAI:
+    def _params(self, result):
+        """Extract parameters dict from FunctionDefinition."""
+        return result.get("parameters") or {}
+
     def test_basic_function(self, search_function):
         result = format_function_def_for_openai(search_function)
         assert result["name"] == "web_search"
-        assert result["description"] == "Search the web"
-        assert "properties" in result["parameters"]
-        assert "query" in result["parameters"]["properties"]
-        assert result["parameters"]["required"] == ["query"]
+        assert result.get("description") == "Search the web"
+        params = self._params(result)
+        assert "properties" in params
+        assert "query" in params["properties"]
+        assert params["required"] == ["query"]
 
     def test_multiple_required_params(self, write_function):
         result = format_function_def_for_openai(write_function)
-        assert set(result["parameters"]["required"]) == {"path", "content"}
+        params = self._params(result)
+        assert set(params["required"]) == {"path", "content"}
 
     def test_optional_params_not_in_required(self):
         fn = CompletionModelFunction(
@@ -182,17 +188,18 @@ class TestFormatFunctionDefForOpenAI:
             },
         )
         result = format_function_def_for_openai(fn)
-        assert result["parameters"]["required"] == ["required_param"]
+        assert self._params(result)["required"] == ["required_param"]
 
     def test_no_params(self):
         fn = CompletionModelFunction(name="noop", description="No-op", parameters={})
         result = format_function_def_for_openai(fn)
-        assert result["parameters"]["properties"] == {}
-        assert result["parameters"]["required"] == []
+        params = self._params(result)
+        assert params["properties"] == {}
+        assert params["required"] == []
 
     def test_parameters_type_is_object(self, search_function):
         result = format_function_def_for_openai(search_function)
-        assert result["parameters"]["type"] == "object"
+        assert self._params(result)["type"] == "object"
 
 
 # ---------------------------------------------------------------------------
@@ -512,7 +519,7 @@ class TestFormatParseErrors:
 # ---------------------------------------------------------------------------
 class TestCreateChatCompletion:
     def _make_completion_response(
-        self, content="Response", tool_calls=None, usage=None
+        self, content: str | None = "Response", tool_calls=None, usage=None
     ):
         """Build a mock ChatCompletion object."""
         message = MagicMock()

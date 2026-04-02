@@ -133,6 +133,7 @@ pytest-recording = "*"
 pytest-xdist = "*"
 mock = "^5.1.0"
 aiohttp-retry = "^2.9.1"
+pytest-rerunfailures = "^16.1"
 
 
 [tool.poetry.group.build]

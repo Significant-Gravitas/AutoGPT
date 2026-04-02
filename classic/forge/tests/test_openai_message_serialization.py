@@ -36,6 +36,7 @@ class TestToolCallArgumentsSerialization:
     def test_tool_call_arguments_are_dict_in_model(self):
         """Arguments are stored as dict internally."""
         msg = self._make_assistant_message_with_tool_calls({"path": "."})
+        assert msg.tool_calls is not None
         assert isinstance(msg.tool_calls[0].function.arguments, dict)
 
     def test_model_dump_serializes_arguments_as_dict_by_default(self):

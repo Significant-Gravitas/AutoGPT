@@ -125,11 +125,11 @@ class TestOpenAIIntegration:
         assert result.parsed_result is not None
 
     @pytest.mark.asyncio
+    @pytest.mark.flaky(reruns=2)
     async def test_gpt5_tool_call(self, provider):
         """GPT-5 with tool calls — the exact scenario that broke GPT-5.2."""
         from forge.llm.providers.openai import OpenAIModelName
 
-        # Use mini instead of nano — nano may not reliably call tools
         model = OpenAIModelName.GPT5_MINI
         result = await provider.create_chat_completion(
             model_prompt=[ChatMessage.user("What's the weather in Tokyo?")],

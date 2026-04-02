@@ -6,11 +6,15 @@ on:
     paths:
       - '.github/workflows/classic-forge-ci.yml'
       - 'classic/forge/**'
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
       - '.github/workflows/classic-forge-ci.yml'
       - 'classic/forge/**'
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
 
 concurrency:
   group: ${{ format('forge-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

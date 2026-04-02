@@ -8,6 +8,8 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - .github/workflows/classic-benchmark-ci.yml
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
@@ -15,6 +17,8 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - .github/workflows/classic-benchmark-ci.yml
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
 
 concurrency:
   group: ${{ format('benchmark-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

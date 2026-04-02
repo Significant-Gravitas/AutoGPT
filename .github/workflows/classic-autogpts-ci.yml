@@ -11,6 +11,8 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/direct_benchmark/**'
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
       - '!**/*.md'
   pull_request:
     branches: [ master, dev, release-* ]
@@ -19,6 +21,8 @@ on:
       - 'classic/original_autogpt/**'
       - 'classic/forge/**'
       - 'classic/direct_benchmark/**'
+      - 'classic/pyproject.toml'
+      - 'classic/poetry.lock'
       - '!**/*.md'
 
 defaults:
