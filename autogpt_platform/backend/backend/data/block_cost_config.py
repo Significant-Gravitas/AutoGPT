@@ -147,6 +147,9 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.KIMI_K2: 1,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
+    LlmModel.XIAOMI_MIMO_V2_PRO: 3,
+    LlmModel.XIAOMI_MIMO_V2_OMNI: 3,
+    LlmModel.XIAOMI_MIMO_V2_FLASH: 1,
     # v0 by Vercel models
     LlmModel.V0_1_5_MD: 1,
     LlmModel.V0_1_5_LG: 2,
