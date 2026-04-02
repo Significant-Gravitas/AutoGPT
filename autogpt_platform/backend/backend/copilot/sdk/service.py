@@ -2274,6 +2274,9 @@ async def stream_chat_completion_sdk(
                     retryable=True,
                 )
                 ended_with_stream_error = True
+                # _run_stream_attempt already yielded a StreamError to the
+                # client before raising _HandledStreamError — do NOT yield
+                # another one here or the client will see a duplicate.
                 break
             except Exception as e:
                 stream_err = e
