@@ -154,8 +154,9 @@ async def _search_library(
             session_id=session_id,
         )
 
+    truncation_notice: str | None = None
     if include_graph and agents:
-        await _enrich_agents_with_graph(agents, user_id)
+        truncation_notice = await _enrich_agents_with_graph(agents, user_id)
 
     if not agents:
         if not query:
@@ -190,13 +191,17 @@ async def _search_library(
     else:
         title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library for '{query}'"
 
+    message = (
+        "Found agents in the user's library. You can provide a link to view "
+        "an agent at: /library/agents/{agent_id}. Use agent_output to get "
+        "execution results, or run_agent to execute. Let the user know we can "
+        "create a custom agent for them based on their needs."
+    )
+    if truncation_notice:
+        message = f"{message}\n\nNote: {truncation_notice}"
+
     return AgentsFoundResponse(
-        message=(
-            "Found agents in the user's library. You can provide a link to view "
-            "an agent at: /library/agents/{agent_id}. Use agent_output to get "
-            "execution results, or run_agent to execute. Let the user know we can "
-            "create a custom agent for them based on their needs."
-        ),
+        message=message,
         title=title,
         agents=agents,
         count=len(agents),
@@ -210,21 +215,26 @@ _MAX_GRAPH_FETCHES = 10
 _GRAPH_FETCH_TIMEOUT = 15  # seconds
 
 
-async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> None:
+async def _enrich_agents_with_graph(
+    agents: list[AgentInfo], user_id: str
+) -> str | None:
     """Fetch and attach full Graph (nodes + links) to each agent in-place.
 
     Only the first ``_MAX_GRAPH_FETCHES`` agents with a ``graph_id`` are
-    enriched.  If some agents are skipped, a warning is logged so callers
-    are aware of the truncation.
+    enriched.  If some agents are skipped, a truncation notice is returned
+    so the caller can surface it to the copilot.
 
     Graphs are fetched with ``for_export=True`` so that credentials, API keys,
     and other secrets in ``input_default`` are stripped before the data reaches
     the LLM context.
+
+    Returns a truncation notice string when some agents were skipped, or
+    ``None`` when all eligible agents were enriched.
     """
     with_graph_id = [a for a in agents if a.graph_id]
     fetchable = with_graph_id[:_MAX_GRAPH_FETCHES]
     if not fetchable:
-        return
+        return None
 
     gdb = graph_db()
 
@@ -252,8 +262,6 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
         logger.warning(
             "include_graph: timed out after %ds fetching graphs", _GRAPH_FETCH_TIMEOUT
         )
-        # Clear partially-enriched graphs so callers see consistent state
-        # (all-or-nothing) rather than a mix of enriched and non-enriched agents.
         for a in fetchable:
             a.graph = None
 
@@ -267,6 +275,13 @@ async def _enrich_agents_with_graph(agents: list[AgentInfo], user_id: str) -> No
             _MAX_GRAPH_FETCHES,
             skipped,
         )
+        return (
+            f"Graph data included for {len(fetchable)} of "
+            f"{len(with_graph_id)} eligible agents (limit: {_MAX_GRAPH_FETCHES}). "
+            f"To fetch graphs for remaining agents, narrow your search to a "
+            f"specific agent by UUID."
+        )
+    return None
 
 
 def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:

@@ -20,10 +20,12 @@ or trigger. If so:
 
 ### Workflow for Creating/Editing Agents
 
-1. **If editing**: Call
-   `find_library_agent(query="<agent_id>", include_graph=true)` to fetch the
-   full graph structure (nodes + links). **Never edit blindly** — always
-   inspect the current graph first so you know exactly what to change.
+1. **If editing**: First narrow to the specific agent by UUID, then fetch its
+   graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
+   returns the full graph structure (nodes + links). **Never edit blindly** —
+   always inspect the current graph first so you know exactly what to change.
+   Avoid using `include_graph=true` with broad keyword searches, as fetching
+   multiple graphs at once is expensive and consumes LLM context budget.
 2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas.
