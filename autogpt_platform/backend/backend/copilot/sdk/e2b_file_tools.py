@@ -8,6 +8,7 @@ SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
+import asyncio
 import base64
 import hashlib
 import itertools
@@ -29,6 +30,12 @@ from backend.copilot.context import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Default number of lines returned by ``read_file`` when the caller does not
+# specify a limit.  Also used as the threshold in ``_bridge_to_sandbox`` to
+# decide whether the model is requesting the full file (and thus whether the
+# bridge copy is worthwhile).
+_DEFAULT_READ_LIMIT = 2000
 
 
 async def _check_sandbox_symlink_escape(
@@ -133,7 +140,7 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     """Read lines from a sandbox file, falling back to the local host for SDK-internal paths."""
     file_path: str = args.get("file_path", "")
     offset: int = max(0, int(args.get("offset", 0)))
-    limit: int = max(1, int(args.get("limit", 2000)))
+    limit: int = max(1, int(args.get("limit", _DEFAULT_READ_LIMIT)))
 
     if not file_path:
         return _mcp("file_path is required", error=True)
@@ -354,7 +361,7 @@ async def _bridge_to_sandbox(
     path to avoid collisions when different source files share the same
     basename (e.g. multiple ``result.json`` files).
     """
-    if offset != 0 or limit < 2000:
+    if offset != 0 or limit < _DEFAULT_READ_LIMIT:
         return None
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
@@ -369,8 +376,12 @@ async def _bridge_to_sandbox(
                 basename,
             )
             return None
-        with open(expanded, "rb") as fh:
-            raw_content = fh.read()
+
+        def _read_bytes() -> bytes:
+            with open(expanded, "rb") as fh:
+                return fh.read()
+
+        raw_content = await asyncio.to_thread(_read_bytes)
         try:
             text_content: str | None = raw_content.decode("utf-8")
         except UnicodeDecodeError:
@@ -387,7 +398,7 @@ async def _bridge_to_sandbox(
         )
         return sandbox_path
     except Exception:
-        logger.debug(
+        logger.warning(
             "[E2B] Failed to bridge SDK file to sandbox: %s",
             file_path,
             exc_info=True,

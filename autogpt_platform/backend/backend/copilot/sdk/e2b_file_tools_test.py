@@ -16,6 +16,7 @@ from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_proj
 from .e2b_file_tools import (
     _BRIDGE_SHELL_MAX_BYTES,
     _BRIDGE_SKIP_BYTES,
+    _DEFAULT_READ_LIMIT,
     _bridge_to_sandbox,
     _check_sandbox_symlink_escape,
     _read_local,
@@ -132,7 +133,7 @@ class TestReadLocal:
         )
         token = _current_project_dir.set(encoded)
         try:
-            result = _read_local(filepath, offset=0, limit=2000)
+            result = _read_local(filepath, offset=0, limit=_DEFAULT_READ_LIMIT)
             assert result["isError"] is False
             assert "line 1" in result["content"][0]["text"]
             assert "line 2" in result["content"][0]["text"]
@@ -152,7 +153,7 @@ class TestReadLocal:
             f.write('{"data": "test"}\n')
         token = _current_project_dir.set(encoded)
         try:
-            result = _read_local(filepath, offset=0, limit=2000)
+            result = _read_local(filepath, offset=0, limit=_DEFAULT_READ_LIMIT)
             assert result["isError"] is False
             assert "test" in result["content"][0]["text"]
         finally:
@@ -390,7 +391,9 @@ class TestBridgeToSandbox:
         f.write_text('{"ok": true}')
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
 
         expected = _expected_bridge_path(str(f))
         assert result == expected
@@ -406,7 +409,9 @@ class TestBridgeToSandbox:
         f.write_text("content")
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=10, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=10, limit=_DEFAULT_READ_LIMIT
+        )
 
         assert result is None
         sandbox.commands.run.assert_not_called()
@@ -414,7 +419,7 @@ class TestBridgeToSandbox:
 
     @pytest.mark.asyncio
     async def test_skip_when_limit_too_small(self, tmp_path):
-        """Bridging is skipped when limit < 2000 (partial read)."""
+        """Bridging is skipped when limit < _DEFAULT_READ_LIMIT (partial read)."""
         f = tmp_path / "data.txt"
         f.write_text("content")
         sandbox = _make_bridge_sandbox()
@@ -430,7 +435,7 @@ class TestBridgeToSandbox:
         sandbox = _make_bridge_sandbox()
 
         await _bridge_to_sandbox(
-            sandbox, str(tmp_path / "ghost.txt"), offset=0, limit=2000
+            sandbox, str(tmp_path / "ghost.txt"), offset=0, limit=_DEFAULT_READ_LIMIT
         )
 
         sandbox.commands.run.assert_not_called()
@@ -444,7 +449,9 @@ class TestBridgeToSandbox:
         sandbox = _make_bridge_sandbox()
         sandbox.commands.run.side_effect = RuntimeError("E2B timeout")
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
 
         assert result is None
 
@@ -455,7 +462,9 @@ class TestBridgeToSandbox:
         f.write_bytes(b"x" * (_BRIDGE_SHELL_MAX_BYTES + 1))
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
 
         expected = _expected_bridge_path(str(f), prefix="/home/user")
         assert result == expected
@@ -472,7 +481,9 @@ class TestBridgeToSandbox:
         f.write_bytes(binary_data)
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
 
         expected = _expected_bridge_path(str(f))
         assert result == expected
@@ -489,7 +500,9 @@ class TestBridgeToSandbox:
         f.write_bytes(binary_data)
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
 
         expected = _expected_bridge_path(str(f), prefix="/home/user")
         assert result == expected
@@ -509,7 +522,9 @@ class TestBridgeToSandbox:
             fh.write(b"\0")
         sandbox = _make_bridge_sandbox()
 
-        result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+        result = await _bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
 
         assert result is None
 
