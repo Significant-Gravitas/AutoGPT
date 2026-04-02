@@ -324,13 +324,15 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         max_iters = 1 if original != 0 else 0
         sim_model = _simulator_model()
 
+        # Keep the original credentials dict in input_data so the block's
+        # JSON schema validation passes (validate_data strips None values,
+        # making the field absent and failing the "required" check).
+        # The actual credentials are injected via extra_exec_kwargs in
+        # manager.py using _dry_run_api_key.
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
             "model": sim_model,
-            # Signal to manager.py that credentials should be skipped —
-            # the platform key is injected via _dry_run_credentials().
-            "credentials": None,
             "_dry_run_api_key": or_key,
         }
 

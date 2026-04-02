@@ -158,7 +158,9 @@ class TestPrepareDryRun:
         assert result["agent_mode_max_iterations"] == 1
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
-        assert result["credentials"] is None
+        # credentials left as-is so block schema validation passes —
+        # actual creds injected via extra_exec_kwargs in manager.py
+        assert "credentials" not in result
         assert result["_dry_run_api_key"] == "sk-or-test-key"
 
     def test_orchestrator_zero_stays_zero(self) -> None:
