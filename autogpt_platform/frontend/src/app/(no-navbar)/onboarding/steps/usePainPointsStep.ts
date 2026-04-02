@@ -32,7 +32,8 @@ export function usePainPointsStep() {
   const topIDs = getTopPickIDs(role);
   const hasSomethingElse = painPoints.includes("Something else");
   const canContinue =
-    painPoints.length > 0 && (!hasSomethingElse || otherPainPoint.trim());
+    painPoints.length > 0 &&
+    (!hasSomethingElse || Boolean(otherPainPoint.trim()));
 
   function handleLaunch() {
     if (canContinue) {

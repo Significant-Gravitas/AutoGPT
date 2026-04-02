@@ -306,6 +306,7 @@ class OnboardingStatusResponse(pydantic.BaseModel):
     summary="Check if onboarding is completed",
     tags=["onboarding", "public"],
     response_model=OnboardingStatusResponse,
+    dependencies=[Security(requires_user)],
 )
 async def is_onboarding_completed(
     user_id: Annotated[str, Security(get_user_id)],
