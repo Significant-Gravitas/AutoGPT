@@ -91,9 +91,9 @@ class TestResolveSandboxPath:
 # ---------------------------------------------------------------------------
 # _read_local — host filesystem reads with allowlist enforcement
 #
-# In E2B mode, _read_local only allows tool-results paths (via
-# is_allowed_local_path without sdk_cwd).  Regular files live on the
-# sandbox, not the host.
+# In E2B mode, _read_local only allows tool-results/tool-outputs paths
+# (via is_allowed_local_path without sdk_cwd).  Regular files live on
+# the sandbox, not the host.
 # ---------------------------------------------------------------------------
 
 
@@ -126,6 +126,25 @@ class TestReadLocal:
         finally:
             _current_project_dir.reset(token)
             os.unlink(filepath)
+
+    def test_read_tool_outputs_file(self):
+        """Reading a tool-outputs file should also succeed."""
+        encoded = "-tmp-copilot-e2b-test-read-outputs"
+        tool_outputs_dir = os.path.join(
+            SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-outputs"
+        )
+        os.makedirs(tool_outputs_dir, exist_ok=True)
+        filepath = os.path.join(tool_outputs_dir, "sdk-abc123.json")
+        with open(filepath, "w") as f:
+            f.write('{"data": "test"}\n')
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local(filepath, offset=0, limit=2000)
+            assert result["isError"] is False
+            assert "test" in result["content"][0]["text"]
+        finally:
+            _current_project_dir.reset(token)
+            shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
 
     def test_read_disallowed_path_blocked(self):
         """Reading /etc/passwd should be blocked by the allowlist."""

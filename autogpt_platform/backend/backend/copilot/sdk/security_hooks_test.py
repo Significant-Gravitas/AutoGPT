@@ -137,7 +137,7 @@ def test_read_tool_results_allowed():
 
 
 def test_read_claude_projects_settings_json_denied():
-    """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/ is."""
+    """SDK-internal artifacts like settings.json are NOT accessible — only tool-results/tool-outputs is."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/settings.json"
     token = _current_project_dir.set("-tmp-copilot-abc123")

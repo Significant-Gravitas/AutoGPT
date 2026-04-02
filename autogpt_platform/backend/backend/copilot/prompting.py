@@ -211,11 +211,16 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
-a local file under `~/.claude/projects/.../tool-results/`. To read these files,
-always use `Read` (NOT `bash_exec`, NOT `read_workspace_file`).
-These files are on the host filesystem — `bash_exec` runs in the sandbox and
-CANNOT access them. `read_workspace_file` reads from cloud workspace storage,
-where SDK tool-results are NOT stored.
+a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
+To read these files, use `Read` — it reads from the host filesystem and
+automatically copies the file into the sandbox at `/tmp/<filename>` so
+`bash_exec` can access it for further processing.
+
+### Large tool outputs saved to workspace
+When a tool output contains `<tool-output-truncated workspace_path="...">`, the
+full output is in workspace storage (NOT on the local filesystem). To access it:
+- Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
+- To process in the sandbox, use `read_workspace_file(path="...", save_to_path="/home/user/file.json")` first, then use `bash_exec` on the local copy.
 {_SHARED_TOOL_NOTES}{extra_notes}"""
 
 

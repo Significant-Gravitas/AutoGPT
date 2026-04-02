@@ -133,9 +133,16 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     if not file_path:
         return _mcp("file_path is required", error=True)
 
-    # SDK-internal paths (tool-results, ephemeral working dir) stay on the host.
+    # SDK-internal paths (tool-results/tool-outputs, ephemeral working dir)
+    # stay on the host.  When E2B is active, also copy the file into the
+    # sandbox so bash_exec can access it for further processing.
     if _is_allowed_local(file_path):
-        return _read_local(file_path, offset, limit)
+        result = _read_local(file_path, offset, limit)
+        if not result.get("isError"):
+            sandbox = _get_sandbox()
+            if sandbox is not None:
+                await _bridge_to_sandbox(sandbox, file_path, offset, limit)
+        return result
 
     result = _get_sandbox_and_path(file_path)
     if isinstance(result, dict):
@@ -300,6 +307,43 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
     output = (result.stdout or "").strip()
     return _mcp(output if output else "No matches found.")
+
+
+# Bridging: copy SDK-internal files into E2B sandbox
+
+
+async def _bridge_to_sandbox(
+    sandbox: Any, file_path: str, offset: int, limit: int
+) -> None:
+    """Best-effort copy of a host-side SDK file into the E2B sandbox.
+
+    When the model reads an SDK-internal file (e.g. tool-results), it often
+    wants to process the data with bash.  Copying the file into ``/tmp/``
+    under a stable name lets ``bash_exec`` access it without extra steps.
+
+    Only copies when offset=0 and limit is large enough to indicate the model
+    wants the full file.  Errors are logged but never propagated.
+    """
+    if offset != 0 or limit < 2000:
+        return
+    basename = os.path.basename(file_path)
+    sandbox_path = f"/tmp/{basename}"
+    try:
+        expanded = os.path.realpath(os.path.expanduser(file_path))
+        with open(expanded, "rb") as fh:
+            content = fh.read()
+        await _sandbox_write(
+            sandbox, sandbox_path, content.decode("utf-8", errors="replace")
+        )
+        logger.info(
+            "[E2B] Bridged SDK file to sandbox: %s -> %s", basename, sandbox_path
+        )
+    except Exception:
+        logger.debug(
+            "[E2B] Failed to bridge SDK file to sandbox: %s",
+            basename,
+            exc_info=True,
+        )
 
 
 # Local read (for SDK-internal paths)

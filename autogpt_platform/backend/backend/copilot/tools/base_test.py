@@ -67,7 +67,7 @@ class TestPersistAndSummarize:
         assert "<tool-output-truncated" in result
         assert "</tool-output-truncated>" in result
         assert "total_chars=200000" in result
-        assert 'path="tool-outputs/tc-123.json"' in result
+        assert 'workspace_path="tool-outputs/tc-123.json"' in result
         assert "read_workspace_file" in result
         # Middle-out sentinel from truncate()
         assert "omitted" in result

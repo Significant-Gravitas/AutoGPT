@@ -174,17 +174,19 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
         # Defence-in-depth: ensure project_dir didn't escape the base.
         if not project_dir.startswith(SDK_PROJECTS_DIR + os.sep):
             return False
-        # Only allow: <encoded-cwd>/<uuid>/tool-results/<file>
+        # Only allow: <encoded-cwd>/<uuid>/<tool-dir>/<file>
         # The SDK always creates a conversation UUID directory between
-        # the project dir and tool-results/.
+        # the project dir and the tool directory.
+        # Accept both "tool-results" (SDK's persisted outputs) and
+        # "tool-outputs" (alternate name used by some SDK versions).
         if resolved.startswith(project_dir + os.sep):
             relative = resolved[len(project_dir) + 1 :]
             parts = relative.split(os.sep)
-            # Require exactly: [<uuid>, "tool-results", <file>, ...]
+            # Require exactly: [<uuid>, "tool-results"|"tool-outputs", <file>, ...]
             if (
                 len(parts) >= 3
                 and _UUID_RE.match(parts[0])
-                and parts[1] == "tool-results"
+                and parts[1] in ("tool-results", "tool-outputs")
             ):
                 return True
 
