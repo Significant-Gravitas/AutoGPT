@@ -6,8 +6,21 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 
 from backend.util import json
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def server():  # type: ignore[override]
+    """No-op server stub — SDK tests don't need the full backend."""
+    return None
+
+
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+async def graph_cleanup():  # type: ignore[override]
+    """No-op graph cleanup stub."""
+    yield
 
 
 @pytest.fixture()

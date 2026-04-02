@@ -149,7 +149,8 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/...``.
+    - Files under ``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/...``
+      or ``tool-outputs/...``.
       The SDK nests tool-results under a conversation UUID directory;
       the UUID segment is validated with ``_UUID_RE``.
     """
@@ -178,7 +179,8 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
         # The SDK always creates a conversation UUID directory between
         # the project dir and the tool directory.
         # Accept both "tool-results" (SDK's persisted outputs) and
-        # "tool-outputs" (alternate name used by some SDK versions).
+        # "tool-outputs" (the model sometimes confuses workspace paths
+        # with filesystem paths and generates this variant).
         if resolved.startswith(project_dir + os.sep):
             relative = resolved[len(project_dir) + 1 :]
             parts = relative.split(os.sep)

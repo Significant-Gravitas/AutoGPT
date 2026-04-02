@@ -13,6 +13,9 @@ import pytest
 from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
 
 from .e2b_file_tools import (
+    _BRIDGE_SHELL_MAX_BYTES,
+    _BRIDGE_SKIP_BYTES,
+    _bridge_to_sandbox,
     _check_sandbox_symlink_escape,
     _read_local,
     _sandbox_write,
@@ -354,3 +357,107 @@ class TestSandboxWrite:
         encoded_in_cmd = call_args.split("echo ")[1].split(" |")[0].strip("'")
         decoded = base64.b64decode(encoded_in_cmd).decode()
         assert decoded == content
+
+
+# ---------------------------------------------------------------------------
+# _bridge_to_sandbox — copy SDK-internal files into E2B sandbox
+# ---------------------------------------------------------------------------
+
+
+def _make_bridge_sandbox() -> SimpleNamespace:
+    """Build a sandbox mock suitable for _bridge_to_sandbox tests."""
+    run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+    commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+    files = SimpleNamespace(write=AsyncMock())
+    return SimpleNamespace(commands=commands, files=files)
+
+
+class TestBridgeToSandbox:
+    @pytest.mark.asyncio
+    async def test_happy_path_small_file(self, tmp_path):
+        """A small file is bridged to /tmp/<basename> via _sandbox_write."""
+        f = tmp_path / "result.json"
+        f.write_text('{"ok": true}')
+        sandbox = _make_bridge_sandbox()
+
+        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        sandbox.commands.run.assert_called_once()
+        cmd = sandbox.commands.run.call_args[0][0]
+        assert "result.json" in cmd
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skip_when_offset_nonzero(self, tmp_path):
+        """Bridging is skipped when offset != 0 (partial read)."""
+        f = tmp_path / "data.txt"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+
+        await _bridge_to_sandbox(sandbox, str(f), offset=10, limit=2000)
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skip_when_limit_too_small(self, tmp_path):
+        """Bridging is skipped when limit < 2000 (partial read)."""
+        f = tmp_path / "data.txt"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+
+        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=100)
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_file_does_not_raise(self, tmp_path):
+        """Bridging a non-existent file logs but does not propagate errors."""
+        sandbox = _make_bridge_sandbox()
+
+        await _bridge_to_sandbox(
+            sandbox, str(tmp_path / "ghost.txt"), offset=0, limit=2000
+        )
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sandbox_write_failure_does_not_raise(self, tmp_path):
+        """If sandbox write fails, the error is swallowed (best-effort)."""
+        f = tmp_path / "data.txt"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+        sandbox.commands.run.side_effect = RuntimeError("E2B timeout")
+
+        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+    @pytest.mark.asyncio
+    async def test_large_file_uses_files_api(self, tmp_path):
+        """Files > 5 MB but <= 50 MB are written to /home/user/ via files.write."""
+        f = tmp_path / "big.json"
+        f.write_bytes(b"x" * (_BRIDGE_SHELL_MAX_BYTES + 1))
+        sandbox = _make_bridge_sandbox()
+
+        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        sandbox.files.write.assert_called_once()
+        call_args = sandbox.files.write.call_args[0]
+        assert call_args[0] == "/home/user/big.json"
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_very_large_file_skipped(self, tmp_path):
+        """Files > 50 MB are skipped entirely."""
+        f = tmp_path / "huge.bin"
+        # Create a sparse file to avoid actually writing 50 MB
+        with open(f, "wb") as fh:
+            fh.seek(_BRIDGE_SKIP_BYTES + 1)
+            fh.write(b"\0")
+        sandbox = _make_bridge_sandbox()
+
+        await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()

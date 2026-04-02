@@ -311,6 +311,13 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
 # Bridging: copy SDK-internal files into E2B sandbox
 
+# Files larger than this are written to /home/user/ via sandbox.files.write()
+# instead of /tmp/ via shell base64, to avoid shell argument length limits
+# and E2B command timeouts.
+_BRIDGE_SHELL_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+# Files larger than this are skipped entirely to avoid excessive transfer times.
+_BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
+
 
 async def _bridge_to_sandbox(
     sandbox: Any, file_path: str, offset: int, limit: int
@@ -318,23 +325,43 @@ async def _bridge_to_sandbox(
     """Best-effort copy of a host-side SDK file into the E2B sandbox.
 
     When the model reads an SDK-internal file (e.g. tool-results), it often
-    wants to process the data with bash.  Copying the file into ``/tmp/``
+    wants to process the data with bash.  Copying the file into the sandbox
     under a stable name lets ``bash_exec`` access it without extra steps.
 
     Only copies when offset=0 and limit is large enough to indicate the model
     wants the full file.  Errors are logged but never propagated.
+
+    Size handling:
+    - <= 5 MB: written to ``/tmp/<basename>`` via shell base64 (``_sandbox_write``).
+    - 5-50 MB: written to ``/home/user/<basename>`` via ``sandbox.files.write()``
+      to avoid shell argument length limits.
+    - > 50 MB: skipped entirely with a warning.
     """
     if offset != 0 or limit < 2000:
         return
     basename = os.path.basename(file_path)
-    sandbox_path = f"/tmp/{basename}"
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
+        file_size = os.path.getsize(expanded)
+        if file_size > _BRIDGE_SKIP_BYTES:
+            logger.warning(
+                "[E2B] Skipping bridge for large file (%d bytes): %s",
+                file_size,
+                basename,
+            )
+            return
         with open(expanded, "rb") as fh:
             content = fh.read()
-        await _sandbox_write(
-            sandbox, sandbox_path, content.decode("utf-8", errors="replace")
-        )
+        if file_size <= _BRIDGE_SHELL_MAX_BYTES:
+            sandbox_path = f"/tmp/{basename}"
+            await _sandbox_write(
+                sandbox, sandbox_path, content.decode("utf-8", errors="replace")
+            )
+        else:
+            sandbox_path = f"/home/user/{basename}"
+            await sandbox.files.write(
+                sandbox_path, content.decode("utf-8", errors="replace")
+            )
         logger.info(
             "[E2B] Bridged SDK file to sandbox: %s -> %s", basename, sandbox_path
         )

@@ -18,6 +18,18 @@ After `write_workspace_file`, embed the `download_url` in Markdown:
 - Image: `![chart](workspace://file_id#image/png)`
 - Video: `![recording](workspace://file_id#video/mp4)`
 
+### Handling binary/image data in tool outputs — CRITICAL
+When a tool output contains base64-encoded binary data (images, PDFs, etc.):
+1. **NEVER** try to inline or render the base64 content in your response.
+2. **Save** the data to workspace using `write_workspace_file` (pass the base64 data URI as content).
+3. **Show** the result via the workspace download URL in Markdown: `![image](workspace://file_id#image/png)`.
+
+### Passing large data between tools — CRITICAL
+When tool outputs produce large text that you need to feed into another tool:
+- **NEVER** copy-paste the full text into the next tool call argument.
+- **Save** the output to a file (workspace or local), then use `@@agptfile:` references.
+- This avoids token limits and ensures data integrity.
+
 ### File references — @@agptfile:
 Pass large file content to tools by reference: `@@agptfile:<uri>[<start>-<end>]`
 - `workspace://<file_id>` or `workspace:///<path>` — workspace files
@@ -138,6 +150,10 @@ parent autopilot handles orchestration.
 # E2B-only notes — E2B has full internet access so gh CLI works there.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
+### SDK tool-result files in E2B
+When you `Read` an SDK tool-result file, it is automatically copied into the
+sandbox at `/tmp/<filename>` so `bash_exec` can access it for further processing.
+
 ### GitHub CLI (`gh`) and git
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
@@ -212,9 +228,7 @@ Important files (code, configs, outputs) should be saved to workspace to ensure 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
 a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
-To read these files, use `Read` — it reads from the host filesystem and
-automatically copies the file into the sandbox at `/tmp/<filename>` so
-`bash_exec` can access it for further processing.
+To read these files, use `Read` — it reads from the host filesystem.
 
 ### Large tool outputs saved to workspace
 When a tool output contains `<tool-output-truncated workspace_path="...">`, the
