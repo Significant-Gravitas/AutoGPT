@@ -29,7 +29,7 @@ export function AskQuestionTool({ part }: Props) {
 
   function handleAnswers(answers: Record<string, string>) {
     if (!output || !isClarificationOutput(output)) return;
-    const questions = output.questions ?? [];
+    const questions = normalizeClarifyingQuestions(output.questions ?? []);
     const message = questions
       .map((q) => {
         const answer = answers[q.keyword] || "";
