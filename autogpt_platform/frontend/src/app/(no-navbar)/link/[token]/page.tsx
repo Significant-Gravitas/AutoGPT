@@ -50,24 +50,13 @@ export default function PlatformLinkPage() {
   }, [token, user, isUserLoading]);
 
   async function handleLink() {
-    if (!supabase) return;
-
     setState({ status: "linking" });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
 
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        setState({ status: "not-authenticated" });
-        return;
-      }
-
-      // The proxy injects auth from the server-side Supabase session,
+      // The proxy injects auth from the server-side Supabase session cookie,
       // so we don't need to send Authorization ourselves.
       const res = await fetch(
         `/api/proxy/api/platform-linking/tokens/${token}/confirm`,
