@@ -220,8 +220,8 @@ def _build_storage_supplement(
    - Files here **survive across sessions indefinitely**
 
 ### Moving files between storages
-- **{file_move_name_1_to_2}**: Copy to persistent workspace
-- **{file_move_name_2_to_1}**: Download for processing
+- **{file_move_name_1_to_2}**: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
+- **{file_move_name_2_to_1}**: `read_workspace_file(path="tool-outputs/data.json", save_to_path="/home/user/data.json")`
 
 ### File persistence
 Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
