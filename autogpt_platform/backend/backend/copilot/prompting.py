@@ -152,8 +152,8 @@ parent autopilot handles orchestration.
 _E2B_TOOL_NOTES = """
 ### SDK tool-result files in E2B
 When you `Read` an SDK tool-result file, it is automatically copied into the
-sandbox at `/tmp/<filename>` (or `/home/user/<filename>` for files >5 MB)
-so `bash_exec` can access it for further processing.
+sandbox so `bash_exec` can access it for further processing.
+The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
 - If the user has connected their GitHub account, both `gh` and `git` are
