@@ -10,7 +10,7 @@ Before starting the workflow below, check whether the user's goal is
 or trigger. If so:
 1. Call `find_block` with a query targeting the ambiguous dimension to
    discover what the platform actually supports.
-2. Ask the user **one concrete question** grounded in the discovered
+2. Call `ask_question` with a concrete question listing the discovered
    options (e.g. "The platform supports Gmail, Slack, and Google Docs —
    which should the agent use for delivery?").
 3. **Wait for the user's answer** before proceeding.
