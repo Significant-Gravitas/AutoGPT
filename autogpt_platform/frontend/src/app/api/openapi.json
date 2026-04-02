@@ -5669,7 +5669,12 @@
             "name": "token",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Token" }
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Token"
+            }
           }
         ],
         "responses": {
@@ -5706,7 +5711,12 @@
             "name": "token",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Token" }
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Token"
+            }
           }
         ],
         "responses": {
@@ -11705,7 +11715,8 @@
           "GITHUB",
           "LINEAR"
         ],
-        "title": "Platform"
+        "title": "Platform",
+        "description": "Supported platform types (mirrors Prisma PlatformType)."
       },
       "PlatformLinkInfo": {
         "properties": {
