@@ -538,34 +538,17 @@ async def _iter_sdk_messages(
                 pass
 
 
-def _normalize_model_name(raw_model: str) -> str:
-    """Normalize a model name for the current routing configuration.
-
-    Applies two transformations shared by both the primary and fallback
-    model resolution paths:
-
-    1. **Strip provider prefix** — OpenRouter-style names like
-       ``"anthropic/claude-opus-4.6"`` are reduced to ``"claude-opus-4.6"``.
-    2. **Dot-to-hyphen conversion** — when *not* routing through OpenRouter
-       the direct Anthropic API requires hyphen-separated versions
-       (``"claude-opus-4-6"``), so dots are replaced with hyphens.
-    """
-    model = raw_model
-    if "/" in model:
-        model = model.split("/", 1)[1]
-    # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
-    # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
-    # when NOT routing through OpenRouter.
-    if not config.openrouter_active:
-        model = model.replace(".", "-")
-    return model
-
-
 def _resolve_sdk_model() -> str | None:
     """Resolve the model name for the Claude Agent SDK CLI.
 
     Uses `config.claude_agent_model` if set, otherwise derives from
-    `config.model` via :func:`_normalize_model_name`.
+    `config.model` by stripping the OpenRouter provider prefix (e.g.,
+    `"anthropic/claude-opus-4.6"` → `"claude-opus-4-6"`).
+
+    OpenRouter uses dot-separated versions (`claude-opus-4.6`) while the
+    direct Anthropic API uses hyphen-separated versions (`claude-opus-4-6`).
+    Normalisation is only applied when the SDK will actually talk to
+    Anthropic directly (not through OpenRouter).
 
     When `use_claude_code_subscription` is enabled and no explicit
     `claude_agent_model` is set, returns `None` so the CLI uses the
@@ -575,18 +558,15 @@ def _resolve_sdk_model() -> str | None:
         return config.claude_agent_model
     if config.use_claude_code_subscription:
         return None
-    return _normalize_model_name(config.model)
-
-
-def _resolve_fallback_model() -> str | None:
-    """Resolve the fallback model name via :func:`_normalize_model_name`.
-
-    Returns ``None`` when no fallback is configured (empty string).
-    """
-    raw = config.claude_agent_fallback_model
-    if not raw:
-        return None
-    return _normalize_model_name(raw)
+    model = config.model
+    if "/" in model:
+        model = model.split("/", 1)[1]
+    # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
+    # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
+    # when NOT routing through OpenRouter.
+    if not config.openrouter_active:
+        model = model.replace(".", "-")
+    return model
 
 
 def _make_sdk_cwd(session_id: str) -> str:
@@ -1904,19 +1884,9 @@ async def stream_chat_completion_sdk(
         )
 
         # Fail fast when no API credentials are available at all.
-        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
-
-        # --- Security & isolation env vars (all auth modes) ---
-        # Route CLI temp files into the per-session workspace so they are
-        # isolated and cleaned up automatically.
-        if sdk_cwd:
-            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        # Prevent loading untrusted workspace .claude.md files, persisting
-        # prompt history, writing auto-memory, and non-essential traffic.
-        sdk_env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
-        sdk_env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
-        sdk_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-        sdk_env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        # sdk_cwd routes the CLI's temp dir into the per-session workspace
+        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id, sdk_cwd=sdk_cwd)
 
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
@@ -1946,29 +1916,10 @@ async def stream_chat_completion_sdk(
             allowed = get_copilot_tool_names(use_e2b=use_e2b)
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
-        # Flag set by _on_stderr when the SDK logs that it switched to the
-        # fallback model (e.g. on a 529 overloaded error).  Checked once per
-        # heartbeat cycle and emitted as a StreamStatus notification.
-        fallback_model_activated = False
-
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
-            nonlocal fallback_model_activated
             sid = session_id[:12] if session_id else "?"
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
-            # Detect SDK fallback-model activation.  The CLI logs a
-            # message containing "fallback" when it switches models
-            # after a 529/overloaded error.  Only match "fallback" —
-            # "overloaded" alone indicates a transient error, not that
-            # the SDK actually switched to the fallback model.
-            lower = line.lower()
-            if not fallback_model_activated and "fallback" in lower:
-                fallback_model_activated = True
-                logger.warning(
-                    "[SDK] [%s] Fallback model activated — primary model "
-                    "overloaded, switching to fallback",
-                    sid,
-                )
 
         sdk_options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
@@ -1979,15 +1930,6 @@ async def stream_chat_completion_sdk(
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
             "stderr": _on_stderr,
-            # --- P0 guardrails ---
-            # fallback_model: SDK auto-retries with this cheaper model on
-            # 529 (overloaded) errors, avoiding user-visible failures.
-            "fallback_model": _resolve_fallback_model(),
-            # max_turns: hard cap on agentic tool-use loops per query to
-            # prevent runaway execution from burning budget.
-            "max_turns": config.claude_agent_max_turns,
-            # max_budget_usd: per-query spend ceiling enforced by the CLI.
-            "max_budget_usd": config.claude_agent_max_budget_usd,
         }
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
@@ -2069,26 +2011,6 @@ async def stream_chat_completion_sdk(
         attempts_exhausted = False
         stream_err: Exception | None = None
 
-        # Transient retry helper — deduplicates the logic shared between
-        # _HandledStreamError and the generic except-Exception handler.
-        transient_retries = 0
-        max_transient_retries = config.claude_agent_max_transient_retries
-
-        def _next_transient_backoff() -> int | None:
-            """Return the next backoff delay in seconds, or ``None`` to surface the error.
-
-            Returns the backoff seconds if a retry should be attempted,
-            or ``None`` if retries are exhausted or events were already
-            yielded.  Mutates outer ``transient_retries`` via nonlocal.
-            """
-            nonlocal transient_retries
-            if events_yielded > 0:
-                return None
-            transient_retries += 1
-            if transient_retries > max_transient_retries:
-                return None
-            return 2 ** (transient_retries - 1)  # 1s, 2s, 4s, ...
-
         state = _RetryState(
             options=options,
             query_message=query_message,
@@ -2101,19 +2023,7 @@ async def stream_chat_completion_sdk(
             usage=_TokenUsage(),
         )
 
-        attempt = 0
-        _last_reset_attempt = -1
-        while attempt < _MAX_STREAM_ATTEMPTS:
-            # Reset transient retry counter per context-level attempt so
-            # each attempt (original, compacted, no-transcript) gets the
-            # full retry budget for transient errors.
-            # Only reset when the attempt number actually changes —
-            # transient retries `continue` back to the loop top without
-            # incrementing `attempt`, so resetting unconditionally would
-            # create an infinite retry loop.
-            if attempt != _last_reset_attempt:
-                transient_retries = 0
-                _last_reset_attempt = attempt
+        for attempt in range(_MAX_STREAM_ATTEMPTS):
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
             reset_stash_event()
@@ -2168,15 +2078,7 @@ async def stream_chat_completion_sdk(
                 state.usage.reset()
 
             pre_attempt_msg_count = len(session.messages)
-            # Snapshot transcript builder state — it maintains an
-            # independent _entries list from session.messages, so rolling
-            # back session.messages alone would leave duplicate entries
-            # from the failed attempt in the uploaded transcript.
-            pre_transcript_entries = list(state.transcript_builder._entries)
-            pre_transcript_uuid = state.transcript_builder._last_uuid
             events_yielded = 0
-            fallback_model_activated = False
-            fallback_notified = False
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
@@ -2192,24 +2094,9 @@ async def stream_chat_completion_sdk(
                             StreamToolInputStart,
                             StreamToolInputAvailable,
                             StreamToolOutputAvailable,
-                            # Transient StreamError and StreamStatus are
-                            # ephemeral notifications, not content.  Counting
-                            # them would prevent the backoff retry from firing
-                            # because _next_transient_backoff() returns None
-                            # when events_yielded > 0.
-                            StreamError,
-                            StreamStatus,
                         ),
                     ):
                         events_yielded += 1
-                    # Emit a one-time StreamStatus when the SDK switches
-                    # to the fallback model (detected via stderr).
-                    if fallback_model_activated and not fallback_notified:
-                        fallback_notified = True
-                        yield StreamStatus(
-                            message="Primary model overloaded — "
-                            "using fallback model for this request"
-                        )
                     yield event
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
@@ -2226,31 +2113,6 @@ async def stream_chat_completion_sdk(
                 # session messages and set the error flag — do NOT set
                 # stream_err so the post-loop code won't emit a
                 # duplicate StreamError.
-                session.messages = session.messages[:pre_attempt_msg_count]
-                state.transcript_builder._entries = pre_transcript_entries
-                state.transcript_builder._last_uuid = pre_transcript_uuid
-                # Check if this is a transient error we can retry with backoff.
-                if exc.code == "transient_api_error" or is_transient_api_error(
-                    str(exc)
-                ):
-                    backoff = _next_transient_backoff()
-                    if backoff is not None:
-                        logger.warning(
-                            "%s Transient error — retrying in %ds (%d/%d)",
-                            log_prefix,
-                            backoff,
-                            transient_retries,
-                            max_transient_retries,
-                        )
-                        yield StreamStatus(
-                            message=f"Connection interrupted, retrying in {backoff}s…"
-                        )
-                        await asyncio.sleep(backoff)
-                        state.adapter = SDKResponseAdapter(
-                            message_id=message_id, session_id=session_id
-                        )
-                        state.usage.reset()
-                        continue  # retry the same context-level attempt
                 logger.warning(
                     "%s Stream error handled in attempt "
                     "(attempt %d/%d, code=%s, events_yielded=%d)",
@@ -2260,6 +2122,7 @@ async def stream_chat_completion_sdk(
                     exc.code or "transient",
                     events_yielded,
                 )
+                session.messages = session.messages[:pre_attempt_msg_count]
                 # transcript_builder still contains entries from the aborted
                 # attempt that no longer match session.messages.  Skip upload
                 # so a future --resume doesn't replay rolled-back content.
@@ -2274,29 +2137,22 @@ async def stream_chat_completion_sdk(
                     retryable=True,
                 )
                 ended_with_stream_error = True
-                # _run_stream_attempt already yielded a StreamError to the
-                # client before raising _HandledStreamError — do NOT yield
-                # another one here or the client will see a duplicate.
                 break
             except Exception as e:
                 stream_err = e
                 is_context_error = _is_prompt_too_long(e)
-                is_transient = is_transient_api_error(str(e))
                 logger.warning(
                     "%s Stream error (attempt %d/%d, context_error=%s, "
-                    "transient=%s, events_yielded=%d): %s",
+                    "events_yielded=%d): %s",
                     log_prefix,
                     attempt + 1,
                     _MAX_STREAM_ATTEMPTS,
                     is_context_error,
-                    is_transient,
                     events_yielded,
                     stream_err,
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
-                state.transcript_builder._entries = pre_transcript_entries
-                state.transcript_builder._last_uuid = pre_transcript_uuid
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
@@ -2309,40 +2165,16 @@ async def stream_chat_completion_sdk(
                     skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
-                # Transient API errors (ECONNRESET, 429, 5xx) — retry
-                # with exponential backoff via the shared helper.
-                if is_transient:
-                    backoff = _next_transient_backoff()
-                    if backoff is not None:
-                        logger.warning(
-                            "%s Transient exception — retrying in %ds (%d/%d)",
-                            log_prefix,
-                            backoff,
-                            transient_retries,
-                            max_transient_retries,
-                        )
-                        yield StreamStatus(
-                            message=f"Connection interrupted, retrying "
-                            f"in {backoff}s…"
-                        )
-                        await asyncio.sleep(backoff)
-                        state.adapter = SDKResponseAdapter(
-                            message_id=message_id, session_id=session_id
-                        )
-                        state.usage.reset()
-                        continue  # retry same context-level attempt
-
                 if not is_context_error:
-                    # Non-context, non-transient errors (auth, fatal)
-                    # should not trigger compaction — surface immediately.
+                    # Non-context errors (network, auth, rate-limit) should
+                    # not trigger compaction — surface the error immediately.
                     skip_transcript_upload = True
                     ended_with_stream_error = True
                     break
-                attempt += 1  # advance to next context-level attempt
                 continue
         else:
-            # while condition became False — all attempts exhausted without
-            # break.  skip_transcript_upload is already set by _reduce_context
+            # All retry attempts exhausted (loop ended without break)
+            # skip_transcript_upload is already set by _reduce_context
             # when the transcript was dropped (transcript_lost=True).
             ended_with_stream_error = True
             attempts_exhausted = True

@@ -33,6 +33,7 @@ import {
 } from "@/components/contextual/OutputRenderers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import {
+  TOOL_TASK_OUTPUT,
   type ToolCategory,
   extractToolName,
   getAnimationText,
@@ -573,7 +574,7 @@ function getAgentAccordionData(
   >;
   const isAsync = output.isAsync === true || output.status === "async_launched";
 
-  if (toolName === "TaskOutput") {
+  if (toolName === TOOL_TASK_OUTPUT) {
     const status = getStringField(output, "retrieval_status");
     const task = output.task;
     return {
@@ -585,7 +586,7 @@ function getAgentAccordionData(
       ) : (
         <ContentMessage>
           {status === "timeout"
-            ? "The agent hasn't finished yet. The model may poll again."
+            ? "The agent hasn't finished yet. Results will appear automatically when it's done."
             : "No result available."}
         </ContentMessage>
       ),
