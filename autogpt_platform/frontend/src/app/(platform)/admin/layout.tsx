@@ -1,5 +1,11 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
-import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import {
+  Users,
+  DollarSign,
+  UserSearch,
+  FileText,
+  ServerCrash,
+} from "lucide-react";
 import { Gauge } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
@@ -26,6 +32,11 @@ const sidebarLinkGroups = [
         text: "Rate Limits",
         href: "/admin/rate-limits",
         icon: <Gauge className="h-6 w-6" />,
+      },
+      {
+        text: "Platform Costs",
+        href: "/admin/platform-costs",
+        icon: <ServerCrash className="h-6 w-6" />,
       },
       {
         text: "Execution Analytics",

@@ -54,6 +54,8 @@ import type {
   User,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
+  PlatformCostDashboard,
+  PlatformCostLogsResponse,
   WebSocketNotification,
 } from "./types";
 
@@ -478,6 +480,26 @@ export default class BackendAPI {
     transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
+  }
+
+  getPlatformCostDashboard(params?: {
+    start?: string;
+    end?: string;
+    provider?: string;
+    user_id?: string;
+  }): Promise<PlatformCostDashboard> {
+    return this._get("/platform-costs/admin/platform_costs/dashboard", params);
+  }
+
+  getPlatformCostLogs(params?: {
+    start?: string;
+    end?: string;
+    provider?: string;
+    user_id?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<PlatformCostLogsResponse> {
+    return this._get("/platform-costs/admin/platform_costs/logs", params);
   }
 
   ////////////////////////////////////////

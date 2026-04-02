@@ -66,6 +66,8 @@ model User {
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
 
+  PlatformCostLogs PlatformCostLog[]
+
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
@@ -797,6 +799,41 @@ model CreditRefundRequest {
   status CreditRefundRequestStatus @default(PENDING)
 
   @@index([userId, transactionKey])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////   Platform Cost Tracking TABLES    //////////////
+////////////////////////////////////////////////////////////
+
+model PlatformCostLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId       String
+  User         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  graphExecId  String?
+  nodeExecId   String?
+  graphId      String?
+  nodeId       String?
+  blockId      String
+  blockName    String
+  provider     String
+  credentialId String
+
+  // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
+  costMicrodollars Int?
+
+  inputTokens  Int?
+  outputTokens Int?
+  dataSize     Int? // bytes
+  duration     Float? // seconds
+  model        String?
+  metadata     Json?
+
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
+  @@index([graphExecId])
 }
 
 ////////////////////////////////////////////////////////////
