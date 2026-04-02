@@ -206,7 +206,7 @@ export function CredentialsInput({
             warningMessage={deleteWarningMessage}
             isDeleting={isDeletingCredential}
             onClose={() => setCredentialToDelete(null)}
-            onConfirm={handleDeleteConfirm}
+            onConfirm={() => handleDeleteConfirm(false)}
             onForceConfirm={() => handleDeleteConfirm(true)}
           />
         </>
