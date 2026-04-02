@@ -11,7 +11,11 @@ import pytest
 
 from backend.copilot.context import _current_project_dir
 
-from .security_hooks import _validate_tool_access, _validate_user_isolation
+from .security_hooks import (
+    _validate_tool_access,
+    _validate_user_isolation,
+    create_security_hooks,
+)
 
 SDK_CWD = "/tmp/copilot-abc123"
 
@@ -220,8 +224,6 @@ def test_bash_builtin_blocked_message_clarity():
 @pytest.fixture()
 def _hooks():
     """Create security hooks and return (pre, post, post_failure) handlers."""
-    from .security_hooks import create_security_hooks
-
     hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
     pre = hooks["PreToolUse"][0].hooks[0]
     post = hooks["PostToolUse"][0].hooks[0]

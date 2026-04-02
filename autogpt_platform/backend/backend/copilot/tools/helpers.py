@@ -114,6 +114,7 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
