@@ -160,22 +160,24 @@ async def _baseline_llm_caller(
                     if tc.function and tc.function.arguments:
                         entry["arguments"] += tc.function.arguments
 
-        # Extract OpenRouter cost from response headers
-        try:
-            raw_resp = getattr(response, "response", None)
-            if raw_resp and hasattr(raw_resp, "headers"):
-                cost_header = raw_resp.headers.get("x-total-cost")
-                if cost_header:
-                    state.cost_usd = float(cost_header)
-        except (ValueError, AttributeError):
-            pass
-
         # Close text block
         if state.text_started:
             state.pending_events.append(StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
     finally:
+        # Extract OpenRouter cost from response headers (in finally so we
+        # capture cost even when the stream errors mid-way — we already paid).
+        # Accumulate across multi-round tool-calling turns.
+        try:
+            raw_resp = getattr(response, "response", None)
+            if raw_resp and hasattr(raw_resp, "headers"):
+                cost_header = raw_resp.headers.get("x-total-cost")
+                if cost_header:
+                    state.cost_usd = (state.cost_usd or 0.0) + float(cost_header)
+        except (ValueError, AttributeError, UnboundLocalError):
+            pass
+
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
