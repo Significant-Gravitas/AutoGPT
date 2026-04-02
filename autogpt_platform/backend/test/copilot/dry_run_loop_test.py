@@ -42,6 +42,7 @@ from typing import Any, cast
 
 import pytest
 from openai.types.chat import ChatCompletionToolParam
+from pydantic import ValidationError
 
 from backend.copilot.prompting import get_sdk_supplement
 from backend.copilot.service import DEFAULT_SYSTEM_PROMPT
@@ -254,16 +255,12 @@ class TestRunAgentInputModel:
     and validate properly.
     """
 
-    def test_dry_run_accepts_explicit_false(self):
-        """dry_run=False must be accepted when provided explicitly."""
-        model = RunAgentInput(username_agent_slug="user/agent", dry_run=False)
-        assert model.dry_run is False
-
     def test_dry_run_accepts_true(self):
         model = RunAgentInput(username_agent_slug="user/agent", dry_run=True)
         assert model.dry_run is True
 
     def test_dry_run_accepts_false(self):
+        """dry_run=False must be accepted when provided explicitly."""
         model = RunAgentInput(username_agent_slug="user/agent", dry_run=False)
         assert model.dry_run is False
 
@@ -290,7 +287,7 @@ class TestRunAgentInputModel:
 
     def test_wait_for_result_upper_bound(self):
         """wait_for_result is bounded at 300 seconds (ge=0, le=300)."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             RunAgentInput(
                 username_agent_slug="user/agent",
                 dry_run=True,
