@@ -25,11 +25,7 @@ from forge.llm.providers.anthropic import (
 from forge.llm.providers.multi import CHAT_MODELS
 from forge.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIModelName
 from forge.llm.providers.schema import (
-    AssistantChatMessage,
-    AssistantFunctionCall,
-    AssistantToolCall,
     ChatMessage,
-    ChatModelInfo,
     CompletionModelFunction,
     ModelProviderBudget,
     ModelProviderConfiguration,

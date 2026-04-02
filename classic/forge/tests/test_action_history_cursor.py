@@ -9,8 +9,6 @@ second task after finishing the first one.
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from forge.components.action_history.model import EpisodicActionHistory
 
 

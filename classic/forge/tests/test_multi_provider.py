@@ -1,12 +1,12 @@
 """Tests for MultiProvider: routing, caching, credentials, model registry."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from forge.llm.providers.anthropic import ANTHROPIC_CHAT_MODELS, AnthropicModelName
-from forge.llm.providers.groq import GROQ_CHAT_MODELS, GroqModelName
-from forge.llm.providers.multi import CHAT_MODELS, ModelName, MultiProvider
+from forge.llm.providers.anthropic import AnthropicModelName
+from forge.llm.providers.groq import GroqModelName
+from forge.llm.providers.multi import CHAT_MODELS, MultiProvider
 from forge.llm.providers.openai import OPEN_AI_CHAT_MODELS, OpenAIModelName
 from forge.llm.providers.schema import (
     ChatMessage,

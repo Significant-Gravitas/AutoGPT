@@ -1,8 +1,8 @@
 """Tests for OpenAI base provider: message prep, tool parsing, retry, cost tracking."""
 
 import json
-from typing import Any, Optional, Sequence
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Any, Optional
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -816,8 +816,7 @@ class TestCountMessageTokens:
     def test_list_of_messages_concatenated(self, provider):
         msgs = [ChatMessage.user("hello"), ChatMessage.system("be helpful")]
         count = provider.count_message_tokens(msgs, TEST_MODEL)
-        # "USER: hello\n\nSYSTEM: be helpful" = ["USER:", "hello", "SYSTEM:", "be", "helpful"]
-        # But \n\n creates an empty split element too - just verify it's more than one message
+        # Concatenated messages should have more tokens than a single one
         single = provider.count_message_tokens(msgs[0], TEST_MODEL)
         assert count > single
 

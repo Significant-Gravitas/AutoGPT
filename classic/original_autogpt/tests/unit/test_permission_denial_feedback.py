@@ -10,11 +10,11 @@ denial is registered as ActionInterruptedByHuman with feedback text that
 the agent sees in its next prompt.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from autogpt.agents.agent import Agent
+
 from forge.models.action import ActionInterruptedByHuman
 
 
@@ -86,7 +86,7 @@ class TestPermissionDenialFeedback:
         tool.arguments = {"reason": "done"}
         proposal.get_tools.return_value = [tool]
 
-        result = await Agent.execute(mock_agent, proposal)
+        await Agent.execute(mock_agent, proposal)
 
         mock_agent.do_not_execute.assert_called_once()
         # User's explicit feedback should be used, not the generic message

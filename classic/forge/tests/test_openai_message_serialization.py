@@ -1,14 +1,9 @@
 """Tests for OpenAI message serialization, specifically tool_calls arguments."""
 
-import json
-
-import pytest
-
 from forge.llm.providers.schema import (
     AssistantChatMessage,
     AssistantFunctionCall,
     AssistantToolCall,
-    ToolResultMessage,
 )
 
 
@@ -40,7 +35,7 @@ class TestToolCallArgumentsSerialization:
         assert isinstance(msg.tool_calls[0].function.arguments, dict)
 
     def test_model_dump_serializes_arguments_as_dict_by_default(self):
-        """model_dump() produces dict arguments — this is the bug.
+        """model_dump() produces dict arguments.
 
         OpenAI API requires function.arguments to be a JSON string, but
         model_dump() outputs it as a dict. This test documents the problem.
@@ -51,7 +46,4 @@ class TestToolCallArgumentsSerialization:
             exclude_none=True,
         )
         raw_args = dumped["tool_calls"][0]["function"]["arguments"]
-        # This is what model_dump produces — a dict, not a string
-        assert isinstance(
-            raw_args, dict
-        ), "model_dump should produce dict arguments (this is the raw behavior)"
+        assert isinstance(raw_args, dict), "model_dump should produce dict arguments"
