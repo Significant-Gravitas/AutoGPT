@@ -390,12 +390,14 @@ class Agent(BaseAgent[AnyActionProposal], Configurable[AgentSettings]):
                     tool.name, tool.arguments
                 )
                 if not perm_result.allowed:
-                    # Permission denied - pass feedback to agent if provided
-                    if perm_result.feedback:
-                        return await self.do_not_execute(proposal, perm_result.feedback)
-                    return ActionErrorResult(
-                        reason=f"Permission denied for command '{tool.name}'",
+                    # Permission denied - register as feedback so the agent
+                    # knows to try a different approach instead of looping
+                    feedback = (
+                        perm_result.feedback
+                        or f"Permission denied for command '{tool.name}'. "
+                        "Try a different approach."
                     )
+                    return await self.do_not_execute(proposal, feedback)
                 # Permission granted - save feedback if any
                 if perm_result.feedback:
                     feedback_to_append = perm_result.feedback
