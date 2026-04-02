@@ -87,6 +87,7 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    cost_usd: float | None = None
 
 
 async def _baseline_llm_caller(
@@ -157,6 +158,16 @@ async def _baseline_llm_caller(
                         entry["name"] = tc.function.name
                     if tc.function and tc.function.arguments:
                         entry["arguments"] += tc.function.arguments
+
+        # Extract OpenRouter cost from response headers
+        try:
+            raw_resp = getattr(response, "response", None)
+            if raw_resp and hasattr(raw_resp, "headers"):
+                cost_header = raw_resp.headers.get("x-total-cost")
+                if cost_header:
+                    state.cost_usd = float(cost_header)
+        except (ValueError, AttributeError):
+            pass
 
         # Close text block
         if state.text_started:
@@ -585,6 +596,7 @@ async def stream_chat_completion_baseline(
             prompt_tokens=state.turn_prompt_tokens,
             completion_tokens=state.turn_completion_tokens,
             log_prefix="[Baseline]",
+            cost_usd=state.cost_usd,
         )
 
         # Persist assistant response
