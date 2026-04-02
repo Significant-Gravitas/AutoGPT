@@ -104,6 +104,7 @@ async def _baseline_llm_caller(
     state.pending_events.append(StreamStartStep())
 
     round_text = ""
+    response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
         typed_messages = cast(list[ChatCompletionMessageParam], messages)
