@@ -702,9 +702,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # Skip validation in dry-run mode — sentinel credential values (None)
         # would fail JSON schema required checks, and simulate_block /
         # prepare_dry_run have already ensured the input is usable.
-        is_dry_run = getattr(
-            kwargs.get("execution_context"), "dry_run", False
-        )
+        is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
         if not is_dry_run:
             if error := self.input_schema.validate_data(input_data):
                 raise BlockInputError(
