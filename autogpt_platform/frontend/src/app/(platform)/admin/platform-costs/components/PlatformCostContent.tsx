@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { PlatformCostDashboard } from "@/app/api/__generated__/models/platformCostDashboard";
 import type { ProviderCostSummary } from "@/app/api/__generated__/models/providerCostSummary";
 import type { CostLogRow } from "@/app/api/__generated__/models/costLogRow";
-import type { Pagination } from "@/lib/autogpt-server-api";
+import type { Pagination } from "@/app/api/__generated__/models/pagination";
 import type { PlatformCostLogsResponse } from "@/app/api/__generated__/models/platformCostLogsResponse";
 import { getPlatformCostDashboard, getPlatformCostLogs } from "../actions";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +20,7 @@ interface Props {
   };
 }
 
+// Default per-run costs in USD (checked 2026-04-02)
 const DEFAULT_COST_PER_RUN: Record<string, number> = {
   google_maps: 0.032,
   ideogram: 0.08,
@@ -29,6 +30,14 @@ const DEFAULT_COST_PER_RUN: Record<string, number> = {
   mem0: 0.01,
   openweathermap: 0.0,
   webshare_proxy: 0.0,
+};
+
+// Default cost per 1K tokens in USD for token-based providers without actual cost
+const DEFAULT_COST_PER_1K_TOKENS: Record<string, number> = {
+  openai: 0.005,
+  anthropic: 0.008,
+  groq: 0.0003,
+  ollama: 0.0,
 };
 
 function formatMicrodollars(microdollars: number) {
@@ -79,7 +88,13 @@ function estimateCostForRow(
   const tt = row.tracking_type || "per_run";
   if (tt === "cost_usd") return row.total_cost_microdollars;
   if (tt === "tokens") {
-    return row.total_cost_microdollars > 0 ? row.total_cost_microdollars : null;
+    if (row.total_cost_microdollars > 0) return row.total_cost_microdollars;
+    const rate = DEFAULT_COST_PER_1K_TOKENS[row.provider] ?? null;
+    if (rate !== null) {
+      const totalTokens = row.total_input_tokens + row.total_output_tokens;
+      return Math.round((totalTokens / 1000) * rate * 1_000_000);
+    }
+    return null;
   }
   if (tt === "per_run") {
     const rate =
