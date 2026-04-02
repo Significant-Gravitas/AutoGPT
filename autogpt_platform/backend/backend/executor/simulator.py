@@ -433,7 +433,12 @@ async def simulate_block(
     try:
         parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
 
-        # Yield only pins present in the LLM response with meaningful values.
+        # Track which pins were yielded so we can fill in missing required
+        # ones afterwards — downstream nodes connected to unyielded pins
+        # would otherwise stall in INCOMPLETE state.
+        yielded_pins: set[str] = set()
+
+        # Yield pins present in the LLM response with meaningful values.
         # We skip None and empty strings but preserve valid falsy values
         # like False, 0, and [].
         for pin_name in output_properties:
@@ -443,5 +448,39 @@ async def simulate_block(
             if value is None or value == "":
                 continue
             yield pin_name, value
+            yielded_pins.add(pin_name)
+
+        # For any required output pins the LLM omitted (excluding "error"),
+        # yield a type-appropriate default so downstream nodes still fire.
+        required_pins = set(output_schema.get("required", []))
+        for pin_name in required_pins - yielded_pins - {"error"}:
+            pin_schema = output_properties.get(pin_name, {})
+            default = _default_for_schema(pin_schema)
+            logger.debug(
+                "simulate(%s): filling missing required pin %r with default %r",
+                label,
+                pin_name,
+                default,
+            )
+            yield pin_name, default
+
     except (RuntimeError, ValueError) as e:
         yield "error", str(e)
+
+
+def _default_for_schema(pin_schema: dict[str, Any]) -> Any:
+    """Return a sensible default value for a JSON schema type."""
+    pin_type = pin_schema.get("type", "string")
+    if pin_type == "string":
+        return ""
+    if pin_type == "integer":
+        return 0
+    if pin_type == "number":
+        return 0.0
+    if pin_type == "boolean":
+        return False
+    if pin_type == "array":
+        return []
+    if pin_type == "object":
+        return {}
+    return ""

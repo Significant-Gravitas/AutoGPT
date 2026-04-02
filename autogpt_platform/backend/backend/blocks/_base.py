@@ -699,11 +699,23 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 return
 
         # Validate the input data (original or reviewer-modified) once.
-        # Skip validation in dry-run mode — sentinel credential values (None)
-        # would fail JSON schema required checks, and simulate_block /
-        # prepare_dry_run have already ensured the input is usable.
+        # In dry-run mode, credential fields may contain sentinel None values
+        # that would fail JSON schema required checks.  We still validate the
+        # non-credential fields so blocks that execute for real during dry-run
+        # (e.g. AgentExecutorBlock) get proper input validation.
         is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
-        if not is_dry_run:
+        if is_dry_run:
+            cred_field_names = set(self.input_schema.get_credentials_fields().keys())
+            non_cred_data = {
+                k: v for k, v in input_data.items() if k not in cred_field_names
+            }
+            if error := self.input_schema.validate_data(non_cred_data):
+                raise BlockInputError(
+                    message=f"Unable to execute block with invalid input data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
+        else:
             if error := self.input_schema.validate_data(input_data):
                 raise BlockInputError(
                     message=f"Unable to execute block with invalid input data: {error}",

@@ -375,8 +375,8 @@ class TestSimulateBlockPassthrough:
     @pytest.mark.asyncio
     async def test_generic_block_zero_outputs_handled(self) -> None:
         """When the LLM returns a valid JSON object but none of the output pins
-        have meaningful values, ``simulate_block`` should yield nothing (zero
-        outputs) and *not* raise or crash."""
+        have meaningful values, ``simulate_block`` should still yield defaults
+        for required output pins so downstream nodes don't stall."""
         block = _make_block()
 
         with patch(
@@ -389,7 +389,8 @@ class TestSimulateBlockPassthrough:
             async for name, data in simulate_block(block, {"query": "test"}):
                 outputs.append((name, data))
 
-            assert outputs == []
+            # "result" is required, so a default empty string is yielded
+            assert outputs == [("result", "")]
 
     @pytest.mark.asyncio
     async def test_generic_block_calls_llm(self) -> None:
