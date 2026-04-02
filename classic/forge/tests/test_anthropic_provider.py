@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from forge.llm.providers.anthropic import (
     ANTHROPIC_CHAT_MODELS,
@@ -127,8 +128,9 @@ class TestAnthropicCredentials:
         assert "base_url" not in kwargs  # None values excluded
 
     def test_get_api_access_kwargs_with_base_url(self):
-        creds = AnthropicCredentials(  # type: ignore
-            api_key="sk-test", api_base="https://custom.api"
+        creds = AnthropicCredentials(
+            api_key=SecretStr("sk-test"),
+            api_base=SecretStr("https://custom.api"),
         )
         kwargs = creds.get_api_access_kwargs()
         assert kwargs["api_key"] == "sk-test"
@@ -399,7 +401,7 @@ class TestGetToolErrorMessage:
         tc = self._make_tool_call("web_search", {"wrong": "arg"})
         err = MagicMock()
         err.name = "web_search"
-        err.__str__ = lambda self: "Invalid args for web_search"
+        err.__str__ = MagicMock(return_value="Invalid args for web_search")
         msg = provider._get_tool_error_message(tc, [err], [search_function])
         assert "web_search" in msg
 
@@ -414,7 +416,7 @@ class TestGetToolErrorMessage:
         tc = self._make_tool_call("search", {})
         err = MagicMock()
         err.name = "search"
-        err.__str__ = lambda self: "Error"
+        err.__str__ = MagicMock(return_value="Error")
         msg = provider._get_tool_error_message(tc, [err], None)
         assert "(no arguments)" in msg
 
@@ -422,7 +424,7 @@ class TestGetToolErrorMessage:
         tc = self._make_tool_call("web_search", {"wrong": "arg"})
         err = MagicMock()
         err.name = "web_search"
-        err.__str__ = lambda self: "Error"
+        err.__str__ = MagicMock(return_value="Error")
         msg = provider._get_tool_error_message(tc, [err], [search_function])
         assert "Expected parameters" in msg
         assert "query" in msg

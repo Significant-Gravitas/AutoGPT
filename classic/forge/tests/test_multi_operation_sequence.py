@@ -81,7 +81,7 @@ class _DummyCredentials(ModelProviderCredentials):
 
 
 class _DummySettings(ModelProviderSettings):
-    credentials: Optional[_DummyCredentials] = None
+    credentials: Optional[ModelProviderCredentials] = None  # type: ignore[assignment]
     budget: Optional[ModelProviderBudget] = None
 
 

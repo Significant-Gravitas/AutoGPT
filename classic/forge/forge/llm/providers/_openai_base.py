@@ -356,7 +356,7 @@ class BaseOpenAIChatProvider(
                         tc["function"]["arguments"] = json.dumps(
                             tc["function"]["arguments"]
                         )
-            prepped_messages.append(msg_dict)
+            prepped_messages.append(msg_dict)  # type: ignore[arg-type]
 
         if "messages" in kwargs:
             prepped_messages += kwargs["messages"]

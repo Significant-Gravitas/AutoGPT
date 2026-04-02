@@ -126,6 +126,7 @@ class TestAssistantChatMessage:
             function=AssistantFunctionCall(name="search", arguments={"q": "test"}),
         )
         msg = AssistantChatMessage(content="Searching...", tool_calls=[tc])
+        assert msg.tool_calls is not None
         assert len(msg.tool_calls) == 1
         assert msg.tool_calls[0].function.name == "search"
 
