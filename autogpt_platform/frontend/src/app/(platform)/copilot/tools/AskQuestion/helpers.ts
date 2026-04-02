@@ -64,7 +64,7 @@ export function isClarificationOutput(
 export function isErrorOutput(
   output: AskQuestionToolOutput,
 ): output is ErrorOutput {
-  return output.type === "error";
+  return output.type === "error" || "error" in output;
 }
 
 export function getAnimationText(part: ToolUIPart): string {
