@@ -1,5 +1,5 @@
 /**
- * React artifact preview — security threat model
+ * React artifact preview — security model
  *
  * AI-generated TSX source is transpiled (TypeScript) and executed inside a
  * sandboxed iframe (`sandbox="allow-scripts"` without `allow-same-origin`).
@@ -13,11 +13,9 @@
  *   - Inline script execution (needed to render React components)
  *   - `new Function()` is used to evaluate the compiled code (eval-equivalent)
  *   - Full DOM access within the iframe
- *   - Network requests via fetch/XHR (mitigated by CSP below)
+ *   - Network requests via fetch/XHR (allowed — only artifact content is visible)
  *
- * The CSP meta tag restricts the iframe to only load scripts from the pinned
- * unpkg React CDN URLs (with SRI hashes) and inline scripts/styles. All other
- * network access (fetch, img src, etc.) is blocked by `default-src 'none'`.
+ * React is loaded from unpkg with pinned version and SRI integrity hashes.
  */
 
 function escapeHtml(value: string): string {
@@ -126,7 +124,6 @@ export function buildReactArtifactSrcDoc(
         white-space: pre-wrap;
       }
     </style>
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline'; img-src data: blob:; font-src data:;">
     <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"></script>
     <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script>
   </head>
