@@ -2,7 +2,11 @@
 
 from unittest.mock import patch
 
+import pytest
+from pydantic import ValidationError
+
 from backend.copilot.config import ChatConfig
+from backend.copilot.constants import is_transient_api_error
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -258,3 +262,116 @@ class TestBuildSdkEnv:
             assert isinstance(env, dict)
             env["CLAUDE_CODE_TMPDIR"] = "/tmp/test"
             assert env["CLAUDE_CODE_TMPDIR"] == "/tmp/test"
+
+
+# ---------------------------------------------------------------------------
+# is_transient_api_error
+# ---------------------------------------------------------------------------
+
+
+class TestIsTransientApiError:
+    """Verify that is_transient_api_error detects all transient patterns."""
+
+    @pytest.mark.parametrize(
+        "error_text",
+        [
+            "socket connection was closed unexpectedly",
+            "ECONNRESET",
+            "connection was forcibly closed",
+            "network socket disconnected",
+        ],
+    )
+    def test_connection_level_errors(self, error_text: str):
+        assert is_transient_api_error(error_text)
+
+    @pytest.mark.parametrize(
+        "error_text",
+        [
+            "rate limit exceeded",
+            "rate_limit_error",
+            "Too Many Requests",
+            "status code 429",
+        ],
+    )
+    def test_429_rate_limit_errors(self, error_text: str):
+        assert is_transient_api_error(error_text)
+
+    @pytest.mark.parametrize(
+        "error_text",
+        [
+            "API is overloaded",
+            "Internal Server Error",
+            "Bad Gateway",
+            "Service Unavailable",
+            "Gateway Timeout",
+            "status code 529",
+            "status code 500",
+            "status code 502",
+            "status code 503",
+            "status code 504",
+        ],
+    )
+    def test_5xx_server_errors(self, error_text: str):
+        assert is_transient_api_error(error_text)
+
+    @pytest.mark.parametrize(
+        "error_text",
+        [
+            "invalid_api_key",
+            "Authentication failed",
+            "prompt is too long",
+            "model not found",
+            "",
+        ],
+    )
+    def test_non_transient_errors(self, error_text: str):
+        assert not is_transient_api_error(error_text)
+
+    def test_case_insensitive(self):
+        assert is_transient_api_error("SOCKET CONNECTION WAS CLOSED UNEXPECTEDLY")
+        assert is_transient_api_error("econnreset")
+
+
+# ---------------------------------------------------------------------------
+# Config validators for max_turns / max_budget_usd
+# ---------------------------------------------------------------------------
+
+
+class TestConfigValidators:
+    """Verify ge/le bounds on max_turns and max_budget_usd."""
+
+    def test_max_turns_rejects_zero(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_turns=0)
+
+    def test_max_turns_rejects_negative(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_turns=-1)
+
+    def test_max_turns_rejects_above_500(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_turns=501)
+
+    def test_max_turns_accepts_boundary_values(self):
+        cfg_low = _make_config(claude_agent_max_turns=1)
+        assert cfg_low.claude_agent_max_turns == 1
+        cfg_high = _make_config(claude_agent_max_turns=500)
+        assert cfg_high.claude_agent_max_turns == 500
+
+    def test_max_budget_rejects_zero(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_budget_usd=0.0)
+
+    def test_max_budget_rejects_negative(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_budget_usd=-1.0)
+
+    def test_max_budget_rejects_above_100(self):
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_max_budget_usd=100.01)
+
+    def test_max_budget_accepts_boundary_values(self):
+        cfg_low = _make_config(claude_agent_max_budget_usd=0.01)
+        assert cfg_low.claude_agent_max_budget_usd == 0.01
+        cfg_high = _make_config(claude_agent_max_budget_usd=100.0)
+        assert cfg_high.claude_agent_max_budget_usd == 100.0

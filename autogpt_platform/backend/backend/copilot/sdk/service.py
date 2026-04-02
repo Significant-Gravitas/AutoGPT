@@ -2027,20 +2027,20 @@ async def stream_chat_completion_sdk(
         # Transient retry helper — deduplicates the logic shared between
         # _HandledStreamError and the generic except-Exception handler.
         transient_retries = 0
-        max_transient = config.claude_agent_max_transient_retries
+        max_transient_retries = config.claude_agent_max_transient_retries
 
-        def _can_retry_transient() -> int | None:
-            """Check if a transient retry is possible.
+        def _next_transient_backoff() -> int | None:
+            """Return the next backoff delay in seconds, or ``None`` to surface the error.
 
             Returns the backoff seconds if a retry should be attempted,
-            or ``None`` if the error should be surfaced to the user.
-            Mutates outer ``transient_retries`` via nonlocal.
+            or ``None`` if retries are exhausted or events were already
+            yielded.  Mutates outer ``transient_retries`` via nonlocal.
             """
             nonlocal transient_retries
             if events_yielded > 0:
                 return None
             transient_retries += 1
-            if transient_retries > max_transient:
+            if transient_retries > max_transient_retries:
                 return None
             return 2 ** (transient_retries - 1)  # 1s, 2s, 4s, ...
 
@@ -2171,14 +2171,14 @@ async def stream_chat_completion_sdk(
                 if exc.code == "transient_api_error" or is_transient_api_error(
                     str(exc)
                 ):
-                    backoff = _can_retry_transient()
+                    backoff = _next_transient_backoff()
                     if backoff is not None:
                         logger.warning(
                             "%s Transient error — retrying in %ds (%d/%d)",
                             log_prefix,
                             backoff,
                             transient_retries,
-                            max_transient,
+                            max_transient_retries,
                         )
                         yield StreamStatus(
                             message=f"Connection interrupted, retrying in {backoff}s…"
@@ -2247,14 +2247,14 @@ async def stream_chat_completion_sdk(
                 # Transient API errors (ECONNRESET, 429, 5xx) — retry
                 # with exponential backoff via the shared helper.
                 if is_transient:
-                    backoff = _can_retry_transient()
+                    backoff = _next_transient_backoff()
                     if backoff is not None:
                         logger.warning(
                             "%s Transient exception — retrying in %ds (%d/%d)",
                             log_prefix,
                             backoff,
                             transient_retries,
-                            max_transient,
+                            max_transient_retries,
                         )
                         yield StreamStatus(
                             message=f"Connection interrupted, retrying "
