@@ -489,6 +489,33 @@ def test_search_users_empty_results(
     assert response.json() == []
 
 
+def test_search_users_short_query_rejected(
+    admin_user_id: str,
+) -> None:
+    """Query shorter than 3 characters should return 400."""
+    response = client.get("/admin/rate_limit/search_users", params={"query": "ab"})
+    assert response.status_code == 400
+
+
+def test_search_users_negative_limit_clamped(
+    mocker: pytest_mock.MockerFixture,
+    admin_user_id: str,
+) -> None:
+    """Negative limit should be clamped to 1, not passed through."""
+    mock_search = mocker.patch(
+        _MOCK_MODULE + ".search_users",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get(
+        "/admin/rate_limit/search_users", params={"query": "test", "limit": -1}
+    )
+
+    assert response.status_code == 200
+    mock_search.assert_awaited_once_with("test", limit=1)
+
+
 def test_search_users_requires_admin_role(mock_jwt_user) -> None:
     """Test that the search_users endpoint requires admin role."""
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
