@@ -110,21 +110,19 @@ export function buildSiblingInputsFromCredentials(
   return result;
 }
 
-export function coerceExpectedInputs(rawInputs: unknown): Array<{
+interface ExpectedInput {
   name: string;
   title: string;
   type: string;
   description?: string;
   required: boolean;
-}> {
+  advanced: boolean;
+  value?: unknown;
+}
+
+export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
   if (!Array.isArray(rawInputs)) return [];
-  const results: Array<{
-    name: string;
-    title: string;
-    type: string;
-    description?: string;
-    required: boolean;
-  }> = [];
+  const results: ExpectedInput[] = [];
 
   rawInputs.forEach((value, index) => {
     if (!value || typeof value !== "object") return;
@@ -144,15 +142,13 @@ export function coerceExpectedInputs(rawInputs: unknown): Array<{
         ? input.description.trim()
         : undefined;
     const required = Boolean(input.required);
+    const advanced = Boolean(input.advanced);
 
-    const item: {
-      name: string;
-      title: string;
-      type: string;
-      description?: string;
-      required: boolean;
-    } = { name, title, type, required };
+    const item: ExpectedInput = { name, title, type, required, advanced };
     if (description) item.description = description;
+    if (input.value !== undefined && input.value !== null) {
+      item.value = input.value;
+    }
     results.push(item);
   });
 
@@ -162,17 +158,20 @@ export function coerceExpectedInputs(rawInputs: unknown): Array<{
 /**
  * Build an RJSF schema from expected inputs so they can be rendered
  * as a dynamic form via FormRenderer.
+ *
+ * When ``showAdvanced`` is false (default), fields marked ``advanced``
+ * are excluded — matching the builder behaviour where advanced fields
+ * are hidden behind a toggle.
  */
 export function buildExpectedInputsSchema(
-  expectedInputs: Array<{
-    name: string;
-    title: string;
-    type: string;
-    description?: string;
-    required: boolean;
-  }>,
+  expectedInputs: ExpectedInput[],
+  showAdvanced = false,
 ): RJSFSchema | null {
-  if (expectedInputs.length === 0) return null;
+  const visible = showAdvanced
+    ? expectedInputs
+    : expectedInputs.filter((i) => !i.advanced);
+
+  if (visible.length === 0) return null;
 
   const TYPE_MAP: Record<string, string> = {
     string: "string",
@@ -189,12 +188,14 @@ export function buildExpectedInputsSchema(
   const properties: Record<string, Record<string, unknown>> = {};
   const required: string[] = [];
 
-  for (const input of expectedInputs) {
-    properties[input.name] = {
+  for (const input of visible) {
+    const prop: Record<string, unknown> = {
       type: TYPE_MAP[input.type.toLowerCase()] ?? "string",
       title: input.title,
-      ...(input.description ? { description: input.description } : {}),
     };
+    if (input.description) prop.description = input.description;
+    if (input.value !== undefined) prop.default = input.value;
+    properties[input.name] = prop;
     if (input.required) required.push(input.name);
   }
 
@@ -203,4 +204,20 @@ export function buildExpectedInputsSchema(
     properties,
     ...(required.length > 0 ? { required } : {}),
   };
+}
+
+/**
+ * Extract initial form values from expected inputs that have a
+ * prefilled ``value`` from the backend.
+ */
+export function extractInitialValues(
+  expectedInputs: ExpectedInput[],
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const input of expectedInputs) {
+    if (input.value !== undefined && input.value !== null) {
+      values[input.name] = input.value;
+    }
+  }
+  return values;
 }
