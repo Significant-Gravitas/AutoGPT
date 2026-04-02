@@ -38,7 +38,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, bridge_and_annotate
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -387,7 +387,16 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
             selected = list(itertools.islice(f, offset, offset + limit))
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return _mcp_ok("".join(selected))
+        #
+        # When E2B is active, also copy the file into the sandbox so
+        # bash_exec can process it (the model often uses Read then bash).
+        text = "".join(selected)
+        sandbox = _current_sandbox.get(None)
+        if sandbox is not None:
+            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+            if annotation:
+                text += annotation
+        return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
     except Exception as e:
