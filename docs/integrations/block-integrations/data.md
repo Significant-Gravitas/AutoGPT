@@ -259,7 +259,7 @@ Supported database types: PostgreSQL, MySQL, and MSSQL.
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
 | database_type | Database engine | "postgres" \| "mysql" \| "mssql" | No |
-| host | Database hostname or IP address | str (password) | Yes |
+| host | Database hostname or IP address. Treated as a secret to avoid leaking infrastructure details. Private/internal IPs are blocked (SSRF protection). | str (password) | Yes |
 | port | Database port (leave empty for default: PostgreSQL: 5432, MySQL: 3306, MSSQL: 1433) | int | No |
 | database | Name of the database to connect to | str | Yes |
 | query | SQL query to execute | str | Yes |
@@ -275,6 +275,7 @@ Supported database types: PostgreSQL, MySQL, and MSSQL.
 | results | Query results as a list of row dictionaries | List[Dict[str, Any]] |
 | columns | Column names from the query result | List[str] |
 | row_count | Number of rows returned | int |
+| truncated | True when the result set was capped by max_rows, indicating additional rows exist in the database | bool |
 | affected_rows | Number of rows affected by a write query (INSERT/UPDATE/DELETE) | int |
 
 ### Possible use case
