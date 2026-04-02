@@ -852,6 +852,9 @@ class NodeExecutionStats(BaseModel):
         current_stats = self.model_dump()
 
         for key, value in stats_dict.items():
+            if value is None:
+                # Never overwrite an existing value with None
+                continue
             if key not in current_stats:
                 # Field doesn't exist yet, just set it
                 setattr(self, key, value)
