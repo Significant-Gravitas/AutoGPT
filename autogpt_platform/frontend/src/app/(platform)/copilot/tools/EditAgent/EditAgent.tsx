@@ -18,7 +18,7 @@ import {
   buildClarificationAnswersMessage,
   normalizeClarifyingQuestions,
 } from "../clarifying-questions";
-import { ClarificationQuestionsCard } from "../CreateAgent/components/ClarificationQuestionsCard";
+import { ClarificationQuestionsCard } from "../../components/ClarificationQuestionsCard/ClarificationQuestionsCard";
 import {
   AccordionIcon,
   formatMaybeJson,
