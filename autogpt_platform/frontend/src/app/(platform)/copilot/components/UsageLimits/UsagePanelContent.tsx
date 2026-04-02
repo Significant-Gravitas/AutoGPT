@@ -1,6 +1,7 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
+import { formatCents } from "../RateLimitResetDialog/RateLimitResetDialog";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 export function formatResetTime(
@@ -91,7 +92,7 @@ function ResetButton({
     >
       {isPending
         ? "Resetting..."
-        : `Reset daily limit for $${(cost / 100).toFixed(2)}`}
+        : `Reset daily limit for ${formatCents(cost)}`}
     </Button>
   );
 }

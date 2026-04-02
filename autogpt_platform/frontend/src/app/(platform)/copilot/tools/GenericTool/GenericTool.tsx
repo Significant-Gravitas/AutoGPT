@@ -15,6 +15,7 @@ import {
   MagnifyingGlassIcon,
   MonitorIcon,
   PencilSimpleIcon,
+  RobotIcon,
   TerminalIcon,
   TrashIcon,
   WarningDiamondIcon,
@@ -32,6 +33,7 @@ import {
 } from "@/components/contextual/OutputRenderers";
 import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
 import {
+  TOOL_TASK_OUTPUT,
   type ToolCategory,
   extractToolName,
   getAnimationText,
@@ -109,6 +111,8 @@ function ToolIcon({
       return (
         <ArrowsClockwiseIcon size={14} weight="regular" className={iconClass} />
       );
+    case "agent":
+      return <RobotIcon size={14} weight="regular" className={iconClass} />;
     default:
       return <GearIcon size={14} weight="regular" className={iconClass} />;
   }
@@ -141,6 +145,8 @@ function AccordionIcon({ category }: { category: ToolCategory }) {
       return <ListChecksIcon size={32} weight="light" />;
     case "compaction":
       return <ArrowsClockwiseIcon size={32} weight="light" />;
+    case "agent":
+      return <RobotIcon size={32} weight="light" />;
     default:
       return <GearIcon size={32} weight="light" />;
   }
@@ -557,6 +563,53 @@ function getTodoAccordionData(input: unknown): AccordionData {
   };
 }
 
+function getAgentAccordionData(
+  toolName: string,
+  input: unknown,
+  output: Record<string, unknown>,
+): AccordionData {
+  const inp = (input && typeof input === "object" ? input : {}) as Record<
+    string,
+    unknown
+  >;
+  const isAsync = output.isAsync === true || output.status === "async_launched";
+
+  if (toolName === TOOL_TASK_OUTPUT) {
+    const status = getStringField(output, "retrieval_status");
+    const task = output.task;
+    return {
+      title: status === "timeout" ? "Agent still running" : "Agent result",
+      description:
+        typeof inp.agentId === "string" ? `Agent: ${inp.agentId}` : undefined,
+      content: task ? (
+        <ContentCodeBlock>{JSON.stringify(task, null, 2)}</ContentCodeBlock>
+      ) : (
+        <ContentMessage>
+          {status === "timeout"
+            ? "The agent hasn't finished yet. Results will appear automatically when it's done."
+            : "No result available."}
+        </ContentMessage>
+      ),
+    };
+  }
+
+  const description =
+    getStringField(inp, "description") ?? getStringField(output, "description");
+  const agentId = getStringField(output, "agentId");
+
+  return {
+    title: isAsync ? "Agent started (background)" : "Agent completed",
+    description: description ?? agentId ?? undefined,
+    content: isAsync ? (
+      <ContentMessage>
+        Running in the background. Results will appear here when ready.
+      </ContentMessage>
+    ) : (
+      <ContentCodeBlock>{JSON.stringify(output, null, 2)}</ContentCodeBlock>
+    ),
+  };
+}
+
 function getDefaultAccordionData(
   output: Record<string, unknown>,
 ): AccordionData {
@@ -608,6 +661,8 @@ function getAccordionData(
       return getFileAccordionData(category, input, output);
     case "todo":
       return getTodoAccordionData(input);
+    case "agent":
+      return getAgentAccordionData(toolName, input, output);
     default:
       return getDefaultAccordionData(output);
   }

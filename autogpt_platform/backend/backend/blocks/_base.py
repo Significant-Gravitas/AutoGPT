@@ -698,13 +698,30 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             if should_pause:
                 return
 
-        # Validate the input data (original or reviewer-modified) once
-        if error := self.input_schema.validate_data(input_data):
-            raise BlockInputError(
-                message=f"Unable to execute block with invalid input data: {error}",
-                block_name=self.name,
-                block_id=self.id,
-            )
+        # Validate the input data (original or reviewer-modified) once.
+        # In dry-run mode, credential fields may contain sentinel None values
+        # that would fail JSON schema required checks.  We still validate the
+        # non-credential fields so blocks that execute for real during dry-run
+        # (e.g. AgentExecutorBlock) get proper input validation.
+        is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
+        if is_dry_run:
+            cred_field_names = set(self.input_schema.get_credentials_fields().keys())
+            non_cred_data = {
+                k: v for k, v in input_data.items() if k not in cred_field_names
+            }
+            if error := self.input_schema.validate_data(non_cred_data):
+                raise BlockInputError(
+                    message=f"Unable to execute block with invalid input data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
+        else:
+            if error := self.input_schema.validate_data(input_data):
+                raise BlockInputError(
+                    message=f"Unable to execute block with invalid input data: {error}",
+                    block_name=self.name,
+                    block_id=self.id,
+                )
 
         # Use the validated input data
         async for output_name, output_data in self.run(
