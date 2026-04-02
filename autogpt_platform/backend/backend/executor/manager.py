@@ -81,7 +81,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
-from .simulator import prepare_dry_run, simulate_block
+from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -279,43 +279,20 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
-    # For special blocks in dry-run (OrchestratorBlock, AgentExecutorBlock),
-    # prepare_dry_run returns a (possibly modified) copy of input_data so the
-    # block executes for real.  For all other blocks it returns None -> use
-    # LLM simulator.
+    # For special blocks in dry-run, prepare_dry_run returns a (possibly
+    # modified) copy of input_data so the block executes for real.  For all
+    # other blocks it returns None -> use LLM simulator.
+    # OrchestratorBlock uses the platform's simulation model + OpenRouter key
+    # so no user credentials are needed.
     _dry_run_input: dict[str, Any] | None = None
     if execution_context.dry_run:
         _dry_run_input = prepare_dry_run(node_block, input_data)
     if _dry_run_input is not None:
-        pre_dry_run_input = input_data  # Save in case we need to fall back
         input_data = _dry_run_input
-        # Restore credential fields from node defaults so the block can
-        # acquire credentials during dry-run.
-        for field_name in cast(
-            type[BlockSchema], node_block.input_schema
-        ).get_credentials_fields():
-            default_value = node.input_default.get(field_name)
-            if default_value is not None and not input_data.get(field_name):
-                input_data[field_name] = default_value
 
-        # If any required credentials fields are still missing after restoring
-        # from node defaults, fall back to LLM simulation instead of attempting
-        # real execution that would fail with "credentials is a required property".
-        creds_fields = cast(
-            type[BlockSchema], node_block.input_schema
-        ).get_credentials_fields()
-        if creds_fields:
-            missing_creds = any(
-                not input_data.get(f)
-                or (isinstance(input_data.get(f), dict) and not input_data[f].get("id"))
-                for f in creds_fields
-            )
-            if missing_creds:
-                log_metadata.info(
-                    "Dry-run: credentials not configured, falling back to simulation"
-                )
-                _dry_run_input = None
-                input_data = pre_dry_run_input
+    # Check for dry-run platform credentials (OrchestratorBlock uses the
+    # platform's OpenRouter key instead of user credentials).
+    _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
 
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
@@ -326,6 +303,12 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
+        # Dry-run platform credentials bypass the credential store
+        if _dry_run_creds is not None:
+            input_data[field_name] = None
+            extra_exec_kwargs[field_name] = _dry_run_creds
+            continue
+
         field_value = input_data.get(field_name)
         if not field_value or (
             isinstance(field_value, dict) and not field_value.get("id")

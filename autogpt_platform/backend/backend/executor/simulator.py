@@ -6,10 +6,12 @@ role-plays the block's execution using an LLM.  For most blocks no real
 API calls or side effects occur.
 
 Special cases (no LLM simulation needed):
-  - OrchestratorBlock executes for real with the user's own model/credentials
-    (iterations capped to 1).
+  - OrchestratorBlock executes for real with the platform's simulation model
+    (iterations capped to 1).  Uses the platform OpenRouter key so no user
+    credentials are required.  Falls back to LLM simulation if the platform
+    key is unavailable.
   - AgentExecutorBlock executes for real so it can spawn child graph executions
-    (whose blocks are then simulated).
+    (whose blocks are then simulated).  No credentials needed.
   - AgentInputBlock (and all subclasses) and AgentOutputBlock are pure
     passthrough -- they forward their input values directly.
   - MCPToolBlock is simulated via the generic LLM prompt (with run() source code).
@@ -283,39 +285,87 @@ Available output pins: {json.dumps(required_output_properties)}
 # ---------------------------------------------------------------------------
 
 
+def _get_platform_openrouter_key() -> str | None:
+    """Return the platform's OpenRouter API key, or None if unavailable."""
+    try:
+        from backend.util.settings import Settings  # noqa: PLC0415
+
+        key = Settings().secrets.open_router_api_key
+        return key if key else None
+    except Exception:
+        return None
+
+
 def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | None:
     """Prepare *input_data* for a dry-run execution of *block*.
 
     Returns a **modified copy** of *input_data* for blocks that should execute
-    for real with cheap settings (e.g. OrchestratorBlock), or ``None`` when the
-    block should be LLM-simulated instead.
+    for real with cheap settings, or ``None`` when the block should be
+    LLM-simulated instead.
 
-    AgentExecutorBlock also executes for real so it can spawn a child graph
-    execution.  The child graph's blocks will be simulated because the
-    execution context inherits ``dry_run=True`` (see ``add_graph_execution``
-    in utils.py).
+    - **OrchestratorBlock** executes for real with the platform's simulation
+      model (iterations capped to 1).  Uses the platform OpenRouter key so no
+      user credentials are needed.  Falls back to LLM simulation if the
+      platform key is unavailable.
+    - **AgentExecutorBlock** executes for real so it can spawn a child graph
+      execution.  The child graph inherits ``dry_run=True`` and its blocks
+      are simulated.  No credentials are needed.
     """
     if isinstance(block, OrchestratorBlock):
-        # Preserve the user's configured mode: 0 means traditional (single
-        # LLM call, no agent loop). Only override to 1 when the user chose
-        # agent mode (non-zero) so the dry run still exercises the loop once
-        # without running away.
-        # Keep the user's own model and credentials -- swapping to a different
-        # model can cause credential mismatches (e.g. Anthropic key vs OpenAI
-        # model).
+        or_key = _get_platform_openrouter_key()
+        if not or_key:
+            logger.info(
+                "Dry-run: no platform OpenRouter key, "
+                "falling back to LLM simulation for OrchestratorBlock"
+            )
+            return None
+
         original = input_data.get("agent_mode_max_iterations", 0)
         max_iters = 1 if original != 0 else 0
+        sim_model = _simulator_model()
+
         return {
             **input_data,
             "agent_mode_max_iterations": max_iters,
+            "model": sim_model,
+            # Signal to manager.py that credentials should be skipped —
+            # the platform key is injected via _dry_run_credentials().
+            "credentials": None,
+            "_dry_run_api_key": or_key,
         }
+
     if isinstance(block, AgentExecutorBlock):
-        # AgentExecutorBlock spawns a child graph execution.  No input
-        # modifications are needed -- the child graph inherits dry_run=True
-        # from the execution context and its blocks will be simulated.
-        # Return a copy so the caller knows this is a passthrough block.
         return {**input_data}
+
     return None
+
+
+def get_dry_run_credentials(
+    input_data: dict[str, Any],
+) -> Any | None:
+    """Build an ``APIKeyCredentials`` for dry-run OrchestratorBlock execution.
+
+    Returns credentials using the platform's OpenRouter key (injected by
+    ``prepare_dry_run``), or ``None`` if not a dry-run override.
+    """
+    api_key = input_data.pop("_dry_run_api_key", None)
+    if not api_key:
+        return None
+
+    try:
+        from backend.blocks.llm import APIKeyCredentials  # noqa: PLC0415
+        from backend.integrations.providers import ProviderName  # noqa: PLC0415
+
+        return APIKeyCredentials(
+            id="dry-run-platform",
+            provider=ProviderName.OPEN_ROUTER,
+            api_key=api_key,
+            title="Dry-run simulation",
+            expires_at=None,
+        )
+    except Exception:
+        logger.warning("Failed to create dry-run credentials", exc_info=True)
+        return None
 
 
 async def simulate_block(

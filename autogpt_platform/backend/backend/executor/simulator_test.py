@@ -139,24 +139,56 @@ class TestBuildSimulationPrompt:
 
 
 class TestPrepareDryRun:
-    def test_orchestrator_block_caps_iterations(self) -> None:
+    def test_orchestrator_uses_simulation_model(self) -> None:
+        """OrchestratorBlock should use the simulation model and cap iterations."""
+        from unittest.mock import patch
+
         from backend.blocks.orchestrator import OrchestratorBlock
 
         block = OrchestratorBlock()
-        result = prepare_dry_run(
-            block, {"agent_mode_max_iterations": 10, "other": "val"}
-        )
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            result = prepare_dry_run(
+                block,
+                {"agent_mode_max_iterations": 10, "model": "gpt-4o", "other": "val"},
+            )
         assert result is not None
         assert result["agent_mode_max_iterations"] == 1
         assert result["other"] == "val"
+        assert result["model"] != "gpt-4o"  # overridden to simulation model
+        assert result["credentials"] is None
+        assert result["_dry_run_api_key"] == "sk-or-test-key"
 
-    def test_orchestrator_block_zero_stays_zero(self) -> None:
+    def test_orchestrator_zero_stays_zero(self) -> None:
+        from unittest.mock import patch
+
         from backend.blocks.orchestrator import OrchestratorBlock
 
         block = OrchestratorBlock()
-        result = prepare_dry_run(block, {"agent_mode_max_iterations": 0})
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value="sk-or-test-key",
+        ):
+            result = prepare_dry_run(block, {"agent_mode_max_iterations": 0})
         assert result is not None
         assert result["agent_mode_max_iterations"] == 0
+
+    def test_orchestrator_falls_back_without_key(self) -> None:
+        """Without platform OpenRouter key, OrchestratorBlock falls back
+        to LLM simulation (returns None)."""
+        from unittest.mock import patch
+
+        from backend.blocks.orchestrator import OrchestratorBlock
+
+        block = OrchestratorBlock()
+        with patch(
+            "backend.executor.simulator._get_platform_openrouter_key",
+            return_value=None,
+        ):
+            result = prepare_dry_run(block, {"agent_mode_max_iterations": 5})
+        assert result is None
 
     def test_agent_executor_block_passthrough(self) -> None:
         from backend.blocks.agent import AgentExecutorBlock
