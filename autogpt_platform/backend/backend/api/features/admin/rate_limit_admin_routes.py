@@ -188,10 +188,12 @@ async def set_user_rate_limit_tier(
     admin_user_id: str = Security(get_user_id),
 ) -> UserTierResponse:
     """Set a user's rate-limit tier. Admin-only."""
+    old_tier = await get_user_tier(request.user_id)
     logger.info(
-        "Admin %s setting tier for user %s to %s",
+        "Admin %s changing tier for user %s: %s -> %s",
         admin_user_id,
         request.user_id,
+        old_tier.value,
         request.tier.value,
     )
     try:

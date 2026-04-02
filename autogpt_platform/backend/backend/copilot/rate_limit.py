@@ -30,7 +30,13 @@ _USAGE_KEY_PREFIX = "copilot:usage"
 
 
 class SubscriptionTier(str, Enum):
-    """Subscription tiers with increasing token allowances."""
+    """Subscription tiers with increasing token allowances.
+
+    Mirrors the ``SubscriptionTier`` enum in ``schema.prisma``.
+    Once ``prisma generate`` is run, this can be replaced with::
+
+        from prisma.enums import SubscriptionTier
+    """
 
     FREE = "FREE"
     PRO = "PRO"
@@ -393,8 +399,8 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     edge cases (e.g. partial row creation).
     """
     user = await PrismaUser.prisma().find_unique(where={"id": user_id})
-    if user and user.subscriptionTier:
-        return SubscriptionTier(user.subscriptionTier)
+    if user and user.subscriptionTier:  # type: ignore[reportAttributeAccessIssue]
+        return SubscriptionTier(user.subscriptionTier)  # type: ignore[reportAttributeAccessIssue]
     return DEFAULT_TIER
 
 

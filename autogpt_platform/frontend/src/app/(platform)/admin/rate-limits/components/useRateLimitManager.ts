@@ -16,18 +16,10 @@ export interface UserOption {
   user_email: string;
 }
 
-/**
- * Returns true when the input looks like a complete email address.
- * Used to decide whether to call the direct email lookup endpoint
- * vs. the broader user-history search.
- */
 function looksLikeEmail(input: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input);
 }
 
-/**
- * Returns true when the input looks like a UUID (user ID).
- */
 function looksLikeUuid(input: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     input,
@@ -43,7 +35,6 @@ export function useRateLimitManager() {
   const [rateLimitData, setRateLimitData] =
     useState<UserRateLimitResponse | null>(null);
 
-  /** Direct lookup by email or user ID via the rate-limit endpoint. */
   async function handleDirectLookup(trimmed: string) {
     setIsSearching(true);
     setSearchResults([]);

@@ -369,8 +369,7 @@ class TestSubscriptionTier:
             daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
             weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
         )
-        # Default tier should be PRO (beta testing default)
-        assert status.tier == SubscriptionTier.PRO
+        assert status.tier == SubscriptionTier.FREE
 
     def test_usage_status_with_custom_tier(self):
         now = datetime.now(UTC)

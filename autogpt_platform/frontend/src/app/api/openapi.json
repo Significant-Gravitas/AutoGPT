@@ -13127,7 +13127,7 @@
         "type": "string",
         "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
-        "description": "Subscription tiers with increasing token allowances."
+        "description": "Subscription tiers with increasing token allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
       "SuggestedGoalResponse": {
         "properties": {
