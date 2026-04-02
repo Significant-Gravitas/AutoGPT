@@ -59,6 +59,16 @@ _null_cache: TTLCache[tuple[str, str], bool] = TTLCache(
     maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
 )
 
+# GitHub user identity caches (keyed by user_id only, not provider tuple).
+# Declared here so invalidate_user_provider_cache() can reference them.
+_GH_IDENTITY_CACHE_TTL = 600.0  # 10 min — profile data rarely changes
+_gh_identity_cache: TTLCache[str, dict[str, str]] = TTLCache(
+    maxsize=_CACHE_MAX_SIZE, ttl=_GH_IDENTITY_CACHE_TTL
+)
+_gh_identity_null_cache: TTLCache[str, bool] = TTLCache(
+    maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
+)
+
 
 def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     """Remove the cached entry for *user_id*/*provider* from both caches.
@@ -66,10 +76,18 @@ def invalidate_user_provider_cache(user_id: str, provider: str) -> None:
     Call this after storing new credentials so that the next
     ``get_provider_token()`` call performs a fresh DB lookup instead of
     serving a stale TTL-cached result.
+
+    For GitHub specifically, also clears the git-identity caches so that
+    ``get_github_user_git_identity()`` re-fetches the user's profile on
+    the next call instead of serving stale identity data.
     """
     key = (user_id, provider)
     _token_cache.pop(key, None)
     _null_cache.pop(key, None)
+
+    if provider == "github":
+        _gh_identity_cache.pop(user_id, None)
+        _gh_identity_null_cache.pop(user_id, None)
 
 
 # Register this module's cache-bust function with the credentials manager so
@@ -182,14 +200,6 @@ async def get_integration_env_vars(user_id: str) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # GitHub user identity (for git committer env vars)
 # ---------------------------------------------------------------------------
-
-_GH_IDENTITY_CACHE_TTL = 600.0  # 10 min — profile data rarely changes
-_gh_identity_cache: TTLCache[str, dict[str, str]] = TTLCache(
-    maxsize=_CACHE_MAX_SIZE, ttl=_GH_IDENTITY_CACHE_TTL
-)
-_gh_identity_null_cache: TTLCache[str, bool] = TTLCache(
-    maxsize=_CACHE_MAX_SIZE, ttl=_NULL_CACHE_TTL
-)
 
 
 async def get_github_user_git_identity(user_id: str) -> dict[str, str] | None:
