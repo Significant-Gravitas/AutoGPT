@@ -2079,7 +2079,30 @@ async def _log_system_credential_cost(
         if stats.provider_cost is not None:
             cost_microdollars = int(stats.provider_cost * 1_000_000)
 
-        meta: dict[str, Any] = {}
+        # Determine tracking type and amount:
+        # - cost_usd: provider returned actual dollar cost
+        # - tokens: LLM provider with token counts
+        # - duration_seconds: billed by execution time (E2B, video gen)
+        # - per_run: flat per-request billing
+        if stats.provider_cost is not None:
+            tracking_type = "cost_usd"
+            tracking_amount = stats.provider_cost
+        elif stats.input_token_count or stats.output_token_count:
+            tracking_type = "tokens"
+            tracking_amount = (stats.input_token_count or 0) + (
+                stats.output_token_count or 0
+            )
+        elif stats.walltime and stats.walltime > 0:
+            tracking_type = "duration_seconds"
+            tracking_amount = round(stats.walltime, 3)
+        else:
+            tracking_type = "per_run"
+            tracking_amount = 1
+
+        meta: dict[str, Any] = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+        }
         if credit_cost:
             meta["credit_cost"] = credit_cost
         if stats.provider_cost is not None:
