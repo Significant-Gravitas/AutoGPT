@@ -1,0 +1,1 @@
+export { ChangelogPopup } from "./ChangelogPopup";
