@@ -370,6 +370,37 @@ def get_dry_run_credentials(
         return None
 
 
+def _default_for_input_result(result_schema: dict[str, Any], name: str) -> Any:
+    """Return a type-appropriate sample value for an AgentInputBlock's result pin.
+
+    Typed subclasses (AgentNumberInputBlock, AgentDateInputBlock, etc.)
+    declare a specific type/format on their ``result`` output.  When dry-run
+    has no user-supplied value, this generates a fallback that matches the
+    expected type so downstream validation doesn't fail with a plain string.
+    """
+    pin_type = result_schema.get("type", "string")
+    fmt = result_schema.get("format")
+
+    if pin_type == "integer":
+        return 0
+    if pin_type == "number":
+        return 0.0
+    if pin_type == "boolean":
+        return False
+    if pin_type == "array":
+        return []
+    if pin_type == "object":
+        return {}
+    if fmt == "date":
+        from datetime import date as _date  # noqa: PLC0415
+
+        return _date.today().isoformat()
+    if fmt == "time":
+        return "00:00:00"
+    # Default: use the block's name as a sample string.
+    return name
+
+
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
@@ -392,12 +423,22 @@ async def simulate_block(
     if isinstance(block, AgentInputBlock):
         value = input_data.get("value")
         if value is None:
-            # Dry-run with no user input: use first dropdown option or name
+            # Dry-run with no user input: use first dropdown option or name,
+            # then coerce to a type-appropriate fallback so typed subclasses
+            # (e.g. AgentNumberInputBlock → int, AgentDateInputBlock → date)
+            # don't fail validation with a plain string.
             placeholder = input_data.get("placeholder_values")
             if placeholder and isinstance(placeholder, list) and placeholder:
                 value = placeholder[0]
             else:
-                value = input_data.get("name", "sample input")
+                result_schema = (
+                    block.output_schema.jsonschema()
+                    .get("properties", {})
+                    .get("result", {})
+                )
+                value = _default_for_input_result(
+                    result_schema, input_data.get("name", "sample input")
+                )
         yield "result", value
         return
 
