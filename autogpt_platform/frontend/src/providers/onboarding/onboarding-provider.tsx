@@ -147,10 +147,10 @@ export default function OnboardingProvider({
         );
 
         if (!is_completed && !isOnOnboardingRoute) {
-          router.push("/onboarding");
+          router.replace("/onboarding");
           return;
         } else if (is_completed && isOnOnboardingRoute) {
-          router.push("/copilot");
+          router.replace("/copilot");
           return;
         }
 
@@ -161,7 +161,7 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push("/copilot");
+          router.replace("/copilot");
         }
       } catch (error) {
         console.error("Failed to initialize onboarding:", error);

@@ -14,13 +14,13 @@ import {
   MagnifyingGlass,
   PencilSimple,
 } from "@phosphor-icons/react";
+import { ReactNode } from "react";
 
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
-import { useMemo } from "react";
 import { SelectableCard } from "../components/SelectableCard";
-import { useOnboardingWizardStore } from "../store";
+import { usePainPointsStep } from "./usePainPointsStep";
 
-const ALL_PAIN_POINTS = [
+const ALL_PAIN_POINTS: { id: string; label: string; icon: ReactNode }[] = [
   {
     id: "Finding leads",
     label: "Finding leads",
@@ -51,41 +51,16 @@ const ALL_PAIN_POINTS = [
     label: "CRM & data entry",
     icon: <Folder size={32} />,
   },
-  {
-    id: "Scheduling",
-    label: "Scheduling",
-    icon: <CalendarBlank size={32} />,
-  },
-  {
-    id: "Research",
-    label: "Research",
-    icon: <Flask size={32} />,
-  },
+  { id: "Scheduling", label: "Scheduling", icon: <CalendarBlank size={32} /> },
+  { id: "Research", label: "Research", icon: <Flask size={32} /> },
   {
     id: "Something else",
     label: "Something else",
     icon: <PencilSimple size={32} />,
   },
-] as const;
+];
 
-// Top pain points per role — shown first, rest follow in default order
-const ROLE_TOP_PICKS: Record<string, string[]> = {
-  "Founder/CEO": [
-    "Finding leads",
-    "Reports & data",
-    "Email & outreach",
-    "Scheduling",
-  ],
-  Operations: ["CRM & data entry", "Scheduling", "Reports & data"],
-  "Sales/BD": ["Finding leads", "Email & outreach", "CRM & data entry"],
-  Marketing: ["Social media", "Email & outreach", "Research"],
-  "Product/PM": ["Research", "Reports & data", "Scheduling"],
-  Engineering: ["Research", "Reports & data", "CRM & data entry"],
-  "HR/People": ["Scheduling", "Email & outreach", "CRM & data entry"],
-};
-
-function getPainPointsForRole(role: string) {
-  const topIDs = ROLE_TOP_PICKS[role] ?? [];
+function orderPainPoints(topIDs: string[]) {
   const top = topIDs
     .map((id) => ALL_PAIN_POINTS.find((p) => p.id === id))
     .filter((p): p is (typeof ALL_PAIN_POINTS)[number] => p != null);
@@ -97,25 +72,18 @@ function getPainPointsForRole(role: string) {
 }
 
 export function PainPointsStep() {
-  const role = useOnboardingWizardStore((s) => s.role);
-  const painPoints = useOnboardingWizardStore((s) => s.painPoints);
-  const otherPainPoint = useOnboardingWizardStore((s) => s.otherPainPoint);
-  const togglePainPoint = useOnboardingWizardStore((s) => s.togglePainPoint);
-  const setOtherPainPoint = useOnboardingWizardStore(
-    (s) => s.setOtherPainPoint,
-  );
-  const nextStep = useOnboardingWizardStore((s) => s.nextStep);
+  const {
+    topIDs,
+    painPoints,
+    otherPainPoint,
+    togglePainPoint,
+    setOtherPainPoint,
+    hasSomethingElse,
+    canContinue,
+    handleLaunch,
+  } = usePainPointsStep();
 
-  const orderedPainPoints = useMemo(() => getPainPointsForRole(role), [role]);
-  const hasSomethingElse = painPoints.includes("Something else");
-  const canContinue =
-    painPoints.length > 0 && (!hasSomethingElse || otherPainPoint.trim());
-
-  function handleLaunch() {
-    if (canContinue) {
-      nextStep();
-    }
-  }
+  const orderedPainPoints = orderPainPoints(topIDs);
 
   return (
     <FadeIn>

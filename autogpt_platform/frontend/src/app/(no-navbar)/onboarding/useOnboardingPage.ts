@@ -6,7 +6,7 @@ import { customMutator } from "@/app/api/mutators/custom-mutator";
 import { resolveResponse } from "@/app/api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Step, useOnboardingWizardStore } from "./store";
 
 function parseStep(value: string | null): Step {
@@ -95,7 +95,7 @@ export function useOnboardingPage() {
     });
   }, [currentStep, name, role, otherRole, painPoints, otherPainPoint]);
 
-  const handlePreparingComplete = useCallback(async () => {
+  async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
@@ -105,9 +105,8 @@ export function useOnboardingPage() {
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
       }
     }
-    // Final fallback — navigate anyway to avoid trapping user
     router.replace("/copilot");
-  }, [router]);
+  }
 
   return {
     currentStep,

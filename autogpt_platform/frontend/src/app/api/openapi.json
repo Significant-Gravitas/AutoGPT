@@ -11219,16 +11219,27 @@
       },
       "OnboardingProfileRequest": {
         "properties": {
-          "user_name": { "type": "string", "title": "User Name" },
-          "user_role": { "type": "string", "title": "User Role" },
+          "user_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Name"
+          },
+          "user_role": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Role"
+          },
           "pain_points": {
             "items": { "type": "string" },
             "type": "array",
+            "maxItems": 20,
             "title": "Pain Points"
           }
         },
         "type": "object",
-        "required": ["user_name", "user_role", "pain_points"],
+        "required": ["user_name", "user_role"],
         "title": "OnboardingProfileRequest",
         "description": "Request body for onboarding profile submission."
       },

@@ -1,6 +1,5 @@
 import asyncio
 import base64
-import json
 import logging
 import time
 import uuid
@@ -346,7 +345,7 @@ async def submit_onboarding_profile(
 
     try:
         understanding_input = await extract_business_understanding(formatted)
-    except (asyncio.TimeoutError, json.JSONDecodeError):
+    except Exception:
         understanding_input = BusinessUnderstandingInput.model_construct()
 
     # Ensure the direct fields are set even if LLM missed them
