@@ -142,7 +142,7 @@ def _build_where(
         params.append(end)
         idx += 1
     if provider:
-        clauses.append(f'{prefix}"provider" = ${idx}')
+        clauses.append(f'LOWER({prefix}"provider") = LOWER(${idx})')
         params.append(provider)
         idx += 1
     if user_id:

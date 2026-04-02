@@ -2069,8 +2069,6 @@ async def _log_system_credential_cost(
         if model_name is not None and not isinstance(model_name, str):
             model_name = str(model_name) if not isinstance(model_name, dict) else None
 
-        credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
-
         await log_platform_cost_safe(
             PlatformCostEntry(
                 user_id=node_exec.user_id,
@@ -2087,7 +2085,7 @@ async def _log_system_credential_cost(
                 data_size=stats.output_size or None,
                 duration=stats.walltime or None,
                 model=model_name,
-                metadata={"credit_cost": credit_cost} if credit_cost else None,
+                metadata=None,
             )
         )
         return  # One log per execution is enough
