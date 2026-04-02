@@ -4,15 +4,20 @@ error sanitization, SSRF protection, and read/write mode behavior."""
 from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 
 from backend.blocks.sql_query_block import SQLQueryBlock, UserPasswordCredentials
 from backend.blocks.sql_query_helpers import (
+    _CONNECT_TIMEOUT_SECONDS,
     DatabaseType,
+    _configure_session,
+    _execute_query,
+    _run_in_transaction,
     _sanitize_error,
     _serialize_value,
     _validate_query_is_read_only,
@@ -558,11 +563,12 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
         mock_cols = ["id", "name"]
-        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert outputs["results"] == mock_rows
         assert outputs["columns"] == mock_cols
         assert outputs["row_count"] == 2
+        assert outputs["truncated"] is False
         # SELECT does not produce affected_rows
         assert "affected_rows" not in outputs
 
@@ -585,7 +591,7 @@ class TestSQLQueryBlockRunErrorHandling:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1}]
         mock_cols = ["id"]
-        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == mock_rows
@@ -610,7 +616,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == []
@@ -627,7 +633,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == 1
@@ -642,7 +648,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == 1
@@ -657,7 +663,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 0)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 0, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
 
@@ -671,7 +677,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 0)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 0, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
 
@@ -715,7 +721,7 @@ class TestSQLQueryBlockWriteMode:
             read_only=False,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([], [], 42)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([], [], 42, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["affected_rows"] == 42
@@ -732,7 +738,7 @@ class TestSQLQueryBlockWriteMode:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         mock_rows = [{"id": 1, "name": "Alice"}]
         mock_cols = ["id", "name"]
-        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, mock_cols, -1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert outputs["results"] == mock_rows
         assert outputs["columns"] == mock_cols
@@ -760,7 +766,7 @@ class TestSQLQueryBlockReadOnlyMode:
             read_only=True,
         )
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
-        block.execute_query = lambda **_kwargs: ([{"col": 1}], ["col"], -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: ([{"col": 1}], ["col"], -1, False)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["results"] == [{"col": 1}]
@@ -823,9 +829,11 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -846,9 +854,11 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -869,9 +879,11 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -892,9 +904,11 @@ class TestSQLQueryBlockDefaultPort:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -919,9 +933,11 @@ class TestSQLQueryBlockDNSPinning:
         block.check_host_allowed = AsyncMock(return_value=["93.184.216.34"])  # type: ignore[assignment]
         captured_conn_str = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_conn_str["value"] = str(kwargs["connection_url"])
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -1058,9 +1074,11 @@ class TestTimeoutEnforcement:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_kwargs: dict[str, Any] = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_kwargs.update(kwargs)
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -1100,9 +1118,11 @@ class TestMaxRowsEnforcement:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured_kwargs: dict[str, Any] = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured_kwargs.update(kwargs)
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -1121,11 +1141,12 @@ class TestMaxRowsEnforcement:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         # Simulate the database returning exactly max_rows rows (truncated)
         mock_rows = [{"id": i} for i in range(max_rows)]
-        block.execute_query = lambda **_kwargs: (mock_rows, ["id"], -1)  # type: ignore[assignment]
+        block.execute_query = lambda **_kwargs: (mock_rows, ["id"], -1, True)  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
         assert "error" not in outputs
         assert outputs["row_count"] == max_rows
         assert len(outputs["results"]) == max_rows
+        assert outputs["truncated"] is True
 
 
 class TestPasswordInErrorMessages:
@@ -1382,9 +1403,11 @@ class TestURLCreateSpecialCharacters:
         block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
         captured: dict[str, Any] = {}
 
-        def fake_execute(**kwargs: Any) -> tuple[list[dict[str, Any]], list[str], int]:
+        def fake_execute(
+            **kwargs: Any,
+        ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
             captured.update(kwargs)
-            return [{"id": 1}], ["id"], -1
+            return [{"id": 1}], ["id"], -1, False
 
         block.execute_query = fake_execute  # type: ignore[assignment]
         outputs = await _collect_outputs(block, input_data, creds)
@@ -1394,3 +1417,435 @@ class TestURLCreateSpecialCharacters:
         assert hasattr(conn_url, "password"), "connection_url should be a URL object"
         assert conn_url.password == special_pass
         assert conn_url.username == special_user
+
+
+# ---------------------------------------------------------------------------
+# Tests for newly-added disallowed keywords (LOAD, REPLACE, MERGE, BULK, EXEC)
+# ---------------------------------------------------------------------------
+
+
+class TestNewDisallowedKeywords:
+    """LOAD, REPLACE, MERGE, BULK, and EXEC must be blocked in read-only mode."""
+
+    @pytest.mark.parametrize(
+        "query,expected_keyword",
+        [
+            # MySQL file exfiltration
+            (
+                "SELECT * FROM (LOAD DATA LOCAL INFILE '/etc/passwd' INTO TABLE t) AS x",
+                "LOAD",
+            ),
+            # MySQL REPLACE (INSERT-or-UPDATE)
+            (
+                "SELECT * FROM (REPLACE INTO t VALUES (1, 'a')) AS x",
+                "REPLACE",
+            ),
+            # ANSI MERGE (UPSERT)
+            (
+                "SELECT * FROM (MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.v = s.v) AS x",
+                "MERGE",
+            ),
+            # MSSQL BULK INSERT -- sqlparse may match INSERT before BULK,
+            # but the query is still blocked by the disallowed keyword check.
+            (
+                "SELECT * FROM (BULK INSERT t FROM '/data.csv') AS x",
+                "BULK",
+            ),
+            # MSSQL EXEC stored procedure
+            (
+                "SELECT * FROM (EXEC sp_who2) AS x",
+                "EXEC",
+            ),
+        ],
+    )
+    def test_keyword_blocked_in_subquery_read_only(
+        self, query: str, expected_keyword: str
+    ):
+        """If sqlparse parses the statement as SELECT, the keyword check
+        must still catch the disallowed keyword inside it."""
+        error, stmt = _validate_single_statement(query)
+        if error is None and stmt is not None:
+            ro_error = _validate_query_is_read_only(stmt)
+            assert (
+                ro_error is not None
+            ), f"Expected '{expected_keyword}' to be blocked but query passed: {query}"
+            assert "Disallowed SQL keyword" in ro_error
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "LOAD DATA LOCAL INFILE '/etc/passwd' INTO TABLE t",
+            "REPLACE INTO users (id, name) VALUES (1, 'Alice')",
+            "MERGE INTO target USING source ON target.id = source.id "
+            "WHEN MATCHED THEN UPDATE SET target.name = source.name",
+            "BULK INSERT my_table FROM '/tmp/data.csv'",
+            "EXEC sp_who2",
+        ],
+    )
+    def test_standalone_keyword_rejected_as_non_select(self, query: str):
+        """Standalone statements using these keywords are rejected because
+        their statement type is not SELECT."""
+        error, stmt = _validate_single_statement(query)
+        if error is None and stmt is not None:
+            ro_error = _validate_query_is_read_only(stmt)
+            assert ro_error is not None
+
+    def test_bare_keyword_column_names_blocked(self):
+        """Bare column names that match disallowed keywords (load, replace,
+        merge) ARE blocked because sqlparse classifies them as Keyword tokens.
+        Users should quote such column names (e.g. "load") to avoid this."""
+        query = "SELECT load, replace, merge FROM metrics"
+        error, stmt = _validate_single_statement(query)
+        assert error is None
+        assert stmt is not None
+        ro_error = _validate_query_is_read_only(stmt)
+        assert ro_error is not None
+
+    def test_quoted_keyword_column_names_allowed(self):
+        """Double-quoted column names that happen to match disallowed keywords
+        must NOT trigger false positives (sqlparse classifies them as Names)."""
+        query = 'SELECT "load", "replace", "merge" FROM metrics'
+        error, stmt = _validate_single_statement(query)
+        assert error is None
+        assert stmt is not None
+        ro_error = _validate_query_is_read_only(stmt)
+        assert ro_error is None
+
+    def test_load_in_string_literal_allowed(self):
+        """String literal containing 'LOAD' must not be blocked."""
+        query = "SELECT * FROM logs WHERE message = 'LOAD DATA INFILE test'"
+        error, stmt = _validate_single_statement(query)
+        assert error is None
+        assert stmt is not None
+        ro_error = _validate_query_is_read_only(stmt)
+        assert ro_error is None
+
+
+# ---------------------------------------------------------------------------
+# Decimal NaN / Infinity serialization tests
+# ---------------------------------------------------------------------------
+
+
+class TestSerializeDecimalSpecialValues:
+    """Decimal NaN and Infinity must be serialized as strings, not crash."""
+
+    def test_decimal_nan(self):
+        result = _serialize_value(Decimal("NaN"))
+        assert isinstance(result, str)
+        assert "NaN" in result
+
+    def test_decimal_infinity(self):
+        result = _serialize_value(Decimal("Infinity"))
+        assert isinstance(result, str)
+        assert "Infinity" in result
+
+    def test_decimal_negative_infinity(self):
+        result = _serialize_value(Decimal("-Infinity"))
+        assert isinstance(result, str)
+        assert "-Infinity" in result
+
+    def test_decimal_snan(self):
+        result = _serialize_value(Decimal("sNaN"))
+        assert isinstance(result, str)
+
+
+# ---------------------------------------------------------------------------
+# ModuleNotFoundError path test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestModuleNotFoundError:
+    """The block must yield a clean error when a database driver is missing."""
+
+    async def test_missing_driver_yields_clean_error(self):
+        block = SQLQueryBlock()
+        creds = _make_credentials()
+        input_data = _make_input(
+            creds,
+            query="SELECT 1",
+            database_type=DatabaseType.MSSQL,
+            read_only=False,
+        )
+        block.check_host_allowed = AsyncMock(return_value=["1.2.3.4"])  # type: ignore[assignment]
+
+        def raise_module_not_found(**_kwargs: Any) -> None:
+            raise ModuleNotFoundError("No module named 'pymssql'")
+
+        block.execute_query = raise_module_not_found  # type: ignore[assignment]
+        outputs = await _collect_outputs(block, input_data, creds)
+        assert "error" in outputs
+        assert "driver not available" in outputs["error"].lower()
+        assert "mssql" in outputs["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: _execute_query, _configure_session, _run_in_transaction
+# using an in-memory SQLite database.
+#
+# SQLite does not support SET commands, so _configure_session is a no-op for
+# the "sqlite" dialect.  These tests validate the execution pipeline itself:
+# transaction management, fetchmany truncation, COMMIT vs ROLLBACK, and the
+# new truncated flag.
+# ---------------------------------------------------------------------------
+
+
+def _extract_sql_texts(conn_mock: MagicMock) -> list[str]:
+    """Extract the raw SQL strings from a mocked connection's execute calls."""
+    return [c[0][0].text for c in conn_mock.execute.call_args_list]
+
+
+class TestConfigureSessionDialects:
+    """Verify _configure_session emits correct SET commands per dialect."""
+
+    def test_postgresql_sets_timeout_and_read_only(self):
+        conn = MagicMock()
+        _configure_session(conn, "postgresql", "30000", read_only=True)
+        sqls = _extract_sql_texts(conn)
+        assert any("statement_timeout" in s and "30000" in s for s in sqls)
+        assert any("default_transaction_read_only" in s for s in sqls)
+
+    def test_postgresql_timeout_only_when_not_read_only(self):
+        conn = MagicMock()
+        _configure_session(conn, "postgresql", "5000", read_only=False)
+        assert conn.execute.call_count == 1
+        sqls = _extract_sql_texts(conn)
+        assert "statement_timeout" in sqls[0]
+
+    def test_mysql_sets_max_execution_time_and_read_only(self):
+        conn = MagicMock()
+        _configure_session(conn, "mysql", "10000", read_only=True)
+        sqls = _extract_sql_texts(conn)
+        assert any("MAX_EXECUTION_TIME" in s and "10000" in s for s in sqls)
+        assert any("READ ONLY" in s for s in sqls)
+
+    def test_mysql_timeout_only_when_not_read_only(self):
+        conn = MagicMock()
+        _configure_session(conn, "mysql", "10000", read_only=False)
+        assert conn.execute.call_count == 1
+        sqls = _extract_sql_texts(conn)
+        assert "MAX_EXECUTION_TIME" in sqls[0]
+
+    def test_mssql_sets_lock_timeout(self):
+        conn = MagicMock()
+        _configure_session(conn, "mssql", "15000", read_only=True)
+        sqls = _extract_sql_texts(conn)
+        assert any("LOCK_TIMEOUT" in s and "15000" in s for s in sqls)
+        assert conn.execute.call_count == 1
+
+    def test_unknown_dialect_is_noop(self):
+        conn = MagicMock()
+        _configure_session(conn, "sqlite", "5000", read_only=True)
+        conn.execute.assert_not_called()
+
+
+class TestRunInTransactionSQLite:
+    """Integration tests for _run_in_transaction using a real SQLite engine."""
+
+    def _make_sqlite_engine(self):
+        return create_engine("sqlite:///:memory:")
+
+    def test_select_returns_rows(self):
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER, name TEXT)"))
+            conn.execute(text("INSERT INTO t VALUES (1, 'Alice')"))
+            conn.execute(text("INSERT INTO t VALUES (2, 'Bob')"))
+            results, columns, affected, truncated = _run_in_transaction(
+                conn,
+                "sqlite",
+                "SELECT * FROM t ORDER BY id",
+                max_rows=100,
+                read_only=True,
+            )
+        engine.dispose()
+        assert columns == ["id", "name"]
+        assert len(results) == 2
+        assert results[0] == {"id": 1, "name": "Alice"}
+        assert results[1] == {"id": 2, "name": "Bob"}
+        assert affected == -1
+        assert truncated is False
+
+    def test_fetchmany_truncation(self):
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER)"))
+            for i in range(10):
+                conn.execute(text(f"INSERT INTO t VALUES ({i})"))
+            results, columns, affected, truncated = _run_in_transaction(
+                conn,
+                "sqlite",
+                "SELECT * FROM t ORDER BY id",
+                max_rows=3,
+                read_only=True,
+            )
+        engine.dispose()
+        assert len(results) == 3
+        assert truncated is True
+        assert results[0]["id"] == 0
+        assert results[2]["id"] == 2
+
+    def test_fetchmany_exact_count_not_truncated(self):
+        """When result count equals max_rows, truncated is True because
+        there *might* be more rows (we cannot know without fetching more)."""
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER)"))
+            for i in range(5):
+                conn.execute(text(f"INSERT INTO t VALUES ({i})"))
+            results, _, _, truncated = _run_in_transaction(
+                conn,
+                "sqlite",
+                "SELECT * FROM t",
+                max_rows=5,
+                read_only=True,
+            )
+        engine.dispose()
+        assert len(results) == 5
+        assert truncated is True
+
+    def test_fewer_rows_than_max_not_truncated(self):
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER)"))
+            conn.execute(text("INSERT INTO t VALUES (1)"))
+            results, _, _, truncated = _run_in_transaction(
+                conn,
+                "sqlite",
+                "SELECT * FROM t",
+                max_rows=100,
+                read_only=True,
+            )
+        engine.dispose()
+        assert len(results) == 1
+        assert truncated is False
+
+    def test_rollback_on_read_only(self):
+        """When read_only=True the transaction is rolled back, so writes are
+        not persisted."""
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER)"))
+            conn.execute(text("INSERT INTO t VALUES (1)"))
+            _run_in_transaction(
+                conn,
+                "sqlite",
+                "INSERT INTO t VALUES (2)",
+                max_rows=100,
+                read_only=True,
+            )
+            # The INSERT should have been rolled back
+            result = conn.execute(text("SELECT COUNT(*) FROM t"))
+            count = result.scalar()
+        engine.dispose()
+        assert count == 1
+
+    def test_commit_on_write_mode(self):
+        """When read_only=False the transaction is committed."""
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER)"))
+            conn.execute(text("INSERT INTO t VALUES (1)"))
+            _run_in_transaction(
+                conn,
+                "sqlite",
+                "INSERT INTO t VALUES (2)",
+                max_rows=100,
+                read_only=False,
+            )
+            result = conn.execute(text("SELECT COUNT(*) FROM t"))
+            count = result.scalar()
+        engine.dispose()
+        assert count == 2
+
+    def test_rollback_on_exception(self):
+        """On query error the transaction is rolled back and the exception
+        re-raised."""
+        engine = self._make_sqlite_engine()
+        with engine.connect() as conn:
+            conn = conn.execution_options(isolation_level="AUTOCOMMIT")
+            conn.execute(text("CREATE TABLE t (id INTEGER)"))
+            with pytest.raises(Exception):
+                _run_in_transaction(
+                    conn,
+                    "sqlite",
+                    "SELECT * FROM nonexistent_table",
+                    max_rows=100,
+                    read_only=True,
+                )
+        engine.dispose()
+
+    def test_mssql_begin_transaction_syntax(self):
+        """MSSQL dialect uses 'BEGIN TRANSACTION' instead of 'BEGIN'."""
+        conn = MagicMock()
+        result_mock = MagicMock()
+        result_mock.returns_rows = True
+        result_mock.keys.return_value = ["id"]
+        result_mock.fetchmany.return_value = [(1,)]
+        result_mock.rowcount = 1
+        conn.execute.return_value = result_mock
+
+        _run_in_transaction(conn, "mssql", "SELECT 1", max_rows=10, read_only=True)
+
+        sqls = _extract_sql_texts(conn)
+        assert sqls[0] == "BEGIN TRANSACTION"
+
+    def test_non_mssql_begin_syntax(self):
+        """Non-MSSQL dialects use 'BEGIN' (not 'BEGIN TRANSACTION')."""
+        conn = MagicMock()
+        result_mock = MagicMock()
+        result_mock.returns_rows = True
+        result_mock.keys.return_value = ["id"]
+        result_mock.fetchmany.return_value = [(1,)]
+        result_mock.rowcount = 1
+        conn.execute.return_value = result_mock
+
+        _run_in_transaction(conn, "postgresql", "SELECT 1", max_rows=10, read_only=True)
+
+        sqls = _extract_sql_texts(conn)
+        assert sqls[0] == "BEGIN"
+
+
+class TestExecuteQueryIntegration:
+    """Integration tests for _execute_query using mocked engine internals.
+
+    Note: SQLite does not accept ``connect_timeout`` as a connect_arg, so
+    we cannot pass ``sqlite:///:memory:`` directly to ``_execute_query``.
+    Instead we mock ``create_engine`` to return a real SQLite engine while
+    bypassing the connect_args validation.
+    """
+
+    def test_connect_timeout_constant_used(self):
+        """The _CONNECT_TIMEOUT_SECONDS constant must be passed to create_engine."""
+        with patch("backend.blocks.sql_query_helpers.create_engine") as mock_ce:
+            mock_engine = MagicMock()
+            mock_conn = MagicMock()
+            mock_result = MagicMock()
+            mock_result.returns_rows = True
+            mock_result.keys.return_value = ["x"]
+            mock_result.fetchmany.return_value = [(1,)]
+            mock_result.rowcount = 1
+            mock_conn.execute.return_value = mock_result
+            mock_conn.execution_options.return_value = mock_conn
+            mock_engine.connect.return_value.__enter__ = lambda _: mock_conn
+            mock_engine.connect.return_value.__exit__ = lambda *_: None
+            mock_engine.dialect.name = "postgresql"
+            mock_ce.return_value = mock_engine
+
+            _execute_query(
+                "postgresql://u:p@h/d",
+                "SELECT 1",
+                timeout=10,
+                max_rows=100,
+                read_only=True,
+            )
+
+            mock_ce.assert_called_once()
+            _, kwargs = mock_ce.call_args
+            assert kwargs["connect_args"]["connect_timeout"] == _CONNECT_TIMEOUT_SECONDS

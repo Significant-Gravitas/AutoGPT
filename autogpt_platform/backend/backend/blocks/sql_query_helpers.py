@@ -36,6 +36,16 @@ _DISALLOWED_KEYWORDS = {
     "DISCARD",
     "NOTIFY",
     "DO",
+    # MySQL file exfiltration: LOAD DATA LOCAL INFILE reads server/client files
+    "LOAD",
+    # MySQL REPLACE is INSERT-or-UPDATE; data modification
+    "REPLACE",
+    # ANSI MERGE (UPSERT) modifies data
+    "MERGE",
+    # MSSQL BULK INSERT loads external files into tables
+    "BULK",
+    # MSSQL EXEC / EXEC sp_name runs stored procedures (arbitrary code)
+    "EXEC",
 }
 
 # Map DatabaseType enum values to the expected SQLAlchemy driver prefix.
@@ -44,6 +54,12 @@ _DATABASE_TYPE_TO_DRIVER = {
     DatabaseType.MYSQL: "mysql+pymysql",
     DatabaseType.MSSQL: "mssql+pymssql",
 }
+
+# Connection timeout in seconds passed to the DBAPI driver (connect_timeout /
+# login_timeout).  This bounds how long the driver waits to establish a TCP
+# connection to the database server.  It is separate from the per-statement
+# timeout configured via SET commands inside _configure_session().
+_CONNECT_TIMEOUT_SECONDS = 10
 
 # Default ports for each database type.
 _DATABASE_TYPE_DEFAULT_PORT = {
@@ -264,6 +280,9 @@ def _validate_single_statement(
 def _serialize_value(value: Any) -> Any:
     """Convert database-specific types to JSON-serializable Python types."""
     if isinstance(value, Decimal):
+        # NaN / Infinity are not valid JSON numbers; serialize as strings.
+        if value.is_nan() or value.is_infinite():
+            return str(value)
         # Use int for whole numbers; use str for fractional to preserve exact
         # precision (float would silently round high-precision analytics values).
         if value == value.to_integral_value():
@@ -284,7 +303,29 @@ def _configure_session(
     timeout_ms: str,
     read_only: bool,
 ) -> None:
-    """Set session-level timeout and read-only mode for the given dialect."""
+    """Set session-level timeout and read-only mode for the given dialect.
+
+    Timeout limitations by database:
+
+    * **PostgreSQL** – ``statement_timeout`` reliably cancels any running
+      statement (SELECT or DML) after the configured duration.
+    * **MySQL** – ``MAX_EXECUTION_TIME`` only applies to **read-only SELECT**
+      statements.  DML (INSERT/UPDATE/DELETE) and DDL are *not* bounded by
+      this hint; they rely on the server's ``wait_timeout`` /
+      ``interactive_timeout`` instead.  There is no session-level setting in
+      MySQL that reliably cancels long-running writes.
+    * **MSSQL** – ``SET LOCK_TIMEOUT`` only limits how long the server waits
+      to acquire a **lock**.  CPU-bound queries (e.g. large scans, hash
+      joins) that do not block on locks will *not* be cancelled.  MSSQL has
+      no session-level ``statement_timeout`` equivalent; the closest
+      mechanism is Resource Governor (requires sysadmin configuration) or
+      ``CONTEXT_INFO``-based external monitoring.
+
+    Note: SQLite is not supported by this block.  The ``_configure_session``
+    function is a no-op for unrecognised dialect names, so an SQLite engine
+    would skip all SET commands silently.  The block's ``DatabaseType`` enum
+    intentionally excludes SQLite.
+    """
     if dialect_name == "postgresql":
         conn.execute(text("SET statement_timeout = " + timeout_ms))
         if read_only:
@@ -293,13 +334,14 @@ def _configure_session(
         # NOTE: MAX_EXECUTION_TIME only applies to SELECT statements.
         # Write queries (INSERT/UPDATE/DELETE) are not bounded by this
         # setting; they rely on the database's wait_timeout instead.
+        # See docstring above for full limitations.
         conn.execute(text("SET SESSION MAX_EXECUTION_TIME = " + timeout_ms))
         if read_only:
             conn.execute(text("SET SESSION TRANSACTION READ ONLY"))
     elif dialect_name == "mssql":
-        # MSSQL: SET LOCK_TIMEOUT limits lock-wait time (ms).
-        # pymssql's connect_args "login_timeout" handles the connection
-        # timeout, but LOCK_TIMEOUT covers in-query lock waits.
+        # MSSQL: SET LOCK_TIMEOUT limits lock-wait time (ms) only.
+        # CPU-bound queries without lock contention are NOT cancelled.
+        # See docstring above for full limitations.
         conn.execute(text("SET LOCK_TIMEOUT " + timeout_ms))
         # MSSQL lacks a session-level read-only mode like
         # PostgreSQL/MySQL.  Read-only enforcement is handled by
@@ -313,8 +355,13 @@ def _run_in_transaction(
     query: str,
     max_rows: int,
     read_only: bool,
-) -> tuple[list[dict[str, Any]], list[str], int]:
-    """Execute a query inside an explicit transaction, returning results."""
+) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+    """Execute a query inside an explicit transaction, returning results.
+
+    Returns ``(rows, columns, affected_rows, truncated)`` where *truncated*
+    is ``True`` when ``fetchmany`` returned exactly ``max_rows`` rows,
+    indicating that additional rows may exist in the result set.
+    """
     # MSSQL uses T-SQL "BEGIN TRANSACTION"; others use "BEGIN".
     begin_stmt = "BEGIN TRANSACTION" if dialect_name == "mssql" else "BEGIN"
     conn.execute(text(begin_stmt))
@@ -323,6 +370,7 @@ def _run_in_transaction(
         affected = result.rowcount if not result.returns_rows else -1
         columns = list(result.keys()) if result.returns_rows else []
         rows = result.fetchmany(max_rows) if result.returns_rows else []
+        truncated = len(rows) == max_rows
         results = [
             {col: _serialize_value(val) for col, val in zip(columns, row)}
             for row in rows
@@ -332,7 +380,7 @@ def _run_in_transaction(
         raise
     else:
         conn.execute(text("ROLLBACK" if read_only else "COMMIT"))
-    return results, columns, affected
+    return results, columns, affected, truncated
 
 
 def _execute_query(
@@ -342,11 +390,12 @@ def _execute_query(
     max_rows: int,
     read_only: bool = True,
     database_type: DatabaseType = DatabaseType.POSTGRES,
-) -> tuple[list[dict[str, Any]], list[str], int]:
-    """Execute a SQL query and return (rows, columns, affected_rows).
+) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+    """Execute a SQL query and return (rows, columns, affected_rows, truncated).
 
     Uses SQLAlchemy to connect to any supported database.
     For SELECT queries, rows are limited to ``max_rows`` via DBAPI fetchmany.
+    ``truncated`` is ``True`` when the result set was capped by ``max_rows``.
     For write queries, affected_rows contains the rowcount from the driver.
     When ``read_only`` is True, the database session is set to read-only
     mode and the transaction is always rolled back.
@@ -356,7 +405,9 @@ def _execute_query(
     timeout_key = (
         "login_timeout" if database_type == DatabaseType.MSSQL else "connect_timeout"
     )
-    engine = create_engine(connection_url, connect_args={timeout_key: 10})
+    engine = create_engine(
+        connection_url, connect_args={timeout_key: _CONNECT_TIMEOUT_SECONDS}
+    )
     try:
         with engine.connect() as conn:
             # Use AUTOCOMMIT so SET commands take effect immediately.

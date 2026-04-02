@@ -66,7 +66,11 @@ class SQLQueryBlock(Block):
             advanced=False,
         )
         host: SecretStr = SchemaField(
-            description="Database hostname or IP address",
+            description=(
+                "Database hostname or IP address. "
+                "Treated as a secret to avoid leaking infrastructure details. "
+                "Private/internal IPs are blocked (SSRF protection)."
+            ),
             placeholder="db.example.com",
             secret=True,
         )
@@ -117,6 +121,12 @@ class SQLQueryBlock(Block):
             description="Column names from the query result"
         )
         row_count: int = SchemaField(description="Number of rows returned")
+        truncated: bool = SchemaField(
+            description=(
+                "True when the result set was capped by max_rows, "
+                "indicating additional rows exist in the database"
+            )
+        )
         affected_rows: int = SchemaField(
             description="Number of rows affected by a write query (INSERT/UPDATE/DELETE)"
         )
@@ -147,12 +157,14 @@ class SQLQueryBlock(Block):
                 ("results", [{"test_col": 1}]),
                 ("columns", ["test_col"]),
                 ("row_count", 1),
+                ("truncated", False),
             ],
             test_mock={
                 "execute_query": lambda *_args, **_kwargs: (
                     [{"test_col": 1}],
                     ["test_col"],
                     -1,
+                    False,
                 ),
                 "check_host_allowed": lambda *_args, **_kwargs: ["127.0.0.1"],
             },
@@ -177,8 +189,8 @@ class SQLQueryBlock(Block):
         max_rows: int,
         read_only: bool = True,
         database_type: DatabaseType = DatabaseType.POSTGRES,
-    ) -> tuple[list[dict[str, Any]], list[str], int]:
-        """Execute a SQL query and return (rows, columns, affected_rows).
+    ) -> tuple[list[dict[str, Any]], list[str], int, bool]:
+        """Execute a SQL query and return (rows, columns, affected_rows, truncated).
 
         Delegates to ``_execute_query`` in ``sql_query_helpers``.
         Extracted as a method so it can be mocked during block tests.
@@ -237,7 +249,7 @@ class SQLQueryBlock(Block):
             )
 
         try:
-            results, columns, affected = await asyncio.to_thread(
+            results, columns, affected, truncated = await asyncio.to_thread(
                 self.execute_query,
                 connection_url=connection_url,
                 query=input_data.query,
@@ -249,22 +261,29 @@ class SQLQueryBlock(Block):
             yield "results", results
             yield "columns", columns
             yield "row_count", len(results)
+            yield "truncated", truncated
             if affected >= 0:
                 yield "affected_rows", affected
         except OperationalError as e:
-            yield "error", self._classify_operational_error(
-                _sanitize(e),
-                input_data.timeout,
+            yield (
+                "error",
+                self._classify_operational_error(
+                    _sanitize(e),
+                    input_data.timeout,
+                ),
             )
         except ProgrammingError as e:
             yield "error", f"SQL error: {_sanitize(e)}"
         except DBAPIError as e:
             yield "error", f"Database error: {_sanitize(e)}"
         except ModuleNotFoundError:
-            yield "error", (
-                f"Database driver not available for "
-                f"{input_data.database_type.value}. "
-                f"Please contact the platform administrator."
+            yield (
+                "error",
+                (
+                    f"Database driver not available for "
+                    f"{input_data.database_type.value}. "
+                    f"Please contact the platform administrator."
+                ),
             )
 
     @staticmethod
