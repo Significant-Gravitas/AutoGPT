@@ -71,21 +71,58 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
   return { credentialFields, requiredCredentials };
 }
 
-export function coerceExpectedInputs(rawInputs: unknown): Array<{
+/**
+ * Build a sibling-inputs dict from the missing_credentials discriminator values.
+ *
+ * When the backend resolves credentials for host-scoped blocks (e.g.
+ * SendAuthenticatedWebRequestBlock), it adds the target URL to
+ * `discriminator_values`.  The credential modal uses `siblingInputs`
+ * to extract the host and prefill the "Host Pattern" field.
+ *
+ * This function builds that mapping from the `discriminator` field name
+ * and the first `discriminator_values` entry for each credential.
+ */
+export function buildSiblingInputsFromCredentials(
+  rawMissingCredentials: unknown,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (!rawMissingCredentials || typeof rawMissingCredentials !== "object")
+    return result;
+
+  const missing = rawMissingCredentials as Record<string, unknown>;
+  for (const value of Object.values(missing)) {
+    if (!value || typeof value !== "object") continue;
+    const cred = value as Record<string, unknown>;
+
+    const discriminator =
+      typeof cred.discriminator === "string" ? cred.discriminator : null;
+    const discriminatorValues = Array.isArray(cred.discriminator_values)
+      ? cred.discriminator_values.filter(
+          (v): v is string => typeof v === "string",
+        )
+      : [];
+
+    if (discriminator && discriminatorValues.length > 0) {
+      result[discriminator] = discriminatorValues[0];
+    }
+  }
+
+  return result;
+}
+
+interface ExpectedInput {
   name: string;
   title: string;
   type: string;
   description?: string;
   required: boolean;
-}> {
+  advanced: boolean;
+  value?: unknown;
+}
+
+export function coerceExpectedInputs(rawInputs: unknown): ExpectedInput[] {
   if (!Array.isArray(rawInputs)) return [];
-  const results: Array<{
-    name: string;
-    title: string;
-    type: string;
-    description?: string;
-    required: boolean;
-  }> = [];
+  const results: ExpectedInput[] = [];
 
   rawInputs.forEach((value, index) => {
     if (!value || typeof value !== "object") return;
@@ -105,15 +142,13 @@ export function coerceExpectedInputs(rawInputs: unknown): Array<{
         ? input.description.trim()
         : undefined;
     const required = Boolean(input.required);
+    const advanced = Boolean(input.advanced);
 
-    const item: {
-      name: string;
-      title: string;
-      type: string;
-      description?: string;
-      required: boolean;
-    } = { name, title, type, required };
+    const item: ExpectedInput = { name, title, type, required, advanced };
     if (description) item.description = description;
+    if (input.value !== undefined && input.value !== null) {
+      item.value = input.value;
+    }
     results.push(item);
   });
 
@@ -123,17 +158,20 @@ export function coerceExpectedInputs(rawInputs: unknown): Array<{
 /**
  * Build an RJSF schema from expected inputs so they can be rendered
  * as a dynamic form via FormRenderer.
+ *
+ * When ``showAdvanced`` is false (default), fields marked ``advanced``
+ * are excluded — matching the builder behaviour where advanced fields
+ * are hidden behind a toggle.
  */
 export function buildExpectedInputsSchema(
-  expectedInputs: Array<{
-    name: string;
-    title: string;
-    type: string;
-    description?: string;
-    required: boolean;
-  }>,
+  expectedInputs: ExpectedInput[],
+  showAdvanced = false,
 ): RJSFSchema | null {
-  if (expectedInputs.length === 0) return null;
+  const visible = showAdvanced
+    ? expectedInputs
+    : expectedInputs.filter((i) => !i.advanced);
+
+  if (visible.length === 0) return null;
 
   const TYPE_MAP: Record<string, string> = {
     string: "string",
@@ -150,12 +188,14 @@ export function buildExpectedInputsSchema(
   const properties: Record<string, Record<string, unknown>> = {};
   const required: string[] = [];
 
-  for (const input of expectedInputs) {
-    properties[input.name] = {
+  for (const input of visible) {
+    const prop: Record<string, unknown> = {
       type: TYPE_MAP[input.type.toLowerCase()] ?? "string",
       title: input.title,
-      ...(input.description ? { description: input.description } : {}),
     };
+    if (input.description) prop.description = input.description;
+    if (input.value !== undefined) prop.default = input.value;
+    properties[input.name] = prop;
     if (input.required) required.push(input.name);
   }
 
@@ -164,4 +204,20 @@ export function buildExpectedInputsSchema(
     properties,
     ...(required.length > 0 ? { required } : {}),
   };
+}
+
+/**
+ * Extract initial form values from expected inputs that have a
+ * prefilled ``value`` from the backend.
+ */
+export function extractInitialValues(
+  expectedInputs: ExpectedInput[],
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const input of expectedInputs) {
+    if (input.value !== undefined && input.value !== null) {
+      values[input.name] = input.value;
+    }
+  }
+  return values;
 }

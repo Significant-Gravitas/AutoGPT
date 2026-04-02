@@ -6,25 +6,21 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import {
   buildExpectedInputsSchema,
+  buildSiblingInputsFromCredentials,
   coerceCredentialFields,
   coerceExpectedInputs,
+  extractInitialValues,
 } from "./helpers";
 
 interface Props {
   output: SetupRequirementsResponse;
-  /** Override the message sent to the chat when the user clicks Proceed after connecting credentials.
-   * Defaults to "Please re-run this step now." */
   retryInstruction?: string;
-  /** Override the label shown above the credentials section.
-   * Defaults to "Credentials". */
   credentialsLabel?: string;
-  /** Called after Proceed is clicked so the parent can persist the dismissed state
-   * across remounts (avoids re-enabling the Proceed button on remount). */
   onComplete?: () => void;
 }
 
@@ -39,8 +35,8 @@ export function SetupRequirementsCard({
   const [inputCredentials, setInputCredentials] = useState<
     Record<string, CredentialsMetaInput | undefined>
   >({});
-  const [inputValues, setInputValues] = useState<Record<string, unknown>>({});
   const [hasSent, setHasSent] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
     output.setup_info.user_readiness?.missing_credentials,
@@ -50,7 +46,27 @@ export function SetupRequirementsCard({
     (output.setup_info.requirements as Record<string, unknown>)?.inputs,
   );
 
-  const inputSchema = buildExpectedInputsSchema(expectedInputs);
+  const initialValues = useMemo(
+    () => extractInitialValues(expectedInputs),
+    [expectedInputs],
+  );
+
+  const [inputValues, setInputValues] =
+    useState<Record<string, unknown>>(initialValues);
+
+  const hasAdvancedFields = expectedInputs.some((i) => i.advanced);
+  const inputSchema = buildExpectedInputsSchema(expectedInputs, showAdvanced);
+
+  // Build siblingInputs for credential modal host prefill.
+  // Prefer discriminator_values from the credential response, but also
+  // include values from input_data (e.g. url field) so the host pattern
+  // can be extracted even when discriminator_values is empty.
+  const siblingInputs = useMemo(() => {
+    const fromCreds = buildSiblingInputsFromCredentials(
+      output.setup_info.user_readiness?.missing_credentials,
+    );
+    return { ...inputValues, ...fromCreds };
+  }, [output.setup_info.user_readiness?.missing_credentials, inputValues]);
 
   function handleCredentialChange(key: string, value?: CredentialsMetaInput) {
     setInputCredentials((prev) => ({ ...prev, [key]: value }));
@@ -63,10 +79,10 @@ export function SetupRequirementsCard({
 
   const needsInputs = inputSchema !== null;
   const requiredInputNames = expectedInputs
-    .filter((i) => i.required)
+    .filter((i) => i.required && !i.advanced)
     .map((i) => i.name);
   const isAllInputsComplete =
-    needsInputs &&
+    !needsInputs ||
     requiredInputNames.every((name) => {
       const v = inputValues[name];
       return v !== undefined && v !== null && v !== "";
@@ -77,8 +93,7 @@ export function SetupRequirementsCard({
   }
 
   const canRun =
-    (!needsCredentials || isAllCredentialsComplete) &&
-    (!needsInputs || isAllInputsComplete);
+    (!needsCredentials || isAllCredentialsComplete) && isAllInputsComplete;
 
   function handleRun() {
     setHasSent(true);
@@ -118,7 +133,7 @@ export function SetupRequirementsCard({
               credentialFields={credentialFields}
               requiredCredentials={requiredCredentials}
               inputCredentials={inputCredentials}
-              inputValues={{}}
+              inputValues={siblingInputs}
               onCredentialChange={handleCredentialChange}
             />
           </div>
@@ -133,7 +148,9 @@ export function SetupRequirementsCard({
           <FormRenderer
             jsonSchema={inputSchema}
             className="mb-3 mt-3"
-            handleChange={(v) => setInputValues(v.formData ?? {})}
+            handleChange={(v) =>
+              setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
+            }
             uiSchema={{
               "ui:submitButtonOptions": { norender: true },
             }}
@@ -143,6 +160,15 @@ export function SetupRequirementsCard({
               size: "small",
             }}
           />
+          {hasAdvancedFields && (
+            <button
+              type="button"
+              className="text-xs text-muted-foreground underline"
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
+            </button>
+          )}
         </div>
       )}
 
