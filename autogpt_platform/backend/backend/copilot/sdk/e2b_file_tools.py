@@ -8,6 +8,7 @@ SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
+import hashlib
 import itertools
 import json
 import logging
@@ -317,8 +318,9 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
 
 # Files larger than this are written to /home/user/ via sandbox.files.write()
 # instead of /tmp/ via shell base64, to avoid shell argument length limits
-# and E2B command timeouts.
-_BRIDGE_SHELL_MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+# and E2B command timeouts.  Base64 expands content by ~33%, so keep this
+# well under the typical Linux ARG_MAX (128 KB).
+_BRIDGE_SHELL_MAX_BYTES = 32 * 1024  # 32 KB
 # Files larger than this are skipped entirely to avoid excessive transfer times.
 _BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -338,16 +340,23 @@ async def _bridge_to_sandbox(
     Returns the sandbox path on success, or ``None`` on skip/failure.
 
     Size handling:
-    - <= 5 MB: written to ``/tmp/<basename>`` via shell base64 (``_sandbox_write``).
-    - 5-50 MB: written to ``/home/user/<basename>`` via ``sandbox.files.write()``
-      to avoid shell argument length limits.
+    - <= 32 KB: written to ``/tmp/<hash>-<basename>`` via shell base64
+      (``_sandbox_write``).  Kept small to stay within ARG_MAX.
+    - 32 KB - 50 MB: written to ``/home/user/<hash>-<basename>`` via
+      ``sandbox.files.write()`` to avoid shell argument length limits.
     - > 50 MB: skipped entirely with a warning.
+
+    The sandbox filename is prefixed with a short hash of the full source
+    path to avoid collisions when different source files share the same
+    basename (e.g. multiple ``result.json`` files).
     """
     if offset != 0 or limit < 2000:
         return None
-    basename = os.path.basename(file_path)
     try:
         expanded = os.path.realpath(os.path.expanduser(file_path))
+        basename = os.path.basename(expanded)
+        source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+        unique_name = f"{source_id}-{basename}"
         file_size = os.path.getsize(expanded)
         if file_size > _BRIDGE_SKIP_BYTES:
             logger.warning(
@@ -359,12 +368,12 @@ async def _bridge_to_sandbox(
         with open(expanded, "rb") as fh:
             content = fh.read()
         if file_size <= _BRIDGE_SHELL_MAX_BYTES:
-            sandbox_path = f"/tmp/{basename}"
+            sandbox_path = f"/tmp/{unique_name}"
             await _sandbox_write(
                 sandbox, sandbox_path, content.decode("utf-8", errors="replace")
             )
         else:
-            sandbox_path = f"/home/user/{basename}"
+            sandbox_path = f"/home/user/{unique_name}"
             await sandbox.files.write(
                 sandbox_path, content.decode("utf-8", errors="replace")
             )
@@ -375,7 +384,7 @@ async def _bridge_to_sandbox(
     except Exception:
         logger.debug(
             "[E2B] Failed to bridge SDK file to sandbox: %s",
-            basename,
+            file_path,
             exc_info=True,
         )
         return None

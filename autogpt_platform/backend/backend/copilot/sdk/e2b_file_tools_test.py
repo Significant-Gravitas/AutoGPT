@@ -3,6 +3,7 @@
 Pure unit tests with no external dependencies (no E2B, no sandbox).
 """
 
+import hashlib
 import os
 import shutil
 from types import SimpleNamespace
@@ -21,6 +22,15 @@ from .e2b_file_tools import (
     _sandbox_write,
     resolve_sandbox_path,
 )
+
+
+def _expected_bridge_path(file_path: str, prefix: str = "/tmp") -> str:
+    """Compute the expected sandbox path for a bridged file."""
+    expanded = os.path.realpath(os.path.expanduser(file_path))
+    basename = os.path.basename(expanded)
+    source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+    return f"{prefix}/{source_id}-{basename}"
+
 
 # ---------------------------------------------------------------------------
 # resolve_sandbox_path — sandbox path normalisation & boundary enforcement
@@ -375,14 +385,15 @@ def _make_bridge_sandbox() -> SimpleNamespace:
 class TestBridgeToSandbox:
     @pytest.mark.asyncio
     async def test_happy_path_small_file(self, tmp_path):
-        """A small file is bridged to /tmp/<basename> via _sandbox_write."""
+        """A small file is bridged to /tmp/<hash>-<basename> via _sandbox_write."""
         f = tmp_path / "result.json"
         f.write_text('{"ok": true}')
         sandbox = _make_bridge_sandbox()
 
         result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
 
-        assert result == "/tmp/result.json"
+        expected = _expected_bridge_path(str(f))
+        assert result == expected
         sandbox.commands.run.assert_called_once()
         cmd = sandbox.commands.run.call_args[0][0]
         assert "result.json" in cmd
@@ -439,17 +450,18 @@ class TestBridgeToSandbox:
 
     @pytest.mark.asyncio
     async def test_large_file_uses_files_api(self, tmp_path):
-        """Files > 5 MB but <= 50 MB are written to /home/user/ via files.write."""
+        """Files > 32 KB but <= 50 MB are written to /home/user/ via files.write."""
         f = tmp_path / "big.json"
         f.write_bytes(b"x" * (_BRIDGE_SHELL_MAX_BYTES + 1))
         sandbox = _make_bridge_sandbox()
 
         result = await _bridge_to_sandbox(sandbox, str(f), offset=0, limit=2000)
 
-        assert result == "/home/user/big.json"
+        expected = _expected_bridge_path(str(f), prefix="/home/user")
+        assert result == expected
         sandbox.files.write.assert_called_once()
         call_args = sandbox.files.write.call_args[0]
-        assert call_args[0] == "/home/user/big.json"
+        assert call_args[0] == expected
         sandbox.commands.run.assert_not_called()
 
     @pytest.mark.asyncio
