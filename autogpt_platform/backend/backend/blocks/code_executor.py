@@ -17,6 +17,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -342,6 +343,7 @@ class ExecuteCodeBlock(Block, BaseE2BExecutorMixin):
 
             # Determine result object shape & filter out empty formats
             main_result, results = self.process_execution_results(results)
+            self.merge_stats(NodeExecutionStats(output_size=1))
             if main_result:
                 yield "main_result", main_result
             yield "results", results
@@ -467,6 +469,7 @@ class InstantiateCodeSandboxBlock(Block, BaseE2BExecutorMixin):
                 setup_commands=input_data.setup_commands,
                 timeout=input_data.timeout,
             )
+            self.merge_stats(NodeExecutionStats(output_size=1))
             if sandbox_id:
                 yield "sandbox_id", sandbox_id
             else:
@@ -577,6 +580,7 @@ class ExecuteCodeStepBlock(Block, BaseE2BExecutorMixin):
 
             # Determine result object shape & filter out empty formats
             main_result, results = self.process_execution_results(results)
+            self.merge_stats(NodeExecutionStats(output_size=1))
             if main_result:
                 yield "main_result", main_result
             yield "results", results

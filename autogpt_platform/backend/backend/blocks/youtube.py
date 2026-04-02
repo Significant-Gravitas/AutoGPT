@@ -19,6 +19,7 @@ from backend.blocks._base import (
 from backend.data.model import (
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
     UserPasswordCredentials,
 )
@@ -170,6 +171,7 @@ class TranscribeYoutubeVideoBlock(Block):
             transcript = self.get_transcript(video_id, credentials)
             transcript_text = self.format_transcript(transcript=transcript)
 
+            self.merge_stats(NodeExecutionStats(output_size=1))
             # Only yield after all operations succeed
             yield "video_id", video_id
             yield "transcript", transcript_text

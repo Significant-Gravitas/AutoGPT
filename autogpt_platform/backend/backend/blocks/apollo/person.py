@@ -13,7 +13,7 @@ from backend.blocks.apollo._auth import (
     ApolloCredentialsInput,
 )
 from backend.blocks.apollo.models import Contact, EnrichPersonRequest
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class GetPersonDetailBlock(Block):
@@ -141,4 +141,5 @@ class GetPersonDetailBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         query = EnrichPersonRequest(**input_data.model_dump())
+        self.merge_stats(NodeExecutionStats(output_size=1))
         yield "contact", await self.enrich_person(query, credentials)

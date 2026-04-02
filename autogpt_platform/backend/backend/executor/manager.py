@@ -2063,6 +2063,49 @@ class ExecutionManager(AppProcess):
 # ------- UTILITIES ------- #
 
 
+def _resolve_tracking(
+    provider: str,
+    block_name: str,
+    stats: NodeExecutionStats,
+    input_data: dict[str, Any],
+) -> tuple[str, float]:
+    """Return (tracking_type, tracking_amount) based on provider billing model."""
+    # 1. Provider returned actual USD cost (OpenRouter, Exa)
+    if stats.provider_cost is not None:
+        return "cost_usd", stats.provider_cost
+
+    # 2. LLM providers: track by tokens
+    if stats.input_token_count or stats.output_token_count:
+        return "tokens", float(
+            (stats.input_token_count or 0) + (stats.output_token_count or 0)
+        )
+
+    # 3. Provider-specific billing models
+
+    # TTS: billed per character of input text
+    if provider == "unreal_speech":
+        text = input_data.get("text", "")
+        return "characters", float(len(text)) if isinstance(text, str) else 0.0
+
+    # D-ID + ElevenLabs voice: billed per character of script
+    if provider in ("d_id", "elevenlabs"):
+        text = input_data.get("script_input", "") or input_data.get("text", "")
+        return "characters", float(len(text)) if isinstance(text, str) else 0.0
+
+    # E2B: billed per second of sandbox time
+    if provider == "e2b":
+        return "sandbox_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
+
+    # Video/image gen: walltime includes queue + generation + polling
+    if provider in ("fal", "revid", "replicate"):
+        return "walltime_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
+
+    # Per-request: Google Maps, Ideogram, Nvidia, Apollo, etc.
+    # All billed per API call - count 1 per block execution.
+    # output_size captured separately for volume estimation.
+    return "per_run", 1.0
+
+
 async def _log_system_credential_cost(
     node_exec: NodeExecutionEntry,
     block: "Block",
@@ -2100,25 +2143,13 @@ async def _log_system_credential_cost(
         if stats.provider_cost is not None:
             cost_microdollars = int(stats.provider_cost * 1_000_000)
 
-        # Determine tracking type and amount:
-        # - cost_usd: provider returned actual dollar cost
-        # - tokens: LLM provider with token counts
-        # - duration_seconds: billed by execution time (E2B, video gen)
-        # - per_run: flat per-request billing
-        if stats.provider_cost is not None:
-            tracking_type = "cost_usd"
-            tracking_amount = stats.provider_cost
-        elif stats.input_token_count or stats.output_token_count:
-            tracking_type = "tokens"
-            tracking_amount = (stats.input_token_count or 0) + (
-                stats.output_token_count or 0
-            )
-        elif stats.walltime and stats.walltime > 0:
-            tracking_type = "duration_seconds"
-            tracking_amount = round(stats.walltime, 3)
-        else:
-            tracking_type = "per_run"
-            tracking_amount = 1
+        provider_name = cred_data.get("provider", "unknown")
+        tracking_type, tracking_amount = _resolve_tracking(
+            provider=provider_name,
+            block_name=block.name,
+            stats=stats,
+            input_data=input_data,
+        )
 
         meta: dict[str, Any] = {
             "tracking_type": tracking_type,
@@ -2138,7 +2169,7 @@ async def _log_system_credential_cost(
                 node_id=node_exec.node_id,
                 block_id=node_exec.block_id,
                 block_name=block.name,
-                provider=cred_data.get("provider", "unknown"),
+                provider=provider_name,
                 credential_id=cred_id,
                 cost_microdollars=cost_microdollars,
                 input_tokens=stats.input_token_count or None,

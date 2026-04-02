@@ -13,6 +13,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -104,4 +105,5 @@ class UnrealTextToSpeechBlock(Block):
             input_data.text,
             input_data.voice_id,
         )
+        self.merge_stats(NodeExecutionStats(output_size=len(input_data.text)))
         yield "mp3_url", api_response["OutputUri"]

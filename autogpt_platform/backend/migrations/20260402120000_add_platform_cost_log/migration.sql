@@ -11,7 +11,7 @@ CREATE TABLE "PlatformCostLog" (
     "blockName" TEXT NOT NULL,
     "provider" TEXT NOT NULL,
     "credentialId" TEXT NOT NULL,
-    "costMicrodollars" INTEGER,
+    "costMicrodollars" BIGINT,
     "inputTokens" INTEGER,
     "outputTokens" INTEGER,
     "dataSize" INTEGER,

@@ -18,7 +18,7 @@ from backend.blocks.fal._auth import (
     FalCredentialsInput,
 )
 from backend.data.execution import ExecutionContext
-from backend.data.model import SchemaField
+from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.file import store_media_file
 from backend.util.request import ClientResponseError, Requests
 from backend.util.type import MediaFileType
@@ -230,6 +230,7 @@ class AIVideoGeneratorBlock(Block):
                 execution_context=execution_context,
                 return_format="for_block_output",
             )
+            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "video_url", stored_url
         except Exception as e:
             error_message = str(e)

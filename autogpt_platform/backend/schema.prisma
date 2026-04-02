@@ -838,7 +838,7 @@ model PlatformCostLog {
   credentialId String
 
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
-  costMicrodollars Int?
+  costMicrodollars BigInt?
 
   inputTokens  Int?
   outputTokens Int?

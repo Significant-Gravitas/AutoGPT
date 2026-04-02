@@ -21,7 +21,7 @@ from backend.blocks.zerobounce._auth import (
     ZeroBounceCredentials,
     ZeroBounceCredentialsInput,
 )
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class Response(BaseModel):
@@ -177,5 +177,6 @@ class ValidateEmailsBlock(Block):
         )
 
         response_model = Response(**response.__dict__)
+        self.merge_stats(NodeExecutionStats(output_size=1))
 
         yield "response", response_model
