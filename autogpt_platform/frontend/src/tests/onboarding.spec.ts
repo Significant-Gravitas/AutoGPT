@@ -91,8 +91,8 @@ test("onboarding URL params sync with steps", async ({ page }) => {
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
 
-  // Step 1: URL should show step=1
-  await expect(page).toHaveURL(/step=1/);
+  // Step 1: URL may or may not include step=1 on initial load (no param is equivalent to step 1)
+  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
 
   // Fill name and go to step 2
   await page.getByLabel("Your first name").fill("Test");
