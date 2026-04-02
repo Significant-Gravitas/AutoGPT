@@ -1,6 +1,5 @@
 import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentPreviewResponse";
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
-import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import {
@@ -14,7 +13,6 @@ import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 export type EditAgentToolOutput =
   | AgentPreviewResponse
   | AgentSavedResponse
-  | ClarificationNeededResponse
   | ErrorResponse;
 
 function parseOutput(output: unknown): EditAgentToolOutput | null {
@@ -33,7 +31,6 @@ function parseOutput(output: unknown): EditAgentToolOutput | null {
     if (
       type === ResponseType.agent_builder_preview ||
       type === ResponseType.agent_builder_saved ||
-      type === ResponseType.agent_builder_clarification_needed ||
       type === ResponseType.error
     ) {
       return output as EditAgentToolOutput;
@@ -42,7 +39,6 @@ function parseOutput(output: unknown): EditAgentToolOutput | null {
       return output as AgentPreviewResponse;
     if ("agent_id" in output && "library_agent_id" in output)
       return output as AgentSavedResponse;
-    if ("questions" in output) return output as ClarificationNeededResponse;
     if ("error" in output || "details" in output)
       return output as ErrorResponse;
   }
@@ -73,15 +69,6 @@ export function isAgentSavedOutput(
   );
 }
 
-export function isClarificationNeededOutput(
-  output: EditAgentToolOutput,
-): output is ClarificationNeededResponse {
-  return (
-    output.type === ResponseType.agent_builder_clarification_needed ||
-    "questions" in output
-  );
-}
-
 export function isErrorOutput(
   output: EditAgentToolOutput,
 ): output is ErrorResponse {
@@ -102,7 +89,6 @@ export function getAnimationText(part: {
       if (!output) return "Editing the agent";
       if (isAgentSavedOutput(output)) return `Saved "${output.agent_name}"`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
-      if (isClarificationNeededOutput(output)) return "Needs clarification";
       return "Error editing agent";
     }
     case "output-error":
