@@ -329,7 +329,9 @@ def _baseline_conversation_updater(
             )
         if content_blocks:
             transcript_builder.append_assistant(
-                content_blocks=content_blocks, model=model
+                content_blocks=content_blocks,
+                model=model,
+                stop_reason="tool_use",
             )
         for tr in tool_results:
             messages.append(
@@ -353,6 +355,7 @@ def _baseline_conversation_updater(
             transcript_builder.append_assistant(
                 content_blocks=[{"type": "text", "text": response.response_text}],
                 model=model,
+                stop_reason="end_turn",
             )
 
 
