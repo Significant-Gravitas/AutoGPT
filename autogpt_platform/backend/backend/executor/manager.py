@@ -2060,33 +2060,28 @@ def _resolve_tracking(
         )
 
     # 3. Provider-specific billing models
+
+    # TTS: billed per character of input text
     if provider == "unreal_speech":
         text = input_data.get("text", "")
-        return "characters", float(len(text)) if isinstance(text, str) else 1.0
+        return "characters", float(len(text)) if isinstance(text, str) else 0.0
 
-    if provider == "elevenlabs":
-        text = input_data.get("script", "") or input_data.get("text", "")
-        return "characters", float(len(text)) if isinstance(text, str) else 1.0
+    # D-ID + ElevenLabs voice: billed per character of script
+    if provider in ("d_id", "elevenlabs"):
+        text = input_data.get("script_input", "") or input_data.get("text", "")
+        return "characters", float(len(text)) if isinstance(text, str) else 0.0
 
-    if provider == "google_maps":
-        max_results = input_data.get("max_results", 10)
-        if not isinstance(max_results, int):
-            max_results = 10
-        # 1 nearby search + N detail calls
-        return "api_calls", float(1 + min(max_results, 60))
-
+    # E2B: billed per second of sandbox time
     if provider == "e2b":
-        if stats.walltime and stats.walltime > 0:
-            return "sandbox_seconds", round(stats.walltime, 3)
-        return "sandbox_seconds", 0.0
+        return "sandbox_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
 
-    # 4. Video/image generation: duration-based
-    if provider in ("fal", "revid", "d_id", "replicate"):
-        if stats.walltime and stats.walltime > 0:
-            return "generation_seconds", round(stats.walltime, 3)
-        return "generation_seconds", 0.0
+    # Video/image gen: walltime includes queue + generation + polling
+    if provider in ("fal", "revid", "replicate"):
+        return "walltime_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
 
-    # 5. Per-request providers (Apollo, SmartLead, ZeroBounce, etc.)
+    # Per-request: Google Maps, Ideogram, Nvidia, Apollo, etc.
+    # All billed per API call - count 1 per block execution.
+    # output_size captured separately for volume estimation.
     return "per_run", 1.0
 
 
