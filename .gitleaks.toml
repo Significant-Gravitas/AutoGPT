@@ -20,9 +20,9 @@ paths = [
     '''autogpt_platform/db/docker/''',
     # Load test configs (dev JWTs)
     '''load-tests/configs/''',
-    # Test files with fake/fixture keys
-    '''_test\.py$''',
-    # Documentation (example curl commands, placeholder keys)
+    # Test files with fake/fixture keys (_test.py, test_*.py, conftest.py)
+    '''(_test|test_.*|conftest)\.py$''',
+    # Documentation (only contains placeholder keys in curl/API examples)
     '''docs/.*\.md$''',
     # Firebase config (public API keys by design)
     '''google-services\.json$''',
