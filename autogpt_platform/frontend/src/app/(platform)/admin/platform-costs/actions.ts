@@ -6,13 +6,24 @@ import {
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
 
+function toDateOrUndefined(val?: string): Date | undefined {
+  if (!val) return undefined;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? undefined : d;
+}
+
 export async function getPlatformCostDashboard(params?: {
   start?: string;
   end?: string;
   provider?: string;
   user_id?: string;
 }) {
-  const response = await getV2GetPlatformCostDashboard(params);
+  const response = await getV2GetPlatformCostDashboard({
+    start: toDateOrUndefined(params?.start),
+    end: toDateOrUndefined(params?.end),
+    provider: params?.provider || undefined,
+    user_id: params?.user_id || undefined,
+  });
   return okData(response);
 }
 
@@ -24,6 +35,13 @@ export async function getPlatformCostLogs(params?: {
   page?: number;
   page_size?: number;
 }) {
-  const response = await getV2GetPlatformCostLogs(params);
+  const response = await getV2GetPlatformCostLogs({
+    start: toDateOrUndefined(params?.start),
+    end: toDateOrUndefined(params?.end),
+    provider: params?.provider || undefined,
+    user_id: params?.user_id || undefined,
+    page: params?.page,
+    page_size: params?.page_size,
+  });
   return okData(response);
 }
