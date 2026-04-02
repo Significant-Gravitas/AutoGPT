@@ -10,7 +10,8 @@ import { Page, expect } from "@playwright/test";
  */
 export async function completeOnboardingViaAPI(page: Page) {
   await page.request.post(
-    "http://localhost:3000/api/onboarding/step?step=VISIT_COPILOT",
+    "http://localhost:3000/api/proxy/api/onboarding/step?step=VISIT_COPILOT",
+    { headers: { "Content-Type": "application/json" } },
   );
 }
 
