@@ -23,7 +23,7 @@ from backend.blocks.smartlead.models import (
     SaveSequencesResponse,
     Sequence,
 )
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class CreateCampaignBlock(Block):
@@ -100,6 +100,7 @@ class CreateCampaignBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         response = await self.create_campaign(input_data.name, credentials)
+        self.merge_stats(NodeExecutionStats(output_size=1))
 
         yield "id", response.id
         yield "name", response.name
@@ -226,6 +227,7 @@ class AddLeadToCampaignBlock(Block):
         response = await self.add_leads_to_campaign(
             input_data.campaign_id, input_data.lead_list, credentials
         )
+        self.merge_stats(NodeExecutionStats(output_size=len(input_data.lead_list)))
 
         yield "campaign_id", input_data.campaign_id
         yield "upload_count", response.upload_count
@@ -321,6 +323,7 @@ class SaveCampaignSequencesBlock(Block):
         response = await self.save_campaign_sequences(
             input_data.campaign_id, input_data.sequences, credentials
         )
+        self.merge_stats(NodeExecutionStats(output_size=1))
 
         if response.data:
             yield "data", response.data

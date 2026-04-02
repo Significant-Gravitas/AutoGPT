@@ -14,6 +14,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -117,6 +118,7 @@ class GoogleMapsSearchBlock(Block):
             input_data.radius,
             input_data.max_results,
         )
+        self.merge_stats(NodeExecutionStats(output_size=len(places)))
         for place in places:
             yield "place", place
 
