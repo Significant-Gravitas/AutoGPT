@@ -29,6 +29,7 @@ async def persist_and_record_usage(
     cache_creation_tokens: int = 0,
     log_prefix: str = "",
     cost_usd: float | str | None = None,
+    model: str | None = None,
 ) -> int:
     """Persist token usage to session and record for rate limiting.
 
@@ -130,7 +131,7 @@ async def persist_and_record_usage(
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,
-                model=None,
+                model=model,
                 metadata={
                     "tracking_type": tracking_type,
                     "tracking_amount": tracking_amount,

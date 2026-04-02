@@ -2358,6 +2358,7 @@ async def stream_chat_completion_sdk(
             cache_creation_tokens=turn_cache_creation_tokens,
             log_prefix=log_prefix,
             cost_usd=turn_cost_usd,
+            model=config.model,
         )
 
         # --- Persist session messages ---
