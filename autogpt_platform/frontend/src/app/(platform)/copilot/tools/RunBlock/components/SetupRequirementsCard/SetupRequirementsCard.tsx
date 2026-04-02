@@ -92,7 +92,7 @@ export function SetupRequirementsCard({
     needsCredentials &&
     [...requiredCredentials].every((key) => !!inputCredentials[key]);
 
-  const needsInputs = inputSchema !== null;
+  const needsInputs = expectedInputs.length > 0;
   const requiredInputNames = expectedInputs
     .filter((i) => i.required && !i.advanced)
     .map((i) => i.name);
@@ -155,26 +155,28 @@ export function SetupRequirementsCard({
         </div>
       )}
 
-      {inputSchema && (
+      {(inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
           <Text variant="small" className="w-fit border-b text-zinc-500">
             Inputs
           </Text>
-          <FormRenderer
-            jsonSchema={inputSchema}
-            className="mb-3 mt-3"
-            handleChange={(v) =>
-              setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
-            }
-            uiSchema={{
-              "ui:submitButtonOptions": { norender: true },
-            }}
-            initialValues={inputValues}
-            formContext={{
-              showHandles: false,
-              size: "small",
-            }}
-          />
+          {inputSchema && (
+            <FormRenderer
+              jsonSchema={inputSchema}
+              className="mb-3 mt-3"
+              handleChange={(v) =>
+                setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
+              }
+              uiSchema={{
+                "ui:submitButtonOptions": { norender: true },
+              }}
+              initialValues={inputValues}
+              formContext={{
+                showHandles: false,
+                size: "small",
+              }}
+            />
+          )}
           {hasAdvancedFields && (
             <button
               type="button"
