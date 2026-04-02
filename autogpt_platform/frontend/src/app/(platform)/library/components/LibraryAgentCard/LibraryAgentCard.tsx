@@ -12,6 +12,7 @@ import Avatar, {
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
 import { Link } from "@/components/atoms/Link/Link";
+import { IntegrationLinkImage } from "@/components/molecules/IntegrationLinkImage/IntegrationLinkImage";
 import { AgentCardMenu } from "./components/AgentCardMenu";
 import { FavoriteButton } from "./components/FavoriteButton";
 import { useLibraryAgentCard } from "./useLibraryAgentCard";
@@ -102,20 +103,17 @@ export function LibraryAgentCard({ agent, draggable = true }: Props) {
             </Text>
 
             {!image_url ? (
-              <div
-                className={`h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small ${
-                  [
-                    "bg-gradient-to-r from-green-200 to-blue-200",
-                    "bg-gradient-to-r from-pink-200 to-purple-200",
-                    "bg-gradient-to-r from-yellow-200 to-orange-200",
-                    "bg-gradient-to-r from-blue-200 to-cyan-200",
-                    "bg-gradient-to-r from-indigo-200 to-purple-200",
-                  ][parseInt(id.slice(0, 8), 16) % 5]
-                }`}
-                style={{
-                  backgroundSize: "200% 200%",
-                  animation: "gradient 15s ease infinite",
-                }}
+              <IntegrationLinkImage
+                integrations={
+                  "top_integrations" in agent
+                    ? (agent.top_integrations as Array<{
+                        name: string;
+                        type: "provider" | "category";
+                      }>)
+                    : []
+                }
+                size="sm"
+                className="h-[3.64rem] w-[6.70rem] flex-shrink-0 rounded-small"
               />
             ) : (
               <Image
