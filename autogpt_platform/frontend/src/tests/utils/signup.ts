@@ -2,6 +2,7 @@ import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
+import { skipOnboardingIfPresent } from "./onboarding";
 
 export async function signupTestUser(
   page: any,
@@ -58,12 +59,7 @@ export async function signupTestUser(
 
     // Handle onboarding redirect if needed
     if (currentUrl.includes("/onboarding") && ignoreOnboarding) {
-      // Complete onboarding via API so the provider won't redirect back
-      await page.request.post(
-        "http://localhost:3000/api/onboarding/step?step=VISIT_COPILOT",
-      );
-      await page.goto("http://localhost:3000/marketplace");
-      await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
+      await skipOnboardingIfPresent(page, "/marketplace");
     }
 
     // Verify we're on an expected final page and user is authenticated
