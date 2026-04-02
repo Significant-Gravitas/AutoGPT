@@ -170,7 +170,7 @@ def create_security_hooks(
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        task_tool_use_ids: set[str] = set()
+        subagent_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
             input_data: HookInput,
@@ -188,7 +188,7 @@ def create_security_hooks(
                 # Background agents are allowed — the SDK returns immediately
                 # with {isAsync: true} and the model polls via TaskOutput.
                 # Still count them against the concurrency limit.
-                if len(task_tool_use_ids) >= max_subtasks:
+                if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "
                         f"user={user_id}"
@@ -196,8 +196,8 @@ def create_security_hooks(
                     return cast(
                         SyncHookJSONOutput,
                         _deny(
-                            f"Maximum {max_subtasks} concurrent sub-tasks. "
-                            "Wait for running sub-tasks to finish, "
+                            f"Maximum {max_subtasks} concurrent sub-agents. "
+                            "Wait for running sub-agents to finish, "
                             "or continue in the main conversation."
                         ),
                     )
@@ -220,18 +220,18 @@ def create_security_hooks(
 
             # Reserve the sub-agent slot only after all validations pass
             if tool_name in _SUBAGENT_TOOLS and tool_use_id is not None:
-                task_tool_use_ids.add(tool_use_id)
+                subagent_tool_use_ids.add(tool_use_id)
 
             logger.debug(f"[SDK] Tool start: {tool_name}, user={user_id}")
             return cast(SyncHookJSONOutput, {})
 
-        def _release_task_slot(tool_name: str, tool_use_id: str | None) -> None:
+        def _release_subagent_slot(tool_name: str, tool_use_id: str | None) -> None:
             """Release a sub-agent concurrency slot if one was reserved."""
-            if tool_name in _SUBAGENT_TOOLS and tool_use_id in task_tool_use_ids:
-                task_tool_use_ids.discard(tool_use_id)
+            if tool_name in _SUBAGENT_TOOLS and tool_use_id in subagent_tool_use_ids:
+                subagent_tool_use_ids.discard(tool_use_id)
                 logger.info(
                     "[SDK] Sub-agent slot released, active=%d/%d, user=%s",
-                    len(task_tool_use_ids),
+                    len(subagent_tool_use_ids),
                     max_subtasks,
                     user_id,
                 )
@@ -251,7 +251,7 @@ def create_security_hooks(
             _ = context
             tool_name = cast(str, input_data.get("tool_name", ""))
 
-            _release_task_slot(tool_name, tool_use_id)
+            _release_subagent_slot(tool_name, tool_use_id)
             is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
             logger.info(
                 "[SDK] PostToolUse: %s (builtin=%s, tool_use_id=%s)",
@@ -300,7 +300,7 @@ def create_security_hooks(
                 safe_tool_use_id,
             )
 
-            _release_task_slot(tool_name, tool_use_id)
+            _release_subagent_slot(tool_name, tool_use_id)
 
             return cast(SyncHookJSONOutput, {})
 

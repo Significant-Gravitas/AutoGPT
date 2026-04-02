@@ -601,7 +601,7 @@ function getAgentAccordionData(
     description: description ?? agentId ?? undefined,
     content: isAsync ? (
       <ContentMessage>
-        Running in the background. Results will be collected via TaskOutput.
+        Running in the background. Results will appear here when ready.
       </ContentMessage>
     ) : (
       <ContentCodeBlock>{JSON.stringify(output, null, 2)}</ContentCodeBlock>

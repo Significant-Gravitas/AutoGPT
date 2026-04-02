@@ -5,6 +5,7 @@ They validate that the security hooks correctly block unauthorized paths,
 tool access, and dangerous input patterns.
 """
 
+import logging
 import os
 
 import pytest
@@ -610,24 +611,38 @@ async def test_subagent_stop_hook_returns_empty(_subagent_hooks):
 
 @pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
 @pytest.mark.asyncio
-async def test_subagent_hooks_sanitize_inputs(_subagent_hooks):
+async def test_subagent_hooks_sanitize_inputs(_subagent_hooks, caplog):
     """SubagentStart/Stop should sanitize control chars from inputs."""
     start, stop = _subagent_hooks
-    # Inject control characters — hook should not raise
-    result = await start(
-        {"agent_id": "sa\n-injected\r\x00", "agent_type": "type\ttab"},
-        tool_use_id=None,
-        context={},
-    )
+    # Inject control characters — hook should not raise AND logs must be clean
+    with caplog.at_level(logging.DEBUG, logger="backend.copilot.sdk.security_hooks"):
+        result = await start(
+            {"agent_id": "sa\n-injected\r\x00", "agent_type": "safe_type\ttab"},
+            tool_use_id=None,
+            context={},
+        )
     assert result == {}
+    # Control chars must be stripped from the logged values
+    for record in caplog.records:
+        assert "\x00" not in record.message
+        assert "\r" not in record.message
+        assert "\n" not in record.message
+    assert "safe_type" in caplog.text
 
-    result = await stop(
-        {
-            "agent_id": "sa\n-injected",
-            "agent_type": "type\r",
-            "agent_transcript_path": "/tmp/\x00malicious\npath",
-        },
-        tool_use_id=None,
-        context={},
-    )
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="backend.copilot.sdk.security_hooks"):
+        result = await stop(
+            {
+                "agent_id": "sa\n-injected",
+                "agent_type": "type\r",
+                "agent_transcript_path": "/tmp/\x00malicious\npath",
+            },
+            tool_use_id=None,
+            context={},
+        )
     assert result == {}
+    for record in caplog.records:
+        assert "\x00" not in record.message
+        assert "\r" not in record.message
+        assert "\n" not in record.message
+    assert "/tmp/maliciouspath" in caplog.text

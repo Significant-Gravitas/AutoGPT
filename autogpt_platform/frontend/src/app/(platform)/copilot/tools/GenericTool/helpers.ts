@@ -256,7 +256,7 @@ export function getAnimationText(
               : "Checking agent result\u2026";
           return shortSummary
             ? `Running agent: ${shortSummary}`
-            : "Starting sub-agent\u2026";
+            : "Starting agent\u2026";
         default:
           return `Running ${formatToolName(toolName)}\u2026`;
       }
