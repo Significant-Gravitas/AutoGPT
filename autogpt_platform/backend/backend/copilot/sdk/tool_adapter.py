@@ -38,7 +38,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, _bridge_to_sandbox
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, bridge_and_annotate
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -393,9 +393,9 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         text = "".join(selected)
         sandbox = _current_sandbox.get(None)
         if sandbox is not None:
-            bridged = await _bridge_to_sandbox(sandbox, resolved, offset, limit)
-            if bridged:
-                text += f"\n[Sandbox copy available at {bridged}]"
+            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+            if annotation:
+                text += annotation
         return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
