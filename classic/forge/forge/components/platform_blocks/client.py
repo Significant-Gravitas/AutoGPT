@@ -21,7 +21,7 @@ class PlatformClientError(Exception):
 
 
 class PlatformClient:
-    """Client for platform.agpt.co API."""
+    """Client for backend.agpt.co API."""
 
     def __init__(self, base_url: str, api_key: str, timeout: int = 60):
         """Initialize the platform client.
@@ -39,7 +39,7 @@ class PlatformClient:
         """Get request headers."""
         headers = {"Content-Type": "application/json"}
         if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+            headers["X-API-Key"] = self.api_key
         return headers
 
     async def list_blocks(self) -> list[dict[str, Any]]:
@@ -51,7 +51,7 @@ class PlatformClient:
         Raises:
             PlatformClientError: If the API request fails.
         """
-        url = f"{self.base_url}/api/v1/blocks"
+        url = f"{self.base_url}/external-api/v1/blocks"
 
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             try:
@@ -83,7 +83,7 @@ class PlatformClient:
         Raises:
             PlatformClientError: If the API request fails.
         """
-        url = f"{self.base_url}/api/v1/blocks/{block_id}/execute"
+        url = f"{self.base_url}/external-api/v1/blocks/{block_id}/execute"
 
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             try:

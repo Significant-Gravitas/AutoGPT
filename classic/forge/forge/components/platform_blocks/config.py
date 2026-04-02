@@ -13,7 +13,7 @@ class PlatformBlocksConfig(BaseModel):
 
     enabled: bool = UserConfigurable(default=True, from_env="PLATFORM_BLOCKS_ENABLED")
     platform_url: str = UserConfigurable(
-        default="https://platform.agpt.co",
+        default="https://backend.agpt.co",
         from_env="PLATFORM_URL",
     )
     api_key: Optional[SecretStr] = UserConfigurable(

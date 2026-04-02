@@ -325,7 +325,7 @@ ADDITIONAL_ENV_VARS: dict[str, SettingInfo] = {
         env_var="PLATFORM_URL",
         description="AutoGPT Platform URL",
         field_type="str",
-        default="https://platform.agpt.co",
+        default="https://backend.agpt.co",
     ),
     "PLATFORM_TIMEOUT": SettingInfo(
         name="platform_timeout",

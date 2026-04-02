@@ -225,7 +225,7 @@ class TestConfiguration:
         """Default configuration should have expected values."""
         config = PlatformBlocksConfig()
         assert config.enabled is True
-        assert config.platform_url == "https://platform.agpt.co"
+        assert config.platform_url == "https://backend.agpt.co"
         assert config.api_key is None
         assert config.timeout == 60
 
@@ -299,31 +299,31 @@ class TestPlatformClient:
     def test_client_initialization(self):
         """Client should initialize with correct settings."""
         client = PlatformClient(
-            base_url="https://platform.agpt.co/",
+            base_url="https://backend.agpt.co/",
             api_key="test-key",
             timeout=30,
         )
-        assert client.base_url == "https://platform.agpt.co"  # Trailing slash removed
+        assert client.base_url == "https://backend.agpt.co"  # Trailing slash removed
         assert client.api_key == "test-key"
 
     def test_client_headers_with_api_key(self):
         """Client should include auth header when API key is set."""
         client = PlatformClient(
-            base_url="https://platform.agpt.co",
+            base_url="https://backend.agpt.co",
             api_key="test-key",
             timeout=30,
         )
         headers = client._headers()
-        assert headers["Authorization"] == "Bearer test-key"
+        assert headers["X-API-Key"] == "test-key"
         assert headers["Content-Type"] == "application/json"
 
     def test_client_headers_without_api_key(self):
         """Client should not include auth header when API key is empty."""
         client = PlatformClient(
-            base_url="https://platform.agpt.co",
+            base_url="https://backend.agpt.co",
             api_key="",
             timeout=30,
         )
         headers = client._headers()
-        assert "Authorization" not in headers
+        assert "X-API-Key" not in headers
         assert headers["Content-Type"] == "application/json"
