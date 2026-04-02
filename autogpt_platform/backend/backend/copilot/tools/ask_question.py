@@ -68,7 +68,10 @@ class AskQuestionTool(BaseTool):
         **kwargs: Any,
     ) -> ToolResponseBase:
         del user_id  # unused; required by BaseTool contract
-        question: str = kwargs.get("question", "")
+        question_raw = kwargs.get("question")
+        if not isinstance(question_raw, str) or not question_raw.strip():
+            raise ValueError("ask_question requires a non-empty 'question' string")
+        question = question_raw.strip()
         options: list[str] = kwargs.get("options", [])
         keyword: str = kwargs.get("keyword", "")
         session_id = session.session_id if session else None

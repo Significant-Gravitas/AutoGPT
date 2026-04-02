@@ -69,3 +69,14 @@ async def test_execute_with_keyword_only(tool: AskQuestionTool, session: ChatSes
     q = result.questions[0]
     assert q.keyword == "trigger"
     assert q.example is None
+
+
+@pytest.mark.asyncio
+async def test_execute_rejects_empty_question(
+    tool: AskQuestionTool, session: ChatSession
+):
+    with pytest.raises(ValueError, match="non-empty"):
+        await tool._execute(user_id=None, session=session, question="")
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await tool._execute(user_id=None, session=session, question="   ")
