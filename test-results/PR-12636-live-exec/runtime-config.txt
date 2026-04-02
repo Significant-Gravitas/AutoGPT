@@ -1,0 +1,12 @@
+=== GUARDRAIL CONFIG VALUES ===
+max_turns: 50
+max_budget_usd: 5.0
+fallback_model: claude-sonnet-4-20250514
+max_transient_retries: 3
+use_claude_agent_sdk: True
+use_e2b_sandbox: True
+e2b_active: True
+max_buffer_size: 10485760
+max_subtasks: 10
+daily_token_limit: 2500000
+weekly_token_limit: 12500000
