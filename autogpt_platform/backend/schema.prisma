@@ -810,8 +810,8 @@ model PlatformCostLog {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId       String
-  User         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String?
+  User         User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
   graphExecId  String?
   nodeExecId   String?
   graphId      String?
@@ -833,6 +833,7 @@ model PlatformCostLog {
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
+  @@index([createdAt])
   @@index([graphExecId])
 }
 

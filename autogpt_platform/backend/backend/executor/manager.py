@@ -2054,6 +2054,9 @@ async def _log_system_credential_cost(
     (e.g. OpenRouter returns a cost field). The credit_cost in metadata
     captures our internal credit charge as a proxy.
     """
+    if node_exec.execution_context.dry_run:
+        return
+
     input_data = node_exec.inputs
     input_model = cast(type[BlockSchema], block.input_schema)
 

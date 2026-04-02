@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.data.db import query_raw_with_schema
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class PlatformCostEntry(BaseModel):
 
 
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
-    await query_raw_with_schema(
+    await execute_raw_with_schema(
         """
         INSERT INTO {schema_prefix}"PlatformCostLog"
             ("id", "createdAt", "userId", "graphExecId", "nodeExecId",
@@ -278,7 +278,7 @@ async def get_platform_cost_logs(
         FROM {{schema_prefix}}"PlatformCostLog" p
         LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
         WHERE {where_sql}
-        ORDER BY p."createdAt" DESC
+        ORDER BY p."createdAt" DESC, p."id" DESC
         LIMIT ${limit_idx} OFFSET ${offset_idx}
         """,
         *params,
