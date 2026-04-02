@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import sys
-import termios
-import tty
 from pathlib import Path
 from typing import Any
+
+if sys.platform == "win32":
+    import msvcrt
+else:
+    import termios
+    import tty
 
 from rich.console import Console
 from rich.panel import Panel
@@ -28,6 +32,17 @@ from .widgets import (
 
 def _getch() -> str:
     """Read a single character from stdin without echo."""
+    if sys.platform == "win32":
+        ch = msvcrt.getwch()
+        if ch in ("\x00", "\xe0"):
+            ch2 = msvcrt.getwch()
+            # Map Windows arrow key codes to ANSI sequences
+            arrow_map = {"H": "\x1b[A", "P": "\x1b[B", "M": "\x1b[C", "K": "\x1b[D"}
+            if ch2 == "\x0f":  # Shift+Tab
+                return "shift_tab"
+            return arrow_map.get(ch2, ch2)
+        return ch
+
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     try:
