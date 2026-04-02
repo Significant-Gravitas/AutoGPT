@@ -11601,14 +11601,16 @@
             "type": "integer",
             "title": "Total Cost Microdollars"
           },
-          "total_requests": { "type": "integer", "title": "Total Requests" }
+          "total_requests": { "type": "integer", "title": "Total Requests" },
+          "total_users": { "type": "integer", "title": "Total Users" }
         },
         "type": "object",
         "required": [
           "by_provider",
           "by_user",
           "total_cost_microdollars",
-          "total_requests"
+          "total_requests",
+          "total_users"
         ],
         "title": "PlatformCostDashboard"
       },
