@@ -253,11 +253,12 @@ def create_security_hooks(
 
             _release_subagent_slot(tool_name, tool_use_id)
             is_builtin = not tool_name.startswith(MCP_TOOL_PREFIX)
+            safe_tool_use_id = _sanitize(str(tool_use_id or ""), max_len=12)
             logger.info(
                 "[SDK] PostToolUse: %s (builtin=%s, tool_use_id=%s)",
                 tool_name,
                 is_builtin,
-                (tool_use_id or "")[:12],
+                safe_tool_use_id,
             )
 
             # Stash output for SDK built-in tools so the response adapter can
@@ -266,7 +267,7 @@ def create_security_hooks(
             if is_builtin:
                 tool_response = input_data.get("tool_response")
                 if tool_response is not None:
-                    resp_preview = str(tool_response)[:100]
+                    resp_preview = _sanitize(str(tool_response), max_len=100)
                     logger.info(
                         "[SDK] Stashing builtin output for %s (%d chars): %s...",
                         tool_name,
