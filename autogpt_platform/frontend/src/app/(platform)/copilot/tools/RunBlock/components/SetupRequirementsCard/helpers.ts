@@ -71,6 +71,45 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
   return { credentialFields, requiredCredentials };
 }
 
+/**
+ * Build a sibling-inputs dict from the missing_credentials discriminator values.
+ *
+ * When the backend resolves credentials for host-scoped blocks (e.g.
+ * SendAuthenticatedWebRequestBlock), it adds the target URL to
+ * `discriminator_values`.  The credential modal uses `siblingInputs`
+ * to extract the host and prefill the "Host Pattern" field.
+ *
+ * This function builds that mapping from the `discriminator` field name
+ * and the first `discriminator_values` entry for each credential.
+ */
+export function buildSiblingInputsFromCredentials(
+  rawMissingCredentials: unknown,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (!rawMissingCredentials || typeof rawMissingCredentials !== "object")
+    return result;
+
+  const missing = rawMissingCredentials as Record<string, unknown>;
+  for (const value of Object.values(missing)) {
+    if (!value || typeof value !== "object") continue;
+    const cred = value as Record<string, unknown>;
+
+    const discriminator =
+      typeof cred.discriminator === "string" ? cred.discriminator : null;
+    const discriminatorValues = Array.isArray(cred.discriminator_values)
+      ? cred.discriminator_values.filter(
+          (v): v is string => typeof v === "string",
+        )
+      : [];
+
+    if (discriminator && discriminatorValues.length > 0) {
+      result[discriminator] = discriminatorValues[0];
+    }
+  }
+
+  return result;
+}
+
 export function coerceExpectedInputs(rawInputs: unknown): Array<{
   name: string;
   title: string;

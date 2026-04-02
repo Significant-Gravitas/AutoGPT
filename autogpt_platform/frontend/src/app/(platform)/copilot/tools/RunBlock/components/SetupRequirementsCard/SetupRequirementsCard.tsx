@@ -11,6 +11,7 @@ import { useCopilotChatActions } from "../../../../components/CopilotChatActions
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import {
   buildExpectedInputsSchema,
+  buildSiblingInputsFromCredentials,
   coerceCredentialFields,
   coerceExpectedInputs,
 } from "./helpers";
@@ -43,6 +44,10 @@ export function SetupRequirementsCard({
   const [hasSent, setHasSent] = useState(false);
 
   const { credentialFields, requiredCredentials } = coerceCredentialFields(
+    output.setup_info.user_readiness?.missing_credentials,
+  );
+
+  const siblingInputs = buildSiblingInputsFromCredentials(
     output.setup_info.user_readiness?.missing_credentials,
   );
 
@@ -118,7 +123,7 @@ export function SetupRequirementsCard({
               credentialFields={credentialFields}
               requiredCredentials={requiredCredentials}
               inputCredentials={inputCredentials}
-              inputValues={{}}
+              inputValues={siblingInputs}
               onCredentialChange={handleCredentialChange}
             />
           </div>
