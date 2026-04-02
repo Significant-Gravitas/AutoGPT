@@ -193,9 +193,9 @@ export class PlatformAPI {
 
           try {
             const parsed = JSON.parse(data);
-            // Backend sends: text_delta (streaming chunks), text_start/text_end,
-            // start/finish (lifecycle), step_start/step_finish, error, etc.
-            if (parsed.type === "text_delta" && parsed.delta) {
+            // Backend sends: text-delta (streaming chunks), text-start/text-end,
+            // start/finish (lifecycle), start-step/finish-step, error, etc.
+            if (parsed.type === "text-delta" && parsed.delta) {
               yield parsed.delta;
             } else if (parsed.type === "error" && parsed.content) {
               yield `Error: ${parsed.content}`;
