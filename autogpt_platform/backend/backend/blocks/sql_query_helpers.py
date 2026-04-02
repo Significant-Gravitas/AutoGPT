@@ -376,7 +376,10 @@ def _run_in_transaction(
             for row in rows
         ]
     except Exception:
-        conn.execute(text("ROLLBACK"))
+        try:
+            conn.execute(text("ROLLBACK"))
+        except Exception:
+            pass
         raise
     else:
         conn.execute(text("ROLLBACK" if read_only else "COMMIT"))
