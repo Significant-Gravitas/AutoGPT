@@ -253,8 +253,12 @@ class BaseOpenAIChatProvider(
                     # appending, otherwise OpenAI will reject the next
                     # request because there are no tool response messages
                     # following the tool_calls.
+                    # Ensure content is always a string (not null/missing)
+                    # since OpenAI requires it on assistant messages.
                     retry_msg = _assistant_msg.model_dump(exclude_none=True)
                     retry_msg.pop("tool_calls", None)
+                    if not retry_msg.get("content"):
+                        retry_msg["content"] = ""
                     openai_messages.append(
                         cast(
                             ChatCompletionAssistantMessageParam,

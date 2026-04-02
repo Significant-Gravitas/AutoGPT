@@ -518,9 +518,14 @@ class TestCreateChatCompletion:
         message = MagicMock()
         message.content = content
         message.tool_calls = tool_calls
-        message.model_dump = MagicMock(
-            return_value={"role": "assistant", "content": content}
-        )
+
+        def _model_dump(**kwargs):
+            d = {"role": "assistant", "content": content}
+            if kwargs.get("exclude_none"):
+                d = {k: v for k, v in d.items() if v is not None}
+            return d
+
+        message.model_dump = _model_dump
 
         choice = MagicMock()
         choice.message = message
@@ -690,6 +695,64 @@ class TestCreateChatCompletion:
             completion_parser=fail_then_succeed,
         )
         assert result.parsed_result == "done"
+
+    @pytest.mark.asyncio
+    async def test_retry_with_null_content_does_not_send_null(self, provider):
+        """When GPT-5.4 returns tool_calls with content=None, the retry
+        message must have content="" not null/missing, otherwise OpenAI
+        returns 400 'expected a string, got null'."""
+        tc_mock = MagicMock()
+        tc_mock.id = "call_1"
+        tc_mock.type = "function"
+        tc_mock.function = MagicMock()
+        tc_mock.function.name = "write_file"
+        tc_mock.function.arguments = "invalid json{{"
+
+        usage = self._make_usage()
+
+        # First response: content=None with tool_calls (GPT-5.4 behavior)
+        bad_completion = self._make_completion_response(
+            content=None, tool_calls=[tc_mock], usage=usage
+        )
+        good_completion = self._make_completion_response(content="done", usage=usage)
+
+        call_count = 0
+
+        async def check_retry_messages(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return bad_completion
+            # On retry, verify assistant message has string content
+            msgs = kwargs.get("messages", [])
+            for msg in msgs:
+                if msg.get("role") == "assistant":
+                    assert (
+                        msg.get("content") is not None
+                    ), "Assistant message content must not be null on retry"
+                    assert isinstance(
+                        msg["content"], str
+                    ), f"Content must be str, got {type(msg['content'])}"
+            return good_completion
+
+        provider._client.chat.completions.create = check_retry_messages
+
+        attempt = 0
+
+        def fail_then_succeed(msg):
+            nonlocal attempt
+            attempt += 1
+            if attempt == 1:
+                raise ValueError("Parse failed")
+            return msg.content
+
+        result = await provider.create_chat_completion(
+            model_prompt=[ChatMessage.user("test")],
+            model_name=TEST_MODEL,
+            completion_parser=fail_then_succeed,
+        )
+        assert result.parsed_result == "done"
+        assert call_count >= 2  # May take multiple retries
 
     @pytest.mark.asyncio
     async def test_no_usage_defaults_to_zero(self, provider):
