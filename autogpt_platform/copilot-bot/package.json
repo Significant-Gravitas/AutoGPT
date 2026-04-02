@@ -1,0 +1,27 @@
+{
+  "name": "@autogpt/copilot-bot",
+  "version": "0.1.0",
+  "description": "Multi-platform CoPilot bot service using Vercel Chat SDK",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "chat": "^4.23.0",
+    "@chat-adapter/discord": "^4.23.0",
+    "@chat-adapter/telegram": "^4.23.0",
+    "@chat-adapter/slack": "^4.23.0",
+    "@chat-adapter/state-memory": "^4.23.0",
+    "@chat-adapter/state-redis": "^4.23.0",
+    "dotenv": "^16.4.0",
+    "eventsource-parser": "^3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
