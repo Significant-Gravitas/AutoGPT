@@ -18,6 +18,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -358,6 +359,7 @@ class AIShortformVideoCreatorBlock(Block):
                 execution_context=execution_context,
                 return_format="for_block_output",
             )
+            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "video_url", stored_url
 
 
@@ -565,6 +567,7 @@ class AIAdMakerVideoCreatorBlock(Block):
             execution_context=execution_context,
             return_format="for_block_output",
         )
+        self.merge_stats(NodeExecutionStats(output_size=1))
         yield "video_url", stored_url
 
 
@@ -760,4 +763,5 @@ class AIScreenshotToVideoAdBlock(Block):
             execution_context=execution_context,
             return_format="for_block_output",
         )
+        self.merge_stats(NodeExecutionStats(output_size=1))
         yield "video_url", stored_url
