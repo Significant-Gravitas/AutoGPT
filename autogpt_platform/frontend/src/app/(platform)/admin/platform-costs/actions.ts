@@ -1,19 +1,19 @@
 "use server";
 
-import BackendApi from "@/lib/autogpt-server-api";
-import type {
-  PlatformCostDashboard,
-  PlatformCostLogsResponse,
-} from "@/lib/autogpt-server-api";
+import {
+  getV2GetPlatformCostDashboard,
+  getV2GetPlatformCostLogs,
+} from "@/app/api/__generated__/endpoints/admin/admin";
+import { okData } from "@/app/api/helpers";
 
 export async function getPlatformCostDashboard(params?: {
   start?: string;
   end?: string;
   provider?: string;
   user_id?: string;
-}): Promise<PlatformCostDashboard> {
-  const api = new BackendApi();
-  return api.getPlatformCostDashboard(params);
+}) {
+  const response = await getV2GetPlatformCostDashboard(params);
+  return okData(response);
 }
 
 export async function getPlatformCostLogs(params?: {
@@ -23,7 +23,7 @@ export async function getPlatformCostLogs(params?: {
   user_id?: string;
   page?: number;
   page_size?: number;
-}): Promise<PlatformCostLogsResponse> {
-  const api = new BackendApi();
-  return api.getPlatformCostLogs(params);
+}) {
+  const response = await getV2GetPlatformCostLogs(params);
+  return okData(response);
 }

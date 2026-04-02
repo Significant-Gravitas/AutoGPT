@@ -966,51 +966,6 @@ export type AddUserCreditsResponse = {
   transaction_key: string;
 };
 
-export type ProviderCostSummary = {
-  provider: string;
-  total_cost_microdollars: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  request_count: number;
-};
-
-export type UserCostSummary = {
-  user_id: string;
-  email: string | null;
-  total_cost_microdollars: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  request_count: number;
-};
-
-export type PlatformCostDashboard = {
-  by_provider: ProviderCostSummary[];
-  by_user: UserCostSummary[];
-  total_cost_microdollars: number;
-  total_requests: number;
-  total_users: number;
-};
-
-export type CostLogRow = {
-  id: string;
-  created_at: string;
-  user_id: string;
-  email: string | null;
-  graph_exec_id: string | null;
-  node_exec_id: string | null;
-  block_name: string;
-  provider: string;
-  cost_microdollars: number | null;
-  input_tokens: number | null;
-  output_tokens: number | null;
-  model: string | null;
-};
-
-export type PlatformCostLogsResponse = {
-  logs: CostLogRow[];
-  pagination: Pagination;
-};
-
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

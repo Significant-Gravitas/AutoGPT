@@ -83,9 +83,11 @@ def _json_or_none(data: dict[str, Any] | None) -> str | None:
 
 class ProviderCostSummary(BaseModel):
     provider: str
+    tracking_type: str | None = None
     total_cost_microdollars: int
     total_input_tokens: int
     total_output_tokens: int
+    total_duration_seconds: float = 0.0
     request_count: int
 
 
@@ -107,9 +109,11 @@ class CostLogRow(BaseModel):
     node_exec_id: str | None = None
     block_name: str
     provider: str
+    tracking_type: str | None = None
     cost_microdollars: int | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    duration: float | None = None
     model: str | None = None
 
 
@@ -166,13 +170,15 @@ async def get_platform_cost_dashboard(
             f"""
             SELECT
                 p."provider",
+                p."metadata"->>'tracking_type' AS tracking_type,
                 COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
                 COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
                 COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
+                COALESCE(SUM(p."duration"), 0)::float AS total_duration,
                 COUNT(*)::bigint AS request_count
             FROM {{schema_prefix}}"PlatformCostLog" p
             WHERE {where_p}
-            GROUP BY p."provider"
+            GROUP BY p."provider", p."metadata"->>'tracking_type'
             ORDER BY total_cost DESC
             """,
             *params_p,
@@ -213,9 +219,11 @@ async def get_platform_cost_dashboard(
         by_provider=[
             ProviderCostSummary(
                 provider=r["provider"],
+                tracking_type=r.get("tracking_type"),
                 total_cost_microdollars=r["total_cost"],
                 total_input_tokens=r["total_input_tokens"],
                 total_output_tokens=r["total_output_tokens"],
+                total_duration_seconds=r.get("total_duration", 0.0),
                 request_count=r["request_count"],
             )
             for r in by_provider_rows
@@ -271,9 +279,11 @@ async def get_platform_cost_logs(
             p."nodeExecId" AS node_exec_id,
             p."blockName" AS block_name,
             p."provider",
+            p."metadata"->>'tracking_type' AS tracking_type,
             p."costMicrodollars" AS cost_microdollars,
             p."inputTokens" AS input_tokens,
             p."outputTokens" AS output_tokens,
+            p."duration",
             p."model"
         FROM {{schema_prefix}}"PlatformCostLog" p
         LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
@@ -296,9 +306,11 @@ async def get_platform_cost_logs(
             node_exec_id=r.get("node_exec_id"),
             block_name=r["block_name"],
             provider=r["provider"],
+            tracking_type=r.get("tracking_type"),
             cost_microdollars=r.get("cost_microdollars"),
             input_tokens=r.get("input_tokens"),
             output_tokens=r.get("output_tokens"),
+            duration=r.get("duration"),
             model=r.get("model"),
         )
         for r in rows
