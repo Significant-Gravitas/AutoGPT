@@ -534,7 +534,7 @@ async def upload_transcript(
     message_count: int = 0,
     log_prefix: str = "[Transcript]",
 ) -> None:
-    """Strip progress entries and upload complete transcript.
+    """Strip progress entries and stale thinking blocks, then upload transcript.
 
     The transcript represents the FULL active context (atomic).
     Each upload REPLACES the previous transcript entirely.
@@ -547,8 +547,11 @@ async def upload_transcript(
         message_count: ``len(session.messages)`` at upload time.
     """
     # Strip metadata entries (progress, file-history-snapshot, etc.)
-    # Note: SDK-built transcripts shouldn't have these, but strip for safety
+    # Note: SDK-built transcripts shouldn't have these, but strip for safety.
+    # Also strip stale thinking blocks from non-last assistant entries to
+    # prevent token bloat when switching between SDK and baseline modes.
     stripped = strip_progress_entries(content)
+    stripped = strip_stale_thinking_blocks(stripped)
     if not validate_transcript(stripped):
         # Log entry types for debugging — helps identify why validation failed
         entry_types = [
