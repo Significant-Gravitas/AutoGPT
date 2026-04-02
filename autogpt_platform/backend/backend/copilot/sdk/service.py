@@ -2274,6 +2274,14 @@ async def stream_chat_completion_sdk(
                     retryable=True,
                 )
                 ended_with_stream_error = True
+                # After exhausting all transient retries the stream is about
+                # to end.  Yield a final StreamError so the client knows the
+                # request failed — without this the SSE stream would close
+                # silently and the frontend would never show an error.
+                yield StreamError(
+                    errorText=exc.error_msg or FRIENDLY_TRANSIENT_MSG,
+                    code=exc.code or "transient_api_error",
+                )
                 break
             except Exception as e:
                 stream_err = e
