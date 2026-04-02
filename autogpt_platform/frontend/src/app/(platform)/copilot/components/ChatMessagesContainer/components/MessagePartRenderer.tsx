@@ -4,7 +4,6 @@ import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useMemo, useState } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
-import { useState } from "react";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
