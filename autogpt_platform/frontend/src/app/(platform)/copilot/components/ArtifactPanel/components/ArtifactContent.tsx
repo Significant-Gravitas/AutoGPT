@@ -181,11 +181,7 @@ function ArtifactRenderer({
     // (Chromium bug #413851). The blob URL has a null origin so it can't
     // access the parent page regardless.
     return (
-      <iframe
-        src={pdfUrl}
-        className="h-full w-full"
-        title={artifact.title}
-      />
+      <iframe src={pdfUrl} className="h-full w-full" title={artifact.title} />
     );
   }
 
