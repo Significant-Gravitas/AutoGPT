@@ -82,6 +82,7 @@ def _simulator_model() -> str:
 _TEMPERATURE = 0.2
 _MAX_JSON_RETRIES = 5
 _MAX_INPUT_VALUE_CHARS = 20000
+_COMMON_CRED_KEYS = frozenset({"credentials", "api_key", "token", "secret"})
 
 
 def _truncate_value(value: Any) -> Any:
@@ -247,7 +248,7 @@ def build_simulation_prompt(block: Any, input_data: dict[str, Any]) -> tuple[str
 {output_pins}
 {implementation_section}
 Your task: given the current inputs, produce realistic simulated outputs for this block.
-Study the block's run() source code above to understand exactly how inputs are transformed to outputs.
+{"Study the block's run() source code above to understand exactly how inputs are transformed to outputs." if run_source else "Use the block description and schemas to infer realistic outputs."}
 
 Rules:
 - Respond with a single JSON object.
@@ -264,7 +265,6 @@ Available output pins: {json.dumps(required_output_properties)}
     # Strip credentials from input so the LLM doesn't see null/empty creds
     # and incorrectly simulate auth failures.  Use the block's schema to
     # detect credential fields when available, falling back to common names.
-    _COMMON_CRED_KEYS = {"credentials", "api_key", "token", "secret"}
     try:
         cred_fields = set(block.input_schema.get_credentials_fields())
     except (AttributeError, TypeError):
