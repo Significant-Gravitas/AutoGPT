@@ -3,6 +3,7 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useState } from "react";
+import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
@@ -129,6 +130,8 @@ export function MessagePartRenderer({
         </MessageResponse>
       );
     }
+    case "tool-ask_question":
+      return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-find_block":
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;
     case "tool-find_agent":

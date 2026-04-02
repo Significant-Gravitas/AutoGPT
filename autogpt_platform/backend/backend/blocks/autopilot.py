@@ -146,6 +146,21 @@ class AutoPilotBlock(Block):
             advanced=True,
         )
 
+        dry_run: bool = SchemaField(
+            description=(
+                "When enabled, run_block and run_agent tool calls in this "
+                "autopilot session are forced to use dry-run simulation mode. "
+                "No real API calls, side effects, or credits are consumed "
+                "by those tools. Useful for testing agent wiring and "
+                "previewing outputs. "
+                "Only applies when creating a new session (session_id is empty). "
+                "When reusing an existing session_id, the session's original "
+                "dry_run setting is preserved."
+            ),
+            default=False,
+            advanced=True,
+        )
+
         # timeout_seconds removed: the SDK manages its own heartbeat-based
         # timeouts internally; wrapping with asyncio.timeout corrupts the
         # SDK's internal stream (see service.py CRITICAL comment).
@@ -232,11 +247,11 @@ class AutoPilotBlock(Block):
             },
         )
 
-    async def create_session(self, user_id: str) -> str:
+    async def create_session(self, user_id: str, *, dry_run: bool) -> str:
         """Create a new chat session and return its ID (mockable for tests)."""
         from backend.copilot.model import create_chat_session  # avoid circular import
 
-        session = await create_chat_session(user_id)
+        session = await create_chat_session(user_id, dry_run=dry_run)
         return session.session_id
 
     async def execute_copilot(
@@ -367,7 +382,9 @@ class AutoPilotBlock(Block):
         # even if the downstream stream fails (avoids orphaned sessions).
         sid = input_data.session_id
         if not sid:
-            sid = await self.create_session(execution_context.user_id)
+            sid = await self.create_session(
+                execution_context.user_id, dry_run=input_data.dry_run
+            )
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own
         # heartbeat-based timeouts internally.  Wrapping with asyncio.timeout

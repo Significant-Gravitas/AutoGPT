@@ -51,14 +51,10 @@ class RunBlockTool(BaseTool):
                 },
                 "dry_run": {
                     "type": "boolean",
-                    "description": (
-                        "When true, simulates block execution using an LLM without making any "
-                        "real API calls or producing side effects. Useful for testing agent "
-                        "wiring and previewing outputs. Default: false."
-                    ),
+                    "description": "Execute in preview mode.",
                 },
             },
-            "required": ["block_id", "input_data"],
+            "required": ["block_id", "input_data", "dry_run"],
         }
 
     @property
@@ -69,6 +65,10 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        *,
+        block_id: str = "",
+        input_data: dict | None = None,
+        dry_run: bool,
         **kwargs,
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -78,15 +78,19 @@ class RunBlockTool(BaseTool):
             session: Chat session
             block_id: Block UUID to execute
             input_data: Input values for the block
+            dry_run: If True, simulate execution without side effects
 
         Returns:
             BlockOutputResponse: Block execution outputs
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
-        dry_run = bool(kwargs.get("dry_run", False))
+        block_id = block_id.strip()
+        if input_data is None:
+            input_data = {}
+        # Session-level dry_run forces all tool calls to use dry-run mode.
+        if session.dry_run:
+            dry_run = True
         session_id = session.session_id
 
         if not block_id:

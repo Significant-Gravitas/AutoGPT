@@ -178,7 +178,7 @@ class ChatConfig(BaseSettings):
 
         Single source of truth for "will the SDK route through OpenRouter?".
         Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
-        present — mirrors the fallback logic in ``_build_sdk_env``.
+        present — mirrors the fallback logic in ``build_sdk_env``.
         """
         if not self.use_openrouter:
             return False

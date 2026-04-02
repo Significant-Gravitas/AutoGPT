@@ -251,6 +251,50 @@ def estimate_token_count_str(
 DEFAULT_TOKEN_THRESHOLD = 120_000
 DEFAULT_KEEP_RECENT = 15
 
+# Reserve tokens for system prompt, tool definitions, and per-turn overhead.
+# The actual model context limit minus this reserve = compression target.
+_CONTEXT_OVERHEAD_RESERVE = 60_000
+
+
+def get_context_window(model: str) -> int | None:
+    """Return the context window size for a model, or None if unknown.
+
+    Looks up the model in the :class:`LlmModel` enum (which already
+    carries ``context_window`` via ``MODEL_METADATA``).  Handles
+    provider-prefixed names (``anthropic/claude-opus-4-6``) and
+    case-insensitive input automatically.
+    """
+    from backend.blocks.llm import LlmModel  # lazy to avoid circular import
+
+    try:
+        llm_model = LlmModel(model)
+        return llm_model.context_window
+    except (ValueError, KeyError):
+        pass
+
+    # Retry with lowercase for case-insensitive lookup
+    try:
+        llm_model = LlmModel(model.lower())
+        return llm_model.context_window
+    except (ValueError, KeyError):
+        return None
+
+
+def get_compression_target(model: str) -> int:
+    """Compute a model-aware compression target for conversation history.
+
+    Returns ``context_window - overhead_reserve``, floored at 10K.
+    Falls back to ``DEFAULT_TOKEN_THRESHOLD`` for unknown models or
+    models whose context window is too small for the overhead reserve.
+    """
+    window = get_context_window(model)
+    if window is None:
+        return DEFAULT_TOKEN_THRESHOLD
+    target = window - _CONTEXT_OVERHEAD_RESERVE
+    if target < 10_000:
+        return DEFAULT_TOKEN_THRESHOLD
+    return target
+
 
 @dataclass
 class CompressResult:
@@ -660,7 +704,7 @@ async def _summarize_messages_llm(
 
 async def compress_context(
     messages: list[dict],
-    target_tokens: int = DEFAULT_TOKEN_THRESHOLD,
+    target_tokens: int | None = None,
     *,
     model: str = "gpt-4o",
     client: AsyncOpenAI | None = None,
@@ -671,6 +715,11 @@ async def compress_context(
 ) -> CompressResult:
     """
     Unified context compression that combines summarization and truncation strategies.
+
+    When ``target_tokens`` is None (the default), it is computed from the
+    model's context window via ``get_compression_target(model)``.  This
+    ensures large-context models (e.g. Opus 200K) retain more history
+    while smaller models compress more aggressively.
 
     Strategy (in order):
     1. **LLM summarization** – If client provided, summarize old messages into a
@@ -699,6 +748,10 @@ async def compress_context(
     -------
     CompressResult with compressed messages and metadata.
     """
+    # Resolve model-aware target when caller doesn't specify an explicit limit.
+    if target_tokens is None:
+        target_tokens = get_compression_target(model)
+
     # Guard clause for empty messages
     if not messages:
         return CompressResult(

@@ -48,9 +48,9 @@ class ValidateAgentGraphTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_json: dict | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_json = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
         if not agent_json or not isinstance(agent_json, dict):
