@@ -2095,6 +2095,40 @@ async def _log_system_credential_cost(
 
         credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
 
+        # Convert provider_cost (USD) to microdollars if available
+        cost_microdollars = None
+        if stats.provider_cost is not None:
+            cost_microdollars = int(stats.provider_cost * 1_000_000)
+
+        # Determine tracking type and amount:
+        # - cost_usd: provider returned actual dollar cost
+        # - tokens: LLM provider with token counts
+        # - duration_seconds: billed by execution time (E2B, video gen)
+        # - per_run: flat per-request billing
+        if stats.provider_cost is not None:
+            tracking_type = "cost_usd"
+            tracking_amount = stats.provider_cost
+        elif stats.input_token_count or stats.output_token_count:
+            tracking_type = "tokens"
+            tracking_amount = (stats.input_token_count or 0) + (
+                stats.output_token_count or 0
+            )
+        elif stats.walltime and stats.walltime > 0:
+            tracking_type = "duration_seconds"
+            tracking_amount = round(stats.walltime, 3)
+        else:
+            tracking_type = "per_run"
+            tracking_amount = 1
+
+        meta: dict[str, Any] = {
+            "tracking_type": tracking_type,
+            "tracking_amount": tracking_amount,
+        }
+        if credit_cost:
+            meta["credit_cost"] = credit_cost
+        if stats.provider_cost is not None:
+            meta["provider_cost_usd"] = stats.provider_cost
+
         await log_platform_cost_safe(
             PlatformCostEntry(
                 user_id=node_exec.user_id,
@@ -2106,12 +2140,13 @@ async def _log_system_credential_cost(
                 block_name=block.name,
                 provider=cred_data.get("provider", "unknown"),
                 credential_id=cred_id,
+                cost_microdollars=cost_microdollars,
                 input_tokens=stats.input_token_count or None,
                 output_tokens=stats.output_token_count or None,
                 data_size=stats.output_size or None,
                 duration=stats.walltime or None,
                 model=model_name,
-                metadata={"credit_cost": credit_cost} if credit_cost else None,
+                metadata=meta or None,
             )
         )
         return  # One log per execution is enough

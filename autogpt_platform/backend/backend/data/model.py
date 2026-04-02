@@ -838,6 +838,7 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
+    provider_cost: float | None = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
     cleared_outputs: Optional[dict[str, list[str]]] = None

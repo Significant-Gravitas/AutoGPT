@@ -90,7 +90,7 @@ class ProviderCostSummary(BaseModel):
 
 
 class UserCostSummary(BaseModel):
-    user_id: str
+    user_id: str | None = None
     email: str | None = None
     total_cost_microdollars: int
     total_input_tokens: int
@@ -101,7 +101,7 @@ class UserCostSummary(BaseModel):
 class CostLogRow(BaseModel):
     id: str
     created_at: datetime
-    user_id: str
+    user_id: str | None = None
     email: str | None = None
     graph_exec_id: str | None = None
     node_exec_id: str | None = None
@@ -222,7 +222,7 @@ async def get_platform_cost_dashboard(
         ],
         by_user=[
             UserCostSummary(
-                user_id=r["user_id"],
+                user_id=r.get("user_id"),
                 email=r.get("email"),
                 total_cost_microdollars=r["total_cost"],
                 total_input_tokens=r["total_input_tokens"],
@@ -290,7 +290,7 @@ async def get_platform_cost_logs(
         CostLogRow(
             id=r["id"],
             created_at=r["created_at"],
-            user_id=r["user_id"],
+            user_id=r.get("user_id"),
             email=r.get("email"),
             graph_exec_id=r.get("graph_exec_id"),
             node_exec_id=r.get("node_exec_id"),

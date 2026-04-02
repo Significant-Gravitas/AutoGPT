@@ -687,6 +687,7 @@ class LLMResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     reasoning: Optional[str] = None
+    provider_cost: float | None = None
 
 
 def convert_openai_tool_fmt_to_anthropic(
@@ -1045,6 +1046,16 @@ async def llm_call(
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
 
+        cost = None
+        try:
+            raw_resp = getattr(response, "_response", None)
+            if raw_resp and hasattr(raw_resp, "headers"):
+                cost_header = raw_resp.headers.get("x-total-cost")
+                if cost_header:
+                    cost = float(cost_header)
+        except (ValueError, AttributeError):
+            pass
+
         return LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
@@ -1053,6 +1064,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            provider_cost=cost,
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -1377,12 +1389,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     max_tokens=input_data.max_tokens,
                 )
                 response_text = llm_response.response
-                self.merge_stats(
-                    NodeExecutionStats(
-                        input_token_count=llm_response.prompt_tokens,
-                        output_token_count=llm_response.completion_tokens,
-                    )
+                cost_stats = NodeExecutionStats(
+                    input_token_count=llm_response.prompt_tokens,
+                    output_token_count=llm_response.completion_tokens,
                 )
+                if llm_response.provider_cost is not None:
+                    cost_stats.provider_cost = llm_response.provider_cost
+                self.merge_stats(cost_stats)
                 logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
