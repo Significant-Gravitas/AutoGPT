@@ -538,27 +538,19 @@ async def _iter_sdk_messages(
                 pass
 
 
-def _resolve_sdk_model() -> str | None:
-    """Resolve the model name for the Claude Agent SDK CLI.
+def _normalize_model_name(raw_model: str) -> str:
+    """Normalize a model name for the current routing configuration.
 
-    Uses `config.claude_agent_model` if set, otherwise derives from
-    `config.model` by stripping the OpenRouter provider prefix (e.g.,
-    `"anthropic/claude-opus-4.6"` → `"claude-opus-4-6"`).
+    Applies two transformations shared by both the primary and fallback
+    model resolution paths:
 
-    OpenRouter uses dot-separated versions (`claude-opus-4.6`) while the
-    direct Anthropic API uses hyphen-separated versions (`claude-opus-4-6`).
-    Normalisation is only applied when the SDK will actually talk to
-    Anthropic directly (not through OpenRouter).
-
-    When `use_claude_code_subscription` is enabled and no explicit
-    `claude_agent_model` is set, returns `None` so the CLI uses the
-    default model for the user's subscription plan.
+    1. **Strip provider prefix** — OpenRouter-style names like
+       ``"anthropic/claude-opus-4.6"`` are reduced to ``"claude-opus-4.6"``.
+    2. **Dot-to-hyphen conversion** — when *not* routing through OpenRouter
+       the direct Anthropic API requires hyphen-separated versions
+       (``"claude-opus-4-6"``), so dots are replaced with hyphens.
     """
-    if config.claude_agent_model:
-        return config.claude_agent_model
-    if config.use_claude_code_subscription:
-        return None
-    model = config.model
+    model = raw_model
     if "/" in model:
         model = model.split("/", 1)[1]
     # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
@@ -569,24 +561,32 @@ def _resolve_sdk_model() -> str | None:
     return model
 
 
-def _resolve_fallback_model() -> str | None:
-    """Resolve the fallback model name with the same provider-aware logic.
+def _resolve_sdk_model() -> str | None:
+    """Resolve the model name for the Claude Agent SDK CLI.
 
-    Applies the same provider-prefix stripping and dot-to-hyphen
-    normalisation as :func:`_resolve_sdk_model` so the fallback model
-    works correctly with both OpenRouter (dots) and direct Anthropic
-    (hyphens).  Returns ``None`` when no fallback is configured (empty
-    string).
+    Uses `config.claude_agent_model` if set, otherwise derives from
+    `config.model` via :func:`_normalize_model_name`.
+
+    When `use_claude_code_subscription` is enabled and no explicit
+    `claude_agent_model` is set, returns `None` so the CLI uses the
+    default model for the user's subscription plan.
+    """
+    if config.claude_agent_model:
+        return config.claude_agent_model
+    if config.use_claude_code_subscription:
+        return None
+    return _normalize_model_name(config.model)
+
+
+def _resolve_fallback_model() -> str | None:
+    """Resolve the fallback model name via :func:`_normalize_model_name`.
+
+    Returns ``None`` when no fallback is configured (empty string).
     """
     raw = config.claude_agent_fallback_model
     if not raw:
         return None
-    # Strip OpenRouter provider prefix (e.g. "anthropic/claude-sonnet-4-...")
-    if "/" in raw:
-        raw = raw.split("/", 1)[1]
-    if not config.openrouter_active:
-        raw = raw.replace(".", "-")
-    return raw
+    return _normalize_model_name(raw)
 
 
 def _make_sdk_cwd(session_id: str) -> str:
@@ -1920,10 +1920,29 @@ async def stream_chat_completion_sdk(
             allowed = get_copilot_tool_names(use_e2b=use_e2b)
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
+        # Flag set by _on_stderr when the SDK logs that it switched to the
+        # fallback model (e.g. on a 529 overloaded error).  Checked once per
+        # heartbeat cycle and emitted as a StreamStatus notification.
+        fallback_model_activated = False
+
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
+            nonlocal fallback_model_activated
             sid = session_id[:12] if session_id else "?"
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
+            # Detect SDK fallback-model activation.  The CLI logs a
+            # message containing "fallback" when it switches models
+            # after a 529/overloaded error.
+            lower = line.lower()
+            if not fallback_model_activated and (
+                "fallback" in lower or "overloaded" in lower
+            ):
+                fallback_model_activated = True
+                logger.warning(
+                    "[SDK] [%s] Fallback model activated — primary model "
+                    "overloaded, switching to fallback",
+                    sid,
+                )
 
         sdk_options_kwargs: dict[str, Any] = {
             "system_prompt": system_prompt,
@@ -2130,6 +2149,7 @@ async def stream_chat_completion_sdk(
             pre_transcript_entries = list(state.transcript_builder._entries)
             pre_transcript_uuid = state.transcript_builder._last_uuid
             events_yielded = 0
+            fallback_notified = False
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
@@ -2148,6 +2168,14 @@ async def stream_chat_completion_sdk(
                         ),
                     ):
                         events_yielded += 1
+                    # Emit a one-time StreamStatus when the SDK switches
+                    # to the fallback model (detected via stderr).
+                    if fallback_model_activated and not fallback_notified:
+                        fallback_notified = True
+                        yield StreamStatus(
+                            message="Primary model overloaded — "
+                            "using fallback model for this request"
+                        )
                     yield event
                 break  # Stream completed — exit retry loop
             except asyncio.CancelledError:
