@@ -2166,6 +2166,13 @@ async def stream_chat_completion_sdk(
                             StreamToolInputStart,
                             StreamToolInputAvailable,
                             StreamToolOutputAvailable,
+                            # Transient StreamError and StreamStatus are
+                            # ephemeral notifications, not content.  Counting
+                            # them would prevent the backoff retry from firing
+                            # because _next_transient_backoff() returns None
+                            # when events_yielded > 0.
+                            StreamError,
+                            StreamStatus,
                         ),
                     ):
                         events_yielded += 1
