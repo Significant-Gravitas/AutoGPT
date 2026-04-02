@@ -369,7 +369,7 @@ function LogsTable({
                   {new Date(log.created_at).toLocaleString()}
                 </td>
                 <td className="px-3 py-2 text-xs">
-                  {log.email || log.user_id.slice(0, 8)}
+                  {log.email || log.user_id?.slice(0, 8) || "Deleted user"}
                 </td>
                 <td className="px-3 py-2 text-xs font-medium">
                   {log.block_name}
