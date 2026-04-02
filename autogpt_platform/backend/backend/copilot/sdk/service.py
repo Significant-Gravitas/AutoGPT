@@ -1904,19 +1904,9 @@ async def stream_chat_completion_sdk(
         )
 
         # Fail fast when no API credentials are available at all.
-        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
-
-        # --- Security & isolation env vars (all auth modes) ---
-        # Route CLI temp files into the per-session workspace so they are
-        # isolated and cleaned up automatically.
-        if sdk_cwd:
-            sdk_env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        # Prevent loading untrusted workspace .claude.md files, persisting
-        # prompt history, writing auto-memory, and non-essential traffic.
-        sdk_env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
-        sdk_env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
-        sdk_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
-        sdk_env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+        # sdk_cwd routes the CLI's temp dir into the per-session workspace
+        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id, sdk_cwd=sdk_cwd)
 
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
