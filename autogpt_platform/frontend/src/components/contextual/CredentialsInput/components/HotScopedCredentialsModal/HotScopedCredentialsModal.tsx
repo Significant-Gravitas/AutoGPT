@@ -19,6 +19,7 @@ import {
 import { CredentialsProvidersContext } from "@/providers/agent-credentials/credentials-provider";
 import { getHostFromUrl } from "@/lib/utils/url";
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
@@ -149,22 +150,33 @@ export function HostScopedCredentialsModal({
     const existingForHost = allProviderCredentials.filter(
       (c) => c.type === "host_scoped" && "host" in c && c.host === host,
     );
-    for (const existing of existingForHost) {
-      await deleteCredentials(existing.id, true);
+
+    try {
+      for (const existing of existingForHost) {
+        await deleteCredentials(existing.id, true);
+      }
+
+      const newCredentials = await createHostScopedCredentials({
+        host,
+        title: currentHost || host,
+        headers,
+      });
+
+      onCredentialsCreate({
+        provider,
+        id: newCredentials.id,
+        type: "host_scoped",
+        title: newCredentials.title,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Something went wrong";
+      toast({
+        title: "Failed to save credentials",
+        description: message,
+        variant: "destructive",
+      });
     }
-
-    const newCredentials = await createHostScopedCredentials({
-      host,
-      title: currentHost || host,
-      headers,
-    });
-
-    onCredentialsCreate({
-      provider,
-      id: newCredentials.id,
-      type: "host_scoped",
-      title: newCredentials.title,
-    });
   }
 
   return (

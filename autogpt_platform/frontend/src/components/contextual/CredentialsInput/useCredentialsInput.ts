@@ -58,6 +58,9 @@ export function useCredentialsInput({
     id: string;
     title: string;
   } | null>(null);
+  const [deleteWarningMessage, setDeleteWarningMessage] = useState<
+    string | null
+  >(null);
 
   const api = useBackendAPI();
   const credentials = useCredentials(schema, siblingInputs);
@@ -297,6 +300,7 @@ export function useCredentialsInput({
   }
 
   function handleDeleteCredential(credential: { id: string; title: string }) {
+    setDeleteWarningMessage(null);
     setCredentialToDelete(credential);
   }
 
@@ -319,14 +323,12 @@ export function useCredentialsInput({
         if (selectedCredential?.id === credentialToDelete.id) {
           onSelectCredential(undefined);
         }
+        setDeleteWarningMessage(null);
         setCredentialToDelete(null);
       } else if ("need_confirmation" in result && result.need_confirmation) {
-        toast({
-          title: "Credential is in use",
-          description: result.message,
-          variant: "destructive",
-          duration: 8000,
-        });
+        setDeleteWarningMessage(
+          result.message || "This credential is in use. Force delete?",
+        );
       }
     } catch (error) {
       const message =
@@ -364,6 +366,7 @@ export function useCredentialsInput({
     isOAuth2FlowInProgress,
     cancelOAuthFlow,
     credentialToDelete,
+    deleteWarningMessage,
     isDeletingCredential,
     actionButtonText: getActionButtonText(
       supportsOAuth2,

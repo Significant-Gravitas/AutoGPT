@@ -94,6 +94,7 @@ export function CredentialsInput({
     handleDeleteCredential,
     handleDeleteConfirm,
     credentialToDelete,
+    deleteWarningMessage,
     setCredentialToDelete,
     isDeletingCredential,
   } = hookData;
@@ -202,9 +203,11 @@ export function CredentialsInput({
 
           <DeleteConfirmationModal
             credentialToDelete={credentialToDelete}
+            warningMessage={deleteWarningMessage}
             isDeleting={isDeletingCredential}
             onClose={() => setCredentialToDelete(null)}
-            onConfirm={handleDeleteConfirm}
+            onConfirm={() => handleDeleteConfirm(false)}
+            onForceConfirm={() => handleDeleteConfirm(true)}
           />
         </>
       )}

@@ -6,7 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { CredentialsGroupedView } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/CredentialsGroupedView";
 import { FormRenderer } from "@/components/renderers/InputRenderer/FormRenderer";
 import type { CredentialsMetaInput } from "@/lib/autogpt-server-api/types";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCopilotChatActions } from "../../../../components/CopilotChatActionsProvider/useCopilotChatActions";
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import {
@@ -48,11 +48,26 @@ export function SetupRequirementsCard({
 
   const initialValues = useMemo(
     () => extractInitialValues(expectedInputs),
-    [expectedInputs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- stabilise on the raw prop
+    [output.setup_info.requirements],
   );
 
   const [inputValues, setInputValues] =
     useState<Record<string, unknown>>(initialValues);
+
+  const initialValuesKey = JSON.stringify(initialValues);
+  useEffect(() => {
+    setInputValues((prev) => {
+      const merged = { ...initialValues };
+      for (const [key, value] of Object.entries(prev)) {
+        if (value !== undefined && value !== null && value !== "") {
+          merged[key] = value;
+        }
+      }
+      return merged;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when serialised values change
+  }, [initialValuesKey]);
 
   const hasAdvancedFields = expectedInputs.some((i) => i.advanced);
   const inputSchema = buildExpectedInputsSchema(expectedInputs, showAdvanced);
@@ -77,7 +92,7 @@ export function SetupRequirementsCard({
     needsCredentials &&
     [...requiredCredentials].every((key) => !!inputCredentials[key]);
 
-  const needsInputs = inputSchema !== null;
+  const needsInputs = expectedInputs.length > 0;
   const requiredInputNames = expectedInputs
     .filter((i) => i.required && !i.advanced)
     .map((i) => i.name);
@@ -140,26 +155,28 @@ export function SetupRequirementsCard({
         </div>
       )}
 
-      {inputSchema && (
+      {(inputSchema || hasAdvancedFields) && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
           <Text variant="small" className="w-fit border-b text-zinc-500">
             Inputs
           </Text>
-          <FormRenderer
-            jsonSchema={inputSchema}
-            className="mb-3 mt-3"
-            handleChange={(v) =>
-              setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
-            }
-            uiSchema={{
-              "ui:submitButtonOptions": { norender: true },
-            }}
-            initialValues={inputValues}
-            formContext={{
-              showHandles: false,
-              size: "small",
-            }}
-          />
+          {inputSchema && (
+            <FormRenderer
+              jsonSchema={inputSchema}
+              className="mb-3 mt-3"
+              handleChange={(v) =>
+                setInputValues((prev) => ({ ...prev, ...(v.formData ?? {}) }))
+              }
+              uiSchema={{
+                "ui:submitButtonOptions": { norender: true },
+              }}
+              initialValues={inputValues}
+              formContext={{
+                showHandles: false,
+                size: "small",
+              }}
+            />
+          )}
           {hasAdvancedFields && (
             <button
               type="button"
