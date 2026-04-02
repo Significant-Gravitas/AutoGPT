@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -76,8 +78,6 @@ async def log_platform_cost_safe(entry: PlatformCostEntry) -> None:
 def _json_or_none(data: dict[str, Any] | None) -> str | None:
     if data is None:
         return None
-    import json
-
     return json.dumps(data)
 
 
@@ -159,55 +159,53 @@ async def get_platform_cost_dashboard(
     provider: str | None = None,
     user_id: str | None = None,
 ) -> PlatformCostDashboard:
-    where_sql, params = _build_where(start, end, provider, user_id)
-
-    by_provider_rows = await query_raw_with_schema(
-        f"""
-        SELECT
-            "provider",
-            COALESCE(SUM("costMicrodollars"), 0)::bigint AS total_cost,
-            COALESCE(SUM("inputTokens"), 0)::bigint AS total_input_tokens,
-            COALESCE(SUM("outputTokens"), 0)::bigint AS total_output_tokens,
-            COUNT(*)::bigint AS request_count
-        FROM {{schema_prefix}}"PlatformCostLog"
-        WHERE {where_sql}
-        GROUP BY "provider"
-        ORDER BY total_cost DESC
-        """,
-        *params,
-    )
-
     where_p, params_p = _build_where(start, end, provider, user_id, "p")
 
-    user_count_rows = await query_raw_with_schema(
-        f"""
-        SELECT COUNT(DISTINCT p."userId")::bigint AS cnt
-        FROM {{schema_prefix}}"PlatformCostLog" p
-        WHERE {where_p}
-        """,
-        *params_p,
+    by_provider_rows, user_count_rows, by_user_rows = await asyncio.gather(
+        query_raw_with_schema(
+            f"""
+            SELECT
+                p."provider",
+                COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
+                COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
+                COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
+                COUNT(*)::bigint AS request_count
+            FROM {{schema_prefix}}"PlatformCostLog" p
+            WHERE {where_p}
+            GROUP BY p."provider"
+            ORDER BY total_cost DESC
+            """,
+            *params_p,
+        ),
+        query_raw_with_schema(
+            f"""
+            SELECT COUNT(DISTINCT p."userId")::bigint AS cnt
+            FROM {{schema_prefix}}"PlatformCostLog" p
+            WHERE {where_p}
+            """,
+            *params_p,
+        ),
+        query_raw_with_schema(
+            f"""
+            SELECT
+                p."userId" AS user_id,
+                u."email",
+                COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
+                COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
+                COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
+                COUNT(*)::bigint AS request_count
+            FROM {{schema_prefix}}"PlatformCostLog" p
+            LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
+            WHERE {where_p}
+            GROUP BY p."userId", u."email"
+            ORDER BY total_cost DESC
+            LIMIT 100
+            """,
+            *params_p,
+        ),
     )
+
     total_users = user_count_rows[0]["cnt"] if user_count_rows else 0
-
-    by_user_rows = await query_raw_with_schema(
-        f"""
-        SELECT
-            p."userId" AS user_id,
-            u."email",
-            COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
-            COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
-            COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
-            COUNT(*)::bigint AS request_count
-        FROM {{schema_prefix}}"PlatformCostLog" p
-        LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
-        WHERE {where_p}
-        GROUP BY p."userId", u."email"
-        ORDER BY total_cost DESC
-        LIMIT 100
-        """,
-        *params_p,
-    )
-
     total_cost = sum(r["total_cost"] for r in by_provider_rows)
     total_requests = sum(r["request_count"] for r in by_provider_rows)
 
