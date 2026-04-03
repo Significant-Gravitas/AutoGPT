@@ -174,5 +174,8 @@ class SpraayTokenTransferBlock(Block):
             sender_address=input_data.sender_address,
         )
 
-        yield "transaction_hash", result.get("transaction_hash", "")
-        yield "status", result.get("status", "pending")
+        if "transaction_hash" not in result or "status" not in result:
+            yield "error", "Gateway returned incomplete transfer response"
+            return
+        yield "transaction_hash", result["transaction_hash"]
+        yield "status", result["status"]
