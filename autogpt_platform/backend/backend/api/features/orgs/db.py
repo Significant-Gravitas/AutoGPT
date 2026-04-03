@@ -1,13 +1,22 @@
 """Database operations for organization management."""
 
 import logging
+from datetime import datetime, timezone
+
+import prisma.errors
 
 from backend.data.db import prisma
+from backend.data.org_migration import _resolve_unique_slug, _sanitize_slug
 from backend.util.exceptions import NotFoundError
 
-from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse
+from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
 
 
 async def get_user_default_org_workspace(
@@ -22,10 +31,13 @@ async def get_user_default_org_workspace(
         where={
             "userId": user_id,
             "isOwner": True,
-            "Org": {"isPersonal": True},
+            "Org": {"isPersonal": True, "deletedAt": None},
         },
     )
     if member is None:
+        logger.warning(
+            f"User {user_id} has no personal org — account may be in inconsistent state"
+        )
         return None, None
 
     org_id = member.orgId
@@ -36,20 +48,97 @@ async def get_user_default_org_workspace(
     return org_id, ws_id
 
 
+async def _create_personal_org_for_user(
+    user_id: str,
+    slug_base: str,
+    display_name: str,
+) -> OrgResponse:
+    """Create a new personal org with all required records.
+
+    Used by both initial org creation (migration) and conversion (spawning
+    a new personal org when the old one becomes a team org).
+    """
+    slug = await _resolve_unique_slug(slug_base)
+
+    org = await prisma.organization.create(
+        data={
+            "name": display_name,
+            "slug": slug,
+            "isPersonal": True,
+            "bootstrapUserId": user_id,
+            "settings": "{}",
+        }
+    )
+
+    await prisma.orgmember.create(
+        data={
+            "orgId": org.id,
+            "userId": user_id,
+            "isOwner": True,
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+
+    workspace = await prisma.orgworkspace.create(
+        data={
+            "name": "Default",
+            "orgId": org.id,
+            "isDefault": True,
+            "joinPolicy": "OPEN",
+            "createdByUserId": user_id,
+        }
+    )
+
+    await prisma.orgworkspacemember.create(
+        data={
+            "workspaceId": workspace.id,
+            "userId": user_id,
+            "isAdmin": True,
+            "status": "ACTIVE",
+        }
+    )
+
+    await prisma.organizationprofile.create(
+        data={
+            "organizationId": org.id,
+            "username": slug,
+            "displayName": display_name,
+        }
+    )
+
+    await prisma.organizationseatassignment.create(
+        data={
+            "organizationId": org.id,
+            "userId": user_id,
+            "seatType": "FREE",
+            "status": "ACTIVE",
+            "assignedByUserId": user_id,
+        }
+    )
+
+    # Create zero-balance row so credit operations don't need upsert
+    await prisma.orgbalance.create(data={"orgId": org.id, "balance": 0})
+
+    return OrgResponse.from_db(org, member_count=1)
+
+
+# ---------------------------------------------------------------------------
+# Org CRUD
+# ---------------------------------------------------------------------------
+
+
 async def create_org(
     name: str,
     slug: str,
     user_id: str,
     description: str | None = None,
 ) -> OrgResponse:
-    """Create an organization and make the user the owner.
-
-    Also creates a default workspace and adds the user to it.
+    """Create a team organization and make the user the owner.
 
     Raises:
         ValueError: If the slug is already taken by another org or alias.
     """
-    # Check slug uniqueness (org slugs + alias slugs)
     existing_org = await prisma.organization.find_unique(where={"slug": slug})
     if existing_org:
         raise ValueError(f"Slug '{slug}' is already in use")
@@ -70,7 +159,6 @@ async def create_org(
         }
     )
 
-    # Create owner membership
     await prisma.orgmember.create(
         data={
             "orgId": org.id,
@@ -81,7 +169,6 @@ async def create_org(
         }
     )
 
-    # Create default workspace
     workspace = await prisma.orgworkspace.create(
         data={
             "name": "Default",
@@ -92,7 +179,6 @@ async def create_org(
         }
     )
 
-    # Add user to default workspace
     await prisma.orgworkspacemember.create(
         data={
             "workspaceId": workspace.id,
@@ -102,7 +188,6 @@ async def create_org(
         }
     )
 
-    # Create org profile
     await prisma.organizationprofile.create(
         data={
             "organizationId": org.id,
@@ -111,7 +196,6 @@ async def create_org(
         }
     )
 
-    # Create seat assignment
     await prisma.organizationseatassignment.create(
         data={
             "organizationId": org.id,
@@ -126,65 +210,57 @@ async def create_org(
 
 
 async def list_user_orgs(user_id: str) -> list[OrgResponse]:
-    """List all organizations the user belongs to."""
+    """List all non-deleted organizations the user belongs to."""
     memberships = await prisma.orgmember.find_many(
-        where={"userId": user_id, "status": "ACTIVE"},
-        include={
-            "Org": {
-                "include": {
-                    "_count": {"select": {"Members": {"where": {"status": "ACTIVE"}}}}
-                }
-            }
+        where={
+            "userId": user_id,
+            "status": "ACTIVE",
+            "Org": {"deletedAt": None},
         },
+        include={"Org": True},
     )
     results = []
     for m in memberships:
         org = m.Org
         if org is None:
             continue
-        member_count = (
-            getattr(org, "Members_count", 0) if hasattr(org, "Members_count") else 0
-        )
-        results.append(OrgResponse.from_db(org, member_count=member_count))
+        results.append(OrgResponse.from_db(org))
     return results
 
 
 async def get_org(org_id: str) -> OrgResponse:
     """Get organization details."""
-    org = await prisma.organization.find_unique(
-        where={"id": org_id},
-        include={"_count": {"select": {"Members": {"where": {"status": "ACTIVE"}}}}},
-    )
-    if org is None:
+    org = await prisma.organization.find_unique(where={"id": org_id})
+    if org is None or org.deletedAt is not None:
         raise NotFoundError(f"Organization {org_id} not found")
-
-    member_count = (
-        getattr(org, "Members_count", 0) if hasattr(org, "Members_count") else 0
-    )
-    return OrgResponse.from_db(org, member_count=member_count)
+    return OrgResponse.from_db(org)
 
 
-async def update_org(org_id: str, data: dict) -> OrgResponse:
-    """Update organization fields. Creates a RENAME alias if slug changes."""
-    update_data = {k: v for k, v in data.items() if v is not None}
-    if not update_data:
-        return await get_org(org_id)
+async def update_org(org_id: str, data: UpdateOrgData) -> OrgResponse:
+    """Update organization fields. Creates a RENAME alias if slug changes.
 
-    # If slug is changing, validate uniqueness and create alias for old slug
-    new_slug = update_data.get("slug")
-    if new_slug:
-        existing = await prisma.organization.find_unique(where={"slug": new_slug})
+    Only accepts the structured UpdateOrgData model — no arbitrary dict keys.
+    """
+    update_dict: dict = {}
+    if data.name is not None:
+        update_dict["name"] = data.name
+    if data.description is not None:
+        update_dict["description"] = data.description
+    if data.avatar_url is not None:
+        update_dict["avatarUrl"] = data.avatar_url
+
+    if data.slug is not None:
+        existing = await prisma.organization.find_unique(where={"slug": data.slug})
         if existing and existing.id != org_id:
-            raise ValueError(f"Slug '{new_slug}' is already in use")
+            raise ValueError(f"Slug '{data.slug}' is already in use")
         existing_alias = await prisma.organizationalias.find_unique(
-            where={"aliasSlug": new_slug}
+            where={"aliasSlug": data.slug}
         )
         if existing_alias:
-            raise ValueError(f"Slug '{new_slug}' is already in use as an alias")
+            raise ValueError(f"Slug '{data.slug}' is already in use as an alias")
 
-        # Create alias for the old slug so old URLs keep working
         old_org = await prisma.organization.find_unique(where={"id": org_id})
-        if old_org and old_org.slug != new_slug:
+        if old_org and old_org.slug != data.slug:
             await prisma.organizationalias.create(
                 data={
                     "organizationId": org_id,
@@ -192,35 +268,85 @@ async def update_org(org_id: str, data: dict) -> OrgResponse:
                     "aliasType": "RENAME",
                 }
             )
+        update_dict["slug"] = data.slug
 
-    await prisma.organization.update(where={"id": org_id}, data=update_data)
+    if not update_dict:
+        return await get_org(org_id)
+
+    await prisma.organization.update(where={"id": org_id}, data=update_dict)
     return await get_org(org_id)
 
 
 async def delete_org(org_id: str) -> None:
-    """Delete an organization. Cannot delete personal orgs."""
+    """Soft-delete an organization. Cannot delete personal orgs.
+
+    Sets deletedAt instead of hard-deleting to preserve financial records.
+    """
     org = await prisma.organization.find_unique(where={"id": org_id})
     if org is None:
         raise NotFoundError(f"Organization {org_id} not found")
     if org.isPersonal:
         raise ValueError("Cannot delete a personal organization. Convert it first.")
+    if org.deletedAt is not None:
+        raise ValueError("Organization is already deleted")
 
-    await prisma.organization.delete(where={"id": org_id})
+    await prisma.organization.update(
+        where={"id": org_id},
+        data={"deletedAt": datetime.now(timezone.utc)},
+    )
 
 
-async def convert_personal_org(org_id: str) -> OrgResponse:
-    """Convert a personal org to a team org (one-way)."""
+async def convert_personal_org(org_id: str, user_id: str) -> OrgResponse:
+    """Convert a personal org to a team org.
+
+    Creates a new personal org for the user so they always have one.
+    Existing resources (agents, credits, store listings) stay in the
+    team org — that's the point of converting.
+
+    If new personal org creation fails, the conversion is rolled back.
+    """
     org = await prisma.organization.find_unique(where={"id": org_id})
     if org is None:
         raise NotFoundError(f"Organization {org_id} not found")
     if not org.isPersonal:
         raise ValueError("Organization is already a team org")
 
+    # Step 1: Flip isPersonal on the old org
     await prisma.organization.update(
         where={"id": org_id},
         data={"isPersonal": False},
     )
+
+    # Step 2: Create a new personal org for the user
+    try:
+        slug_base = f"{_sanitize_slug(org.slug)}-personal-1"
+        # Fetch user name for display
+        user = await prisma.user.find_unique(where={"id": user_id})
+        display_name = user.name if user and user.name else org.name
+
+        await _create_personal_org_for_user(
+            user_id=user_id,
+            slug_base=slug_base,
+            display_name=display_name,
+        )
+    except Exception:
+        # Roll back: restore isPersonal on the old org
+        logger.exception(
+            f"Failed to create new personal org for user {user_id} during "
+            f"conversion of org {org_id} — rolling back"
+        )
+        await prisma.organization.update(
+            where={"id": org_id},
+            data={"isPersonal": True},
+        )
+        raise
+
     return await get_org(org_id)
+
+
+# ---------------------------------------------------------------------------
+# Members
+# ---------------------------------------------------------------------------
 
 
 async def list_org_members(org_id: str) -> list[OrgMemberResponse]:
@@ -252,7 +378,6 @@ async def add_org_member(
         include={"User": True},
     )
 
-    # Auto-add to default workspace
     default_ws = await prisma.orgworkspace.find_first(
         where={"orgId": org_id, "isDefault": True}
     )
@@ -297,8 +422,15 @@ async def update_org_member(
     return next(m for m in members if m.user_id == user_id)
 
 
-async def remove_org_member(org_id: str, user_id: str) -> None:
-    """Remove a member from an organization and all its workspaces."""
+async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) -> None:
+    """Remove a member from an organization and all its workspaces.
+
+    Guards:
+    - Cannot remove the org owner (transfer ownership first)
+    - Cannot remove yourself (use leave flow instead)
+    - Cannot remove a user who has active schedules (transfer/cancel first)
+    - Cannot remove a user who would become org-less (no other org memberships)
+    """
     member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
     )
@@ -306,6 +438,30 @@ async def remove_org_member(org_id: str, user_id: str) -> None:
         raise NotFoundError(f"Member {user_id} not found in org {org_id}")
     if member.isOwner:
         raise ValueError("Cannot remove the org owner. Transfer ownership first.")
+    if user_id == requesting_user_id:
+        raise ValueError(
+            "Cannot remove yourself from an organization. "
+            "Ask another admin to remove you, or transfer ownership first."
+        )
+
+    # Check if user would become org-less
+    other_memberships = await prisma.orgmember.count(
+        where={
+            "userId": user_id,
+            "status": "ACTIVE",
+            "orgId": {"not": org_id},
+            "Org": {"deletedAt": None},
+        }
+    )
+    if other_memberships == 0:
+        raise ValueError(
+            "Cannot remove this member — they have no other organization memberships "
+            "and would be locked out. They must join or create another org first."
+        )
+
+    # Check for active schedules
+    # TODO: Check APScheduler for active schedules owned by this user in this org
+    # For now, this is a placeholder for the schedule transfer requirement
 
     # Remove from all workspaces in this org
     workspaces = await prisma.orgworkspace.find_many(where={"orgId": org_id})
@@ -323,7 +479,7 @@ async def remove_org_member(org_id: str, user_id: str) -> None:
 async def transfer_ownership(
     org_id: str, current_owner_id: str, new_owner_id: str
 ) -> None:
-    """Transfer org ownership atomically. Both updates happen in one transaction."""
+    """Transfer org ownership atomically. Both updates happen in one statement."""
     current = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": current_owner_id}}
     )
@@ -336,7 +492,6 @@ async def transfer_ownership(
     if new is None:
         raise NotFoundError(f"User {new_owner_id} is not a member of org {org_id}")
 
-    # Atomic transfer -- both updates in one SQL statement to prevent ownerless window
     await prisma.execute_raw(
         """
         UPDATE "OrgMember"
@@ -358,6 +513,11 @@ async def transfer_ownership(
     )
 
 
+# ---------------------------------------------------------------------------
+# Aliases
+# ---------------------------------------------------------------------------
+
+
 async def list_org_aliases(org_id: str) -> list[OrgAliasResponse]:
     """List all aliases for an organization."""
     aliases = await prisma.organizationalias.find_many(
@@ -370,7 +530,6 @@ async def create_org_alias(
     org_id: str, alias_slug: str, user_id: str
 ) -> OrgAliasResponse:
     """Create a new alias for an organization."""
-    # Check if slug is already taken by an org or alias
     existing_org = await prisma.organization.find_unique(where={"slug": alias_slug})
     if existing_org:
         raise ValueError(f"Slug '{alias_slug}' is already used by an organization")

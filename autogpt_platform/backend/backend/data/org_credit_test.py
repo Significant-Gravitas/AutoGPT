@@ -164,8 +164,12 @@ class TestSeatManagement:
     async def test_get_seat_info(self, mock_prisma):
         mock_prisma.organizationseatassignment.find_many = AsyncMock(
             return_value=[
-                MagicMock(userId="u1", seatType="PAID", status="ACTIVE", createdAt="now"),
-                MagicMock(userId="u2", seatType="FREE", status="INACTIVE", createdAt="now"),
+                MagicMock(
+                    userId="u1", seatType="PAID", status="ACTIVE", createdAt="now"
+                ),
+                MagicMock(
+                    userId="u2", seatType="FREE", status="INACTIVE", createdAt="now"
+                ),
             ]
         )
 

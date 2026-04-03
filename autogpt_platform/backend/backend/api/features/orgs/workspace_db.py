@@ -70,10 +70,16 @@ async def get_workspace(
 
 
 async def update_workspace(ws_id: str, data: dict) -> WorkspaceResponse:
-    """Update workspace fields."""
+    """Update workspace fields. Guards the default workspace join policy."""
     update_data = {k: v for k, v in data.items() if v is not None}
     if not update_data:
         return await get_workspace(ws_id)
+
+    # Guard: default workspace joinPolicy cannot be changed
+    if "joinPolicy" in update_data:
+        ws = await prisma.orgworkspace.find_unique(where={"id": ws_id})
+        if ws and ws.isDefault:
+            raise ValueError("Cannot change the default workspace's join policy")
 
     await prisma.orgworkspace.update(where={"id": ws_id}, data=update_data)
     return await get_workspace(ws_id)
@@ -193,7 +199,24 @@ async def update_workspace_member(
 
 
 async def remove_workspace_member(ws_id: str, user_id: str) -> None:
-    """Remove a member from a workspace."""
+    """Remove a member from a workspace.
+
+    Guards against removing the last admin — workspace would become unmanageable.
+    """
+    # Check if this would remove the last admin
+    member = await prisma.orgworkspacemember.find_unique(
+        where={"workspaceId_userId": {"workspaceId": ws_id, "userId": user_id}}
+    )
+    if member and member.isAdmin:
+        admin_count = await prisma.orgworkspacemember.count(
+            where={"workspaceId": ws_id, "isAdmin": True, "status": "ACTIVE"}
+        )
+        if admin_count <= 1:
+            raise ValueError(
+                "Cannot remove the last workspace admin. "
+                "Promote another member to admin first."
+            )
+
     await prisma.orgworkspacemember.delete(
         where={"workspaceId_userId": {"workspaceId": ws_id, "userId": user_id}}
     )

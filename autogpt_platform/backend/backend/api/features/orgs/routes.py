@@ -22,6 +22,7 @@ from .model import (
     OrgResponse,
     TransferOwnershipRequest,
     UpdateMemberRequest,
+    UpdateOrgData,
     UpdateOrgRequest,
 )
 
@@ -98,12 +99,12 @@ async def update_org(
     _verify_org_path(ctx, org_id)
     return await org_db.update_org(
         org_id,
-        {
-            "name": request.name,
-            "slug": request.slug,
-            "description": request.description,
-            "avatarUrl": request.avatar_url,
-        },
+        UpdateOrgData(
+            name=request.name,
+            slug=request.slug,
+            description=request.description,
+            avatar_url=request.avatar_url,
+        ),
     )
 
 
@@ -137,7 +138,7 @@ async def convert_org(
     ],
 ) -> OrgResponse:
     _verify_org_path(ctx, org_id)
-    return await org_db.convert_personal_org(org_id)
+    return await org_db.convert_personal_org(org_id, ctx.user_id)
 
 
 # --- Members ---
@@ -218,7 +219,7 @@ async def remove_member(
     ],
 ) -> None:
     _verify_org_path(ctx, org_id)
-    await org_db.remove_org_member(org_id, uid)
+    await org_db.remove_org_member(org_id, uid, requesting_user_id=ctx.user_id)
 
 
 @router.post(

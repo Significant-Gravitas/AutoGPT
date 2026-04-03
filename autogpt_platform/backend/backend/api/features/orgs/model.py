@@ -20,6 +20,18 @@ class UpdateOrgRequest(BaseModel):
     avatar_url: str | None = None
 
 
+class UpdateOrgData(BaseModel):
+    """Structured data object for update_org DB function.
+
+    Only these fields can be updated — no arbitrary dict keys.
+    """
+
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+    avatar_url: str | None = None
+
+
 class OrgResponse(BaseModel):
     id: str
     name: str

@@ -7,6 +7,7 @@ from autogpt_libs.auth import get_user_id, requires_org_permission, requires_use
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Security
+from prisma.errors import UniqueViolationError
 
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
@@ -138,14 +139,18 @@ async def accept_invitation(
             detail="This invitation was sent to a different email address",
         )
 
-    # Add user to org
-    await org_db.add_org_member(
-        org_id=invitation.orgId,
-        user_id=user_id,
-        is_admin=invitation.isAdmin,
-        is_billing_manager=invitation.isBillingManager,
-        invited_by=invitation.invitedByUserId,
-    )
+    # Add user to org (idempotent — handles race condition from concurrent accepts)
+    try:
+        await org_db.add_org_member(
+            org_id=invitation.orgId,
+            user_id=user_id,
+            is_admin=invitation.isAdmin,
+            is_billing_manager=invitation.isBillingManager,
+            invited_by=invitation.invitedByUserId,
+        )
+    except UniqueViolationError:
+        # User is already a member — treat as success (idempotent)
+        pass
 
     # Add to specified workspaces
     for ws_id in invitation.workspaceIds:

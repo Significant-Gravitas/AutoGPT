@@ -273,6 +273,7 @@ class TestOrgDbUpdateOrg:
     @pytest.mark.asyncio
     async def test_update_org_creates_rename_alias_on_slug_change(self):
         from backend.api.features.orgs.db import update_org
+        from backend.api.features.orgs.model import UpdateOrgData
 
         # After update, get_org is called which does find_unique again
         self.prisma.organization.find_unique = AsyncMock(
@@ -283,7 +284,7 @@ class TestOrgDbUpdateOrg:
             ]
         )
 
-        await update_org(ORG_ID, {"slug": "new-slug"})
+        await update_org(ORG_ID, UpdateOrgData(slug="new-slug"))
 
         # Alias should have been created for the old slug
         self.prisma.organizationalias.create.assert_called_once()
@@ -295,21 +296,23 @@ class TestOrgDbUpdateOrg:
     @pytest.mark.asyncio
     async def test_update_org_slug_collision_raises_value_error(self):
         from backend.api.features.orgs.db import update_org
+        from backend.api.features.orgs.model import UpdateOrgData
 
         other_org = _make_org(id="other-org", slug="new-slug")
         self.prisma.organization.find_unique = AsyncMock(return_value=other_org)
 
         with pytest.raises(ValueError, match="already in use"):
-            await update_org(ORG_ID, {"slug": "new-slug"})
+            await update_org(ORG_ID, UpdateOrgData(slug="new-slug"))
 
     @pytest.mark.asyncio
     async def test_update_org_no_op_when_all_none(self):
         from backend.api.features.orgs.db import update_org
+        from backend.api.features.orgs.model import UpdateOrgData
 
         # When all values are None, update_org returns get_org result
         self.prisma.organization.find_unique = AsyncMock(return_value=self.old_org)
 
-        result = await update_org(ORG_ID, {"name": None, "slug": None})
+        result = await update_org(ORG_ID, UpdateOrgData())
 
         # No update call should have happened
         self.prisma.organization.update.assert_not_called()
@@ -373,19 +376,41 @@ class TestOrgDbConvertOrg:
     async def test_convert_personal_to_team_org(self):
         from backend.api.features.orgs.db import convert_personal_org
 
-        personal_org = _make_org(isPersonal=True)
-        converted_org = _make_org(isPersonal=False)
+        personal_org = _make_org(isPersonal=True, slug="myorg")
+        converted_org = _make_org(isPersonal=False, slug="myorg")
+        new_personal_org = _make_org(
+            id="new-personal-org", isPersonal=True, slug="myorg-personal-1"
+        )
 
+        # find_unique calls: 1) convert check, 2) slug resolution (None = available),
+        # 3) get_org at end
         self.prisma.organization.find_unique = AsyncMock(
-            side_effect=[personal_org, converted_org]
+            side_effect=[personal_org, None, converted_org]
+        )
+        # Alias check for slug resolution
+        self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
+        # New personal org creation chain
+        self.prisma.organization.create = AsyncMock(return_value=new_personal_org)
+        self.prisma.orgmember.create = AsyncMock()
+        self.prisma.orgworkspace.create = AsyncMock(return_value=_make_workspace())
+        self.prisma.orgworkspacemember.create = AsyncMock()
+        self.prisma.organizationprofile.create = AsyncMock()
+        self.prisma.organizationseatassignment.create = AsyncMock()
+        self.prisma.orgbalance.create = AsyncMock()
+        # User lookup for display name
+        self.prisma.user.find_unique = AsyncMock(
+            return_value=MagicMock(name="Test User")
         )
 
-        await convert_personal_org(ORG_ID)
+        await convert_personal_org(ORG_ID, USER_ID)
 
-        self.prisma.organization.update.assert_called_once_with(
-            where={"id": ORG_ID},
-            data={"isPersonal": False},
-        )
+        # Should have flipped isPersonal on the old org
+        update_calls = self.prisma.organization.update.call_args_list
+        assert any(c[1]["data"].get("isPersonal") is False for c in update_calls)
+        # Should have created a new personal org
+        self.prisma.organization.create.assert_called_once()
+        create_data = self.prisma.organization.create.call_args[1]["data"]
+        assert create_data["isPersonal"] is True
 
     @pytest.mark.asyncio
     async def test_convert_already_team_org_raises(self):
@@ -396,7 +421,7 @@ class TestOrgDbConvertOrg:
         )
 
         with pytest.raises(ValueError, match="already a team org"):
-            await convert_personal_org(ORG_ID)
+            await convert_personal_org(ORG_ID, USER_ID)
 
 
 class TestOrgDbMembers:
@@ -454,6 +479,8 @@ class TestOrgDbMembers:
 
         member = _make_member(userId=OTHER_USER_ID, isOwner=False)
         self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        # User has another org — removal allowed
+        self.prisma.orgmember.count = AsyncMock(return_value=1)
 
         ws1 = _make_workspace(id="ws-1")
         ws2 = _make_workspace(id="ws-2")
@@ -461,7 +488,7 @@ class TestOrgDbMembers:
         self.prisma.orgworkspacemember.delete_many = AsyncMock()
         self.prisma.orgmember.delete = AsyncMock()
 
-        await remove_org_member(ORG_ID, OTHER_USER_ID)
+        await remove_org_member(ORG_ID, OTHER_USER_ID, requesting_user_id=USER_ID)
 
         # Should delete workspace memberships for each workspace
         assert self.prisma.orgworkspacemember.delete_many.call_count == 2
@@ -480,7 +507,7 @@ class TestOrgDbMembers:
         self.prisma.orgmember.find_unique = AsyncMock(return_value=owner)
 
         with pytest.raises(ValueError, match="Cannot remove the org owner"):
-            await remove_org_member(ORG_ID, USER_ID)
+            await remove_org_member(ORG_ID, USER_ID, requesting_user_id="admin-user")
 
     @pytest.mark.asyncio
     async def test_remove_nonexistent_member_raises_not_found(self):
@@ -489,7 +516,7 @@ class TestOrgDbMembers:
         self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
 
         with pytest.raises(NotFoundError):
-            await remove_org_member(ORG_ID, "ghost-user")
+            await remove_org_member(ORG_ID, "ghost-user", requesting_user_id=USER_ID)
 
     @pytest.mark.asyncio
     async def test_update_owner_role_raises_value_error(self):

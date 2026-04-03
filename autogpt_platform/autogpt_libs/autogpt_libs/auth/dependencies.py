@@ -185,9 +185,15 @@ async def get_request_context(
             order={"createdAt": "asc"},
         )
         if personal_org is None:
+            logger.warning(
+                f"User {user_id} has no personal org — account in inconsistent state"
+            )
             raise fastapi.HTTPException(
                 status_code=400,
-                detail="No org specified and user has no personal org",
+                detail=(
+                    "No organization context available. Your account may be in "
+                    "an inconsistent state — please contact support."
+                ),
             )
         org_id = personal_org.orgId
 
