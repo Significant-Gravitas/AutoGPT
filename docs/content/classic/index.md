@@ -32,12 +32,11 @@ disciplines, as long as it can be done on a computer.
 
 Welcome to the AutoGPT Classic Documentation.
 
-The AutoGPT Classic project consists of four main components:
+The AutoGPT Classic project consists of three main components:
 
 - The [Agent](#agent) &ndash; also known as just "AutoGPT Classic"
-- The [Benchmark](#benchmark) &ndash; AKA `agbenchmark`
+- The [Benchmark](#benchmark) &ndash; `direct_benchmark`
 - The [Forge](#forge)
-- The [Frontend](#frontend)
 
 To tie these together, we also have a [CLI] at the root of the project.
 
@@ -65,15 +64,9 @@ If you'd like to see what's next, check out the [AutoGPT Platform](../index.md).
 
 ## 🎯 Benchmark
 
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/benchmark/README.md)**
+**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/direct_benchmark/README.md)**
 
-Measure your agent's performance! The `agbenchmark` can be used with any agent that supports the agent protocol, and the integration with the project's [CLI] makes it even easier to use with AutoGPT Classic and forge-based agents. The benchmark offers a stringent testing environment. Our framework allows for autonomous, objective performance evaluations, ensuring your agents are primed for real-world action.
-
-<!-- TODO: insert visual demonstrating the benchmark -->
-
-- 📦 [**`agbenchmark`**](https://pypi.org/project/agbenchmark/) on Pypi
-
-- 🔌 **Agent Protocol Standardization** - AutoGPT Classic uses the agent protocol from the AI Engineer Foundation to ensure compatibility with many agents, both from within and outside the project.
+Measure your agent's performance! The `direct_benchmark` harness tests agents directly with support for multiple prompt strategies (one_shot, reflexion, plan_execute, tree_of_thoughts, etc.) and model configurations. It supports parallel execution and detailed reporting.
 
 ---
 
@@ -90,16 +83,6 @@ Forge your own agent! The Forge is a ready-to-go template for your agent applica
 - 🛠️ **Building with Ease** - We've set the groundwork so you can focus on your agent's personality and capabilities. Comprehensive tutorials are available [here](https://aiedge.medium.com/autogpt-forge-e3de53cc58ec).
 
 ---
-
-## 💻 Frontend
-
-**[🗒️ Readme](https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md)**
-
-An easy-to-use and open source frontend for any Agent Protocol-compliant agent.
-
-- 🎮 **User-Friendly Interface** - Manage your agents effortlessly.
-
-- 🔄 **Seamless Integration** - Smooth connectivity between your agent and our benchmarking system.
 
 ---
 

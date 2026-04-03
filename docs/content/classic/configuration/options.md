@@ -14,7 +14,7 @@ You can set configuration variables via the `.env` file. If you don't have a `.e
 - `ELEVENLABS_VOICE_ID`: ElevenLabs Voice ID. Optional.
 - `EMBEDDING_MODEL`: LLM Model to use for embedding tasks. Default: `text-embedding-3-small`
 - `EXIT_KEY`: Exit key accepted to exit. Default: n
-- `FAST_LLM`: LLM Model to use for most tasks. Default: `gpt-3.5-turbo-0125`
+- `FAST_LLM`: LLM Model to use for most tasks. Default: `gpt-5.4`
 - `GITHUB_API_KEY`: [Github API Key](https://github.com/settings/tokens). Optional.
 - `GITHUB_USERNAME`: GitHub Username. Optional.
 - `GOOGLE_API_KEY`: Google API key. Optional.
@@ -28,7 +28,7 @@ You can set configuration variables via the `.env` file. If you don't have a `.e
 - `PLAIN_OUTPUT`: Plain output, which disables the spinner. Default: False
 - `RESTRICT_TO_WORKSPACE`: The restrict file reading and writing to the workspace directory. Default: True
 - `SD_WEBUI_AUTH`: Stable Diffusion Web UI username:password pair. Optional.
-- `SMART_LLM`: LLM Model to use for "smart" tasks. Default: `gpt-4-turbo-preview`
+- `SMART_LLM`: LLM Model to use for "smart" tasks. Default: `gpt-5.4`
 - `STREAMELEMENTS_VOICE`: StreamElements voice to use. Default: Brian
 - `TEMPERATURE`: Value of temperature given to OpenAI. Value from 0 to 2. Lower is more deterministic, higher is more random. See https://platform.openai.com/docs/api-reference/completions/create#completions/create-temperature
 - `TEXT_TO_SPEECH_PROVIDER`: Text to Speech Provider. Options are `gtts`, `macos`, `elevenlabs`, and `streamelements`. Default: gtts

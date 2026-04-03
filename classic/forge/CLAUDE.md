@@ -99,8 +99,8 @@ def load_component_configs(self, json: str)  # Restore configs
 
 **Configuration (`BaseAgentConfiguration`):**
 ```python
-fast_llm: ModelName = "gpt-3.5-turbo-16k"
-smart_llm: ModelName = "gpt-4"
+fast_llm: ModelName = "gpt-5.4"
+smart_llm: ModelName = "gpt-5.4"
 big_brain: bool = True              # Use smart_llm
 cycle_budget: Optional[int] = 1     # Steps before approval needed
 send_token_limit: Optional[int]     # Prompt token budget

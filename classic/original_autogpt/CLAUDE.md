@@ -130,8 +130,8 @@ speak: str             # What to say to user
 
 **`AppConfig`** (Pydantic BaseModel):
 ```python
-smart_llm: ModelName = "gpt-4-turbo"    # Complex reasoning
-fast_llm: ModelName = "gpt-3.5-turbo"   # Fast operations
+smart_llm: ModelName = "gpt-5.4"         # Complex reasoning
+fast_llm: ModelName = "gpt-5.4"         # Fast operations
 temperature: float = 0.0
 continuous_mode: bool = False
 continuous_limit: int = 0
@@ -254,8 +254,8 @@ config.disabled_commands.append("execute_python")
 
 ### Custom LLM
 ```bash
-SMART_LLM=gpt-4
-FAST_LLM=gpt-3.5-turbo
+SMART_LLM=gpt-5.4
+FAST_LLM=gpt-5.4-mini
 TEMPERATURE=0.7
 ```
 
