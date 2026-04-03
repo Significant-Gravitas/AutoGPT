@@ -7,6 +7,14 @@ import type { CostLogRow } from "@/app/api/__generated__/models/costLogRow";
 import type { Pagination } from "@/app/api/__generated__/models/pagination";
 import type { PlatformCostLogsResponse } from "@/app/api/__generated__/models/platformCostLogsResponse";
 import { getPlatformCostDashboard, getPlatformCostLogs } from "../actions";
+import {
+  DEFAULT_COST_PER_RUN,
+  estimateCostForRow,
+  formatDuration,
+  formatMicrodollars,
+  formatTokens,
+  trackingValue,
+} from "../helpers";
 import { useRouter, useSearchParams } from "next/navigation";
 
 interface Props {
@@ -18,42 +26,6 @@ interface Props {
     page?: string;
     tab?: string;
   };
-}
-
-// Default per-run costs in USD (checked 2026-04-02)
-const DEFAULT_COST_PER_RUN: Record<string, number> = {
-  google_maps: 0.032,
-  ideogram: 0.08,
-  nvidia: 0.0,
-  screenshotone: 0.01,
-  zerobounce: 0.008,
-  mem0: 0.01,
-  openweathermap: 0.0,
-  webshare_proxy: 0.0,
-};
-
-// Default cost per 1K tokens in USD for token-based providers without actual cost
-const DEFAULT_COST_PER_1K_TOKENS: Record<string, number> = {
-  openai: 0.005,
-  anthropic: 0.008,
-  groq: 0.0003,
-  ollama: 0.0,
-};
-
-function formatMicrodollars(microdollars: number) {
-  return `$${(microdollars / 1_000_000).toFixed(4)}`;
-}
-
-function formatTokens(tokens: number) {
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}K`;
-  return tokens.toString();
-}
-
-function formatDuration(seconds: number) {
-  if (seconds >= 3600) return `${(seconds / 3600).toFixed(1)}h`;
-  if (seconds >= 60) return `${(seconds / 60).toFixed(1)}m`;
-  return `${seconds.toFixed(1)}s`;
 }
 
 function trackingBadge(trackingType: string | null | undefined) {
@@ -79,48 +51,6 @@ function trackingBadge(trackingType: string | null | undefined) {
       {label}
     </span>
   );
-}
-
-function estimateCostForRow(
-  row: ProviderCostSummary,
-  costPerRunOverrides: Record<string, number>,
-) {
-  const tt = row.tracking_type || "per_run";
-  if (tt === "cost_usd") return row.total_cost_microdollars;
-  if (tt === "tokens") {
-    if (row.total_cost_microdollars > 0) return row.total_cost_microdollars;
-    const rate = DEFAULT_COST_PER_1K_TOKENS[row.provider] ?? null;
-    if (rate !== null) {
-      const totalTokens = row.total_input_tokens + row.total_output_tokens;
-      return Math.round((totalTokens / 1000) * rate * 1_000_000);
-    }
-    return null;
-  }
-  if (tt === "per_run") {
-    const rate =
-      costPerRunOverrides[row.provider] ??
-      DEFAULT_COST_PER_RUN[row.provider] ??
-      null;
-    if (rate !== null) return Math.round(rate * row.request_count * 1_000_000);
-    return null;
-  }
-  return row.total_cost_microdollars > 0 ? row.total_cost_microdollars : null;
-}
-
-function trackingValue(row: ProviderCostSummary) {
-  const tt = row.tracking_type || "per_run";
-  if (tt === "cost_usd") return formatMicrodollars(row.total_cost_microdollars);
-  if (tt === "tokens")
-    return formatTokens(row.total_input_tokens + row.total_output_tokens);
-  if (
-    tt === "duration_seconds" ||
-    tt === "sandbox_seconds" ||
-    tt === "walltime_seconds"
-  )
-    return formatDuration(row.total_duration_seconds || 0);
-  if (tt === "characters")
-    return formatTokens(row.total_input_tokens + row.total_output_tokens);
-  return row.request_count.toLocaleString() + " runs";
 }
 
 function PlatformCostContent({ searchParams }: Props) {

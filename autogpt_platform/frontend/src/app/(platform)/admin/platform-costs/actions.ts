@@ -5,12 +5,7 @@ import {
   getV2GetPlatformCostLogs,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
-
-function toDateOrUndefined(val?: string): Date | undefined {
-  if (!val) return undefined;
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? undefined : d;
-}
+import { toDateOrUndefined } from "./helpers";
 
 export async function getPlatformCostDashboard(params?: {
   start?: string;
