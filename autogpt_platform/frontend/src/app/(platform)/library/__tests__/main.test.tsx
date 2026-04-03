@@ -1,72 +1,66 @@
 import { describe, expect, test } from "vitest";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { http, HttpResponse } from "msw";
+import {
+  getGetV2ListLibraryAgentsMockHandler,
+  getGetV2ListLibraryAgentsResponseMock,
+  getGetV2ListFavoriteLibraryAgentsMockHandler,
+  getGetV2ListFavoriteLibraryAgentsResponseMock,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
+import {
+  getGetV2ListLibraryFoldersMockHandler,
+  getGetV2ListLibraryFoldersResponseMock,
+} from "@/app/api/__generated__/endpoints/folders/folders.msw";
+import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import LibraryPage from "../page";
 
-const AGENTS_URL = "http://localhost:3000/api/proxy/api/library/agents";
-const FAVORITE_AGENTS_URL =
-  "http://localhost:3000/api/proxy/api/library/agents/favorites";
-const FOLDERS_URL = "http://localhost:3000/api/proxy/api/library/folders";
-const EXECUTIONS_URL = "http://localhost:3000/api/proxy/api/executions";
-
-function makeAgent(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "agent-1",
-    graph_id: "graph-1",
-    graph_version: 1,
-    image_url: null,
-    creator_name: "Test Creator",
-    creator_image_url: null,
-    status: "HEALTHY",
-    created_at: "2025-01-01T00:00:00Z",
-    updated_at: "2025-01-01T00:00:00Z",
-    name: "My Test Agent",
-    description: "A test agent",
-    instructions: null,
-    input_schema: {},
-    output_schema: {},
-    credentials_input_schema: null,
-    has_external_trigger: false,
-    has_human_in_the_loop: false,
-    has_sensitive_action: false,
-    trigger_setup_info: null,
-    new_output: false,
-    execution_count: 5,
-    is_favorite: false,
-    can_access_graph: true,
-    folder_id: null,
-    ...overrides,
-  };
+function makeAgent(overrides: Partial<LibraryAgent> = {}): LibraryAgent {
+  const base = getGetV2ListLibraryAgentsResponseMock().agents[0];
+  return { ...base, ...overrides };
 }
 
 function setupHandlers({
-  agents = [makeAgent()],
-  favorites = [] as Array<Record<string, unknown>>,
-  folders = [] as Array<Record<string, unknown>>,
-  executions = [] as Array<Record<string, unknown>>,
+  agents,
+  favorites,
+  folders,
+  executions,
+}: {
+  agents?: LibraryAgent[];
+  favorites?: LibraryAgent[];
+  folders?: Parameters<typeof getGetV2ListLibraryFoldersResponseMock>[0];
+  executions?: Parameters<typeof getGetV1ListAllExecutionsMockHandler>[0];
 } = {}) {
+  const agentList = agents ?? [makeAgent()];
+  const favList = favorites ?? [];
+
   server.use(
-    http.get(AGENTS_URL, () =>
-      HttpResponse.json({
-        agents,
-        total_count: agents.length,
-        page: 1,
+    getGetV2ListLibraryAgentsMockHandler({
+      ...getGetV2ListLibraryAgentsResponseMock(),
+      agents: agentList,
+      pagination: {
+        total_items: agentList.length,
+        total_pages: 1,
+        current_page: 1,
         page_size: 20,
+      },
+    }),
+    getGetV2ListFavoriteLibraryAgentsMockHandler({
+      ...getGetV2ListFavoriteLibraryAgentsResponseMock(),
+      agents: favList,
+      pagination: {
+        total_items: favList.length,
         total_pages: 1,
-      }),
-    ),
-    http.get(FAVORITE_AGENTS_URL, () =>
-      HttpResponse.json({
-        agents: favorites,
-        total_count: favorites.length,
-        page: 1,
+        current_page: 1,
         page_size: 10,
-        total_pages: 1,
-      }),
+      },
+    }),
+    getGetV2ListLibraryFoldersMockHandler(
+      folders
+        ? getGetV2ListLibraryFoldersResponseMock(folders)
+        : { folders: [] },
     ),
-    http.get(FOLDERS_URL, () => HttpResponse.json({ folders })),
-    http.get(EXECUTIONS_URL, () => HttpResponse.json(executions)),
+    getGetV1ListAllExecutionsMockHandler(executions ?? []),
   );
 }
 
@@ -128,22 +122,24 @@ describe("LibraryPage", () => {
 
   test("renders folders alongside agents", async () => {
     setupHandlers({
-      folders: [
-        {
-          id: "f1",
-          name: "Work Agents",
-          agent_count: 3,
-          color: null,
-          icon: null,
-        },
-        {
-          id: "f2",
-          name: "Personal",
-          agent_count: 1,
-          color: null,
-          icon: null,
-        },
-      ],
+      folders: {
+        folders: [
+          {
+            id: "f1",
+            name: "Work Agents",
+            agent_count: 3,
+            color: null,
+            icon: null,
+          },
+          {
+            id: "f2",
+            name: "Personal",
+            agent_count: 1,
+            color: null,
+            icon: null,
+          },
+        ],
+      },
     });
 
     render(<LibraryPage />);
@@ -181,10 +177,13 @@ describe("LibraryPage", () => {
   });
 
   test("renders Jump Back In when there is an active execution", async () => {
+    const agent = makeAgent({
+      id: "lib-1",
+      graph_id: "g-1",
+      name: "Running Agent",
+    });
     setupHandlers({
-      agents: [
-        makeAgent({ id: "lib-1", graph_id: "g-1", name: "Running Agent" }),
-      ],
+      agents: [agent],
       executions: [
         {
           id: "exec-1",
