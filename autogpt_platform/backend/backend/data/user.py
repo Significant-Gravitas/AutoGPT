@@ -82,6 +82,28 @@ async def get_user_by_email(email: str) -> Optional[User]:
         raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
 
 
+async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
+    """Search users by partial email or name.
+
+    Returns a list of ``(user_id, email)`` tuples, up to *limit* results.
+    Searches the User table directly — no dependency on credit history.
+    """
+    query = query.strip()
+    if not query or len(query) < 3:
+        return []
+    users = await prisma.user.find_many(
+        where={
+            "OR": [
+                {"email": {"contains": query, "mode": "insensitive"}},
+                {"name": {"contains": query, "mode": "insensitive"}},
+            ],
+        },
+        take=limit,
+        order={"email": "asc"},
+    )
+    return [(u.id, u.email) for u in users]
+
+
 async def update_user_email(user_id: str, email: str):
     try:
         # Get old email first for cache invalidation
