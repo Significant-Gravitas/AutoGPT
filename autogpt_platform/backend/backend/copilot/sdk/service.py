@@ -1560,9 +1560,21 @@ async def _run_stream_attempt(
             # --- Intermediate persistence ---
             # Flush session messages to DB periodically so page reloads
             # show progress during long-running turns.
+            #
+            # IMPORTANT: Skip the flush while tool calls are pending
+            # (tool_calls set on assistant but results not yet received).
+            # The DB save is append-only (uses start_sequence), so if we
+            # flush the assistant message before tool_calls are set on it
+            # (text and tool_use arrive as separate SDK events), the
+            # tool_calls update is lost — the next flush starts past it.
             _msgs_since_flush += 1
             now = time.monotonic()
-            if (
+            has_pending_tools = (
+                acc.has_appended_assistant
+                and acc.accumulated_tool_calls
+                and not acc.has_tool_results
+            )
+            if not has_pending_tools and (
                 _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
                 or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
             ):
