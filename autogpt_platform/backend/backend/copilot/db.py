@@ -23,8 +23,9 @@ from .model import (
     ChatSession,
     ChatSessionInfo,
     ChatSessionMetadata,
-    invalidate_session_cache,
+    cache_chat_session,
 )
+from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
 
@@ -380,8 +381,11 @@ async def update_tool_message_content(
 async def set_turn_duration(session_id: str, duration_ms: int) -> None:
     """Set durationMs on the last assistant message in a session.
 
-    Also invalidates the Redis session cache so the next GET returns
-    the updated duration.
+    Updates the Redis cache in-place instead of invalidating it.
+    Invalidation would delete the key, creating a window where concurrent
+    ``get_chat_session`` calls re-populate the cache from DB — potentially
+    with stale data if the DB write from the previous turn hasn't propagated.
+    This race caused duplicate user messages on the next turn.
     """
     last_msg = await PrismaChatMessage.prisma().find_first(
         where={"sessionId": session_id, "role": "assistant"},
@@ -392,5 +396,13 @@ async def set_turn_duration(session_id: str, duration_ms: int) -> None:
             where={"id": last_msg.id},
             data={"durationMs": duration_ms},
         )
-        # Invalidate cache so the session is re-fetched from DB with durationMs
-        await invalidate_session_cache(session_id)
+        # Update cache in-place rather than invalidating to avoid a
+        # race window where the empty cache gets re-populated with
+        # stale data by a concurrent get_chat_session call.
+        session = await get_chat_session_cached(session_id)
+        if session and session.messages:
+            for msg in reversed(session.messages):
+                if msg.role == "assistant":
+                    msg.duration_ms = duration_ms
+                    break
+            await cache_chat_session(session)
