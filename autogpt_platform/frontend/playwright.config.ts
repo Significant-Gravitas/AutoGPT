@@ -36,7 +36,7 @@ export default defineConfig({
           entryFilter: (entry: { url: string }) =>
             entry.url.includes("/_next/static/") &&
             !entry.url.includes("node_modules"),
-          sourceFilter: (sourcePath: string) => sourcePath.startsWith("src/"),
+          sourceFilter: (sourcePath: string) => sourcePath.includes("/src/") || sourcePath.startsWith("src/"),
         },
       },
     ],
