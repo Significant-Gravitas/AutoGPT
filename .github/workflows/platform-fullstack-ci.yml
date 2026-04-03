@@ -179,6 +179,8 @@ jobs:
           pip install pyyaml
 
           # Resolve extends and generate a flat compose file that bake can understand
+          echo "NEXT_PUBLIC_SOURCEMAPS=$NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST"
+          export NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST
           docker compose -f docker-compose.yml config > docker-compose.resolved.yml
 
           # Add cache configuration to the resolved compose file
