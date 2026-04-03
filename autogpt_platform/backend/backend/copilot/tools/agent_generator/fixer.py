@@ -4,6 +4,8 @@ import logging
 import re
 from typing import Any
 
+from backend.data.dynamic_fields import DICT_SPLIT
+
 from .helpers import (
     AGENT_EXECUTOR_BLOCK_ID,
     MCP_TOOL_BLOCK_ID,
@@ -1536,8 +1538,8 @@ class AgentFixer:
         for link in links:
             sink_name = link.get("sink_name", "")
 
-            if "_#_" in sink_name:
-                parent, child = sink_name.split("_#_", 1)
+            if DICT_SPLIT in sink_name:
+                parent, child = sink_name.split(DICT_SPLIT, 1)
 
                 # Check if child is a numeric index (invalid for _#_ notation)
                 if child.isdigit():

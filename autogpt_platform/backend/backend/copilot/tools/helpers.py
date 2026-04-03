@@ -21,6 +21,7 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
@@ -47,27 +48,41 @@ logger = logging.getLogger(__name__)
 def get_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract input field info from JSON schema."""
+    """Extract input field info from JSON schema.
+
+    When *input_data* is provided, each field's ``value`` key is populated
+    with the value the CoPilot already supplied — so the frontend can
+    prefill the form instead of showing empty inputs.  Fields marked
+    ``advanced`` in the schema are flagged so the frontend can hide them
+    by default (matching the builder behaviour).
+    """
     if not isinstance(input_schema, dict):
         return []
 
     exclude = exclude_fields or set()
     properties = input_schema.get("properties", {})
     required = set(input_schema.get("required", []))
+    provided = input_data or {}
 
-    return [
-        {
+    results: list[dict[str, Any]] = []
+    for name, schema in properties.items():
+        if name in exclude:
+            continue
+        entry: dict[str, Any] = {
             "name": name,
             "title": schema.get("title", name),
             "type": schema.get("type", "string"),
             "description": schema.get("description", ""),
             "required": name in required,
             "default": schema.get("default"),
+            "advanced": schema.get("advanced", False),
         }
-        for name, schema in properties.items()
-        if name not in exclude
-    ]
+        if name in provided:
+            entry["value"] = provided[name]
+        results.append(entry)
+    return results
 
 
 async def execute_block(
@@ -80,6 +95,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
+    dry_run: bool,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -89,6 +105,47 @@ async def execute_block(
     Returns:
         BlockOutputResponse on success, ErrorResponse on failure.
     """
+    # Dry-run path: simulate the block with an LLM, no real execution.
+    # HITL review is intentionally skipped — no real execution occurs.
+    if dry_run:
+        try:
+            # Coerce types to match the block's input schema, same as real execution.
+            # This ensures the simulated preview is consistent with real execution
+            # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
+            coerce_inputs_to_schema(input_data, block.input_schema)
+            outputs: dict[str, list[Any]] = defaultdict(list)
+            async for output_name, output_data in simulate_block(block, input_data):
+                outputs[output_name].append(output_data)
+            # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")
+            sim_error = outputs.get("error", [])
+            if (
+                sim_error
+                and isinstance(sim_error[0], str)
+                and sim_error[0].startswith("[SIMULATOR ERROR")
+            ):
+                return ErrorResponse(
+                    message=sim_error[0],
+                    error=sim_error[0],
+                    session_id=session_id,
+                )
+
+            return BlockOutputResponse(
+                message=f"Block '{block.name}' executed successfully",
+                block_id=block_id,
+                block_name=block.name,
+                outputs=dict(outputs),
+                success=True,
+                is_dry_run=True,
+                session_id=session_id,
+            )
+        except Exception as e:
+            logger.error("Dry-run simulation failed: %s", e, exc_info=True)
+            return ErrorResponse(
+                message=f"Dry-run simulation failed: {e}",
+                error=str(e),
+                session_id=session_id,
+            )
+
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
 
@@ -292,6 +349,7 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
+    dry_run: bool,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -379,7 +437,7 @@ async def prepare_block_for_execution(
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
 
-    if missing_credentials:
+    if missing_credentials and not dry_run:
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
@@ -402,7 +460,9 @@ async def prepare_block_for_execution(
                 requirements={
                     "credentials": missing_creds_list,
                     "inputs": get_inputs_from_schema(
-                        input_schema, exclude_fields=credentials_fields
+                        input_schema,
+                        exclude_fields=credentials_fields,
+                        input_data=input_data,
                     ),
                     "execution_modes": ["immediate"],
                 },
@@ -491,7 +551,7 @@ async def check_hitl_review(
         )
 
     synthetic_node_exec_id = (
-        f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}" f"{uuid.uuid4().hex[:8]}"
+        f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"
     )
 
     review_context = ExecutionContext(
@@ -536,7 +596,16 @@ def _resolve_discriminated_credentials(
     block: AnyBlockSchema,
     input_data: dict[str, Any],
 ) -> dict[str, CredentialsFieldInfo]:
-    """Resolve credential requirements, applying discriminator logic where needed."""
+    """Resolve credential requirements, applying discriminator logic where needed.
+
+    Handles two discrimination modes:
+    1. **Provider-based** (``discriminator_mapping`` is set): the discriminator
+       field value selects the provider (e.g. an AI model name -> provider).
+    2. **URL/host-based** (``discriminator`` is set but ``discriminator_mapping``
+       is ``None``): the discriminator field value (typically a URL) is added to
+       ``discriminator_values`` so that host-scoped credential matching can
+       compare the credential's host against the target URL.
+    """
     credentials_fields_info = block.input_schema.get_credentials_fields_info()
     if not credentials_fields_info:
         return {}
@@ -546,23 +615,42 @@ def _resolve_discriminated_credentials(
     for field_name, field_info in credentials_fields_info.items():
         effective_field_info = field_info
 
-        if field_info.discriminator and field_info.discriminator_mapping:
+        if field_info.discriminator:
             discriminator_value = input_data.get(field_info.discriminator)
             if discriminator_value is None:
                 field = block.input_schema.model_fields.get(field_info.discriminator)
                 if field and field.default is not PydanticUndefined:
                     discriminator_value = field.default
 
-            if (
-                discriminator_value
-                and discriminator_value in field_info.discriminator_mapping
-            ):
-                effective_field_info = field_info.discriminate(discriminator_value)
-                effective_field_info.discriminator_values.add(discriminator_value)
-                logger.debug(
-                    f"Discriminated provider for {field_name}: "
-                    f"{discriminator_value} -> {effective_field_info.provider}"
-                )
+            if discriminator_value is not None:
+                if field_info.discriminator_mapping:
+                    # Provider-based discrimination (e.g. model -> provider)
+                    if discriminator_value in field_info.discriminator_mapping:
+                        effective_field_info = field_info.discriminate(
+                            discriminator_value
+                        )
+                        effective_field_info.discriminator_values.add(
+                            discriminator_value
+                        )
+                        # Model names are safe to log (not PII); URLs are
+                        # intentionally omitted in the host-based branch below.
+                        logger.debug(
+                            "Discriminated provider for %s: %s -> %s",
+                            field_name,
+                            discriminator_value,
+                            effective_field_info.provider,
+                        )
+                else:
+                    # URL/host-based discrimination (e.g. url -> host matching).
+                    # Deep copy to avoid mutating the cached schema-level
+                    # field_info (model_copy() is shallow — the mutable set
+                    # would be shared).
+                    effective_field_info = field_info.model_copy(deep=True)
+                    effective_field_info.discriminator_values.add(discriminator_value)
+                    logger.debug(
+                        "Added discriminator value for host matching on %s",
+                        field_name,
+                    )
 
         resolved[field_name] = effective_field_info
 

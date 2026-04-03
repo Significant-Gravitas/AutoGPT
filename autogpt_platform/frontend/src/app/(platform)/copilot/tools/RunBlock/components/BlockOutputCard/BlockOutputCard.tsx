@@ -117,6 +117,12 @@ function OutputKeySection({
 export function BlockOutputCard({ output }: Props) {
   return (
     <ContentGrid>
+      {output.is_dry_run && (
+        <div className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          <span>⚡</span>
+          <span>Simulated — no real execution occurred</span>
+        </div>
+      )}
       <ContentMessage>{output.message}</ContentMessage>
 
       {Object.entries(output.outputs ?? {}).map(([key, items]) => (

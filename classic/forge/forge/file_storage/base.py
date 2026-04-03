@@ -250,7 +250,8 @@ class FileSyncHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        file_path = Path(event.src_path).relative_to(self.path)
+        src_path = str(event.src_path)
+        file_path = Path(src_path).relative_to(self.path)
         content = file_path.read_bytes()
         # Must execute write_file synchronously because the hook is synchronous
         # TODO: Schedule write operation using asyncio.create_task (non-blocking)
@@ -259,11 +260,12 @@ class FileSyncHandler(FileSystemEventHandler):
         )
 
     def on_created(self, event: FileSystemEvent):
+        src_path = str(event.src_path)
         if event.is_directory:
-            self.storage.make_dir(event.src_path)
+            self.storage.make_dir(src_path)
             return
 
-        file_path = Path(event.src_path).relative_to(self.path)
+        file_path = Path(src_path).relative_to(self.path)
         content = file_path.read_bytes()
         # Must execute write_file synchronously because the hook is synchronous
         # TODO: Schedule write operation using asyncio.create_task (non-blocking)
@@ -272,12 +274,12 @@ class FileSyncHandler(FileSystemEventHandler):
         )
 
     def on_deleted(self, event: FileSystemEvent):
+        src_path = str(event.src_path)
         if event.is_directory:
-            self.storage.delete_dir(event.src_path)
+            self.storage.delete_dir(src_path)
             return
 
-        file_path = event.src_path
-        self.storage.delete_file(file_path)
+        self.storage.delete_file(src_path)
 
     def on_moved(self, event: FileSystemEvent):
-        self.storage.rename(event.src_path, event.dest_path)
+        self.storage.rename(str(event.src_path), str(event.dest_path))

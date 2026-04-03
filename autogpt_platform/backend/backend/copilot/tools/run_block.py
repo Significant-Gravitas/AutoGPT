@@ -1,8 +1,10 @@
 """Tool for executing blocks directly."""
 
 import logging
+import uuid
 from typing import Any
 
+from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 
@@ -47,8 +49,12 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Execute in preview mode.",
+                },
             },
-            "required": ["block_id", "input_data"],
+            "required": ["block_id", "input_data", "dry_run"],
         }
 
     @property
@@ -59,6 +65,10 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        *,
+        block_id: str = "",
+        input_data: dict | None = None,
+        dry_run: bool,
         **kwargs,
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -68,14 +78,19 @@ class RunBlockTool(BaseTool):
             session: Chat session
             block_id: Block UUID to execute
             input_data: Input values for the block
+            dry_run: If True, simulate execution without side effects
 
         Returns:
             BlockOutputResponse: Block execution outputs
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
+        block_id = block_id.strip()
+        if input_data is None:
+            input_data = {}
+        # Session-level dry_run forces all tool calls to use dry-run mode.
+        if session.dry_run:
+            dry_run = True
         session_id = session.session_id
 
         if not block_id:
@@ -104,6 +119,7 @@ class RunBlockTool(BaseTool):
             user_id=user_id,
             session=session,
             session_id=session_id,
+            dry_run=dry_run,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
@@ -128,6 +144,27 @@ class RunBlockTool(BaseTool):
                     "Use find_block to discover blocks that are allowed."
                 ),
                 session_id=session_id,
+            )
+
+        # Dry-run fast-path: skip credential/HITL checks — simulation never calls
+        # the real service so credentials and review gates are not needed.
+        # Input field validation (unrecognized fields) is already handled by
+        # prepare_block_for_execution above.
+        if dry_run:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            return await execute_block(
+                block=prep.block,
+                block_id=block_id,
+                input_data=prep.input_data,
+                user_id=user_id,
+                session_id=session_id,
+                node_exec_id=synthetic_node_exec_id,
+                matched_credentials=prep.matched_credentials,
+                dry_run=True,
             )
 
         # Show block details when required inputs are not yet provided.
@@ -177,4 +214,5 @@ class RunBlockTool(BaseTool):
             session_id=session_id,
             node_exec_id=synthetic_node_exec_id,
             matched_credentials=prep.matched_credentials,
+            dry_run=dry_run,
         )

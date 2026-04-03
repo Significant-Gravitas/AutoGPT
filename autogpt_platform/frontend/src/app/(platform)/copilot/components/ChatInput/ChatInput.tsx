@@ -93,6 +93,12 @@ export function ChatInput({
     baseHandleChange(e);
   }
 
+  const resolvedPlaceholder = isRecording
+    ? ""
+    : isTranscribing
+      ? "Transcribing..."
+      : placeholder;
+
   const canSend =
     !disabled &&
     (!!value.trim() || hasFiles) &&
@@ -129,7 +135,7 @@ export function ChatInput({
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             disabled={isInputDisabled}
-            placeholder={isTranscribing ? "Transcribing..." : placeholder}
+            placeholder={resolvedPlaceholder}
           />
           {isRecording && !value && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

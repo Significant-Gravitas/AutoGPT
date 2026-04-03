@@ -104,17 +104,32 @@ def get_sdk_cwd() -> str:
 
 
 E2B_WORKDIR = "/home/user"
+E2B_ALLOWED_DIRS: tuple[str, ...] = (E2B_WORKDIR, "/tmp")
+E2B_ALLOWED_DIRS_STR: str = " or ".join(E2B_ALLOWED_DIRS)
+
+
+def is_within_allowed_dirs(path: str) -> bool:
+    """Return True if *path* is within one of the allowed sandbox directories."""
+    for allowed in E2B_ALLOWED_DIRS:
+        if path == allowed or path.startswith(allowed + "/"):
+            return True
+    return False
 
 
 def resolve_sandbox_path(path: str) -> str:
-    """Normalise *path* to an absolute sandbox path under ``/home/user``.
+    """Normalise *path* to an absolute sandbox path under an allowed directory.
+
+    Allowed directories: ``/home/user`` and ``/tmp``.
+    Relative paths are resolved against ``/home/user``.
 
     Raises :class:`ValueError` if the resolved path escapes the sandbox.
     """
     candidate = path if os.path.isabs(path) else os.path.join(E2B_WORKDIR, path)
     normalized = os.path.normpath(candidate)
-    if normalized != E2B_WORKDIR and not normalized.startswith(E2B_WORKDIR + "/"):
-        raise ValueError(f"Path must be within {E2B_WORKDIR}: {path}")
+    if not is_within_allowed_dirs(normalized):
+        raise ValueError(
+            f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(path)}"
+        )
     return normalized
 
 
@@ -134,7 +149,8 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
 
     Allowed:
     - Files under *sdk_cwd* (``/tmp/copilot-<session>/``)
-    - Files under ``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/...``.
+    - Files under ``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/...``
+      or ``tool-outputs/...``.
       The SDK nests tool-results under a conversation UUID directory;
       the UUID segment is validated with ``_UUID_RE``.
     """
@@ -159,17 +175,20 @@ def is_allowed_local_path(path: str, sdk_cwd: str | None = None) -> bool:
         # Defence-in-depth: ensure project_dir didn't escape the base.
         if not project_dir.startswith(SDK_PROJECTS_DIR + os.sep):
             return False
-        # Only allow: <encoded-cwd>/<uuid>/tool-results/<file>
+        # Only allow: <encoded-cwd>/<uuid>/<tool-dir>/<file>
         # The SDK always creates a conversation UUID directory between
-        # the project dir and tool-results/.
+        # the project dir and the tool directory.
+        # Accept both "tool-results" (SDK's persisted outputs) and
+        # "tool-outputs" (the model sometimes confuses workspace paths
+        # with filesystem paths and generates this variant).
         if resolved.startswith(project_dir + os.sep):
             relative = resolved[len(project_dir) + 1 :]
             parts = relative.split(os.sep)
-            # Require exactly: [<uuid>, "tool-results", <file>, ...]
+            # Require exactly: [<uuid>, "tool-results"|"tool-outputs", <file>, ...]
             if (
                 len(parts) >= 3
                 and _UUID_RE.match(parts[0])
-                and parts[1] == "tool-results"
+                and parts[1] in ("tool-results", "tool-outputs")
             ):
                 return True
 

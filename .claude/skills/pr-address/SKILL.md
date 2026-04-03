@@ -95,6 +95,28 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 | Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in <commit-sha>: <description>"` |
 | Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in <commit-sha>: <description>"` |
 
+## Codecov coverage
+
+Codecov patch target is **80%** on changed lines. Checks are **informational** (not blocking) but should be green.
+
+### Running coverage locally
+
+**Backend** (from `autogpt_platform/backend/`):
+```bash
+poetry run pytest -s -vv --cov=backend --cov-branch --cov-report term-missing
+```
+
+**Frontend** (from `autogpt_platform/frontend/`):
+```bash
+pnpm vitest run --coverage
+```
+
+### When codecov/patch fails
+
+1. Find uncovered files: `git diff --name-only $(gh pr view --json baseRefName --jq '.baseRefName')...HEAD`
+2. For each uncovered file — extract inline logic to `helpers.ts`/`helpers.py` and test those (highest ROI). Colocate tests as `*_test.py` (backend) or `__tests__/*.test.ts` (frontend).
+3. Run coverage locally to verify, commit, push.
+
 ## Format and commit
 
 After fixing, format the changed code:
@@ -113,7 +135,9 @@ kill $REST_PID 2>/dev/null; trap - EXIT
 ```
 Never manually edit files in `src/app/api/__generated__/`.
 
-Then commit and **push immediately** — never batch commits without pushing.
+Then commit and **push immediately** — never batch commits without pushing. Each fix should be visible on GitHub right away so CI can start and reviewers can see progress.
+
+**Never push empty commits** (`git commit --allow-empty`) to re-trigger CI or bot checks. When a check fails, investigate the root cause (unchecked PR checklist, unaddressed review comments, code issues) and fix those directly. Empty commits add noise to git history.
 
 For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 
