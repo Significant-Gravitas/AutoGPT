@@ -50,7 +50,7 @@ class ContextComponent(MessageProvider, CommandProvider):
 
     def get_messages(self) -> Iterator[ChatMessage]:
         if self.context:
-            yield ChatMessage.system(
+            yield ChatMessage.user(
                 "## Context\n"
                 f"{self.context.format_numbered(self.workspace)}\n\n"
                 "When a context item is no longer needed and you are not done yet, "
