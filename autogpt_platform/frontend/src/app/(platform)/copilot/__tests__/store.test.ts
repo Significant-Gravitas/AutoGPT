@@ -85,6 +85,16 @@ describe("useCopilotUIStore", () => {
       );
     });
 
+    it("persists added sessions to localStorage", () => {
+      useCopilotUIStore.getState().addCompletedSession("s1");
+      useCopilotUIStore.getState().addCompletedSession("s2");
+      const raw = window.localStorage.getItem("copilot-completed-sessions");
+      expect(raw).not.toBeNull();
+      const parsed = JSON.parse(raw!) as string[];
+      expect(parsed).toContain("s1");
+      expect(parsed).toContain("s2");
+    });
+
     it("clears a single completed session", () => {
       useCopilotUIStore.getState().addCompletedSession("s1");
       useCopilotUIStore.getState().addCompletedSession("s2");
@@ -97,11 +107,29 @@ describe("useCopilotUIStore", () => {
       );
     });
 
+    it("updates localStorage when a session is cleared", () => {
+      useCopilotUIStore.getState().addCompletedSession("s1");
+      useCopilotUIStore.getState().addCompletedSession("s2");
+      useCopilotUIStore.getState().clearCompletedSession("s1");
+      const raw = window.localStorage.getItem("copilot-completed-sessions");
+      const parsed = JSON.parse(raw!) as string[];
+      expect(parsed).not.toContain("s1");
+      expect(parsed).toContain("s2");
+    });
+
     it("clears all completed sessions", () => {
       useCopilotUIStore.getState().addCompletedSession("s1");
       useCopilotUIStore.getState().addCompletedSession("s2");
       useCopilotUIStore.getState().clearAllCompletedSessions();
       expect(useCopilotUIStore.getState().completedSessionIDs.size).toBe(0);
+    });
+
+    it("removes localStorage key when all sessions are cleared", () => {
+      useCopilotUIStore.getState().addCompletedSession("s1");
+      useCopilotUIStore.getState().clearAllCompletedSessions();
+      expect(
+        window.localStorage.getItem("copilot-completed-sessions"),
+      ).toBeNull();
     });
   });
 
@@ -167,6 +195,9 @@ describe("useCopilotUIStore", () => {
         window.localStorage.getItem("copilot-notifications-enabled"),
       ).toBeNull();
       expect(window.localStorage.getItem("copilot-sound-enabled")).toBeNull();
+      expect(
+        window.localStorage.getItem("copilot-completed-sessions"),
+      ).toBeNull();
     });
   });
 
