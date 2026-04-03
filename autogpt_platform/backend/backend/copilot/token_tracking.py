@@ -30,6 +30,7 @@ async def persist_and_record_usage(
     log_prefix: str = "",
     cost_usd: float | str | None = None,
     model: str | None = None,
+    provider: str = "open_router",
 ) -> int:
     """Persist token usage to session and record for rate limiting.
 
@@ -42,6 +43,7 @@ async def persist_and_record_usage(
         cache_creation_tokens: Tokens written to prompt cache (Anthropic only).
         log_prefix: Prefix for log messages (e.g. "[SDK]", "[Baseline]").
         cost_usd: Optional cost for logging (float from SDK, str otherwise).
+        provider: Cost provider name (e.g. "anthropic", "open_router").
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -126,7 +128,7 @@ async def persist_and_record_usage(
                 graph_exec_id=session_id,
                 block_id="copilot",
                 block_name=f"copilot:{log_prefix.strip(' []')}".rstrip(":"),
-                provider="open_router",
+                provider=provider,
                 credential_id="copilot_system",
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,

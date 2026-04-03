@@ -2362,6 +2362,7 @@ async def stream_chat_completion_sdk(
             log_prefix=log_prefix,
             cost_usd=turn_cost_usd,
             model=config.model,
+            provider="anthropic",
         )
 
         # --- Persist session messages ---
