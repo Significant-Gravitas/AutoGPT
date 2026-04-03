@@ -52,6 +52,7 @@ from ..model import (
     ChatMessage,
     ChatSession,
     get_chat_session,
+    maybe_append_user_message,
     update_session_title,
     upsert_chat_session,
 )
@@ -1670,19 +1671,12 @@ async def stream_chat_completion_sdk(
         )
         session.messages.pop()
 
-    # Append the new message to the session if it's not already there
-    new_message_role = "user" if is_user_message else "assistant"
-    if message and (
-        len(session.messages) == 0
-        or not (
-            session.messages[-1].role == new_message_role
-            and session.messages[-1].content == message
-        )
-    ):
-        session.messages.append(ChatMessage(role=new_message_role, content=message))
+    if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
-                user_id=user_id, session_id=session_id, message_length=len(message)
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(message or ""),
             )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
