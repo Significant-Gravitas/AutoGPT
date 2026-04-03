@@ -4,12 +4,22 @@ import { addCoverageReport } from "monocart-reporter";
 const test = base.extend<{ autoTestFixture: string }>({
   autoTestFixture: [
     async ({ page }, use) => {
-      await page.coverage.startJSCoverage({ resetOnNavigation: false });
+      let hasCoverage = false;
+      try {
+        await page.coverage.startJSCoverage({ resetOnNavigation: false });
+        hasCoverage = true;
+      } catch {
+        // coverage API not available (e.g. non-browser tests)
+      }
 
       await use("");
 
-      const jsCoverageList = await page.coverage.stopJSCoverage();
-      await addCoverageReport(jsCoverageList, test.info());
+      if (hasCoverage) {
+        const jsCoverageList = await page.coverage.stopJSCoverage();
+        if (jsCoverageList.length > 0) {
+          await addCoverageReport(jsCoverageList, test.info());
+        }
+      }
     },
     { scope: "test", auto: true },
   ],
