@@ -22,7 +22,10 @@ from e2b import AsyncSandbox
 from e2b.exceptions import TimeoutException
 
 from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
-from backend.copilot.integration_creds import get_integration_env_vars
+from backend.copilot.integration_creds import (
+    get_github_user_git_identity,
+    get_integration_env_vars,
+)
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -158,6 +161,12 @@ class BashExecTool(BaseTool):
             integration_env = await get_integration_env_vars(user_id)
             secret_values = [v for v in integration_env.values() if v]
             envs.update(integration_env)
+
+            # Set git author/committer identity from the user's GitHub profile
+            # so commits made in the sandbox are attributed correctly.
+            git_identity = await get_github_user_git_identity(user_id)
+            if git_identity:
+                envs.update(git_identity)
 
         try:
             result = await sandbox.commands.run(

@@ -923,6 +923,11 @@ async def add_graph_execution(
             execution_context.parent_execution_id if execution_context else None
         )
 
+        # When execution_context is provided (e.g. from AgentExecutorBlock),
+        # inherit dry_run so child-graph validation skips credential checks.
+        if execution_context and execution_context.dry_run:
+            dry_run = True
+
         # Create new execution
         graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
             await validate_and_construct_node_execution_input(

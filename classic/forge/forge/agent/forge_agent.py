@@ -19,7 +19,14 @@ from forge.agent_protocol.models.task import (
     TaskRequestBody,
 )
 from forge.command.command import Command
+from forge.components.archive_handler import ArchiveHandlerComponent
+from forge.components.clipboard import ClipboardComponent
+from forge.components.data_processor import DataProcessorComponent
+from forge.components.http_client import HTTPClientComponent
+from forge.components.math_utils import MathUtilsComponent
 from forge.components.system.system import SystemComponent
+from forge.components.text_utils import TextUtilsComponent
+from forge.components.todo import TodoComponent
 from forge.config.ai_profile import AIProfile
 from forge.file_storage.base import FileStorage
 from forge.llm.prompting.schema import ChatPrompt
@@ -81,6 +88,19 @@ class ForgeAgent(ProtocolAgent, BaseAgent):
 
         # System component provides "finish" command and adds some prompt information
         self.system = SystemComponent()
+
+        # Todo component provides task management for tracking multi-step work
+        # Note: llm_provider not available in ForgeAgent, so todo_decompose won't work
+        # For full functionality, use original_autogpt's Agent which has LLM access
+        self.todo = TodoComponent()
+
+        # Utility components
+        self.archive_handler = ArchiveHandlerComponent(workspace)
+        self.clipboard = ClipboardComponent()
+        self.data_processor = DataProcessorComponent()
+        self.http_client = HTTPClientComponent()
+        self.math_utils = MathUtilsComponent()
+        self.text_utils = TextUtilsComponent()
 
     async def create_task(self, task_request: TaskRequestBody) -> Task:
         """
