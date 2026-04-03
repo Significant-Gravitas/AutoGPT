@@ -405,24 +405,15 @@ def test_set_user_tier_invalid_tier_uppercase(
     assert "detail" in body
 
 
-def test_set_user_tier_email_lookup_failure_non_blocking(
+def test_set_user_tier_email_lookup_failure_returns_404(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
 ) -> None:
-    """Test that email lookup failure doesn't block tier change."""
+    """Test that email lookup failure returns 404 (user unverifiable)."""
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
         new_callable=AsyncMock,
         side_effect=Exception("DB connection failed"),
-    )
-    mocker.patch(
-        f"{_MOCK_MODULE}.get_user_tier",
-        new_callable=AsyncMock,
-        return_value=SubscriptionTier.FREE,
-    )
-    mock_set = mocker.patch(
-        f"{_MOCK_MODULE}.set_user_tier",
-        new_callable=AsyncMock,
     )
 
     response = client.post(
@@ -430,8 +421,26 @@ def test_set_user_tier_email_lookup_failure_non_blocking(
         json={"user_id": target_user_id, "tier": "PRO"},
     )
 
-    assert response.status_code == 200
-    mock_set.assert_awaited_once()
+    assert response.status_code == 404
+
+
+def test_set_user_tier_user_not_found(
+    mocker: pytest_mock.MockerFixture,
+    target_user_id: str,
+) -> None:
+    """Test that setting tier for a non-existent user returns 404."""
+    mocker.patch(
+        f"{_MOCK_MODULE}.get_user_email_by_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.post(
+        "/admin/rate_limit/tier",
+        json={"user_id": target_user_id, "tier": "PRO"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_set_user_tier_db_failure(

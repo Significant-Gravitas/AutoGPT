@@ -198,7 +198,16 @@ async def set_user_rate_limit_tier(
 
     Returns 404 if the user does not exist in the database.
     """
-    resolved_email = await get_user_email_by_id(request.user_id)
+    try:
+        resolved_email = await get_user_email_by_id(request.user_id)
+    except Exception:
+        logger.warning(
+            "Failed to resolve email for user %s",
+            request.user_id,
+            exc_info=True,
+        )
+        resolved_email = None
+
     if resolved_email is None:
         raise HTTPException(status_code=404, detail=f"User {request.user_id} not found")
 
@@ -207,7 +216,7 @@ async def set_user_rate_limit_tier(
         "Admin %s changing tier for user %s (%s): %s -> %s",
         admin_user_id,
         request.user_id,
-        resolved_email or "unknown",
+        resolved_email,
         old_tier.value,
         request.tier.value,
     )
