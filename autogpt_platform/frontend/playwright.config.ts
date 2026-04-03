@@ -73,8 +73,7 @@ export default defineConfig({
         name: "E2E Coverage Report",
         outputFile: "./coverage/e2e/report.html",
         coverage: {
-          logging: "debug",
-          reports: ["cobertura", "text"],
+          reports: ["cobertura"],
           outputDir: "./coverage/e2e",
           entryFilter: (entry: { url: string }) =>
             entry.url.includes("/_next/static/") &&
