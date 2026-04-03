@@ -5,6 +5,8 @@ import logging
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
+from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,7 +41,7 @@ async def create_org(
     slug: str,
     user_id: str,
     description: str | None = None,
-) -> dict:
+) -> OrgResponse:
     """Create an organization and make the user the owner.
 
     Also creates a default workspace and adds the user to it.
@@ -120,19 +122,10 @@ async def create_org(
         }
     )
 
-    return {
-        "id": org.id,
-        "name": org.name,
-        "slug": org.slug,
-        "avatarUrl": org.avatarUrl,
-        "description": org.description,
-        "isPersonal": org.isPersonal,
-        "memberCount": 1,
-        "createdAt": org.createdAt,
-    }
+    return OrgResponse.from_db(org, member_count=1)
 
 
-async def list_user_orgs(user_id: str) -> list[dict]:
+async def list_user_orgs(user_id: str) -> list[OrgResponse]:
     """List all organizations the user belongs to."""
     memberships = await prisma.orgmember.find_many(
         where={"userId": user_id, "status": "ACTIVE"},
@@ -152,22 +145,11 @@ async def list_user_orgs(user_id: str) -> list[dict]:
         member_count = (
             getattr(org, "Members_count", 0) if hasattr(org, "Members_count") else 0
         )
-        results.append(
-            {
-                "id": org.id,
-                "name": org.name,
-                "slug": org.slug,
-                "avatarUrl": org.avatarUrl,
-                "description": org.description,
-                "isPersonal": org.isPersonal,
-                "memberCount": member_count,
-                "createdAt": org.createdAt,
-            }
-        )
+        results.append(OrgResponse.from_db(org, member_count=member_count))
     return results
 
 
-async def get_org(org_id: str) -> dict:
+async def get_org(org_id: str) -> OrgResponse:
     """Get organization details."""
     org = await prisma.organization.find_unique(
         where={"id": org_id},
@@ -179,19 +161,10 @@ async def get_org(org_id: str) -> dict:
     member_count = (
         getattr(org, "Members_count", 0) if hasattr(org, "Members_count") else 0
     )
-    return {
-        "id": org.id,
-        "name": org.name,
-        "slug": org.slug,
-        "avatarUrl": org.avatarUrl,
-        "description": org.description,
-        "isPersonal": org.isPersonal,
-        "memberCount": member_count,
-        "createdAt": org.createdAt,
-    }
+    return OrgResponse.from_db(org, member_count=member_count)
 
 
-async def update_org(org_id: str, data: dict) -> dict:
+async def update_org(org_id: str, data: dict) -> OrgResponse:
     """Update organization fields. Creates a RENAME alias if slug changes."""
     update_data = {k: v for k, v in data.items() if v is not None}
     if not update_data:
@@ -235,7 +208,7 @@ async def delete_org(org_id: str) -> None:
     await prisma.organization.delete(where={"id": org_id})
 
 
-async def convert_personal_org(org_id: str) -> dict:
+async def convert_personal_org(org_id: str) -> OrgResponse:
     """Convert a personal org to a team org (one-way)."""
     org = await prisma.organization.find_unique(where={"id": org_id})
     if org is None:
@@ -250,25 +223,13 @@ async def convert_personal_org(org_id: str) -> dict:
     return await get_org(org_id)
 
 
-async def list_org_members(org_id: str) -> list[dict]:
+async def list_org_members(org_id: str) -> list[OrgMemberResponse]:
     """List all active members of an organization."""
     members = await prisma.orgmember.find_many(
         where={"orgId": org_id, "status": "ACTIVE"},
         include={"User": True},
     )
-    return [
-        {
-            "id": m.id,
-            "userId": m.userId,
-            "email": m.User.email if m.User else "",
-            "name": m.User.name if m.User else None,
-            "isOwner": m.isOwner,
-            "isAdmin": m.isAdmin,
-            "isBillingManager": m.isBillingManager,
-            "joinedAt": m.joinedAt,
-        }
-        for m in members
-    ]
+    return [OrgMemberResponse.from_db(m) for m in members]
 
 
 async def add_org_member(
@@ -277,7 +238,7 @@ async def add_org_member(
     is_admin: bool = False,
     is_billing_manager: bool = False,
     invited_by: str | None = None,
-) -> dict:
+) -> OrgMemberResponse:
     """Add a member to an organization and its default workspace."""
     member = await prisma.orgmember.create(
         data={
@@ -304,21 +265,12 @@ async def add_org_member(
             }
         )
 
-    return {
-        "id": member.id,
-        "userId": member.userId,
-        "email": member.User.email if member.User else "",
-        "name": member.User.name if member.User else None,
-        "isOwner": member.isOwner,
-        "isAdmin": member.isAdmin,
-        "isBillingManager": member.isBillingManager,
-        "joinedAt": member.joinedAt,
-    }
+    return OrgMemberResponse.from_db(member)
 
 
 async def update_org_member(
     org_id: str, user_id: str, is_admin: bool | None, is_billing_manager: bool | None
-) -> dict:
+) -> OrgMemberResponse:
     """Update a member's role flags."""
     member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
@@ -342,7 +294,7 @@ async def update_org_member(
             data=update_data,
         )
     members = await list_org_members(org_id)
-    return next(m for m in members if m["userId"] == user_id)
+    return next(m for m in members if m.user_id == user_id)
 
 
 async def remove_org_member(org_id: str, user_id: str) -> None:
@@ -384,7 +336,7 @@ async def transfer_ownership(
     if new is None:
         raise NotFoundError(f"User {new_owner_id} is not a member of org {org_id}")
 
-    # Atomic transfer — both updates in one SQL statement to prevent ownerless window
+    # Atomic transfer -- both updates in one SQL statement to prevent ownerless window
     await prisma.execute_raw(
         """
         UPDATE "OrgMember"
@@ -406,23 +358,17 @@ async def transfer_ownership(
     )
 
 
-async def list_org_aliases(org_id: str) -> list[dict]:
+async def list_org_aliases(org_id: str) -> list[OrgAliasResponse]:
     """List all aliases for an organization."""
     aliases = await prisma.organizationalias.find_many(
         where={"organizationId": org_id, "removedAt": None}
     )
-    return [
-        {
-            "id": a.id,
-            "aliasSlug": a.aliasSlug,
-            "aliasType": a.aliasType,
-            "createdAt": a.createdAt,
-        }
-        for a in aliases
-    ]
+    return [OrgAliasResponse.from_db(a) for a in aliases]
 
 
-async def create_org_alias(org_id: str, alias_slug: str, user_id: str) -> dict:
+async def create_org_alias(
+    org_id: str, alias_slug: str, user_id: str
+) -> OrgAliasResponse:
     """Create a new alias for an organization."""
     # Check if slug is already taken by an org or alias
     existing_org = await prisma.organization.find_unique(where={"slug": alias_slug})
@@ -443,9 +389,4 @@ async def create_org_alias(org_id: str, alias_slug: str, user_id: str) -> dict:
             "createdByUserId": user_id,
         }
     )
-    return {
-        "id": alias.id,
-        "aliasSlug": alias.aliasSlug,
-        "aliasType": alias.aliasType,
-        "createdAt": alias.createdAt,
-    }
+    return OrgAliasResponse.from_db(alias)

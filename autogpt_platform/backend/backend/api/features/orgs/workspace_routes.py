@@ -37,14 +37,13 @@ async def create_workspace(
         Security(requires_org_permission(OrgAction.CREATE_WORKSPACES)),
     ],
 ) -> WorkspaceResponse:
-    result = await ws_db.create_workspace(
+    return await ws_db.create_workspace(
         org_id=org_id,
         name=request.name,
         user_id=ctx.user_id,
         description=request.description,
-        join_policy=request.joinPolicy,
+        join_policy=request.join_policy,
     )
-    return WorkspaceResponse(**result)
 
 
 @router.get(
@@ -58,8 +57,7 @@ async def list_workspaces(
 ) -> list[WorkspaceResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    results = await ws_db.list_workspaces(org_id, ctx.user_id)
-    return [WorkspaceResponse(**r) for r in results]
+    return await ws_db.list_workspaces(org_id, ctx.user_id)
 
 
 @router.get(
@@ -74,8 +72,7 @@ async def get_workspace(
 ) -> WorkspaceResponse:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    result = await ws_db.get_workspace(ws_id, expected_org_id=org_id)
-    return WorkspaceResponse(**result)
+    return await ws_db.get_workspace(ws_id, expected_org_id=org_id)
 
 
 @router.patch(
@@ -94,15 +91,14 @@ async def update_workspace(
 ) -> WorkspaceResponse:
     # Verify workspace belongs to org (ctx validates workspace membership)
     await ws_db.get_workspace(ws_id, expected_org_id=org_id)
-    result = await ws_db.update_workspace(
+    return await ws_db.update_workspace(
         ws_id,
         {
             "name": request.name,
             "description": request.description,
-            "joinPolicy": request.joinPolicy,
+            "joinPolicy": request.join_policy,
         },
     )
-    return WorkspaceResponse(**result)
 
 
 @router.delete(
@@ -133,8 +129,7 @@ async def join_workspace(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> WorkspaceResponse:
-    result = await ws_db.join_workspace(ws_id, ctx.user_id, org_id)
-    return WorkspaceResponse(**result)
+    return await ws_db.join_workspace(ws_id, ctx.user_id, org_id)
 
 
 @router.post(
@@ -167,8 +162,7 @@ async def list_members(
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
     await ws_db.get_workspace(ws_id, expected_org_id=org_id)
-    results = await ws_db.list_workspace_members(ws_id)
-    return [WorkspaceMemberResponse(**r) for r in results]
+    return await ws_db.list_workspace_members(ws_id)
 
 
 @router.post(
@@ -185,15 +179,14 @@ async def add_member(
         Security(requires_workspace_permission(WorkspaceAction.MANAGE_MEMBERS)),
     ],
 ) -> WorkspaceMemberResponse:
-    result = await ws_db.add_workspace_member(
+    return await ws_db.add_workspace_member(
         ws_id=ws_id,
-        user_id=request.userId,
+        user_id=request.user_id,
         org_id=org_id,
-        is_admin=request.isAdmin,
-        is_billing_manager=request.isBillingManager,
+        is_admin=request.is_admin,
+        is_billing_manager=request.is_billing_manager,
         invited_by=ctx.user_id,
     )
-    return WorkspaceMemberResponse(**result)
 
 
 @router.patch(
@@ -211,13 +204,12 @@ async def update_member(
         Security(requires_workspace_permission(WorkspaceAction.MANAGE_MEMBERS)),
     ],
 ) -> WorkspaceMemberResponse:
-    result = await ws_db.update_workspace_member(
+    return await ws_db.update_workspace_member(
         ws_id=ws_id,
         user_id=uid,
-        is_admin=request.isAdmin,
-        is_billing_manager=request.isBillingManager,
+        is_admin=request.is_admin,
+        is_billing_manager=request.is_billing_manager,
     )
-    return WorkspaceMemberResponse(**result)
 
 
 @router.delete(

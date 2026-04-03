@@ -7,34 +7,16 @@ from autogpt_libs.auth import get_user_id, requires_org_permission, requires_use
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import OrgAction
 from fastapi import APIRouter, HTTPException, Security
-from pydantic import BaseModel, Field
 
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
 from . import db as org_db
+from .model import CreateInvitationRequest, InvitationResponse
 
 router = APIRouter()
 
 INVITATION_TTL_DAYS = 7
-
-
-class CreateInvitationRequest(BaseModel):
-    email: str
-    isAdmin: bool = False
-    isBillingManager: bool = False
-    workspaceIds: list[str] = Field(default_factory=list)
-
-
-class InvitationResponse(BaseModel):
-    id: str
-    email: str
-    isAdmin: bool
-    isBillingManager: bool
-    token: str
-    expiresAt: datetime
-    createdAt: datetime
-    workspaceIds: list[str]
 
 
 # --- Org-scoped invitation endpoints (under /api/orgs/{org_id}/invitations) ---
@@ -61,27 +43,18 @@ async def create_invitation(
         data={
             "orgId": org_id,
             "email": request.email,
-            "isAdmin": request.isAdmin,
-            "isBillingManager": request.isBillingManager,
+            "isAdmin": request.is_admin,
+            "isBillingManager": request.is_billing_manager,
             "expiresAt": expires_at,
             "invitedByUserId": ctx.user_id,
-            "workspaceIds": request.workspaceIds,
+            "workspaceIds": request.workspace_ids,
         }
     )
 
     # TODO: Send email via Postmark with invitation link
     # link = f"{frontend_base_url}/org/invite/{invitation.token}"
 
-    return InvitationResponse(
-        id=invitation.id,
-        email=invitation.email,
-        isAdmin=invitation.isAdmin,
-        isBillingManager=invitation.isBillingManager,
-        token=invitation.token,
-        expiresAt=invitation.expiresAt,
-        createdAt=invitation.createdAt,
-        workspaceIds=invitation.workspaceIds,
-    )
+    return InvitationResponse.from_db(invitation)
 
 
 @org_router.get(
@@ -105,19 +78,7 @@ async def list_invitations(
         },
         order={"createdAt": "desc"},
     )
-    return [
-        InvitationResponse(
-            id=inv.id,
-            email=inv.email,
-            isAdmin=inv.isAdmin,
-            isBillingManager=inv.isBillingManager,
-            token=inv.token,
-            expiresAt=inv.expiresAt,
-            createdAt=inv.createdAt,
-            workspaceIds=inv.workspaceIds,
-        )
-        for inv in invitations
-    ]
+    return [InvitationResponse.from_db(inv) for inv in invitations]
 
 
 @org_router.delete(
@@ -198,7 +159,7 @@ async def accept_invitation(
                 invited_by=invitation.invitedByUserId,
             )
         except Exception:
-            # Non-fatal — workspace may have been deleted
+            # Non-fatal -- workspace may have been deleted
             pass
 
     # Mark invitation as accepted
@@ -251,16 +212,4 @@ async def list_pending_for_user(
         },
         order={"createdAt": "desc"},
     )
-    return [
-        InvitationResponse(
-            id=inv.id,
-            email=inv.email,
-            isAdmin=inv.isAdmin,
-            isBillingManager=inv.isBillingManager,
-            token=inv.token,
-            expiresAt=inv.expiresAt,
-            createdAt=inv.createdAt,
-            workspaceIds=inv.workspaceIds,
-        )
-        for inv in invitations
-    ]
+    return [InvitationResponse.from_db(inv) for inv in invitations]

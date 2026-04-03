@@ -5,21 +5,9 @@ import logging
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
 
+from .workspace_model import WorkspaceMemberResponse, WorkspaceResponse
+
 logger = logging.getLogger(__name__)
-
-
-def _ws_to_dict(ws, member_count: int = 0) -> dict:
-    return {
-        "id": ws.id,
-        "name": ws.name,
-        "slug": ws.slug,
-        "description": ws.description,
-        "isDefault": ws.isDefault,
-        "joinPolicy": ws.joinPolicy,
-        "orgId": ws.orgId,
-        "memberCount": member_count,
-        "createdAt": ws.createdAt,
-    }
 
 
 async def create_workspace(
@@ -28,7 +16,7 @@ async def create_workspace(
     user_id: str,
     description: str | None = None,
     join_policy: str = "OPEN",
-) -> dict:
+) -> WorkspaceResponse:
     """Create a workspace and make the creator an admin."""
     ws = await prisma.orgworkspace.create(
         data={
@@ -50,10 +38,10 @@ async def create_workspace(
         }
     )
 
-    return _ws_to_dict(ws, member_count=1)
+    return WorkspaceResponse.from_db(ws, member_count=1)
 
 
-async def list_workspaces(org_id: str, user_id: str) -> list[dict]:
+async def list_workspaces(org_id: str, user_id: str) -> list[WorkspaceResponse]:
     """List workspaces: all OPEN workspaces + PRIVATE ones the user belongs to."""
     workspaces = await prisma.orgworkspace.find_many(
         where={
@@ -66,20 +54,22 @@ async def list_workspaces(org_id: str, user_id: str) -> list[dict]:
         },
         order={"createdAt": "asc"},
     )
-    return [_ws_to_dict(ws) for ws in workspaces]
+    return [WorkspaceResponse.from_db(ws) for ws in workspaces]
 
 
-async def get_workspace(ws_id: str, expected_org_id: str | None = None) -> dict:
+async def get_workspace(
+    ws_id: str, expected_org_id: str | None = None
+) -> WorkspaceResponse:
     """Get workspace details. Validates org ownership if expected_org_id is given."""
     ws = await prisma.orgworkspace.find_unique(where={"id": ws_id})
     if ws is None:
         raise NotFoundError(f"Workspace {ws_id} not found")
     if expected_org_id and ws.orgId != expected_org_id:
         raise NotFoundError(f"Workspace {ws_id} not found in org {expected_org_id}")
-    return _ws_to_dict(ws)
+    return WorkspaceResponse.from_db(ws)
 
 
-async def update_workspace(ws_id: str, data: dict) -> dict:
+async def update_workspace(ws_id: str, data: dict) -> WorkspaceResponse:
     """Update workspace fields."""
     update_data = {k: v for k, v in data.items() if v is not None}
     if not update_data:
@@ -100,7 +90,7 @@ async def delete_workspace(ws_id: str) -> None:
     await prisma.orgworkspace.delete(where={"id": ws_id})
 
 
-async def join_workspace(ws_id: str, user_id: str, org_id: str) -> dict:
+async def join_workspace(ws_id: str, user_id: str, org_id: str) -> WorkspaceResponse:
     """Self-join an OPEN workspace. User must be an org member."""
     ws = await prisma.orgworkspace.find_unique(where={"id": ws_id})
     if ws is None:
@@ -115,7 +105,7 @@ async def join_workspace(ws_id: str, user_id: str, org_id: str) -> dict:
         where={"workspaceId_userId": {"workspaceId": ws_id, "userId": user_id}}
     )
     if existing:
-        return _ws_to_dict(ws)
+        return WorkspaceResponse.from_db(ws)
 
     await prisma.orgworkspacemember.create(
         data={
@@ -124,7 +114,7 @@ async def join_workspace(ws_id: str, user_id: str, org_id: str) -> dict:
             "status": "ACTIVE",
         }
     )
-    return _ws_to_dict(ws)
+    return WorkspaceResponse.from_db(ws)
 
 
 async def leave_workspace(ws_id: str, user_id: str) -> None:
@@ -140,24 +130,13 @@ async def leave_workspace(ws_id: str, user_id: str) -> None:
     )
 
 
-async def list_workspace_members(ws_id: str) -> list[dict]:
+async def list_workspace_members(ws_id: str) -> list[WorkspaceMemberResponse]:
     """List all active members of a workspace."""
     members = await prisma.orgworkspacemember.find_many(
         where={"workspaceId": ws_id, "status": "ACTIVE"},
         include={"User": True},
     )
-    return [
-        {
-            "id": m.id,
-            "userId": m.userId,
-            "email": m.User.email if m.User else "",
-            "name": m.User.name if m.User else None,
-            "isAdmin": m.isAdmin,
-            "isBillingManager": m.isBillingManager,
-            "joinedAt": m.joinedAt,
-        }
-        for m in members
-    ]
+    return [WorkspaceMemberResponse.from_db(m) for m in members]
 
 
 async def add_workspace_member(
@@ -167,7 +146,7 @@ async def add_workspace_member(
     is_admin: bool = False,
     is_billing_manager: bool = False,
     invited_by: str | None = None,
-) -> dict:
+) -> WorkspaceMemberResponse:
     """Add a member to a workspace. Must be an org member."""
     # Verify user is in the org
     org_member = await prisma.orgmember.find_unique(
@@ -187,15 +166,7 @@ async def add_workspace_member(
         },
         include={"User": True},
     )
-    return {
-        "id": member.id,
-        "userId": member.userId,
-        "email": member.User.email if member.User else "",
-        "name": member.User.name if member.User else None,
-        "isAdmin": member.isAdmin,
-        "isBillingManager": member.isBillingManager,
-        "joinedAt": member.joinedAt,
-    }
+    return WorkspaceMemberResponse.from_db(member)
 
 
 async def update_workspace_member(
@@ -203,7 +174,7 @@ async def update_workspace_member(
     user_id: str,
     is_admin: bool | None,
     is_billing_manager: bool | None,
-) -> dict:
+) -> WorkspaceMemberResponse:
     """Update a workspace member's role flags."""
     update_data: dict = {}
     if is_admin is not None:
@@ -218,7 +189,7 @@ async def update_workspace_member(
         )
 
     members = await list_workspace_members(ws_id)
-    return next(m for m in members if m["userId"] == user_id)
+    return next(m for m in members if m.user_id == user_id)
 
 
 async def remove_workspace_member(ws_id: str, user_id: str) -> None:

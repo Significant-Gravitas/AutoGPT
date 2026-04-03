@@ -48,13 +48,12 @@ async def create_org(
     request: CreateOrgRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OrgResponse:
-    result = await org_db.create_org(
+    return await org_db.create_org(
         name=request.name,
         slug=request.slug,
         user_id=user_id,
         description=request.description,
     )
-    return OrgResponse(**result)
 
 
 @router.get(
@@ -66,8 +65,7 @@ async def create_org(
 async def list_orgs(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[OrgResponse]:
-    results = await org_db.list_user_orgs(user_id)
-    return [OrgResponse(**r) for r in results]
+    return await org_db.list_user_orgs(user_id)
 
 
 @router.get(
@@ -81,8 +79,7 @@ async def get_org(
 ) -> OrgResponse:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    result = await org_db.get_org(org_id)
-    return OrgResponse(**result)
+    return await org_db.get_org(org_id)
 
 
 @router.patch(
@@ -99,16 +96,15 @@ async def update_org(
     ],
 ) -> OrgResponse:
     _verify_org_path(ctx, org_id)
-    result = await org_db.update_org(
+    return await org_db.update_org(
         org_id,
         {
             "name": request.name,
             "slug": request.slug,
             "description": request.description,
-            "avatarUrl": request.avatarUrl,
+            "avatarUrl": request.avatar_url,
         },
     )
-    return OrgResponse(**result)
 
 
 @router.delete(
@@ -141,8 +137,7 @@ async def convert_org(
     ],
 ) -> OrgResponse:
     _verify_org_path(ctx, org_id)
-    result = await org_db.convert_personal_org(org_id)
-    return OrgResponse(**result)
+    return await org_db.convert_personal_org(org_id)
 
 
 # --- Members ---
@@ -159,8 +154,7 @@ async def list_members(
 ) -> list[OrgMemberResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    results = await org_db.list_org_members(org_id)
-    return [OrgMemberResponse(**r) for r in results]
+    return await org_db.list_org_members(org_id)
 
 
 @router.post(
@@ -177,14 +171,13 @@ async def add_member(
     ],
 ) -> OrgMemberResponse:
     _verify_org_path(ctx, org_id)
-    result = await org_db.add_org_member(
+    return await org_db.add_org_member(
         org_id=org_id,
-        user_id=request.userId,
-        is_admin=request.isAdmin,
-        is_billing_manager=request.isBillingManager,
+        user_id=request.user_id,
+        is_admin=request.is_admin,
+        is_billing_manager=request.is_billing_manager,
         invited_by=ctx.user_id,
     )
-    return OrgMemberResponse(**result)
 
 
 @router.patch(
@@ -202,13 +195,12 @@ async def update_member(
     ],
 ) -> OrgMemberResponse:
     _verify_org_path(ctx, org_id)
-    result = await org_db.update_org_member(
+    return await org_db.update_org_member(
         org_id=org_id,
         user_id=uid,
-        is_admin=request.isAdmin,
-        is_billing_manager=request.isBillingManager,
+        is_admin=request.is_admin,
+        is_billing_manager=request.is_billing_manager,
     )
-    return OrgMemberResponse(**result)
 
 
 @router.delete(
@@ -243,7 +235,7 @@ async def transfer_ownership(
     ],
 ) -> None:
     _verify_org_path(ctx, org_id)
-    await org_db.transfer_ownership(org_id, ctx.user_id, request.newOwnerId)
+    await org_db.transfer_ownership(org_id, ctx.user_id, request.new_owner_id)
 
 
 # --- Aliases ---
@@ -260,8 +252,7 @@ async def list_aliases(
 ) -> list[OrgAliasResponse]:
     if ctx.org_id != org_id:
         raise HTTPException(403, detail="Not a member of this organization")
-    results = await org_db.list_org_aliases(org_id)
-    return [OrgAliasResponse(**r) for r in results]
+    return await org_db.list_org_aliases(org_id)
 
 
 @router.post(
@@ -278,5 +269,4 @@ async def create_alias(
     ],
 ) -> OrgAliasResponse:
     _verify_org_path(ctx, org_id)
-    result = await org_db.create_org_alias(org_id, request.aliasSlug, ctx.user_id)
-    return OrgAliasResponse(**result)
+    return await org_db.create_org_alias(org_id, request.alias_slug, ctx.user_id)
