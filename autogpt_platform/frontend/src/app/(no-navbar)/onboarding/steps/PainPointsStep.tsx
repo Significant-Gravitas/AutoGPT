@@ -19,44 +19,49 @@ import { ReactNode } from "react";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { SelectableCard } from "../components/SelectableCard";
 import { usePainPointsStep } from "./usePainPointsStep";
+import { Emoji } from "@/components/atoms/Emoji/Emoji";
 
 const ALL_PAIN_POINTS: { id: string; label: string; icon: ReactNode }[] = [
   {
     id: "Finding leads",
     label: "Finding leads",
-    icon: <MagnifyingGlass size={32} />,
+    icon: <Emoji text="🔍" size={32} />,
   },
   {
     id: "Email & outreach",
     label: "Email & outreach",
-    icon: <EnvelopeSimple size={32} />,
+    icon: <Emoji text="📧" size={32} />,
   },
   {
     id: "Reports & data",
     label: "Reports & data",
-    icon: <ChartLineUp size={32} />,
+    icon: <Emoji text="📊" size={32} />,
   },
   {
     id: "Customer support",
     label: "Customer support",
-    icon: <Headset size={32} />,
+    icon: <Emoji text="💬" size={32} />,
   },
   {
     id: "Social media",
     label: "Social media",
-    icon: <DeviceMobile size={32} />,
+    icon: <Emoji text="📱" size={32} />,
   },
   {
     id: "CRM & data entry",
     label: "CRM & data entry",
-    icon: <Folder size={32} />,
+    icon: <Emoji text="📝" size={32} />,
   },
-  { id: "Scheduling", label: "Scheduling", icon: <CalendarBlank size={32} /> },
-  { id: "Research", label: "Research", icon: <Flask size={32} /> },
+  {
+    id: "Scheduling",
+    label: "Scheduling",
+    icon: <Emoji text="🗓️" size={32} />,
+  },
+  { id: "Research", label: "Research", icon: <Emoji text="🔬" size={32} /> },
   {
     id: "Something else",
     label: "Something else",
-    icon: <PencilSimple size={32} />,
+    icon: <Emoji text="🚩" size={32} />,
   },
 ];
 

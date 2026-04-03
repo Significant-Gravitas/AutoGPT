@@ -3,34 +3,51 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import Image from "next/image";
-import bullseyeImg from "../assets/bullseye.png";
-import bustImg from "../assets/bust.png";
-import chartImg from "../assets/chart_increasing.png";
-import gearImg from "../assets/gear.png";
-import hammerImg from "../assets/hammer.png";
-import laptopImg from "../assets/laptop.png";
-import loudspeakerImg from "../assets/loudspeaker.png";
-import whiteFlagImg from "../assets/white_flag.png";
+
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { SelectableCard } from "../components/SelectableCard";
 import { useOnboardingWizardStore } from "../store";
+import { Emoji } from "@/components/atoms/Emoji/Emoji";
 
 const IMG_SIZE = 42;
 
-const img = (src: typeof bullseyeImg) => (
-  <Image src={src} alt="" width={IMG_SIZE} height={IMG_SIZE} />
-);
-
 const ROLES = [
-  { id: "Founder/CEO", label: "Founder / CEO", icon: img(bullseyeImg) },
-  { id: "Operations", label: "Operations", icon: img(gearImg) },
-  { id: "Sales/BD", label: "Sales / BD", icon: img(chartImg) },
-  { id: "Marketing", label: "Marketing", icon: img(loudspeakerImg) },
-  { id: "Product/PM", label: "Product / PM", icon: img(hammerImg) },
-  { id: "Engineering", label: "Engineering", icon: img(laptopImg) },
-  { id: "HR/People", label: "HR / People", icon: img(bustImg) },
-  { id: "Other", label: "Other", icon: img(whiteFlagImg) },
+  {
+    id: "Founder/CEO",
+    label: "Founder / CEO",
+    icon: <Emoji text="🎯" size={IMG_SIZE} />,
+  },
+  {
+    id: "Operations",
+    label: "Operations",
+    icon: <Emoji text="⚙️" size={IMG_SIZE} />,
+  },
+  {
+    id: "Sales/BD",
+    label: "Sales / BD",
+    icon: <Emoji text="📈" size={IMG_SIZE} />,
+  },
+  {
+    id: "Marketing",
+    label: "Marketing",
+    icon: <Emoji text="📢" size={IMG_SIZE} />,
+  },
+  {
+    id: "Product/PM",
+    label: "Product / PM",
+    icon: <Emoji text="🔨" size={IMG_SIZE} />,
+  },
+  {
+    id: "Engineering",
+    label: "Engineering",
+    icon: <Emoji text="💻" size={IMG_SIZE} />,
+  },
+  {
+    id: "HR/People",
+    label: "HR / People",
+    icon: <Emoji text="👤" size={IMG_SIZE} />,
+  },
+  { id: "Other", label: "Other", icon: <Emoji text="🚩" size={IMG_SIZE} /> },
 ] as const;
 
 export function RoleStep() {
