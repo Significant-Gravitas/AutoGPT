@@ -46,14 +46,6 @@ export default async function RootLayout({
       className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
       suppressHydrationWarning
     >
-      <head>
-        <SetupAnalytics
-          host={host}
-          ga={{
-            gaId: process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
-          }}
-        />
-      </head>
       <body className="min-h-screen">
         <ErrorBoundary context="application">
           <Providers
@@ -63,6 +55,13 @@ export default async function RootLayout({
             // enableSystem
             disableTransitionOnChange
           >
+            <SetupAnalytics
+              host={host}
+              ga={{
+                gaId:
+                  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || "G-FH2XK2W4GN",
+              }}
+            />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
               <TallyPopupSimple />
