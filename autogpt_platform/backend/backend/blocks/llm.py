@@ -116,20 +116,39 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
                 return None
         return None
 
-    # OpenAI models
-    O3_MINI = "o3-mini"
+    # OpenAI models — O-series reasoning
+    O4_MINI = "o4-mini"
+    O4_MINI_DEEP_RESEARCH = "o4-mini-deep-research"
     O3 = "o3-2025-04-16"
+    O3_MINI = "o3-mini"
+    O3_PRO = "o3-pro"
+    O3_DEEP_RESEARCH = "o3-deep-research"
     O1 = "o1"
     O1_MINI = "o1-mini"
-    # GPT-5 models
+    # OpenAI models — GPT-5.4 series (current flagship)
+    GPT5_4 = "gpt-5.4-2026-03-05"
+    GPT5_4_MINI = "gpt-5.4-mini-2026-03-17"
+    GPT5_4_NANO = "gpt-5.4-nano-2026-03-17"
+    GPT5_4_PRO = "gpt-5.4-pro"
+    # OpenAI models — GPT-5.3 series
+    GPT5_3 = "gpt-5.3"
+    GPT5_3_CODEX = "gpt-5.3-codex"
+    # OpenAI models — GPT-5.2 series
     GPT5_2 = "gpt-5.2-2025-12-11"
+    GPT5_2_PRO = "gpt-5.2-pro"
+    # OpenAI models — GPT-5.1 series
     GPT5_1 = "gpt-5.1-2025-11-13"
+    GPT5_1_CODEX = "gpt-5.1-codex"
+    # OpenAI models — GPT-5 series
     GPT5 = "gpt-5-2025-08-07"
     GPT5_MINI = "gpt-5-mini-2025-08-07"
     GPT5_NANO = "gpt-5-nano-2025-08-07"
+    GPT5_PRO = "gpt-5-pro"
     GPT5_CHAT = "gpt-5-chat-latest"
+    # OpenAI models — GPT-4.x series
     GPT41 = "gpt-4.1-2025-04-14"
     GPT41_MINI = "gpt-4.1-mini-2025-04-14"
+    GPT41_NANO = "gpt-4.1-nano"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
@@ -254,23 +273,64 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
+    # O-series reasoning models
+    LlmModel.O4_MINI: ModelMetadata(
+        "openai", 200000, 100000, "O4 Mini", "OpenAI", "OpenAI", 1
+    ),
+    LlmModel.O4_MINI_DEEP_RESEARCH: ModelMetadata(
+        "openai", 200000, 100000, "O4 Mini Deep Research", "OpenAI", "OpenAI", 2
+    ),
     LlmModel.O3: ModelMetadata("openai", 200000, 100000, "O3", "OpenAI", "OpenAI", 2),
     LlmModel.O3_MINI: ModelMetadata(
         "openai", 200000, 100000, "O3 Mini", "OpenAI", "OpenAI", 1
     ),  # o3-mini-2025-01-31
+    LlmModel.O3_PRO: ModelMetadata(
+        "openai", 200000, 100000, "O3 Pro", "OpenAI", "OpenAI", 3
+    ),
+    LlmModel.O3_DEEP_RESEARCH: ModelMetadata(
+        "openai", 200000, 100000, "O3 Deep Research", "OpenAI", "OpenAI", 3
+    ),
     LlmModel.O1: ModelMetadata(
         "openai", 200000, 100000, "O1", "OpenAI", "OpenAI", 3
     ),  # o1-2024-12-17
     LlmModel.O1_MINI: ModelMetadata(
         "openai", 128000, 65536, "O1 Mini", "OpenAI", "OpenAI", 2
     ),  # o1-mini-2024-09-12
-    # GPT-5 models
+    # GPT-5.4 models (current flagship, March 2026)
+    LlmModel.GPT5_4: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.4", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.GPT5_4_MINI: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.4 Mini", "OpenAI", "OpenAI", 1
+    ),
+    LlmModel.GPT5_4_NANO: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.4 Nano", "OpenAI", "OpenAI", 1
+    ),
+    LlmModel.GPT5_4_PRO: ModelMetadata(
+        "openai", 1050000, 128000, "GPT-5.4 Pro", "OpenAI", "OpenAI", 3
+    ),
+    # GPT-5.3 models
+    LlmModel.GPT5_3: ModelMetadata(
+        "openai", 128000, 16384, "GPT-5.3", "OpenAI", "OpenAI", 2
+    ),
+    LlmModel.GPT5_3_CODEX: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.3 Codex", "OpenAI", "OpenAI", 2
+    ),
+    # GPT-5.2 models
     LlmModel.GPT5_2: ModelMetadata(
         "openai", 400000, 128000, "GPT-5.2", "OpenAI", "OpenAI", 3
     ),
+    LlmModel.GPT5_2_PRO: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.2 Pro", "OpenAI", "OpenAI", 3
+    ),
+    # GPT-5.1 models
     LlmModel.GPT5_1: ModelMetadata(
         "openai", 400000, 128000, "GPT-5.1", "OpenAI", "OpenAI", 2
     ),
+    LlmModel.GPT5_1_CODEX: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5.1 Codex", "OpenAI", "OpenAI", 2
+    ),
+    # GPT-5 models
     LlmModel.GPT5: ModelMetadata(
         "openai", 400000, 128000, "GPT-5", "OpenAI", "OpenAI", 1
     ),
@@ -280,14 +340,21 @@ MODEL_METADATA = {
     LlmModel.GPT5_NANO: ModelMetadata(
         "openai", 400000, 128000, "GPT-5 Nano", "OpenAI", "OpenAI", 1
     ),
+    LlmModel.GPT5_PRO: ModelMetadata(
+        "openai", 400000, 128000, "GPT-5 Pro", "OpenAI", "OpenAI", 3
+    ),
     LlmModel.GPT5_CHAT: ModelMetadata(
         "openai", 400000, 16384, "GPT-5 Chat Latest", "OpenAI", "OpenAI", 2
     ),
+    # GPT-4.x models
     LlmModel.GPT41: ModelMetadata(
         "openai", 1047576, 32768, "GPT-4.1", "OpenAI", "OpenAI", 1
     ),
     LlmModel.GPT41_MINI: ModelMetadata(
         "openai", 1047576, 32768, "GPT-4.1 Mini", "OpenAI", "OpenAI", 1
+    ),
+    LlmModel.GPT41_NANO: ModelMetadata(
+        "openai", 1047576, 32768, "GPT-4.1 Nano", "OpenAI", "OpenAI", 1
     ),
     LlmModel.GPT4O_MINI: ModelMetadata(
         "openai", 128000, 16384, "GPT-4o Mini", "OpenAI", "OpenAI", 1
@@ -661,7 +728,7 @@ MODEL_METADATA = {
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
 }
 
-DEFAULT_LLM_MODEL = LlmModel.GPT5_2
+DEFAULT_LLM_MODEL = LlmModel.GPT5_4
 
 for model in LlmModel:
     if model not in MODEL_METADATA:
