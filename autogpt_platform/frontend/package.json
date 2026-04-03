@@ -15,7 +15,7 @@
     "types": "tsc --noEmit",
     "test": "NEXT_PUBLIC_PW_TEST=true next build --turbo && playwright test",
     "test-ui": "NEXT_PUBLIC_PW_TEST=true next build --turbo && playwright test --ui",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --coverage",
     "test:unit:watch": "vitest",
     "test:no-build": "playwright test",
     "gentests": "playwright codegen http://localhost:3000",
@@ -171,6 +171,7 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
+    "@vitest/coverage-v8": "4.0.17",
     "vitest": "4.0.17"
   },
   "msw": {

@@ -46,7 +46,7 @@ messages = [
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_serialization_deserialization():
-    s = ChatSession.new(user_id="abc123")
+    s = ChatSession.new(user_id="abc123", dry_run=False)
     s.messages = messages
     s.usage = [Usage(prompt_tokens=100, completion_tokens=200, total_tokens=300)]
     serialized = s.model_dump_json()
@@ -57,7 +57,7 @@ async def test_chatsession_serialization_deserialization():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage(setup_test_user, test_user_id):
 
-    s = ChatSession.new(user_id=test_user_id)
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
     s.messages = messages
 
     s = await upsert_chat_session(s)
@@ -75,7 +75,7 @@ async def test_chatsession_redis_storage_user_id_mismatch(
     setup_test_user, test_user_id
 ):
 
-    s = ChatSession.new(user_id=test_user_id)
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
     s.messages = messages
     s = await upsert_chat_session(s)
 
@@ -90,7 +90,7 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     from backend.data.redis_client import get_redis_async
 
     # Create session with messages including assistant message
-    s = ChatSession.new(user_id=test_user_id)
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
     s.messages = messages  # Contains user, assistant, and tool messages
     assert s.session_id is not None, "Session id is not set"
     # Upsert to save to both cache and DB
@@ -241,7 +241,7 @@ _raw_tc2 = {
 
 def test_add_tool_call_appends_to_existing_assistant():
     """When the last assistant is from the current turn, tool_call is added to it."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="hi"),
         ChatMessage(role="assistant", content="working on it"),
@@ -254,7 +254,7 @@ def test_add_tool_call_appends_to_existing_assistant():
 
 def test_add_tool_call_creates_assistant_when_none_exists():
     """When there's no current-turn assistant, a new one is created."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="hi"),
     ]
@@ -267,7 +267,7 @@ def test_add_tool_call_creates_assistant_when_none_exists():
 
 def test_add_tool_call_does_not_cross_user_boundary():
     """A user message acts as a boundary — previous assistant is not modified."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="assistant", content="old turn"),
         ChatMessage(role="user", content="new message"),
@@ -282,7 +282,7 @@ def test_add_tool_call_does_not_cross_user_boundary():
 
 def test_add_tool_call_multiple_times():
     """Multiple long-running tool calls accumulate on the same assistant."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="hi"),
         ChatMessage(role="assistant", content="doing stuff"),
@@ -300,7 +300,7 @@ def test_add_tool_call_multiple_times():
 
 def test_to_openai_messages_merges_split_assistants():
     """End-to-end: session with split assistants produces valid OpenAI messages."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="build agent"),
         ChatMessage(role="assistant", content="Let me build that"),
@@ -352,7 +352,7 @@ async def test_concurrent_saves_collision_detection(setup_test_user, test_user_i
     import asyncio
 
     # Create a session with initial messages
-    session = ChatSession.new(user_id=test_user_id)
+    session = ChatSession.new(user_id=test_user_id, dry_run=False)
     for i in range(3):
         session.messages.append(
             ChatMessage(
