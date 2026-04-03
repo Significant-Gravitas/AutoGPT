@@ -10,7 +10,11 @@ import backend.copilot.tools.run_block as run_block_module
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
-from backend.executor.simulator import build_simulation_prompt, simulate_block
+from backend.executor.simulator import (
+    build_simulation_prompt,
+    prepare_dry_run,
+    simulate_block,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,7 +77,11 @@ def make_openai_response(
 
 @pytest.mark.asyncio
 async def test_simulate_block_basic():
-    """simulate_block returns correct (output_name, output_data) tuples."""
+    """simulate_block returns correct (output_name, output_data) tuples.
+
+    Empty error pins should be omitted (not yielded) — only pins with
+    meaningful values are forwarded.
+    """
     mock_block = make_mock_block()
     mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(
@@ -82,13 +90,15 @@ async def test_simulate_block_basic():
 
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
+    ) as mock_get_client:
         outputs = []
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
 
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
     assert ("result", "simulated output") in outputs
-    assert ("error", "") in outputs
+    # Empty error pin should NOT be yielded — the simulator omits empty values
+    assert ("error", "") not in outputs
 
 
 @pytest.mark.asyncio
@@ -113,6 +123,8 @@ async def test_simulate_block_json_retry():
 
     assert mock_client.chat.completions.create.call_count == 3
     assert ("result", "ok") in outputs
+    # Empty error pin is dropped
+    assert ("error", "") not in outputs
 
 
 @pytest.mark.asyncio
@@ -141,7 +153,7 @@ async def test_simulate_block_all_retries_exhausted():
 
 @pytest.mark.asyncio
 async def test_simulate_block_missing_output_pins():
-    """LLM response missing some output pins; verify they're filled with None."""
+    """LLM response missing some output pins; they are omitted (not yielded)."""
     mock_block = make_mock_block(
         output_props={
             "result": {"type": "string"},
@@ -163,8 +175,9 @@ async def test_simulate_block_missing_output_pins():
             outputs[name] = data
 
     assert outputs["result"] == "hello"
-    assert outputs["count"] is None  # missing pin filled with None
-    assert outputs["error"] == ""  # "error" pin filled with ""
+    # Missing pins are omitted — only pins with meaningful values are yielded
+    assert "count" not in outputs
+    assert "error" not in outputs
 
 
 @pytest.mark.asyncio
@@ -198,6 +211,21 @@ async def test_simulate_block_truncates_long_inputs():
     # And the total length of the value in the prompt should be well under 30k chars
     parsed = json.loads(user_prompt.split("## Current Inputs\n", 1)[1])
     assert len(parsed["text"]) < 25000
+
+
+def test_build_simulation_prompt_lists_available_output_pins():
+    """The prompt should list available output pins (excluding error) so the LLM
+    knows which keys it MUST include.  Error is excluded because the prompt
+    tells the LLM to omit it unless simulating a logical failure."""
+    block = make_mock_block()  # default output_props has "result" and "error"
+    system_prompt, _ = build_simulation_prompt(block, {"query": "test"})
+    available_line = [
+        line for line in system_prompt.splitlines() if "Available output pins" in line
+    ][0]
+    assert '"result"' in available_line
+    # "error" is intentionally excluded from the required output pins list
+    # since the prompt instructs the LLM to omit it unless simulating errors
+    assert '"error"' not in available_line
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +266,7 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should contain [DRY RUN] in message and success=True."""
+    """Dry-run response should match real execution message format and have success=True."""
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
@@ -259,7 +287,8 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "[DRY RUN]" in response.message
+    assert "executed successfully" in response.message
+    assert "[DRY RUN]" not in response.message  # must not leak to LLM context
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
 
@@ -307,23 +336,24 @@ async def test_execute_block_real_execution_unchanged():
 
 
 def test_run_block_tool_dry_run_param():
-    """RunBlockTool parameters should include 'dry_run'."""
+    """RunBlockTool parameters should include 'dry_run' as a required field."""
     tool = RunBlockTool()
     params = tool.parameters
     assert "dry_run" in params["properties"]
     assert params["properties"]["dry_run"]["type"] == "boolean"
+    assert "dry_run" in params["required"]
 
 
 def test_run_block_tool_dry_run_calls_execute():
-    """RunBlockTool._execute extracts dry_run from kwargs correctly.
+    """RunBlockTool._execute accepts dry_run as a typed parameter.
 
-    We verify the extraction logic directly by inspecting the source, then confirm
-    the kwarg is forwarded in the execute_block call site.
+    We verify the parameter exists in the signature and is forwarded to
+    execute_block.
     """
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is extracted from kwargs
+    # Verify dry_run is a typed parameter (not extracted from kwargs)
     assert "dry_run" in source
-    assert 'kwargs.get("dry_run"' in source
+    assert "dry_run: bool" in source
 
     # Scope to _execute method source only — module-wide search is brittle
     # and can match unrelated text/comments.
@@ -333,12 +363,106 @@ def test_run_block_tool_dry_run_calls_execute():
 
 
 @pytest.mark.asyncio
+async def test_execute_block_dry_run_no_empty_error_from_simulator():
+    """The simulator no longer yields empty error pins, so execute_block
+    simply passes through whatever the simulator produces.
+
+    Since the fix is at the simulator level, even if a simulator somehow
+    yields only non-error outputs, they pass through unchanged.
+    """
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        # Simulator now omits empty error pins at source
+        yield "result", "simulated output"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.success is True
+    assert response.is_dry_run is True
+    assert "error" not in response.outputs
+    assert response.outputs == {"result": ["simulated output"]}
+
+
+@pytest.mark.asyncio
+async def test_execute_block_dry_run_keeps_nonempty_error_pin():
+    """Dry-run should keep the 'error' pin when it contains a real error message."""
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", ""
+        yield "error", "API rate limit exceeded"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert response.success is True
+    # Non-empty error should be preserved
+    assert "error" in response.outputs
+    assert response.outputs["error"] == ["API rate limit exceeded"]
+
+
+@pytest.mark.asyncio
+async def test_execute_block_dry_run_message_includes_completed_status():
+    """Dry-run message should clearly indicate COMPLETED status."""
+    mock_block = make_mock_block()
+
+    async def fake_simulate(block, input_data):
+        yield "result", "simulated"
+
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        response = await execute_block(
+            block=mock_block,
+            block_id="test-block-id",
+            input_data={"query": "hello"},
+            user_id="user-1",
+            session_id="session-1",
+            node_exec_id="node-exec-1",
+            matched_credentials={},
+            dry_run=True,
+        )
+
+    assert isinstance(response, BlockOutputResponse)
+    assert "executed successfully" in response.message
+
+
+@pytest.mark.asyncio
 async def test_execute_block_dry_run_simulator_error_returns_error_response():
     """When simulate_block yields a SIMULATOR ERROR tuple, execute_block returns ErrorResponse."""
     mock_block = make_mock_block()
 
     async def fake_simulate_error(block, input_data):
-        yield "error", "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key)."
+        yield (
+            "error",
+            "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available (missing OpenAI/OpenRouter API key).",
+        )
 
     with patch(
         "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate_error
@@ -356,3 +480,146 @@ async def test_execute_block_dry_run_simulator_error_returns_error_response():
 
     assert isinstance(response, ErrorResponse)
     assert "[SIMULATOR ERROR" in response.message
+
+
+# ---------------------------------------------------------------------------
+# prepare_dry_run tests
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_dry_run_orchestrator_block():
+    """prepare_dry_run caps iterations and overrides model to simulation model."""
+    from backend.blocks.orchestrator import OrchestratorBlock
+
+    block = OrchestratorBlock()
+    input_data = {"prompt": "hello", "model": "gpt-4o", "agent_mode_max_iterations": 10}
+    with patch(
+        "backend.executor.simulator._get_platform_openrouter_key",
+        return_value="sk-or-test-key",
+    ):
+        result = prepare_dry_run(block, input_data)
+
+    assert result is not None
+    # Model is overridden to the simulation model (not the user's model).
+    assert result["model"] != "gpt-4o"
+    assert result["agent_mode_max_iterations"] == 1
+    assert result["_dry_run_api_key"] == "sk-or-test-key"
+    # Original input_data should not be mutated.
+    assert input_data["model"] == "gpt-4o"
+
+
+def test_prepare_dry_run_agent_executor_block():
+    """prepare_dry_run returns a copy of input_data for AgentExecutorBlock.
+
+    AgentExecutorBlock must execute for real during dry-run so it can spawn
+    a child graph execution (whose blocks are then simulated).  Its Output
+    schema has no properties, so LLM simulation would yield zero outputs.
+    """
+    from backend.blocks.agent import AgentExecutorBlock
+
+    block = AgentExecutorBlock()
+    input_data = {
+        "user_id": "u1",
+        "graph_id": "g1",
+        "graph_version": 1,
+        "inputs": {"text": "hello"},
+        "input_schema": {},
+        "output_schema": {},
+    }
+    result = prepare_dry_run(block, input_data)
+
+    assert result is not None
+    # Input data is returned as-is (no model swap needed).
+    assert result["user_id"] == "u1"
+    assert result["graph_id"] == "g1"
+    # Original input_data should not be mutated.
+    assert result is not input_data
+
+
+def test_prepare_dry_run_regular_block_returns_none():
+    """prepare_dry_run returns None for a regular block (use simulator)."""
+    mock_block = make_mock_block()
+    assert prepare_dry_run(mock_block, {"query": "test"}) is None
+
+
+# ---------------------------------------------------------------------------
+# Input/output block passthrough tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_input_block_passthrough():
+    """AgentInputBlock should pass through the value directly, no LLM call."""
+    from backend.blocks.io import AgentInputBlock
+
+    block = AgentInputBlock()
+    outputs = []
+    async for name, data in simulate_block(
+        block, {"value": "hello world", "name": "q"}
+    ):
+        outputs.append((name, data))
+
+    assert outputs == [("result", "hello world")]
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_dropdown_input_block_passthrough():
+    """AgentDropdownInputBlock (subclass of AgentInputBlock) should pass through."""
+    from backend.blocks.io import AgentDropdownInputBlock
+
+    block = AgentDropdownInputBlock()
+    outputs = []
+    async for name, data in simulate_block(
+        block,
+        {
+            "value": "Option B",
+            "name": "sev",
+            "options": ["Option A", "Option B"],
+        },
+    ):
+        outputs.append((name, data))
+
+    assert outputs == [("result", "Option B")]
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_input_block_none_value_falls_back_to_name():
+    """AgentInputBlock with value=None falls back to the input name."""
+    from backend.blocks.io import AgentInputBlock
+
+    block = AgentInputBlock()
+    outputs = []
+    async for name, data in simulate_block(block, {"value": None, "name": "q"}):
+        outputs.append((name, data))
+
+    # When value is None, the simulator falls back to the "name" field
+    assert outputs == [("result", "q")]
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_output_block_passthrough():
+    """AgentOutputBlock should pass through value as output."""
+    from backend.blocks.io import AgentOutputBlock
+
+    block = AgentOutputBlock()
+    outputs = []
+    async for name, data in simulate_block(
+        block, {"value": "result text", "name": "out1"}
+    ):
+        outputs.append((name, data))
+
+    assert ("output", "result text") in outputs
+    assert ("name", "out1") in outputs
+
+
+@pytest.mark.asyncio
+async def test_simulate_agent_output_block_no_name():
+    """AgentOutputBlock without name in input should still yield output."""
+    from backend.blocks.io import AgentOutputBlock
+
+    block = AgentOutputBlock()
+    outputs = []
+    async for name, data in simulate_block(block, {"value": 42}):
+        outputs.append((name, data))
+
+    assert outputs == [("output", 42)]

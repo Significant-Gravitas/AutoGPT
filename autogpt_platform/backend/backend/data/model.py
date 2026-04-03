@@ -325,6 +325,8 @@ class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
     title: Optional[str] = None
+    is_managed: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):
@@ -344,7 +346,6 @@ class OAuth2Credentials(_BaseCredentials):
     refresh_token_expires_at: Optional[int] = None
     """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
     scopes: list[str]
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"

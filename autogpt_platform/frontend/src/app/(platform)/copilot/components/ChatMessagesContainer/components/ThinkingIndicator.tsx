@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatElapsed } from "../../JobStatsBar/formatElapsed";
 import { ScaleLoader } from "../../ScaleLoader/ScaleLoader";
 
 const THINKING_PHRASES = [
@@ -26,6 +27,9 @@ const THINKING_PHRASES = [
 
 const PHRASE_CYCLE_MS = 6_000;
 const FADE_DURATION_MS = 300;
+
+/** Only show elapsed time after this many seconds. */
+const SHOW_TIME_AFTER_SECONDS = 20;
 
 /**
  * Cycles through thinking phrases sequentially with a fade-out/in transition.
@@ -72,10 +76,12 @@ function useCyclingPhrase(active: boolean) {
 
 interface Props {
   active: boolean;
+  elapsedSeconds: number;
 }
 
-export function ThinkingIndicator({ active }: Props) {
+export function ThinkingIndicator({ active, elapsedSeconds }: Props) {
   const { phrase, visible } = useCyclingPhrase(active);
+  const showTime = active && elapsedSeconds >= SHOW_TIME_AFTER_SECONDS;
 
   return (
     <span className="inline-flex items-center gap-1.5 text-neutral-500">
@@ -88,6 +94,11 @@ export function ThinkingIndicator({ active }: Props) {
           {phrase}
         </span>
       </span>
+      {showTime && (
+        <span className="animate-pulse tabular-nums [animation-duration:1.5s]">
+          • {formatElapsed(elapsedSeconds)}
+        </span>
+      )}
     </span>
   );
 }

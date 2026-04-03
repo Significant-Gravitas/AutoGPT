@@ -9,6 +9,7 @@ import pytest
 import pytest_mock
 
 from backend.api.features.chat import routes as chat_routes
+from backend.copilot.rate_limit import SubscriptionTier
 
 app = fastapi.FastAPI()
 app.include_router(chat_routes.router)
@@ -331,14 +332,28 @@ def _mock_usage(
     *,
     daily_used: int = 500,
     weekly_used: int = 2000,
+    daily_limit: int = 10000,
+    weekly_limit: int = 50000,
+    tier: "SubscriptionTier" = SubscriptionTier.FREE,
 ) -> AsyncMock:
-    """Mock get_usage_status to return a predictable CoPilotUsageStatus."""
+    """Mock get_usage_status and get_global_rate_limits for usage endpoint tests.
+
+    Mocks both ``get_global_rate_limits`` (returns the given limits + tier) and
+    ``get_usage_status`` so that tests exercise the endpoint without hitting
+    LaunchDarkly or Prisma.
+    """
     from backend.copilot.rate_limit import CoPilotUsageStatus, UsageWindow
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(daily_limit, weekly_limit, tier),
+    )
 
     resets_at = datetime.now(UTC) + timedelta(days=1)
     status = CoPilotUsageStatus(
-        daily=UsageWindow(used=daily_used, limit=10000, resets_at=resets_at),
-        weekly=UsageWindow(used=weekly_used, limit=50000, resets_at=resets_at),
+        daily=UsageWindow(used=daily_used, limit=daily_limit, resets_at=resets_at),
+        weekly=UsageWindow(used=weekly_used, limit=weekly_limit, resets_at=resets_at),
     )
     return mocker.patch(
         "backend.api.features.chat.routes.get_usage_status",
@@ -369,6 +384,7 @@ def test_usage_returns_daily_and_weekly(
         daily_token_limit=10000,
         weekly_token_limit=50000,
         rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
+        tier=SubscriptionTier.FREE,
     )
 
 
@@ -376,11 +392,9 @@ def test_usage_uses_config_limits(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """The endpoint forwards daily_token_limit and weekly_token_limit from config."""
-    mock_get = _mock_usage(mocker)
+    """The endpoint forwards resolved limits from get_global_rate_limits to get_usage_status."""
+    mock_get = _mock_usage(mocker, daily_limit=99999, weekly_limit=77777)
 
-    mocker.patch.object(chat_routes.config, "daily_token_limit", 99999)
-    mocker.patch.object(chat_routes.config, "weekly_token_limit", 77777)
     mocker.patch.object(chat_routes.config, "rate_limit_reset_cost", 500)
 
     response = client.get("/usage")
@@ -391,6 +405,7 @@ def test_usage_uses_config_limits(
         daily_token_limit=99999,
         weekly_token_limit=77777,
         rate_limit_reset_cost=500,
+        tier=SubscriptionTier.FREE,
     )
 
 
@@ -469,3 +484,60 @@ def test_suggested_prompts_empty_prompts(
 
     assert response.status_code == 200
     assert response.json() == {"themes": []}
+
+
+# ─── Create session: dry_run contract ─────────────────────────────────
+
+
+def _mock_create_chat_session(mocker: pytest_mock.MockerFixture):
+    """Mock create_chat_session to return a fake session."""
+    from backend.copilot.model import ChatSession
+
+    async def _fake_create(user_id: str, *, dry_run: bool):
+        return ChatSession.new(user_id, dry_run=dry_run)
+
+    return mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_fake_create,
+    )
+
+
+def test_create_session_dry_run_true(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Sending ``{"dry_run": true}`` sets metadata.dry_run to True."""
+    _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions", json={"dry_run": True})
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["dry_run"] is True
+
+
+def test_create_session_dry_run_default_false(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Empty body defaults dry_run to False."""
+    _mock_create_chat_session(mocker)
+
+    response = client.post("/sessions")
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["dry_run"] is False
+
+
+def test_create_session_rejects_nested_metadata(
+    test_user_id: str,
+) -> None:
+    """Sending ``{"metadata": {"dry_run": true}}`` must return 422, not silently
+    default to ``dry_run=False``. This guards against the common mistake of
+    nesting dry_run inside metadata instead of providing it at the top level."""
+    response = client.post(
+        "/sessions",
+        json={"metadata": {"dry_run": True}},
+    )
+
+    assert response.status_code == 422

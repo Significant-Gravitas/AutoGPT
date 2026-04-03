@@ -1059,9 +1059,22 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces run_block and run_agent calls to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CreateSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1075,6 +1088,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -1386,7 +1407,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).\nIncludes the user's rate-limit tier.",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -1530,6 +1551,128 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/admin/rate_limit/search_users": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Search Users by Name or Email",
+        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly — returns results even for users\nwithout credit transaction history.",
+        "operationId": "getV2Search users by name or email",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Query" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20, "title": "Limit" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/UserSearchResult" },
+                  "title": "Response Getv2Search Users By Name Or Email"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/admin/rate_limit/tier": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Get User Rate Limit Tier",
+        "description": "Get a user's current rate-limit tier. Admin-only.\n\nReturns 404 if the user does not exist in the database.",
+        "operationId": "getV2Get user rate limit tier",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserTierResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Set User Rate Limit Tier",
+        "description": "Set a user's rate-limit tier. Admin-only.\n\nReturns 404 if the user does not exist in the database.",
+        "operationId": "postV2Set user rate limit tier",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SetUserTierRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserTierResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/credits": {
@@ -5327,11 +5470,11 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/enabled": {
+    "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Is onboarding enabled",
-        "operationId": "getV1Is onboarding enabled",
+        "summary": "Check if onboarding is completed",
+        "operationId": "getV1Check if onboarding is completed",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5345,6 +5488,41 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/profile": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Submit onboarding profile",
+        "operationId": "postV1Submit onboarding profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -7046,6 +7224,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "api_key",
@@ -7429,6 +7617,13 @@
             ],
             "title": "Inputs",
             "description": "Input schema for the agent, including field names, types, and defaults"
+          },
+          "graph": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BaseGraph-Output" },
+              { "type": "null" }
+            ],
+            "description": "Full graph structure (nodes + links) when include_graph is requested"
           }
         },
         "type": "object",
@@ -8375,6 +8570,14 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
+      "ChatSessionMetadata": {
+        "properties": {
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+        },
+        "type": "object",
+        "title": "ChatSessionMetadata",
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
@@ -8415,6 +8618,10 @@
         "properties": {
           "daily": { "$ref": "#/components/schemas/UsageWindow" },
           "weekly": { "$ref": "#/components/schemas/UsageWindow" },
+          "tier": {
+            "$ref": "#/components/schemas/SubscriptionTier",
+            "default": "FREE"
+          },
           "reset_cost": {
             "type": "integer",
             "title": "Reset Cost",
@@ -8504,6 +8711,15 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateSessionRequest": {
+        "properties": {
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8511,6 +8727,10 @@
           "user_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": { "dry_run": false }
           }
         },
         "type": "object",
@@ -8661,6 +8881,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
           }
         },
         "type": "object",
@@ -9892,6 +10117,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "host_scoped",
@@ -10985,6 +11220,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "oauth2",
@@ -11020,11 +11265,6 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
           }
         },
         "type": "object",
@@ -11110,18 +11350,40 @@
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },
-      "OnboardingStatusResponse": {
+      "OnboardingProfileRequest": {
         "properties": {
-          "is_onboarding_enabled": {
-            "type": "boolean",
-            "title": "Is Onboarding Enabled"
+          "user_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Name"
           },
-          "is_chat_enabled": { "type": "boolean", "title": "Is Chat Enabled" }
+          "user_role": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Role"
+          },
+          "pain_points": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Pain Points"
+          }
         },
         "type": "object",
-        "required": ["is_onboarding_enabled", "is_chat_enabled"],
+        "required": ["user_name", "user_role"],
+        "title": "OnboardingProfileRequest",
+        "description": "Request body for onboarding profile submission."
+      },
+      "OnboardingStatusResponse": {
+        "properties": {
+          "is_completed": { "type": "boolean", "title": "Is Completed" }
+        },
+        "type": "object",
+        "required": ["is_completed"],
         "title": "OnboardingStatusResponse",
-        "description": "Response for onboarding status check."
+        "description": "Response for onboarding completion check."
       },
       "OnboardingStep": {
         "type": "string",
@@ -12109,6 +12371,10 @@
             "type": "integer",
             "title": "Total Completion Tokens",
             "default": 0
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": { "dry_run": false }
           }
         },
         "type": "object",
@@ -12142,6 +12408,15 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetUserTierRequest": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+        },
+        "type": "object",
+        "required": ["user_id", "tier"],
+        "title": "SetUserTierRequest"
       },
       "SetupInfo": {
         "properties": {
@@ -12911,6 +13186,12 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SubscriptionTier": {
+        "type": "string",
+        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+        "title": "SubscriptionTier",
+        "description": "Subscription tiers with increasing token allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -14685,6 +14966,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "user_password",
@@ -14730,7 +15021,8 @@
           "weekly_tokens_used": {
             "type": "integer",
             "title": "Weekly Tokens Used"
-          }
+          },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": [
@@ -14738,7 +15030,8 @@
           "daily_token_limit",
           "weekly_token_limit",
           "daily_tokens_used",
-          "weekly_tokens_used"
+          "weekly_tokens_used",
+          "tier"
         ],
         "title": "UserRateLimitResponse"
       },
@@ -14764,6 +15057,27 @@
         "type": "object",
         "title": "UserReadiness",
         "description": "User readiness status."
+      },
+      "UserSearchResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserSearchResult"
+      },
+      "UserTierResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+        },
+        "type": "object",
+        "required": ["user_id", "tier"],
+        "title": "UserTierResponse"
       },
       "UserTransaction": {
         "properties": {

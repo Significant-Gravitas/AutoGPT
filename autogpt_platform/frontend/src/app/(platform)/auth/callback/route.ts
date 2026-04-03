@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
-  let next = "/";
+  let next = "/copilot";
 
   if (code) {
     const supabase = await getServerSupabase();
@@ -25,15 +25,9 @@ export async function GET(request: Request) {
         const api = new BackendAPI();
         await api.createUser();
 
-        // Get onboarding status from backend (includes chat flag evaluated for this user)
         const { shouldShowOnboarding } = await getOnboardingStatus();
-        if (shouldShowOnboarding) {
-          next = "/onboarding";
-          revalidatePath("/onboarding", "layout");
-        } else {
-          next = "/";
-          revalidatePath(next, "layout");
-        }
+        next = shouldShowOnboarding ? "/onboarding" : "/copilot";
+        revalidatePath(next, "layout");
       } catch (createUserError) {
         console.error("Error creating user:", createUserError);
 
