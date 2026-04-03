@@ -1,9 +1,25 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
+import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
   id: string;
   title: string | null | undefined;
+}
+
+const isClient = typeof window !== "undefined";
+
+function persistCompletedSessions(ids: Set<string>) {
+  if (!isClient) return;
+  try {
+    if (ids.size === 0) {
+      storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
+    } else {
+      storage.set(Key.COPILOT_COMPLETED_SESSIONS, JSON.stringify([...ids]));
+    }
+  } catch {
+    // Keep in-memory state authoritative if persistence is unavailable
+  }
 }
 
 interface CopilotUIState {
@@ -48,23 +64,30 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   isDrawerOpen: false,
   setDrawerOpen: (open) => set({ isDrawerOpen: open }),
 
-  completedSessionIDs: new Set<string>(),
+  completedSessionIDs: isClient
+    ? parseSessionIDs(storage.get(Key.COPILOT_COMPLETED_SESSIONS))
+    : new Set(),
   addCompletedSession: (id) =>
     set((state) => {
       const next = new Set(state.completedSessionIDs);
       next.add(id);
+      persistCompletedSessions(next);
       return { completedSessionIDs: next };
     }),
   clearCompletedSession: (id) =>
     set((state) => {
       const next = new Set(state.completedSessionIDs);
       next.delete(id);
+      persistCompletedSessions(next);
       return { completedSessionIDs: next };
     }),
-  clearAllCompletedSessions: () =>
-    set({ completedSessionIDs: new Set<string>() }),
+  clearAllCompletedSessions: () => {
+    persistCompletedSessions(new Set());
+    set({ completedSessionIDs: new Set<string>() });
+  },
 
   isNotificationsEnabled:
+    isClient &&
     storage.get(Key.COPILOT_NOTIFICATIONS_ENABLED) === "true" &&
     typeof Notification !== "undefined" &&
     Notification.permission === "granted",
@@ -73,7 +96,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     set({ isNotificationsEnabled: enabled });
   },
 
-  isSoundEnabled: storage.get(Key.COPILOT_SOUND_ENABLED) !== "false",
+  isSoundEnabled:
+    !isClient || storage.get(Key.COPILOT_SOUND_ENABLED) !== "false",
   toggleSound: () =>
     set((state) => {
       const next = !state.isSoundEnabled;
@@ -96,13 +120,18 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
+
     storage.clean(Key.COPILOT_MODE);
+
+    storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
       copilotMode: "extended_thinking",
     });
-    document.title = "AutoGPT";
+    if (isClient) {
+      document.title = ORIGINAL_TITLE;
+    }
   },
 }));
