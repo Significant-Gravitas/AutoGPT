@@ -184,8 +184,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
     if prefer_openrouter:
         if openrouter_key:
             return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
-        if openai_key:
-            return AsyncOpenAI(api_key=openai_key)
+        return None
     else:
         if openai_key:
             return AsyncOpenAI(api_key=openai_key)

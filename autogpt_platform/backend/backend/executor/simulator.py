@@ -31,7 +31,6 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 import inspect
 import json
 import logging
-import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -50,12 +49,6 @@ _DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash"
 
 
 def _simulator_model() -> str:
-    # 1. Environment variable override (highest priority).
-    env_model = os.environ.get("SIMULATION_MODEL")
-    if env_model:
-        return env_model
-
-    # 2. ChatConfig.simulation_model (falls back to default).
     try:
         from backend.copilot.config import ChatConfig  # noqa: PLC0415
 
