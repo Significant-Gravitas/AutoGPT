@@ -645,7 +645,7 @@ MODEL_METADATA = {
     ),
     # https://openrouter.ai/models?q=z-ai
     LlmModel.ZAI_GLM_4_32B: ModelMetadata(
-        "open_router", 128000, None, "GLM 4 32B", "OpenRouter", "Z.ai", 1
+        "open_router", 128000, 128000, "GLM 4 32B", "OpenRouter", "Z.ai", 1
     ),
     LlmModel.ZAI_GLM_4_5: ModelMetadata(
         "open_router", 131072, 98304, "GLM 4.5", "OpenRouter", "Z.ai", 2
@@ -669,10 +669,10 @@ MODEL_METADATA = {
         "open_router", 202752, 65535, "GLM 4.7", "OpenRouter", "Z.ai", 1
     ),
     LlmModel.ZAI_GLM_4_7_FLASH: ModelMetadata(
-        "open_router", 202752, None, "GLM 4.7 Flash", "OpenRouter", "Z.ai", 1
+        "open_router", 202752, 202752, "GLM 4.7 Flash", "OpenRouter", "Z.ai", 1
     ),
     LlmModel.ZAI_GLM_5: ModelMetadata(
-        "open_router", 80000, 131072, "GLM 5", "OpenRouter", "Z.ai", 2
+        "open_router", 80000, 80000, "GLM 5", "OpenRouter", "Z.ai", 2
     ),
     LlmModel.ZAI_GLM_5_TURBO: ModelMetadata(
         "open_router", 202752, 131072, "GLM 5 Turbo", "OpenRouter", "Z.ai", 3
