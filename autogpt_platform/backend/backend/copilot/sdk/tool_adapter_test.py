@@ -619,3 +619,95 @@ class TestSDKDisallowedTools:
     def test_webfetch_tool_is_disallowed(self):
         """WebFetch is disallowed due to SSRF risk."""
         assert "WebFetch" in SDK_DISALLOWED_TOOLS
+
+
+# ---------------------------------------------------------------------------
+# _read_file_handler — bridge_and_annotate integration
+# ---------------------------------------------------------------------------
+
+
+class TestReadFileHandlerBridge:
+    """Verify that _read_file_handler calls bridge_and_annotate when a sandbox is active."""
+
+    @pytest.fixture(autouse=True)
+    def _init_context(self):
+        set_execution_context(
+            user_id="test",
+            session=None,  # type: ignore[arg-type]
+            sandbox=None,
+            sdk_cwd="/tmp/copilot-bridge-test",
+        )
+
+    @pytest.mark.asyncio
+    async def test_bridge_called_when_sandbox_active(self, tmp_path, monkeypatch):
+        """When a sandbox is set, bridge_and_annotate is called and its annotation appended."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        test_file = tmp_path / "tool-results" / "data.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text('{"ok": true}\n')
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
+            lambda path, cwd: True,
+        )
+
+        fake_sandbox = object()
+        token = _current_sandbox.set(fake_sandbox)  # type: ignore[arg-type]
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-data.json]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {"file_path": str(test_file), "offset": 0, "limit": 2000}
+            )
+
+            assert result["isError"] is False
+            assert len(bridge_calls) == 1
+            assert bridge_calls[0][0] is fake_sandbox
+            assert "/tmp/abc-data.json" in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_not_called_without_sandbox(self, tmp_path, monkeypatch):
+        """When no sandbox is set, bridge_and_annotate is not called."""
+        from .tool_adapter import _read_file_handler
+
+        test_file = tmp_path / "tool-results" / "data.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text('{"ok": true}\n')
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
+            lambda path, cwd: True,
+        )
+
+        bridge_calls: list[tuple] = []
+
+        async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+            bridge_calls.append((sandbox, file_path, offset, limit))
+            return "\n[Sandbox copy available at /tmp/abc-data.json]"
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+            fake_bridge_and_annotate,
+        )
+
+        result = await _read_file_handler(
+            {"file_path": str(test_file), "offset": 0, "limit": 2000}
+        )
+
+        assert result["isError"] is False
+        assert len(bridge_calls) == 0
+        assert "Sandbox copy" not in result["content"][0]["text"]
