@@ -20,6 +20,10 @@ import { CredentialsProvidersContext } from "@/providers/agent-credentials/crede
 import { getHostFromUrl } from "@/lib/utils/url";
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import {
+  findExistingHostCredentials,
+  hasExistingHostCredential,
+} from "../../helpers";
 
 type Props = {
   schema: BlockIOCredentialsSubSchema;
@@ -105,11 +109,9 @@ export function HostScopedCredentialsModal({
   const allProviderCredentials =
     allProviders?.[provider]?.savedCredentials ?? [];
 
-  const hasExistingForHost = allProviderCredentials.some(
-    (c) =>
-      c.type === "host_scoped" &&
-      "host" in c &&
-      c.host === (currentHost || form.getValues("host")),
+  const hasExistingForHost = hasExistingHostCredential(
+    allProviderCredentials,
+    currentHost || form.getValues("host"),
   );
 
   const addHeaderPair = () => {
@@ -147,8 +149,9 @@ export function HostScopedCredentialsModal({
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).
     const host = values.host;
-    const existingForHost = allProviderCredentials.filter(
-      (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+    const existingForHost = findExistingHostCredentials(
+      allProviderCredentials,
+      host,
     );
 
     try {

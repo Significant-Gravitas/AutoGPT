@@ -197,3 +197,61 @@ export function getSystemCredentials<
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => isSystemCredential(cred));
 }
+
+export type DeleteResult =
+  | { deleted: true }
+  | { deleted: false; need_confirmation: true; message: string };
+
+export type DeleteState = {
+  warningMessage: string | null;
+  credentialToDelete: { id: string; title: string } | null;
+  shouldUnselectCurrent: boolean;
+};
+
+export async function processCredentialDeletion(
+  credentialToDelete: { id: string; title: string },
+  selectedCredentialId: string | undefined,
+  deleteCredentials: (id: string, force: boolean) => Promise<DeleteResult>,
+  force: boolean,
+): Promise<DeleteState> {
+  const result = await deleteCredentials(credentialToDelete.id, force);
+
+  if (result.deleted) {
+    return {
+      warningMessage: null,
+      credentialToDelete: null,
+      shouldUnselectCurrent: selectedCredentialId === credentialToDelete.id,
+    };
+  }
+
+  if ("need_confirmation" in result && result.need_confirmation) {
+    return {
+      warningMessage:
+        result.message || "This credential is in use. Force delete?",
+      credentialToDelete,
+      shouldUnselectCurrent: false,
+    };
+  }
+
+  return {
+    warningMessage: null,
+    credentialToDelete,
+    shouldUnselectCurrent: false,
+  };
+}
+
+export function findExistingHostCredentials<
+  T extends { type: string; id: string; host?: string },
+>(credentials: T[], host: string): T[] {
+  return credentials.filter(
+    (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+  );
+}
+
+export function hasExistingHostCredential<
+  T extends { type: string; host?: string },
+>(credentials: T[], host: string): boolean {
+  return credentials.some(
+    (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+  );
+}

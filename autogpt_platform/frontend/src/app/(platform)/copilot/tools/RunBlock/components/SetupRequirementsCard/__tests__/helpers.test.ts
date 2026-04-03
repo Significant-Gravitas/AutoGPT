@@ -43,6 +43,30 @@ describe("coerceCredentialFields", () => {
     expect(result.credentialFields).toHaveLength(0);
   });
 
+  it("handles non-string items in types array", () => {
+    const input = {
+      cred1: {
+        provider: "github",
+        types: [123, null, "api_key", undefined],
+      },
+    };
+    const result = coerceCredentialFields(input);
+    expect(result.credentialFields).toHaveLength(1);
+    const schema = result.credentialFields[0][1] as Record<string, unknown>;
+    expect(schema.credentials_types).toEqual(["api_key"]);
+  });
+
+  it("skips entries with empty types array", () => {
+    const input = {
+      cred1: {
+        provider: "github",
+        types: [],
+      },
+    };
+    const result = coerceCredentialFields(input);
+    expect(result.credentialFields).toHaveLength(0);
+  });
+
   it("skips entries without provider", () => {
     const input = {
       cred1: {
@@ -150,6 +174,32 @@ describe("buildSiblingInputsFromCredentials", () => {
     const result = buildSiblingInputsFromCredentials(input);
     expect(Object.keys(result)).toHaveLength(0);
   });
+
+  it("skips non-object values in the credentials map", () => {
+    const input = {
+      cred1: "string-value",
+      cred2: null,
+      cred3: 42,
+      cred4: {
+        discriminator: "url",
+        discriminator_values: ["https://ok.com"],
+      },
+    };
+    const result = buildSiblingInputsFromCredentials(input);
+    expect(result.url).toBe("https://ok.com");
+    expect(Object.keys(result)).toHaveLength(1);
+  });
+
+  it("filters non-string discriminator_values", () => {
+    const input = {
+      cred1: {
+        discriminator: "url",
+        discriminator_values: [42, "https://valid.com", null],
+      },
+    };
+    const result = buildSiblingInputsFromCredentials(input);
+    expect(result.url).toBe("https://valid.com");
+  });
 });
 
 describe("coerceExpectedInputs", () => {
@@ -210,6 +260,31 @@ describe("coerceExpectedInputs", () => {
     ]);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("valid");
+  });
+
+  it("uses 'unknown' for non-string type field", () => {
+    const result = coerceExpectedInputs([{ name: "q", type: 42 }]);
+    expect(result[0].type).toBe("unknown");
+  });
+
+  it("skips null value", () => {
+    const result = coerceExpectedInputs([
+      { name: "q", type: "string", value: null },
+    ]);
+    expect(result[0].value).toBeUndefined();
+  });
+
+  it("omits non-string discriminator_values from scopes in coerceCredentialFields", () => {
+    const input = {
+      cred1: {
+        provider: "github",
+        types: ["api_key"],
+        scopes: ["read", 42, null, "write"],
+      },
+    };
+    const result = coerceCredentialFields(input);
+    const schema = result.credentialFields[0][1] as Record<string, unknown>;
+    expect(schema.credentials_scopes).toEqual(["read", "write"]);
   });
 });
 
@@ -316,6 +391,36 @@ describe("buildExpectedInputsSchema", () => {
     const schema = buildExpectedInputsSchema(withDefault);
     const props = schema!.properties as Record<string, Record<string, unknown>>;
     expect(props.q.default).toBe("hello");
+  });
+
+  it("includes description in schema when present", () => {
+    const withDesc = [
+      {
+        name: "q",
+        title: "Q",
+        type: "string",
+        required: false,
+        advanced: false,
+        description: "A search query",
+      },
+    ];
+    const schema = buildExpectedInputsSchema(withDesc);
+    const props = schema!.properties as Record<string, Record<string, unknown>>;
+    expect(props.q.description).toBe("A search query");
+  });
+
+  it("returns null when all inputs are advanced and showAdvanced is false", () => {
+    const advancedOnly = [
+      {
+        name: "limit",
+        title: "Limit",
+        type: "int",
+        required: false,
+        advanced: true,
+      },
+    ];
+    expect(buildExpectedInputsSchema(advancedOnly)).toBeNull();
+    expect(buildExpectedInputsSchema(advancedOnly, true)).not.toBeNull();
   });
 });
 

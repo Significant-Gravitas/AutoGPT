@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   countSupportedTypes,
   getSupportedTypes,
@@ -8,6 +8,9 @@ import {
   isSystemCredential,
   filterSystemCredentials,
   getSystemCredentials,
+  processCredentialDeletion,
+  findExistingHostCredentials,
+  hasExistingHostCredential,
   OAUTH_TIMEOUT_MS,
   MASKED_KEY_LENGTH,
 } from "./helpers";
@@ -300,5 +303,145 @@ describe("constants", () => {
 
   it("MASKED_KEY_LENGTH is 15", () => {
     expect(MASKED_KEY_LENGTH).toBe(15);
+  });
+});
+
+describe("processCredentialDeletion", () => {
+  const cred = { id: "cred-1", title: "My Key" };
+
+  it("returns cleared state on successful deletion", async () => {
+    const deleteFn = vi.fn().mockResolvedValue({ deleted: true });
+    const state = await processCredentialDeletion(
+      cred,
+      "other-id",
+      deleteFn,
+      false,
+    );
+
+    expect(deleteFn).toHaveBeenCalledWith("cred-1", false);
+    expect(state.credentialToDelete).toBeNull();
+    expect(state.warningMessage).toBeNull();
+    expect(state.shouldUnselectCurrent).toBe(false);
+  });
+
+  it("sets shouldUnselectCurrent when deleting the selected credential", async () => {
+    const deleteFn = vi.fn().mockResolvedValue({ deleted: true });
+    const state = await processCredentialDeletion(
+      cred,
+      "cred-1",
+      deleteFn,
+      false,
+    );
+
+    expect(state.shouldUnselectCurrent).toBe(true);
+    expect(state.credentialToDelete).toBeNull();
+  });
+
+  it("returns warning state when confirmation is needed", async () => {
+    const deleteFn = vi.fn().mockResolvedValue({
+      deleted: false,
+      need_confirmation: true,
+      message: "Used by 3 agents",
+    });
+    const state = await processCredentialDeletion(
+      cred,
+      undefined,
+      deleteFn,
+      false,
+    );
+
+    expect(state.warningMessage).toBe("Used by 3 agents");
+    expect(state.credentialToDelete).toBe(cred);
+    expect(state.shouldUnselectCurrent).toBe(false);
+  });
+
+  it("uses default warning message when none provided", async () => {
+    const deleteFn = vi.fn().mockResolvedValue({
+      deleted: false,
+      need_confirmation: true,
+      message: "",
+    });
+    const state = await processCredentialDeletion(
+      cred,
+      undefined,
+      deleteFn,
+      false,
+    );
+
+    expect(state.warningMessage).toBe(
+      "This credential is in use. Force delete?",
+    );
+  });
+
+  it("passes force flag to delete function", async () => {
+    const deleteFn = vi.fn().mockResolvedValue({ deleted: true });
+    await processCredentialDeletion(cred, undefined, deleteFn, true);
+
+    expect(deleteFn).toHaveBeenCalledWith("cred-1", true);
+  });
+
+  it("returns unchanged state for unknown result shape", async () => {
+    const deleteFn = vi.fn().mockResolvedValue({ deleted: false });
+    const state = await processCredentialDeletion(
+      cred,
+      undefined,
+      deleteFn,
+      false,
+    );
+
+    expect(state.warningMessage).toBeNull();
+    expect(state.credentialToDelete).toBe(cred);
+    expect(state.shouldUnselectCurrent).toBe(false);
+  });
+});
+
+describe("findExistingHostCredentials", () => {
+  const credentials = [
+    { id: "1", type: "host_scoped", host: "api.example.com" },
+    { id: "2", type: "host_scoped", host: "api.other.com" },
+    { id: "3", type: "api_key" },
+    { id: "4", type: "host_scoped", host: "api.example.com" },
+  ];
+
+  it("finds credentials matching the given host", () => {
+    const result = findExistingHostCredentials(credentials, "api.example.com");
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe("1");
+    expect(result[1].id).toBe("4");
+  });
+
+  it("returns empty array when no match", () => {
+    expect(findExistingHostCredentials(credentials, "unknown.com")).toEqual([]);
+  });
+
+  it("ignores non-host_scoped credentials", () => {
+    const result = findExistingHostCredentials(credentials, "api.other.com");
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("2");
+  });
+
+  it("returns empty array for empty credentials list", () => {
+    expect(findExistingHostCredentials([], "any.com")).toEqual([]);
+  });
+});
+
+describe("hasExistingHostCredential", () => {
+  const credentials = [
+    { type: "host_scoped", host: "api.example.com" },
+    { type: "api_key" },
+  ];
+
+  it("returns true when a host_scoped credential exists for the host", () => {
+    expect(hasExistingHostCredential(credentials, "api.example.com")).toBe(
+      true,
+    );
+  });
+
+  it("returns false when no matching host_scoped credential exists", () => {
+    expect(hasExistingHostCredential(credentials, "other.com")).toBe(false);
+  });
+
+  it("returns false for empty credentials list", () => {
+    expect(hasExistingHostCredential([], "any.com")).toBe(false);
   });
 });

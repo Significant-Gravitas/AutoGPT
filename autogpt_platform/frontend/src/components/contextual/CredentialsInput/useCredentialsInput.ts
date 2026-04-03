@@ -19,6 +19,7 @@ import {
   getActionButtonText,
   getSupportedTypes,
   getSystemCredentials,
+  processCredentialDeletion,
 } from "./helpers";
 
 export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
@@ -314,22 +315,18 @@ export function useCredentialsInput({
 
     setIsDeletingCredential(true);
     try {
-      const result = await credentials.deleteCredentials(
-        credentialToDelete.id,
+      const state = await processCredentialDeletion(
+        credentialToDelete,
+        selectedCredential?.id,
+        credentials.deleteCredentials,
         force,
       );
 
-      if (result.deleted) {
-        if (selectedCredential?.id === credentialToDelete.id) {
-          onSelectCredential(undefined);
-        }
-        setDeleteWarningMessage(null);
-        setCredentialToDelete(null);
-      } else if ("need_confirmation" in result && result.need_confirmation) {
-        setDeleteWarningMessage(
-          result.message || "This credential is in use. Force delete?",
-        );
+      if (state.shouldUnselectCurrent) {
+        onSelectCredential(undefined);
       }
+      setDeleteWarningMessage(state.warningMessage);
+      setCredentialToDelete(state.credentialToDelete);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Something went wrong";
