@@ -105,7 +105,6 @@ function makeMsg(role: "user" | "assistant", text: string): UIMessage {
     id: `msg-${Math.random()}`,
     role,
     parts: [{ type: "text", text }],
-    createdAt: new Date(),
   };
 }
 

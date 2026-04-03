@@ -69,9 +69,7 @@ export function resolveInProgressTools(
  * Extract the user-visible text from the arguments passed to `sendMessage`.
  * Handles both `sendMessage("hello")` and `sendMessage({ text: "hello" })`.
  */
-export function extractSendMessageText(
-  firstArg: unknown,
-): string {
+export function extractSendMessageText(firstArg: unknown): string {
   if (firstArg && typeof firstArg === "object" && "text" in firstArg)
     return (firstArg as { text: string }).text;
   return String(firstArg ?? "");
