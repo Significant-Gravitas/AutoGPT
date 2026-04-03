@@ -20,6 +20,12 @@ router = APIRouter()
 INVITATION_TTL_DAYS = 7
 
 
+def _verify_org_path(ctx: RequestContext, org_id: str) -> None:
+    """Ensure the authenticated user's active org matches the path parameter."""
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
+
+
 # --- Org-scoped invitation endpoints (under /api/orgs/{org_id}/invitations) ---
 
 org_router = APIRouter()
@@ -38,6 +44,7 @@ async def create_invitation(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> InvitationResponse:
+    _verify_org_path(ctx, org_id)
     expires_at = datetime.now(timezone.utc) + timedelta(days=INVITATION_TTL_DAYS)
 
     invitation = await prisma.orginvitation.create(
@@ -70,6 +77,7 @@ async def list_invitations(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> list[InvitationResponse]:
+    _verify_org_path(ctx, org_id)
     invitations = await prisma.orginvitation.find_many(
         where={
             "orgId": org_id,
@@ -96,6 +104,7 @@ async def revoke_invitation(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> None:
+    _verify_org_path(ctx, org_id)
     invitation = await prisma.orginvitation.find_unique(where={"id": invitation_id})
     if invitation is None or invitation.orgId != org_id:
         raise NotFoundError(f"Invitation {invitation_id} not found")
@@ -183,10 +192,20 @@ async def accept_invitation(
     dependencies=[Security(requires_user)],
     status_code=204,
 )
-async def decline_invitation(token: str) -> None:
+async def decline_invitation(
+    token: str,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> None:
     invitation = await prisma.orginvitation.find_unique(where={"token": token})
     if invitation is None:
         raise NotFoundError("Invitation not found")
+
+    # Verify the declining user's email matches the invitation
+    declining_user = await prisma.user.find_unique(where={"id": user_id})
+    if declining_user is None:
+        raise HTTPException(401, detail="User not found")
+    if declining_user.email.lower() != invitation.email.lower():
+        raise HTTPException(403, detail="This invitation was sent to a different email address")
 
     await prisma.orginvitation.update(
         where={"id": invitation.id},

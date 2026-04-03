@@ -37,6 +37,8 @@ async def create_workspace(
         Security(requires_org_permission(OrgAction.CREATE_WORKSPACES)),
     ],
 ) -> WorkspaceResponse:
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
     return await ws_db.create_workspace(
         org_id=org_id,
         name=request.name,

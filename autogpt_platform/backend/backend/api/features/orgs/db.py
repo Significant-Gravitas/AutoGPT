@@ -206,6 +206,9 @@ async def create_org(
         }
     )
 
+    # Create zero-balance row so credit operations don't need upsert
+    await prisma.orgbalance.create(data={"orgId": org.id, "balance": 0})
+
     return OrgResponse.from_db(org, member_count=1)
 
 
@@ -480,6 +483,9 @@ async def transfer_ownership(
     org_id: str, current_owner_id: str, new_owner_id: str
 ) -> None:
     """Transfer org ownership atomically. Both updates happen in one statement."""
+    if current_owner_id == new_owner_id:
+        raise ValueError("Cannot transfer ownership to the same user")
+
     current = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": current_owner_id}}
     )

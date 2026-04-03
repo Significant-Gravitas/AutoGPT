@@ -179,6 +179,7 @@ class TestOrgDbCreateOrg:
         self.prisma.orgworkspacemember.create = AsyncMock()
         self.prisma.organizationprofile.create = AsyncMock()
         self.prisma.organizationseatassignment.create = AsyncMock()
+        self.prisma.orgbalance.create = AsyncMock()
         mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
 
     @pytest.mark.asyncio
@@ -814,6 +815,10 @@ class TestWorkspaceDbJoinLeave:
 
         open_ws = _make_workspace(joinPolicy="OPEN")
         self.prisma.orgworkspace.find_unique = AsyncMock(return_value=open_ws)
+        # User is an org member
+        self.prisma.orgmember.find_unique = AsyncMock(
+            return_value=_make_member(userId=OTHER_USER_ID)
+        )
         self.prisma.orgworkspacemember.find_unique = AsyncMock(return_value=None)
         self.prisma.orgworkspacemember.create = AsyncMock()
 
@@ -830,6 +835,10 @@ class TestWorkspaceDbJoinLeave:
 
         open_ws = _make_workspace(joinPolicy="OPEN")
         self.prisma.orgworkspace.find_unique = AsyncMock(return_value=open_ws)
+        # User is an org member
+        self.prisma.orgmember.find_unique = AsyncMock(
+            return_value=_make_member(userId=USER_ID)
+        )
         self.prisma.orgworkspacemember.find_unique = AsyncMock(
             return_value=_make_ws_member()
         )
@@ -1225,9 +1234,12 @@ class TestInvitationAcceptance:
     def test_decline_invitation(self, _app_and_client):
         _, client = _app_and_client
 
-        invitation = self._make_invitation()
+        invitation = self._make_invitation(email="test@example.com")
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=invitation)
         self.prisma.orginvitation.update = AsyncMock()
+        # decline now checks user email matches invitation
+        user = MagicMock(id="test-user-id", email="test@example.com")
+        self.prisma.user.find_unique = AsyncMock(return_value=user)
 
         resp = client.post("/invitations/tok-abc/decline")
 
@@ -2339,3 +2351,142 @@ class TestAuthErrorMessage:
 
         assert exc_info.value.status_code == 400
         assert "contact support" in exc_info.value.detail
+
+
+# ============================================================================
+# PR REVIEW BUG TESTS — written as xfail first, fixed after
+# ============================================================================
+
+
+class TestPRReviewBugs:
+    """Tests for bugs identified in PR review comments.
+
+    Written TDD-style: xfail tests first, then fix the code, then remove xfail.
+    """
+
+    @pytest.fixture(autouse=True)
+    def setup(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch("backend.api.features.orgs.invitation_routes.prisma", self.prisma)
+        mocker.patch("backend.api.features.orgs.workspace_db.prisma", self.prisma)
+
+    # --- Bug: invitation routes missing _verify_org_path ---
+
+    @pytest.mark.asyncio
+    async def test_create_invitation_rejects_mismatched_org_id(self):
+        """create_invitation should reject when ctx.org_id != path org_id."""
+        from backend.api.features.orgs.invitation_routes import create_invitation
+
+        ctx = _owner_ctx(org_id="org-A")
+        request = MagicMock()
+        request.email = "test@test.com"
+        request.is_admin = False
+        request.is_billing_manager = False
+        request.workspace_ids = []
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await create_invitation(org_id="org-B", request=request, ctx=ctx)
+        assert exc_info.value.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_revoke_invitation_rejects_mismatched_org_id(self):
+        """revoke_invitation should reject when ctx.org_id != path org_id."""
+        from backend.api.features.orgs.invitation_routes import revoke_invitation
+
+        ctx = _owner_ctx(org_id="org-A")
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await revoke_invitation(org_id="org-B", invitation_id="inv-1", ctx=ctx)
+        assert exc_info.value.status_code == 403
+
+    # --- Bug: decline_invitation allows any user ---
+
+    @pytest.mark.asyncio
+    async def test_decline_invitation_requires_matching_email(self):
+        """Only the invited user (by email) should be able to decline."""
+        from backend.api.features.orgs.invitation_routes import decline_invitation
+
+        inv = MagicMock()
+        inv.acceptedAt = None
+        inv.revokedAt = None
+        inv.email = "alice@example.com"
+        self.prisma.orginvitation.find_unique = AsyncMock(return_value=inv)
+
+        # Bob tries to decline Alice's invitation
+        user = MagicMock()
+        user.email = "bob@example.com"
+        self.prisma.user.find_unique = AsyncMock(return_value=user)
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await decline_invitation(token="tok-1", user_id="bob-id")
+        assert exc_info.value.status_code == 403
+
+    # --- Bug: create_org missing OrgBalance ---
+
+    @pytest.mark.asyncio
+    async def test_create_org_creates_org_balance(self):
+        """Team org creation should create an OrgBalance(balance=0) row."""
+        from backend.api.features.orgs.db import create_org
+
+        self.prisma.organization.find_unique = AsyncMock(return_value=None)
+        self.prisma.organizationalias.find_unique = AsyncMock(return_value=None)
+        self.prisma.organization.create = AsyncMock(return_value=_make_org())
+        self.prisma.orgmember.create = AsyncMock()
+        self.prisma.orgworkspace.create = AsyncMock(return_value=_make_workspace())
+        self.prisma.orgworkspacemember.create = AsyncMock()
+        self.prisma.organizationprofile.create = AsyncMock()
+        self.prisma.organizationseatassignment.create = AsyncMock()
+        self.prisma.orgbalance.create = AsyncMock()
+
+        await create_org(name="Test", slug="test", user_id=USER_ID)
+
+        self.prisma.orgbalance.create.assert_called_once()
+        balance_data = self.prisma.orgbalance.create.call_args[1]["data"]
+        assert balance_data["balance"] == 0
+
+    # --- Bug: transfer_ownership self-transfer ---
+
+    @pytest.mark.asyncio
+    async def test_transfer_ownership_to_self_rejected(self):
+        """Transferring ownership to yourself should be rejected."""
+        from backend.api.features.orgs.db import transfer_ownership
+
+        owner = _make_member(userId=USER_ID, isOwner=True)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=owner)
+
+        with pytest.raises(ValueError, match="same user"):
+            await transfer_ownership(ORG_ID, USER_ID, USER_ID)
+
+    # --- Bug: join_workspace doesn't verify org membership ---
+
+    @pytest.mark.asyncio
+    async def test_join_workspace_requires_org_membership(self):
+        """join_workspace should verify user is actually an org member."""
+        from backend.api.features.orgs.workspace_db import join_workspace
+
+        ws = _make_workspace(joinPolicy="OPEN")
+        self.prisma.orgworkspace.find_unique = AsyncMock(return_value=ws)
+        self.prisma.orgworkspacemember.find_unique = AsyncMock(return_value=None)
+        # User is NOT an org member
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
+
+        with pytest.raises(ValueError, match="not a member"):
+            await join_workspace(WS_ID, "non-member-user", ORG_ID)
+
+    # --- Bug: workspace create/delete missing org path check ---
+
+    @pytest.mark.asyncio
+    async def test_workspace_create_route_rejects_mismatched_org(self):
+        """create_workspace route should verify ctx.org_id == path org_id."""
+        from backend.api.features.orgs.workspace_routes import create_workspace
+
+        ctx = _owner_ctx(org_id="org-A")
+        request = MagicMock()
+        request.name = "Test"
+        request.description = None
+        request.join_policy = "OPEN"
+
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await create_workspace(org_id="org-B", request=request, ctx=ctx)
+        assert exc_info.value.status_code == 403

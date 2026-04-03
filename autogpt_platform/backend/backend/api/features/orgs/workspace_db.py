@@ -106,6 +106,13 @@ async def join_workspace(ws_id: str, user_id: str, org_id: str) -> WorkspaceResp
     if ws.joinPolicy != "OPEN":
         raise ValueError("Cannot self-join a PRIVATE workspace. Request an invite.")
 
+    # Verify user is actually an org member
+    org_member = await prisma.orgmember.find_unique(
+        where={"orgId_userId": {"orgId": org_id, "userId": user_id}}
+    )
+    if org_member is None:
+        raise ValueError(f"User {user_id} is not a member of the organization")
+
     # Check not already a member
     existing = await prisma.orgworkspacemember.find_unique(
         where={"workspaceId_userId": {"workspaceId": ws_id, "userId": user_id}}
