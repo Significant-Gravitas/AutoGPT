@@ -52,7 +52,6 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
-        bootstrap: "localStorage",
         inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
       }}
     >

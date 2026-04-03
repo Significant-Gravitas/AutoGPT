@@ -36,7 +36,7 @@ export function shouldRedirectFromOnboarding(
   pathname: string,
 ): boolean {
   return (
-    completedSteps.includes("CONGRATS") &&
+    completedSteps.includes("VISIT_COPILOT") &&
     !pathname.startsWith("/onboarding/reset")
   );
 }

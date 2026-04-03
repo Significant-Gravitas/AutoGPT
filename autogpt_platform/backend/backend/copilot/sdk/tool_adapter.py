@@ -14,6 +14,7 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
+from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
     _current_permissions,
@@ -37,7 +38,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, bridge_and_annotate
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -52,14 +53,6 @@ _MCP_MAX_CHARS = 500_000
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
 MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
-
-# Map from tool_name -> Queue of pre-launched (task, args) pairs.
-# Initialised per-session in set_execution_context() so concurrent sessions
-# never share the same dict.
-_TaskQueueItem = tuple[asyncio.Task[dict[str, Any]], dict[str, Any]]
-_tool_task_queues: ContextVar[dict[str, asyncio.Queue[_TaskQueueItem]] | None] = (
-    ContextVar("_tool_task_queues", default=None)
-)
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
@@ -115,7 +108,6 @@ def set_execution_context(
     _current_permissions.set(permissions)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
-    _tool_task_queues.set({})
     _consecutive_tool_failures.set({})
 
 
@@ -130,48 +122,6 @@ def reset_stash_event() -> None:
     event = _stash_event.get(None)
     if event is not None:
         event.clear()
-
-
-async def cancel_pending_tool_tasks() -> None:
-    """Cancel all queued pre-launched tasks for the current execution context.
-
-    Call this when a stream attempt aborts (error, cancellation) to prevent
-    pre-launched tasks from continuing to execute against a rolled-back session.
-    Tasks that are already done are skipped; in-flight tasks are cancelled and
-    awaited so that any cleanup (``finally`` blocks, DB rollbacks) completes
-    before the next retry starts.
-    """
-    queues = _tool_task_queues.get()
-    if not queues:
-        return
-    cancelled_tasks: list[asyncio.Task] = []
-    for tool_name, queue in list(queues.items()):
-        cancelled = 0
-        while not queue.empty():
-            task, _args = queue.get_nowait()
-            if not task.done():
-                task.cancel()
-                cancelled_tasks.append(task)
-                cancelled += 1
-        if cancelled:
-            logger.debug(
-                "Cancelled %d pre-launched task(s) for tool '%s'", cancelled, tool_name
-            )
-    queues.clear()
-    # Await all cancelled tasks so their cleanup (finally blocks, DB rollbacks)
-    # completes before the next retry attempt starts new pre-launches.
-    # Use a timeout to prevent hanging indefinitely if a task's cleanup is stuck.
-    if cancelled_tasks:
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*cancelled_tasks, return_exceptions=True),
-                timeout=5.0,
-            )
-        except TimeoutError:
-            logger.warning(
-                "Timed out waiting for %d cancelled task(s) to clean up",
-                len(cancelled_tasks),
-            )
 
 
 def reset_tool_failure_counters() -> None:
@@ -249,10 +199,6 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
     Uses ``asyncio.Event.wait()`` so it returns the instant the hook signals —
     the timeout is purely a safety net for the case where the hook never fires.
     Returns ``True`` if the stash signal was received, ``False`` on timeout.
-
-    The 2.0 s default was chosen to accommodate slower tool startup in cloud
-    sandboxes while still failing fast when the hook genuinely will not fire.
-    With the parallel pre-launch path, hooks typically fire well under 1 ms.
     """
     event = _stash_event.get(None)
     if event is None:
@@ -271,95 +217,13 @@ async def wait_for_stash(timeout: float = 2.0) -> bool:
         return False
 
 
-async def pre_launch_tool_call(tool_name: str, args: dict[str, Any]) -> None:
-    """Pre-launch a tool as a background task so parallel calls run concurrently.
-
-    Called when an AssistantMessage with ToolUseBlocks is received, before the
-    SDK dispatches the MCP tool/call requests. The tool_handler will await the
-    pre-launched task instead of executing fresh.
-
-    The tool_name may include an MCP prefix (e.g. ``mcp__copilot__run_block``);
-    the prefix is stripped automatically before looking up the tool.
-
-    Ordering guarantee: the Claude Agent SDK dispatches MCP ``tools/call`` requests
-    in the same order as the ToolUseBlocks appear in the AssistantMessage.
-    Pre-launched tasks are queued FIFO per tool name, so the N-th handler for a
-    given tool name dequeues the N-th pre-launched task — result and args always
-    correspond when the SDK preserves order (which it does in the current SDK).
-    """
-    queues = _tool_task_queues.get()
-    if queues is None:
-        return
-
-    # Strip the MCP server prefix (e.g. "mcp__copilot__") to get the bare tool name.
-    # Use removeprefix so tool names that themselves contain "__" are handled correctly.
-    bare_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
-
-    base_tool = TOOL_REGISTRY.get(bare_name)
-    if base_tool is None:
-        return
-
-    user_id, session = get_execution_context()
-    if session is None:
-        return
-
-    # Expand @@agptfile: references before launching the task.
-    # The _truncating wrapper (which normally handles expansion) runs AFTER
-    # pre_launch_tool_call — the pre-launched task would otherwise receive raw
-    # @@agptfile: tokens and fail to resolve them inside _execute_tool_sync.
-    # Use _build_input_schema (same path as _truncating) for schema-aware expansion.
-    input_schema: dict[str, Any] | None
-    try:
-        input_schema = _build_input_schema(base_tool)
-    except Exception:
-        input_schema = None  # schema unavailable — skip schema-aware expansion
-    try:
-        args = await expand_file_refs_in_args(
-            args, user_id, session, input_schema=input_schema
-        )
-    except FileRefExpansionError as exc:
-        logger.warning(
-            "pre_launch_tool_call: @@agptfile expansion failed for %s: %s — skipping pre-launch",
-            bare_name,
-            exc,
-        )
-        return
-
-    task = asyncio.create_task(_execute_tool_sync(base_tool, user_id, session, args))
-    # Log unhandled exceptions so "Task exception was never retrieved" warnings
-    # do not pollute stderr when a task is pre-launched but never dequeued.
-    task.add_done_callback(
-        lambda t, name=bare_name: (
-            logger.warning(
-                "Pre-launched task for %s raised unhandled: %s",
-                name,
-                t.exception(),
-            )
-            if not t.cancelled() and t.exception()
-            else None
-        )
-    )
-
-    if bare_name not in queues:
-        queues[bare_name] = asyncio.Queue[_TaskQueueItem]()
-    # Store (task, args) so the handler can log a warning if the SDK dispatches
-    # calls in a different order than the ToolUseBlocks appeared in the message.
-    queues[bare_name].put_nowait((task, args))
-
-
 async def _execute_tool_sync(
     base_tool: BaseTool,
     user_id: str | None,
     session: ChatSession,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a tool synchronously and return MCP-formatted response.
-
-    Note: ``@@agptfile:`` expansion should be performed by the caller before
-    invoking this function.  For the normal (non-parallel) path it is handled
-    by the ``_truncating`` wrapper; for the pre-launched parallel path it is
-    handled in :func:`pre_launch_tool_call` before the task is created.
-    """
+    """Execute a tool synchronously and return MCP-formatted response."""
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
@@ -455,83 +319,7 @@ def create_tool_handler(base_tool: BaseTool):
     """
 
     async def tool_handler(args: dict[str, Any]) -> dict[str, Any]:
-        """Execute the wrapped tool and return MCP-formatted response.
-
-        If a pre-launched task exists (from parallel tool pre-launch in the
-        message loop), await it instead of executing fresh.
-        """
-        queues = _tool_task_queues.get()
-        if queues and base_tool.name in queues:
-            queue = queues[base_tool.name]
-            if not queue.empty():
-                task, launch_args = queue.get_nowait()
-                # Sanity-check: warn if the args don't match — this can happen
-                # if the SDK dispatches tool calls in a different order than the
-                # ToolUseBlocks appeared in the AssistantMessage (unlikely but
-                # could occur in future SDK versions or with SDK bugs).
-                # We compare full values (not just keys) so that two run_block
-                # calls with different block_id values are caught even though
-                # both have the same key set.
-                if launch_args != args:
-                    logger.warning(
-                        "Pre-launched task for %s: arg mismatch "
-                        "(launch_keys=%s, call_keys=%s) — cancelling "
-                        "pre-launched task and falling back to direct execution",
-                        base_tool.name,
-                        (
-                            sorted(launch_args.keys())
-                            if isinstance(launch_args, dict)
-                            else type(launch_args).__name__
-                        ),
-                        (
-                            sorted(args.keys())
-                            if isinstance(args, dict)
-                            else type(args).__name__
-                        ),
-                    )
-                    if not task.done():
-                        task.cancel()
-                        # Await cancellation to prevent duplicate concurrent
-                        # execution for blocks with side effects.
-                        try:
-                            await task
-                        except (asyncio.CancelledError, Exception):
-                            pass
-                    # Fall through to the direct-execution path below.
-                else:
-                    # Args match — await the pre-launched task.
-                    try:
-                        result = await task
-                    except asyncio.CancelledError:
-                        # Re-raise: CancelledError may be propagating from the
-                        # outer streaming loop being cancelled — swallowing it
-                        # would mask the cancellation and prevent proper cleanup.
-                        logger.warning(
-                            "Pre-launched tool %s was cancelled — re-raising",
-                            base_tool.name,
-                        )
-                        raise
-                    except Exception as e:
-                        logger.error(
-                            "Pre-launched tool %s failed: %s",
-                            base_tool.name,
-                            e,
-                            exc_info=True,
-                        )
-                        return _mcp_error(
-                            f"Failed to execute {base_tool.name}. "
-                            "Check server logs for details."
-                        )
-
-                    # Pre-truncate the result so the _truncating wrapper (which
-                    # wraps this handler) receives an already-within-budget
-                    # value. _truncating handles stashing — we must NOT stash
-                    # here or the output will be appended twice to the FIFO
-                    # queue and pop_pending_tool_output would return a duplicate
-                    # entry on the second call for the same tool.
-                    return truncate(result, _MCP_MAX_CHARS)
-
-        # No pre-launched task — execute directly (fallback for non-parallel calls).
+        """Execute the wrapped tool and return MCP-formatted response."""
         user_id, session = get_execution_context()
 
         if session is None:
@@ -599,7 +387,16 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
             selected = list(itertools.islice(f, offset, offset + limit))
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return _mcp_ok("".join(selected))
+        #
+        # When E2B is active, also copy the file into the sandbox so
+        # bash_exec can process it (the model often uses Read then bash).
+        text = "".join(selected)
+        sandbox = _current_sandbox.get(None)
+        if sandbox is not None:
+            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+            if annotation:
+                text += annotation
+        return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
     except Exception as e:
@@ -648,8 +445,18 @@ def _text_from_mcp_result(result: dict[str, Any]) -> str:
     )
 
 
+_PARALLEL_ANNOTATION = ToolAnnotations(readOnlyHint=True)
+
+
 def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
+
+    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
+    dispatches concurrent tool calls in parallel rather than sequentially.
+    This is a deliberate override: even side-effect tools use the hint
+    because the MCP tools are already individually sandboxed and the
+    pre-launch duplicate-execution bug (SECRT-2204) is worse than
+    sequential dispatch.
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
@@ -668,6 +475,28 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            # Empty tool args = model's output was truncated by the API's
+            # max_tokens limit.  Instead of letting the tool fail with a
+            # confusing error (and eventually tripping the circuit breaker),
+            # return clear guidance so the model can self-correct.
+            if not args and input_schema and input_schema.get("required"):
+                logger.warning(
+                    "[MCP] %s called with empty args (likely output "
+                    "token truncation) — returning guidance",
+                    tool_name,
+                )
+                return _mcp_error(
+                    f"Your call to {tool_name} had empty arguments — "
+                    f"this means your previous response was too long and "
+                    f"the tool call input was truncated by the API. "
+                    f"To fix this: break your work into smaller steps. "
+                    f"For large content, first write it to a file using "
+                    f"bash_exec with cat >> (append section by section), "
+                    f"then pass it via @@agptfile:filename reference. "
+                    f"Do NOT retry with the same approach — it will "
+                    f"be truncated again."
+                )
+
             # Circuit breaker: stop infinite retry loops with identical args.
             # Use the original (pre-expansion) args for fingerprinting so
             # check and record always use the same key — @@agptfile:
@@ -718,24 +547,35 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     for tool_name, base_tool in TOOL_REGISTRY.items():
         handler = create_tool_handler(base_tool)
         schema = _build_input_schema(base_tool)
+        # All tools annotated readOnlyHint=True to enable parallel dispatch.
+        # The SDK CLI uses this hint to dispatch concurrent tool calls in
+        # parallel rather than sequentially.  Side-effect safety is ensured
+        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
             schema,
+            annotations=_PARALLEL_ANNOTATION,
         )(_truncating(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
-            decorated = tool(name, desc, schema)(_truncating(handler, name))
+            decorated = tool(
+                name,
+                desc,
+                schema,
+                annotations=_PARALLEL_ANNOTATION,
+            )(_truncating(handler, name))
             sdk_tools.append(decorated)
 
-    # Read tool for SDK-truncated tool results (always needed).
+    # Read tool for SDK-truncated tool results (always needed, read-only).
     read_tool = tool(
         _READ_TOOL_NAME,
         _READ_TOOL_DESCRIPTION,
         _READ_TOOL_SCHEMA,
+        annotations=_PARALLEL_ANNOTATION,
     )(_truncating(_read_file_handler, _READ_TOOL_NAME))
     sdk_tools.append(read_tool)
 
@@ -750,13 +590,14 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # Security hooks validate that file paths stay within sdk_cwd.
 # Bash is NOT included — use the sandboxed MCP bash_exec tool instead,
 # which provides kernel-level network isolation via unshare --net.
-# Task allows spawning sub-agents (rate-limited by security hooks).
+# Task/Agent allows spawning sub-agents (rate-limited by security hooks).
+#   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.

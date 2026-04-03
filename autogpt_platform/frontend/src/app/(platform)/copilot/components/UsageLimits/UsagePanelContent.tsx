@@ -1,6 +1,7 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
+import { formatCents } from "../RateLimitResetDialog/RateLimitResetDialog";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 export function formatResetTime(
@@ -91,7 +92,7 @@ function ResetButton({
     >
       {isPending
         ? "Resetting..."
-        : `Reset daily limit for $${(cost / 100).toFixed(2)}`}
+        : `Reset daily limit for ${formatCents(cost)}`}
     </Button>
   );
 }
@@ -123,9 +124,20 @@ export function UsagePanelContent({
     );
   }
 
+  const tierLabel = usage.tier
+    ? usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()
+    : null;
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-xs font-semibold text-neutral-800">Usage limits</div>
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs font-semibold text-neutral-800">
+          Usage limits
+        </span>
+        {tierLabel && (
+          <span className="text-[11px] text-neutral-500">{tierLabel} plan</span>
+        )}
+      </div>
       {hasDailyLimit && (
         <UsageBar
           label="Today"
