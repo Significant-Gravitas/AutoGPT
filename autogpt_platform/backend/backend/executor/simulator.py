@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 
 
 # Default simulator model — Gemini 2.5 Flash via OpenRouter (fast, cheap, good at
-# JSON generation).  Configurable via SIMULATION_MODEL env var or
-# ChatConfig.simulation_model.
+# JSON generation).  Configurable via ChatConfig.simulation_model
+# (CHAT_SIMULATION_MODEL env var).
 _DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash"
 
 

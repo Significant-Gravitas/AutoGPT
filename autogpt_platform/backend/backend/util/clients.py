@@ -170,11 +170,9 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
     By default prefers openai_internal_api_key (direct OpenAI) and falls back
     to open_router_api_key via OpenRouter.
 
-    When ``prefer_openrouter=True`` the priority is reversed: OpenRouter first,
-    then direct OpenAI.  Use this when the caller needs models that are only
-    available through OpenRouter (e.g. ``google/gemini-2.5-flash``).
-
-    Returns None if neither key is configured.
+    When ``prefer_openrouter=True``, returns an OpenRouter client or None —
+    does **not** fall back to direct OpenAI (which can't route non-OpenAI
+    models like ``google/gemini-2.5-flash``).
     """
     from openai import AsyncOpenAI
 
