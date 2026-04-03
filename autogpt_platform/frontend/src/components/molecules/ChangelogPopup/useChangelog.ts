@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AUTO_DISMISS_MS,
   CHANGELOG_BASE_URL,
@@ -9,30 +9,15 @@ import {
 } from "./changelog-constants";
 
 export interface ChangelogEntry {
-  /** e.g. "march-20-march-25-2026" */
   slug: string;
-  /** e.g. "March 20 – March 25" */
   dateRange: string;
-  /** Short highlights string from the index table */
   highlights: string;
-  /** Full URL to the entry on the docs site */
   url: string;
-  /** URL to the raw .md for this entry */
   mdUrl: string;
 }
 
-/**
- * Parse the changelog index markdown.
- *
- * The index page is a markdown table like:
- * | Date | Highlights |
- * | --- | --- |
- * | [March 20 – March 25](https://agpt.co/docs/platform/changelog/changelog/march-20-march-25-2026) | Import workflows … |
- */
 function parseChangelogIndex(md: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];
-
-  // Match table rows: | [Date range](url) | Highlights |
   const rowPattern =
     /\|\s*\[([^\]]+)\]\((https?:\/\/[^)]+\/changelog\/changelog\/([a-z0-9-]+))\)\s*\|\s*([^|]+)\|/g;
 
@@ -51,38 +36,7 @@ function parseChangelogIndex(md: string): ChangelogEntry[] {
   return entries;
 }
 
-interface UseChangelogReturn {
-  /** Whether the toast popup is visible */
-  isVisible: boolean;
-  /** Whether the toast is fading out */
-  isFading: boolean;
-  /** The latest unseen changelog entry */
-  latestEntry: ChangelogEntry | null;
-  /** All parsed entries from the index */
-  allEntries: ChangelogEntry[];
-  /** Raw markdown content of the selected entry (fetched on demand) */
-  entryMarkdown: string | null;
-  /** Whether entry markdown is loading */
-  isLoadingMarkdown: boolean;
-  /** Dismiss the toast */
-  dismiss: () => void;
-  /** Pause auto-dismiss (e.g. on hover) */
-  pauseAutoDismiss: () => void;
-  /** Resume auto-dismiss */
-  resumeAutoDismiss: () => void;
-  /** Whether the full changelog modal is open */
-  showFullChangelog: boolean;
-  /** Open the full changelog modal, optionally loading a specific entry */
-  openFullChangelog: (entry?: ChangelogEntry) => void;
-  /** Close the full modal */
-  closeFullChangelog: () => void;
-  /** The currently selected entry in the full modal */
-  selectedEntry: ChangelogEntry | null;
-  /** Select a different entry in the modal sidebar */
-  selectEntry: (entry: ChangelogEntry) => void;
-}
-
-export function useChangelog(): UseChangelogReturn {
+export function useChangelog() {
   const [isVisible, setIsVisible] = useState(false);
   const [isFading, setIsFading] = useState(false);
   const [showFullChangelog, setShowFullChangelog] = useState(false);
@@ -97,65 +51,71 @@ export function useChangelog(): UseChangelogReturn {
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPaused = useRef(false);
+  const isDismissing = useRef(false);
+  const mdAbort = useRef<AbortController | null>(null);
 
-  // --- Timers ---
-
-  const clearTimers = useCallback(() => {
+  function clearTimers() {
     if (autoDismissTimer.current) clearTimeout(autoDismissTimer.current);
     if (fadeTimer.current) clearTimeout(fadeTimer.current);
     autoDismissTimer.current = null;
     fadeTimer.current = null;
-  }, []);
+  }
 
-  const markAsSeen = useCallback((slug: string) => {
+  function markAsSeen(slug: string) {
     try {
       localStorage.setItem(STORAGE_KEY, slug);
     } catch {
       /* noop */
     }
-  }, []);
+  }
 
-  const dismiss = useCallback(() => {
+  function dismiss() {
+    if (isDismissing.current) return;
+    isDismissing.current = true;
     clearTimers();
     setIsFading(true);
     fadeTimer.current = setTimeout(() => {
       setIsVisible(false);
       setIsFading(false);
+      isDismissing.current = false;
       if (latestEntry) markAsSeen(latestEntry.slug);
     }, 500);
-  }, [clearTimers, latestEntry, markAsSeen]);
+  }
 
-  const startAutoDismiss = useCallback(() => {
-    if (isPaused.current) return;
+  function startAutoDismiss() {
+    if (isPaused.current || showFullChangelog) return;
     clearTimers();
     autoDismissTimer.current = setTimeout(() => {
-      if (!isPaused.current) dismiss();
+      if (!isPaused.current && !showFullChangelog) dismiss();
     }, AUTO_DISMISS_MS);
-  }, [clearTimers, dismiss]);
+  }
 
-  const pauseAutoDismiss = useCallback(() => {
+  function pauseAutoDismiss() {
     isPaused.current = true;
     if (autoDismissTimer.current) {
       clearTimeout(autoDismissTimer.current);
       autoDismissTimer.current = null;
     }
-  }, []);
+  }
 
-  const resumeAutoDismiss = useCallback(() => {
+  function resumeAutoDismiss() {
+    if (isDismissing.current) return;
     isPaused.current = false;
     startAutoDismiss();
-  }, [startAutoDismiss]);
+  }
 
-  // --- Markdown fetching ---
+  function fetchEntryMarkdown(entry: ChangelogEntry) {
+    mdAbort.current?.abort();
+    const controller = new AbortController();
+    mdAbort.current = controller;
 
-  const fetchEntryMarkdown = useCallback(async (entry: ChangelogEntry) => {
     setIsLoadingMarkdown(true);
     setEntryMarkdown(null);
-    try {
-      const res = await fetch(entry.mdUrl);
-      if (res.ok) {
-        const md = await res.text();
-        // Strip GitBook-specific directives ({% hint %}, {% endhint %}, <figure>, <figcaption>, <details>, <summary>)
+
+    fetch(entry.mdUrl, { signal: controller.signal })
+      .then((res) => (res.ok ? res.text() : ""))
+      .then((md) => {
+        if (controller.signal.aborted) return;
         const cleaned = md
           .replace(/\{%.*?%\}/gs, "")
           .replace(/<figure>|<\/figure>/g, "")
@@ -164,47 +124,41 @@ export function useChangelog(): UseChangelogReturn {
           .replace(/<\/details>/g, "")
           .replace(/<summary>(.*?)<\/summary>/g, "### $1");
         setEntryMarkdown(cleaned);
-      }
-    } catch {
-      /* fail silently */
-    } finally {
-      setIsLoadingMarkdown(false);
+      })
+      .catch(() => {
+        /* abort or network error — non-critical */
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingMarkdown(false);
+      });
+  }
+
+  function openFullChangelog(entry?: ChangelogEntry) {
+    clearTimers();
+    isPaused.current = true;
+    setIsVisible(false);
+    setIsFading(false);
+    isDismissing.current = false;
+    const target = entry || latestEntry;
+    if (target) {
+      setSelectedEntry(target);
+      fetchEntryMarkdown(target);
+      markAsSeen(target.slug);
     }
-  }, []);
+    setShowFullChangelog(true);
+  }
 
-  // --- Modal controls ---
-
-  const openFullChangelog = useCallback(
-    (entry?: ChangelogEntry) => {
-      clearTimers();
-      setIsVisible(false);
-      setIsFading(false);
-      const target = entry || latestEntry;
-      if (target) {
-        setSelectedEntry(target);
-        fetchEntryMarkdown(target);
-        markAsSeen(target.slug);
-      }
-      setShowFullChangelog(true);
-    },
-    [clearTimers, latestEntry, fetchEntryMarkdown, markAsSeen],
-  );
-
-  const closeFullChangelog = useCallback(() => {
+  function closeFullChangelog() {
+    mdAbort.current?.abort();
     setShowFullChangelog(false);
     setEntryMarkdown(null);
     setSelectedEntry(null);
-  }, []);
+  }
 
-  const selectEntry = useCallback(
-    (entry: ChangelogEntry) => {
-      setSelectedEntry(entry);
-      fetchEntryMarkdown(entry);
-    },
-    [fetchEntryMarkdown],
-  );
-
-  // --- Initial fetch ---
+  function selectEntry(entry: ChangelogEntry) {
+    setSelectedEntry(entry);
+    fetchEntryMarkdown(entry);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -220,7 +174,6 @@ export function useChangelog(): UseChangelogReturn {
         setAllEntries(entries);
         setLatestEntry(entries[0]);
 
-        // Check if user has already seen this entry
         try {
           const lastSeen = localStorage.getItem(STORAGE_KEY);
           if (lastSeen === entries[0].slug) return;
@@ -228,25 +181,24 @@ export function useChangelog(): UseChangelogReturn {
           /* show anyway */
         }
 
-        // Small delay to let page settle
         setTimeout(() => {
           if (!cancelled) setIsVisible(true);
         }, 1500);
       })
       .catch(() => {
-        /* fail silently — changelog is non-critical */
+        /* non-critical */
       });
 
     return () => {
       cancelled = true;
       clearTimers();
+      mdAbort.current?.abort();
     };
-  }, [clearTimers]);
+  }, []);
 
-  // Start auto-dismiss when toast becomes visible
   useEffect(() => {
-    if (isVisible && !isFading) startAutoDismiss();
-  }, [isVisible, isFading, startAutoDismiss]);
+    if (isVisible && !isFading && !showFullChangelog) startAutoDismiss();
+  }, [isVisible, isFading, showFullChangelog]);
 
   return {
     isVisible,
