@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import { formatNotificationTitle } from "../../helpers";
 import { useCopilotUIStore } from "../../store";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
@@ -123,9 +124,8 @@ export function ChatSidebar() {
   useEffect(() => {
     if (!sessionId || !completedSessionIDs.has(sessionId)) return;
     clearCompletedSession(sessionId);
-    const remaining = completedSessionIDs.size - 1;
-    document.title =
-      remaining > 0 ? `(${remaining}) Otto is ready - AutoGPT` : "AutoGPT";
+    const remaining = Math.max(0, completedSessionIDs.size - 1);
+    document.title = formatNotificationTitle(remaining);
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
   const sessions =
