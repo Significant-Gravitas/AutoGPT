@@ -158,6 +158,6 @@ class SpraayTransactionStatusBlock(Block):
             yield "error", "Gateway returned incomplete response: missing 'status'"
             return
         yield "status", result["status"]
-        yield "confirmations", result.get("confirmations")
-        yield "block_number", result.get("block_number")
-        yield "gas_used", result.get("gas_used")
+        yield "confirmations", result.get("confirmations", 0)
+        yield "block_number", result.get("block_number", 0)
+        yield "gas_used", result.get("gas_used", "0")
