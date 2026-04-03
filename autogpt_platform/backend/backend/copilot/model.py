@@ -718,6 +718,17 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         _session_locks.pop(session_id, None)
 
     # Shut down any local browser daemon for this session (best-effort).
+    # Runs in a background task so the caller isn't blocked by the up-to-10s
+    # browser daemon shutdown — blocking here caused Cloudflare 524 timeouts
+    # on the delete endpoint.
+    if user_id:
+        asyncio.create_task(_cleanup_browser_session(session_id, user_id))
+
+    return True
+
+
+async def _cleanup_browser_session(session_id: str, user_id: str) -> None:
+    """Best-effort browser daemon teardown — runs as a background task."""
     # Inline import required: all tool modules import ChatSession from this
     # module, so any top-level import from tools.* would create a cycle.
     try:
@@ -726,8 +737,6 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
         await close_browser_session(session_id, user_id=user_id)
     except Exception as e:
         logger.debug(f"Browser cleanup for session {session_id}: {e}")
-
-    return True
 
 
 async def update_session_title(
