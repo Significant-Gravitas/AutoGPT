@@ -2,6 +2,8 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
+from pydantic import AliasChoices, Field
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -467,7 +469,8 @@ class AgentFileInputBlock(AgentInputBlock):
 
 class AgentDropdownInputBlock(AgentInputBlock):
     """
-    A specialized text input block that relies on placeholder_values to present a dropdown.
+    A specialized text input block that presents a dropdown selector
+    restricted to a fixed set of values.
     """
 
     class Input(AgentInputBlock.Input):
@@ -477,16 +480,23 @@ class AgentDropdownInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
-        placeholder_values: list = SchemaField(
-            description="Possible values for the dropdown.",
+        # Use Field() directly (not SchemaField) to pass validation_alias,
+        # which handles backward compat for legacy "placeholder_values" across
+        # all construction paths (model_construct, __init__, model_validate).
+        options: list = Field(
             default_factory=list,
-            advanced=False,
             title="Dropdown Options",
+            description=(
+                "If provided, renders the input as a dropdown selector "
+                "restricted to these values. Leave empty for free-text input."
+            ),
+            validation_alias=AliasChoices("options", "placeholder_values"),
+            json_schema_extra={"advanced": False, "secret": False},
         )
 
         def generate_schema(self):
             schema = super().generate_schema()
-            if possible_values := self.placeholder_values:
+            if possible_values := self.options:
                 schema["enum"] = possible_values
             return schema
 
@@ -504,13 +514,13 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 {
                     "value": "Option A",
                     "name": "dropdown_1",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 1",
                 },
                 {
                     "value": "Option C",
                     "name": "dropdown_2",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 2",
                 },
             ],

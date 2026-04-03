@@ -91,10 +91,16 @@ async def _persist_and_summarize(
         f"\nFull output ({total:,} chars) saved to workspace. "
         f"Use read_workspace_file("
         f'path="{file_path}", offset=<char_offset>, length=50000) '
-        f"to read any section."
+        f"to read any section. "
+        f"To process the file in the sandbox/working dir, use "
+        f"read_workspace_file("
+        f'path="{file_path}", save_to_path="<working_dir>/{tool_call_id}.json") '
+        f"first, then use bash_exec to work with the local copy."
     )
+    # Use workspace:// prefix so the model doesn't confuse the workspace path
+    # with a local filesystem path (e.g. ~/.claude/projects/.../tool-outputs/).
     return (
-        f'<tool-output-truncated total_chars={total} path="{file_path}">\n'
+        f'<tool-output-truncated total_chars={total} workspace_path="{file_path}">\n'
         f"{preview}\n"
         f"{retrieval}\n"
         f"</tool-output-truncated>"
