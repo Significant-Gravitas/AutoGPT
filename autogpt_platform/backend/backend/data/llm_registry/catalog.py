@@ -619,6 +619,20 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemma-4-31b-it",
+                display_name="Gemma 4 31B",
+                provider="open_router",
+                creator="google",
+                context_window=262144,
+                max_output_tokens=131072,
+                price_tier=1,
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=21.0,
+                    output_credits_per_1m=60.0,
+                ),
+            ),
+            CatalogModel(
                 slug="gryphe/mythomax-l2-13b",
                 display_name="MythoMax L2 13B",
                 provider="open_router",
