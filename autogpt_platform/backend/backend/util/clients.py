@@ -163,23 +163,34 @@ async def get_async_supabase() -> "AClient":
 
 
 @cached(ttl_seconds=3600)
-def get_openai_client() -> "AsyncOpenAI | None":
+def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None":
     """
-    Get a process-cached async OpenAI client for embeddings.
+    Get a process-cached async OpenAI client.
 
-    Prefers openai_internal_api_key (direct OpenAI). Falls back to
-    open_router_api_key via OpenRouter's OpenAI-compatible endpoint.
+    By default prefers openai_internal_api_key (direct OpenAI) and falls back
+    to open_router_api_key via OpenRouter.
+
+    When ``prefer_openrouter=True`` the priority is reversed: OpenRouter first,
+    then direct OpenAI.  Use this when the caller needs models that are only
+    available through OpenRouter (e.g. ``google/gemini-2.5-flash``).
+
     Returns None if neither key is configured.
     """
     from openai import AsyncOpenAI
 
-    if settings.secrets.openai_internal_api_key:
-        return AsyncOpenAI(api_key=settings.secrets.openai_internal_api_key)
-    if settings.secrets.open_router_api_key:
-        return AsyncOpenAI(
-            api_key=settings.secrets.open_router_api_key,
-            base_url=OPENROUTER_BASE_URL,
-        )
+    openai_key = settings.secrets.openai_internal_api_key
+    openrouter_key = settings.secrets.open_router_api_key
+
+    if prefer_openrouter:
+        if openrouter_key:
+            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+        if openai_key:
+            return AsyncOpenAI(api_key=openai_key)
+    else:
+        if openai_key:
+            return AsyncOpenAI(api_key=openai_key)
+        if openrouter_key:
+            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
     return None
 
 
