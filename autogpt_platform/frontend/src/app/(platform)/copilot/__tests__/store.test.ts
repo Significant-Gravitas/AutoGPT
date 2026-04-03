@@ -174,9 +174,9 @@ describe("useCopilotUIStore", () => {
     it("sets notification preference", () => {
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       expect(useCopilotUIStore.getState().isNotificationsEnabled).toBe(true);
-      expect(
-        window.localStorage.getItem("copilot-notifications-enabled"),
-      ).toBe("true");
+      expect(window.localStorage.getItem("copilot-notifications-enabled")).toBe(
+        "true",
+      );
     });
 
     it("shows and hides notification dialog", () => {
