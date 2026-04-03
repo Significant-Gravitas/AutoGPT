@@ -1298,16 +1298,19 @@ async def _run_stream_attempt(
                         ctx.log_prefix,
                         idle_seconds,
                     )
-                    raise _HandledStreamError(
-                        f"Idle timeout after {idle_seconds:.0f}s",
-                        error_msg=(
-                            "A tool call appears to be stuck "
-                            "(no response for 10 minutes). "
-                            "Please try again."
-                        ),
-                        code="idle_timeout",
-                        retryable=True,
+                    stream_error_msg = (
+                        "A tool call appears to be stuck "
+                        "(no response for 10 minutes). "
+                        "Please try again."
                     )
+                    stream_error_code = "idle_timeout"
+                    _append_error_marker(ctx.session, stream_error_msg, retryable=True)
+                    yield StreamError(
+                        errorText=stream_error_msg,
+                        code=stream_error_code,
+                    )
+                    ended_with_stream_error = True
+                    break
                 continue
 
             _last_real_msg_time = time.monotonic()
