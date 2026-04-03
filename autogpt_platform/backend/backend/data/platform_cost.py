@@ -10,6 +10,8 @@ from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 
 logger = logging.getLogger(__name__)
 
+MICRODOLLARS_PER_USD = 1_000_000
+
 
 class PlatformCostEntry(BaseModel):
     user_id: str
@@ -259,47 +261,49 @@ async def get_platform_cost_logs(
 ) -> tuple[list[CostLogRow], int]:
     where_sql, params = _build_where(start, end, provider, user_id, "p")
 
-    count_rows = await query_raw_with_schema(
-        f"""
-        SELECT COUNT(*)::bigint AS cnt
-        FROM {{schema_prefix}}"PlatformCostLog" p
-        WHERE {where_sql}
-        """,
-        *params,
-    )
-    total = count_rows[0]["cnt"] if count_rows else 0
-
     offset = (page - 1) * page_size
     limit_idx = len(params) + 1
     offset_idx = len(params) + 2
-    rows = await query_raw_with_schema(
-        f"""
-        SELECT
-            p."id",
-            p."createdAt" AS created_at,
-            p."userId" AS user_id,
-            u."email",
-            p."graphExecId" AS graph_exec_id,
-            p."nodeExecId" AS node_exec_id,
-            p."blockName" AS block_name,
-            p."provider",
-            COALESCE(p."trackingType", p."metadata"->>'tracking_type')
-                AS tracking_type,
-            p."costMicrodollars" AS cost_microdollars,
-            p."inputTokens" AS input_tokens,
-            p."outputTokens" AS output_tokens,
-            p."duration",
-            p."model"
-        FROM {{schema_prefix}}"PlatformCostLog" p
-        LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
-        WHERE {where_sql}
-        ORDER BY p."createdAt" DESC, p."id" DESC
-        LIMIT ${limit_idx} OFFSET ${offset_idx}
-        """,
-        *params,
-        page_size,
-        offset,
+
+    count_rows, rows = await asyncio.gather(
+        query_raw_with_schema(
+            f"""
+            SELECT COUNT(*)::bigint AS cnt
+            FROM {{schema_prefix}}"PlatformCostLog" p
+            WHERE {where_sql}
+            """,
+            *params,
+        ),
+        query_raw_with_schema(
+            f"""
+            SELECT
+                p."id",
+                p."createdAt" AS created_at,
+                p."userId" AS user_id,
+                u."email",
+                p."graphExecId" AS graph_exec_id,
+                p."nodeExecId" AS node_exec_id,
+                p."blockName" AS block_name,
+                p."provider",
+                COALESCE(p."trackingType", p."metadata"->>'tracking_type')
+                    AS tracking_type,
+                p."costMicrodollars" AS cost_microdollars,
+                p."inputTokens" AS input_tokens,
+                p."outputTokens" AS output_tokens,
+                p."duration",
+                p."model"
+            FROM {{schema_prefix}}"PlatformCostLog" p
+            LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
+            WHERE {where_sql}
+            ORDER BY p."createdAt" DESC, p."id" DESC
+            LIMIT ${limit_idx} OFFSET ${offset_idx}
+            """,
+            *params,
+            page_size,
+            offset,
+        ),
     )
+    total = count_rows[0]["cnt"] if count_rows else 0
 
     logs = [
         CostLogRow(

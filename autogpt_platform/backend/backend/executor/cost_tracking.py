@@ -6,7 +6,11 @@ from typing import Any, cast
 
 from backend.blocks._base import BlockSchema
 from backend.data.model import NodeExecutionStats
-from backend.data.platform_cost import PlatformCostEntry, log_platform_cost_safe
+from backend.data.platform_cost import (
+    MICRODOLLARS_PER_USD,
+    PlatformCostEntry,
+    log_platform_cost_safe,
+)
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import is_system_credential
 
@@ -15,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 def resolve_tracking(
     provider: str,
-    block_name: str,
     stats: NodeExecutionStats,
     input_data: dict[str, Any],
 ) -> tuple[str, float]:
@@ -91,12 +94,11 @@ async def log_system_credential_cost(
         # Convert provider_cost (USD) to microdollars if available
         cost_microdollars = None
         if stats.provider_cost is not None:
-            cost_microdollars = round(stats.provider_cost * 1_000_000)
+            cost_microdollars = round(stats.provider_cost * MICRODOLLARS_PER_USD)
 
         provider_name = cred_data.get("provider", "unknown")
         tracking_type, tracking_amount = resolve_tracking(
             provider=provider_name,
-            block_name=block.name,
             stats=stats,
             input_data=input_data,
         )
@@ -123,10 +125,10 @@ async def log_system_credential_cost(
                     provider=provider_name,
                     credential_id=cred_id,
                     cost_microdollars=cost_microdollars,
-                    input_tokens=stats.input_token_count or None,
-                    output_tokens=stats.output_token_count or None,
-                    data_size=stats.output_size or None,
-                    duration=stats.walltime or None,
+                    input_tokens=stats.input_token_count,
+                    output_tokens=stats.output_token_count,
+                    data_size=stats.output_size if stats.output_size else None,
+                    duration=stats.walltime if stats.walltime else None,
                     model=model_name,
                     tracking_type=tracking_type,
                     metadata=meta or None,

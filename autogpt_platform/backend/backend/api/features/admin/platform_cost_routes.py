@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 router = APIRouter(
-    prefix="/admin",
+    prefix="/platform-costs",
     tags=["platform-cost", "admin"],
     dependencies=[Security(requires_admin_user)],
 )
@@ -30,7 +30,7 @@ class PlatformCostLogsResponse(BaseModel):
 
 
 @router.get(
-    "/platform_costs/dashboard",
+    "/dashboard",
     response_model=PlatformCostDashboard,
     summary="Get Platform Cost Dashboard",
 )
@@ -51,7 +51,7 @@ async def get_cost_dashboard(
 
 
 @router.get(
-    "/platform_costs/logs",
+    "/logs",
     response_model=PlatformCostLogsResponse,
     summary="Get Platform Cost Logs",
 )

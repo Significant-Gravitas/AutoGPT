@@ -46,7 +46,7 @@ def test_get_dashboard_success(
         mock_dashboard,
     )
 
-    response = client.get("/admin/platform_costs/dashboard")
+    response = client.get("/platform-costs/dashboard")
     assert response.status_code == 200
     data = response.json()
     assert "by_provider" in data
@@ -62,7 +62,7 @@ def test_get_logs_success(
         AsyncMock(return_value=([], 0)),
     )
 
-    response = client.get("/admin/platform_costs/logs")
+    response = client.get("/platform-costs/logs")
     assert response.status_code == 200
     data = response.json()
     assert data["logs"] == []
@@ -94,7 +94,7 @@ def test_get_dashboard_with_filters(
     )
 
     response = client.get(
-        "/admin/platform_costs/dashboard",
+        "/platform-costs/dashboard",
         params={
             "start": "2026-01-01T00:00:00",
             "end": "2026-04-01T00:00:00",
@@ -120,7 +120,7 @@ def test_get_logs_with_pagination(
     )
 
     response = client.get(
-        "/admin/platform_costs/logs",
+        "/platform-costs/logs",
         params={"page": 2, "page_size": 25, "provider": "anthropic"},
     )
     assert response.status_code == 200
@@ -138,7 +138,7 @@ def test_get_dashboard_requires_admin() -> None:
 
     app.dependency_overrides[get_jwt_payload] = reject_jwt
     try:
-        response = client.get("/admin/platform_costs/dashboard")
+        response = client.get("/platform-costs/dashboard")
         assert response.status_code == 401
     finally:
         app.dependency_overrides.clear()

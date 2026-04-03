@@ -333,7 +333,7 @@ app.include_router(
 app.include_router(
     backend.api.features.admin.platform_cost_routes.router,
     tags=["v2", "admin"],
-    prefix="/api/platform-costs",
+    prefix="/api/admin",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,

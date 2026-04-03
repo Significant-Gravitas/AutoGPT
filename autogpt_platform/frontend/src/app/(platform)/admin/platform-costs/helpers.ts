@@ -1,5 +1,17 @@
 import type { ProviderCostSummary } from "@/app/api/__generated__/models/providerCostSummary";
 
+const MICRODOLLARS_PER_USD = 1_000_000;
+
+// Per-request cost estimates (USD) for providers billed per API call.
+// Sources:
+//   google_maps: $0.032/request - Google Maps Places API (https://mapsplatform.google.com/pricing/)
+//   ideogram: $0.08/image - Ideogram API standard generation (https://ideogram.ai/pricing)
+//   nvidia: Free tier / internal - NVIDIA NIM deepfake detection
+//   screenshotone: ~$0.01/screenshot - ScreenshotOne starter plan (https://screenshotone.com/pricing/)
+//   zerobounce: $0.008/validation - ZeroBounce email validation (https://www.zerobounce.net/email-validation-pricing)
+//   mem0: ~$0.01/request - Mem0 API estimated (https://mem0.ai/pricing)
+//   openweathermap: Free tier - OpenWeatherMap free plan (https://openweathermap.org/price)
+//   webshare_proxy: Free tier - Webshare free proxy plan
 export const DEFAULT_COST_PER_RUN: Record<string, number> = {
   google_maps: 0.032,
   ideogram: 0.08,
@@ -25,7 +37,7 @@ export function toDateOrUndefined(val?: string): Date | undefined {
 }
 
 export function formatMicrodollars(microdollars: number) {
-  return `$${(microdollars / 1_000_000).toFixed(4)}`;
+  return `$${(microdollars / MICRODOLLARS_PER_USD).toFixed(4)}`;
 }
 
 export function formatTokens(tokens: number) {
@@ -51,7 +63,7 @@ export function estimateCostForRow(
     const rate = DEFAULT_COST_PER_1K_TOKENS[row.provider] ?? null;
     if (rate !== null) {
       const totalTokens = row.total_input_tokens + row.total_output_tokens;
-      return Math.round((totalTokens / 1000) * rate * 1_000_000);
+      return Math.round((totalTokens / 1000) * rate * MICRODOLLARS_PER_USD);
     }
     return null;
   }
@@ -60,7 +72,8 @@ export function estimateCostForRow(
       costPerRunOverrides[row.provider] ??
       DEFAULT_COST_PER_RUN[row.provider] ??
       null;
-    if (rate !== null) return Math.round(rate * row.request_count * 1_000_000);
+    if (rate !== null)
+      return Math.round(rate * row.request_count * MICRODOLLARS_PER_USD);
     return null;
   }
   return row.total_cost_microdollars > 0 ? row.total_cost_microdollars : null;

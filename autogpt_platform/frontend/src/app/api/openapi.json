@@ -7,6 +7,179 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/platform-costs/dashboard": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Dashboard",
+        "operationId": "getV2Get platform cost dashboard",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostDashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Logs",
+        "operationId": "getV2Get platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostLogsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -5633,179 +5806,6 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/platform-costs/admin/platform_costs/dashboard": {
-      "get": {
-        "tags": ["v2", "admin", "platform-cost", "admin"],
-        "summary": "Get Platform Cost Dashboard",
-        "operationId": "getV2Get platform cost dashboard",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "start",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "format": "date-time" },
-                { "type": "null" }
-              ],
-              "title": "Start"
-            }
-          },
-          {
-            "name": "end",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "format": "date-time" },
-                { "type": "null" }
-              ],
-              "title": "End"
-            }
-          },
-          {
-            "name": "provider",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Provider"
-            }
-          },
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlatformCostDashboard"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/platform-costs/admin/platform_costs/logs": {
-      "get": {
-        "tags": ["v2", "admin", "platform-cost", "admin"],
-        "summary": "Get Platform Cost Logs",
-        "operationId": "getV2Get platform cost logs",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "start",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "format": "date-time" },
-                { "type": "null" }
-              ],
-              "title": "Start"
-            }
-          },
-          {
-            "name": "end",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "string", "format": "date-time" },
-                { "type": "null" }
-              ],
-              "title": "End"
-            }
-          },
-          {
-            "name": "provider",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Provider"
-            }
-          },
-          {
-            "name": "user_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "User Id"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "default": 1,
-              "title": "Page"
-            }
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
-              "default": 50,
-              "title": "Page Size"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlatformCostLogsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
       }
     },
     "/api/public/shared/{share_token}": {

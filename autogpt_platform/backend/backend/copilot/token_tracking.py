@@ -12,7 +12,11 @@ This module extracts that common logic so both paths stay in sync.
 import asyncio
 import logging
 
-from backend.data.platform_cost import PlatformCostEntry, log_platform_cost_safe
+from backend.data.platform_cost import (
+    MICRODOLLARS_PER_USD,
+    PlatformCostEntry,
+    log_platform_cost_safe,
+)
 
 from .model import ChatSession, Usage
 from .rate_limit import record_token_usage
@@ -112,7 +116,7 @@ async def persist_and_record_usage(
                 pass
 
         cost_microdollars = (
-            round(cost_float * 1_000_000) if cost_float is not None else None
+            round(cost_float * MICRODOLLARS_PER_USD) if cost_float is not None else None
         )
         session_id = session.session_id if session else None
 
