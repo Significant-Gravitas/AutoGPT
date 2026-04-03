@@ -14,6 +14,7 @@ export enum Flag {
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
   CHAT = "chat",
+  COPILOT_FAST_MODE = "copilot-fast-mode",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -28,6 +29,7 @@ const defaultFlags = {
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
   [Flag.CHAT]: false,
+  [Flag.COPILOT_FAST_MODE]: false,
 };
 
 type FlagValues = typeof defaultFlags;

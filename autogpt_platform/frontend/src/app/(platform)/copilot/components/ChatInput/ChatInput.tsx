@@ -7,6 +7,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Brain, Lightning } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
@@ -45,6 +46,7 @@ export function ChatInput({
   onDroppedFilesConsumed,
 }: Props) {
   const { copilotMode, setCopilotMode } = useCopilotUIStore();
+  const isFastModeEnabled = useGetFlag(Flag.COPILOT_FAST_MODE);
   const [files, setFiles] = useState<File[]>([]);
 
   // Merge files dropped onto the chat window into internal state.
@@ -160,49 +162,48 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
-            {/* Mode toggle hidden until baseline transcript support is fully tested.
-                Backend logic is ready — this just hides the UI button. */}
-            <button
-              type="button"
-              hidden
-              disabled={isStreaming}
-              onClick={() =>
-                setCopilotMode(
+            {isFastModeEnabled && (
+              <button
+                type="button"
+                disabled={isStreaming}
+                onClick={() =>
+                  setCopilotMode(
+                    copilotMode === "extended_thinking"
+                      ? "fast"
+                      : "extended_thinking",
+                  )
+                }
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                   copilotMode === "extended_thinking"
-                    ? "fast"
-                    : "extended_thinking",
-                )
-              }
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                copilotMode === "extended_thinking"
-                  ? "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
-                  : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
-                isStreaming && "cursor-not-allowed opacity-50",
-              )}
-              aria-label={
-                copilotMode === "extended_thinking"
-                  ? "Switch to Fast mode"
-                  : "Switch to Extended Thinking mode"
-              }
-              title={
-                copilotMode === "extended_thinking"
-                  ? "Extended Thinking mode — deeper reasoning (click to switch to Fast mode)"
-                  : "Fast mode — quicker responses (click to switch to Extended Thinking)"
-              }
-            >
-              {copilotMode === "extended_thinking" ? (
-                <>
-                  <Brain size={14} />
-                  Thinking
-                </>
-              ) : (
-                <>
-                  <Lightning size={14} />
-                  Fast
-                </>
-              )}
-            </button>
+                    ? "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
+                    : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
+                  isStreaming && "cursor-not-allowed opacity-50",
+                )}
+                aria-label={
+                  copilotMode === "extended_thinking"
+                    ? "Switch to Fast mode"
+                    : "Switch to Extended Thinking mode"
+                }
+                title={
+                  copilotMode === "extended_thinking"
+                    ? "Extended Thinking mode — deeper reasoning (click to switch to Fast mode)"
+                    : "Fast mode — quicker responses (click to switch to Extended Thinking)"
+                }
+              >
+                {copilotMode === "extended_thinking" ? (
+                  <>
+                    <Brain size={14} />
+                    Thinking
+                  </>
+                ) : (
+                  <>
+                    <Lightning size={14} />
+                    Fast
+                  </>
+                )}
+              </button>
+            )}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">
