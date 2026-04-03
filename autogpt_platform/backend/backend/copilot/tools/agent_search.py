@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Literal
 
@@ -9,7 +10,7 @@ if TYPE_CHECKING:
     from backend.api.features.library.model import LibraryAgent
     from backend.api.features.store.model import StoreAgent, StoreAgentDetails
 
-from backend.data.db_accessors import library_db, store_db
+from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .models import (
@@ -34,12 +35,13 @@ async def search_agents(
     source: SearchSource,
     session_id: str | None = None,
     user_id: str | None = None,
+    include_graph: bool = False,
 ) -> ToolResponseBase:
     """Search for agents in marketplace or user library."""
     if source == "marketplace":
         return await _search_marketplace(query, session_id)
     else:
-        return await _search_library(query, session_id, user_id)
+        return await _search_library(query, session_id, user_id, include_graph)
 
 
 async def _search_marketplace(query: str, session_id: str | None) -> ToolResponseBase:
@@ -105,7 +107,10 @@ async def _search_marketplace(query: str, session_id: str | None) -> ToolRespons
 
 
 async def _search_library(
-    query: str, session_id: str | None, user_id: str | None
+    query: str,
+    session_id: str | None,
+    user_id: str | None,
+    include_graph: bool = False,
 ) -> ToolResponseBase:
     """Search user's library agents, with direct UUID lookup fallback."""
     if not user_id:
@@ -149,6 +154,10 @@ async def _search_library(
             session_id=session_id,
         )
 
+    truncation_notice: str | None = None
+    if include_graph and agents:
+        truncation_notice = await _enrich_agents_with_graph(agents, user_id)
+
     if not agents:
         if not query:
             return NoResultsResponse(
@@ -182,18 +191,97 @@ async def _search_library(
     else:
         title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library for '{query}'"
 
+    message = (
+        "Found agents in the user's library. You can provide a link to view "
+        "an agent at: /library/agents/{agent_id}. Use agent_output to get "
+        "execution results, or run_agent to execute. Let the user know we can "
+        "create a custom agent for them based on their needs."
+    )
+    if truncation_notice:
+        message = f"{message}\n\nNote: {truncation_notice}"
+
     return AgentsFoundResponse(
-        message=(
-            "Found agents in the user's library. You can provide a link to view "
-            "an agent at: /library/agents/{agent_id}. Use agent_output to get "
-            "execution results, or run_agent to execute. Let the user know we can "
-            "create a custom agent for them based on their needs."
-        ),
+        message=message,
         title=title,
         agents=agents,
         count=len(agents),
         session_id=session_id,
     )
+
+
+_MAX_GRAPH_FETCHES = 10
+
+
+_GRAPH_FETCH_TIMEOUT = 15  # seconds
+
+
+async def _enrich_agents_with_graph(
+    agents: list[AgentInfo], user_id: str
+) -> str | None:
+    """Fetch and attach full Graph (nodes + links) to each agent in-place.
+
+    Only the first ``_MAX_GRAPH_FETCHES`` agents with a ``graph_id`` are
+    enriched.  If some agents are skipped, a truncation notice is returned
+    so the caller can surface it to the copilot.
+
+    Graphs are fetched with ``for_export=True`` so that credentials, API keys,
+    and other secrets in ``input_default`` are stripped before the data reaches
+    the LLM context.
+
+    Returns a truncation notice string when some agents were skipped, or
+    ``None`` when all eligible agents were enriched.
+    """
+    with_graph_id = [a for a in agents if a.graph_id]
+    fetchable = with_graph_id[:_MAX_GRAPH_FETCHES]
+    if not fetchable:
+        return None
+
+    gdb = graph_db()
+
+    async def _fetch(agent: AgentInfo) -> None:
+        graph_id = agent.graph_id
+        if not graph_id:
+            return
+        try:
+            graph = await gdb.get_graph(
+                graph_id,
+                version=agent.graph_version,
+                user_id=user_id,
+                for_export=True,
+            )
+            if graph is None:
+                logger.warning("Graph not found for agent %s", graph_id)
+            agent.graph = graph
+        except Exception as e:
+            logger.warning("Failed to fetch graph for agent %s: %s", graph_id, e)
+
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*[_fetch(a) for a in fetchable]),
+            timeout=_GRAPH_FETCH_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "include_graph: timed out after %ds fetching graphs", _GRAPH_FETCH_TIMEOUT
+        )
+
+    skipped = len(with_graph_id) - len(fetchable)
+    if skipped > 0:
+        logger.warning(
+            "include_graph: fetched graphs for %d/%d agents "
+            "(_MAX_GRAPH_FETCHES=%d, %d skipped)",
+            len(fetchable),
+            len(with_graph_id),
+            _MAX_GRAPH_FETCHES,
+            skipped,
+        )
+        return (
+            f"Graph data included for {len(fetchable)} of "
+            f"{len(with_graph_id)} eligible agents (limit: {_MAX_GRAPH_FETCHES}). "
+            f"To fetch graphs for remaining agents, narrow your search to a "
+            f"specific agent by UUID."
+        )
+    return None
 
 
 def _marketplace_agent_to_info(agent: StoreAgent | StoreAgentDetails) -> AgentInfo:

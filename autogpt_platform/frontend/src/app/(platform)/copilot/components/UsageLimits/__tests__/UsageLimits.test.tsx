@@ -31,16 +31,19 @@ function makeUsage({
   dailyLimit = 10000,
   weeklyUsed = 2000,
   weeklyLimit = 50000,
+  tier = "FREE",
 }: {
   dailyUsed?: number;
   dailyLimit?: number;
   weeklyUsed?: number;
   weeklyLimit?: number;
+  tier?: string;
 } = {}) {
   const future = new Date(Date.now() + 3600 * 1000); // 1h from now
   return {
     daily: { used: dailyUsed, limit: dailyLimit, resets_at: future },
     weekly: { used: weeklyUsed, limit: weeklyLimit, resets_at: future },
+    tier,
   };
 }
 
@@ -108,6 +111,16 @@ describe("UsageLimits", () => {
     render(<UsageLimits />);
 
     expect(screen.getByText("100% used")).toBeDefined();
+  });
+
+  it("displays the user tier label", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: makeUsage({ tier: "PRO" }),
+      isLoading: false,
+    });
+    render(<UsageLimits />);
+
+    expect(screen.getByText("Pro plan")).toBeDefined();
   });
 
   it("shows learn more link to credits page", () => {
