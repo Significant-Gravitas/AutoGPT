@@ -280,16 +280,24 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
+      - name: Verify source maps exist in Docker container
+        run: |
+          FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
+          echo "=== Checking NEXT_PUBLIC_SOURCEMAPS in resolved compose ==="
+          grep -i "SOURCEMAPS\|sourcemap" ../docker-compose.resolved.yml || echo "not found in compose"
+          echo "=== Checking .map files inside container ==="
+          docker exec "$FRONTEND_CONTAINER" sh -c 'find /app/.next/static -name "*.map" 2>/dev/null | head -5; find /app/.next/static -name "*.map" 2>/dev/null | wc -l' || echo "exec failed, trying with docker cp"
+
       - name: Copy Next.js build output for coverage source maps
         run: |
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
           MAP_COUNT=$(find .next-static-coverage -name '*.map' | wc -l)
           echo "Copied .next/static from container ($MAP_COUNT source map files)"
-          echo "Sample map files:"
-          find .next-static-coverage -name '*.map' | head -5
-          echo "Directory structure:"
-          find .next-static-coverage -maxdepth 2 -type d
+          if [ "$MAP_COUNT" -eq 0 ]; then
+            echo "WARNING: No source map files found. Listing all files in chunks/:"
+            find .next-static-coverage/chunks -type f | head -20
+          fi
 
       - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile
