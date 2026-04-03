@@ -156,6 +156,12 @@ class CoPilotExecutionEntry(BaseModel):
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
+    organization_id: str | None = None
+    """Active organization for tenant-scoped execution"""
+
+    org_workspace_id: str | None = None
+    """Active workspace for tenant-scoped execution"""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -175,6 +181,8 @@ async def enqueue_copilot_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
+    organization_id: str | None = None,
+    org_workspace_id: str | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -197,6 +205,8 @@ async def enqueue_copilot_turn(
         is_user_message=is_user_message,
         context=context,
         file_ids=file_ids,
+        organization_id=organization_id,
+        org_workspace_id=org_workspace_id,
     )
 
     queue_client = await get_async_copilot_queue()

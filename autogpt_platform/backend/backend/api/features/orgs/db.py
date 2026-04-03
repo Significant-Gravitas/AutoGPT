@@ -8,6 +8,32 @@ from backend.util.exceptions import NotFoundError
 logger = logging.getLogger(__name__)
 
 
+async def get_user_default_org_workspace(
+    user_id: str,
+) -> tuple[str | None, str | None]:
+    """Get the user's personal org ID and its default workspace ID.
+
+    Returns (organization_id, workspace_id). Either may be None if
+    the user has no org (e.g., migration hasn't run yet).
+    """
+    member = await prisma.orgmember.find_first(
+        where={
+            "userId": user_id,
+            "isOwner": True,
+            "Org": {"isPersonal": True},
+        },
+    )
+    if member is None:
+        return None, None
+
+    org_id = member.orgId
+    workspace = await prisma.orgworkspace.find_first(
+        where={"orgId": org_id, "isDefault": True}
+    )
+    ws_id = workspace.id if workspace else None
+    return org_id, ws_id
+
+
 async def create_org(
     name: str,
     slug: str,

@@ -112,6 +112,17 @@ class TestDataCreator:
         self.api_keys: List[Dict[str, Any]] = []
         self.presets: List[Dict[str, Any]] = []
         self.profiles: List[Dict[str, Any]] = []
+        # Org/workspace context per user (populated after migration runs)
+        self._user_org_cache: Dict[str, tuple[str | None, str | None]] = {}
+
+    async def _get_user_org_ws(self, user_id: str) -> tuple[str | None, str | None]:
+        """Get (organization_id, org_workspace_id) for a user, with caching."""
+        if user_id not in self._user_org_cache:
+            from backend.api.features.orgs.db import get_user_default_org_workspace
+
+            org_id, ws_id = await get_user_default_org_workspace(user_id)
+            self._user_org_cache[user_id] = (org_id, ws_id)
+        return self._user_org_cache[user_id]
 
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
@@ -366,8 +377,14 @@ class TestDataCreator:
                 )
 
                 try:
-                    # Use the API function to create graph
-                    created_graph = await create_graph(graph, user["id"])
+                    # Use the API function to create graph with org context
+                    org_id, ws_id = await self._get_user_org_ws(user["id"])
+                    created_graph = await create_graph(
+                        graph,
+                        user["id"],
+                        organization_id=org_id,
+                        org_workspace_id=ws_id,
+                    )
                     graph_dict = created_graph.model_dump()
                     # Ensure userId is included for store submissions
                     graph_dict["userId"] = user["id"]

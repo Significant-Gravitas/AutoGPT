@@ -98,9 +98,13 @@ class ExecutionContext(BaseModel):
     root_execution_id: Optional[str] = None
     parent_execution_id: Optional[str] = None
 
-    # Workspace
+    # Workspace (file storage)
     workspace_id: Optional[str] = None
     session_id: Optional[str] = None
+
+    # Org/workspace tenancy context
+    organization_id: Optional[str] = None
+    org_workspace_id: Optional[str] = None
 
 
 # -------------------------- Models -------------------------- #

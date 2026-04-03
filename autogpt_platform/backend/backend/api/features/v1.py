@@ -1362,6 +1362,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
@@ -1392,6 +1393,8 @@ async def create_graph_execution_schedule(
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,
         user_timezone=user_timezone,
+        organization_id=ctx.org_id,
+        org_workspace_id=ctx.workspace_id,
     )
 
     # Convert the next_run_time back to user timezone for display
