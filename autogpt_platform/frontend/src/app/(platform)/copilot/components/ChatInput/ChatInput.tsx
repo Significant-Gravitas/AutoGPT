@@ -46,7 +46,7 @@ export function ChatInput({
   onDroppedFilesConsumed,
 }: Props) {
   const { copilotMode, setCopilotMode } = useCopilotUIStore();
-  const isFastModeEnabled = useGetFlag(Flag.COPILOT_FAST_MODE_OPTION);
+  const isFastModeEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
   const [files, setFiles] = useState<File[]>([]);
 
   // Merge files dropped onto the chat window into internal state.
