@@ -131,6 +131,11 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
     "Try breaking your request into smaller parts."
 )
 
+# Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
+# arrives for this many seconds. This catches hung tool calls (e.g. WebSearch
+# hanging on a search provider that never responds).
+_IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
+
 # Patterns that indicate the prompt/request exceeds the model's context limit.
 # Matched case-insensitively against the full exception chain.
 _PROMPT_TOO_LONG_PATTERNS: tuple[str, ...] = (
@@ -1273,6 +1278,8 @@ async def _run_stream_attempt(
             await client.query(state.query_message, session_id=ctx.session_id)
             state.transcript_builder.append_user(content=ctx.current_message)
 
+        _last_real_msg_time = time.monotonic()
+
         async for sdk_msg in _iter_sdk_messages(client):
             # Heartbeat sentinel — refresh lock and keep SSE alive
             if sdk_msg is None:
@@ -1280,7 +1287,30 @@ async def _run_stream_attempt(
                 for ev in ctx.compaction.emit_start_if_ready():
                     yield ev
                 yield StreamHeartbeat()
+
+                # Idle timeout: if no real SDK message for too long, a tool
+                # call is likely hung (e.g. WebSearch provider not responding).
+                idle_seconds = time.monotonic() - _last_real_msg_time
+                if idle_seconds >= _IDLE_TIMEOUT_SECONDS:
+                    logger.error(
+                        "%s Idle timeout after %.0fs with no SDK message — "
+                        "aborting stream (likely hung tool call)",
+                        ctx.log_prefix,
+                        idle_seconds,
+                    )
+                    raise _HandledStreamError(
+                        f"Idle timeout after {idle_seconds:.0f}s",
+                        error_msg=(
+                            "A tool call appears to be stuck "
+                            "(no response for 10 minutes). "
+                            "Please try again."
+                        ),
+                        code="idle_timeout",
+                        retryable=True,
+                    )
                 continue
+
+            _last_real_msg_time = time.monotonic()
 
             logger.info(
                 "%s Received: %s %s (unresolved=%d, current=%d, resolved=%d)",
