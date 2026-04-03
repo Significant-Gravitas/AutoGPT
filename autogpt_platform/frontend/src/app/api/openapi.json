@@ -5348,11 +5348,11 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/enabled": {
+    "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Is onboarding enabled",
-        "operationId": "getV1Is onboarding enabled",
+        "summary": "Check if onboarding is completed",
+        "operationId": "getV1Check if onboarding is completed",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5366,6 +5366,41 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/profile": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Submit onboarding profile",
+        "operationId": "postV1Submit onboarding profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -11410,18 +11445,40 @@
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },
-      "OnboardingStatusResponse": {
+      "OnboardingProfileRequest": {
         "properties": {
-          "is_onboarding_enabled": {
-            "type": "boolean",
-            "title": "Is Onboarding Enabled"
+          "user_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Name"
           },
-          "is_chat_enabled": { "type": "boolean", "title": "Is Chat Enabled" }
+          "user_role": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Role"
+          },
+          "pain_points": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Pain Points"
+          }
         },
         "type": "object",
-        "required": ["is_onboarding_enabled", "is_chat_enabled"],
+        "required": ["user_name", "user_role"],
+        "title": "OnboardingProfileRequest",
+        "description": "Request body for onboarding profile submission."
+      },
+      "OnboardingStatusResponse": {
+        "properties": {
+          "is_completed": { "type": "boolean", "title": "Is Completed" }
+        },
+        "type": "object",
+        "required": ["is_completed"],
         "title": "OnboardingStatusResponse",
-        "description": "Response for onboarding status check."
+        "description": "Response for onboarding completion check."
       },
       "OnboardingStep": {
         "type": "string",
