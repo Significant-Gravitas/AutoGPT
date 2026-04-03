@@ -40,6 +40,9 @@ _MAX_PAGES = 100
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
 
+SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
+PROMPTS_PER_THEME = 5
+
 
 def _mask_email(email: str) -> str:
     """Mask an email for safe logging: 'alice@example.com' -> 'a***e@example.com'."""
@@ -332,6 +335,11 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
+- suggested_prompts (object with keys "Learn", "Create", "Automate", "Organize"): for each key, \
+provide a list of 5 short action prompts (each under 20 words) that would help this person. \
+"Learn" = questions about AutoGPT features; "Create" = content/document generation tasks; \
+"Automate" = recurring workflow automation ideas; "Organize" = structuring/prioritizing tasks. \
+Should be specific to their industry, role, and pain points; actionable and conversational in tone.
 
 Form data:
 """
@@ -378,6 +386,29 @@ async def extract_business_understanding(
 
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
+
+    # Validate suggested_prompts: themed dict, filter >20 words, cap at 5 per theme
+    raw_prompts = cleaned.get("suggested_prompts", {})
+    if isinstance(raw_prompts, dict):
+        themed: dict[str, list[str]] = {}
+        for theme in SUGGESTION_THEMES:
+            theme_prompts = raw_prompts.get(theme, [])
+            if not isinstance(theme_prompts, list):
+                continue
+            valid = [
+                s
+                for p in theme_prompts
+                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
+            ]
+            if valid:
+                themed[theme] = valid[:PROMPTS_PER_THEME]
+        if themed:
+            cleaned["suggested_prompts"] = themed
+        else:
+            cleaned.pop("suggested_prompts", None)
+    else:
+        cleaned.pop("suggested_prompts", None)
+
     return BusinessUnderstandingInput(**cleaned)
 
 

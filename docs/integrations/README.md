@@ -181,6 +181,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Retrieve key-value information for the current user |
+| [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
 ## Text Processing
@@ -342,7 +343,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
 | [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
-| [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads messages from a Discord channel using a bot token |
+| [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |

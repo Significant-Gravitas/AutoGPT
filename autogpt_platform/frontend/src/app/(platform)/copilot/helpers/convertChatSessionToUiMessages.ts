@@ -6,6 +6,7 @@ interface SessionChatMessage {
   content: string | null;
   tool_call_id: string | null;
   tool_calls: unknown[] | null;
+  duration_ms: number | null;
 }
 
 function coerceSessionChatMessages(
@@ -34,6 +35,8 @@ function coerceSessionChatMessages(
               ? null
               : String(msg.tool_call_id),
         tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
+        duration_ms:
+          typeof msg.duration_ms === "number" ? msg.duration_ms : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -102,7 +105,10 @@ export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
   options?: { isComplete?: boolean },
-): UIMessage<unknown, UIDataTypes, UITools>[] {
+): {
+  messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  durations: Map<string, number>;
+} {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
 
@@ -114,6 +120,7 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
+  const durations = new Map<string, number>();
 
   messages.forEach((msg, index) => {
     if (msg.role === "tool") return;
@@ -186,15 +193,24 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (msg.role === "assistant" && prevUI && prevUI.role === "assistant") {
       prevUI.parts.push(...parts);
+      // Capture duration on merged message (last assistant msg wins)
+      if (msg.duration_ms != null) {
+        durations.set(prevUI.id, msg.duration_ms);
+      }
       return;
     }
 
+    const msgId = `${sessionId}-${index}`;
     uiMessages.push({
-      id: `${sessionId}-${index}`,
+      id: msgId,
       role: msg.role,
       parts,
     });
+
+    if (msg.role === "assistant" && msg.duration_ms != null) {
+      durations.set(msgId, msg.duration_ms);
+    }
   });
 
-  return uiMessages;
+  return { messages: uiMessages, durations };
 }

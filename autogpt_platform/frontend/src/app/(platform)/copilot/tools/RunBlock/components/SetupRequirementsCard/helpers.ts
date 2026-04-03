@@ -41,13 +41,28 @@ export function coerceCredentialFields(rawMissingCredentials: unknown): {
       ? cred.scopes.filter((s): s is string => typeof s === "string")
       : undefined;
 
-    const schema = {
+    const discriminator =
+      typeof cred.discriminator === "string" ? cred.discriminator : undefined;
+    const discriminatorValues = Array.isArray(cred.discriminator_values)
+      ? cred.discriminator_values.filter(
+          (v): v is string => typeof v === "string",
+        )
+      : undefined;
+
+    const schema: Record<string, unknown> = {
       type: "object" as const,
       properties: {},
       credentials_provider: [provider],
       credentials_types: credentialTypes,
       credentials_scopes: scopes,
     };
+
+    if (discriminator) {
+      schema.discriminator = discriminator;
+    }
+    if (discriminatorValues && discriminatorValues.length > 0) {
+      schema.discriminator_values = discriminatorValues;
+    }
 
     credentialFields.push([key, schema]);
     requiredCredentials.add(key);

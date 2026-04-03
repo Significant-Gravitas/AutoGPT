@@ -62,10 +62,15 @@ class EditAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_id: str = "",
+        agent_json: dict[str, Any] | None = None,
+        save: bool = True,
+        library_agent_ids: list[str] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_id = kwargs.get("agent_id", "").strip()
-        agent_json: dict[str, Any] | None = kwargs.get("agent_json")
+        agent_id = agent_id.strip()
+        if library_agent_ids is None:
+            library_agent_ids = []
         session_id = session.session_id if session else None
 
         if not agent_id:
@@ -83,9 +88,6 @@ class EditAgentTool(BaseTool):
                 error="missing_agent_json",
                 session_id=session_id,
             )
-
-        save = kwargs.get("save", True)
-        library_agent_ids = kwargs.get("library_agent_ids", [])
 
         nodes = agent_json.get("nodes", [])
         if not nodes:

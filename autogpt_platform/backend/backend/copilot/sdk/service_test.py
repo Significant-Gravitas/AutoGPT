@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .service import _prepare_file_attachments, _resolve_sdk_model
+from .service import (
+    _is_sdk_disconnect_error,
+    _prepare_file_attachments,
+    _resolve_sdk_model,
+    _safe_close_sdk_client,
+)
 
 
 @dataclass
@@ -499,3 +504,111 @@ class TestResolveSdkModel:
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
+
+
+# ---------------------------------------------------------------------------
+# _is_sdk_disconnect_error — classify client disconnect cleanup errors
+# ---------------------------------------------------------------------------
+
+
+class TestIsSdkDisconnectError:
+    """Tests for _is_sdk_disconnect_error — identifies expected SDK cleanup errors."""
+
+    def test_cancel_scope_runtime_error(self):
+        """RuntimeError about cancel scope in wrong task is a disconnect error."""
+        exc = RuntimeError(
+            "Attempted to exit cancel scope in a different task than it was entered in"
+        )
+        assert _is_sdk_disconnect_error(exc) is True
+
+    def test_context_var_value_error(self):
+        """ValueError about ContextVar token mismatch is a disconnect error."""
+        exc = ValueError(
+            "<Token var=<ContextVar name='current_context'>> "
+            "was created in a different Context"
+        )
+        assert _is_sdk_disconnect_error(exc) is True
+
+    def test_unrelated_runtime_error(self):
+        """Unrelated RuntimeError should NOT be classified as disconnect error."""
+        exc = RuntimeError("something else went wrong")
+        assert _is_sdk_disconnect_error(exc) is False
+
+    def test_unrelated_value_error(self):
+        """Unrelated ValueError should NOT be classified as disconnect error."""
+        exc = ValueError("invalid argument")
+        assert _is_sdk_disconnect_error(exc) is False
+
+    def test_other_exception_types(self):
+        """Non-RuntimeError/ValueError should NOT be classified as disconnect error."""
+        assert _is_sdk_disconnect_error(TypeError("bad type")) is False
+        assert _is_sdk_disconnect_error(OSError("network down")) is False
+        assert _is_sdk_disconnect_error(asyncio.CancelledError()) is False
+
+
+# ---------------------------------------------------------------------------
+# _safe_close_sdk_client — suppress cleanup errors during disconnect
+# ---------------------------------------------------------------------------
+
+
+class TestSafeCloseSdkClient:
+    """Tests for _safe_close_sdk_client — suppresses expected SDK cleanup errors."""
+
+    @pytest.mark.asyncio
+    async def test_clean_exit(self):
+        """Normal __aexit__ (no error) should succeed silently."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(return_value=None)
+        await _safe_close_sdk_client(client, "[test]")
+        client.__aexit__.assert_awaited_once_with(None, None, None)
+
+    @pytest.mark.asyncio
+    async def test_cancel_scope_runtime_error_suppressed(self):
+        """RuntimeError from cancel scope mismatch should be suppressed."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(
+            side_effect=RuntimeError(
+                "Attempted to exit cancel scope in a different task"
+            )
+        )
+        # Should NOT raise
+        await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_context_var_value_error_suppressed(self):
+        """ValueError from ContextVar token mismatch should be suppressed."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(
+            side_effect=ValueError(
+                "<Token var=<ContextVar name='current_context'>> "
+                "was created in a different Context"
+            )
+        )
+        # Should NOT raise
+        await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_suppressed_with_error_log(self):
+        """Unexpected exceptions should be caught (not propagated) but logged at error."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=OSError("unexpected"))
+        # Should NOT raise — unexpected errors are also suppressed to
+        # avoid crashing the generator during teardown.  Logged at error
+        # level so Sentry captures them via its logging integration.
+        await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unrelated_runtime_error_propagates(self):
+        """Non-cancel-scope RuntimeError should propagate (not suppressed)."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=RuntimeError("something unrelated"))
+        with pytest.raises(RuntimeError, match="something unrelated"):
+            await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unrelated_value_error_propagates(self):
+        """Non-disconnect ValueError should propagate (not suppressed)."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=ValueError("invalid argument"))
+        with pytest.raises(ValueError, match="invalid argument"):
+            await _safe_close_sdk_client(client, "[test]")

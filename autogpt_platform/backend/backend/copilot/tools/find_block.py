@@ -86,6 +86,8 @@ class FindBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
+        include_schemas: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         """Search for blocks matching the query.
@@ -94,14 +96,14 @@ class FindBlockTool(BaseTool):
             user_id: User ID (required)
             session: Chat session
             query: Search query
+            include_schemas: Whether to include block schemas in results
 
         Returns:
             BlockListResponse: List of matching blocks
             NoResultsResponse: No blocks found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
-        include_schemas = kwargs.get("include_schemas", False)
+        query = (query or "").strip()
         session_id = session.session_id
 
         if not query:
