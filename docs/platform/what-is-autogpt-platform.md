@@ -56,9 +56,9 @@ Blocks represent actions and are the building blocks of your workflows, includin
 
 You can learn more under: [Build your own Blocks](new_blocks.md)
 
-## Available Language Models
+## What Models does AutoGPT Support?
 
-The platform provides access to models from a wide range of model developers, ranked roughly by industry adoption:
+AutoGPT provides access to models from a wide range of Large Language Models. Below are a selection of the supported model developers:
 
 * [Google DeepMind](https://deepmind.google/) — Gemini 3, 2.5, and 2.0
 * [Anthropic](https://www.anthropic.com/) — Claude Opus, Sonnet, and Haiku
