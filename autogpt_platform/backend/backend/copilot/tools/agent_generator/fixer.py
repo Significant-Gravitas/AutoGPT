@@ -1755,6 +1755,12 @@ class AgentFixer:
         agent = self.fix_node_x_coordinates(agent, node_lookup=node_lookup)
         agent = self.fix_getcurrentdate_offset(agent)
 
+        # Apply OrchestratorBlock defaults BEFORE fix_ai_model_parameter so that
+        # the orchestrator-specific model (claude-opus-4-6) is set first and
+        # fix_ai_model_parameter sees it as a valid allowed model instead of
+        # overwriting it with the generic default (gpt-4o).
+        agent = self.fix_orchestrator_blocks(agent)
+
         # Apply fixes that require blocks information
         if blocks:
             agent = self.fix_invalid_nested_sink_links(
@@ -1771,9 +1777,6 @@ class AgentFixer:
 
         # Apply fixes for MCPToolBlock nodes
         agent = self.fix_mcp_tool_blocks(agent)
-
-        # Apply fixes for OrchestratorBlock nodes (agent-mode defaults)
-        agent = self.fix_orchestrator_blocks(agent)
 
         # Apply fixes for AgentExecutorBlock nodes (sub-agents)
         if library_agents:
