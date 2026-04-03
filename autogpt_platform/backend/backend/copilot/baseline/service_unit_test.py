@@ -5,8 +5,8 @@ without requiring API keys, database connections, or network access.
 """
 
 from backend.copilot.baseline.service import (
-    _BaselineStreamState,
     _baseline_conversation_updater,
+    _BaselineStreamState,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
@@ -130,9 +130,7 @@ class TestBaselineConversationUpdater:
             completion_tokens=0,
         )
         tool_results = [
-            ToolCallResult(
-                tool_call_id="tc_1", tool_name="run", content="done"
-            ),
+            ToolCallResult(tool_call_id="tc_1", tool_name="run", content="done"),
         ]
 
         _baseline_conversation_updater(
@@ -186,12 +184,8 @@ class TestBaselineConversationUpdater:
             completion_tokens=0,
         )
         tool_results = [
-            ToolCallResult(
-                tool_call_id="tc_1", tool_name="tool_a", content="result_a"
-            ),
-            ToolCallResult(
-                tool_call_id="tc_2", tool_name="tool_b", content="result_b"
-            ),
+            ToolCallResult(tool_call_id="tc_1", tool_name="tool_a", content="result_a"),
+            ToolCallResult(tool_call_id="tc_2", tool_name="tool_b", content="result_b"),
         ]
 
         _baseline_conversation_updater(
@@ -224,9 +218,7 @@ class TestBaselineConversationUpdater:
             completion_tokens=0,
         )
         tool_results = [
-            ToolCallResult(
-                tool_call_id="tc_1", tool_name="tool_x", content="ok"
-            ),
+            ToolCallResult(tool_call_id="tc_1", tool_name="tool_x", content="ok"),
         ]
 
         _baseline_conversation_updater(
