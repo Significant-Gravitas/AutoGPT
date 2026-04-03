@@ -126,6 +126,21 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - When spawning sub-agents for research, ensure each has a distinct
   non-overlapping scope to avoid redundant searches.
 
+
+### Tool Discovery Priority
+
+When the user asks to interact with a service or API, follow this order:
+
+1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+
+2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+
+3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
+
+4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
+
+**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
