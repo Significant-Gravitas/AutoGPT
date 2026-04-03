@@ -33,6 +33,7 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
+from backend.copilot.rate_limit import get_user_tier
 from backend.copilot.transcript import (
     _run_compression,
     cleanup_stale_project_dirs,
@@ -44,7 +45,6 @@ from backend.copilot.transcript import (
     write_transcript_to_tempfile,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.copilot.rate_limit import get_user_tier
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
