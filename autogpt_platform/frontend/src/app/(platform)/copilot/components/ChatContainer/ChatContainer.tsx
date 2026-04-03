@@ -23,6 +23,9 @@ export interface ChatContainerProps {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
   isUploadingFiles?: boolean;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
@@ -44,6 +47,9 @@ export const ChatContainer = ({
   onSend,
   onStop,
   isUploadingFiles,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
   droppedFiles,
   onDroppedFilesConsumed,
   historicalDurations,
@@ -83,6 +89,9 @@ export const ChatContainer = ({
                 error={error}
                 isLoading={isLoadingSession}
                 sessionID={sessionId}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 historicalDurations={historicalDurations}
               />

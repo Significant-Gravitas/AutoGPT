@@ -80,6 +80,10 @@ export function CopilotPage() {
     isUploadingFiles,
     isUserLoading,
     isLoggedIn,
+    // Pagination
+    hasMoreMessages,
+    isLoadingMore,
+    loadMore,
     // Mobile drawer
     isMobile,
     isDrawerOpen,
@@ -186,6 +190,9 @@ export function CopilotPage() {
             onSend={onSend}
             onStop={stop}
             isUploadingFiles={isUploadingFiles}
+            hasMoreMessages={hasMoreMessages}
+            isLoadingMore={isLoadingMore}
+            onLoadMore={loadMore}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
             historicalDurations={historicalDurations}
