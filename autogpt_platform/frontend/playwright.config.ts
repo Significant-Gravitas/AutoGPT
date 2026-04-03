@@ -31,11 +31,15 @@ export default defineConfig({
         name: "E2E Coverage Report",
         outputFile: "./coverage/e2e/report.html",
         coverage: {
+          logging: "debug",
           reports: ["cobertura", "text"],
           outputDir: "./coverage/e2e",
           entryFilter: (entry: { url: string }) =>
             entry.url.includes("/_next/static/") &&
             !entry.url.includes("node_modules"),
+          sourceFilter: (sourcePath: string) =>
+            sourcePath.includes("src/") &&
+            !sourcePath.includes("node_modules"),
         },
       },
     ],
