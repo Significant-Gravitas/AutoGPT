@@ -14,9 +14,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { formatTimeAgo } from "@/lib/utils/time";
-import Link from "next/link";
-import { FileArrowDownIcon, PlusIcon } from "@phosphor-icons/react";
+import { PlusIcon } from "@phosphor-icons/react";
 import { User } from "@supabase/supabase-js";
+import Link from "next/link";
 import { useAgentInfo } from "./useAgentInfo";
 
 interface AgentInfoProps {
@@ -180,52 +180,57 @@ export const AgentInfo = ({
             {shortDescription}
           </div>
 
-          {/* Buttons + Runs */}
-          <div className="mt-6 flex w-full items-center justify-between lg:mt-8">
-            <div className="flex gap-3">
-              {user && (
-                <Button
-                  variant="primary"
-                  className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
-                  data-testid="agent-add-library-button"
-                  disabled={isAddingAgentToLibrary}
-                  loading={isAddingAgentToLibrary}
-                  leftIcon={
-                    !isAddingAgentToLibrary && !isAgentAddedToLibrary ? (
-                      <PlusIcon
-                        size={16}
-                        weight="bold"
-                        className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
-                      />
-                    ) : undefined
-                  }
-                  onClick={() =>
-                    handleLibraryAction({
-                      isAddingAgentFirstTime: !isAgentAddedToLibrary,
-                    })
-                  }
-                >
-                  {isAddingAgentToLibrary
-                    ? "Adding..."
-                    : isAgentAddedToLibrary
-                      ? "See runs"
-                      : "Add to library"}
-                </Button>
-              )}
+          {/* Buttons */}
+          <div className="mt-6 flex w-full items-center lg:mt-8">
+            {user && (
+              <Button
+                variant="primary"
+                className="group/add min-w-36 border-violet-600 bg-violet-600 transition-shadow duration-300 hover:border-violet-500 hover:bg-violet-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.4)]"
+                data-testid="agent-add-library-button"
+                disabled={isAddingAgentToLibrary}
+                loading={isAddingAgentToLibrary}
+                leftIcon={
+                  !isAddingAgentToLibrary && !isAgentAddedToLibrary ? (
+                    <PlusIcon
+                      size={16}
+                      weight="bold"
+                      className="transition-transform duration-300 group-hover/add:rotate-90 group-hover/add:scale-125"
+                    />
+                  ) : undefined
+                }
+                onClick={() =>
+                  handleLibraryAction({
+                    isAddingAgentFirstTime: !isAgentAddedToLibrary,
+                  })
+                }
+              >
+                {isAddingAgentToLibrary
+                  ? "Adding..."
+                  : isAgentAddedToLibrary
+                    ? "See runs"
+                    : "Add to library"}
+              </Button>
+            )}
+          </div>
+
+          {/* Download */}
+          <div className="mt-3 flex w-full items-center justify-between gap-2">
+            <div className="flex items-center gap-0">
+              <Text variant="body" className="text-neutral-500">
+                Want to use this agent locally?
+              </Text>
               <Button
                 variant="ghost"
+                size="small"
                 loading={isDownloadingAgent}
                 onClick={() => handleDownload(agentId, name)}
                 data-testid="agent-download-button"
+                className="underline"
               >
-                {!isDownloadingAgent && <FileArrowDownIcon size={18} />}
-                {isDownloadingAgent ? "Downloading..." : "Download"}
+                {isDownloadingAgent ? "Downloading..." : "Download here"}
               </Button>
             </div>
-            <Text
-              variant="small"
-              className="mr-4 hidden whitespace-nowrap text-zinc-500 lg:block"
-            >
+            <Text variant="body" className="shrink-0 whitespace-nowrap">
               {runs === 0
                 ? "No runs"
                 : `${runs.toLocaleString()} run${runs > 1 ? "s" : ""}`}

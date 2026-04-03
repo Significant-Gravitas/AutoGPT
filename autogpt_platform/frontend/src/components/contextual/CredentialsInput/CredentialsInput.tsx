@@ -81,7 +81,7 @@ export function CredentialsInput({
     isHostScopedCredentialsModalOpen,
     isCredentialTypeSelectorOpen,
     isOAuth2FlowInProgress,
-    oAuthPopupController,
+    cancelOAuthFlow,
     actionButtonText,
     setAPICredentialsModalOpen,
     setUserPasswordCredentialsModalOpen,
@@ -158,7 +158,7 @@ export function CredentialsInput({
           {supportsOAuth2 && (
             <OAuthFlowWaitingModal
               open={isOAuth2FlowInProgress}
-              onClose={() => oAuthPopupController?.abort("canceled")}
+              onClose={cancelOAuthFlow}
               providerName={providerName}
             />
           )}

@@ -57,10 +57,9 @@ class RunMCPToolTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Connect to an MCP (Model Context Protocol) server to discover and execute its tools. "
-            "Two-step: (1) call with server_url to list available tools, "
-            "(2) call again with server_url + tool_name + tool_arguments to execute. "
-            "Call get_mcp_guide for known server URLs and auth details."
+            "Discover and execute MCP server tools. "
+            "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
+            "Call get_mcp_guide first for server URLs and auth."
         )
 
     @property
@@ -70,24 +69,15 @@ class RunMCPToolTool(BaseTool):
             "properties": {
                 "server_url": {
                     "type": "string",
-                    "description": (
-                        "URL of the MCP server (Streamable HTTP endpoint), "
-                        "e.g. https://mcp.example.com/mcp"
-                    ),
+                    "description": "MCP server URL (Streamable HTTP endpoint).",
                 },
                 "tool_name": {
                     "type": "string",
-                    "description": (
-                        "Name of the MCP tool to execute. "
-                        "Omit on first call to discover available tools."
-                    ),
+                    "description": "Tool to execute. Omit to discover available tools.",
                 },
                 "tool_arguments": {
                     "type": "object",
-                    "description": (
-                        "Arguments to pass to the selected tool. "
-                        "Must match the tool's input schema returned during discovery."
-                    ),
+                    "description": "Arguments matching the tool's input schema.",
                 },
             },
             "required": ["server_url"],
@@ -101,21 +91,40 @@ class RunMCPToolTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        server_url: str = "",
+        tool_name: str = "",
+        tool_arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        server_url: str = (kwargs.get("server_url") or "").strip()
-        tool_name: str = (kwargs.get("tool_name") or "").strip()
-        raw_tool_arguments = kwargs.get("tool_arguments")
-        tool_arguments: dict[str, Any] = (
-            raw_tool_arguments if isinstance(raw_tool_arguments, dict) else {}
-        )
+        server_url = server_url.strip()
+        tool_name = tool_name.strip()
         session_id = session.session_id
 
-        if raw_tool_arguments is not None and not isinstance(raw_tool_arguments, dict):
+        # Session-level dry_run prevents real MCP tool execution.
+        # Discovery (no tool_name) is still allowed so the agent can inspect
+        # available tools, but actual execution is blocked.
+        if session.dry_run and tool_name:
+            return MCPToolOutputResponse(
+                message=(
+                    f"[dry-run] MCP tool '{tool_name}' on "
+                    f"{server_host(server_url)} was not executed "
+                    "because the session is in dry-run mode."
+                ),
+                server_url=server_url,
+                tool_name=tool_name,
+                result=None,
+                success=True,
+                session_id=session_id,
+            )
+
+        if tool_arguments is not None and not isinstance(tool_arguments, dict):
             return ErrorResponse(
                 message="tool_arguments must be a JSON object.",
                 session_id=session_id,
             )
+        resolved_tool_arguments: dict[str, Any] = (
+            tool_arguments if isinstance(tool_arguments, dict) else {}
+        )
 
         if not server_url:
             return ErrorResponse(
@@ -177,7 +186,7 @@ class RunMCPToolTool(BaseTool):
             else:
                 # Stage 2: Execute the selected tool
                 return await self._execute_tool(
-                    client, server_url, tool_name, tool_arguments, session_id
+                    client, server_url, tool_name, resolved_tool_arguments, session_id
                 )
 
         except HTTPClientError as e:

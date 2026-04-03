@@ -38,11 +38,7 @@ class SearchDocsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Search the AutoGPT platform documentation for information about "
-            "how to use the platform, build agents, configure blocks, and more. "
-            "Returns relevant documentation sections. Use get_doc_page to read full content."
-        )
+        return "Search platform documentation by keyword. Use get_doc_page to read full results."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -51,10 +47,7 @@ class SearchDocsTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": (
-                        "Search query to find relevant documentation. "
-                        "Use natural language to describe what you're looking for."
-                    ),
+                    "description": "Documentation search query.",
                 },
             },
             "required": ["query"],
@@ -92,6 +85,7 @@ class SearchDocsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         """Search documentation and return relevant sections.
@@ -106,7 +100,7 @@ class SearchDocsTool(BaseTool):
             NoResultsResponse: No results found
             ErrorResponse: Error message
         """
-        query = kwargs.get("query", "").strip()
+        query = query.strip()
         session_id = session.session_id if session else None
 
         if not query:

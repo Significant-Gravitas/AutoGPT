@@ -15,7 +15,7 @@
     "types": "tsc --noEmit",
     "test": "NEXT_PUBLIC_PW_TEST=true next build --turbo && playwright test",
     "test-ui": "NEXT_PUBLIC_PW_TEST=true next build --turbo && playwright test --ui",
-    "test:unit": "vitest run",
+    "test:unit": "vitest run --coverage",
     "test:unit:watch": "vitest",
     "test:no-build": "playwright test",
     "gentests": "playwright codegen http://localhost:3000",
@@ -73,7 +73,7 @@
     "@vercel/analytics": "1.5.0",
     "@vercel/speed-insights": "1.2.0",
     "@xyflow/react": "12.9.2",
-    "ai": "6.0.59",
+    "ai": "6.0.134",
     "boring-avatars": "1.11.2",
     "canvas-confetti": "1.9.4",
     "class-variance-authority": "0.7.1",
@@ -171,6 +171,7 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.9.3",
     "vite-tsconfig-paths": "6.0.4",
+    "@vitest/coverage-v8": "4.0.17",
     "vitest": "4.0.17"
   },
   "msw": {

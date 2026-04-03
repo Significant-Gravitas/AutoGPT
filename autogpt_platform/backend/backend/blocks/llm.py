@@ -49,6 +49,9 @@ settings = Settings()
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter(autoescape=False)
 
+# HTTP status codes for user-caused errors that should not be reported to Sentry.
+USER_ERROR_STATUS_CODES = (401, 403, 429)
+
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
@@ -101,6 +104,18 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
+
+    @classmethod
+    def _missing_(cls, value: object) -> "LlmModel | None":
+        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
+        if isinstance(value, str) and "/" in value:
+            stripped = value.split("/", 1)[1]
+            try:
+                return cls(stripped)
+            except ValueError:
+                return None
+        return None
+
     # OpenAI models
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
@@ -709,6 +724,9 @@ def convert_openai_tool_fmt_to_anthropic(
 def extract_openai_reasoning(response) -> str | None:
     """Extract reasoning from OpenAI-compatible response if available."""
     """Note: This will likely not working since the reasoning is not present in another Response API"""
+    if not response.choices:
+        logger.warning("LLM response has empty choices in extract_openai_reasoning")
+        return None
     reasoning = None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
@@ -724,6 +742,9 @@ def extract_openai_reasoning(response) -> str | None:
 
 def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
     """Extract tool calls from OpenAI-compatible response."""
+    if not response.choices:
+        logger.warning("LLM response has empty choices in extract_openai_tool_calls")
+        return None
     if response.choices[0].message.tool_calls:
         return [
             ToolContentBlock(
@@ -795,6 +816,19 @@ async def llm_call(
                 f"Proceeding with {result.token_count} tokens."
             )
         prompt = result.messages
+
+    # Sanitize unpaired surrogates in message content to prevent
+    # UnicodeEncodeError when httpx encodes the JSON request body.
+    for msg in prompt:
+        content = msg.get("content")
+        if isinstance(content, str):
+            try:
+                content.encode("utf-8")
+            except UnicodeEncodeError:
+                logger.warning("Sanitized unpaired surrogates in LLM prompt content")
+                msg["content"] = content.encode("utf-8", errors="surrogatepass").decode(
+                    "utf-8", errors="replace"
+                )
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
@@ -878,65 +912,60 @@ async def llm_call(
         client = anthropic.AsyncAnthropic(
             api_key=credentials.api_key.get_secret_value()
         )
-        try:
-            resp = await client.messages.create(
-                model=llm_model.value,
-                system=sysprompt,
-                messages=messages,
-                max_tokens=max_tokens,
-                tools=an_tools,
-                timeout=600,
-            )
+        resp = await client.messages.create(
+            model=llm_model.value,
+            system=sysprompt,
+            messages=messages,
+            max_tokens=max_tokens,
+            tools=an_tools,
+            timeout=600,
+        )
 
-            if not resp.content:
-                raise ValueError("No content returned from Anthropic.")
+        if not resp.content:
+            raise ValueError("No content returned from Anthropic.")
 
-            tool_calls = None
-            for content_block in resp.content:
-                # Antropic is different to openai, need to iterate through
-                # the content blocks to find the tool calls
-                if content_block.type == "tool_use":
-                    if tool_calls is None:
-                        tool_calls = []
-                    tool_calls.append(
-                        ToolContentBlock(
-                            id=content_block.id,
-                            type=content_block.type,
-                            function=ToolCall(
-                                name=content_block.name,
-                                arguments=json.dumps(content_block.input),
-                            ),
-                        )
+        tool_calls = None
+        for content_block in resp.content:
+            # Antropic is different to openai, need to iterate through
+            # the content blocks to find the tool calls
+            if content_block.type == "tool_use":
+                if tool_calls is None:
+                    tool_calls = []
+                tool_calls.append(
+                    ToolContentBlock(
+                        id=content_block.id,
+                        type=content_block.type,
+                        function=ToolCall(
+                            name=content_block.name,
+                            arguments=json.dumps(content_block.input),
+                        ),
                     )
-
-            if not tool_calls and resp.stop_reason == "tool_use":
-                logger.warning(
-                    f"Tool use stop reason but no tool calls found in content. {resp}"
                 )
 
-            reasoning = None
-            for content_block in resp.content:
-                if hasattr(content_block, "type") and content_block.type == "thinking":
-                    reasoning = content_block.thinking
-                    break
-
-            return LLMResponse(
-                raw_response=resp,
-                prompt=prompt,
-                response=(
-                    resp.content[0].name
-                    if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
-                    else getattr(resp.content[0], "text", "")
-                ),
-                tool_calls=tool_calls,
-                prompt_tokens=resp.usage.input_tokens,
-                completion_tokens=resp.usage.output_tokens,
-                reasoning=reasoning,
+        if not tool_calls and resp.stop_reason == "tool_use":
+            logger.warning(
+                f"Tool use stop reason but no tool calls found in content. {resp}"
             )
-        except anthropic.APIError as e:
-            error_message = f"Anthropic API error: {str(e)}"
-            logger.error(error_message)
-            raise ValueError(error_message)
+
+        reasoning = None
+        for content_block in resp.content:
+            if hasattr(content_block, "type") and content_block.type == "thinking":
+                reasoning = content_block.thinking
+                break
+
+        return LLMResponse(
+            raw_response=resp,
+            prompt=prompt,
+            response=(
+                resp.content[0].name
+                if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
+                else getattr(resp.content[0], "text", "")
+            ),
+            tool_calls=tool_calls,
+            prompt_tokens=resp.usage.input_tokens,
+            completion_tokens=resp.usage.output_tokens,
+            reasoning=reasoning,
+        )
     elif provider == "groq":
         if tools:
             raise ValueError("Groq does not support tools.")
@@ -949,6 +978,8 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
         )
+        if not response.choices:
+            raise ValueError("Groq returned empty choices in response")
         return LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
@@ -1008,12 +1039,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls_param,
         )
 
-        # If there's no response, raise an error
         if not response.choices:
-            if response:
-                raise ValueError(f"OpenRouter error: {response}")
-            else:
-                raise ValueError("No response from OpenRouter.")
+            raise ValueError(f"OpenRouter returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1050,12 +1077,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls_param,
         )
 
-        # If there's no response, raise an error
         if not response.choices:
-            if response:
-                raise ValueError(f"Llama API error: {response}")
-            else:
-                raise ValueError("No response from Llama API.")
+            raise ValueError(f"Llama API returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1085,6 +1108,8 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
         )
+        if not completion.choices:
+            raise ValueError("AI/ML API returned empty choices in response")
 
         return LLMResponse(
             raw_response=completion.choices[0].message,
@@ -1120,6 +1145,9 @@ async def llm_call(
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
         )
+
+        if not response.choices:
+            raise ValueError(f"v0 API returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1449,7 +1477,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     yield "prompt", self.prompt
                     return
             except Exception as e:
-                logger.exception(f"Error calling LLM: {e}")
+                is_user_error = (
+                    isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
+                    and e.status_code in USER_ERROR_STATUS_CODES
+                )
+                if is_user_error:
+                    logger.warning(f"Error calling LLM: {e}")
+                    error_feedback_message = f"Error calling LLM: {e}"
+                    break
+                else:
+                    logger.exception(f"Error calling LLM: {e}")
                 if (
                     "maximum context length" in str(e).lower()
                     or "token limit" in str(e).lower()
@@ -1979,6 +2016,19 @@ class AIConversationBlock(AIBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        has_messages = any(
+            isinstance(m, dict)
+            and isinstance(m.get("content"), str)
+            and bool(m["content"].strip())
+            for m in (input_data.messages or [])
+        )
+        has_prompt = bool(input_data.prompt and input_data.prompt.strip())
+        if not has_messages and not has_prompt:
+            raise ValueError(
+                "Cannot call LLM with no messages and no prompt. "
+                "Provide at least one message or a non-empty prompt."
+            )
+
         response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=input_data.prompt,

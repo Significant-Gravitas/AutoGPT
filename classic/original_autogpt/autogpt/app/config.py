@@ -1,27 +1,40 @@
 """Configuration class to store the state of bools for different scripts access."""
+
 from __future__ import annotations
 
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Optional, Union
+from typing import Literal, Optional, Union
 
-import forge
+from pydantic import SecretStr
+
 from forge.config.base import BaseConfig
-from forge.llm.providers import CHAT_MODELS, ModelName
+from forge.llm.providers import ModelName
 from forge.llm.providers.openai import OpenAICredentials, OpenAIModelName
 from forge.logging.config import LoggingConfig
 from forge.models.config import Configurable, UserConfigurable
-from pydantic import SecretStr, ValidationInfo, field_validator
+
+# Type alias for prompt strategy options
+PromptStrategyName = Literal[
+    "one_shot",
+    "rewoo",
+    "plan_execute",
+    "reflexion",
+    "tree_of_thoughts",
+    "lats",
+    "multi_agent_debate",
+]
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(forge.__file__).parent.parent
 AZURE_CONFIG_FILE = Path("azure.yaml")
 
-GPT_4_MODEL = OpenAIModelName.GPT4
-GPT_3_MODEL = OpenAIModelName.GPT3
+GPT_4_MODEL = OpenAIModelName.GPT4_O
+GPT_3_MODEL = (
+    OpenAIModelName.GPT4_O_MINI
+)  # Fallback model for when configured model is unavailable
 
 
 class AppConfig(BaseConfig):
@@ -31,13 +44,15 @@ class AppConfig(BaseConfig):
     ########################
     # Application Settings #
     ########################
-    project_root: Path = PROJECT_ROOT
-    app_data_dir: Path = project_root / "data"
+    workspace: Path = Path.cwd()
+    app_data_dir: Path = workspace / ".autogpt"
     skip_news: bool = False
     skip_reprompt: bool = False
     authorise_key: str = UserConfigurable(default="y", from_env="AUTHORISE_COMMAND_KEY")
     exit_key: str = UserConfigurable(default="n", from_env="EXIT_KEY")
-    noninteractive_mode: bool = False
+    noninteractive_mode: bool = UserConfigurable(
+        default=False, from_env="NONINTERACTIVE_MODE"
+    )
     logging: LoggingConfig = LoggingConfig()
     component_config_file: Optional[Path] = UserConfigurable(
         default=None, from_env="COMPONENT_CONFIG_FILE"
@@ -56,16 +71,27 @@ class AppConfig(BaseConfig):
         from_env="SMART_LLM",
     )
     temperature: float = UserConfigurable(default=0, from_env="TEMPERATURE")
-    openai_functions: bool = UserConfigurable(
-        default=False, from_env=lambda: os.getenv("OPENAI_FUNCTIONS", "False") == "True"
-    )
     embedding_model: str = UserConfigurable(
         default="text-embedding-3-small", from_env="EMBEDDING_MODEL"
     )
+    thinking_budget_tokens: Optional[int] = UserConfigurable(
+        default=None, from_env="THINKING_BUDGET_TOKENS"
+    )
+    """Token budget for extended thinking (Anthropic Claude models). Minimum 1024."""
+    reasoning_effort: Optional[Literal["low", "medium", "high"]] = UserConfigurable(
+        default=None, from_env="REASONING_EFFORT"
+    )
+    """Reasoning effort level for OpenAI o-series and GPT-5 models."""
 
     # Run loop configuration
-    continuous_mode: bool = False
+    continuous_mode: bool = True
     continuous_limit: int = 0
+
+    # Prompt strategy configuration
+    prompt_strategy: PromptStrategyName = UserConfigurable(
+        default="one_shot",
+        from_env="PROMPT_STRATEGY",
+    )
 
     ############
     # Commands #
@@ -91,32 +117,30 @@ class AppConfig(BaseConfig):
         default=AZURE_CONFIG_FILE, from_env="AZURE_CONFIG_FILE"
     )
 
-    @field_validator("openai_functions")
-    def validate_openai_functions(cls, value: bool, info: ValidationInfo):
-        if value:
-            smart_llm = info.data["smart_llm"]
-            assert CHAT_MODELS[smart_llm].has_function_call_api, (
-                f"Model {smart_llm} does not support tool calling. "
-                "Please disable OPENAI_FUNCTIONS or choose a suitable model."
-            )
-        return value
-
 
 class ConfigBuilder(Configurable[AppConfig]):
     default_settings = AppConfig()
 
     @classmethod
-    def build_config_from_env(cls, project_root: Path = PROJECT_ROOT) -> AppConfig:
-        """Initialize the Config class"""
+    def build_config_from_env(cls, workspace: Optional[Path] = None) -> AppConfig:
+        """Initialize the Config class
+
+        Args:
+            workspace: The workspace directory where AutoGPT will operate.
+                       Defaults to current working directory.
+        """
+        if workspace is None:
+            workspace = Path.cwd()
 
         config = cls.build_agent_configuration()
-        config.project_root = project_root
+        config.workspace = workspace
+        config.app_data_dir = workspace / ".autogpt"
 
         # Make relative paths absolute
         for k in {
-            "azure_config_file",  # TODO: move from project root
+            "azure_config_file",
         }:
-            setattr(config, k, project_root / getattr(config, k))
+            setattr(config, k, workspace / getattr(config, k))
 
         if (
             config.openai_credentials
@@ -132,9 +156,10 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
     """
     Check if API keys (if required) are set for the configured SMART_LLM and FAST_LLM.
     """
+    from pydantic import ValidationError
+
     from forge.llm.providers.anthropic import AnthropicModelName
     from forge.llm.providers.groq import GroqModelName
-    from pydantic import ValidationError
 
     if set((config.smart_llm, config.fast_llm)).intersection(AnthropicModelName):
         from forge.llm.providers.anthropic import AnthropicCredentials
@@ -164,8 +189,9 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
             )
 
     if set((config.smart_llm, config.fast_llm)).intersection(GroqModelName):
-        from forge.llm.providers.groq import GroqProvider
         from groq import AuthenticationError
+
+        from forge.llm.providers.groq import GroqProvider
 
         try:
             groq = GroqProvider()
@@ -189,8 +215,9 @@ async def assert_config_has_required_llm_api_keys(config: AppConfig) -> None:
             raise ValueError("Groq is unavailable: invalid API key") from e
 
     if set((config.smart_llm, config.fast_llm)).intersection(OpenAIModelName):
-        from forge.llm.providers.openai import OpenAIProvider
         from openai import AuthenticationError
+
+        from forge.llm.providers.openai import OpenAIProvider
 
         try:
             openai = OpenAIProvider()

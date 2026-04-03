@@ -11,6 +11,7 @@ import pytest
 from backend.copilot.context import (
     SDK_PROJECTS_DIR,
     _current_project_dir,
+    get_current_permissions,
     get_current_sandbox,
     get_execution_context,
     get_sdk_cwd,
@@ -18,6 +19,7 @@ from backend.copilot.context import (
     resolve_sandbox_path,
     set_execution_context,
 )
+from backend.copilot.permissions import CopilotPermissions
 
 
 def _make_session() -> MagicMock:
@@ -59,6 +61,19 @@ def test_get_current_sandbox_returns_set_value():
     mock_sandbox = MagicMock()
     set_execution_context("u1", _make_session(), sandbox=mock_sandbox)
     assert get_current_sandbox() is mock_sandbox
+
+
+def test_set_and_get_current_permissions():
+    """set_execution_context stores permissions; get_current_permissions returns it."""
+    perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+    set_execution_context("u1", _make_session(), permissions=perms)
+    assert get_current_permissions() is perms
+
+
+def test_get_current_permissions_defaults_to_none():
+    """get_current_permissions returns None when no permissions have been set."""
+    set_execution_context("u1", _make_session())
+    assert get_current_permissions() is None
 
 
 def test_get_sdk_cwd_empty_when_not_set():
@@ -119,6 +134,21 @@ def test_is_allowed_local_path_tool_results_with_uuid():
         _current_project_dir.set("")
 
 
+def test_is_allowed_local_path_tool_outputs_with_uuid():
+    """Files under <encoded-cwd>/<uuid>/tool-outputs/ are also allowed."""
+    encoded = "test-encoded-dir"
+    conv_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    path = os.path.join(
+        SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-outputs", "output.json"
+    )
+
+    _current_project_dir.set(encoded)
+    try:
+        assert is_allowed_local_path(path, sdk_cwd=None)
+    finally:
+        _current_project_dir.set("")
+
+
 def test_is_allowed_local_path_tool_results_without_uuid_rejected():
     """Direct <encoded-cwd>/tool-results/ (no UUID) is rejected."""
     encoded = "test-encoded-dir"
@@ -144,7 +174,7 @@ def test_is_allowed_local_path_sibling_of_tool_results_is_rejected():
 
 
 def test_is_allowed_local_path_valid_uuid_wrong_segment_name_rejected():
-    """A valid UUID dir but non-'tool-results' second segment is rejected."""
+    """A valid UUID dir but non-'tool-results'/'tool-outputs' second segment is rejected."""
     encoded = "test-encoded-dir"
     uuid_str = "12345678-1234-5678-9abc-def012345678"
     path = os.path.join(
@@ -183,10 +213,32 @@ def test_resolve_sandbox_path_normalizes_dots():
 
 
 def test_resolve_sandbox_path_escape_raises():
-    with pytest.raises(ValueError, match="/home/user"):
+    with pytest.raises(ValueError, match="must be within"):
         resolve_sandbox_path("/home/user/../../etc/passwd")
 
 
 def test_resolve_sandbox_path_absolute_outside_raises():
-    with pytest.raises(ValueError, match="/home/user"):
+    with pytest.raises(ValueError):
         resolve_sandbox_path("/etc/passwd")
+
+
+def test_resolve_sandbox_path_tmp_allowed():
+    assert resolve_sandbox_path("/tmp/data.txt") == "/tmp/data.txt"
+
+
+def test_resolve_sandbox_path_tmp_nested():
+    assert resolve_sandbox_path("/tmp/a/b/c.txt") == "/tmp/a/b/c.txt"
+
+
+def test_resolve_sandbox_path_tmp_itself():
+    assert resolve_sandbox_path("/tmp") == "/tmp"
+
+
+def test_resolve_sandbox_path_tmp_escape_raises():
+    with pytest.raises(ValueError):
+        resolve_sandbox_path("/tmp/../etc/passwd")
+
+
+def test_resolve_sandbox_path_tmp_prefix_collision_raises():
+    with pytest.raises(ValueError):
+        resolve_sandbox_path("/tmp_evil/malicious.txt")

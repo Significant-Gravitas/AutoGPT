@@ -302,7 +302,14 @@ def _value_satisfies_type(value: Any, target: Any) -> bool:
 
     # Simple type (e.g. str, int)
     if isinstance(target, type):
-        return isinstance(value, target)
+        try:
+            return isinstance(value, target)
+        except TypeError:
+            # TypedDict and some typing constructs don't support isinstance checks.
+            # For TypedDict, check if value is a dict with the required keys.
+            if isinstance(value, dict) and hasattr(target, "__required_keys__"):
+                return all(k in value for k in target.__required_keys__)
+            return False
 
     return False
 

@@ -30,12 +30,7 @@ class ContinueRunBlockTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Continue executing a block after human review approval. "
-            "Use this after a run_block call returned review_required. "
-            "Pass the review_id from the review_required response. "
-            "The block will execute with the original pre-approved input data."
-        )
+        return "Resume block execution after a run_block call returned review_required. Pass the review_id."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -44,10 +39,7 @@ class ContinueRunBlockTool(BaseTool):
             "properties": {
                 "review_id": {
                     "type": "string",
-                    "description": (
-                        "The review_id from a previous review_required response. "
-                        "This resumes execution with the pre-approved input data."
-                    ),
+                    "description": "review_id from the review_required response.",
                 },
             },
             "required": ["review_id"],
@@ -61,11 +53,10 @@ class ContinueRunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        review_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
-        review_id = (
-            kwargs.get("review_id", "").strip() if kwargs.get("review_id") else ""
-        )
+        review_id = review_id.strip() if review_id else ""
         session_id = session.session_id
 
         if not review_id:
@@ -127,8 +118,11 @@ class ContinueRunBlockTool(BaseTool):
         )
 
         logger.info(
-            f"Continuing block {block.name} ({block_id}) for user {user_id} "
-            f"with review_id={review_id}"
+            "Continuing block %s (%s) for user %s with review_id=%s",
+            block.name,
+            block_id,
+            user_id,
+            review_id,
         )
 
         matched_creds, missing_creds = await resolve_block_credentials(
@@ -140,6 +134,9 @@ class ContinueRunBlockTool(BaseTool):
                 session_id=session_id,
             )
 
+        # dry_run=False is safe here: run_block's dry-run fast-path (line ~241)
+        # skips HITL entirely, so continue_run_block is never called during a
+        # dry run — only real executions reach the human review gate.
         result = await execute_block(
             block=block,
             block_id=block_id,
@@ -148,6 +145,7 @@ class ContinueRunBlockTool(BaseTool):
             session_id=session_id,
             node_exec_id=review_id,
             matched_credentials=matched_creds,
+            dry_run=False,
         )
 
         # Delete review record after successful execution (one-time use)

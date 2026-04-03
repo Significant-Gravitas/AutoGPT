@@ -23,9 +23,7 @@ class CustomizeAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Customize a marketplace or template agent. Pass `agent_json` "
-            "with the complete customized agent JSON. The tool validates, "
-            "auto-fixes, and saves."
+            "Customize a marketplace/template agent. Validates, auto-fixes, and saves."
         )
 
     @property
@@ -39,32 +37,21 @@ class CustomizeAgentTool(BaseTool):
             "properties": {
                 "agent_json": {
                     "type": "object",
-                    "description": (
-                        "Complete customized agent JSON to validate and save. "
-                        "Optionally include 'name' and 'description'."
-                    ),
+                    "description": "Customized agent JSON with nodes and links.",
                 },
                 "library_agent_ids": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": (
-                        "List of library agent IDs to use as building blocks."
-                    ),
+                    "description": "Library agent IDs as building blocks.",
                 },
                 "save": {
                     "type": "boolean",
-                    "description": (
-                        "Whether to save the customized agent. Default is true."
-                    ),
+                    "description": "Save the agent (default: true). False for preview.",
                     "default": True,
                 },
                 "folder_id": {
                     "type": "string",
-                    "description": (
-                        "Optional folder ID to save the agent into. "
-                        "If not provided, the agent is saved at root level. "
-                        "Use list_folders to find available folders."
-                    ),
+                    "description": "Folder ID to save into (default: root).",
                 },
             },
             "required": ["agent_json"],
@@ -74,9 +61,12 @@ class CustomizeAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_json: dict[str, Any] | None = None,
+        save: bool = True,
+        library_agent_ids: list[str] | None = None,
+        folder_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_json: dict[str, Any] | None = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
         if not agent_json:
@@ -88,9 +78,8 @@ class CustomizeAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        save = kwargs.get("save", True)
-        library_agent_ids = kwargs.get("library_agent_ids", [])
-        folder_id: str | None = kwargs.get("folder_id")
+        if library_agent_ids is None:
+            library_agent_ids = []
 
         nodes = agent_json.get("nodes", [])
         if not nodes:

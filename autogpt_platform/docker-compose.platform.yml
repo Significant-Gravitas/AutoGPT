@@ -114,6 +114,8 @@ services:
       <<: *backend-env
     ports:
       - "8006:8006"
+    volumes:
+      - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
       - app-network
     logging:
@@ -185,6 +187,8 @@ services:
       PYTHONUNBUFFERED: "1"
     ports:
       - "8008:8008"
+    volumes:
+      - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
       - app-network
     logging:
@@ -368,6 +372,9 @@ services:
       SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+volumes:
+  workspace-data:
+
 networks:
   app-network:
     driver: bridge

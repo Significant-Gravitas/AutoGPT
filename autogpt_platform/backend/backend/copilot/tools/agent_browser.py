@@ -20,9 +20,9 @@ SSRF protection:
 
 Requires:
   npm install -g agent-browser
-  agent-browser install   (downloads Chromium, one-time — skipped in Docker
-                           where system chromium is pre-installed and
-                           AGENT_BROWSER_EXECUTABLE_PATH is set)
+  In Docker: system chromium package with AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+             (set automatically — no `agent-browser install` needed).
+  Locally: run `agent-browser install` to download Chromium.
 """
 
 import asyncio
@@ -180,12 +180,14 @@ async def _save_browser_state(
     """
     try:
         # Gather state in parallel
-        (rc_url, url_out, _), (rc_ck, ck_out, _), (rc_ls, ls_out, _) = (
-            await asyncio.gather(
-                _run(session_name, "get", "url", timeout=10),
-                _run(session_name, "cookies", "get", "--json", timeout=10),
-                _run(session_name, "storage", "local", "--json", timeout=10),
-            )
+        (
+            (rc_url, url_out, _),
+            (rc_ck, ck_out, _),
+            (rc_ls, ls_out, _),
+        ) = await asyncio.gather(
+            _run(session_name, "get", "url", timeout=10),
+            _run(session_name, "cookies", "get", "--json", timeout=10),
+            _run(session_name, "storage", "local", "--json", timeout=10),
         )
 
         state = {
@@ -410,18 +412,11 @@ class BrowserNavigateTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Navigate to a URL using a real browser. Returns an accessibility "
-            "tree snapshot listing the page's interactive elements with @ref IDs "
-            "(e.g. @e3) that can be used with browser_act. "
-            "Session persists — cookies and login state carry over between calls. "
-            "Use this (with browser_act) for multi-step interaction: login flows, "
-            "form filling, button clicks, or anything requiring page interaction. "
-            "For plain static pages, prefer web_fetch — no browser overhead. "
-            "For authenticated pages: navigate to the login page first, use browser_act "
-            "to fill credentials and submit, then navigate to the target page. "
-            "Note: for slow SPAs, the returned snapshot may reflect a partially-loaded "
-            "state. If elements seem missing, use browser_act with action='wait' and a "
-            "CSS selector or millisecond delay, then take a browser_screenshot to verify."
+            "Navigate to a URL in a real browser. Returns accessibility tree with @ref IDs "
+            "for browser_act. Session persists (cookies/auth carry over). "
+            "For static pages, prefer web_fetch. "
+            "For SPAs, elements may load late — use browser_act with wait + browser_screenshot to verify. "
+            "For auth: navigate to login, fill creds and submit with browser_act, then navigate to target."
         )
 
     @property
@@ -431,13 +426,13 @@ class BrowserNavigateTool(BaseTool):
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The HTTP/HTTPS URL to navigate to.",
+                    "description": "HTTP/HTTPS URL to navigate to.",
                 },
                 "wait_for": {
                     "type": "string",
                     "enum": ["networkidle", "load", "domcontentloaded"],
                     "default": "networkidle",
-                    "description": "When to consider navigation complete. Use 'networkidle' for SPAs (default).",
+                    "description": "Navigation completion strategy (default: networkidle).",
                 },
             },
             "required": ["url"],
@@ -455,6 +450,8 @@ class BrowserNavigateTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        url: str = "",
+        wait_for: str = "networkidle",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Navigate to *url*, wait for the page to settle, and return a snapshot.
@@ -463,8 +460,8 @@ class BrowserNavigateTool(BaseTool):
         Note: for slow SPAs that never fully idle, the snapshot may reflect a
         partially-loaded state (the wait is best-effort).
         """
-        url: str = (kwargs.get("url") or "").strip()
-        wait_for: str = kwargs.get("wait_for") or "networkidle"
+        url = url.strip()
+        wait_for = wait_for or "networkidle"
         session_name = session.session_id
 
         if not url:
@@ -556,14 +553,12 @@ class BrowserActTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Interact with the current browser page. Use @ref IDs from the "
-            "snapshot (e.g. '@e3') to target elements. Returns an updated snapshot. "
-            "Supported actions: click, dblclick, fill, type, scroll, hover, press, "
+            "Interact with the current browser page using @ref IDs from the snapshot. "
+            "Actions: click, dblclick, fill, type, scroll, hover, press, "
             "check, uncheck, select, wait, back, forward, reload. "
-            "fill clears the field before typing; type appends without clearing. "
-            "wait accepts a CSS selector (waits for element) or milliseconds string (e.g. '1000'). "
-            "Example login flow: fill @e1 with email → fill @e2 with password → "
-            "click @e3 (submit) → browser_navigate to the target page."
+            "fill clears field first; type appends. "
+            "wait accepts CSS selector or milliseconds (e.g. '1000'). "
+            "Returns updated snapshot."
         )
 
     @property
@@ -589,30 +584,21 @@ class BrowserActTool(BaseTool):
                         "forward",
                         "reload",
                     ],
-                    "description": "The action to perform.",
+                    "description": "Action to perform.",
                 },
                 "target": {
                     "type": "string",
-                    "description": (
-                        "Element to target. Use @ref from snapshot (e.g. '@e3'), "
-                        "a CSS selector, or a text description. "
-                        "Required for: click, dblclick, fill, type, hover, check, uncheck, select. "
-                        "For wait: a CSS selector to wait for, or milliseconds as a string (e.g. '1000')."
-                    ),
+                    "description": "@ref ID (e.g. '@e3'), CSS selector, or text. Required for: click, dblclick, fill, type, hover, check, uncheck, select. For wait: CSS selector or milliseconds string (e.g. '1000').",
                 },
                 "value": {
                     "type": "string",
-                    "description": (
-                        "For fill/type: the text to enter. "
-                        "For press: key name (e.g. 'Enter', 'Tab', 'Control+a'). "
-                        "For select: the option value to select."
-                    ),
+                    "description": "Text for fill/type, key for press (e.g. 'Enter'), option for select.",
                 },
                 "direction": {
                     "type": "string",
                     "enum": ["up", "down", "left", "right"],
                     "default": "down",
-                    "description": "For scroll: direction to scroll.",
+                    "description": "Scroll direction (default: down).",
                 },
             },
             "required": ["action"],
@@ -630,6 +616,10 @@ class BrowserActTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        action: str = "",
+        target: str = "",
+        value: str = "",
+        direction: str = "down",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Perform a browser action and return an updated page snapshot.
@@ -638,10 +628,10 @@ class BrowserActTool(BaseTool):
         ``agent-browser``, waits for the page to settle, and returns the
         accessibility-tree snapshot so the LLM can plan the next step.
         """
-        action: str = (kwargs.get("action") or "").strip()
-        target: str = (kwargs.get("target") or "").strip()
-        value: str = (kwargs.get("value") or "").strip()
-        direction: str = (kwargs.get("direction") or "down").strip()
+        action = action.strip()
+        target = target.strip()
+        value = value.strip()
+        direction = direction.strip()
         session_name = session.session_id
 
         if not action:
@@ -759,12 +749,10 @@ class BrowserScreenshotTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Take a screenshot of the current browser page and save it to the workspace. "
-            "IMPORTANT: After calling this tool, immediately call read_workspace_file "
-            "with the returned file_id to display the image inline to the user — "
-            "the screenshot is not visible until you do this. "
-            "With annotate=true (default), @ref labels are overlaid on interactive "
-            "elements, making it easy to see which @ref ID maps to which element on screen."
+            "Screenshot the current browser page and save to workspace. "
+            "annotate=true overlays @ref labels on elements. "
+            "IMPORTANT: After calling, you MUST immediately call read_workspace_file with the "
+            "returned file_id to display the image inline."
         )
 
     @property
@@ -775,12 +763,12 @@ class BrowserScreenshotTool(BaseTool):
                 "annotate": {
                     "type": "boolean",
                     "default": True,
-                    "description": "Overlay @ref labels on interactive elements (default: true).",
+                    "description": "Overlay @ref labels (default: true).",
                 },
                 "filename": {
                     "type": "string",
                     "default": "screenshot.png",
-                    "description": "Filename to save in the workspace.",
+                    "description": "Workspace filename (default: screenshot.png).",
                 },
             },
         }
@@ -797,6 +785,8 @@ class BrowserScreenshotTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        annotate: bool | str = True,
+        filename: str = "screenshot.png",
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Capture a PNG screenshot and upload it to the workspace.
@@ -806,12 +796,12 @@ class BrowserScreenshotTool(BaseTool):
         Returns a :class:`BrowserScreenshotResponse` with the workspace
         ``file_id`` the LLM should pass to ``read_workspace_file``.
         """
-        raw_annotate = kwargs.get("annotate", True)
+        raw_annotate = annotate
         if isinstance(raw_annotate, str):
             annotate = raw_annotate.strip().lower() in {"1", "true", "yes", "on"}
         else:
             annotate = bool(raw_annotate)
-        filename: str = (kwargs.get("filename") or "screenshot.png").strip()
+        filename = filename.strip()
         session_name = session.session_id
 
         # Restore browser state from cloud if this is a different pod

@@ -10,6 +10,7 @@ from backend.copilot.tracking import track_tool_called
 from .add_understanding import AddUnderstandingTool
 from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
+from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
 from .connect_integration import ConnectIntegrationTool
@@ -55,6 +56,7 @@ logger = logging.getLogger(__name__)
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
+    "ask_question": AskQuestionTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "edit_agent": EditAgentTool(),

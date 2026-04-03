@@ -121,36 +121,20 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
     && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
 COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
 
-# Install agent-browser (Copilot browser tool) + Chromium.
-# On amd64: install runtime libs + run `agent-browser install` to download
-#   Chrome for Testing (pinned version, tested with Playwright).
-# On arm64: install system chromium package — Chrome for Testing has no ARM64
-#   binary. AGENT_BROWSER_EXECUTABLE_PATH is set at runtime by the entrypoint
-#   script (below) to redirect agent-browser to the system binary.
-ARG TARGETARCH
+# Install agent-browser (Copilot browser tool) using the system chromium package.
+# Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
+# has no ARM64 builds, so we use the distro-packaged chromium instead — verified to
+# work with agent-browser via Docker tests on arm64; amd64 is validated in CI.
+# Note: system chromium tracks the Debian package schedule rather than a pinned
+# Chrome for Testing release. If agent-browser requires a specific Chrome version,
+# verify compatibility against the chromium package version in the base image.
 RUN apt-get update \
-    && if [ "$TARGETARCH" = "arm64" ]; then \
-         apt-get install -y --no-install-recommends chromium fonts-liberation; \
-       else \
-         apt-get install -y --no-install-recommends \
-           libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-           libdbus-1-3 libxkbcommon0 libatspi2.0-0t64 libxcomposite1 libxdamage1 \
-           libxfixes3 libxrandr2 libgbm1 libasound2t64 libpango-1.0-0 libcairo2 \
-           libx11-6 libx11-xcb1 libxcb1 libxext6 libglib2.0-0t64 \
-           fonts-liberation libfontconfig1; \
-       fi \
+    && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g agent-browser \
-    && ([ "$TARGETARCH" = "arm64" ] || agent-browser install) \
     && rm -rf /tmp/* /root/.npm
 
-# On arm64 the system chromium is at /usr/bin/chromium; set
-# AGENT_BROWSER_EXECUTABLE_PATH so agent-browser's daemon uses it instead of
-# Chrome for Testing (which has no ARM64 binary). On amd64 the variable is left
-# unset so agent-browser uses the Chrome for Testing binary it downloaded above.
-RUN printf '#!/bin/sh\n[ -x /usr/bin/chromium ] && export AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium\nexec "$@"\n' \
-    > /usr/local/bin/entrypoint.sh \
-    && chmod +x /usr/local/bin/entrypoint.sh
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app/autogpt_platform/backend
 
@@ -173,5 +157,4 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
 
 ENV PORT=8000
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["rest"]

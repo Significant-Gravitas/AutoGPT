@@ -17,6 +17,14 @@ gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoG
 gh pr view {N}
 ```
 
+## Read the PR description
+
+Understand the **Why / What / How** before addressing comments — you need context to make good fixes:
+
+```bash
+gh pr view {N} --json body --jq '.body'
+```
+
 ## Fetch comments (all sources)
 
 ### 1. Inline review threads — GraphQL (primary source of actionable items)
@@ -105,7 +113,9 @@ kill $REST_PID 2>/dev/null; trap - EXIT
 ```
 Never manually edit files in `src/app/api/__generated__/`.
 
-Then commit and **push immediately** — never batch commits without pushing.
+Then commit and **push immediately** — never batch commits without pushing. Each fix should be visible on GitHub right away so CI can start and reviewers can see progress.
+
+**Never push empty commits** (`git commit --allow-empty`) to re-trigger CI or bot checks. When a check fails, investigate the root cause (unchecked PR checklist, unaddressed review comments, code issues) and fix those directly. Empty commits add noise to git history.
 
 For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 

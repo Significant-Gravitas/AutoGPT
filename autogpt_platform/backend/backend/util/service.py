@@ -227,10 +227,16 @@ class AppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                logger.error(
-                    f"{request.method} {request.url.path} failed: {exc}",
-                    exc_info=exc if status_code == 500 else None,
-                )
+                if status_code >= 500:
+                    logger.error(
+                        f"{request.method} {request.url.path} failed: {exc}",
+                        exc_info=exc,
+                    )
+                else:
+                    logger.warning(
+                        f"{request.method} {request.url.path} failed: {exc}",
+                        exc_info=exc,
+                    )
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
@@ -563,7 +569,6 @@ def get_service_client(
                 self._connection_failure_count >= 3
                 and current_time - self._last_client_reset > 30
             ):
-
                 logger.warning(
                     f"Connection failures detected ({self._connection_failure_count}), recreating HTTP clients"
                 )
@@ -704,8 +709,19 @@ def get_service_client(
             return kwargs
 
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
+            """Validate and coerce the RPC result to the expected return type.
+
+            Falls back to the raw result with a warning if validation fails.
+            """
             if expected_return:
-                return expected_return.validate_python(result)
+                try:
+                    return expected_return.validate_python(result)
+                except Exception as e:
+                    logger.warning(
+                        "RPC return type validation failed, using raw result: %s",
+                        type(e).__name__,
+                    )
+                    return result
             return result
 
         def __getattr__(self, name: str) -> Callable[..., Any]:

@@ -10,11 +10,18 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { deduplicateMessages, resolveInProgressTools } from "./helpers";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  deduplicateMessages,
+  hasActiveBackendStream,
+  resolveInProgressTools,
+} from "./helpers";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
+
+/** Minimum time the page must have been hidden to trigger a wake re-sync. */
+const WAKE_RESYNC_THRESHOLD_MS = 30_000;
 
 /** Fetch a fresh JWT for direct backend requests (same pattern as WebSocket). */
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -40,6 +47,8 @@ export function useCopilotStream({
   refetchSession,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
+  const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+  const dismissRateLimit = useCallback(() => setRateLimitMessage(null), []);
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -98,6 +107,10 @@ export function useCopilotStream({
   // Must be state (not ref) so that setting it triggers a re-render and
   // recomputes `isReconnecting`.
   const [reconnectExhausted, setReconnectExhausted] = useState(false);
+  // True while performing a wake re-sync (blocks chat input).
+  const [isSyncing, setIsSyncing] = useState(false);
+  // Tracks the last time the page was hidden — used to detect sleep/wake gaps.
+  const lastHiddenAtRef = useRef(Date.now());
 
   function handleReconnect(sid: string) {
     if (isReconnectScheduledRef.current || !sid) return;
@@ -159,19 +172,7 @@ export function useCopilotStream({
       // unnecessary reconnect cycles.
       await new Promise((r) => setTimeout(r, 500));
       const result = await refetchSession();
-      const d = result.data;
-      const backendActive =
-        d != null &&
-        typeof d === "object" &&
-        "status" in d &&
-        d.status === 200 &&
-        "data" in d &&
-        d.data != null &&
-        typeof d.data === "object" &&
-        "active_stream" in d.data &&
-        !!d.data.active_stream;
-
-      if (backendActive) {
+      if (hasActiveBackendStream(result)) {
         handleReconnect(sessionId);
       }
     },
@@ -197,13 +198,10 @@ export function useCopilotStream({
       }
       const isRateLimited = errorDetail.toLowerCase().includes("usage limit");
       if (isRateLimited) {
-        toast({
-          title: "Usage limit reached",
-          description:
-            errorDetail ||
+        setRateLimitMessage(
+          errorDetail ||
             "You've reached your usage limit. Please try again later.",
-          variant: "destructive",
-        });
+        );
         return;
       }
 
@@ -298,6 +296,67 @@ export function useCopilotStream({
     }
   }
 
+  // Keep a ref to sessionId so the async wake handler can detect staleness.
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
+
+  // ---------------------------------------------------------------------------
+  // Wake detection: when the page becomes visible after being hidden for >30s
+  // (device sleep, tab backgrounded for a long time), refetch the session to
+  // pick up any messages the backend produced while the SSE was dead.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    async function handleWakeResync() {
+      const sid = sessionIdRef.current;
+      if (!sid) return;
+
+      const elapsed = Date.now() - lastHiddenAtRef.current;
+      lastHiddenAtRef.current = Date.now();
+
+      if (document.visibilityState !== "visible") return;
+      if (elapsed < WAKE_RESYNC_THRESHOLD_MS) return;
+
+      setIsSyncing(true);
+      try {
+        const result = await refetchSession();
+        // Bail out if the session changed while the refetch was in flight.
+        if (sessionIdRef.current !== sid) return;
+
+        if (hasActiveBackendStream(result)) {
+          // Stream is still running — resume SSE to pick up live chunks.
+          // Remove stale in-progress assistant message first (backend replays
+          // from "0-0").
+          setMessages((prev) => {
+            if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
+              return prev.slice(0, -1);
+            }
+            return prev;
+          });
+          await resumeStream();
+        }
+        // If !backendActive, the refetch will update hydratedMessages via
+        // React Query, and the hydration effect below will merge them in.
+      } catch (err) {
+        console.warn("[copilot] wake re-sync failed", err);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === "hidden") {
+        lastHiddenAtRef.current = Date.now();
+      } else {
+        handleWakeResync();
+      }
+    }
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refetchSession, setMessages, resumeStream]);
+
   // Hydrate messages from REST API when not actively streaming
   useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
@@ -319,9 +378,11 @@ export function useCopilotStream({
     reconnectAttemptsRef.current = 0;
     isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
+    setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
     setReconnectExhausted(false);
+    setIsSyncing(false);
     hasResumedRef.current.clear();
     return () => {
       clearTimeout(reconnectTimerRef.current);
@@ -424,6 +485,9 @@ export function useCopilotStream({
     status,
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
+    isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }

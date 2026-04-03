@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.blocks._base import BlockType
+from backend.copilot.context import _current_permissions
+from backend.copilot.permissions import CopilotPermissions
 
 from ._test_data import make_session
 from .models import (
@@ -92,7 +94,7 @@ class TestRunBlockFiltering:
         input_block = make_mock_block("input-block-id", "Input Block", BlockType.INPUT)
 
         with patch(
-            "backend.copilot.tools.run_block.get_block",
+            "backend.copilot.tools.helpers.get_block",
             return_value=input_block,
         ):
             tool = RunBlockTool()
@@ -101,6 +103,7 @@ class TestRunBlockFiltering:
                 session=session,
                 block_id="input-block-id",
                 input_data={},
+                dry_run=False,
             )
 
         assert isinstance(response, ErrorResponse)
@@ -109,28 +112,94 @@ class TestRunBlockFiltering:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_excluded_block_id_returns_error(self):
-        """Attempting to execute SmartDecisionMakerBlock returns error."""
+        """Attempting to execute OrchestratorBlock returns error."""
         session = make_session(user_id=_TEST_USER_ID)
 
-        smart_decision_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
+        orchestrator_id = "3b191d9f-356f-482d-8238-ba04b6d18381"
         smart_block = make_mock_block(
-            smart_decision_id, "Smart Decision Maker", BlockType.STANDARD
+            orchestrator_id, "Orchestrator", BlockType.STANDARD
         )
 
         with patch(
-            "backend.copilot.tools.run_block.get_block",
+            "backend.copilot.tools.helpers.get_block",
             return_value=smart_block,
         ):
             tool = RunBlockTool()
             response = await tool._execute(
                 user_id=_TEST_USER_ID,
                 session=session,
-                block_id=smart_decision_id,
+                block_id=orchestrator_id,
                 input_data={},
+                dry_run=False,
             )
 
         assert isinstance(response, ErrorResponse)
         assert "cannot be run directly" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_block_denied_by_permissions_returns_error(self):
+        """A block denied by CopilotPermissions returns an ErrorResponse."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+        standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
+
+        perms = CopilotPermissions(blocks=[block_id], blocks_exclude=True)
+        token = _current_permissions.set(perms)
+        try:
+            with patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=standard_block,
+            ):
+                tool = RunBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                    dry_run=False,
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        assert isinstance(response, ErrorResponse)
+        assert "not permitted" in response.message
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_allowed_by_permissions_passes_guard(self):
+        """A block explicitly allowed by a whitelist CopilotPermissions passes the guard."""
+        session = make_session(user_id=_TEST_USER_ID)
+        block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+        standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
+
+        perms = CopilotPermissions(blocks=[block_id], blocks_exclude=False)
+        token = _current_permissions.set(perms)
+        try:
+            with (
+                patch(
+                    "backend.copilot.tools.helpers.get_block",
+                    return_value=standard_block,
+                ),
+                patch(
+                    "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                    return_value=({}, []),
+                ),
+            ):
+                tool = RunBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block_id,
+                    input_data={},
+                    dry_run=False,
+                )
+        finally:
+            _current_permissions.reset(token)
+
+        # Must NOT be blocked by permissions — assert it's not a permission error
+        assert (
+            not isinstance(response, ErrorResponse)
+            or "not permitted" not in response.message
+        )
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_non_excluded_block_passes_guard(self):
@@ -143,7 +212,7 @@ class TestRunBlockFiltering:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=standard_block,
             ),
             patch(
@@ -157,6 +226,7 @@ class TestRunBlockFiltering:
                 session=session,
                 block_id="standard-id",
                 input_data={},
+                dry_run=False,
             )
 
         # Should NOT be an ErrorResponse about CoPilot exclusion
@@ -200,7 +270,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -217,6 +287,7 @@ class TestRunBlockInputValidation:
                     "prompt": "Write a haiku about coding",
                     "LLM_Model": "claude-opus-4-6",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, InputValidationErrorResponse)
@@ -243,7 +314,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -262,6 +333,7 @@ class TestRunBlockInputValidation:
                     "system_prompt": "Be helpful",
                     "retries": 5,
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, InputValidationErrorResponse)
@@ -289,7 +361,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -305,6 +377,7 @@ class TestRunBlockInputValidation:
                 input_data={
                     "LLM_Model": "claude-opus-4-6",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, InputValidationErrorResponse)
@@ -337,7 +410,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -359,6 +432,7 @@ class TestRunBlockInputValidation:
                     "prompt": "Write a haiku",
                     "model": "gpt-4o-mini",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, BlockOutputResponse)
@@ -381,7 +455,7 @@ class TestRunBlockInputValidation:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -398,6 +472,7 @@ class TestRunBlockInputValidation:
                 input_data={
                     "model": "gpt-4o-mini",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, BlockDetailsResponse)
@@ -435,7 +510,7 @@ class TestRunBlockSensitiveAction:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -449,6 +524,7 @@ class TestRunBlockSensitiveAction:
                 session=session,
                 block_id="delete-branch-id",
                 input_data=input_data,
+                dry_run=False,
             )
 
         assert isinstance(response, ReviewRequiredResponse)
@@ -491,7 +567,7 @@ class TestRunBlockSensitiveAction:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -509,6 +585,7 @@ class TestRunBlockSensitiveAction:
                 session=session,
                 block_id="delete-branch-id",
                 input_data=input_data,
+                dry_run=False,
             )
 
         assert isinstance(response, BlockOutputResponse)
@@ -545,7 +622,7 @@ class TestRunBlockSensitiveAction:
 
         with (
             patch(
-                "backend.copilot.tools.run_block.get_block",
+                "backend.copilot.tools.helpers.get_block",
                 return_value=mock_block,
             ),
             patch(
@@ -563,6 +640,7 @@ class TestRunBlockSensitiveAction:
                 session=session,
                 block_id="http-request-id",
                 input_data=input_data,
+                dry_run=False,
             )
 
         assert isinstance(response, BlockOutputResponse)
