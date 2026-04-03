@@ -66,6 +66,49 @@ export function resolveInProgressTools(
 }
 
 /**
+ * Extract the user-visible text from the arguments passed to `sendMessage`.
+ * Handles both `sendMessage("hello")` and `sendMessage({ text: "hello" })`.
+ */
+export function extractSendMessageText(
+  firstArg: unknown,
+): string {
+  if (firstArg && typeof firstArg === "object" && "text" in firstArg)
+    return (firstArg as { text: string }).text;
+  return String(firstArg ?? "");
+}
+
+interface SuppressDuplicateArgs {
+  text: string;
+  isReconnectScheduled: boolean;
+  lastSubmittedText: string | null;
+  messages: UIMessage[];
+}
+
+/**
+ * Determine whether a sendMessage call should be suppressed to prevent
+ * duplicate POSTs during reconnect cycles or re-submits of the same text.
+ */
+export function shouldSuppressDuplicateSend({
+  text,
+  isReconnectScheduled,
+  lastSubmittedText,
+  messages,
+}: SuppressDuplicateArgs): boolean {
+  if (isReconnectScheduled) return true;
+
+  if (text && lastSubmittedText === text) {
+    const lastUserMsg = messages.filter((m) => m.role === "user").pop();
+    const lastUserText = lastUserMsg?.parts
+      ?.map((p) => ("text" in p ? p.text : ""))
+      .join("")
+      .trim();
+    if (lastUserText === text) return true;
+  }
+
+  return false;
+}
+
+/**
  * Deduplicate messages by ID and by consecutive content fingerprint.
  *
  * ID dedup catches exact duplicates within the same source.

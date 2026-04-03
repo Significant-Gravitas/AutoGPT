@@ -13,8 +13,10 @@ import type { FileUIPart, UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deduplicateMessages,
+  extractSendMessageText,
   hasActiveBackendStream,
   resolveInProgressTools,
+  shouldSuppressDuplicateSend,
 } from "./helpers";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -254,26 +256,17 @@ export function useCopilotStream({
   // reconnect cycle. If the session already has the message (i.e. we are in a
   // reconnect/resume flow), only GET-resume is safe — never re-POST.
   const sendMessage: typeof sdkSendMessage = async (...args) => {
-    const text =
-      args[0] && typeof args[0] === "object" && "text" in args[0]
-        ? (args[0] as { text: string }).text
-        : String(args[0] ?? "");
+    const text = extractSendMessageText(args[0]);
 
-    // During an active reconnect cycle, suppress duplicate POSTs — the
-    // reconnect handler uses resumeStream (GET) exclusively.
-    if (isReconnectScheduledRef.current) return;
-
-    // Prevent re-sending the exact same message text that is already the
-    // last user message in the conversation (e.g. after a failed reconnect
-    // where the backend already persisted it).
-    if (text && lastSubmittedMsgRef.current === text) {
-      const lastUserMsg = rawMessages.filter((m) => m.role === "user").pop();
-      const lastUserText = lastUserMsg?.parts
-        ?.map((p) => ("text" in p ? p.text : ""))
-        .join("")
-        .trim();
-      if (lastUserText === text) return;
-    }
+    if (
+      shouldSuppressDuplicateSend({
+        text,
+        isReconnectScheduled: isReconnectScheduledRef.current,
+        lastSubmittedText: lastSubmittedMsgRef.current,
+        messages: rawMessages,
+      })
+    )
+      return;
 
     lastSubmittedMsgRef.current = text;
     return sdkSendMessage(...args);

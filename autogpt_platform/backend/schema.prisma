@@ -40,6 +40,15 @@ model User {
 
   timezone String @default("not-set")
 
+  // CoPilot subscription tier — controls rate-limit multipliers.
+  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=20x, ENTERPRISE=60x.
+  // NOTE: @default(PRO) is intentional for the beta period — all existing and new
+  // users receive PRO-level (5x) rate limits by default. The Python-level constant
+  // DEFAULT_TIER=FREE (in copilot/rate_limit.py) acts as a code-level fallback when
+  // the DB value is NULL or unrecognised. At GA, a migration will flip the column
+  // default to FREE and batch-update users to their billing-derived tiers.
+  subscriptionTier SubscriptionTier @default(PRO)
+
   // Relations
 
   AgentGraphs          AgentGraph[]
@@ -71,6 +80,13 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  BUSINESS
+  ENTERPRISE
 }
 
 enum OnboardingStep {
