@@ -1,29 +1,111 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { changelogEntries, ChangelogEntry } from "./changelog-data";
+import {
+  AUTO_DISMISS_MS,
+  CHANGELOG_INDEX_URL,
+  STORAGE_KEY,
+} from "./changelog-constants";
 
-const STORAGE_KEY = "autogpt-last-seen-changelog";
-const AUTO_DISMISS_DELAY = 8000; // 8 seconds before auto-fade
+export interface ChangelogEntry {
+  /** URL slug, e.g. "march-20-march-25-2026" */
+  slug: string;
+  /** Human-readable title parsed from the docs page */
+  title: string;
+  /** Full URL to the entry on the docs site */
+  url: string;
+  /** Date range derived from the slug, e.g. "March 20 – March 25, 2026" */
+  date: string;
+}
+
+/** Parse a slug like "march-20-march-25-2026" into "March 20 – March 25, 2026" */
+function slugToDateRange(slug: string): string {
+  // Expected format: month-day-month-day-year  or  month-day-month-day-year
+  const parts = slug.split("-");
+  if (parts.length < 5) return slug;
+
+  // Walk through parts to reconstruct: we need two "month day" pairs and a year
+  // e.g. ["february","26","march","4","2026"]
+  // or   ["march","20","march","25","2026"]
+  // or   ["february","11","february","26","2026"]
+  // or   ["january","29","february","11","2026"]
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  // Find year (last 4-digit number)
+  const year = parts[parts.length - 1];
+
+  // Everything before the year contains two month-day pairs
+  const dateParts = parts.slice(0, -1);
+
+  // Split into two groups: find where the second month name starts
+  // Month names are non-numeric strings
+  const groups: { month: string; day: string }[] = [];
+  let i = 0;
+  while (i < dateParts.length) {
+    if (isNaN(Number(dateParts[i]))) {
+      // This is a month name (could be multi-word but GitBook uses single-word)
+      const month = capitalize(dateParts[i]);
+      const day = dateParts[i + 1] || "";
+      groups.push({ month, day });
+      i += 2;
+    } else {
+      i++;
+    }
+  }
+
+  if (groups.length === 2) {
+    return `${groups[0].month} ${groups[0].day} – ${groups[1].month} ${groups[1].day}, ${year}`;
+  }
+
+  return slug;
+}
+
+/**
+ * Fetch the changelog index page and parse entry links from the HTML.
+ * The GitBook page contains <a> tags linking to each entry with their title.
+ */
+async function fetchChangelogEntries(): Promise<ChangelogEntry[]> {
+  const res = await fetch(CHANGELOG_INDEX_URL, {
+    next: { revalidate: 3600 }, // Cache for 1 hour
+  });
+
+  if (!res.ok) return [];
+
+  const html = await res.text();
+
+  // Parse entries: <a href="/docs/platform/changelog/changelog/SLUG">TITLE</a>
+  const pattern =
+    /href="(\/docs\/platform\/changelog\/changelog\/([a-z0-9-]+))">([^<]+)<\/a>/g;
+
+  const seen = new Set<string>();
+  const entries: ChangelogEntry[] = [];
+
+  let match;
+  while ((match = pattern.exec(html)) !== null) {
+    const [, path, slug, title] = match;
+    if (!seen.has(slug)) {
+      seen.add(slug);
+      entries.push({
+        slug,
+        title: title.trim(),
+        url: `https://agpt.co${path}`,
+        date: slugToDateRange(slug),
+      });
+    }
+  }
+
+  return entries;
+}
 
 interface UseChangelogReturn {
-  /** Whether the popup should be visible */
   isVisible: boolean;
-  /** The latest unseen changelog entry */
-  latestEntry: ChangelogEntry | null;
-  /** All changelog entries */
-  allEntries: ChangelogEntry[];
-  /** Whether the popup is in its fade-out phase */
   isFading: boolean;
-  /** Dismiss the popup and mark current entry as seen */
+  latestEntry: ChangelogEntry | null;
+  allEntries: ChangelogEntry[];
   dismiss: () => void;
-  /** Pause auto-dismiss (e.g. on hover) */
   pauseAutoDismiss: () => void;
-  /** Resume auto-dismiss (e.g. on mouse leave) */
   resumeAutoDismiss: () => void;
-  /** Open the full changelog view */
   showFullChangelog: boolean;
-  /** Toggle full changelog view */
   setShowFullChangelog: (show: boolean) => void;
 }
 
@@ -32,100 +114,101 @@ export function useChangelog(): UseChangelogReturn {
   const [isFading, setIsFading] = useState(false);
   const [showFullChangelog, setShowFullChangelog] = useState(false);
   const [latestEntry, setLatestEntry] = useState<ChangelogEntry | null>(null);
-  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isPausedRef = useRef(false);
+  const [allEntries, setAllEntries] = useState<ChangelogEntry[]>([]);
+  const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPaused = useRef(false);
 
   const clearTimers = useCallback(() => {
-    if (autoDismissTimerRef.current) {
-      clearTimeout(autoDismissTimerRef.current);
-      autoDismissTimerRef.current = null;
-    }
-    if (fadeTimerRef.current) {
-      clearTimeout(fadeTimerRef.current);
-      fadeTimerRef.current = null;
+    if (autoDismissTimer.current) clearTimeout(autoDismissTimer.current);
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    autoDismissTimer.current = null;
+    fadeTimer.current = null;
+  }, []);
+
+  const markAsSeen = useCallback((slug: string) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, slug);
+    } catch {
+      // localStorage unavailable
     }
   }, []);
 
   const dismiss = useCallback(() => {
     clearTimers();
     setIsFading(true);
-
-    // After fade animation completes, fully hide
-    fadeTimerRef.current = setTimeout(() => {
+    fadeTimer.current = setTimeout(() => {
       setIsVisible(false);
       setIsFading(false);
-
-      // Mark as seen
-      if (changelogEntries.length > 0) {
-        try {
-          localStorage.setItem(STORAGE_KEY, changelogEntries[0].id);
-        } catch {
-          // localStorage might not be available
-        }
-      }
-    }, 500); // Match CSS transition duration
-  }, [clearTimers]);
+      if (latestEntry) markAsSeen(latestEntry.slug);
+    }, 500);
+  }, [clearTimers, latestEntry, markAsSeen]);
 
   const startAutoDismiss = useCallback(() => {
-    if (isPausedRef.current) return;
-
+    if (isPaused.current) return;
     clearTimers();
-    autoDismissTimerRef.current = setTimeout(() => {
-      if (!isPausedRef.current) {
-        dismiss();
-      }
-    }, AUTO_DISMISS_DELAY);
+    autoDismissTimer.current = setTimeout(() => {
+      if (!isPaused.current) dismiss();
+    }, AUTO_DISMISS_MS);
   }, [clearTimers, dismiss]);
 
   const pauseAutoDismiss = useCallback(() => {
-    isPausedRef.current = true;
-    if (autoDismissTimerRef.current) {
-      clearTimeout(autoDismissTimerRef.current);
-      autoDismissTimerRef.current = null;
+    isPaused.current = true;
+    if (autoDismissTimer.current) {
+      clearTimeout(autoDismissTimer.current);
+      autoDismissTimer.current = null;
     }
   }, []);
 
   const resumeAutoDismiss = useCallback(() => {
-    isPausedRef.current = false;
+    isPaused.current = false;
     startAutoDismiss();
   }, [startAutoDismiss]);
 
   useEffect(() => {
-    if (changelogEntries.length === 0) return;
+    let cancelled = false;
 
-    const latest = changelogEntries[0];
+    fetchChangelogEntries().then((entries) => {
+      if (cancelled || entries.length === 0) return;
 
-    try {
-      const lastSeen = localStorage.getItem(STORAGE_KEY);
-      if (lastSeen === latest.id) {
-        // User has already seen the latest entry
-        return;
-      }
-    } catch {
-      // localStorage not available, show the popup anyway
-    }
-
-    // Small delay before showing to let the page settle
-    const showTimer = setTimeout(() => {
+      const latest = entries[0];
+      setAllEntries(entries);
       setLatestEntry(latest);
-      setIsVisible(true);
-      startAutoDismiss();
-    }, 1500);
+
+      // Check if user has already seen this entry
+      try {
+        const lastSeen = localStorage.getItem(STORAGE_KEY);
+        if (lastSeen === latest.slug) return;
+      } catch {
+        // Show anyway if localStorage unavailable
+      }
+
+      // Delay to let the page settle
+      setTimeout(() => {
+        if (!cancelled) {
+          setIsVisible(true);
+        }
+      }, 1500);
+    });
 
     return () => {
-      clearTimeout(showTimer);
+      cancelled = true;
       clearTimers();
     };
-  }, [startAutoDismiss, clearTimers]);
+  }, [clearTimers]);
+
+  // Start auto-dismiss when popup becomes visible
+  useEffect(() => {
+    if (isVisible && !isFading) {
+      startAutoDismiss();
+    }
+  }, [isVisible, isFading, startAutoDismiss]);
 
   return {
     isVisible,
-    latestEntry,
-    allEntries: changelogEntries,
     isFading,
+    latestEntry,
+    allEntries,
     dismiss,
     pauseAutoDismiss,
     resumeAutoDismiss,
