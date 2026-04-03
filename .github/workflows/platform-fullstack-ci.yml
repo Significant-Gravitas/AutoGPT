@@ -193,8 +193,16 @@ jobs:
             --git-ref "${{ github.ref }}"
 
           # Debug: check if SOURCEMAPS made it into the resolved compose
-          echo "=== SOURCEMAPS in resolved compose ==="
-          grep -i "SOURCEMAPS" docker-compose.resolved.yml || echo "SOURCEMAPS NOT FOUND in resolved compose!"
+          echo "=== Frontend build section in resolved compose ==="
+          python3 -c "
+import yaml
+with open('docker-compose.resolved.yml') as f:
+    c = yaml.safe_load(f)
+frontend = c.get('services', {}).get('frontend', {})
+build = frontend.get('build', {})
+print('build.args:', build.get('args', 'NO ARGS KEY'))
+print('build keys:', list(build.keys()) if build else 'NO BUILD')
+"
 
           # Build with bake using the resolved compose file (now includes cache config)
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
