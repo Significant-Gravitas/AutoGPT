@@ -7,7 +7,9 @@ import {
   Sparkle,
   X,
 } from "@phosphor-icons/react";
-import { CHANGELOG_INDEX_URL } from "./changelog-constants";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CHANGELOG_BASE_URL } from "./changelog-constants";
 import { ChangelogEntry, useChangelog } from "./useChangelog";
 
 export function ChangelogPopup() {
@@ -20,23 +22,28 @@ export function ChangelogPopup() {
     pauseAutoDismiss,
     resumeAutoDismiss,
     showFullChangelog,
-    setShowFullChangelog,
+    openFullChangelog,
+    closeFullChangelog,
+    selectedEntry,
+    selectEntry,
+    entryMarkdown,
+    isLoadingMarkdown,
   } = useChangelog();
-
-  if (!isVisible || !latestEntry) return null;
 
   if (showFullChangelog) {
     return (
-      <ChangelogEmbed
+      <ChangelogModal
         entries={allEntries}
-        initialUrl={latestEntry.url}
-        onClose={() => {
-          setShowFullChangelog(false);
-          dismiss();
-        }}
+        selectedEntry={selectedEntry}
+        entryMarkdown={entryMarkdown}
+        isLoadingMarkdown={isLoadingMarkdown}
+        onSelectEntry={selectEntry}
+        onClose={closeFullChangelog}
       />
     );
   }
+
+  if (!isVisible || !latestEntry) return null;
 
   return (
     <div
@@ -74,23 +81,23 @@ export function ChangelogPopup() {
           </div>
         </div>
 
-        {/* Latest entry */}
+        {/* Latest entry summary */}
         <div className="px-5 py-4">
           <Text
             variant="body-medium"
             className="text-[15px] font-semibold leading-snug text-neutral-900"
           >
-            {latestEntry.title}
+            {latestEntry.highlights}
           </Text>
           <Text variant="body" className="mt-1 text-xs text-neutral-500">
-            {latestEntry.date}
+            {latestEntry.dateRange}
           </Text>
         </div>
 
-        {/* Footer actions */}
+        {/* Footer */}
         <div className="flex items-center justify-between border-t border-neutral-200 bg-neutral-50/80 px-5 py-2.5">
           <button
-            onClick={() => setShowFullChangelog(true)}
+            onClick={() => openFullChangelog(latestEntry)}
             className="flex items-center gap-1 text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-700"
           >
             Read more
@@ -111,14 +118,19 @@ export function ChangelogPopup() {
   );
 }
 
-/** Full changelog view — sidebar with entry list + iframe embed of the selected entry */
-function ChangelogEmbed({
+function ChangelogModal({
   entries,
-  initialUrl,
+  selectedEntry,
+  entryMarkdown,
+  isLoadingMarkdown,
+  onSelectEntry,
   onClose,
 }: {
   entries: ChangelogEntry[];
-  initialUrl: string;
+  selectedEntry: ChangelogEntry | null;
+  entryMarkdown: string | null;
+  isLoadingMarkdown: boolean;
+  onSelectEntry: (entry: ChangelogEntry) => void;
   onClose: () => void;
 }) {
   return (
@@ -131,51 +143,52 @@ function ChangelogEmbed({
 
       {/* Modal */}
       <div className="fixed inset-4 z-50 flex overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl sm:inset-6 md:inset-10">
-        {/* Sidebar — entry list */}
+        {/* Sidebar */}
         <div className="hidden w-72 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50 md:flex">
           {/* Sidebar header */}
-          <div className="flex items-center justify-between bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Sparkle className="h-4 w-4 text-white" weight="fill" />
-              <Text
-                variant="body-medium"
-                as="span"
-                className="text-sm font-bold text-white"
-              >
-                Changelog
-              </Text>
-            </div>
+          <div className="flex items-center gap-2 bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 px-4 py-3">
+            <Sparkle className="h-4 w-4 text-white" weight="fill" />
+            <Text
+              variant="body-medium"
+              as="span"
+              className="text-sm font-bold text-white"
+            >
+              Changelog
+            </Text>
           </div>
 
           {/* Entry list */}
           <nav className="flex-1 overflow-y-auto p-2">
             {entries.map((entry) => (
-              <a
+              <button
                 key={entry.slug}
-                href={entry.url}
-                target="changelog-embed"
-                className="mb-1 block rounded-lg px-3 py-2.5 transition-colors hover:bg-neutral-100"
+                onClick={() => onSelectEntry(entry)}
+                className={`mb-1 block w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
+                  selectedEntry?.slug === entry.slug
+                    ? "bg-violet-100 ring-1 ring-violet-200"
+                    : "hover:bg-neutral-100"
+                }`}
               >
                 <Text
                   variant="body-medium"
                   className="text-[13px] font-medium leading-snug text-neutral-800"
                 >
-                  {entry.title}
+                  {entry.highlights}
                 </Text>
                 <Text
                   variant="body"
                   className="mt-0.5 text-[11px] text-neutral-500"
                 >
-                  {entry.date}
+                  {entry.dateRange}
                 </Text>
-              </a>
+              </button>
             ))}
           </nav>
 
           {/* Sidebar footer */}
           <div className="border-t border-neutral-200 p-3">
             <a
-              href={CHANGELOG_INDEX_URL}
+              href={CHANGELOG_BASE_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-1.5 rounded-full bg-zinc-800 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-zinc-900"
@@ -186,15 +199,12 @@ function ChangelogEmbed({
           </div>
         </div>
 
-        {/* Main content — iframe embed */}
+        {/* Main content */}
         <div className="flex flex-1 flex-col">
-          {/* Top bar (mobile: shows title + close; desktop: just close) */}
+          {/* Top bar */}
           <div className="flex items-center justify-between border-b border-neutral-200 bg-white px-4 py-2">
             <div className="flex items-center gap-2 md:hidden">
-              <Sparkle
-                className="h-4 w-4 text-violet-600"
-                weight="fill"
-              />
+              <Sparkle className="h-4 w-4 text-violet-600" weight="fill" />
               <Text
                 variant="body-medium"
                 as="span"
@@ -203,15 +213,17 @@ function ChangelogEmbed({
                 Changelog
               </Text>
             </div>
-            <a
-              href={CHANGELOG_INDEX_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden items-center gap-1 text-xs text-neutral-500 transition-colors hover:text-neutral-700 md:flex"
-            >
-              Open in new tab
-              <ArrowSquareOut className="h-3 w-3" />
-            </a>
+            {selectedEntry && (
+              <a
+                href={selectedEntry.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden items-center gap-1 text-xs text-neutral-500 transition-colors hover:text-neutral-700 md:flex"
+              >
+                Open in docs
+                <ArrowSquareOut className="h-3 w-3" />
+              </a>
+            )}
             <button
               onClick={onClose}
               className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
@@ -221,14 +233,61 @@ function ChangelogEmbed({
             </button>
           </div>
 
-          {/* Iframe */}
-          <iframe
-            name="changelog-embed"
-            src={initialUrl}
-            className="flex-1 border-0"
-            title="AutoGPT Platform Changelog"
-            sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
-          />
+          {/* Markdown content */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 md:px-10">
+            {isLoadingMarkdown && (
+              <div className="flex items-center gap-2 text-sm text-neutral-500">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-violet-600" />
+                Loading…
+              </div>
+            )}
+            {entryMarkdown && (
+              <ReactMarkdown
+                className="prose prose-sm max-w-none prose-headings:text-neutral-900 prose-p:text-neutral-600 prose-a:text-violet-600 prose-a:no-underline hover:prose-a:underline prose-strong:text-neutral-800 prose-img:rounded-lg prose-img:shadow-md"
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // Open all links in new tab
+                  a: ({ children, href, ...props }) => (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      {...props}
+                    >
+                      {children}
+                    </a>
+                  ),
+                  // Render images with proper styling
+                  // eslint-disable-next-line @next/next/no-img-element
+                  img: ({ src, alt, ...props }) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={src}
+                      alt={alt || ""}
+                      className="my-4 h-auto max-w-full rounded-lg shadow-md"
+                      loading="lazy"
+                      {...props}
+                    />
+                  ),
+                }}
+              >
+                {entryMarkdown}
+              </ReactMarkdown>
+            )}
+            {!isLoadingMarkdown && !entryMarkdown && selectedEntry && (
+              <div className="text-sm text-neutral-500">
+                Could not load changelog entry.{" "}
+                <a
+                  href={selectedEntry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-violet-600 underline"
+                >
+                  View on docs
+                </a>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>

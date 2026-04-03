@@ -3,110 +3,83 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AUTO_DISMISS_MS,
-  CHANGELOG_INDEX_URL,
+  CHANGELOG_BASE_URL,
+  CHANGELOG_INDEX_MD_URL,
   STORAGE_KEY,
 } from "./changelog-constants";
 
 export interface ChangelogEntry {
-  /** URL slug, e.g. "march-20-march-25-2026" */
+  /** e.g. "march-20-march-25-2026" */
   slug: string;
-  /** Human-readable title parsed from the docs page */
-  title: string;
+  /** e.g. "March 20 – March 25" */
+  dateRange: string;
+  /** Short highlights string from the index table */
+  highlights: string;
   /** Full URL to the entry on the docs site */
   url: string;
-  /** Date range derived from the slug, e.g. "March 20 – March 25, 2026" */
-  date: string;
-}
-
-/** Parse a slug like "march-20-march-25-2026" into "March 20 – March 25, 2026" */
-function slugToDateRange(slug: string): string {
-  // Expected format: month-day-month-day-year  or  month-day-month-day-year
-  const parts = slug.split("-");
-  if (parts.length < 5) return slug;
-
-  // Walk through parts to reconstruct: we need two "month day" pairs and a year
-  // e.g. ["february","26","march","4","2026"]
-  // or   ["march","20","march","25","2026"]
-  // or   ["february","11","february","26","2026"]
-  // or   ["january","29","february","11","2026"]
-  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-
-  // Find year (last 4-digit number)
-  const year = parts[parts.length - 1];
-
-  // Everything before the year contains two month-day pairs
-  const dateParts = parts.slice(0, -1);
-
-  // Split into two groups: find where the second month name starts
-  // Month names are non-numeric strings
-  const groups: { month: string; day: string }[] = [];
-  let i = 0;
-  while (i < dateParts.length) {
-    if (isNaN(Number(dateParts[i]))) {
-      // This is a month name (could be multi-word but GitBook uses single-word)
-      const month = capitalize(dateParts[i]);
-      const day = dateParts[i + 1] || "";
-      groups.push({ month, day });
-      i += 2;
-    } else {
-      i++;
-    }
-  }
-
-  if (groups.length === 2) {
-    return `${groups[0].month} ${groups[0].day} – ${groups[1].month} ${groups[1].day}, ${year}`;
-  }
-
-  return slug;
+  /** URL to the raw .md for this entry */
+  mdUrl: string;
 }
 
 /**
- * Fetch the changelog index page and parse entry links from the HTML.
- * The GitBook page contains <a> tags linking to each entry with their title.
+ * Parse the changelog index markdown.
+ *
+ * The index page is a markdown table like:
+ * | Date | Highlights |
+ * | --- | --- |
+ * | [March 20 – March 25](https://agpt.co/docs/platform/changelog/changelog/march-20-march-25-2026) | Import workflows … |
  */
-async function fetchChangelogEntries(): Promise<ChangelogEntry[]> {
-  const res = await fetch(CHANGELOG_INDEX_URL, {
-    next: { revalidate: 3600 }, // Cache for 1 hour
-  });
-
-  if (!res.ok) return [];
-
-  const html = await res.text();
-
-  // Parse entries: <a href="/docs/platform/changelog/changelog/SLUG">TITLE</a>
-  const pattern =
-    /href="(\/docs\/platform\/changelog\/changelog\/([a-z0-9-]+))">([^<]+)<\/a>/g;
-
-  const seen = new Set<string>();
+function parseChangelogIndex(md: string): ChangelogEntry[] {
   const entries: ChangelogEntry[] = [];
 
+  // Match table rows: | [Date range](url) | Highlights |
+  const rowPattern =
+    /\|\s*\[([^\]]+)\]\((https?:\/\/[^)]+\/changelog\/changelog\/([a-z0-9-]+))\)\s*\|\s*([^|]+)\|/g;
+
   let match;
-  while ((match = pattern.exec(html)) !== null) {
-    const [, path, slug, title] = match;
-    if (!seen.has(slug)) {
-      seen.add(slug);
-      entries.push({
-        slug,
-        title: title.trim(),
-        url: `https://agpt.co${path}`,
-        date: slugToDateRange(slug),
-      });
-    }
+  while ((match = rowPattern.exec(md)) !== null) {
+    const [, dateRange, url, slug, highlights] = match;
+    entries.push({
+      slug,
+      dateRange: dateRange.trim(),
+      highlights: highlights.trim(),
+      url,
+      mdUrl: `${CHANGELOG_BASE_URL}/${slug}.md`,
+    });
   }
 
   return entries;
 }
 
 interface UseChangelogReturn {
+  /** Whether the toast popup is visible */
   isVisible: boolean;
+  /** Whether the toast is fading out */
   isFading: boolean;
+  /** The latest unseen changelog entry */
   latestEntry: ChangelogEntry | null;
+  /** All parsed entries from the index */
   allEntries: ChangelogEntry[];
+  /** Raw markdown content of the selected entry (fetched on demand) */
+  entryMarkdown: string | null;
+  /** Whether entry markdown is loading */
+  isLoadingMarkdown: boolean;
+  /** Dismiss the toast */
   dismiss: () => void;
+  /** Pause auto-dismiss (e.g. on hover) */
   pauseAutoDismiss: () => void;
+  /** Resume auto-dismiss */
   resumeAutoDismiss: () => void;
+  /** Whether the full changelog modal is open */
   showFullChangelog: boolean;
-  setShowFullChangelog: (show: boolean) => void;
+  /** Open the full changelog modal, optionally loading a specific entry */
+  openFullChangelog: (entry?: ChangelogEntry) => void;
+  /** Close the full modal */
+  closeFullChangelog: () => void;
+  /** The currently selected entry in the full modal */
+  selectedEntry: ChangelogEntry | null;
+  /** Select a different entry in the modal sidebar */
+  selectEntry: (entry: ChangelogEntry) => void;
 }
 
 export function useChangelog(): UseChangelogReturn {
@@ -115,9 +88,17 @@ export function useChangelog(): UseChangelogReturn {
   const [showFullChangelog, setShowFullChangelog] = useState(false);
   const [latestEntry, setLatestEntry] = useState<ChangelogEntry | null>(null);
   const [allEntries, setAllEntries] = useState<ChangelogEntry[]>([]);
+  const [selectedEntry, setSelectedEntry] = useState<ChangelogEntry | null>(
+    null,
+  );
+  const [entryMarkdown, setEntryMarkdown] = useState<string | null>(null);
+  const [isLoadingMarkdown, setIsLoadingMarkdown] = useState(false);
+
   const autoDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPaused = useRef(false);
+
+  // --- Timers ---
 
   const clearTimers = useCallback(() => {
     if (autoDismissTimer.current) clearTimeout(autoDismissTimer.current);
@@ -130,7 +111,7 @@ export function useChangelog(): UseChangelogReturn {
     try {
       localStorage.setItem(STORAGE_KEY, slug);
     } catch {
-      // localStorage unavailable
+      /* noop */
     }
   }, []);
 
@@ -165,31 +146,96 @@ export function useChangelog(): UseChangelogReturn {
     startAutoDismiss();
   }, [startAutoDismiss]);
 
+  // --- Markdown fetching ---
+
+  const fetchEntryMarkdown = useCallback(async (entry: ChangelogEntry) => {
+    setIsLoadingMarkdown(true);
+    setEntryMarkdown(null);
+    try {
+      const res = await fetch(entry.mdUrl);
+      if (res.ok) {
+        const md = await res.text();
+        // Strip GitBook-specific directives ({% hint %}, {% endhint %}, <figure>, <figcaption>, <details>, <summary>)
+        const cleaned = md
+          .replace(/\{%.*?%\}/gs, "")
+          .replace(/<figure>|<\/figure>/g, "")
+          .replace(/<figcaption>.*?<\/figcaption>/gs, "")
+          .replace(/<details>/g, "\n---\n")
+          .replace(/<\/details>/g, "")
+          .replace(/<summary>(.*?)<\/summary>/g, "### $1");
+        setEntryMarkdown(cleaned);
+      }
+    } catch {
+      /* fail silently */
+    } finally {
+      setIsLoadingMarkdown(false);
+    }
+  }, []);
+
+  // --- Modal controls ---
+
+  const openFullChangelog = useCallback(
+    (entry?: ChangelogEntry) => {
+      clearTimers();
+      setIsVisible(false);
+      setIsFading(false);
+      const target = entry || latestEntry;
+      if (target) {
+        setSelectedEntry(target);
+        fetchEntryMarkdown(target);
+        markAsSeen(target.slug);
+      }
+      setShowFullChangelog(true);
+    },
+    [clearTimers, latestEntry, fetchEntryMarkdown, markAsSeen],
+  );
+
+  const closeFullChangelog = useCallback(() => {
+    setShowFullChangelog(false);
+    setEntryMarkdown(null);
+    setSelectedEntry(null);
+  }, []);
+
+  const selectEntry = useCallback(
+    (entry: ChangelogEntry) => {
+      setSelectedEntry(entry);
+      fetchEntryMarkdown(entry);
+    },
+    [fetchEntryMarkdown],
+  );
+
+  // --- Initial fetch ---
+
   useEffect(() => {
     let cancelled = false;
 
-    fetchChangelogEntries().then((entries) => {
-      if (cancelled || entries.length === 0) return;
+    fetch(CHANGELOG_INDEX_MD_URL)
+      .then((res) => (res.ok ? res.text() : ""))
+      .then((md) => {
+        if (cancelled || !md) return;
 
-      const latest = entries[0];
-      setAllEntries(entries);
-      setLatestEntry(latest);
+        const entries = parseChangelogIndex(md);
+        if (entries.length === 0) return;
 
-      // Check if user has already seen this entry
-      try {
-        const lastSeen = localStorage.getItem(STORAGE_KEY);
-        if (lastSeen === latest.slug) return;
-      } catch {
-        // Show anyway if localStorage unavailable
-      }
+        setAllEntries(entries);
+        setLatestEntry(entries[0]);
 
-      // Delay to let the page settle
-      setTimeout(() => {
-        if (!cancelled) {
-          setIsVisible(true);
+        // Check if user has already seen this entry
+        try {
+          const lastSeen = localStorage.getItem(STORAGE_KEY);
+          if (lastSeen === entries[0].slug) return;
+        } catch {
+          /* show anyway */
         }
-      }, 1500);
-    });
+
+        // Small delay to let page settle
+        setTimeout(() => {
+          if (!cancelled) setIsVisible(true);
+        }, 1500);
+      })
+      .catch(() => {
+        /* fail silently — changelog is non-critical */
+      });
 
     return () => {
       cancelled = true;
@@ -197,11 +243,9 @@ export function useChangelog(): UseChangelogReturn {
     };
   }, [clearTimers]);
 
-  // Start auto-dismiss when popup becomes visible
+  // Start auto-dismiss when toast becomes visible
   useEffect(() => {
-    if (isVisible && !isFading) {
-      startAutoDismiss();
-    }
+    if (isVisible && !isFading) startAutoDismiss();
   }, [isVisible, isFading, startAutoDismiss]);
 
   return {
@@ -209,10 +253,15 @@ export function useChangelog(): UseChangelogReturn {
     isFading,
     latestEntry,
     allEntries,
+    entryMarkdown,
+    isLoadingMarkdown,
     dismiss,
     pauseAutoDismiss,
     resumeAutoDismiss,
     showFullChangelog,
-    setShowFullChangelog,
+    openFullChangelog,
+    closeFullChangelog,
+    selectedEntry,
+    selectEntry,
   };
 }
