@@ -103,24 +103,26 @@ async def create_orgs_for_existing_users() -> int:
 
         display_name = profile_name or user_name or email.split("@")[0]
 
-        # Create Organization
-        org = await prisma.organization.create(
-            data={
-                "name": display_name,
-                "slug": slug,
-                "isPersonal": True,
-                "stripeCustomerId": row.get("stripeCustomerId"),
-                "topUpConfig": row.get("topUpConfig"),
-                "bootstrapUserId": user_id,
-                "settings": "{}",
-            }
-        )
+        # Create Organization — only include optional JSON fields when non-None
+        org_data: dict = {
+            "name": display_name,
+            "slug": slug,
+            "isPersonal": True,
+            "bootstrapUserId": user_id,
+            "settings": "{}",
+        }
+        if row.get("stripeCustomerId"):
+            org_data["stripeCustomerId"] = row["stripeCustomerId"]
+        if row.get("topUpConfig"):
+            org_data["topUpConfig"] = row["topUpConfig"]
+
+        org = await prisma.organization.create(data=org_data)
 
         # Create OrgMember (owner)
         await prisma.orgmember.create(
             data={
-                "orgId": org.id,
-                "userId": user_id,
+                "Org": {"connect": {"id": org.id}},
+                "User": {"connect": {"id": user_id}},
                 "isOwner": True,
                 "isAdmin": True,
                 "status": "ACTIVE",
@@ -131,7 +133,7 @@ async def create_orgs_for_existing_users() -> int:
         workspace = await prisma.orgworkspace.create(
             data={
                 "name": "Default",
-                "orgId": org.id,
+                "Org": {"connect": {"id": org.id}},
                 "isDefault": True,
                 "joinPolicy": "OPEN",
                 "createdByUserId": user_id,
@@ -141,24 +143,27 @@ async def create_orgs_for_existing_users() -> int:
         # Create OrgWorkspaceMember
         await prisma.orgworkspacemember.create(
             data={
-                "workspaceId": workspace.id,
-                "userId": user_id,
+                "Workspace": {"connect": {"id": workspace.id}},
+                "User": {"connect": {"id": user_id}},
                 "isAdmin": True,
                 "status": "ACTIVE",
             }
         )
 
         # Create OrganizationProfile (from user's Profile if exists)
-        await prisma.organizationprofile.create(
-            data={
-                "organizationId": org.id,
-                "username": slug,
-                "displayName": display_name,
-                "avatarUrl": row.get("profile_avatar_url"),
-                "bio": row.get("profile_description"),
-                "socialLinks": row.get("profile_links"),
-            }
-        )
+        profile_data: dict = {
+            "Organization": {"connect": {"id": org.id}},
+            "username": slug,
+            "displayName": display_name,
+        }
+        if row.get("profile_avatar_url"):
+            profile_data["avatarUrl"] = row["profile_avatar_url"]
+        if row.get("profile_description"):
+            profile_data["bio"] = row["profile_description"]
+        if row.get("profile_links"):
+            profile_data["socialLinks"] = row["profile_links"]
+
+        await prisma.organizationprofile.create(data=profile_data)
 
         # Create seat assignment (FREE seat for personal org)
         await prisma.organizationseatassignment.create(
