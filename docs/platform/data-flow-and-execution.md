@@ -12,7 +12,7 @@ Agent execution is entirely **determined by data flow**. There is no separate ex
 
 1. **Execution starts from input blocks**, which yield their data when the agent is triggered (either manually or via a trigger/schedule)
 2. The next block to run is whichever block has **all of its connected inputs satisfied**
-3. This continues block by block, following the data flow, until all blocks have executed or an unhandled error occurs
+3. This continues block by block, following the data flow, until all blocks have executed
 4. **Output blocks** collect the final results and present them to the user
 
 ### Required Inputs
