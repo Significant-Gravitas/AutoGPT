@@ -194,6 +194,7 @@ jobs:
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
         env:
           NEXT_PUBLIC_PW_TEST: true
+          NEXT_PUBLIC_SOURCEMAPS: true
 
       - name: Set up tests - Cache E2E test data
         id: e2e-data-cache
@@ -278,6 +279,12 @@ jobs:
           node-version: "22.18.0"
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
+
+      - name: Copy Next.js build output for coverage source maps
+        run: |
+          FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
+          docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
+          echo "Copied .next/static from container ($(find .next-static-coverage -name '*.map' | wc -l) source map files)"
 
       - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile

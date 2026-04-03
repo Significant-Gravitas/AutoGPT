@@ -5,9 +5,46 @@ import { defineConfig, devices } from "@playwright/test";
  * https://github.com/motdotla/dotenv
  */
 import dotenv from "dotenv";
+import fs from "fs";
 import path from "path";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
+
+const frontendRoot = __dirname.replaceAll("\\", "/");
+
+// Directory where CI copies .next/static from the Docker container
+const staticCoverageDir = path.resolve(__dirname, ".next-static-coverage");
+
+function normalizeCoverageSourcePath(filePath: string) {
+  const normalizedFilePath = filePath.replaceAll("\\", "/");
+  const withoutWebpackPrefix = normalizedFilePath.replace(
+    /^webpack:\/\/_N_E\//,
+    "",
+  );
+
+  if (withoutWebpackPrefix.startsWith("./")) {
+    return withoutWebpackPrefix.slice(2);
+  }
+
+  if (withoutWebpackPrefix.startsWith(frontendRoot)) {
+    return path.posix.relative(frontendRoot, withoutWebpackPrefix);
+  }
+
+  return withoutWebpackPrefix;
+}
+
+// Resolve source maps from the copied .next/static directory
+function resolveSourceMap(sourcePath: string) {
+  // sourcePath looks like "localhost-3000/_next/static/chunks/abc123.js"
+  const match = sourcePath.match(/_next\/static\/(.+)$/);
+  if (!match) return undefined;
+
+  const mapFile = path.join(staticCoverageDir, match[1] + ".map");
+  if (fs.existsSync(mapFile)) {
+    return JSON.parse(fs.readFileSync(mapFile, "utf8"));
+  }
+  return undefined;
+}
 
 export default defineConfig({
   testDir: "./src/tests",
@@ -38,8 +75,11 @@ export default defineConfig({
             entry.url.includes("/_next/static/") &&
             !entry.url.includes("node_modules"),
           sourceFilter: (sourcePath: string) =>
-            sourcePath.includes("src/") &&
-            !sourcePath.includes("node_modules"),
+            sourcePath.includes("src/") && !sourcePath.includes("node_modules"),
+          sourcePath: (filePath: string) =>
+            normalizeCoverageSourcePath(filePath),
+          sourceMapResolver: (sourcePath: string) =>
+            resolveSourceMap(sourcePath),
         },
       },
     ],
