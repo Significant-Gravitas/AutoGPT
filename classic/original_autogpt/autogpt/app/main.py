@@ -754,10 +754,8 @@ async def run_interaction_loop(
                 logger.info("User chose to exit after task completion.")
                 return
 
-            # Start new task in same workspace
+            # Start new task in same workspace, keeping prior context
             agent.state.task = next_task
-            agent.event_history.episodes.clear()  # Clear history for fresh context
-            agent.event_history.cursor = 0
 
             # Reset cycle budget for new task
             cycles_remaining = _get_cycle_budget(
