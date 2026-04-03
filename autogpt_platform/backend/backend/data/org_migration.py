@@ -176,27 +176,12 @@ async def create_orgs_for_existing_users() -> int:
             }
         )
 
-        # Log if slug diverged from desired
+        # Log if slug diverged from desired (collision resolution)
         if slug != desired_slug:
             logger.info(
                 f"Org migration: slug collision for user {user_id} — "
                 f"desired '{desired_slug}', assigned '{slug}'"
             )
-            # Create alias for the original desired slug if it was taken by another org
-            # (only if the desired slug belongs to a different org)
-            existing_org = await prisma.organization.find_unique(
-                where={"slug": desired_slug}
-            )
-            if existing_org and existing_org.id != org.id:
-                await prisma.organizationalias.create(
-                    data={
-                        "organizationId": org.id,
-                        "aliasSlug": slug,
-                        "aliasType": "MIGRATION",
-                        "createdByUserId": user_id,
-                        "isRemovable": False,
-                    }
-                )
 
         created += 1
 

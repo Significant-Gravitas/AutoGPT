@@ -167,6 +167,16 @@ async def accept_invitation(
     if invitation.expiresAt < datetime.now(timezone.utc):
         raise HTTPException(400, detail="Invitation has expired")
 
+    # Verify the accepting user's email matches the invitation
+    accepting_user = await prisma.user.find_unique(where={"id": user_id})
+    if accepting_user is None:
+        raise HTTPException(401, detail="User not found")
+    if accepting_user.email.lower() != invitation.email.lower():
+        raise HTTPException(
+            403,
+            detail="This invitation was sent to a different email address",
+        )
+
     # Add user to org
     await org_db.add_org_member(
         org_id=invitation.orgId,

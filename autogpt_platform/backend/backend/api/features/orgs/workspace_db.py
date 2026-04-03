@@ -69,11 +69,13 @@ async def list_workspaces(org_id: str, user_id: str) -> list[dict]:
     return [_ws_to_dict(ws) for ws in workspaces]
 
 
-async def get_workspace(ws_id: str) -> dict:
-    """Get workspace details."""
+async def get_workspace(ws_id: str, expected_org_id: str | None = None) -> dict:
+    """Get workspace details. Validates org ownership if expected_org_id is given."""
     ws = await prisma.orgworkspace.find_unique(where={"id": ws_id})
     if ws is None:
         raise NotFoundError(f"Workspace {ws_id} not found")
+    if expected_org_id and ws.orgId != expected_org_id:
+        raise NotFoundError(f"Workspace {ws_id} not found in org {expected_org_id}")
     return _ws_to_dict(ws)
 
 

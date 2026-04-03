@@ -1480,8 +1480,7 @@ model Organization {
   TransfersFrom      TransferRequest[]            @relation("TransferSource")
   TransfersTo        TransferRequest[]            @relation("TransferTarget")
   AuditLogs          AuditLog[]
-
-  @@index([slug])
+  // slug already has @unique which creates an index — no separate @@index needed
 }
 
 model OrganizationAlias {
@@ -1575,15 +1574,16 @@ model OrgWorkspace {
   Org     Organization         @relation(fields: [orgId], references: [id], onDelete: Cascade)
   Members OrgWorkspaceMember[]
 
-  AgentGraphs    AgentGraph[]
-  Executions     AgentGraphExecution[]
-  ChatSessions   ChatSession[]
-  Presets        AgentPreset[]
-  LibraryAgents  LibraryAgent[]
-  LibraryFolders LibraryFolder[]
-  Webhooks       IntegrationWebhook[]
-  APIKeys        APIKey[]
-  Credentials    IntegrationCredential[] @relation("WorkspaceCredentials")
+  AgentGraphs      AgentGraph[]
+  Executions       AgentGraphExecution[]
+  ChatSessions     ChatSession[]
+  Presets          AgentPreset[]
+  LibraryAgents    LibraryAgent[]
+  LibraryFolders   LibraryFolder[]
+  Webhooks         IntegrationWebhook[]
+  APIKeys          APIKey[]
+  Credentials      IntegrationCredential[] @relation("WorkspaceCredentials")
+  WorkspaceInvites WorkspaceInvite[]
 
   @@unique([orgId, name])
   @@index([orgId, isDefault])
@@ -1624,6 +1624,8 @@ model WorkspaceInvite {
   acceptedAt       DateTime?
   revokedAt        DateTime?
   invitedByUserId  String
+
+  Workspace OrgWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([email])
   @@index([token])
@@ -1737,7 +1739,8 @@ model IntegrationCredential {
   id               String              @id @default(uuid())
   organizationId   String
   ownerType        CredentialOwnerType
-  ownerId          String
+  ownerId          String // userId, workspaceId, or orgId depending on ownerType
+  workspaceId      String? // Dedicated FK for workspace-scoped creds (set when ownerType=WORKSPACE)
   provider         String
   credentialType   String
   displayName      String
@@ -1751,7 +1754,7 @@ model IntegrationCredential {
   updatedAt        DateTime            @updatedAt
 
   Organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  Workspace    OrgWorkspace? @relation("WorkspaceCredentials", fields: [ownerId], references: [id], onDelete: Cascade, map: "IntegrationCredential_workspace_fkey")
+  Workspace    OrgWorkspace? @relation("WorkspaceCredentials", fields: [workspaceId], references: [id], onDelete: Cascade, map: "IntegrationCredential_workspace_fkey")
 
   @@index([organizationId, ownerType, provider])
   @@index([ownerId, ownerType])

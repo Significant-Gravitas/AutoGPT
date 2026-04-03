@@ -17,7 +17,20 @@ async def create_org(
     """Create an organization and make the user the owner.
 
     Also creates a default workspace and adds the user to it.
+
+    Raises:
+        ValueError: If the slug is already taken by another org or alias.
     """
+    # Check slug uniqueness (org slugs + alias slugs)
+    existing_org = await prisma.organization.find_unique(where={"slug": slug})
+    if existing_org:
+        raise ValueError(f"Slug '{slug}' is already in use")
+    existing_alias = await prisma.organizationalias.find_unique(
+        where={"aliasSlug": slug}
+    )
+    if existing_alias:
+        raise ValueError(f"Slug '{slug}' is already in use as an alias")
+
     org = await prisma.organization.create(
         data={
             "name": name,
@@ -153,10 +166,33 @@ async def get_org(org_id: str) -> dict:
 
 
 async def update_org(org_id: str, data: dict) -> dict:
-    """Update organization fields."""
+    """Update organization fields. Creates a RENAME alias if slug changes."""
     update_data = {k: v for k, v in data.items() if v is not None}
     if not update_data:
         return await get_org(org_id)
+
+    # If slug is changing, validate uniqueness and create alias for old slug
+    new_slug = update_data.get("slug")
+    if new_slug:
+        existing = await prisma.organization.find_unique(where={"slug": new_slug})
+        if existing and existing.id != org_id:
+            raise ValueError(f"Slug '{new_slug}' is already in use")
+        existing_alias = await prisma.organizationalias.find_unique(
+            where={"aliasSlug": new_slug}
+        )
+        if existing_alias:
+            raise ValueError(f"Slug '{new_slug}' is already in use as an alias")
+
+        # Create alias for the old slug so old URLs keep working
+        old_org = await prisma.organization.find_unique(where={"id": org_id})
+        if old_org and old_org.slug != new_slug:
+            await prisma.organizationalias.create(
+                data={
+                    "organizationId": org_id,
+                    "aliasSlug": old_org.slug,
+                    "aliasType": "RENAME",
+                }
+            )
 
     await prisma.organization.update(where={"id": org_id}, data=update_data)
     return await get_org(org_id)
@@ -309,7 +345,7 @@ async def remove_org_member(org_id: str, user_id: str) -> None:
 async def transfer_ownership(
     org_id: str, current_owner_id: str, new_owner_id: str
 ) -> None:
-    """Transfer org ownership from one user to another."""
+    """Transfer org ownership atomically. Both updates happen in one transaction."""
     current = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": current_owner_id}}
     )
@@ -322,16 +358,25 @@ async def transfer_ownership(
     if new is None:
         raise NotFoundError(f"User {new_owner_id} is not a member of org {org_id}")
 
-    # Remove owner flag from current
-    await prisma.orgmember.update(
-        where={"orgId_userId": {"orgId": org_id, "userId": current_owner_id}},
-        data={"isOwner": False},
-    )
-
-    # Set owner flag on new
-    await prisma.orgmember.update(
-        where={"orgId_userId": {"orgId": org_id, "userId": new_owner_id}},
-        data={"isOwner": True, "isAdmin": True},
+    # Atomic transfer — both updates in one SQL statement to prevent ownerless window
+    await prisma.execute_raw(
+        """
+        UPDATE "OrgMember"
+        SET "isOwner" = CASE
+                WHEN "userId" = $1 THEN false
+                WHEN "userId" = $2 THEN true
+                ELSE "isOwner"
+            END,
+            "isAdmin" = CASE
+                WHEN "userId" = $2 THEN true
+                ELSE "isAdmin"
+            END,
+            "updatedAt" = NOW()
+        WHERE "orgId" = $3 AND "userId" IN ($1, $2)
+        """,
+        current_owner_id,
+        new_owner_id,
+        org_id,
     )
 
 

@@ -28,6 +28,16 @@ from .model import (
 router = APIRouter()
 
 
+def _verify_org_path(ctx: RequestContext, org_id: str) -> None:
+    """Ensure the authenticated user's active org matches the path parameter.
+
+    Prevents authorization bypass where a user sends X-Org-Id for org A
+    but targets org B in the URL path.
+    """
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
+
+
 @router.post(
     "",
     summary="Create organization",
@@ -88,6 +98,7 @@ async def update_org(
         Security(requires_org_permission(OrgAction.RENAME_ORG)),
     ],
 ) -> OrgResponse:
+    _verify_org_path(ctx, org_id)
     result = await org_db.update_org(
         org_id,
         {
@@ -113,6 +124,7 @@ async def delete_org(
         Security(requires_org_permission(OrgAction.DELETE_ORG)),
     ],
 ) -> None:
+    _verify_org_path(ctx, org_id)
     await org_db.delete_org(org_id)
 
 
@@ -128,6 +140,7 @@ async def convert_org(
         Security(requires_org_permission(OrgAction.DELETE_ORG)),
     ],
 ) -> OrgResponse:
+    _verify_org_path(ctx, org_id)
     result = await org_db.convert_personal_org(org_id)
     return OrgResponse(**result)
 
@@ -163,6 +176,7 @@ async def add_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
+    _verify_org_path(ctx, org_id)
     result = await org_db.add_org_member(
         org_id=org_id,
         user_id=request.userId,
@@ -187,6 +201,7 @@ async def update_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> OrgMemberResponse:
+    _verify_org_path(ctx, org_id)
     result = await org_db.update_org_member(
         org_id=org_id,
         user_id=uid,
@@ -210,6 +225,7 @@ async def remove_member(
         Security(requires_org_permission(OrgAction.MANAGE_MEMBERS)),
     ],
 ) -> None:
+    _verify_org_path(ctx, org_id)
     await org_db.remove_org_member(org_id, uid)
 
 
@@ -226,6 +242,7 @@ async def transfer_ownership(
         Security(requires_org_permission(OrgAction.DELETE_ORG)),
     ],
 ) -> None:
+    _verify_org_path(ctx, org_id)
     await org_db.transfer_ownership(org_id, ctx.user_id, request.newOwnerId)
 
 
@@ -260,5 +277,6 @@ async def create_alias(
         Security(requires_org_permission(OrgAction.RENAME_ORG)),
     ],
 ) -> OrgAliasResponse:
+    _verify_org_path(ctx, org_id)
     result = await org_db.create_org_alias(org_id, request.aliasSlug, ctx.user_id)
     return OrgAliasResponse(**result)

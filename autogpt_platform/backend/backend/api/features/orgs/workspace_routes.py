@@ -72,7 +72,9 @@ async def get_workspace(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> WorkspaceResponse:
-    result = await ws_db.get_workspace(ws_id)
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
+    result = await ws_db.get_workspace(ws_id, expected_org_id=org_id)
     return WorkspaceResponse(**result)
 
 
@@ -90,6 +92,8 @@ async def update_workspace(
         Security(requires_workspace_permission(WorkspaceAction.MANAGE_SETTINGS)),
     ],
 ) -> WorkspaceResponse:
+    # Verify workspace belongs to org (ctx validates workspace membership)
+    await ws_db.get_workspace(ws_id, expected_org_id=org_id)
     result = await ws_db.update_workspace(
         ws_id,
         {
@@ -115,6 +119,7 @@ async def delete_workspace(
         Security(requires_org_permission(OrgAction.MANAGE_WORKSPACES)),
     ],
 ) -> None:
+    await ws_db.get_workspace(ws_id, expected_org_id=org_id)
     await ws_db.delete_workspace(ws_id)
 
 
@@ -159,6 +164,9 @@ async def list_members(
     ws_id: str,
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> list[WorkspaceMemberResponse]:
+    if ctx.org_id != org_id:
+        raise HTTPException(403, detail="Not a member of this organization")
+    await ws_db.get_workspace(ws_id, expected_org_id=org_id)
     results = await ws_db.list_workspace_members(ws_id)
     return [WorkspaceMemberResponse(**r) for r in results]
 

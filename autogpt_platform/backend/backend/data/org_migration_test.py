@@ -203,6 +203,183 @@ class TestCreateOrgsForExistingUsers:
         assert create_data["slug"] == "bob"
         assert create_data["name"] == "bob"
 
+    @pytest.mark.asyncio
+    async def test_user_with_name_no_profile_uses_name_slug(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "user-3",
+                    "email": "charlie@example.com",
+                    "name": "Charlie Brown",
+                    "stripeCustomerId": None,
+                    "topUpConfig": None,
+                    "profile_username": None,
+                    "profile_name": None,
+                    "profile_description": None,
+                    "profile_avatar_url": None,
+                    "profile_links": None,
+                },
+            ]
+        )
+
+        result = await create_orgs_for_existing_users()
+        assert result == 1
+
+        create_data = mock_prisma.organization.create.call_args[1]["data"]
+        assert create_data["slug"] == "charlie-brown"
+        assert create_data["name"] == "Charlie Brown"
+
+    @pytest.mark.asyncio
+    async def test_user_with_empty_email_uses_id_slug(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "abcdef12-3456-7890-abcd-ef1234567890",
+                    "email": "",
+                    "name": None,
+                    "stripeCustomerId": None,
+                    "topUpConfig": None,
+                    "profile_username": None,
+                    "profile_name": None,
+                    "profile_description": None,
+                    "profile_avatar_url": None,
+                    "profile_links": None,
+                },
+            ]
+        )
+
+        result = await create_orgs_for_existing_users()
+        assert result == 1
+
+        create_data = mock_prisma.organization.create.call_args[1]["data"]
+        assert create_data["slug"] == "user-abcdef12"
+
+    @pytest.mark.asyncio
+    async def test_stripe_customer_id_included_when_present(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "user-stripe",
+                    "email": "stripe@test.com",
+                    "name": "Stripe User",
+                    "stripeCustomerId": "cus_abc123",
+                    "topUpConfig": '{"amount": 1000}',
+                    "profile_username": "stripeuser",
+                    "profile_name": "Stripe User",
+                    "profile_description": None,
+                    "profile_avatar_url": None,
+                    "profile_links": None,
+                },
+            ]
+        )
+
+        result = await create_orgs_for_existing_users()
+        assert result == 1
+
+        create_data = mock_prisma.organization.create.call_args[1]["data"]
+        assert create_data["stripeCustomerId"] == "cus_abc123"
+        assert create_data["topUpConfig"] == '{"amount": 1000}'
+
+    @pytest.mark.asyncio
+    async def test_stripe_fields_omitted_when_none(self, mock_prisma):
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "user-no-stripe",
+                    "email": "nostripe@test.com",
+                    "name": None,
+                    "stripeCustomerId": None,
+                    "topUpConfig": None,
+                    "profile_username": "nostripe",
+                    "profile_name": None,
+                    "profile_description": None,
+                    "profile_avatar_url": None,
+                    "profile_links": None,
+                },
+            ]
+        )
+
+        result = await create_orgs_for_existing_users()
+        assert result == 1
+
+        create_data = mock_prisma.organization.create.call_args[1]["data"]
+        assert "stripeCustomerId" not in create_data
+        assert "topUpConfig" not in create_data
+
+    @pytest.mark.asyncio
+    async def test_org_profile_omits_none_optional_fields(self, mock_prisma):
+        """Profile creation should not pass None for optional JSON fields."""
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "user-minimal",
+                    "email": "minimal@test.com",
+                    "name": "Min",
+                    "stripeCustomerId": None,
+                    "topUpConfig": None,
+                    "profile_username": "minimal",
+                    "profile_name": "Min",
+                    "profile_description": None,
+                    "profile_avatar_url": None,
+                    "profile_links": None,
+                },
+            ]
+        )
+
+        await create_orgs_for_existing_users()
+
+        profile_data = mock_prisma.organizationprofile.create.call_args[1]["data"]
+        assert "avatarUrl" not in profile_data
+        assert "bio" not in profile_data
+        assert "socialLinks" not in profile_data
+        assert profile_data["username"] == "minimal"
+        assert profile_data["displayName"] == "Min"
+
+    @pytest.mark.asyncio
+    async def test_creates_all_required_records(self, mock_prisma):
+        """Verify the full set of records created per user."""
+        mock_prisma.query_raw = AsyncMock(
+            return_value=[
+                {
+                    "id": "user-full",
+                    "email": "full@test.com",
+                    "name": "Full User",
+                    "stripeCustomerId": None,
+                    "topUpConfig": None,
+                    "profile_username": "fulluser",
+                    "profile_name": "Full User",
+                    "profile_description": "Bio here",
+                    "profile_avatar_url": "https://example.com/avatar.png",
+                    "profile_links": ["https://github.com/fulluser"],
+                },
+            ]
+        )
+
+        await create_orgs_for_existing_users()
+
+        # Verify all 6 records created
+        mock_prisma.organization.create.assert_called_once()
+        mock_prisma.orgmember.create.assert_called_once()
+        mock_prisma.orgworkspace.create.assert_called_once()
+        mock_prisma.orgworkspacemember.create.assert_called_once()
+        mock_prisma.organizationprofile.create.assert_called_once()
+        mock_prisma.organizationseatassignment.create.assert_called_once()
+
+        # Verify OrgMember is owner+admin
+        member_data = mock_prisma.orgmember.create.call_args[1]["data"]
+        assert member_data["isOwner"] is True
+        assert member_data["isAdmin"] is True
+
+        # Verify workspace is default+open
+        ws_data = mock_prisma.orgworkspace.create.call_args[1]["data"]
+        assert ws_data["isDefault"] is True
+        assert ws_data["joinPolicy"] == "OPEN"
+
+        # Verify seat is FREE+ACTIVE
+        seat_data = mock_prisma.organizationseatassignment.create.call_args[1]["data"]
+        assert seat_data["seatType"] == "FREE"
+        assert seat_data["status"] == "ACTIVE"
+
 
 # ---------------------------------------------------------------------------
 # migrate_org_balances

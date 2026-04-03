@@ -2,16 +2,24 @@
 
 Mirrors the UserCreditBase pattern but operates on OrgBalance and
 OrgCreditTransaction tables instead of UserBalance and CreditTransaction.
+
+All balance mutations use atomic SQL to prevent race conditions.
 """
 
 import logging
 
 from prisma.enums import CreditTransactionType
+from pydantic import BaseModel
 
 from backend.data.db import prisma
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
+
+
+class _BalanceResult(BaseModel):
+    balance: int
 
 
 async def get_org_credits(org_id: str) -> int:
@@ -27,14 +35,10 @@ async def spend_org_credits(
     workspace_id: str | None = None,
     metadata: dict | None = None,
 ) -> int:
-    """Spend credits from the org balance.
+    """Atomically spend credits from the org balance.
 
-    Args:
-        org_id: The organization ID.
-        user_id: The user initiating the spend.
-        amount: The amount to deduct (positive integer).
-        workspace_id: Optional workspace context for attribution.
-        metadata: Optional metadata for the transaction.
+    Uses a single UPDATE ... WHERE balance >= $amount to prevent race
+    conditions. If the UPDATE affects 0 rows, the balance is insufficient.
 
     Returns:
         The remaining balance.
@@ -42,10 +46,22 @@ async def spend_org_credits(
     Raises:
         InsufficientBalanceError: If the org doesn't have enough credits.
     """
-    balance = await prisma.orgbalance.find_unique(where={"orgId": org_id})
-    current = balance.balance if balance else 0
+    if amount <= 0:
+        raise ValueError("Spend amount must be positive")
 
-    if current < amount:
+    # Atomic deduct — only succeeds if balance >= amount
+    rows_affected = await prisma.execute_raw(
+        """
+        UPDATE "OrgBalance"
+        SET "balance" = "balance" - $1, "updatedAt" = NOW()
+        WHERE "orgId" = $2 AND "balance" >= $1
+        """,
+        amount,
+        org_id,
+    )
+
+    if rows_affected == 0:
+        current = await get_org_credits(org_id)
         raise InsufficientBalanceError(
             f"Organization has {current} credits but needs {amount}",
             user_id=user_id,
@@ -53,24 +69,23 @@ async def spend_org_credits(
             amount=amount,
         )
 
-    new_balance = current - amount
+    # Read the new balance for the transaction record
+    new_balance = await get_org_credits(org_id)
 
-    await prisma.orgbalance.update(
-        where={"orgId": org_id},
-        data={"balance": new_balance},
-    )
+    # Record the transaction
+    tx_data: dict = {
+        "orgId": org_id,
+        "initiatedByUserId": user_id,
+        "amount": -amount,
+        "type": CreditTransactionType.USAGE,
+        "runningBalance": new_balance,
+    }
+    if workspace_id:
+        tx_data["workspaceId"] = workspace_id
+    if metadata:
+        tx_data["metadata"] = SafeJson(metadata)
 
-    await prisma.orgcredittransaction.create(
-        data={
-            "orgId": org_id,
-            "initiatedByUserId": user_id,
-            "workspaceId": workspace_id,
-            "amount": -amount,
-            "type": CreditTransactionType.USAGE,
-            "runningBalance": new_balance,
-            "metadata": metadata,
-        }
-    )
+    await prisma.orgcredittransaction.create(data=tx_data)
 
     return new_balance
 
@@ -81,34 +96,42 @@ async def top_up_org_credits(
     user_id: str | None = None,
     metadata: dict | None = None,
 ) -> int:
-    """Add credits to the org balance.
+    """Atomically add credits to the org balance.
+
+    Creates the OrgBalance row if it doesn't exist (upsert pattern via raw SQL).
 
     Returns the new balance.
     """
-    balance = await prisma.orgbalance.find_unique(where={"orgId": org_id})
-    current = balance.balance if balance else 0
-    new_balance = current + amount
+    if amount <= 0:
+        raise ValueError("Top-up amount must be positive")
 
-    if balance:
-        await prisma.orgbalance.update(
-            where={"orgId": org_id},
-            data={"balance": new_balance},
-        )
-    else:
-        await prisma.orgbalance.create(
-            data={"orgId": org_id, "balance": new_balance},
-        )
-
-    await prisma.orgcredittransaction.create(
-        data={
-            "orgId": org_id,
-            "initiatedByUserId": user_id,
-            "amount": amount,
-            "type": CreditTransactionType.TOP_UP,
-            "runningBalance": new_balance,
-            "metadata": metadata,
-        }
+    # Atomic upsert — INSERT or UPDATE in one statement
+    await prisma.execute_raw(
+        """
+        INSERT INTO "OrgBalance" ("orgId", "balance", "updatedAt")
+        VALUES ($1, $2, NOW())
+        ON CONFLICT ("orgId")
+        DO UPDATE SET "balance" = "OrgBalance"."balance" + $2, "updatedAt" = NOW()
+        """,
+        org_id,
+        amount,
     )
+
+    new_balance = await get_org_credits(org_id)
+
+    # Record the transaction
+    tx_data: dict = {
+        "orgId": org_id,
+        "amount": amount,
+        "type": CreditTransactionType.TOP_UP,
+        "runningBalance": new_balance,
+    }
+    if user_id:
+        tx_data["initiatedByUserId"] = user_id
+    if metadata:
+        tx_data["metadata"] = SafeJson(metadata)
+
+    await prisma.orgcredittransaction.create(data=tx_data)
 
     return new_balance
 
