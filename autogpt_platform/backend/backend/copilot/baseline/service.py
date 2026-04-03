@@ -725,6 +725,22 @@ async def stream_chat_completion_baseline(
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
         # --- Upload transcript for next-turn continuity ---
+        # Backfill partial assistant text that wasn't recorded by the
+        # conversation updater (e.g. when the stream aborted mid-round).
+        # Without this, mode-switching after a failed turn would lose
+        # the partial assistant response from the transcript.
+        if _stream_error and state.assistant_text:
+            _last_is_asst = (
+                transcript_builder.entry_count > 0
+                and transcript_builder._entries[-1].type == "assistant"
+            )
+            if not _last_is_asst:
+                transcript_builder.append_assistant(
+                    content_blocks=[{"type": "text", "text": state.assistant_text}],
+                    model=config.fast_model,
+                    stop_reason="end_turn",
+                )
+
         if user_id and transcript_covers_prefix:
             try:
                 _transcript_content = transcript_builder.to_jsonl()

@@ -29,7 +29,7 @@ class TranscriptEntry(BaseModel):
 
     type: str
     uuid: str
-    parentUuid: str | None
+    parentUuid: str = ""
     isCompactSummary: bool | None = None
     message: dict[str, Any]
 
@@ -67,7 +67,7 @@ class TranscriptBuilder:
         return TranscriptEntry(
             type=entry_type,
             uuid=data.get("uuid") or str(uuid4()),
-            parentUuid=data.get("parentUuid"),
+            parentUuid=data.get("parentUuid") or "",
             isCompactSummary=data.get("isCompactSummary"),
             message=data.get("message", {}),
         )
@@ -118,7 +118,7 @@ class TranscriptBuilder:
             TranscriptEntry(
                 type="user",
                 uuid=msg_uuid,
-                parentUuid=self._last_uuid,
+                parentUuid=self._last_uuid or "",
                 message={"role": "user", "content": content},
             )
         )
@@ -158,7 +158,7 @@ class TranscriptBuilder:
             TranscriptEntry(
                 type="assistant",
                 uuid=msg_uuid,
-                parentUuid=self._last_uuid,
+                parentUuid=self._last_uuid or "",
                 message={
                     "role": "assistant",
                     "model": model,
