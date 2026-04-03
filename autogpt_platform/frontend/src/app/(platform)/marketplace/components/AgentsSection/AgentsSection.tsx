@@ -47,7 +47,7 @@ export function AgentsSection({
           </div>
         ) : null}
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <Text variant="body" className="text-center text-gray-500">
+          <Text variant="body" className="ml-4 mt-8 text-gray-500">
             No agents found
           </Text>
         ) : (

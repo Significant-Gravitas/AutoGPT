@@ -51,6 +51,13 @@ function renderRunGraph(flowID: string | null = "test-flow-id") {
   );
 }
 
+/** Get the primary Run/Stop button by its data-id attribute. */
+function getButtonByDataId(dataId: string): HTMLButtonElement {
+  const el = document.querySelector<HTMLButtonElement>(`[data-id="${dataId}"]`);
+  if (!el) throw new Error(`Button with data-id="${dataId}" not found`);
+  return el;
+}
+
 describe("RunGraph", () => {
   beforeEach(() => {
     cleanup();
@@ -64,14 +71,12 @@ describe("RunGraph", () => {
 
   it("renders an enabled button when flowID is provided", () => {
     renderRunGraph("test-flow-id");
-    const button = screen.getByRole("button");
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    expect(getButtonByDataId("run-graph-button").disabled).toBe(false);
   });
 
   it("renders a disabled button when flowID is null", () => {
     renderRunGraph(null);
-    const button = screen.getByRole("button");
-    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(getButtonByDataId("run-graph-button").disabled).toBe(true);
   });
 
   it("disables the button when isExecutingGraph is true", () => {
@@ -79,9 +84,7 @@ describe("RunGraph", () => {
       createMockReturnValue({ isExecutingGraph: true }),
     );
     renderRunGraph();
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(getButtonByDataId("run-graph-button").disabled).toBe(true);
   });
 
   it("disables the button when isTerminatingGraph is true", () => {
@@ -89,37 +92,31 @@ describe("RunGraph", () => {
       createMockReturnValue({ isTerminatingGraph: true }),
     );
     renderRunGraph();
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(getButtonByDataId("run-graph-button").disabled).toBe(true);
   });
 
   it("disables the button when isSaving is true", () => {
     mockUseRunGraph.mockReturnValue(createMockReturnValue({ isSaving: true }));
     renderRunGraph();
-    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(getButtonByDataId("run-graph-button").disabled).toBe(true);
   });
 
   it("uses data-id run-graph-button when not running", () => {
     renderRunGraph();
-    const button = screen.getByRole("button");
-    expect(button.getAttribute("data-id")).toBe("run-graph-button");
+    expect(getButtonByDataId("run-graph-button")).toBeDefined();
   });
 
   it("uses data-id stop-graph-button when running", () => {
     useGraphStore.setState({ isGraphRunning: true });
     renderRunGraph();
-    const button = screen.getByRole("button");
-    expect(button.getAttribute("data-id")).toBe("stop-graph-button");
+    expect(getButtonByDataId("stop-graph-button")).toBeDefined();
   });
 
   it("calls handleRunGraph when clicked and graph is not running", () => {
     const handleRunGraph = vi.fn();
     mockUseRunGraph.mockReturnValue(createMockReturnValue({ handleRunGraph }));
     renderRunGraph();
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(getButtonByDataId("run-graph-button"));
     expect(handleRunGraph).toHaveBeenCalledOnce();
   });
 
@@ -128,7 +125,7 @@ describe("RunGraph", () => {
     mockUseRunGraph.mockReturnValue(createMockReturnValue({ handleStopGraph }));
     useGraphStore.setState({ isGraphRunning: true });
     renderRunGraph();
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(getButtonByDataId("stop-graph-button"));
     expect(handleStopGraph).toHaveBeenCalledOnce();
   });
 
@@ -143,5 +140,20 @@ describe("RunGraph", () => {
     );
     renderRunGraph();
     expect(screen.getByTestId("run-input-dialog")).toBeDefined();
+  });
+
+  it("renders the simulate button when graph is not running", () => {
+    renderRunGraph("test-flow-id");
+    expect(
+      document.querySelector('[data-id="simulate-graph-button"]'),
+    ).not.toBeNull();
+  });
+
+  it("hides the simulate button when graph is running", () => {
+    useGraphStore.setState({ isGraphRunning: true });
+    renderRunGraph();
+    expect(
+      document.querySelector('[data-id="simulate-graph-button"]'),
+    ).toBeNull();
   });
 });

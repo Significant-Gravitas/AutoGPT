@@ -1,7 +1,6 @@
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
 import { SearchFilterChips } from "@/components/__legacy__/SearchFilterChips";
 import { SortDropdown } from "@/components/__legacy__/SortDropdown";
-import { Separator } from "@/components/__legacy__/ui/separator";
 import { Button } from "@/components/atoms/Button/Button";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
@@ -101,9 +100,7 @@ export const MainSearchResultPage = ({
               {showAgents && agentsCount > 0 && agents && (
                 <AgentsSection agents={agents} />
               )}
-              {showAgents && agentsCount > 0 && creatorsCount > 0 && (
-                <Separator />
-              )}
+              <div className="h-[1rem] w-full" />
               {showCreators && creatorsCount > 0 && creators && (
                 <FeaturedCreators
                   featuredCreators={creators}

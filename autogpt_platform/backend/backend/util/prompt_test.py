@@ -7,6 +7,7 @@ from tiktoken import encoding_for_model
 
 from backend.util import json
 from backend.util.prompt import (
+    DEFAULT_TOKEN_THRESHOLD,
     CompressResult,
     _ensure_tool_pairs_intact,
     _msg_tokens,
@@ -15,6 +16,8 @@ from backend.util.prompt import (
     _truncate_tool_message_content,
     compress_context,
     estimate_token_count,
+    get_compression_target,
+    get_context_window,
 )
 
 
@@ -612,7 +615,7 @@ class TestEnsureToolPairsIntact:
     # ---- Mixed/Edge Case Tests ----
 
     def test_anthropic_with_type_message_field(self):
-        """Test Anthropic format with 'type': 'message' field (smart_decision_maker style)."""
+        """Test Anthropic format with 'type': 'message' field (orchestrator style)."""
         all_msgs = [
             {"role": "system", "content": "You are helpful."},
             {
@@ -628,7 +631,7 @@ class TestEnsureToolPairsIntact:
             },
             {
                 "role": "user",
-                "type": "message",  # Extra field from smart_decision_maker
+                "type": "message",  # Extra field from orchestrator
                 "content": [
                     {
                         "type": "tool_result",
@@ -974,3 +977,43 @@ class TestCompressResultDataclass:
         assert result.original_token_count == 500
         assert result.messages_summarized == 10
         assert result.messages_dropped == 5
+
+
+class TestGetContextWindow:
+    def test_claude_opus(self) -> None:
+        assert get_context_window("claude-opus-4-20250514") == 200_000
+
+    def test_claude_sonnet(self) -> None:
+        assert get_context_window("claude-sonnet-4-20250514") == 200_000
+
+    def test_openrouter_prefix(self) -> None:
+        assert get_context_window("anthropic/claude-opus-4-6") == 200_000
+
+    def test_version_suffix(self) -> None:
+        assert get_context_window("claude-opus-4-6") == 200_000
+
+    def test_gpt4o(self) -> None:
+        assert get_context_window("gpt-4o") == 128_000
+
+    def test_unknown_model(self) -> None:
+        assert get_context_window("some-unknown-model") is None
+
+    def test_case_insensitive(self) -> None:
+        assert get_context_window("GPT-4o") == 128_000
+
+
+class TestGetCompressionTarget:
+    def test_claude_opus_200k(self) -> None:
+        target = get_compression_target("anthropic/claude-opus-4-6")
+        assert target == 140_000  # 200K - 60K overhead
+
+    def test_gpt4o_128k(self) -> None:
+        target = get_compression_target("gpt-4o")
+        assert target == 68_000  # 128K - 60K overhead
+
+    def test_unknown_model_returns_default(self) -> None:
+        assert get_compression_target("unknown-model") == DEFAULT_TOKEN_THRESHOLD
+
+    def test_small_model_returns_default(self) -> None:
+        # Unknown models fall back to DEFAULT_TOKEN_THRESHOLD
+        assert get_compression_target("some-tiny-model") == DEFAULT_TOKEN_THRESHOLD

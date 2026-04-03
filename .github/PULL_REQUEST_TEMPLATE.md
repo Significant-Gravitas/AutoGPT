@@ -1,8 +1,12 @@
-<!-- Clearly explain the need for these changes: -->
+### Why / What / How
+
+<!-- Why: Why does this PR exist? What problem does it solve, or what's broken/missing without it? -->
+<!-- What: What does this PR change? Summarize the changes at a high level. -->
+<!-- How: How does it work? Describe the approach, key implementation details, or architecture decisions. -->
 
 ### Changes 🏗️
 
-<!-- Concisely describe all of the changes made in this pull request: -->
+<!-- List the key changes. Keep it higher level than the diff but specific enough to highlight what's new/modified. -->
 
 ### Checklist 📋
 
