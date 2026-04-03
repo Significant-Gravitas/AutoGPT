@@ -5,7 +5,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { TypingText } from "@/components/molecules/TypingText/TypingText";
 import { cn } from "@/lib/utils";
 import { Check } from "@phosphor-icons/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const CHECKLIST = [
   "Personalizing your experience",
@@ -24,6 +24,8 @@ export function PreparingStep({ onComplete }: Props) {
   const [started, setStarted] = useState(false);
   const [completedItems, setCompletedItems] = useState(0);
   const [progress, setProgress] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
 
   useEffect(() => {
     const timer = setTimeout(() => setStarted(true), 300);
@@ -48,12 +50,12 @@ export function PreparingStep({ onComplete }: Props) {
 
       if (elapsed >= STEP_DURATION_MS) {
         clearInterval(progressInterval);
-        onComplete();
+        onCompleteRef.current();
       }
     }, 50);
 
     return () => clearInterval(progressInterval);
-  }, [started, onComplete]);
+  }, [started]);
 
   return (
     <div className="flex w-full max-w-md flex-col items-center gap-8 px-4">

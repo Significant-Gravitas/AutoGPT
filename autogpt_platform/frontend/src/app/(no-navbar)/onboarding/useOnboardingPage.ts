@@ -1,8 +1,8 @@
 import {
   getV1OnboardingState,
   postV1CompleteOnboardingStep,
+  postV1SubmitOnboardingProfile,
 } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { customMutator } from "@/app/api/mutators/custom-mutator";
 import { resolveResponse } from "@/app/api/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -21,11 +21,6 @@ export function useOnboardingPage() {
   const { isLoggedIn } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
-  const name = useOnboardingWizardStore((s) => s.name);
-  const role = useOnboardingWizardStore((s) => s.role);
-  const otherRole = useOnboardingWizardStore((s) => s.otherRole);
-  const painPoints = useOnboardingWizardStore((s) => s.painPoints);
-  const otherPainPoint = useOnboardingWizardStore((s) => s.otherPainPoint);
   const reset = useOnboardingWizardStore((s) => s.reset);
   const [isLoading, setIsLoading] = useState(true);
   const hasSubmitted = useRef(false);
@@ -73,6 +68,8 @@ export function useOnboardingPage() {
     if (currentStep !== 4 || hasSubmitted.current) return;
     hasSubmitted.current = true;
 
+    const { name, role, otherRole, painPoints, otherPainPoint } =
+      useOnboardingWizardStore.getState();
     const resolvedRole = role === "Other" ? otherRole : role;
     const resolvedPainPoints = painPoints
       .filter((p) => p !== "Something else")
@@ -82,18 +79,14 @@ export function useOnboardingPage() {
           : [],
       );
 
-    // Fire and forget — the preparing screen waits 4s regardless
-    customMutator("/api/onboarding/profile", {
-      method: "POST",
-      body: JSON.stringify({
-        user_name: name,
-        user_role: resolvedRole,
-        pain_points: resolvedPainPoints,
-      }),
+    postV1SubmitOnboardingProfile({
+      user_name: name,
+      user_role: resolvedRole,
+      pain_points: resolvedPainPoints,
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, name, role, otherRole, painPoints, otherPainPoint]);
+  }, [currentStep]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
