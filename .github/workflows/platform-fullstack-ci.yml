@@ -146,6 +146,9 @@ jobs:
   e2e-label-gate:
     name: E2E label gate
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
     steps:
       - name: Check for ci-ready label
         if: >-
