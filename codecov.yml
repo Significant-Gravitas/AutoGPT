@@ -22,6 +22,10 @@ flags:
     paths:
       - autogpt_platform/frontend/src/
     carryforward: true
+  platform-frontend-e2e:
+    paths:
+      - autogpt_platform/frontend/src/
+    carryforward: true
   autogpt-agent:
     paths:
       - classic/

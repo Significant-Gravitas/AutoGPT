@@ -289,6 +289,14 @@ jobs:
         run: pnpm test:no-build
         continue-on-error: false
 
+      - name: Upload E2E coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: platform-frontend-e2e
+          files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

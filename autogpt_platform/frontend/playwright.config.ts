@@ -22,7 +22,25 @@ export default defineConfig({
   /* use more workers on CI. */
   workers: process.env.CI ? 4 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [
+    ["list"],
+    ["html", { open: "never" }],
+    [
+      "monocart-reporter",
+      {
+        name: "E2E Coverage Report",
+        outputFile: "./coverage/e2e/report.html",
+        coverage: {
+          reports: ["cobertura", "text"],
+          outputDir: "./coverage/e2e",
+          entryFilter: (entry: { url: string }) =>
+            entry.url.includes("/_next/static/") &&
+            !entry.url.includes("node_modules"),
+          sourceFilter: (sourcePath: string) => sourcePath.startsWith("src/"),
+        },
+      },
+    ],
+  ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
