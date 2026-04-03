@@ -233,3 +233,8 @@ class TranscriptBuilder:
     def is_empty(self) -> bool:
         """Whether this builder has any entries."""
         return len(self._entries) == 0
+
+    @property
+    def last_entry_type(self) -> str | None:
+        """Type of the last entry, or None if empty."""
+        return self._entries[-1].type if self._entries else None
