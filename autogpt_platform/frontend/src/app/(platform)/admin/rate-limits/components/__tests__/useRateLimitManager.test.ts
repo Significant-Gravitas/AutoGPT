@@ -336,4 +336,52 @@ describe("useRateLimitManager", () => {
 
     expect(mockPostV2SetUserRateLimitTier).not.toHaveBeenCalled();
   });
+
+  it("handleReset throws when endpoint returns non-200 status", async () => {
+    const initial = makeRateLimitResponse({ daily_tokens_used: 5000 });
+    mockGetV2GetUserRateLimit.mockResolvedValue({ status: 200, data: initial });
+    mockPostV2ResetUserRateLimitUsage.mockResolvedValue({ status: 500 });
+
+    const { result } = renderHook(() => useRateLimitManager());
+
+    await act(async () => {
+      await result.current.handleSelectUser({
+        user_id: "user-123",
+        user_email: "alice@example.com",
+      });
+    });
+
+    await act(async () => {
+      await result.current.handleReset(false);
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Error",
+        description: "Failed to reset rate limit usage.",
+        variant: "destructive",
+      }),
+    );
+  });
+
+  it("handleTierChange throws when set-tier endpoint returns non-200", async () => {
+    const initial = makeRateLimitResponse({ tier: "FREE" });
+    mockGetV2GetUserRateLimit.mockResolvedValue({ status: 200, data: initial });
+    mockPostV2SetUserRateLimitTier.mockResolvedValue({ status: 500 });
+
+    const { result } = renderHook(() => useRateLimitManager());
+
+    await act(async () => {
+      await result.current.handleSelectUser({
+        user_id: "user-123",
+        user_email: "alice@example.com",
+      });
+    });
+
+    await expect(
+      act(async () => {
+        await result.current.handleTierChange("PRO");
+      }),
+    ).rejects.toThrow("Failed to update tier");
+  });
 });

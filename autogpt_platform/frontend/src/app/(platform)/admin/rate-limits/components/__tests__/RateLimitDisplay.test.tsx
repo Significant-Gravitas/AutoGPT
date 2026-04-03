@@ -228,6 +228,46 @@ describe("RateLimitDisplay", () => {
     expect(onTierChange).not.toHaveBeenCalled();
   });
 
+  it("does not call onTierChange when confirm is cancelled", () => {
+    const onTierChange = vi.fn();
+    mockConfirm.mockReturnValue(false);
+
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "FREE" })}
+        onReset={vi.fn()}
+        onTierChange={onTierChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Subscription tier"), {
+      target: { value: "PRO" },
+    });
+
+    expect(onTierChange).not.toHaveBeenCalled();
+  });
+
+  it("catches error when onTierChange rejects", async () => {
+    const onTierChange = vi.fn().mockRejectedValue(new Error("fail"));
+    mockConfirm.mockReturnValue(true);
+
+    render(
+      <RateLimitDisplay
+        data={makeData({ tier: "FREE" })}
+        onReset={vi.fn()}
+        onTierChange={onTierChange}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Subscription tier"), {
+      target: { value: "PRO" },
+    });
+
+    await waitFor(() => {
+      expect(onTierChange).toHaveBeenCalledWith("PRO");
+    });
+  });
+
   it("applies custom className when provided", () => {
     const { container } = render(
       <RateLimitDisplay
