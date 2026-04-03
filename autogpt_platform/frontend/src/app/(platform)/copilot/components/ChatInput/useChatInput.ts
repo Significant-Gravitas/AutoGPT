@@ -1,5 +1,5 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
   onSend: (message: string) => void;
@@ -17,6 +17,9 @@ export function useChatInput({
 }: Args) {
   const [value, setValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  // Synchronous guard against double-submit — refs update immediately,
+  // unlike state which batches and can leave a gap for a second call.
+  const isSubmittingRef = useRef(false);
   const { initialPrompt, setInitialPrompt } = useCopilotUIStore();
 
   useEffect(
@@ -47,12 +50,15 @@ export function useChatInput({
 
   async function handleSend() {
     if (disabled || isSending || (!value.trim() && !canSendEmpty)) return;
+    if (isSubmittingRef.current) return;
 
+    isSubmittingRef.current = true;
     setIsSending(true);
     try {
       await onSend(value.trim());
       setValue("");
     } finally {
+      isSubmittingRef.current = false;
       setIsSending(false);
     }
   }

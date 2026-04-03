@@ -156,9 +156,14 @@ export function useCopilotStream({
     }, delay);
   }
 
+  // Tracks the ID of the last user message that was submitted via sendMessage.
+  // During a reconnect cycle, if the session already contains this message, we
+  // must not POST it again — only GET-resume is safe.
+  const lastSubmittedMsgRef = useRef<string | null>(null);
+
   const {
     messages: rawMessages,
-    sendMessage,
+    sendMessage: sdkSendMessage,
     stop: sdkStop,
     status,
     error,
@@ -244,6 +249,35 @@ export function useCopilotStream({
       }
     },
   });
+
+  // Wrap sdkSendMessage to guard against re-sending the user message during a
+  // reconnect cycle. If the session already has the message (i.e. we are in a
+  // reconnect/resume flow), only GET-resume is safe — never re-POST.
+  const sendMessage: typeof sdkSendMessage = async (...args) => {
+    const text =
+      args[0] && typeof args[0] === "object" && "text" in args[0]
+        ? (args[0] as { text: string }).text
+        : String(args[0] ?? "");
+
+    // During an active reconnect cycle, suppress duplicate POSTs — the
+    // reconnect handler uses resumeStream (GET) exclusively.
+    if (isReconnectScheduledRef.current) return;
+
+    // Prevent re-sending the exact same message text that is already the
+    // last user message in the conversation (e.g. after a failed reconnect
+    // where the backend already persisted it).
+    if (text && lastSubmittedMsgRef.current === text) {
+      const lastUserMsg = rawMessages.filter((m) => m.role === "user").pop();
+      const lastUserText = lastUserMsg?.parts
+        ?.map((p) => ("text" in p ? p.text : ""))
+        .join("")
+        .trim();
+      if (lastUserText === text) return;
+    }
+
+    lastSubmittedMsgRef.current = text;
+    return sdkSendMessage(...args);
+  };
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
   const messages = useMemo(
@@ -390,6 +424,7 @@ export function useCopilotStream({
     setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
+    lastSubmittedMsgRef.current = null;
     setReconnectExhausted(false);
     setIsSyncing(false);
     hasResumedRef.current.clear();
@@ -418,6 +453,7 @@ export function useCopilotStream({
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;
         hasShownDisconnectToast.current = false;
+        lastSubmittedMsgRef.current = null;
         setReconnectExhausted(false);
       }
     }
