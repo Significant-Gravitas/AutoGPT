@@ -2,6 +2,7 @@ import {
   FileText as FileTextIcon,
   DownloadSimple as DownloadIcon,
 } from "@phosphor-icons/react";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { FileUIPart } from "ai";
 import {
   globalRegistry,
@@ -41,19 +42,22 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
 }
 
 export function MessageAttachments({ files, isUser }: Props) {
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   if (files.length === 0) return null;
 
   return (
     <div className="mt-2 flex flex-col gap-2">
       {files.map((file, i) => {
-        const artifactRef = filePartToArtifactRef(file);
-        if (artifactRef) {
-          return (
-            <ArtifactCard
-              key={`artifact-${artifactRef.id}-${i}`}
-              artifact={artifactRef}
-            />
-          );
+        if (isArtifactsEnabled) {
+          const artifactRef = filePartToArtifactRef(file);
+          if (artifactRef) {
+            return (
+              <ArtifactCard
+                key={`artifact-${artifactRef.id}-${i}`}
+                artifact={artifactRef}
+              />
+            );
+          }
         }
         const rendered = renderFileContent(file);
         return rendered ? (

@@ -125,6 +125,7 @@ export function CopilotPage() {
   const resetCost = usage?.reset_cost;
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
@@ -202,9 +203,9 @@ export function CopilotPage() {
             />
           </div>
         </div>
-        {!isMobile && <ArtifactPanel />}
+        {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
       </div>
-      {isMobile && <ArtifactPanel mobile />}
+      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && (
         <MobileDrawer
           isOpen={isDrawerOpen}
