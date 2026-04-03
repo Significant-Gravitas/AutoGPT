@@ -28,24 +28,37 @@ Steps:
 
 ### Workflow for Creating/Editing Agents
 
-1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
+1. **If editing**: First narrow to the specific agent by UUID, then fetch its
+   graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
+   returns the full graph structure (nodes + links). **Never edit blindly** —
+   always inspect the current graph first so you know exactly what to change.
+   Avoid using `include_graph=true` with broad keyword searches, as fetching
+   multiple graphs at once is expensive and consumes LLM context budget.
+2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas.
-2. **Find library agents**: Call `find_library_agent` to discover reusable
+3. **Find library agents**: Call `find_library_agent` to discover reusable
    agents that can be composed as sub-agents via `AgentExecutorBlock`.
-3. **Generate JSON**: Build the agent JSON using block schemas:
-   - Use block IDs from step 1 as `block_id` in nodes
+4. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 2 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
-4. **Write to workspace**: Save the JSON to a workspace file so the user
+   - When editing, apply targeted changes and preserve unchanged parts
+5. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-5. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+6. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-6. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+7. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+8. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
    the final `agent_json`
+8. **Dry-run**: ALWAYS call `run_agent` with `dry_run=True` and
+   `wait_for_result=120` to verify the agent works end-to-end.
+9. **Inspect & fix**: Check the dry-run output for errors. If issues are
+   found, call `edit_agent` to fix and dry-run again. Repeat until the
+   simulation passes or the problems are clearly unfixable.
+   See "REQUIRED: Dry-Run Verification Loop" section below for details.
 
 ### Agent JSON Structure
 
@@ -239,19 +252,51 @@ call in a loop until the task is complete:
 Regular blocks work exactly like sub-agents as tools — wire each input
 field from `source_name: "tools"` on the Orchestrator side.
 
-### Testing with Dry Run
+### REQUIRED: Dry-Run Verification Loop (create -> dry-run -> fix)
 
-After saving an agent, suggest a dry run to validate wiring without consuming
-real API calls, credentials, or credits:
+After creating or editing an agent, you MUST dry-run it before telling the
+user the agent is ready. NEVER skip this step.
 
-1. **Run**: Call `run_agent` or `run_block` with `dry_run=True` and provide
-   sample inputs. This executes the graph with mock outputs, verifying that
-   links resolve correctly and required inputs are satisfied.
-2. **Check results**: Call `view_agent_output` with `show_execution_details=True`
-   to inspect the full node-by-node execution trace. This shows what each node
-   received as input and produced as output, making it easy to spot wiring issues.
-3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
-   the agent JSON and re-save before suggesting a real execution.
+#### Step-by-step workflow
+
+1. **Create/Edit**: Call `create_agent` or `edit_agent` to save the agent.
+2. **Dry-run**: Call `run_agent` with `dry_run=True`, `wait_for_result=120`,
+   and realistic sample inputs that exercise every path in the agent. This
+   simulates execution using an LLM for each block — no real API calls,
+   credentials, or credits are consumed.
+3. **Inspect output**: Examine the dry-run result for problems. If
+   `wait_for_result` returns only a summary, call
+   `view_agent_output(execution_id=..., show_execution_details=True)` to
+   see the full node-by-node execution trace. Look for:
+   - **Errors / failed nodes** — a node raised an exception or returned an
+     error status. Common causes: wrong `source_name`/`sink_name` in links,
+     missing `input_default` values, or referencing a nonexistent block output.
+   - **Null / empty outputs** — data did not flow through a link. Verify that
+     `source_name` and `sink_name` match the block schemas exactly (case-
+     sensitive, including nested `_#_` notation).
+   - **Nodes that never executed** — the node was not reached. Likely a
+     missing or broken link from an upstream node.
+   - **Unexpected values** — data arrived but in the wrong type or
+     structure. Check type compatibility between linked ports.
+4. **Fix**: If any issues are found, call `edit_agent` with the corrected
+   agent JSON, then go back to step 2.
+5. **Repeat**: Continue the dry-run -> fix cycle until the simulation passes
+   or the problems are clearly unfixable. If you stop making progress,
+   report the remaining issues to the user and ask for guidance.
+
+#### Good vs bad dry-run output
+
+**Good output** (agent is ready):
+- All nodes executed successfully (no errors in the execution trace)
+- Data flows through every link with non-null, correctly-typed values
+- The final `AgentOutputBlock` contains a meaningful result
+- Status is `COMPLETED`
+
+**Bad output** (needs fixing):
+- Status is `FAILED` — check the error message for the failing node
+- An output node received `null` — trace back to find the broken link
+- A node received data in the wrong format (e.g. string where list expected)
+- Nodes downstream of a failing node were skipped entirely
 
 **Special block behaviour in dry-run mode:**
 - **OrchestratorBlock** and **AgentExecutorBlock** execute for real so the

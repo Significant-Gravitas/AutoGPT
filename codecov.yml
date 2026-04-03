@@ -43,6 +43,13 @@ component_management:
       name: "Platform Frontend"
       paths:
         - autogpt_platform/frontend/src/**
+      statuses:
+        - type: project
+          target: auto
+          informational: true
+        - type: patch
+          target: 80%
+          informational: true
     - component_id: autogpt-libs
       name: "AutoGPT Libs"
       paths:
