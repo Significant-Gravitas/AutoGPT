@@ -42,8 +42,9 @@ test("shows badge with count when agent is running", async ({ page }) => {
   await LibraryPage.clickRunButton(page);
 
   // Wait for the badge to appear and check it has a valid count
+  // Badge relies on polling (5s refetchInterval) so allow extra time
   const badge = getId("agent-activity-badge");
-  await isVisible(badge);
+  await isVisible(badge, 15000);
 
   // Check that badge shows a positive number (more flexible than exact count)
   await expect(async () => {
@@ -66,8 +67,9 @@ test("displays the runs on the activity dropdown", async ({ page }) => {
   await LibraryPage.clickRunButton(page);
 
   // Wait for the activity badge to appear (indicating execution started)
+  // Badge relies on polling (5s refetchInterval) so allow extra time
   const badge = getId("agent-activity-badge");
-  await isVisible(badge);
+  await isVisible(badge, 15000);
 
   // Click to open the dropdown
   await activityBtn.click();

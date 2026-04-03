@@ -63,9 +63,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="flex min-h-screen w-full max-w-[1360px] flex-col lg:flex-row">
+    <div className="flex w-full flex-col px-4 pt-6 lg:flex-row lg:px-6">
       <Sidebar linkGroups={sidebarLinkGroups} />
-      <div className="flex-1 pl-4">{children}</div>
+      <div className="min-w-0 flex-1 pl-4">{children}</div>
     </div>
   );
 }

@@ -9,7 +9,7 @@ export class NavBar {
   }
 
   async clickBuildLink() {
-    const link = this.page.getByTestId("navbar-link-build");
+    const link = this.page.getByTestId("sidebar-link-build");
     await link.waitFor({ state: "visible", timeout: 15000 });
     await link.scrollIntoViewIfNeeded();
     await link.click();
@@ -17,7 +17,7 @@ export class NavBar {
   }
 
   async clickMarketplaceLink() {
-    await this.page.getByTestId("navbar-link-marketplace").click();
+    await this.page.getByTestId("sidebar-link-marketplace").click();
   }
 
   async getUserMenuButton() {

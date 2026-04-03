@@ -70,7 +70,7 @@ export function ActivityDropdown({
     <div className="overflow-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 pb-1 pt-0">
-        <div className="flex h-[60px] items-center justify-between">
+        <div className="flex h-[65px] items-center justify-between">
           {isSearchVisible && withSearch ? (
             <div
               className={`${styles.searchContainer} ${

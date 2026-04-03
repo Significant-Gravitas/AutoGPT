@@ -3,7 +3,7 @@ import { Separator } from "@/components/__legacy__/ui/separator";
 
 export default function SettingsLoading() {
   return (
-    <div className="container max-w-2xl py-10">
+    <div className="w-full max-w-2xl px-6 py-10">
       <div className="space-y-6">
         <div>
           <Skeleton className="h-6 w-32" />

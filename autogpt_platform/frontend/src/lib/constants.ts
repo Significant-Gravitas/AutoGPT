@@ -10,4 +10,4 @@ export const IMPERSONATION_STORAGE_KEY = "admin-impersonate-user-id";
 export const API_KEY_HEADER_NAME = "X-API-Key";
 
 // Layout
-export const NAVBAR_HEIGHT_PX = 60;
+export const NAVBAR_HEIGHT_PX = 65;

@@ -28,13 +28,6 @@ export const loggedInLinks: Link[] = [
   },
 ];
 
-export const loggedOutLinks: Link[] = [
-  {
-    name: "Marketplace",
-    href: "/marketplace",
-  },
-];
-
 export type MenuItemGroup = {
   groupName?: string;
   items: {
@@ -44,48 +37,6 @@ export type MenuItemGroup = {
     onClick?: () => void;
   }[];
 };
-
-export const accountMenuItems: MenuItemGroup[] = [
-  {
-    items: [
-      {
-        icon: IconType.Edit,
-        text: "Edit profile",
-        href: "/profile",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.LayoutDashboard,
-        text: "Creator Dashboard",
-        href: "/profile/dashboard",
-      },
-      {
-        icon: IconType.UploadCloud,
-        text: "Publish an agent",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.Settings,
-        text: "Settings",
-        href: "/profile/settings",
-      },
-    ],
-  },
-  {
-    items: [
-      {
-        icon: IconType.LogOut,
-        text: "Log out",
-      },
-    ],
-  },
-];
 
 export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
   const baseMenuItems: MenuItemGroup[] = [

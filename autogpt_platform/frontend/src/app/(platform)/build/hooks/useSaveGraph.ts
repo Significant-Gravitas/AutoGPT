@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import {
   useGetV1GetSpecificGraph,
   usePostV1CreateNewGraph,
@@ -20,6 +21,7 @@ import {
   clearTempFlowId,
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
+import { useQueryClient } from "@tanstack/react-query";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -33,6 +35,7 @@ export const useSaveGraph = ({
   onError,
 }: SaveGraphOptions) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
@@ -62,6 +65,9 @@ export const useSaveGraph = ({
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
+          });
+          await queryClient.invalidateQueries({
+            queryKey: getGetV2ListLibraryAgentsQueryKey(),
           });
 
           const tempFlowId = getTempFlowId();
@@ -99,6 +105,9 @@ export const useSaveGraph = ({
           setQueryStates({
             flowID: data.id,
             flowVersion: data.version,
+          });
+          await queryClient.invalidateQueries({
+            queryKey: getGetV2ListLibraryAgentsQueryKey(),
           });
 
           // Clear the draft for this flow after successful save
