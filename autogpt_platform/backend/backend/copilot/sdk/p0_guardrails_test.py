@@ -156,11 +156,11 @@ class TestConfigDefaults:
 
     def test_max_turns_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_turns == 50
+        assert cfg.claude_agent_max_turns == 1000
 
     def test_max_budget_usd_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_budget_usd == 5.0
+        assert cfg.claude_agent_max_budget_usd == 100.0
 
     def test_max_transient_retries_default(self):
         cfg = _make_config()
@@ -348,15 +348,15 @@ class TestConfigValidators:
         with pytest.raises(ValidationError):
             _make_config(claude_agent_max_turns=-1)
 
-    def test_max_turns_rejects_above_500(self):
+    def test_max_turns_rejects_above_10000(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=501)
+            _make_config(claude_agent_max_turns=10001)
 
     def test_max_turns_accepts_boundary_values(self):
         cfg_low = _make_config(claude_agent_max_turns=1)
         assert cfg_low.claude_agent_max_turns == 1
-        cfg_high = _make_config(claude_agent_max_turns=500)
-        assert cfg_high.claude_agent_max_turns == 500
+        cfg_high = _make_config(claude_agent_max_turns=10000)
+        assert cfg_high.claude_agent_max_turns == 10000
 
     def test_max_budget_rejects_zero(self):
         with pytest.raises(ValidationError):
@@ -366,15 +366,15 @@ class TestConfigValidators:
         with pytest.raises(ValidationError):
             _make_config(claude_agent_max_budget_usd=-1.0)
 
-    def test_max_budget_rejects_above_100(self):
+    def test_max_budget_rejects_above_1000(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_budget_usd=100.01)
+            _make_config(claude_agent_max_budget_usd=1000.01)
 
     def test_max_budget_accepts_boundary_values(self):
         cfg_low = _make_config(claude_agent_max_budget_usd=0.01)
         assert cfg_low.claude_agent_max_budget_usd == 0.01
-        cfg_high = _make_config(claude_agent_max_budget_usd=100.0)
-        assert cfg_high.claude_agent_max_budget_usd == 100.0
+        cfg_high = _make_config(claude_agent_max_budget_usd=1000.0)
+        assert cfg_high.claude_agent_max_budget_usd == 1000.0
 
     def test_max_transient_retries_rejects_negative(self):
         with pytest.raises(ValidationError):

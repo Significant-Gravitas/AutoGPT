@@ -139,16 +139,16 @@ class ChatConfig(BaseSettings):
         "overloaded). The SDK automatically retries with this cheaper model.",
     )
     claude_agent_max_turns: int = Field(
-        default=50,
+        default=1000,
         ge=1,
-        le=500,
+        le=10000,
         description="Maximum number of agentic turns (tool-use loops) per query. "
         "Prevents runaway tool loops from burning budget.",
     )
     claude_agent_max_budget_usd: float = Field(
-        default=5.0,
+        default=100.0,
         ge=0.01,
-        le=100.0,
+        le=1000.0,
         description="Maximum spend in USD per SDK query. The CLI aborts the "
         "request if this budget is exceeded.",
     )
