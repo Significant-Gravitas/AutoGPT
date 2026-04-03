@@ -203,4 +203,29 @@ describe("trackingValue", () => {
     });
     expect(trackingValue(row)).toBe("42 runs");
   });
+
+  it("returns formatted token count for characters tracking", () => {
+    const row = makeRow({
+      tracking_type: "characters",
+      total_input_tokens: 2000,
+      total_output_tokens: 500,
+    });
+    expect(trackingValue(row)).toBe("2.5K");
+  });
+
+  it("returns formatted duration for sandbox_seconds", () => {
+    const row = makeRow({
+      tracking_type: "sandbox_seconds",
+      total_duration_seconds: 7200,
+    });
+    expect(trackingValue(row)).toBe("2.0h");
+  });
+
+  it("returns formatted duration for walltime_seconds", () => {
+    const row = makeRow({
+      tracking_type: "walltime_seconds",
+      total_duration_seconds: 45,
+    });
+    expect(trackingValue(row)).toBe("45.0s");
+  });
 });
