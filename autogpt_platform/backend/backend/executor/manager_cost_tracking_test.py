@@ -1,5 +1,6 @@
 """Unit tests for resolve_tracking and log_system_credential_cost."""
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -248,6 +249,7 @@ class TestLogSystemCredentialCost:
             block = _make_block()
             stats = NodeExecutionStats(input_token_count=500, output_token_count=200)
             await log_system_credential_cost(node_exec, block, stats)
+            await asyncio.sleep(0)
 
         mock_log.assert_awaited_once()
         entry = mock_log.call_args[0][0]
@@ -257,6 +259,7 @@ class TestLogSystemCredentialCost:
         assert entry.model == "gpt-4"
         assert entry.input_tokens == 500
         assert entry.output_tokens == 200
+        assert entry.tracking_type == "tokens"
         assert entry.metadata["tracking_type"] == "tokens"
         assert entry.metadata["tracking_amount"] == 700.0
         assert entry.metadata["credit_cost"] == 10
@@ -284,9 +287,11 @@ class TestLogSystemCredentialCost:
             block = _make_block()
             stats = NodeExecutionStats(provider_cost=0.0015)
             await log_system_credential_cost(node_exec, block, stats)
+            await asyncio.sleep(0)
 
         entry = mock_log.call_args[0][0]
         assert entry.cost_microdollars == 1500
+        assert entry.tracking_type == "cost_usd"
         assert entry.metadata["tracking_type"] == "cost_usd"
         assert entry.metadata["provider_cost_usd"] == 0.0015
 
@@ -319,6 +324,7 @@ class TestLogSystemCredentialCost:
             block = _make_block()
             stats = NodeExecutionStats()
             await log_system_credential_cost(node_exec, block, stats)
+            await asyncio.sleep(0)
 
         entry = mock_log.call_args[0][0]
         assert entry.model == "FakeModel.GPT4"
@@ -347,6 +353,7 @@ class TestLogSystemCredentialCost:
             block = _make_block()
             stats = NodeExecutionStats()
             await log_system_credential_cost(node_exec, block, stats)
+            await asyncio.sleep(0)
 
         entry = mock_log.call_args[0][0]
         assert entry.model is None
@@ -376,6 +383,7 @@ class TestLogSystemCredentialCost:
             # round() should give 1500, int() would give 1499
             stats = NodeExecutionStats(provider_cost=0.0015)
             await log_system_credential_cost(node_exec, block, stats)
+            await asyncio.sleep(0)
 
         entry = mock_log.call_args[0][0]
         assert entry.cost_microdollars == 1500

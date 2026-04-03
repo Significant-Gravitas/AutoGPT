@@ -9,6 +9,7 @@ Both the baseline (OpenRouter) and SDK (Anthropic) service layers need to:
 This module extracts that common logic so both paths stay in sync.
 """
 
+import asyncio
 import logging
 
 from backend.data.platform_cost import PlatformCostEntry, log_platform_cost_safe
@@ -122,25 +123,28 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
-        await log_platform_cost_safe(
-            PlatformCostEntry(
-                user_id=user_id,
-                graph_exec_id=session_id,
-                block_id="copilot",
-                block_name=f"copilot:{log_prefix.strip(' []')}".rstrip(":"),
-                provider=provider,
-                credential_id="copilot_system",
-                cost_microdollars=cost_microdollars,
-                input_tokens=prompt_tokens,
-                output_tokens=completion_tokens,
-                model=model,
-                metadata={
-                    "tracking_type": tracking_type,
-                    "tracking_amount": tracking_amount,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_creation_tokens": cache_creation_tokens,
-                    "source": "copilot",
-                },
+        asyncio.create_task(
+            log_platform_cost_safe(
+                PlatformCostEntry(
+                    user_id=user_id,
+                    graph_exec_id=session_id,
+                    block_id="copilot",
+                    block_name=f"copilot:{log_prefix.strip(' []')}".rstrip(":"),
+                    provider=provider,
+                    credential_id="copilot_system",
+                    cost_microdollars=cost_microdollars,
+                    input_tokens=prompt_tokens,
+                    output_tokens=completion_tokens,
+                    model=model,
+                    tracking_type=tracking_type,
+                    metadata={
+                        "tracking_type": tracking_type,
+                        "tracking_amount": tracking_amount,
+                        "cache_read_tokens": cache_read_tokens,
+                        "cache_creation_tokens": cache_creation_tokens,
+                        "source": "copilot",
+                    },
+                )
             )
         )
 

@@ -1,5 +1,6 @@
 """Helpers for platform cost tracking on system-credential block executions."""
 
+import asyncio
 import logging
 from typing import Any, cast
 
@@ -109,24 +110,27 @@ async def log_system_credential_cost(
         if stats.provider_cost is not None:
             meta["provider_cost_usd"] = stats.provider_cost
 
-        await log_platform_cost_safe(
-            PlatformCostEntry(
-                user_id=node_exec.user_id,
-                graph_exec_id=node_exec.graph_exec_id,
-                node_exec_id=node_exec.node_exec_id,
-                graph_id=node_exec.graph_id,
-                node_id=node_exec.node_id,
-                block_id=node_exec.block_id,
-                block_name=block.name,
-                provider=provider_name,
-                credential_id=cred_id,
-                cost_microdollars=cost_microdollars,
-                input_tokens=stats.input_token_count or None,
-                output_tokens=stats.output_token_count or None,
-                data_size=stats.output_size or None,
-                duration=stats.walltime or None,
-                model=model_name,
-                metadata=meta or None,
+        asyncio.create_task(
+            log_platform_cost_safe(
+                PlatformCostEntry(
+                    user_id=node_exec.user_id,
+                    graph_exec_id=node_exec.graph_exec_id,
+                    node_exec_id=node_exec.node_exec_id,
+                    graph_id=node_exec.graph_id,
+                    node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
+                    block_name=block.name,
+                    provider=provider_name,
+                    credential_id=cred_id,
+                    cost_microdollars=cost_microdollars,
+                    input_tokens=stats.input_token_count or None,
+                    output_tokens=stats.output_token_count or None,
+                    data_size=stats.output_size or None,
+                    duration=stats.walltime or None,
+                    model=model_name,
+                    tracking_type=tracking_type,
+                    metadata=meta or None,
+                )
             )
         )
         return  # One log per execution is enough

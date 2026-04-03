@@ -17,6 +17,7 @@ CREATE TABLE "PlatformCostLog" (
     "dataSize" INTEGER,
     "duration" DOUBLE PRECISION,
     "model" TEXT,
+    "trackingType" TEXT,
     "metadata" JSONB,
 
     CONSTRAINT "PlatformCostLog_pkey" PRIMARY KEY ("id")
@@ -33,6 +34,9 @@ CREATE INDEX "PlatformCostLog_createdAt_idx" ON "PlatformCostLog"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "PlatformCostLog_graphExecId_idx" ON "PlatformCostLog"("graphExecId");
+
+-- CreateIndex
+CREATE INDEX "PlatformCostLog_provider_trackingType_idx" ON "PlatformCostLog"("provider", "trackingType");
 
 -- AddForeignKey
 ALTER TABLE "PlatformCostLog" ADD CONSTRAINT "PlatformCostLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;

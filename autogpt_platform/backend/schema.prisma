@@ -845,12 +845,14 @@ model PlatformCostLog {
   dataSize     Int? // bytes
   duration     Float? // seconds
   model        String?
+  trackingType String? // e.g. "cost_usd", "tokens", "per_run"
   metadata     Json?
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])
   @@index([createdAt])
   @@index([graphExecId])
+  @@index([provider, trackingType])
 }
 
 ////////////////////////////////////////////////////////////

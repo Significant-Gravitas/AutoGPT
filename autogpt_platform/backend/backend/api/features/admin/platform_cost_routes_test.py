@@ -130,6 +130,15 @@ def test_get_logs_with_pagination(
 
 
 def test_get_dashboard_requires_admin() -> None:
-    app.dependency_overrides.clear()
-    response = client.get("/admin/platform_costs/dashboard")
-    assert response.status_code in (401, 403)
+    import fastapi
+    from fastapi import HTTPException
+
+    def reject_jwt(request: fastapi.Request):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    app.dependency_overrides[get_jwt_payload] = reject_jwt
+    try:
+        response = client.get("/admin/platform_costs/dashboard")
+        assert response.status_code == 401
+    finally:
+        app.dependency_overrides.clear()

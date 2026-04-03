@@ -27,6 +27,7 @@ class PlatformCostEntry(BaseModel):
     data_size: int | None = None
     duration: float | None = None
     model: str | None = None
+    tracking_type: str | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -37,10 +38,10 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
             ("id", "createdAt", "userId", "graphExecId", "nodeExecId",
              "graphId", "nodeId", "blockId", "blockName", "provider",
              "credentialId", "costMicrodollars", "inputTokens", "outputTokens",
-             "dataSize", "duration", "model", "metadata")
+             "dataSize", "duration", "model", "trackingType", "metadata")
         VALUES (
             gen_random_uuid(), NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
-            $10, $11, $12, $13, $14, $15, $16::jsonb
+            $10, $11, $12, $13, $14, $15, $16, $17::jsonb
         )
         """,
         entry.user_id,
@@ -58,6 +59,7 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
         entry.data_size,
         entry.duration,
         entry.model,
+        entry.tracking_type,
         _json_or_none(entry.metadata),
     )
 
@@ -170,7 +172,8 @@ async def get_platform_cost_dashboard(
             f"""
             SELECT
                 p."provider",
-                p."metadata"->>'tracking_type' AS tracking_type,
+                COALESCE(p."trackingType", p."metadata"->>'tracking_type')
+                    AS tracking_type,
                 COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
                 COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
                 COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
@@ -178,7 +181,8 @@ async def get_platform_cost_dashboard(
                 COUNT(*)::bigint AS request_count
             FROM {{schema_prefix}}"PlatformCostLog" p
             WHERE {where_p}
-            GROUP BY p."provider", p."metadata"->>'tracking_type'
+            GROUP BY p."provider",
+                COALESCE(p."trackingType", p."metadata"->>'tracking_type')
             ORDER BY total_cost DESC
             """,
             *params_p,
@@ -279,7 +283,8 @@ async def get_platform_cost_logs(
             p."nodeExecId" AS node_exec_id,
             p."blockName" AS block_name,
             p."provider",
-            p."metadata"->>'tracking_type' AS tracking_type,
+            COALESCE(p."trackingType", p."metadata"->>'tracking_type')
+                AS tracking_type,
             p."costMicrodollars" AS cost_microdollars,
             p."inputTokens" AS input_tokens,
             p."outputTokens" AS output_tokens,

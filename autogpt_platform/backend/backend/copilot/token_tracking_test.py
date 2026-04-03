@@ -4,6 +4,7 @@ Covers both the baseline (prompt+completion only) and SDK (with cache breakdown)
 calling conventions, session persistence, and rate-limit recording.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -311,6 +312,7 @@ class TestPlatformCostLogging:
                 provider="anthropic",
                 log_prefix="[SDK]",
             )
+            await asyncio.sleep(0)
         mock_log.assert_awaited_once()
         entry = mock_log.call_args[0][0]
         assert entry.user_id == "user-cost"
@@ -319,6 +321,7 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars == 5000
         assert entry.input_tokens == 200
         assert entry.output_tokens == 100
+        assert entry.tracking_type == "cost_usd"
         assert entry.metadata["tracking_type"] == "cost_usd"
         assert entry.metadata["tracking_amount"] == 0.005
         assert entry.block_name == "copilot:SDK"
@@ -345,9 +348,11 @@ class TestPlatformCostLogging:
                 completion_tokens=50,
                 log_prefix="[Baseline]",
             )
+            await asyncio.sleep(0)
         mock_log.assert_awaited_once()
         entry = mock_log.call_args[0][0]
         assert entry.cost_microdollars is None
+        assert entry.tracking_type == "tokens"
         assert entry.metadata["tracking_type"] == "tokens"
         assert entry.metadata["tracking_amount"] == 150
         assert entry.graph_exec_id is None
@@ -373,6 +378,7 @@ class TestPlatformCostLogging:
                 prompt_tokens=100,
                 completion_tokens=50,
             )
+            await asyncio.sleep(0)
         mock_log.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -396,6 +402,7 @@ class TestPlatformCostLogging:
                 completion_tokens=50,
                 cost_usd="not-a-number",
             )
+            await asyncio.sleep(0)
         mock_log.assert_awaited_once()
         entry = mock_log.call_args[0][0]
         assert entry.cost_microdollars is None
@@ -422,6 +429,7 @@ class TestPlatformCostLogging:
                 completion_tokens=50,
                 cost_usd="0.01",
             )
+            await asyncio.sleep(0)
         mock_log.assert_awaited_once()
         entry = mock_log.call_args[0][0]
         assert entry.cost_microdollars == 10_000
@@ -448,6 +456,7 @@ class TestPlatformCostLogging:
                 completion_tokens=5,
                 log_prefix="",
             )
+            await asyncio.sleep(0)
         entry = mock_log.call_args[0][0]
         assert entry.block_name == "copilot"
 
@@ -473,6 +482,7 @@ class TestPlatformCostLogging:
                 cache_read_tokens=5000,
                 cache_creation_tokens=300,
             )
+            await asyncio.sleep(0)
         entry = mock_log.call_args[0][0]
         assert entry.metadata["cache_read_tokens"] == 5000
         assert entry.metadata["cache_creation_tokens"] == 300
