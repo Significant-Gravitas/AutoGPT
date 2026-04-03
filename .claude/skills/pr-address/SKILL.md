@@ -95,6 +95,58 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 | Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in <commit-sha>: <description>"` |
 | Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in <commit-sha>: <description>"` |
 
+## Codecov coverage
+
+The repo requires **codecov/patch** checks to pass on every PR. This means new/changed lines must have test coverage. There are separate patch checks for:
+- `codecov/patch/Platform Backend` — Python backend code
+- `codecov/patch/Platform Frontend` — TypeScript/React frontend code
+- `codecov/patch/Classic AutoGPT` — Classic AutoGPT code
+- `codecov/patch/AutoGPT Libs` — Shared Python libs
+
+### Checking coverage locally
+
+**Backend** (from `autogpt_platform/backend/`):
+```bash
+# Run tests with coverage for specific files
+poetry run pytest <test_file> --cov=backend --cov-report=term-missing -x -v
+
+# Check coverage for a specific module
+poetry run pytest --cov=backend/<module_path> --cov-report=term-missing
+```
+
+**Frontend** (from `autogpt_platform/frontend/`):
+```bash
+# Run all frontend tests
+pnpm test-unit
+
+# Run tests for a specific file
+pnpm vitest run <test_file>
+
+# Run with coverage report
+pnpm vitest run --coverage
+```
+
+### What to cover
+
+Every new branch (`if`/`else`, error path, fallback) in changed lines must be exercised by a test:
+
+- **Backend**: Colocate test files as `*_test.py` next to the source. Use `pytest` + `AsyncMock` for async functions.
+- **Frontend**: Colocate test files as `*.test.ts` or `*.test.tsx` in `__tests__/` folders next to the source. Use `vitest` + `@testing-library/react` for components. For pure helper functions, test directly without React rendering.
+
+### Priority for coverage
+
+1. **Pure helper functions** (`helpers.ts`, utility modules) — easiest to test, highest coverage ROI
+2. **Hooks with logic** (`use*.ts`) — test the logic, mock API calls
+3. **Store/state** (`store.ts`) — test state transitions
+4. **Components** (`.tsx`) — test rendering and user interactions, mock hooks
+
+### When codecov/patch fails in CI
+
+1. Check the Codecov PR comment or click the codecov check link to see which lines lack coverage
+2. Identify the changed files: `git diff --name-only origin/dev...HEAD`
+3. For each uncovered file, add tests following the patterns above
+4. Commit and push — codecov re-evaluates on each push
+
 ## Format and commit
 
 After fixing, format the changed code:
