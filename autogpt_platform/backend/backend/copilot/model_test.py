@@ -18,6 +18,7 @@ from .model import (
     Usage,
     get_chat_session,
     is_message_duplicate,
+    maybe_append_user_message,
     upsert_chat_session,
 )
 
@@ -511,3 +512,65 @@ def test_all_same_role_messages():
     ]
     assert is_message_duplicate(msgs, "user", "first") is True
     assert is_message_duplicate(msgs, "user", "new") is False
+
+
+# --------------------------------------------------------------------------- #
+#  maybe_append_user_message                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_maybe_append_user_message_appends_new():
+    """A new user message is appended and returns True."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="assistant", content="hello"),
+    ]
+    result = maybe_append_user_message(session, "new msg", is_user_message=True)
+    assert result is True
+    assert len(session.messages) == 2
+    assert session.messages[-1].role == "user"
+    assert session.messages[-1].content == "new msg"
+
+
+def test_maybe_append_user_message_skips_duplicate():
+    """A duplicate user message is skipped and returns False."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="assistant", content="hello"),
+        ChatMessage(role="user", content="dup"),
+    ]
+    result = maybe_append_user_message(session, "dup", is_user_message=True)
+    assert result is False
+    assert len(session.messages) == 2
+
+
+def test_maybe_append_user_message_none_message():
+    """None/empty message returns False without appending."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    assert maybe_append_user_message(session, None, is_user_message=True) is False
+    assert maybe_append_user_message(session, "", is_user_message=True) is False
+    assert len(session.messages) == 0
+
+
+def test_maybe_append_assistant_message():
+    """Works for assistant role when is_user_message=False."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="user", content="hi"),
+    ]
+    result = maybe_append_user_message(session, "response", is_user_message=False)
+    assert result is True
+    assert session.messages[-1].role == "assistant"
+    assert session.messages[-1].content == "response"
+
+
+def test_maybe_append_assistant_skips_duplicate():
+    """Duplicate assistant message is skipped."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="user", content="hi"),
+        ChatMessage(role="assistant", content="dup"),
+    ]
+    result = maybe_append_user_message(session, "dup", is_user_message=False)
+    assert result is False
+    assert len(session.messages) == 2
