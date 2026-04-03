@@ -35,19 +35,17 @@ function normalizeCoverageSourcePath(filePath: string) {
 
 // Resolve source maps from the copied .next/static directory
 function resolveSourceMap(sourcePath: string) {
-  // sourcePath looks like "localhost-3000/_next/static/chunks/abc123.js"
+  // sourcePath is the sourceMappingURL, e.g.:
+  //   "http://localhost:3000/_next/static/chunks/abc123.js.map"
+  // or just "_next/static/chunks/abc123.js.map"
   const match = sourcePath.match(/_next\/static\/(.+)$/);
   if (!match) {
-    console.log(`[coverage] sourceMapResolver: no match for ${sourcePath}`);
     return undefined;
   }
 
-  const mapFile = path.join(staticCoverageDir, match[1] + ".map");
-  const exists = fs.existsSync(mapFile);
-  console.log(
-    `[coverage] sourceMapResolver: ${sourcePath} -> ${mapFile} (${exists ? "found" : "not found"})`,
-  );
-  if (exists) {
+  // match[1] is already "chunks/abc123.js.map" — don't append .map again
+  const mapFile = path.join(staticCoverageDir, match[1]);
+  if (fs.existsSync(mapFile)) {
     return JSON.parse(fs.readFileSync(mapFile, "utf8"));
   }
   return undefined;
