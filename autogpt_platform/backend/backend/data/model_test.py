@@ -177,11 +177,11 @@ class TestNodeExecutionStatsIadd:
         assert a.output_token_count == 80
 
     def test_none_does_not_overwrite(self):
-        a = NodeExecutionStats(provider_cost=0.5, walltime=10.0)
-        b = NodeExecutionStats(provider_cost=None, walltime=None)  # type: ignore[arg-type]
+        a = NodeExecutionStats(provider_cost=0.5, error="some error")
+        b = NodeExecutionStats(provider_cost=None, error=None)
         a += b
         assert a.provider_cost == 0.5
-        assert a.walltime == 10.0
+        assert a.error == "some error"
 
     def test_none_is_skipped_preserving_existing_value(self):
         a = NodeExecutionStats(input_token_count=100)
