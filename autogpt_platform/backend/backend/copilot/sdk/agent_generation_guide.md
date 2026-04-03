@@ -3,40 +3,55 @@
 You can create, edit, and customize agents directly. You ARE the brain —
 generate the agent JSON yourself using block schemas, then validate and save.
 
-### Clarifying Before Building
+### Clarifying — Before or During Building
 
-Before starting the workflow below, check whether the user's goal is
-**ambiguous** — missing the output format, delivery channel, data source,
-or trigger. If so:
-1. Call `find_block` with a query targeting the ambiguous dimension to
-   discover what the platform actually supports.
-2. Ask the user **one concrete question** grounded in the discovered
+Use `ask_question` whenever the user's intent is ambiguous — whether
+that's before starting or midway through the workflow. Common moments:
+
+- **Before building**: output format, delivery channel, data source, or
+  trigger is unspecified.
+- **During block discovery**: multiple blocks could fit and the user
+  should choose.
+- **During JSON generation**: a wiring decision depends on user
+  preference.
+
+Steps:
+1. Call `find_block` (or another discovery tool) to learn what the
+   platform actually supports for the ambiguous dimension.
+2. Call `ask_question` with a concrete question listing the discovered
    options (e.g. "The platform supports Gmail, Slack, and Google Docs —
    which should the agent use for delivery?").
-3. **Wait for the user's answer** before proceeding.
+3. **Wait for the user's answer** before continuing.
 
 **Skip this** when the goal already specifies all dimensions (e.g.
 "scrape prices from Amazon and email me daily").
 
 ### Workflow for Creating/Editing Agents
 
-1. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
+1. **If editing**: First narrow to the specific agent by UUID, then fetch its
+   graph: `find_library_agent(query="<agent_id>", include_graph=true)`. This
+   returns the full graph structure (nodes + links). **Never edit blindly** —
+   always inspect the current graph first so you know exactly what to change.
+   Avoid using `include_graph=true` with broad keyword searches, as fetching
+   multiple graphs at once is expensive and consumes LLM context budget.
+2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
    and full input/output schemas.
-2. **Find library agents**: Call `find_library_agent` to discover reusable
+3. **Find library agents**: Call `find_library_agent` to discover reusable
    agents that can be composed as sub-agents via `AgentExecutorBlock`.
-3. **Generate JSON**: Build the agent JSON using block schemas:
-   - Use block IDs from step 1 as `block_id` in nodes
+4. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
+   - Use block IDs from step 2 as `block_id` in nodes
    - Wire outputs to inputs using links
    - Set design-time config in `input_default`
    - Use `AgentInputBlock` for values the user provides at runtime
-4. **Write to workspace**: Save the JSON to a workspace file so the user
+   - When editing, apply targeted changes and preserve unchanged parts
+5. **Write to workspace**: Save the JSON to a workspace file so the user
    can review it: `write_workspace_file(filename="agent.json", content=...)`
-5. **Validate**: Call `validate_agent_graph` with the agent JSON to check
+6. **Validate**: Call `validate_agent_graph` with the agent JSON to check
    for errors
-6. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
+7. **Fix if needed**: Call `fix_agent_graph` to auto-fix common issues,
    or fix manually based on the error descriptions. Iterate until valid.
-7. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
+8. **Save**: Call `create_agent` (new) or `edit_agent` (existing) with
    the final `agent_json`
 
 ### Agent JSON Structure
@@ -89,8 +104,8 @@ These define the agent's interface — what it accepts and what it produces.
 
 **AgentDropdownInputBlock** (ID: `655d6fdf-a334-421c-b733-520549c07cd1`):
 - Specialized input block that presents a dropdown/select to the user
-- Required `input_default` fields: `name` (str), `placeholder_values` (list of options, must have at least one)
-- Optional: `title`, `description`, `value` (default selection)
+- Required `input_default` fields: `name` (str)
+- Optional: `options` (list of dropdown values; when omitted/empty, input behaves as free-text), `title`, `description`, `value` (default selection)
 - Output: `result` — the user-selected value at runtime
 - Use this instead of AgentInputBlock when the user should pick from a fixed set of options
 
@@ -244,6 +259,17 @@ real API calls, credentials, or credits:
    received as input and produced as output, making it easy to spot wiring issues.
 3. **Iterate**: If the dry run reveals wiring issues or missing inputs, fix
    the agent JSON and re-save before suggesting a real execution.
+
+**Special block behaviour in dry-run mode:**
+- **OrchestratorBlock** and **AgentExecutorBlock** execute for real so the
+  orchestrator can make LLM calls and agent executors can spawn child graphs.
+  Their downstream tool blocks and child-graph blocks are still simulated.
+  Note: real LLM inference calls are made (consuming API quota), even though
+  platform credits are not charged. Agent-mode iterations are capped at 1 in
+  dry-run to keep it fast.
+- **MCPToolBlock** is simulated using the selected tool's name and JSON Schema
+  so the LLM can produce a realistic mock response without connecting to the
+  MCP server.
 
 ### Example: Simple AI Text Processor
 

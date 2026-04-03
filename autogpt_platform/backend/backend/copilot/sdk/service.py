@@ -59,11 +59,14 @@ from ..response_model import (
     StreamBaseResponse,
     StreamError,
     StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
+    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
 )
@@ -113,9 +116,10 @@ _MAX_STREAM_ATTEMPTS = 3
 
 # Hard circuit breaker: abort the stream if the model sends this many
 # consecutive tool calls with empty parameters (a sign of context
-# saturation or serialization failure).  Empty input ({}) is never
-# legitimate — even one is suspicious, three is conclusive.
-_EMPTY_TOOL_CALL_LIMIT = 3
+# saturation or serialization failure).  The MCP wrapper now returns
+# guidance on the first empty call, giving the model a chance to
+# self-correct.  The limit is generous to allow recovery attempts.
+_EMPTY_TOOL_CALL_LIMIT = 5
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -744,15 +748,11 @@ def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
         elif msg.role == "assistant":
             if msg.content:
                 lines.append(f"You responded: {msg.content}")
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    func = tc.get("function", {})
-                    tool_name = func.get("name", "unknown")
-                    tool_args = func.get("arguments", "")
-                    lines.append(f"You called tool: {tool_name}({tool_args})")
+            # Omit tool_calls — any text representation gets mimicked
+            # by the model. Tool results below provide the context.
         elif msg.role == "tool":
             content = msg.content or ""
-            lines.append(f"Tool result: {content}")
+            lines.append(f"Tool output: {content[:500]}")
 
     if not lines:
         return None
@@ -1306,6 +1306,27 @@ async def _run_stream_attempt(
                     error_preview,
                 )
 
+                # Intercept prompt-too-long errors surfaced as
+                # AssistantMessage.error (not as a Python exception).
+                # Re-raise so the outer retry loop can compact the
+                # transcript and retry with reduced context.
+                # Check both error_text and error_preview: sdk_error
+                # being set confirms this is an error message (not user
+                # content), so checking content is safe. The actual
+                # error description (e.g. "Prompt is too long") may be
+                # in the content, not the error type field
+                # (e.g. error="invalid_request", content="Prompt is
+                # too long").
+                if _is_prompt_too_long(Exception(error_text)) or _is_prompt_too_long(
+                    Exception(error_preview)
+                ):
+                    logger.warning(
+                        "%s Prompt-too-long detected via AssistantMessage "
+                        "error — raising for retry",
+                        ctx.log_prefix,
+                    )
+                    raise RuntimeError("Prompt is too long")
+
                 # Intercept transient API errors (socket closed,
                 # ECONNRESET) — replace the raw message with a
                 # user-friendly error text and use the retryable
@@ -1400,6 +1421,16 @@ async def _run_stream_attempt(
                         sdk_msg.result or "(no error message provided)",
                     )
 
+                # Check for prompt-too-long regardless of subtype — the
+                # SDK may return subtype="success" with result="Prompt is
+                # too long" when the CLI rejects the prompt before calling
+                # the API (cost_usd=0, no tokens consumed).  If we only
+                # check the "error" subtype path, the stream appears to
+                # complete normally, the synthetic error text is stored
+                # in the transcript, and the session grows without bound.
+                if _is_prompt_too_long(RuntimeError(sdk_msg.result or "")):
+                    raise RuntimeError("Prompt is too long")
+
                 # Capture token usage from ResultMessage.
                 # Anthropic reports cached tokens separately:
                 #   input_tokens = uncached only
@@ -1431,6 +1462,23 @@ async def _run_stream_attempt(
             # Emit compaction end if SDK finished compacting.
             # Sync TranscriptBuilder with the CLI's active context.
             compact_result = await ctx.compaction.emit_end_if_ready(ctx.session)
+            if compact_result.events:
+                # Compaction events end with StreamFinishStep, which maps to
+                # Vercel AI SDK's "finish-step" — that clears activeTextParts.
+                # Close any open text block BEFORE the compaction events so
+                # the text-end arrives before finish-step, preventing
+                # "text-end for missing text part" errors on the frontend.
+                pre_close: list[StreamBaseResponse] = []
+                state.adapter._end_text_if_open(pre_close)
+                # Compaction events bypass the adapter, so sync step state
+                # when a StreamFinishStep is present — otherwise the adapter
+                # will skip StreamStartStep on the next AssistantMessage.
+                if any(
+                    isinstance(ev, StreamFinishStep) for ev in compact_result.events
+                ):
+                    state.adapter.step_open = False
+                for r in pre_close:
+                    yield r
             for ev in compact_result.events:
                 yield ev
             entries_replaced = False
@@ -1836,7 +1884,10 @@ async def stream_chat_completion_sdk(
         )
 
         # Fail fast when no API credentials are available at all.
-        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id)
+        # sdk_cwd routes the CLI's temp dir into the per-session workspace
+        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id, sdk_cwd=sdk_cwd)
+
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
@@ -2031,7 +2082,20 @@ async def stream_chat_completion_sdk(
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
-                    if not isinstance(event, StreamHeartbeat):
+                    if not isinstance(
+                        event,
+                        (
+                            StreamHeartbeat,
+                            # Compaction UI events are cosmetic and must not
+                            # block retry — they're emitted before the SDK
+                            # query on compacted attempts.
+                            StreamStartStep,
+                            StreamFinishStep,
+                            StreamToolInputStart,
+                            StreamToolInputAvailable,
+                            StreamToolOutputAvailable,
+                        ),
+                    ):
                         events_yielded += 1
                     yield event
                 break  # Stream completed — exit retry loop
