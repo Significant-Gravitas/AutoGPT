@@ -169,7 +169,7 @@ Block for dropdown text selection.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block provides a dropdown selection input for users interacting with your agent. You define the available options using placeholder_values, and users select one option from the list at runtime.
+This block provides a dropdown selection input for users interacting with your agent. You define the available options using the `options` field, and users select one option from the list at runtime.
 
 This is ideal when you want to constrain user input to a predefined set of choices, ensuring valid input and simplifying the user experience. The selected value is passed to downstream blocks in your workflow.
 <!-- END MANUAL -->
@@ -184,7 +184,7 @@ This is ideal when you want to constrain user input to a predefined set of choic
 | description | The description of the input. | str | No |
 | advanced | Whether to show the input in the advanced section, if the field is not required. | bool | No |
 | secret | Whether the input should be treated as a secret. | bool | No |
-| placeholder_values | Possible values for the dropdown. | List[Any] | No |
+| options | If provided, renders the input as a dropdown selector restricted to these values. Leave empty for free-text input. | List[Any] | No |
 
 ### Outputs
 

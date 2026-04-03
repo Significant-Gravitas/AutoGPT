@@ -20,6 +20,10 @@ class ChatConfig(BaseSettings):
         default="openai/gpt-4o-mini",
         description="Model to use for generating session titles (should be fast/cheap)",
     )
+    simulation_model: str = Field(
+        default="google/gemini-2.5-flash",
+        description="Model for dry-run block simulation (should be fast/cheap with good JSON output)",
+    )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
         default=OPENROUTER_BASE_URL,
@@ -178,7 +182,7 @@ class ChatConfig(BaseSettings):
 
         Single source of truth for "will the SDK route through OpenRouter?".
         Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
-        present — mirrors the fallback logic in ``_build_sdk_env``.
+        present — mirrors the fallback logic in ``build_sdk_env``.
         """
         if not self.use_openrouter:
             return False

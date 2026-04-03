@@ -9,12 +9,16 @@ shared tool registry as the SDK path.
 import asyncio
 import logging
 import uuid
-from collections.abc import AsyncGenerator
-from typing import Any
+from collections.abc import AsyncGenerator, Sequence
+from dataclasses import dataclass, field
+from functools import partial
+from typing import Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
+from backend.copilot.context import set_execution_context
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -48,7 +52,17 @@ from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.util.exceptions import NotFoundError
-from backend.util.prompt import compress_context
+from backend.util.prompt import (
+    compress_context,
+    estimate_token_count,
+    estimate_token_count_str,
+)
+from backend.util.tool_call_loop import (
+    LLMLoopResponse,
+    LLMToolCall,
+    ToolCallResult,
+    tool_call_loop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +71,247 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 # Maximum number of tool-call rounds before forcing a text response.
 _MAX_TOOL_ROUNDS = 30
+
+
+@dataclass
+class _BaselineStreamState:
+    """Mutable state shared between the tool-call loop callbacks.
+
+    Extracted from ``stream_chat_completion_baseline`` so that the callbacks
+    can be module-level functions instead of deeply nested closures.
+    """
+
+    pending_events: list[StreamBaseResponse] = field(default_factory=list)
+    assistant_text: str = ""
+    text_block_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    text_started: bool = False
+    turn_prompt_tokens: int = 0
+    turn_completion_tokens: int = 0
+
+
+async def _baseline_llm_caller(
+    messages: list[dict[str, Any]],
+    tools: Sequence[Any],
+    *,
+    state: _BaselineStreamState,
+) -> LLMLoopResponse:
+    """Stream an OpenAI-compatible response and collect results.
+
+    Extracted from ``stream_chat_completion_baseline`` for readability.
+    """
+    state.pending_events.append(StreamStartStep())
+
+    round_text = ""
+    try:
+        client = _get_openai_client()
+        typed_messages = cast(list[ChatCompletionMessageParam], messages)
+        if tools:
+            typed_tools = cast(list[ChatCompletionToolParam], tools)
+            response = await client.chat.completions.create(
+                model=config.model,
+                messages=typed_messages,
+                tools=typed_tools,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+        else:
+            response = await client.chat.completions.create(
+                model=config.model,
+                messages=typed_messages,
+                stream=True,
+                stream_options={"include_usage": True},
+            )
+        tool_calls_by_index: dict[int, dict[str, str]] = {}
+
+        async for chunk in response:
+            if chunk.usage:
+                state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                state.turn_completion_tokens += chunk.usage.completion_tokens or 0
+
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if not delta:
+                continue
+
+            if delta.content:
+                if not state.text_started:
+                    state.pending_events.append(StreamTextStart(id=state.text_block_id))
+                    state.text_started = True
+                round_text += delta.content
+                state.pending_events.append(
+                    StreamTextDelta(id=state.text_block_id, delta=delta.content)
+                )
+
+            if delta.tool_calls:
+                for tc in delta.tool_calls:
+                    idx = tc.index
+                    if idx not in tool_calls_by_index:
+                        tool_calls_by_index[idx] = {
+                            "id": "",
+                            "name": "",
+                            "arguments": "",
+                        }
+                    entry = tool_calls_by_index[idx]
+                    if tc.id:
+                        entry["id"] = tc.id
+                    if tc.function and tc.function.name:
+                        entry["name"] = tc.function.name
+                    if tc.function and tc.function.arguments:
+                        entry["arguments"] += tc.function.arguments
+
+        # Close text block
+        if state.text_started:
+            state.pending_events.append(StreamTextEnd(id=state.text_block_id))
+            state.text_started = False
+            state.text_block_id = str(uuid.uuid4())
+    finally:
+        # Always persist partial text so the session history stays consistent,
+        # even when the stream is interrupted by an exception.
+        state.assistant_text += round_text
+        # Always emit StreamFinishStep to match the StreamStartStep,
+        # even if an exception occurred during streaming.
+        state.pending_events.append(StreamFinishStep())
+
+    # Convert to shared format
+    llm_tool_calls = [
+        LLMToolCall(
+            id=tc["id"],
+            name=tc["name"],
+            arguments=tc["arguments"] or "{}",
+        )
+        for tc in tool_calls_by_index.values()
+    ]
+
+    return LLMLoopResponse(
+        response_text=round_text or None,
+        tool_calls=llm_tool_calls,
+        raw_response=None,  # Not needed for baseline conversation updater
+        prompt_tokens=0,  # Tracked via state accumulators
+        completion_tokens=0,
+    )
+
+
+async def _baseline_tool_executor(
+    tool_call: LLMToolCall,
+    tools: Sequence[Any],
+    *,
+    state: _BaselineStreamState,
+    user_id: str | None,
+    session: ChatSession,
+) -> ToolCallResult:
+    """Execute a tool via the copilot tool registry.
+
+    Extracted from ``stream_chat_completion_baseline`` for readability.
+    """
+    tool_call_id = tool_call.id
+    tool_name = tool_call.name
+    raw_args = tool_call.arguments or "{}"
+
+    try:
+        tool_args = orjson.loads(raw_args)
+    except orjson.JSONDecodeError as parse_err:
+        parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
+        logger.warning("[Baseline] %s", parse_error)
+        state.pending_events.append(
+            StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=tool_name,
+                output=parse_error,
+                success=False,
+            )
+        )
+        return ToolCallResult(
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            content=parse_error,
+            is_error=True,
+        )
+
+    state.pending_events.append(
+        StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
+    )
+    state.pending_events.append(
+        StreamToolInputAvailable(
+            toolCallId=tool_call_id,
+            toolName=tool_name,
+            input=tool_args,
+        )
+    )
+
+    try:
+        result: StreamToolOutputAvailable = await execute_tool(
+            tool_name=tool_name,
+            parameters=tool_args,
+            user_id=user_id,
+            session=session,
+            tool_call_id=tool_call_id,
+        )
+        state.pending_events.append(result)
+        tool_output = (
+            result.output if isinstance(result.output, str) else str(result.output)
+        )
+        return ToolCallResult(
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            content=tool_output,
+        )
+    except Exception as e:
+        error_output = f"Tool execution error: {e}"
+        logger.error(
+            "[Baseline] Tool %s failed: %s",
+            tool_name,
+            error_output,
+            exc_info=True,
+        )
+        state.pending_events.append(
+            StreamToolOutputAvailable(
+                toolCallId=tool_call_id,
+                toolName=tool_name,
+                output=error_output,
+                success=False,
+            )
+        )
+        return ToolCallResult(
+            tool_call_id=tool_call_id,
+            tool_name=tool_name,
+            content=error_output,
+            is_error=True,
+        )
+
+
+def _baseline_conversation_updater(
+    messages: list[dict[str, Any]],
+    response: LLMLoopResponse,
+    tool_results: list[ToolCallResult] | None = None,
+) -> None:
+    """Update OpenAI message list with assistant response + tool results.
+
+    Extracted from ``stream_chat_completion_baseline`` for readability.
+    """
+    if tool_results:
+        # Build assistant message with tool_calls
+        assistant_msg: dict[str, Any] = {"role": "assistant"}
+        if response.response_text:
+            assistant_msg["content"] = response.response_text
+        assistant_msg["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": tc.arguments},
+            }
+            for tc in response.tool_calls
+        ]
+        messages.append(assistant_msg)
+        for tr in tool_results:
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tr.tool_call_id,
+                    "content": tr.content,
+                }
+            )
+    else:
+        if response.response_text:
+            messages.append({"role": "assistant", "content": response.response_text})
 
 
 async def _update_title_async(
@@ -203,6 +458,9 @@ async def stream_chat_completion_baseline(
 
     tools = get_available_tools()
 
+    # Propagate execution context so tool handlers can read session-level flags.
+    set_execution_context(user_id, session)
+
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
     # Propagate user/session context to Langfuse so all LLM calls within
@@ -219,191 +477,32 @@ async def stream_chat_completion_baseline(
     except Exception:
         logger.warning("[Baseline] Langfuse trace context setup failed")
 
-    assistant_text = ""
-    text_block_id = str(uuid.uuid4())
-    text_started = False
-    step_open = False
-    # Token usage accumulators — populated from streaming chunks
-    turn_prompt_tokens = 0
-    turn_completion_tokens = 0
     _stream_error = False  # Track whether an error occurred during streaming
+    state = _BaselineStreamState()
+
+    # Bind extracted module-level callbacks to this request's state/session
+    # using functools.partial so they satisfy the Protocol signatures.
+    _bound_llm_caller = partial(_baseline_llm_caller, state=state)
+    _bound_tool_executor = partial(
+        _baseline_tool_executor, state=state, user_id=user_id, session=session
+    )
+
     try:
-        for _round in range(_MAX_TOOL_ROUNDS):
-            # Open a new step for each LLM round
-            yield StreamStartStep()
-            step_open = True
+        loop_result = None
+        async for loop_result in tool_call_loop(
+            messages=openai_messages,
+            tools=tools,
+            llm_call=_bound_llm_caller,
+            execute_tool=_bound_tool_executor,
+            update_conversation=_baseline_conversation_updater,
+            max_iterations=_MAX_TOOL_ROUNDS,
+        ):
+            # Drain buffered events after each iteration (real-time streaming)
+            for evt in state.pending_events:
+                yield evt
+            state.pending_events.clear()
 
-            # Stream a response from the model
-            create_kwargs: dict[str, Any] = dict(
-                model=config.model,
-                messages=openai_messages,
-                stream=True,
-                stream_options={"include_usage": True},
-            )
-            if tools:
-                create_kwargs["tools"] = tools
-            response = await _get_openai_client().chat.completions.create(**create_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
-
-            # Accumulate streamed response (text + tool calls)
-            round_text = ""
-            tool_calls_by_index: dict[int, dict[str, str]] = {}
-
-            async for chunk in response:
-                # Capture token usage from the streaming chunk.
-                # OpenRouter normalises all providers into OpenAI format
-                # where prompt_tokens already includes cached tokens
-                # (unlike Anthropic's native API). Use += to sum all
-                # tool-call rounds since each API call is independent.
-                # NOTE: stream_options={"include_usage": True} is not
-                # universally supported — some providers (Mistral, Llama
-                # via OpenRouter) always return chunk.usage=None. When
-                # that happens, tokens stay 0 and the tiktoken fallback
-                # below activates. Fail-open: one round is estimated.
-                if chunk.usage:
-                    turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                    turn_completion_tokens += chunk.usage.completion_tokens or 0
-
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if not delta:
-                    continue
-
-                # Text content
-                if delta.content:
-                    if not text_started:
-                        yield StreamTextStart(id=text_block_id)
-                        text_started = True
-                    round_text += delta.content
-                    yield StreamTextDelta(id=text_block_id, delta=delta.content)
-
-                # Tool call fragments (streamed incrementally)
-                if delta.tool_calls:
-                    for tc in delta.tool_calls:
-                        idx = tc.index
-                        if idx not in tool_calls_by_index:
-                            tool_calls_by_index[idx] = {
-                                "id": "",
-                                "name": "",
-                                "arguments": "",
-                            }
-                        entry = tool_calls_by_index[idx]
-                        if tc.id:
-                            entry["id"] = tc.id
-                        if tc.function and tc.function.name:
-                            entry["name"] = tc.function.name
-                        if tc.function and tc.function.arguments:
-                            entry["arguments"] += tc.function.arguments
-
-            # Close text block if we had one this round
-            if text_started:
-                yield StreamTextEnd(id=text_block_id)
-                text_started = False
-                text_block_id = str(uuid.uuid4())
-
-            # Accumulate text for session persistence
-            assistant_text += round_text
-
-            # No tool calls -> model is done
-            if not tool_calls_by_index:
-                yield StreamFinishStep()
-                step_open = False
-                break
-
-            # Close step before tool execution
-            yield StreamFinishStep()
-            step_open = False
-
-            # Append the assistant message with tool_calls to context.
-            assistant_msg: dict[str, Any] = {"role": "assistant"}
-            if round_text:
-                assistant_msg["content"] = round_text
-            assistant_msg["tool_calls"] = [
-                {
-                    "id": tc["id"],
-                    "type": "function",
-                    "function": {
-                        "name": tc["name"],
-                        "arguments": tc["arguments"] or "{}",
-                    },
-                }
-                for tc in tool_calls_by_index.values()
-            ]
-            openai_messages.append(assistant_msg)
-
-            # Execute each tool call and stream events
-            for tc in tool_calls_by_index.values():
-                tool_call_id = tc["id"]
-                tool_name = tc["name"]
-                raw_args = tc["arguments"] or "{}"
-                try:
-                    tool_args = orjson.loads(raw_args)
-                except orjson.JSONDecodeError as parse_err:
-                    parse_error = (
-                        f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
-                    )
-                    logger.warning("[Baseline] %s", parse_error)
-                    yield StreamToolOutputAvailable(
-                        toolCallId=tool_call_id,
-                        toolName=tool_name,
-                        output=parse_error,
-                        success=False,
-                    )
-                    openai_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "content": parse_error,
-                        }
-                    )
-                    continue
-
-                yield StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
-                yield StreamToolInputAvailable(
-                    toolCallId=tool_call_id,
-                    toolName=tool_name,
-                    input=tool_args,
-                )
-
-                # Execute via shared tool registry
-                try:
-                    result: StreamToolOutputAvailable = await execute_tool(
-                        tool_name=tool_name,
-                        parameters=tool_args,
-                        user_id=user_id,
-                        session=session,
-                        tool_call_id=tool_call_id,
-                    )
-                    yield result
-                    tool_output = (
-                        result.output
-                        if isinstance(result.output, str)
-                        else str(result.output)
-                    )
-                except Exception as e:
-                    error_output = f"Tool execution error: {e}"
-                    logger.error(
-                        "[Baseline] Tool %s failed: %s",
-                        tool_name,
-                        error_output,
-                        exc_info=True,
-                    )
-                    yield StreamToolOutputAvailable(
-                        toolCallId=tool_call_id,
-                        toolName=tool_name,
-                        output=error_output,
-                        success=False,
-                    )
-                    tool_output = error_output
-
-                # Append tool result to context for next round
-                openai_messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": tool_output,
-                    }
-                )
-        else:
-            # for-loop exhausted without break -> tool-round limit hit
+        if loop_result and not loop_result.finished_naturally:
             limit_msg = (
                 f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
                 "without a final response."
@@ -418,11 +517,28 @@ async def stream_chat_completion_baseline(
         _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # Close any open text/step before emitting error
-        if text_started:
-            yield StreamTextEnd(id=text_block_id)
-        if step_open:
-            yield StreamFinishStep()
+        # Close any open text block.  The llm_caller's finally block
+        # already appended StreamFinishStep to pending_events, so we must
+        # insert StreamTextEnd *before* StreamFinishStep to preserve the
+        # protocol ordering:
+        #   StreamStartStep -> StreamTextStart -> ...deltas... ->
+        #   StreamTextEnd -> StreamFinishStep
+        # Appending (or yielding directly) would place it after
+        # StreamFinishStep, violating the protocol.
+        if state.text_started:
+            # Find the last StreamFinishStep and insert before it.
+            insert_pos = len(state.pending_events)
+            for i in range(len(state.pending_events) - 1, -1, -1):
+                if isinstance(state.pending_events[i], StreamFinishStep):
+                    insert_pos = i
+                    break
+            state.pending_events.insert(
+                insert_pos, StreamTextEnd(id=state.text_block_id)
+            )
+        # Drain pending events in correct order
+        for evt in state.pending_events:
+            yield evt
+        state.pending_events.clear()
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
@@ -442,26 +558,21 @@ async def stream_chat_completion_baseline(
         # Skip fallback when an error occurred and no output was produced —
         # charging rate-limit tokens for completely failed requests is unfair.
         if (
-            turn_prompt_tokens == 0
-            and turn_completion_tokens == 0
-            and not (_stream_error and not assistant_text)
+            state.turn_prompt_tokens == 0
+            and state.turn_completion_tokens == 0
+            and not (_stream_error and not state.assistant_text)
         ):
-            from backend.util.prompt import (
-                estimate_token_count,
-                estimate_token_count_str,
-            )
-
-            turn_prompt_tokens = max(
+            state.turn_prompt_tokens = max(
                 estimate_token_count(openai_messages, model=config.model), 1
             )
-            turn_completion_tokens = estimate_token_count_str(
-                assistant_text, model=config.model
+            state.turn_completion_tokens = estimate_token_count_str(
+                state.assistant_text, model=config.model
             )
             logger.info(
                 "[Baseline] No streaming usage reported; estimated tokens: "
                 "prompt=%d, completion=%d",
-                turn_prompt_tokens,
-                turn_completion_tokens,
+                state.turn_prompt_tokens,
+                state.turn_completion_tokens,
             )
 
         # Persist token usage to session and record for rate limiting.
@@ -471,15 +582,15 @@ async def stream_chat_completion_baseline(
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
-            prompt_tokens=turn_prompt_tokens,
-            completion_tokens=turn_completion_tokens,
+            prompt_tokens=state.turn_prompt_tokens,
+            completion_tokens=state.turn_completion_tokens,
             log_prefix="[Baseline]",
         )
 
         # Persist assistant response
-        if assistant_text:
+        if state.assistant_text:
             session.messages.append(
-                ChatMessage(role="assistant", content=assistant_text)
+                ChatMessage(role="assistant", content=state.assistant_text)
             )
         try:
             await upsert_chat_session(session)
@@ -491,11 +602,11 @@ async def stream_chat_completion_baseline(
     # aclose() — doing so raises RuntimeError on client disconnect.
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
-    if turn_prompt_tokens > 0 or turn_completion_tokens > 0:
+    if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
         yield StreamUsage(
-            prompt_tokens=turn_prompt_tokens,
-            completion_tokens=turn_completion_tokens,
-            total_tokens=turn_prompt_tokens + turn_completion_tokens,
+            prompt_tokens=state.turn_prompt_tokens,
+            completion_tokens=state.turn_completion_tokens,
+            total_tokens=state.turn_prompt_tokens + state.turn_completion_tokens,
         )
 
     yield StreamFinish()
