@@ -148,3 +148,11 @@ jobs:
 
       - name: Run Integration Tests
         run: pnpm test:unit
+
+      - name: Upload coverage reports to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: platform-frontend
+          files: ./autogpt_platform/frontend/coverage/cobertura-coverage.xml
