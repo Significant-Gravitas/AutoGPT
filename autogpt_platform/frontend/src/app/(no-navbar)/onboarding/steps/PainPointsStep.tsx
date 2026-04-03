@@ -3,17 +3,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import {
-  CalendarBlank,
-  ChartLineUp,
-  DeviceMobile,
-  EnvelopeSimple,
-  Flask,
-  Folder,
-  Headset,
-  MagnifyingGlass,
-  PencilSimple,
-} from "@phosphor-icons/react";
 import { ReactNode } from "react";
 
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
