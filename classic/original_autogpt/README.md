@@ -24,12 +24,67 @@ Demo made by <a href=https://twitter.com/BlakeWerlinger>Blake Werlinger</a>
 <!-- - 💾 Long-term and short-term memory management -->
 
 ## Setting up AutoGPT
-1. Get an OpenAI [API Key](https://platform.openai.com/account/api-keys)
-2. Copy `.env.template` to `.env` and set `OPENAI_API_KEY`
-3. Make sure you have Poetry [installed](https://python-poetry.org/docs/#installation)
 
-For more ways to run AutoGPT, more detailed instructions, and more configuration options,
-see the [setup guide][docs/setup].
+### Prerequisites
+- Python 3.12+
+- [Poetry](https://python-poetry.org/docs/#installation)
+- OpenAI [API Key](https://platform.openai.com/account/api-keys)
+
+### Installation
+
+All commands run from the `classic/` directory (parent of this directory):
+
+```bash
+cd classic
+poetry install
+cp .env.template .env
+# Edit .env with your OPENAI_API_KEY
+```
+
+### Configuration
+
+AutoGPT uses a **layered configuration system**:
+
+#### 1. Environment Variables (`.env`)
+
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+
+# Optional LLM settings
+SMART_LLM=gpt-4o                    # Model for complex reasoning
+FAST_LLM=gpt-4o-mini                # Model for simple tasks
+
+# Optional search providers
+TAVILY_API_KEY=tvly-...
+SERPER_API_KEY=...
+
+# Optional infrastructure
+LOG_LEVEL=DEBUG
+PORT=8000
+FILE_STORAGE_BACKEND=local          # local, s3, or gcs
+```
+
+#### 2. Workspace Settings (`.autogpt/autogpt.yaml`)
+
+Workspace-wide permissions for all agents:
+
+```yaml
+allow:
+  - read_file({workspace}/**)
+  - write_to_file({workspace}/**)
+  - web_search(*)
+
+deny:
+  - read_file(**.env)
+  - execute_shell(sudo:*)
+```
+
+#### 3. Agent Settings (`.autogpt/agents/{id}/permissions.yaml`)
+
+Agent-specific permission overrides.
+
+For more configuration options, see the [setup guide][docs/setup].
 
 ## Running AutoGPT
 The CLI should be self-documenting:
@@ -118,6 +173,64 @@ With `serve`, the application exposes an Agent Protocol compliant API and serves
 by default on `http://localhost:8000`.
 
 For more comprehensive instructions, see the [user guide][docs/usage].
+
+## Workspaces
+
+Agents operate within a **workspace** - a directory containing all agent data:
+
+```
+{workspace}/
+├── .autogpt/
+│   ├── autogpt.yaml              # Workspace-level permissions
+│   ├── ap_server.db              # Agent Protocol database (server mode)
+│   └── agents/
+│       └── AutoGPT-{agent_id}/
+│           ├── state.json        # Agent profile, directives, history
+│           ├── permissions.yaml  # Agent-specific permissions
+│           └── workspace/        # Agent's sandboxed working directory
+```
+
+- Defaults to the current working directory
+- Multiple agents can coexist in the same workspace
+- File access is sandboxed to the agent's `workspace/` subdirectory
+- State persists across sessions
+
+## Permissions
+
+AutoGPT uses a **layered permission system** with pattern matching.
+
+### Permission Check Order (First Match Wins)
+
+1. Agent deny list → Block
+2. Workspace deny list → Block
+3. Agent allow list → Allow
+4. Workspace allow list → Allow
+5. Prompt user → Interactive approval
+
+### Pattern Syntax
+
+Format: `command_name(glob_pattern)`
+
+| Pattern | Description |
+|---------|-------------|
+| `read_file({workspace}/**)` | Read any file in workspace |
+| `execute_shell(python:**)` | Execute Python commands |
+| `web_search(*)` | All web searches |
+
+### Interactive Approval Scopes
+
+When prompted for permission:
+- **Once** - Allow this one time only
+- **Agent** - Always allow for this agent (saves to `permissions.yaml`)
+- **Workspace** - Always allow for all agents (saves to `autogpt.yaml`)
+- **Deny** - Block this command
+
+### Default Security
+
+Denied by default:
+- Sensitive files (`.env`, `.key`, `.pem`)
+- Destructive commands (`rm -rf`, `sudo`)
+- Operations outside the workspace
 
 [docs]: https://docs.agpt.co/autogpt
 [docs/setup]: https://docs.agpt.co/classic/original_autogpt/setup

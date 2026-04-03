@@ -10,7 +10,7 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   deduplicateMessages,
   hasActiveBackendStream,
@@ -47,6 +47,8 @@ export function useCopilotStream({
   refetchSession,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
+  const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+  const dismissRateLimit = useCallback(() => setRateLimitMessage(null), []);
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -196,13 +198,10 @@ export function useCopilotStream({
       }
       const isRateLimited = errorDetail.toLowerCase().includes("usage limit");
       if (isRateLimited) {
-        toast({
-          title: "Usage limit reached",
-          description:
-            errorDetail ||
+        setRateLimitMessage(
+          errorDetail ||
             "You've reached your usage limit. Please try again later.",
-          variant: "destructive",
-        });
+        );
         return;
       }
 
@@ -379,6 +378,7 @@ export function useCopilotStream({
     reconnectAttemptsRef.current = 0;
     isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
+    setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
     setReconnectExhausted(false);
@@ -487,5 +487,7 @@ export function useCopilotStream({
     isReconnecting,
     isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }

@@ -184,6 +184,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Sardis Balance](block-integrations/sardis/balance.md#sardis-balance) | Check the balance and remaining spending limits of a Sardis wallet |
 | [Sardis Pay](block-integrations/sardis/payment.md#sardis-pay) | Execute a policy-controlled payment from a Sardis wallet |
 | [Sardis Policy Check](block-integrations/sardis/policy.md#sardis-policy-check) | Check if a payment would pass spending policy without executing it |
+| [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
 ## Text Processing

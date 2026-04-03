@@ -51,7 +51,7 @@ export const DEFAULT_THEMES: SuggestionTheme[] = [
   {
     name: "Organize",
     prompts: [
-      "Sort my bookmarks into categories",
+      "Summarize my unread emails",
       "Create a project timeline from my notes",
       "Prioritize my task list by urgency",
       "Build a decision matrix for vendor selection",

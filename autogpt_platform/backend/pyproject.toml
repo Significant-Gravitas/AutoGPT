@@ -94,7 +94,10 @@ posthog = "^7.6.0"
 fpdf2 = "^2.8.6"
 langsmith = "^0.7.7"
 openpyxl = "^3.1.5"
+pymssql = "^2.3.2"
+pymysql = "^1.1.1"
 pyarrow = "^23.0.0"
+sqlparse = "^0.5.5"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -155,6 +158,7 @@ asyncio_default_fixture_loop_scope = "session"
 addopts = "-p no:syrupy"
 markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
+    "integration: end-to-end tests that require a live database (skipped in CI)",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
