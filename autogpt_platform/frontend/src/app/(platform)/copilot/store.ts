@@ -120,9 +120,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
-
     storage.clean(Key.COPILOT_MODE);
-
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     set({
       completedSessionIDs: new Set<string>(),
