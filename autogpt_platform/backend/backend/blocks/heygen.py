@@ -42,6 +42,8 @@ TEST_CREDENTIALS_INPUT = {
 
 
 class HeyGenCreateVideoBlock(Block):
+    """Create avatar videos using the HeyGen API."""
+
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.HEYGEN], Literal["api_key"]
@@ -131,6 +133,7 @@ class HeyGenCreateVideoBlock(Block):
         )
 
     async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
+        """Send a video generation request to the HeyGen API."""
         url = "https://api.heygen.com/v2/video/generate"
         headers = {
             "Accept": "application/json",
@@ -145,6 +148,7 @@ class HeyGenCreateVideoBlock(Block):
         return result.get("data", {})
 
     async def get_video_status(self, api_key: SecretStr, video_id: str) -> dict:
+        """Poll the HeyGen API for the status of a video generation job."""
         url = (
             "https://api.heygen.com/v1/video_status.get" f"?video_id={quote(video_id)}"
         )
@@ -167,6 +171,7 @@ class HeyGenCreateVideoBlock(Block):
         execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
+        """Create an avatar video, poll until complete, and return the stored URL."""
         payload: dict[str, Any] = {
             "video_inputs": [
                 {
