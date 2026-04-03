@@ -58,21 +58,25 @@ You can learn more under: [Build your own Blocks](new_blocks.md)
 
 ## Available Language Models
 
-The platform provides access to models from leading AI model developers:
+The platform provides access to models from a wide range of model developers, ranked roughly by industry adoption:
 
-* [OpenAI](https://openai.com/) — GPT-5, GPT-4.1, O3, and more
-* [Anthropic](https://www.anthropic.com/) — Claude Opus, Sonnet, and Haiku
 * [Google DeepMind](https://deepmind.google/) — Gemini 3, 2.5, and 2.0
+* [Anthropic](https://www.anthropic.com/) — Claude Opus, Sonnet, and Haiku
+* [DeepSeek](https://www.deepseek.com/) — DeepSeek R1 and V3
+* [Qwen (Alibaba)](https://qwen.readthedocs.io/) — Qwen 3
+* [OpenAI](https://openai.com/) — GPT-5, GPT-4.1, O3, and more
 * [Meta](https://ai.meta.com/) — Llama 4 and Llama 3
 * [Mistral AI](https://mistral.ai/) — Mistral Large, Medium, Small, and Codestral
 * [xAI](https://x.ai/) — Grok 4 and Grok 3
-* [DeepSeek](https://www.deepseek.com/) — DeepSeek R1 and V3
-* [Cohere](https://cohere.com/) — Command A and Command R
+* [Moonshot AI](https://www.moonshot.cn/) — Kimi K2
 * [Perplexity](https://www.perplexity.ai/) — Sonar, Sonar Pro, and Sonar Deep Research
-* [Qwen (Alibaba)](https://www.alibabacloud.com/en/solutions/generative-ai/qwen) — Qwen 3
 * [Amazon](https://aws.amazon.com/ai/) — Nova Pro, Lite, and Micro
 * [Microsoft](https://www.microsoft.com/en-us/research/ai/) — Phi-4 and WizardLM 2
+* [Cohere](https://cohere.com/) — Command A and Command R
 * [Nvidia](https://www.nvidia.com/en-us/ai/) — Nemotron
+* [Nous Research](https://nousresearch.com/) — Hermes
+* [Vercel](https://v0.dev/) — v0
+* [Gryphe](https://gryphe.github.io/) — MythoMax
 
 ## License Overview
 
