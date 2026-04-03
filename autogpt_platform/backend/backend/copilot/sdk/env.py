@@ -20,6 +20,7 @@ config = ChatConfig()
 def build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
+    sdk_cwd: str | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
@@ -29,25 +30,35 @@ def build_sdk_env(
        ``ANTHROPIC_API_KEY`` from the parent environment.
     3. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
+
+    When *sdk_cwd* is provided, ``CLAUDE_CODE_TMPDIR`` is set so that
+    the CLI writes temp/sub-agent output inside the per-session workspace
+    directory rather than an inaccessible system temp path.
     """
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
         validate_subscription()
-        return {
+        env: dict[str, str] = {
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
         }
+        if sdk_cwd:
+            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+        return env
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
     if not config.openrouter_active:
-        return {}
+        env = {}
+        if sdk_cwd:
+            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+        return env
 
     # --- Mode 3: OpenRouter proxy ---
     base = (config.base_url or "").rstrip("/")
     if base.endswith("/v1"):
         base = base[:-3]
-    env: dict[str, str] = {
+    env = {
         "ANTHROPIC_BASE_URL": base,
         "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
         "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
@@ -64,5 +75,8 @@ def build_sdk_env(
         parts.append(f"x-user-id: {_safe(user_id)}")
     if parts:
         env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+
+    if sdk_cwd:
+        env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
 
     return env

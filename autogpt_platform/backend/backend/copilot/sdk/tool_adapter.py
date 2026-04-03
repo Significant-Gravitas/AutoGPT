@@ -38,7 +38,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, bridge_and_annotate
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
@@ -387,7 +387,16 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
             selected = list(itertools.islice(f, offset, offset + limit))
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return _mcp_ok("".join(selected))
+        #
+        # When E2B is active, also copy the file into the sandbox so
+        # bash_exec can process it (the model often uses Read then bash).
+        text = "".join(selected)
+        sandbox = _current_sandbox.get(None)
+        if sandbox is not None:
+            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+            if annotation:
+                text += annotation
+        return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
     except Exception as e:
@@ -581,13 +590,14 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # Security hooks validate that file paths stay within sdk_cwd.
 # Bash is NOT included — use the sandboxed MCP bash_exec tool instead,
 # which provides kernel-level network isolation via unshare --net.
-# Task allows spawning sub-agents (rate-limited by security hooks).
+# Task/Agent allows spawning sub-agents (rate-limited by security hooks).
+#   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.
