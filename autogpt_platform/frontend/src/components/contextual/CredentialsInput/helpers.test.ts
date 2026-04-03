@@ -13,6 +13,11 @@ import {
   hasExistingHostCredential,
   OAUTH_TIMEOUT_MS,
   MASKED_KEY_LENGTH,
+  resolveActionTarget,
+  headerPairsToRecord,
+  addHeaderPairToList,
+  removeHeaderPairFromList,
+  updateHeaderPairInList,
 } from "./helpers";
 
 describe("countSupportedTypes", () => {
@@ -443,5 +448,107 @@ describe("hasExistingHostCredential", () => {
 
   it("returns false for empty credentials list", () => {
     expect(hasExistingHostCredential([], "any.com")).toBe(false);
+  });
+});
+
+describe("resolveActionTarget", () => {
+  it("returns type_selector when hasMultipleCredentialTypes is true", () => {
+    expect(resolveActionTarget(true, true, true, false, false)).toBe(
+      "type_selector",
+    );
+  });
+
+  it("returns oauth when only OAuth2 is supported", () => {
+    expect(resolveActionTarget(false, true, false, false, false)).toBe("oauth");
+  });
+
+  it("returns api_key when only API key is supported", () => {
+    expect(resolveActionTarget(false, false, true, false, false)).toBe(
+      "api_key",
+    );
+  });
+
+  it("returns user_password when only user_password is supported", () => {
+    expect(resolveActionTarget(false, false, false, true, false)).toBe(
+      "user_password",
+    );
+  });
+
+  it("returns host_scoped when only host_scoped is supported", () => {
+    expect(resolveActionTarget(false, false, false, false, true)).toBe(
+      "host_scoped",
+    );
+  });
+
+  it("returns null when nothing is supported", () => {
+    expect(resolveActionTarget(false, false, false, false, false)).toBeNull();
+  });
+});
+
+describe("headerPairsToRecord", () => {
+  it("converts non-empty pairs to record", () => {
+    const pairs = [
+      { key: "Authorization", value: "Bearer token" },
+      { key: "", value: "ignored" },
+      { key: "X-Key", value: "" },
+    ];
+    expect(headerPairsToRecord(pairs)).toEqual({
+      Authorization: "Bearer token",
+    });
+  });
+
+  it("trims keys and values", () => {
+    expect(
+      headerPairsToRecord([{ key: "  Accept  ", value: "  text/html  " }]),
+    ).toEqual({ Accept: "text/html" });
+  });
+
+  it("returns empty object for empty pairs", () => {
+    expect(headerPairsToRecord([])).toEqual({});
+  });
+});
+
+describe("addHeaderPairToList", () => {
+  it("appends an empty pair", () => {
+    const result = addHeaderPairToList([{ key: "a", value: "b" }]);
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual({ key: "", value: "" });
+  });
+});
+
+describe("removeHeaderPairFromList", () => {
+  it("removes the pair at index", () => {
+    const pairs = [
+      { key: "a", value: "1" },
+      { key: "b", value: "2" },
+    ];
+    expect(removeHeaderPairFromList(pairs, 0)).toEqual([
+      { key: "b", value: "2" },
+    ]);
+  });
+
+  it("does not remove the last pair", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    expect(removeHeaderPairFromList(pairs, 0)).toBe(pairs);
+  });
+});
+
+describe("updateHeaderPairInList", () => {
+  it("updates key at the given index", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    const result = updateHeaderPairInList(pairs, 0, "key", "b");
+    expect(result[0]).toEqual({ key: "b", value: "1" });
+  });
+
+  it("updates value at the given index", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    const result = updateHeaderPairInList(pairs, 0, "value", "2");
+    expect(result[0]).toEqual({ key: "a", value: "2" });
+  });
+
+  it("does not mutate originals", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    updateHeaderPairInList(pairs, 0, "key", "b");
+    expect(pairs[0].key).toBe("a");
   });
 });

@@ -255,3 +255,65 @@ export function hasExistingHostCredential<
     (c) => c.type === "host_scoped" && "host" in c && c.host === host,
   );
 }
+
+export type ActionTarget =
+  | "type_selector"
+  | "oauth"
+  | "api_key"
+  | "user_password"
+  | "host_scoped"
+  | null;
+
+export function resolveActionTarget(
+  hasMultipleCredentialTypes: boolean,
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): ActionTarget {
+  if (hasMultipleCredentialTypes) return "type_selector";
+  if (supportsOAuth2) return "oauth";
+  if (supportsApiKey) return "api_key";
+  if (supportsUserPassword) return "user_password";
+  if (supportsHostScoped) return "host_scoped";
+  return null;
+}
+
+export type HeaderPair = { key: string; value: string };
+
+export function headerPairsToRecord(
+  pairs: HeaderPair[],
+): Record<string, string> {
+  return pairs.reduce(
+    (acc, pair) => {
+      if (pair.key.trim() && pair.value.trim()) {
+        acc[pair.key.trim()] = pair.value.trim();
+      }
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+}
+
+export function addHeaderPairToList(pairs: HeaderPair[]): HeaderPair[] {
+  return [...pairs, { key: "", value: "" }];
+}
+
+export function removeHeaderPairFromList(
+  pairs: HeaderPair[],
+  index: number,
+): HeaderPair[] {
+  if (pairs.length <= 1) return pairs;
+  return pairs.filter((_, i) => i !== index);
+}
+
+export function updateHeaderPairInList(
+  pairs: HeaderPair[],
+  index: number,
+  field: "key" | "value",
+  value: string,
+): HeaderPair[] {
+  const newPairs = [...pairs];
+  newPairs[index] = { ...newPairs[index], [field]: value };
+  return newPairs;
+}

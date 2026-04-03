@@ -21,8 +21,13 @@ import { getHostFromUrl } from "@/lib/utils/url";
 import { PlusIcon, TrashIcon } from "@phosphor-icons/react";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import {
+  addHeaderPairToList,
   findExistingHostCredentials,
   hasExistingHostCredential,
+  headerPairsToRecord,
+  removeHeaderPairFromList,
+  updateHeaderPairInList,
+  type HeaderPair,
 } from "../../helpers";
 
 type Props = {
@@ -72,9 +77,9 @@ export function HostScopedCredentialsModal({
     },
   });
 
-  const [headerPairs, setHeaderPairs] = useState<
-    Array<{ key: string; value: string }>
-  >([{ key: "", value: "" }]);
+  const [headerPairs, setHeaderPairs] = useState<HeaderPair[]>([
+    { key: "", value: "" },
+  ]);
 
   // Update form values when siblingInputs change
   useEffect(() => {
@@ -115,13 +120,11 @@ export function HostScopedCredentialsModal({
   );
 
   const addHeaderPair = () => {
-    setHeaderPairs([...headerPairs, { key: "", value: "" }]);
+    setHeaderPairs((prev) => addHeaderPairToList(prev));
   };
 
   const removeHeaderPair = (index: number) => {
-    if (headerPairs.length > 1) {
-      setHeaderPairs(headerPairs.filter((_, i) => i !== index));
-    }
+    setHeaderPairs((prev) => removeHeaderPairFromList(prev, index));
   };
 
   const updateHeaderPair = (
@@ -129,22 +132,11 @@ export function HostScopedCredentialsModal({
     field: "key" | "value",
     value: string,
   ) => {
-    const newPairs = [...headerPairs];
-    newPairs[index][field] = value;
-    setHeaderPairs(newPairs);
+    setHeaderPairs((prev) => updateHeaderPairInList(prev, index, field, value));
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
-    // Convert header pairs to object, filtering out empty pairs
-    const headers = headerPairs.reduce(
-      (acc, pair) => {
-        if (pair.key.trim() && pair.value.trim()) {
-          acc[pair.key.trim()] = pair.value.trim();
-        }
-        return acc;
-      },
-      {} as Record<string, string>,
-    );
+    const headers = headerPairsToRecord(headerPairs);
 
     // Delete existing host-scoped credentials for the same host to avoid duplicates.
     // Uses unfiltered provider credentials (not the hook's pre-filtered list).

@@ -5,6 +5,12 @@ import {
   coerceExpectedInputs,
   buildExpectedInputsSchema,
   extractInitialValues,
+  mergeInputValues,
+  checkAllCredentialsComplete,
+  getRequiredInputNames,
+  checkAllInputsComplete,
+  checkCanRun,
+  buildRunMessage,
 } from "../helpers";
 
 describe("coerceCredentialFields", () => {
@@ -479,5 +485,257 @@ describe("extractInitialValues", () => {
       },
     ];
     expect(extractInitialValues(inputs)).toEqual({});
+  });
+});
+
+describe("mergeInputValues", () => {
+  it("returns initial values when prev is empty", () => {
+    expect(mergeInputValues({ a: "1" }, {})).toEqual({ a: "1" });
+  });
+
+  it("preserves non-empty prev values over initial", () => {
+    expect(mergeInputValues({ a: "1", b: "2" }, { a: "override" })).toEqual({
+      a: "override",
+      b: "2",
+    });
+  });
+
+  it("skips undefined, null, and empty string from prev", () => {
+    expect(
+      mergeInputValues(
+        { a: "init-a", b: "init-b", c: "init-c" },
+        { a: undefined, b: null, c: "" },
+      ),
+    ).toEqual({ a: "init-a", b: "init-b", c: "init-c" });
+  });
+
+  it("adds new keys from prev that are not in initial", () => {
+    expect(mergeInputValues({ a: "1" }, { b: "new" })).toEqual({
+      a: "1",
+      b: "new",
+    });
+  });
+
+  it("preserves zero and false as valid values from prev", () => {
+    expect(mergeInputValues({ a: "1" }, { a: 0, b: false })).toEqual({
+      a: 0,
+      b: false,
+    });
+  });
+});
+
+describe("checkAllCredentialsComplete", () => {
+  it("returns true when all required credentials are present", () => {
+    const required = new Set(["cred1", "cred2"]);
+    const input = { cred1: { id: "a" }, cred2: { id: "b" } };
+    expect(checkAllCredentialsComplete(required, input)).toBe(true);
+  });
+
+  it("returns false when a required credential is missing", () => {
+    const required = new Set(["cred1", "cred2"]);
+    const input = { cred1: { id: "a" } };
+    expect(checkAllCredentialsComplete(required, input)).toBe(false);
+  });
+
+  it("returns false when a required credential is falsy", () => {
+    const required = new Set(["cred1"]);
+    const input = { cred1: undefined };
+    expect(checkAllCredentialsComplete(required, input)).toBe(false);
+  });
+
+  it("returns true when no credentials are required", () => {
+    expect(checkAllCredentialsComplete(new Set(), {})).toBe(true);
+  });
+});
+
+describe("getRequiredInputNames", () => {
+  it("returns names of required non-advanced inputs", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+      {
+        name: "b",
+        title: "B",
+        type: "string",
+        required: false,
+        advanced: false,
+      },
+      { name: "c", title: "C", type: "string", required: true, advanced: true },
+      {
+        name: "d",
+        title: "D",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+    ];
+    expect(getRequiredInputNames(inputs)).toEqual(["a", "d"]);
+  });
+
+  it("returns empty array when no inputs are required", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: false,
+        advanced: false,
+      },
+    ];
+    expect(getRequiredInputNames(inputs)).toEqual([]);
+  });
+});
+
+describe("checkAllInputsComplete", () => {
+  it("returns true when there are no inputs", () => {
+    expect(checkAllInputsComplete([], {})).toBe(true);
+  });
+
+  it("returns true when all required inputs have values", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+      {
+        name: "b",
+        title: "B",
+        type: "string",
+        required: false,
+        advanced: false,
+      },
+    ];
+    expect(checkAllInputsComplete(inputs, { a: "value" })).toBe(true);
+  });
+
+  it("returns false when a required input is empty", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+    ];
+    expect(checkAllInputsComplete(inputs, { a: "" })).toBe(false);
+  });
+
+  it("returns false when a required input is null", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+    ];
+    expect(checkAllInputsComplete(inputs, { a: null })).toBe(false);
+  });
+
+  it("returns false when a required input is undefined", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: true,
+        advanced: false,
+      },
+    ];
+    expect(checkAllInputsComplete(inputs, {})).toBe(false);
+  });
+
+  it("ignores advanced required inputs", () => {
+    const inputs = [
+      { name: "a", title: "A", type: "string", required: true, advanced: true },
+    ];
+    expect(checkAllInputsComplete(inputs, {})).toBe(true);
+  });
+
+  it("returns true with only optional inputs present", () => {
+    const inputs = [
+      {
+        name: "a",
+        title: "A",
+        type: "string",
+        required: false,
+        advanced: false,
+      },
+    ];
+    expect(checkAllInputsComplete(inputs, {})).toBe(true);
+  });
+});
+
+describe("checkCanRun", () => {
+  it("returns true when no credentials needed and inputs complete", () => {
+    expect(checkCanRun(false, false, true)).toBe(true);
+  });
+
+  it("returns false when credentials needed but not complete", () => {
+    expect(checkCanRun(true, false, true)).toBe(false);
+  });
+
+  it("returns false when inputs not complete", () => {
+    expect(checkCanRun(false, false, false)).toBe(false);
+  });
+
+  it("returns true when credentials needed and complete, inputs complete", () => {
+    expect(checkCanRun(true, true, true)).toBe(true);
+  });
+
+  it("returns false when both credentials and inputs incomplete", () => {
+    expect(checkCanRun(true, false, false)).toBe(false);
+  });
+});
+
+describe("buildRunMessage", () => {
+  it("includes credentials message when needsCredentials is true", () => {
+    const msg = buildRunMessage(true, false, {});
+    expect(msg).toContain("I've configured the required credentials.");
+  });
+
+  it("includes inputs when needsInputs is true", () => {
+    const msg = buildRunMessage(false, true, { query: "test" });
+    expect(msg).toContain("Run with these inputs:");
+    expect(msg).toContain('"query": "test"');
+  });
+
+  it("filters out empty/null/undefined values from inputs", () => {
+    const msg = buildRunMessage(false, true, {
+      a: "keep",
+      b: "",
+      c: null,
+      d: undefined,
+    });
+    expect(msg).toContain('"a": "keep"');
+    expect(msg).not.toContain('"b"');
+    expect(msg).not.toContain('"c"');
+    expect(msg).not.toContain('"d"');
+  });
+
+  it("uses retryInstruction when provided and no inputs", () => {
+    const msg = buildRunMessage(false, false, {}, "Retry now please.");
+    expect(msg).toBe("Retry now please.");
+  });
+
+  it("uses default retry message when no retryInstruction", () => {
+    const msg = buildRunMessage(false, false, {});
+    expect(msg).toBe("Please re-run this step now.");
+  });
+
+  it("combines credentials and inputs messages", () => {
+    const msg = buildRunMessage(true, true, { key: "val" });
+    expect(msg).toContain("I've configured the required credentials.");
+    expect(msg).toContain("Run with these inputs:");
   });
 });

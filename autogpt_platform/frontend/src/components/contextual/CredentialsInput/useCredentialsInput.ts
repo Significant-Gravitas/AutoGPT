@@ -20,6 +20,7 @@ import {
   getSupportedTypes,
   getSystemCredentials,
   processCredentialDeletion,
+  resolveActionTarget,
 } from "./helpers";
 
 export type CredentialsInputState = ReturnType<typeof useCredentialsInput>;
@@ -268,19 +269,29 @@ export function useCredentialsInput({
   );
 
   function handleActionButtonClick() {
-    if (hasMultipleCredentialTypes) {
-      setCredentialTypeSelectorOpen(true);
-      return;
-    }
-
-    if (supportsOAuth2) {
-      handleOAuthLogin();
-    } else if (supportsApiKey) {
-      setAPICredentialsModalOpen(true);
-    } else if (supportsUserPassword) {
-      setUserPasswordCredentialsModalOpen(true);
-    } else if (supportsHostScoped) {
-      setHostScopedCredentialsModalOpen(true);
+    const target = resolveActionTarget(
+      hasMultipleCredentialTypes,
+      supportsOAuth2,
+      supportsApiKey,
+      supportsUserPassword,
+      supportsHostScoped,
+    );
+    switch (target) {
+      case "type_selector":
+        setCredentialTypeSelectorOpen(true);
+        break;
+      case "oauth":
+        handleOAuthLogin();
+        break;
+      case "api_key":
+        setAPICredentialsModalOpen(true);
+        break;
+      case "user_password":
+        setUserPasswordCredentialsModalOpen(true);
+        break;
+      case "host_scoped":
+        setHostScopedCredentialsModalOpen(true);
+        break;
     }
   }
 

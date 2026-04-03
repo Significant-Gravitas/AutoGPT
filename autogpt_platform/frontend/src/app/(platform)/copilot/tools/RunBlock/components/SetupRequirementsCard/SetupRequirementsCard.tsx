@@ -11,10 +11,15 @@ import { useCopilotChatActions } from "../../../../components/CopilotChatActions
 import { ContentMessage } from "../../../../components/ToolAccordion/AccordionContent";
 import {
   buildExpectedInputsSchema,
+  buildRunMessage,
   buildSiblingInputsFromCredentials,
+  checkAllCredentialsComplete,
+  checkAllInputsComplete,
+  checkCanRun,
   coerceCredentialFields,
   coerceExpectedInputs,
   extractInitialValues,
+  mergeInputValues,
 } from "./helpers";
 
 interface Props {
@@ -57,15 +62,7 @@ export function SetupRequirementsCard({
 
   const initialValuesKey = JSON.stringify(initialValues);
   useEffect(() => {
-    setInputValues((prev) => {
-      const merged = { ...initialValues };
-      for (const [key, value] of Object.entries(prev)) {
-        if (value !== undefined && value !== null && value !== "") {
-          merged[key] = value;
-        }
-      }
-      return merged;
-    });
+    setInputValues((prev) => mergeInputValues(initialValues, prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when serialised values change
   }, [initialValuesKey]);
 
@@ -88,49 +85,35 @@ export function SetupRequirementsCard({
   }
 
   const needsCredentials = credentialFields.length > 0;
-  const isAllCredentialsComplete =
-    needsCredentials &&
-    [...requiredCredentials].every((key) => !!inputCredentials[key]);
+  const isAllCredsComplete = checkAllCredentialsComplete(
+    requiredCredentials,
+    inputCredentials,
+  );
 
   const needsInputs = expectedInputs.length > 0;
-  const requiredInputNames = expectedInputs
-    .filter((i) => i.required && !i.advanced)
-    .map((i) => i.name);
-  const isAllInputsComplete =
-    !needsInputs ||
-    requiredInputNames.every((name) => {
-      const v = inputValues[name];
-      return v !== undefined && v !== null && v !== "";
-    });
+  const isAllInputsDone = checkAllInputsComplete(expectedInputs, inputValues);
 
   if (hasSent) {
     return <ContentMessage>Connected. Continuing…</ContentMessage>;
   }
 
-  const canRun =
-    (!needsCredentials || isAllCredentialsComplete) && isAllInputsComplete;
+  const canRun = checkCanRun(
+    needsCredentials,
+    isAllCredsComplete,
+    isAllInputsDone,
+  );
 
   function handleRun() {
     setHasSent(true);
     onComplete?.();
-
-    const parts: string[] = [];
-    if (needsCredentials) {
-      parts.push("I've configured the required credentials.");
-    }
-
-    if (needsInputs) {
-      const nonEmpty = Object.fromEntries(
-        Object.entries(inputValues).filter(
-          ([, v]) => v !== undefined && v !== null && v !== "",
-        ),
-      );
-      parts.push(`Run with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`);
-    } else {
-      parts.push(retryInstruction ?? "Please re-run this step now.");
-    }
-
-    onSend(parts.join(" "));
+    onSend(
+      buildRunMessage(
+        needsCredentials,
+        needsInputs,
+        inputValues,
+        retryInstruction,
+      ),
+    );
     setInputValues({});
   }
 

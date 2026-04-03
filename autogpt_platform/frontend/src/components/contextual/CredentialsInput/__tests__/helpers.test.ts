@@ -11,6 +11,11 @@ import {
   processCredentialDeletion,
   findExistingHostCredentials,
   hasExistingHostCredential,
+  resolveActionTarget,
+  headerPairsToRecord,
+  addHeaderPairToList,
+  removeHeaderPairFromList,
+  updateHeaderPairInList,
 } from "../helpers";
 
 describe("countSupportedTypes", () => {
@@ -306,5 +311,139 @@ describe("hasExistingHostCredential", () => {
 
   it("returns false for non-existing host", () => {
     expect(hasExistingHostCredential(creds, "y.com")).toBe(false);
+  });
+});
+
+describe("resolveActionTarget", () => {
+  it("returns type_selector when hasMultipleCredentialTypes is true", () => {
+    expect(resolveActionTarget(true, true, true, false, false)).toBe(
+      "type_selector",
+    );
+  });
+
+  it("returns oauth when only OAuth2 is supported", () => {
+    expect(resolveActionTarget(false, true, false, false, false)).toBe("oauth");
+  });
+
+  it("returns api_key when only API key is supported", () => {
+    expect(resolveActionTarget(false, false, true, false, false)).toBe(
+      "api_key",
+    );
+  });
+
+  it("returns user_password when only user_password is supported", () => {
+    expect(resolveActionTarget(false, false, false, true, false)).toBe(
+      "user_password",
+    );
+  });
+
+  it("returns host_scoped when only host_scoped is supported", () => {
+    expect(resolveActionTarget(false, false, false, false, true)).toBe(
+      "host_scoped",
+    );
+  });
+
+  it("returns null when nothing is supported", () => {
+    expect(resolveActionTarget(false, false, false, false, false)).toBeNull();
+  });
+
+  it("prefers oauth over api_key when not multiple types", () => {
+    expect(resolveActionTarget(false, true, true, false, false)).toBe("oauth");
+  });
+});
+
+describe("headerPairsToRecord", () => {
+  it("converts pairs to record filtering empty entries", () => {
+    const pairs = [
+      { key: "Authorization", value: "Bearer token" },
+      { key: "", value: "ignored" },
+      { key: "X-Key", value: "" },
+      { key: "  Accept  ", value: "  application/json  " },
+    ];
+    expect(headerPairsToRecord(pairs)).toEqual({
+      Authorization: "Bearer token",
+      Accept: "application/json",
+    });
+  });
+
+  it("returns empty object for empty pairs", () => {
+    expect(headerPairsToRecord([])).toEqual({});
+  });
+
+  it("returns empty object when all pairs are empty", () => {
+    expect(headerPairsToRecord([{ key: "", value: "" }])).toEqual({});
+  });
+});
+
+describe("addHeaderPairToList", () => {
+  it("adds a new empty pair to the list", () => {
+    const pairs = [{ key: "a", value: "b" }];
+    const result = addHeaderPairToList(pairs);
+    expect(result).toHaveLength(2);
+    expect(result[1]).toEqual({ key: "", value: "" });
+  });
+
+  it("does not mutate the original array", () => {
+    const pairs = [{ key: "a", value: "b" }];
+    const result = addHeaderPairToList(pairs);
+    expect(pairs).toHaveLength(1);
+    expect(result).not.toBe(pairs);
+  });
+});
+
+describe("removeHeaderPairFromList", () => {
+  it("removes the pair at the given index", () => {
+    const pairs = [
+      { key: "a", value: "1" },
+      { key: "b", value: "2" },
+      { key: "c", value: "3" },
+    ];
+    const result = removeHeaderPairFromList(pairs, 1);
+    expect(result).toEqual([
+      { key: "a", value: "1" },
+      { key: "c", value: "3" },
+    ]);
+  });
+
+  it("does not remove when only one pair remains", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    const result = removeHeaderPairFromList(pairs, 0);
+    expect(result).toHaveLength(1);
+    expect(result).toBe(pairs);
+  });
+
+  it("does not mutate the original array", () => {
+    const pairs = [
+      { key: "a", value: "1" },
+      { key: "b", value: "2" },
+    ];
+    removeHeaderPairFromList(pairs, 0);
+    expect(pairs).toHaveLength(2);
+  });
+});
+
+describe("updateHeaderPairInList", () => {
+  it("updates the key of a pair at the given index", () => {
+    const pairs = [
+      { key: "a", value: "1" },
+      { key: "b", value: "2" },
+    ];
+    const result = updateHeaderPairInList(pairs, 0, "key", "updated");
+    expect(result[0]).toEqual({ key: "updated", value: "1" });
+    expect(result[1]).toEqual({ key: "b", value: "2" });
+  });
+
+  it("updates the value of a pair at the given index", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    const result = updateHeaderPairInList(pairs, 0, "value", "new-val");
+    expect(result[0]).toEqual({ key: "a", value: "new-val" });
+  });
+
+  it("does not mutate the original array or pair objects", () => {
+    const pairs = [{ key: "a", value: "1" }];
+    const result = updateHeaderPairInList(pairs, 0, "key", "b");
+    expect(pairs[0].key).toBe("a");
+    expect(result).not.toBe(pairs);
+    expect(result[0]).not.toBe(pairs[0]);
   });
 });

@@ -221,3 +221,76 @@ export function extractInitialValues(
   }
   return values;
 }
+
+export function mergeInputValues(
+  initialValues: Record<string, unknown>,
+  prev: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...initialValues };
+  for (const [key, value] of Object.entries(prev)) {
+    if (value !== undefined && value !== null && value !== "") {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+export function checkAllCredentialsComplete(
+  requiredCredentials: Set<string>,
+  inputCredentials: Record<string, unknown>,
+): boolean {
+  return [...requiredCredentials].every((key) => !!inputCredentials[key]);
+}
+
+export function getRequiredInputNames(
+  expectedInputs: ExpectedInput[],
+): string[] {
+  return expectedInputs
+    .filter((i) => i.required && !i.advanced)
+    .map((i) => i.name);
+}
+
+export function checkAllInputsComplete(
+  expectedInputs: ExpectedInput[],
+  inputValues: Record<string, unknown>,
+): boolean {
+  if (expectedInputs.length === 0) return true;
+  const requiredNames = getRequiredInputNames(expectedInputs);
+  return requiredNames.every((name) => {
+    const v = inputValues[name];
+    return v !== undefined && v !== null && v !== "";
+  });
+}
+
+export function checkCanRun(
+  needsCredentials: boolean,
+  isAllCredentialsComplete: boolean,
+  isAllInputsComplete: boolean,
+): boolean {
+  return (!needsCredentials || isAllCredentialsComplete) && isAllInputsComplete;
+}
+
+export function buildRunMessage(
+  needsCredentials: boolean,
+  needsInputs: boolean,
+  inputValues: Record<string, unknown>,
+  retryInstruction?: string,
+): string {
+  const parts: string[] = [];
+  if (needsCredentials) {
+    parts.push("I've configured the required credentials.");
+  }
+
+  if (needsInputs) {
+    const nonEmpty = Object.fromEntries(
+      Object.entries(inputValues).filter(
+        ([, v]) => v !== undefined && v !== null && v !== "",
+      ),
+    );
+    parts.push(`Run with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`);
+  } else {
+    parts.push(retryInstruction ?? "Please re-run this step now.");
+  }
+
+  return parts.join(" ");
+}
