@@ -108,6 +108,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: 1,
     LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: 1,
     LlmModel.GEMINI_2_0_FLASH_LITE: 1,
+    LlmModel.GEMMA_4_31B_IT: 1,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.MISTRAL_LARGE_3: 2,
     LlmModel.MISTRAL_MEDIUM_3_1: 2,
