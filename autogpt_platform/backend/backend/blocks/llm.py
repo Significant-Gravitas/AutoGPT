@@ -104,7 +104,6 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
-
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
         """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
@@ -198,9 +197,14 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     GROK_3 = "x-ai/grok-3"
+    GROK_3_BETA = "x-ai/grok-3-beta"
+    GROK_3_MINI = "x-ai/grok-3-mini"
+    GROK_3_MINI_BETA = "x-ai/grok-3-mini-beta"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_4_20_BETA = "x-ai/grok-4.20-beta"
+    GROK_4_20_MULTI_AGENT_BETA = "x-ai/grok-4.20-multi-agent-beta"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
@@ -603,6 +607,33 @@ MODEL_METADATA = {
         "xAI",
         2,
     ),
+    LlmModel.GROK_3_BETA: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Grok 3 Beta",
+        "OpenRouter",
+        "xAI",
+        2,
+    ),
+    LlmModel.GROK_3_MINI: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Grok 3 Mini",
+        "OpenRouter",
+        "xAI",
+        1,
+    ),
+    LlmModel.GROK_3_MINI_BETA: ModelMetadata(
+        "open_router",
+        131072,
+        131072,
+        "Grok 3 Mini Beta",
+        "OpenRouter",
+        "xAI",
+        1,
+    ),
     LlmModel.GROK_4: ModelMetadata(
         "open_router", 256000, 256000, "Grok 4", "OpenRouter", "xAI", 3
     ),
@@ -611,6 +642,24 @@ MODEL_METADATA = {
     ),
     LlmModel.GROK_4_1_FAST: ModelMetadata(
         "open_router", 2000000, 30000, "Grok 4.1 Fast", "OpenRouter", "xAI", 1
+    ),
+    LlmModel.GROK_4_20_BETA: ModelMetadata(
+        "open_router",
+        2000000,
+        100000,
+        "Grok 4.20 Beta",
+        "OpenRouter",
+        "xAI",
+        3,
+    ),
+    LlmModel.GROK_4_20_MULTI_AGENT_BETA: ModelMetadata(
+        "open_router",
+        2000000,
+        100000,
+        "Grok 4.20 Multi-Agent Beta",
+        "OpenRouter",
+        "xAI",
+        3,
     ),
     LlmModel.GROK_CODE_FAST_1: ModelMetadata(
         "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
@@ -888,7 +937,6 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "anthropic":
-
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
 
         system_messages = [p["content"] for p in prompt if p["role"] == "system"]
