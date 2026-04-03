@@ -284,7 +284,12 @@ jobs:
         run: |
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
           docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
-          echo "Copied .next/static from container ($(find .next-static-coverage -name '*.map' | wc -l) source map files)"
+          MAP_COUNT=$(find .next-static-coverage -name '*.map' | wc -l)
+          echo "Copied .next/static from container ($MAP_COUNT source map files)"
+          echo "Sample map files:"
+          find .next-static-coverage -name '*.map' | head -5
+          echo "Directory structure:"
+          find .next-static-coverage -maxdepth 2 -type d
 
       - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile
@@ -303,6 +308,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
           files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
+          disable_search: true
 
       - name: Upload Playwright report
         if: always()

@@ -37,10 +37,17 @@ function normalizeCoverageSourcePath(filePath: string) {
 function resolveSourceMap(sourcePath: string) {
   // sourcePath looks like "localhost-3000/_next/static/chunks/abc123.js"
   const match = sourcePath.match(/_next\/static\/(.+)$/);
-  if (!match) return undefined;
+  if (!match) {
+    console.log(`[coverage] sourceMapResolver: no match for ${sourcePath}`);
+    return undefined;
+  }
 
   const mapFile = path.join(staticCoverageDir, match[1] + ".map");
-  if (fs.existsSync(mapFile)) {
+  const exists = fs.existsSync(mapFile);
+  console.log(
+    `[coverage] sourceMapResolver: ${sourcePath} -> ${mapFile} (${exists ? "found" : "not found"})`,
+  );
+  if (exists) {
     return JSON.parse(fs.readFileSync(mapFile, "utf8"));
   }
   return undefined;
