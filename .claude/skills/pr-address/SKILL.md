@@ -97,55 +97,85 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 
 ## Codecov coverage
 
-The repo requires **codecov/patch** checks to pass on every PR. This means new/changed lines must have test coverage. There are separate patch checks for:
+Codecov checks are configured as **informational** (not blocking merges) but should still be green. The patch target is **80%** coverage on changed lines. There are separate patch checks for:
 - `codecov/patch/Platform Backend` — Python backend code
 - `codecov/patch/Platform Frontend` — TypeScript/React frontend code
 - `codecov/patch/Classic AutoGPT` — Classic AutoGPT code
 - `codecov/patch/AutoGPT Libs` — Shared Python libs
 
-### Checking coverage locally
+### Checking coverage locally (same commands as CI)
 
 **Backend** (from `autogpt_platform/backend/`):
 ```bash
-# Run tests with coverage for specific files
-poetry run pytest <test_file> --cov=backend --cov-report=term-missing -x -v
+# Exact CI command — run all tests with coverage + branch tracking
+poetry run pytest -s -vv \
+  --cov=backend --cov-branch --cov-report term-missing --cov-report xml
 
-# Check coverage for a specific module
-poetry run pytest --cov=backend/<module_path> --cov-report=term-missing
+# Quick: run coverage for specific files only
+poetry run pytest <test_file> --cov=backend/<module_path> \
+  --cov-branch --cov-report=term-missing -x -v
+
+# Check which lines in YOUR changed files lack coverage:
+poetry run pytest -s -vv \
+  --cov=backend --cov-branch --cov-report term-missing 2>&1 \
+  | grep -A5 "<your_changed_module>"
 ```
 
 **Frontend** (from `autogpt_platform/frontend/`):
 ```bash
-# Run all frontend tests
-pnpm test-unit
+# Exact CI command — run vitest with coverage (generates cobertura XML)
+pnpm vitest run --coverage
 
-# Run tests for a specific file
+# Quick: run a specific test file
 pnpm vitest run <test_file>
 
-# Run with coverage report
-pnpm vitest run --coverage
+# Run all unit tests without coverage
+pnpm test-unit
 ```
+
+Coverage reports are uploaded to Codecov as:
+- Backend: `coverage.xml` in working dir, flag `platform-backend`
+- Frontend: `coverage/cobertura-coverage.xml`, flag `platform-frontend`
 
 ### What to cover
 
-Every new branch (`if`/`else`, error path, fallback) in changed lines must be exercised by a test:
+Every new branch (`if`/`else`, error path, fallback) in changed lines must be exercised by a test. Target **80%+ patch coverage**.
 
 - **Backend**: Colocate test files as `*_test.py` next to the source. Use `pytest` + `AsyncMock` for async functions.
 - **Frontend**: Colocate test files as `*.test.ts` or `*.test.tsx` in `__tests__/` folders next to the source. Use `vitest` + `@testing-library/react` for components. For pure helper functions, test directly without React rendering.
 
-### Priority for coverage
+### Coverage strategy (highest ROI first)
 
-1. **Pure helper functions** (`helpers.ts`, utility modules) — easiest to test, highest coverage ROI
-2. **Hooks with logic** (`use*.ts`) — test the logic, mock API calls
-3. **Store/state** (`store.ts`) — test state transitions
-4. **Components** (`.tsx`) — test rendering and user interactions, mock hooks
+1. **Extract pure helpers** — if a file has inline logic (validation, formatting, parsing), extract to a `helpers.ts`/`helpers.py` and test those. This is the fastest way to boost patch coverage.
+2. **Pure functions** (`helpers.ts`, utility modules) — easiest to test, no mocking needed
+3. **Store/state** (`store.ts`, Zustand stores) — test state transitions directly
+4. **Hooks with logic** (`use*.ts`) — test the logic, mock API calls with `vi.mock()`
+5. **Backend services** — mock DB/Redis, test business logic
+6. **Components** (`.tsx`) — test rendering and user interactions, mock hooks. Most effort, use only if needed to hit 80%.
 
 ### When codecov/patch fails in CI
 
-1. Check the Codecov PR comment or click the codecov check link to see which lines lack coverage
-2. Identify the changed files: `git diff --name-only origin/dev...HEAD`
-3. For each uncovered file, add tests following the patterns above
-4. Commit and push — codecov re-evaluates on each push
+1. Click the codecov check link → see exactly which files and lines lack coverage
+2. Identify changed files: `git diff --name-only origin/dev...HEAD`
+3. For each uncovered file:
+   - If it has inline logic → extract to `helpers.ts`/`helpers.py` + add tests
+   - If it's a hook → test the logic with mocked deps
+   - If it's a component → add minimal render test
+4. Run coverage locally to verify: `poetry run pytest --cov=backend --cov-branch --cov-report term-missing` or `pnpm vitest run --coverage`
+5. Commit and push — codecov re-evaluates on each push
+
+### Codecov config reference (`codecov.yml`)
+
+```yaml
+coverage:
+  status:
+    project:
+      target: auto        # don't regress overall coverage
+      informational: true  # not blocking
+    patch:
+      target: 80%         # 80% of changed lines must be covered
+      informational: true  # not blocking (but should be green)
+```
 
 ## Format and commit
 
