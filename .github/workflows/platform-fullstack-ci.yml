@@ -179,9 +179,13 @@ jobs:
           pip install pyyaml
 
           # Resolve extends and generate a flat compose file that bake can understand
-          echo "NEXT_PUBLIC_SOURCEMAPS=$NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST"
+          echo "=== [1/5] Shell env: NEXT_PUBLIC_SOURCEMAPS=$NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST ==="
           export NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST
           docker compose -f docker-compose.yml config > docker-compose.resolved.yml
+
+          # Check BEFORE the cache script modifies the file
+          echo "=== [2/5] SOURCEMAPS in resolved compose BEFORE cache script ==="
+          grep -i "SOURCEMAP" docker-compose.resolved.yml || echo "NOT FOUND before cache script"
 
           # Add cache configuration to the resolved compose file
           python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
@@ -192,8 +196,11 @@ jobs:
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}" \
             --git-ref "${{ github.ref }}"
 
-          # Debug: check if SOURCEMAPS made it into the resolved compose
-          echo "=== Frontend build section in resolved compose ==="
+          # Check AFTER the cache script
+          echo "=== [3/5] SOURCEMAPS in resolved compose AFTER cache script ==="
+          grep -i "SOURCEMAP" docker-compose.resolved.yml || echo "NOT FOUND after cache script"
+
+          echo "=== [4/5] Frontend build args (parsed) ==="
           python3 -c "
 import yaml
 with open('docker-compose.resolved.yml') as f:
@@ -206,6 +213,12 @@ print('build keys:', list(build.keys()) if build else 'NO BUILD')
 
           # Build with bake using the resolved compose file (now includes cache config)
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
+
+          echo "=== [5/5] Source maps in built image ==="
+          # Check .map files in ALL .next locations inside the build
+          FRONTEND_IMG=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep frontend | head -1)
+          echo "Frontend image: $FRONTEND_IMG"
+          docker run --rm "$FRONTEND_IMG" sh -c 'find /app -name "*.map" 2>/dev/null | head -5; echo "Total .map files:"; find /app -name "*.map" 2>/dev/null | wc -l' || echo "Could not inspect image"
         env:
           NEXT_PUBLIC_PW_TEST: true
           NEXT_PUBLIC_SOURCEMAPS: true
