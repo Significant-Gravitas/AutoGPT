@@ -111,7 +111,7 @@ async def persist_and_record_usage(
                 pass
 
         cost_microdollars = (
-            int(cost_float * 1_000_000) if cost_float is not None else None
+            round(cost_float * 1_000_000) if cost_float is not None else None
         )
         session_id = session.session_id if session else None
 
