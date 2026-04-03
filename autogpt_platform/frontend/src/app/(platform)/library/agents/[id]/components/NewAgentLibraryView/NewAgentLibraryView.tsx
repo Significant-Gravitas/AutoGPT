@@ -209,6 +209,7 @@ export function NewAgentLibraryView() {
               agent={agent}
               scheduleId={activeItem}
               onScheduleDeleted={handleScheduleDeleted}
+              onSelectRun={(id) => handleSelectRun(id, "runs")}
               banner={renderMarketplaceUpdateBanner()}
             />
           ) : activeTab === "templates" ? (

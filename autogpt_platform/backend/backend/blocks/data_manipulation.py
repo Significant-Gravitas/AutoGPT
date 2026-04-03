@@ -472,7 +472,7 @@ class AddToListBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         entries_added = input_data.entries.copy()
-        if input_data.entry:
+        if input_data.entry is not None:
             entries_added.append(input_data.entry)
 
         updated_list = input_data.list.copy()

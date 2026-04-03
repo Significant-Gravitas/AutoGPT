@@ -14,6 +14,7 @@ from fastapi.routing import APIRoute
 
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
 import backend.api.features.builder.routes
@@ -102,6 +103,11 @@ async def lifespan_context(app: fastapi.FastAPI):
     from backend.sdk.registry import AutoRegistry
 
     AutoRegistry.patch_integrations()
+
+    # Register managed credential providers (e.g. AgentMail)
+    from backend.integrations.managed_providers import register_all
+
+    register_all()
 
     await backend.data.block.initialize_blocks()
 
@@ -226,6 +232,11 @@ app.include_router(
     backend.api.features.admin.execution_analytics_routes.router,
     tags=["v2", "admin"],
     prefix="/api/executions",
+)
+app.include_router(
+    backend.api.features.admin.rate_limit_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/copilot",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,
@@ -437,8 +448,11 @@ class AgentServer(backend.util.service.AppProcess):
         user_id: str,
         provider: ProviderName,
         credentials: Credentials,
-    ) -> Credentials:
-        from .features.integrations.router import create_credentials, get_credential
+    ):
+        from backend.api.features.integrations.router import (
+            create_credentials,
+            get_credential,
+        )
 
         try:
             return await create_credentials(

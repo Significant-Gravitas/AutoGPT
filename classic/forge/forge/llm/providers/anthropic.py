@@ -32,24 +32,45 @@ from .schema import (
 from .utils import validate_tool_calls
 
 if TYPE_CHECKING:
-    from anthropic.types.beta.tools import MessageCreateParams
-    from anthropic.types.beta.tools import ToolsBetaMessage as Message
-    from anthropic.types.beta.tools import ToolsBetaMessageParam as MessageParam
+    from anthropic.types import Message, MessageParam
+    from anthropic.types.message_create_params import MessageCreateParams
 
 _T = TypeVar("_T")
 _P = ParamSpec("_P")
 
 
 class AnthropicModelName(str, enum.Enum):
+    # Claude 3 models (deprecated)
     CLAUDE3_OPUS_v1 = "claude-3-opus-20240229"
     CLAUDE3_SONNET_v1 = "claude-3-sonnet-20240229"
+    CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"  # retiring 2026-04-19
+
+    # Claude 3.5 models (legacy)
     CLAUDE3_5_SONNET_v1 = "claude-3-5-sonnet-20240620"
-    CLAUDE3_HAIKU_v1 = "claude-3-haiku-20240307"
+    CLAUDE3_5_SONNET_v2 = "claude-3-5-sonnet-20241022"
+
+    # Claude 4 models (legacy)
+    CLAUDE4_SONNET_v1 = "claude-sonnet-4-20250514"
+    CLAUDE4_OPUS_v1 = "claude-opus-4-20250514"
+    CLAUDE4_1_OPUS_v1 = "claude-opus-4-1-20250805"
+    CLAUDE4_5_SONNET_v1 = "claude-sonnet-4-5-20250929"
+    CLAUDE4_5_OPUS_v1 = "claude-opus-4-5-20251101"
+    CLAUDE4_5_HAIKU_v1 = "claude-haiku-4-5-20251001"
+
+    # Claude 4.6 models (current)
+    CLAUDE4_6_SONNET_v1 = "claude-sonnet-4-6"
+    CLAUDE4_6_OPUS_v1 = "claude-opus-4-6"
+
+    # Rolling aliases (point to latest)
+    CLAUDE_SONNET = "claude-sonnet-4-6"
+    CLAUDE_OPUS = "claude-opus-4-6"
+    CLAUDE_HAIKU = "claude-haiku-4-5-20251001"
 
 
 ANTHROPIC_CHAT_MODELS = {
     info.name: info
     for info in [
+        # Claude 3 models (deprecated)
         ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_OPUS_v1,
             provider_name=ModelProviderName.ANTHROPIC,
@@ -67,6 +88,15 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
+            name=AnthropicModelName.CLAUDE3_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=0.25 / 1e6,
+            completion_token_cost=1.25 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+        ),
+        # Claude 3.5 models (legacy)
+        ChatModelInfo(
             name=AnthropicModelName.CLAUDE3_5_SONNET_v1,
             provider_name=ModelProviderName.ANTHROPIC,
             prompt_token_cost=3 / 1e6,
@@ -75,15 +105,101 @@ ANTHROPIC_CHAT_MODELS = {
             has_function_call_api=True,
         ),
         ChatModelInfo(
-            name=AnthropicModelName.CLAUDE3_HAIKU_v1,
+            name=AnthropicModelName.CLAUDE3_5_SONNET_v2,
             provider_name=ModelProviderName.ANTHROPIC,
-            prompt_token_cost=0.25 / 1e6,
-            completion_token_cost=1.25 / 1e6,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
             max_tokens=200000,
             has_function_call_api=True,
         ),
+        # Claude 4 models (legacy)
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_1_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=15 / 1e6,
+            completion_token_cost=75 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=5 / 1e6,
+            completion_token_cost=25 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_5_HAIKU_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=1 / 1e6,
+            completion_token_cost=5 / 1e6,
+            max_tokens=200000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        # Claude 4.6 models (current, 1M context)
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_6_OPUS_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=5 / 1e6,
+            completion_token_cost=25 / 1e6,
+            max_tokens=1000000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
+        ChatModelInfo(
+            name=AnthropicModelName.CLAUDE4_6_SONNET_v1,
+            provider_name=ModelProviderName.ANTHROPIC,
+            prompt_token_cost=3 / 1e6,
+            completion_token_cost=15 / 1e6,
+            max_tokens=1000000,
+            has_function_call_api=True,
+            supports_extended_thinking=True,
+        ),
     ]
 }
+# Copy entries for aliased models
+chat_model_mapping = {
+    AnthropicModelName.CLAUDE4_6_SONNET_v1: [AnthropicModelName.CLAUDE_SONNET],
+    AnthropicModelName.CLAUDE4_6_OPUS_v1: [AnthropicModelName.CLAUDE_OPUS],
+    AnthropicModelName.CLAUDE4_5_HAIKU_v1: [AnthropicModelName.CLAUDE_HAIKU],
+}
+for base, copies in chat_model_mapping.items():
+    for copy in copies:
+        copy_info = ANTHROPIC_CHAT_MODELS[base].model_copy()
+        ANTHROPIC_CHAT_MODELS[copy] = copy_info.__class__(
+            **{**copy_info.model_dump(), "name": copy}
+        )
 
 
 class AnthropicCredentials(ModelProviderCredentials):
@@ -158,14 +274,20 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         return tiktoken.encoding_for_model(model_name)
 
     def count_tokens(self, text: str, model_name: AnthropicModelName) -> int:
-        return 0  # HACK: No official tokenizer is available for Claude 3
+        # Approximate using tiktoken's cl100k_base (~90% accuracy for Claude)
+        return len(tiktoken.get_encoding("cl100k_base").encode(text))
 
     def count_message_tokens(
         self,
         messages: ChatMessage | list[ChatMessage],
         model_name: AnthropicModelName,
     ) -> int:
-        return 0  # HACK: No official tokenizer is available for Claude 3
+        if isinstance(messages, ChatMessage):
+            messages = [messages]
+        return self.count_tokens(
+            "\n\n".join(f"{m.role.upper()}: {m.content}" for m in messages),
+            model_name,
+        )
 
     async def create_chat_completion(
         self,
@@ -251,46 +373,32 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
                     anthropic_messages.append(
                         _assistant_msg.model_dump(include={"role", "content"})  # type: ignore # noqa
                     )
+
+                    # Build tool_result blocks for each tool call
+                    # (required if last assistant message had tool_use blocks)
+                    tool_results = []
+                    for tc in assistant_msg.tool_calls or []:
+                        error_msg = self._get_tool_error_message(
+                            tc, tool_call_errors, functions
+                        )
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tc.id,
+                                "is_error": True,
+                                "content": [{"type": "text", "text": error_msg}],
+                            }
+                        )
+
                     anthropic_messages.append(
                         {
                             "role": "user",
                             "content": [
-                                *(
-                                    # tool_result is required if last assistant message
-                                    # had tool_use block(s)
-                                    {
-                                        "type": "tool_result",
-                                        "tool_use_id": tc.id,
-                                        "is_error": True,
-                                        "content": [
-                                            {
-                                                "type": "text",
-                                                "text": "Not executed because parsing "
-                                                "of your last message failed"
-                                                if not tool_call_errors
-                                                else str(e)
-                                                if (
-                                                    e := next(
-                                                        (
-                                                            tce
-                                                            for tce in tool_call_errors
-                                                            if tce.name
-                                                            == tc.function.name
-                                                        ),
-                                                        None,
-                                                    )
-                                                )
-                                                else "Not executed because validation "
-                                                "of tool input failed",
-                                            }
-                                        ],
-                                    }
-                                    for tc in assistant_msg.tool_calls or []
-                                ),
+                                *tool_results,
                                 {
                                     "type": "text",
                                     "text": (
-                                        "ERROR PARSING YOUR RESPONSE:\n\n"
+                                        f"ERROR PARSING YOUR RESPONSE:\n\n"
                                         f"{e.__class__.__name__}: {e}"
                                     ),
                                 },
@@ -318,6 +426,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         prompt_messages: list[ChatMessage],
         functions: Optional[list[CompletionModelFunction]] = None,
         max_output_tokens: Optional[int] = None,
+        thinking_budget_tokens: Optional[int] = None,
         **kwargs,
     ) -> tuple[list[MessageParam], MessageCreateParams]:
         """Prepare arguments for message completion API call.
@@ -325,6 +434,8 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
         Args:
             prompt_messages: List of ChatMessages.
             functions: Optional list of functions available to the LLM.
+            max_output_tokens: Maximum number of output tokens.
+            thinking_budget_tokens: Token budget for extended thinking (min 1024).
             kwargs: Additional keyword arguments.
 
         Returns:
@@ -353,6 +464,21 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             ]
 
         kwargs["max_tokens"] = max_output_tokens or 4096
+
+        # Handle extended thinking if enabled
+        if thinking_budget_tokens is not None and thinking_budget_tokens > 0:
+            # Minimum budget is 1024 tokens per Anthropic's API requirements
+            budget = max(thinking_budget_tokens, 1024)
+            kwargs["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": budget,
+            }
+            # Add beta header for interleaved thinking with tool use
+            if functions:
+                kwargs["extra_headers"] = kwargs.get("extra_headers", {})
+                kwargs["extra_headers"][
+                    "anthropic-beta"
+                ] = "interleaved-thinking-2025-05-14"
 
         if extra_headers := self._configuration.extra_request_headers:
             kwargs["extra_headers"] = kwargs.get("extra_headers", {})
@@ -450,7 +576,7 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
 
         @self._retry_api_request
         async def _create_chat_completion_with_retry() -> Message:
-            return await self._client.beta.tools.messages.create(
+            return await self._client.messages.create(
                 model=model, **completion_kwargs  # type: ignore
             )
 
@@ -462,6 +588,62 @@ class AnthropicProvider(BaseChatModelProvider[AnthropicModelName, AnthropicSetti
             output_tokens_used=response.usage.output_tokens,
         )
         return response, cost, response.usage.input_tokens, response.usage.output_tokens
+
+    def _get_tool_error_message(
+        self,
+        tool_call: AssistantToolCall,
+        tool_call_errors: list,
+        functions: Optional[list[CompletionModelFunction]] = None,
+    ) -> str:
+        """Get the error message for a failed tool call.
+
+        Args:
+            tool_call: The tool call that failed.
+            tool_call_errors: List of validation errors for tool calls.
+            functions: List of available functions for schema lookup.
+
+        Returns:
+            An appropriate error message for the tool result.
+        """
+        if not tool_call_errors:
+            return "Not executed because parsing of your last message failed"
+
+        # Find matching error for this specific tool call
+        matching_error = next(
+            (err for err in tool_call_errors if err.name == tool_call.function.name),
+            None,
+        )
+        if not matching_error:
+            return "Not executed: validation failed"
+
+        # Build informative error message with context
+        error_parts = [str(matching_error)]
+
+        # Show what arguments were provided
+        provided_args = tool_call.function.arguments
+        if provided_args:
+            args_str = ", ".join(f'"{k}": {repr(v)}' for k, v in provided_args.items())
+            error_parts.append(f"\nYou provided: {{{args_str}}}")
+        else:
+            error_parts.append("\nYou provided: (no arguments)")
+
+        # Show expected schema if we have the function definition
+        if functions:
+            func = next(
+                (f for f in functions if f.name == tool_call.function.name),
+                None,
+            )
+            if func and func.parameters:
+                params_info = []
+                for name, param in func.parameters.items():
+                    req = "required" if param.required else "optional"
+                    type_str = param.type.value if param.type else "any"
+                    params_info.append(f'"{name}": {type_str} ({req})')
+                error_parts.append(
+                    f"\nExpected parameters: {{{', '.join(params_info)}}}"
+                )
+
+        return "".join(error_parts)
 
     def _parse_assistant_tool_calls(
         self, assistant_message: Message

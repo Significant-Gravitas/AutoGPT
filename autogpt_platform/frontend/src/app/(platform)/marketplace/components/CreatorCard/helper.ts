@@ -1,8 +1,9 @@
 const BACKGROUND_COLORS = [
-  "bg-amber-100 dark:bg-amber-800", // #fef3c7 / #92400e
-  "bg-violet-100 dark:bg-violet-800", // #ede9fe / #5b21b6
-  "bg-green-100 dark:bg-green-800", // #dcfce7 / #065f46
-  "bg-blue-100 dark:bg-blue-800", // #dbeafe / #1e3a8a
+  "bg-amber-50 border-amber-100/70",
+  "bg-violet-50 border-violet-100/70",
+  "bg-green-50 border-green-100/70",
+  "bg-blue-50 border-blue-100/70",
 ];
+
 export const backgroundColor = (index: number) =>
   BACKGROUND_COLORS[index % BACKGROUND_COLORS.length];

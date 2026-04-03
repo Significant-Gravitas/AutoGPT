@@ -17,6 +17,7 @@ images: {
 """
 
 import asyncio
+import os
 import random
 from datetime import datetime
 
@@ -569,6 +570,10 @@ async def main():
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+@pytest.mark.skipif(
+    os.getenv("CI") == "true",
+    reason="Data seeding test requires a dedicated database; not for CI",
+)
 async def test_main_function_runs_without_errors():
     await main()
 

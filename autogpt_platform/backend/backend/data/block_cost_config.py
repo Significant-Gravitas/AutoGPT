@@ -32,9 +32,9 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.orchestrator import OrchestratorBlock
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
-from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
@@ -76,7 +76,6 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
-    LlmModel.GPT3_5_TURBO: 1,
     LlmModel.CLAUDE_4_1_OPUS: 21,
     LlmModel.CLAUDE_4_OPUS: 21,
     LlmModel.CLAUDE_4_SONNET: 5,
@@ -116,10 +115,15 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.CODESTRAL: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: 3,
+    LlmModel.COHERE_COMMAND_A_03_2025: 3,
+    LlmModel.COHERE_COMMAND_A_TRANSLATE_08_2025: 3,
+    LlmModel.COHERE_COMMAND_A_REASONING_08_2025: 6,
+    LlmModel.COHERE_COMMAND_A_VISION_07_2025: 3,
     LlmModel.DEEPSEEK_CHAT: 2,
     LlmModel.DEEPSEEK_R1_0528: 1,
     LlmModel.PERPLEXITY_SONAR: 1,
     LlmModel.PERPLEXITY_SONAR_PRO: 5,
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: 5,
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
@@ -127,6 +131,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.AMAZON_NOVA_MICRO_V1: 1,
     LlmModel.AMAZON_NOVA_PRO_V1: 1,
     LlmModel.MICROSOFT_WIZARDLM_2_8X22B: 1,
+    LlmModel.MICROSOFT_PHI_4: 1,
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
     LlmModel.META_LLAMA_4_SCOUT: 1,
     LlmModel.META_LLAMA_4_MAVERICK: 1,
@@ -134,6 +139,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
     LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
     LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
+    LlmModel.GROK_3: 3,
     LlmModel.GROK_4: 9,
     LlmModel.GROK_4_FAST: 1,
     LlmModel.GROK_4_1_FAST: 1,
@@ -416,7 +422,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=10,
             cost_filter={
-                "model": FluxKontextModelName.PRO.api_name,
+                "model": FluxKontextModelName.FLUX_KONTEXT_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -427,7 +433,29 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=20,
             cost_filter={
-                "model": FluxKontextModelName.MAX.api_name,
+                "model": FluxKontextModelName.FLUX_KONTEXT_MAX,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana Pro
+            cost_filter={
+                "model": FluxKontextModelName.NANO_BANANA_PRO,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana 2
+            cost_filter={
+                "model": FluxKontextModelName.NANO_BANANA_2,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -520,7 +548,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    SmartDecisionMakerBlock: LLM_COST,
     SearchOrganizationsBlock: [
         BlockCost(
             cost_amount=2,
@@ -625,6 +652,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
+            cost_filter={
+                "model": ImageGenModel.NANO_BANANA_2,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
     ],
     AIImageCustomizerBlock: [
         BlockCost(
@@ -649,7 +687,19 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
+        BlockCost(
+            cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
+            cost_filter={
+                "model": GeminiImageModel.NANO_BANANA_2,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
     ],
+    OrchestratorBlock: LLM_COST,
     VideoNarrationBlock: [
         BlockCost(
             cost_amount=5,  # ElevenLabs TTS cost

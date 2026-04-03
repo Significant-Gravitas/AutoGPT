@@ -897,7 +897,7 @@ class TestHasLocalSession:
 # _save_browser_state
 # ---------------------------------------------------------------------------
 
-_GET_MANAGER = "backend.copilot.tools.agent_browser.get_manager"
+_GET_MANAGER = "backend.copilot.tools.agent_browser.get_workspace_manager"
 
 
 def _make_mock_manager():

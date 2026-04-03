@@ -14,8 +14,26 @@ from backend.api.features.store.hybrid_search import (
     HybridSearchWeights,
     UnifiedSearchWeights,
     hybrid_search,
+    tokenize,
     unified_hybrid_search,
 )
+
+# ---------------------------------------------------------------------------
+# tokenize (BM25)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "input_text, expected",
+    [
+        ("AITextGeneratorBlock", ["aitextgeneratorblock"]),
+        ("hello world", ["hello", "world"]),
+        ("", []),
+        ("HTTPRequest", ["httprequest"]),
+    ],
+)
+def test_tokenize(input_text: str, expected: list[str]):
+    assert tokenize(input_text) == expected
 
 
 @pytest.mark.asyncio(loop_scope="session")

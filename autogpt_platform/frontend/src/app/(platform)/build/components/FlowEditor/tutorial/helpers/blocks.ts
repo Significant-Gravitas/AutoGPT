@@ -75,7 +75,7 @@ export const getSecondCalculatorNode = () => {
 export const getFormContainerSelector = (blockId: string): string | null => {
   const node = getNodeByBlockId(blockId);
   if (node) {
-    return `[data-id="form-creator-container-${node.id}"]`;
+    return `[data-id="form-creator-container-${node.id}-node"]`;
   }
   return null;
 };

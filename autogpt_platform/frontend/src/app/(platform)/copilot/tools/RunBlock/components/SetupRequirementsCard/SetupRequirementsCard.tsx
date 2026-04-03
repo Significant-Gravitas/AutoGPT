@@ -18,17 +18,21 @@ import {
 interface Props {
   output: SetupRequirementsResponse;
   /** Override the message sent to the chat when the user clicks Proceed after connecting credentials.
-   * Defaults to "Please re-run the block now." */
+   * Defaults to "Please re-run this step now." */
   retryInstruction?: string;
   /** Override the label shown above the credentials section.
-   * Defaults to "Block credentials". */
+   * Defaults to "Credentials". */
   credentialsLabel?: string;
+  /** Called after Proceed is clicked so the parent can persist the dismissed state
+   * across remounts (avoids re-enabling the Proceed button on remount). */
+  onComplete?: () => void;
 }
 
 export function SetupRequirementsCard({
   output,
   retryInstruction,
   credentialsLabel,
+  onComplete,
 }: Props) {
   const { onSend } = useCopilotChatActions();
 
@@ -68,13 +72,17 @@ export function SetupRequirementsCard({
       return v !== undefined && v !== null && v !== "";
     });
 
+  if (hasSent) {
+    return <ContentMessage>Connected. Continuing…</ContentMessage>;
+  }
+
   const canRun =
-    !hasSent &&
     (!needsCredentials || isAllCredentialsComplete) &&
     (!needsInputs || isAllInputsComplete);
 
   function handleRun() {
     setHasSent(true);
+    onComplete?.();
 
     const parts: string[] = [];
     if (needsCredentials) {
@@ -87,11 +95,9 @@ export function SetupRequirementsCard({
           ([, v]) => v !== undefined && v !== null && v !== "",
         ),
       );
-      parts.push(
-        `Run the block with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`,
-      );
+      parts.push(`Run with these inputs: ${JSON.stringify(nonEmpty, null, 2)}`);
     } else {
-      parts.push(retryInstruction ?? "Please re-run the block now.");
+      parts.push(retryInstruction ?? "Please re-run this step now.");
     }
 
     onSend(parts.join(" "));
@@ -105,7 +111,7 @@ export function SetupRequirementsCard({
       {needsCredentials && (
         <div className="rounded-2xl border bg-background p-3">
           <Text variant="small" className="w-fit border-b text-zinc-500">
-            {credentialsLabel ?? "Block credentials"}
+            {credentialsLabel ?? "Credentials"}
           </Text>
           <div className="mt-6">
             <CredentialsGroupedView
@@ -122,7 +128,7 @@ export function SetupRequirementsCard({
       {inputSchema && (
         <div className="rounded-2xl border bg-background p-3 pt-4">
           <Text variant="small" className="w-fit border-b text-zinc-500">
-            Block inputs
+            Inputs
           </Text>
           <FormRenderer
             jsonSchema={inputSchema}

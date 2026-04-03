@@ -80,7 +80,7 @@ export class MarketplacePage extends BasePage {
 
   async getTopAgentsSection(page: Page) {
     const { getText } = getSelectors(page);
-    return getText("Top Agents");
+    return getText("All Agents");
   }
 
   async getFeaturedCreatorsSection(page: Page) {

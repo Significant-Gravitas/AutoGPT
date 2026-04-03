@@ -4,11 +4,12 @@ These tests verify the complete copilot flow using dummy implementations
 for agent generator and SDK service, allowing automated testing without
 external LLM calls.
 
-Enable test mode with COPILOT_TEST_MODE=true environment variable.
+Enable test mode with CHAT_TEST_MODE=true environment variable (or in .env).
 
-Note: StreamFinish is NOT emitted by the dummy service — it is published
-by mark_session_completed in the processor layer.  These tests only cover
-the service-level streaming output (StreamStart + StreamTextDelta).
+The dummy service emits the full AI SDK protocol event sequence:
+StreamStart → StreamStartStep → StreamTextStart → StreamTextDelta(s) →
+StreamTextEnd → StreamFinishStep → StreamFinish.
+The processor skips StreamFinish and publishes its own via mark_session_completed.
 """
 
 import asyncio
@@ -20,9 +21,14 @@ import pytest
 from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import (
     StreamError,
+    StreamFinish,
+    StreamFinishStep,
     StreamHeartbeat,
     StreamStart,
+    StreamStartStep,
     StreamTextDelta,
+    StreamTextEnd,
+    StreamTextStart,
 )
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 
@@ -30,9 +36,9 @@ from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 @pytest.fixture(autouse=True)
 def enable_test_mode():
     """Enable test mode for all tests in this module."""
-    os.environ["COPILOT_TEST_MODE"] = "true"
+    os.environ["CHAT_TEST_MODE"] = "true"
     yield
-    os.environ.pop("COPILOT_TEST_MODE", None)
+    os.environ.pop("CHAT_TEST_MODE", None)
 
 
 @pytest.mark.asyncio
@@ -110,9 +116,14 @@ async def test_streaming_event_types():
     ):
         event_types.add(type(event).__name__)
 
-    # Required event types (StreamFinish is published by processor, not service)
+    # Required event types for full AI SDK protocol
     assert "StreamStart" in event_types, "Missing StreamStart"
+    assert "StreamStartStep" in event_types, "Missing StreamStartStep"
+    assert "StreamTextStart" in event_types, "Missing StreamTextStart"
     assert "StreamTextDelta" in event_types, "Missing StreamTextDelta"
+    assert "StreamTextEnd" in event_types, "Missing StreamTextEnd"
+    assert "StreamFinishStep" in event_types, "Missing StreamFinishStep"
+    assert "StreamFinish" in event_types, "Missing StreamFinish"
 
     print(f"✅ Event types: {sorted(event_types)}")
 
@@ -175,16 +186,17 @@ async def test_streaming_heartbeat_timing():
 
 @pytest.mark.asyncio
 async def test_error_handling():
-    """Test that errors are properly formatted and sent."""
-    # This would require a dummy that can trigger errors
-    # For now, just verify error event structure
-
+    """Test that error events have correct SSE structure."""
     error = StreamError(errorText="Test error", code="test_error")
     assert error.errorText == "Test error"
     assert error.code == "test_error"
-    assert str(error.type.value) in ["error", "error"]
 
-    print("✅ Error structure verified")
+    # Verify to_sse() strips code (AI SDK protocol compliance)
+    sse = error.to_sse()
+    assert '"errorText"' in sse
+    assert '"code"' not in sse, "to_sse() must strip code field for AI SDK"
+
+    print("✅ Error structure verified (code stripped in SSE)")
 
 
 @pytest.mark.asyncio
@@ -326,20 +338,85 @@ async def test_stream_completeness():
     ):
         events.append(event)
 
-    # Check for required events (StreamFinish is published by processor)
-    has_start = any(isinstance(e, StreamStart) for e in events)
-    has_text = any(isinstance(e, StreamTextDelta) for e in events)
-
-    assert has_start, "Stream must include StreamStart"
-    assert has_text, "Stream must include text deltas"
+    # Check for all required event types
+    assert any(isinstance(e, StreamStart) for e in events), "Missing StreamStart"
+    assert any(
+        isinstance(e, StreamStartStep) for e in events
+    ), "Missing StreamStartStep"
+    assert any(
+        isinstance(e, StreamTextStart) for e in events
+    ), "Missing StreamTextStart"
+    assert any(
+        isinstance(e, StreamTextDelta) for e in events
+    ), "Missing StreamTextDelta"
+    assert any(isinstance(e, StreamTextEnd) for e in events), "Missing StreamTextEnd"
+    assert any(
+        isinstance(e, StreamFinishStep) for e in events
+    ), "Missing StreamFinishStep"
+    assert any(isinstance(e, StreamFinish) for e in events), "Missing StreamFinish"
 
     # Verify exactly one start
     start_count = sum(1 for e in events if isinstance(e, StreamStart))
     assert start_count == 1, f"Should have exactly 1 StreamStart, got {start_count}"
 
-    print(
-        f"✅ Completeness: 1 start, {sum(1 for e in events if isinstance(e, StreamTextDelta))} text deltas"
-    )
+    print(f"✅ Completeness: {len(events)} events, full protocol sequence")
+
+
+@pytest.mark.asyncio
+async def test_transient_error_shows_retryable():
+    """Test __test_transient_error__ yields partial text then retryable StreamError."""
+    events = []
+
+    async for event in stream_chat_completion_dummy(
+        session_id="test-transient",
+        message="please fail __test_transient_error__",
+        is_user_message=True,
+        user_id="test-user",
+    ):
+        events.append(event)
+
+    # Should start with StreamStart
+    assert isinstance(events[0], StreamStart)
+
+    # Should have some partial text before the error
+    text_events = [e for e in events if isinstance(e, StreamTextDelta)]
+    assert len(text_events) > 0, "Should stream partial text before error"
+
+    # Should end with StreamError
+    error_events = [e for e in events if isinstance(e, StreamError)]
+    assert len(error_events) == 1, "Should have exactly one StreamError"
+    assert error_events[0].code == "transient_api_error"
+    assert "connection interrupted" in error_events[0].errorText.lower()
+
+    print(f"✅ Transient error: {len(text_events)} partial deltas + retryable error")
+
+
+@pytest.mark.asyncio
+async def test_fatal_error_not_retryable():
+    """Test __test_fatal_error__ yields StreamError without retryable code."""
+    events = []
+
+    async for event in stream_chat_completion_dummy(
+        session_id="test-fatal",
+        message="__test_fatal_error__",
+        is_user_message=True,
+        user_id="test-user",
+    ):
+        events.append(event)
+
+    assert isinstance(events[0], StreamStart)
+
+    # Should have StreamError with sdk_error code (not transient)
+    error_events = [e for e in events if isinstance(e, StreamError)]
+    assert len(error_events) == 1
+    assert error_events[0].code == "sdk_error"
+    assert "transient" not in error_events[0].code
+
+    # Should NOT have any text deltas (fatal errors fail immediately)
+    text_events = [e for e in events if isinstance(e, StreamTextDelta)]
+    assert len(text_events) == 0, "Fatal error should not stream any text"
+
+    print("✅ Fatal error: immediate error, no partial text")
 
 
 @pytest.mark.asyncio
@@ -395,6 +472,8 @@ if __name__ == "__main__":
     asyncio.run(test_message_deduplication())
     asyncio.run(test_event_ordering())
     asyncio.run(test_stream_completeness())
+    asyncio.run(test_transient_error_shows_retryable())
+    asyncio.run(test_fatal_error_not_retryable())
     asyncio.run(test_text_delta_consistency())
 
     print("=" * 60)

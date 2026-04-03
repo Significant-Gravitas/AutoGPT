@@ -2,12 +2,15 @@
 
 When E2B is active, these tools replace the SDK built-in Read/Write/Edit/
 Glob/Grep so that all file operations share the same ``/home/user``
-filesystem as ``bash_exec``.
+and ``/tmp`` filesystems as ``bash_exec``.
 
 SDK-internal paths (``~/.claude/projects/…/tool-results/``) are handled
 by the separate ``Read`` MCP tool registered in ``tool_adapter.py``.
 """
 
+import asyncio
+import base64
+import hashlib
 import itertools
 import json
 import logging
@@ -16,14 +19,55 @@ import shlex
 from typing import Any, Callable
 
 from backend.copilot.context import (
+    E2B_ALLOWED_DIRS,
+    E2B_ALLOWED_DIRS_STR,
     E2B_WORKDIR,
     get_current_sandbox,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_within_allowed_dirs,
     resolve_sandbox_path,
 )
 
 logger = logging.getLogger(__name__)
+
+# Default number of lines returned by ``read_file`` when the caller does not
+# specify a limit.  Also used as the threshold in ``bridge_to_sandbox`` to
+# decide whether the model is requesting the full file (and thus whether the
+# bridge copy is worthwhile).
+_DEFAULT_READ_LIMIT = 2000
+
+
+async def _check_sandbox_symlink_escape(
+    sandbox: Any,
+    parent: str,
+) -> str | None:
+    """Resolve the canonical parent path inside the sandbox to detect symlink escapes.
+
+    ``normpath`` (used by ``resolve_sandbox_path``) only normalises the string;
+    ``readlink -f`` follows actual symlinks on the sandbox filesystem.
+
+    Returns the canonical parent path, or ``None`` if the path escapes
+    the allowed sandbox directories.
+
+    Note: There is an inherent TOCTOU window between this check and the
+    subsequent ``sandbox.files.write()``.  A symlink could theoretically be
+    replaced between the two operations.  This is acceptable in the E2B
+    sandbox model since the sandbox is single-user and ephemeral.
+    """
+    canonical_res = await sandbox.commands.run(
+        f"readlink -f {shlex.quote(parent or E2B_WORKDIR)}",
+        cwd=E2B_WORKDIR,
+        timeout=5,
+    )
+    canonical_parent = (canonical_res.stdout or "").strip()
+    if (
+        canonical_res.exit_code != 0
+        or not canonical_parent
+        or not is_within_allowed_dirs(canonical_parent)
+    ):
+        return None
+    return canonical_parent
 
 
 def _get_sandbox():
@@ -54,6 +98,41 @@ def _get_sandbox_and_path(
     return sandbox, remote
 
 
+async def _sandbox_write(sandbox: Any, path: str, content: str | bytes) -> None:
+    """Write *content* to *path* inside the sandbox.
+
+    The E2B filesystem API (``sandbox.files.write``) and the command API
+    (``sandbox.commands.run``) run as **different users**.  On ``/tmp``
+    (which has the sticky bit set) this means ``sandbox.files.write`` can
+    create new files but cannot overwrite files previously created by
+    ``sandbox.commands.run`` (or itself), because the sticky bit restricts
+    deletion/rename to the file owner.
+
+    To work around this, writes targeting ``/tmp`` are performed via
+    ``tee`` through the command API, which runs as the sandbox ``user``
+    and can therefore always overwrite user-owned files.
+
+    *content* may be ``str`` (text) or ``bytes`` (binary).  Both paths
+    are handled correctly: text is encoded to bytes for the base64 shell
+    pipe, and raw bytes are passed through without any encoding.
+    """
+    if path == "/tmp" or path.startswith("/tmp/"):
+        raw = content.encode() if isinstance(content, str) else content
+        encoded = base64.b64encode(raw).decode()
+        result = await sandbox.commands.run(
+            f"echo {shlex.quote(encoded)} | base64 -d > {shlex.quote(path)}",
+            cwd=E2B_WORKDIR,
+            timeout=10,
+        )
+        if result.exit_code != 0:
+            raise RuntimeError(
+                f"shell write failed (exit {result.exit_code}): "
+                + (result.stderr or "").strip()
+            )
+    else:
+        await sandbox.files.write(path, content)
+
+
 # Tool handlers
 
 
@@ -61,14 +140,25 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     """Read lines from a sandbox file, falling back to the local host for SDK-internal paths."""
     file_path: str = args.get("file_path", "")
     offset: int = max(0, int(args.get("offset", 0)))
-    limit: int = max(1, int(args.get("limit", 2000)))
+    limit: int = max(1, int(args.get("limit", _DEFAULT_READ_LIMIT)))
 
     if not file_path:
         return _mcp("file_path is required", error=True)
 
-    # SDK-internal paths (tool-results, ephemeral working dir) stay on the host.
+    # SDK-internal paths (tool-results/tool-outputs, ephemeral working dir)
+    # stay on the host.  When E2B is active, also copy the file into the
+    # sandbox so bash_exec can access it for further processing.
     if _is_allowed_local(file_path):
-        return _read_local(file_path, offset, limit)
+        result = _read_local(file_path, offset, limit)
+        if not result.get("isError"):
+            sandbox = _get_sandbox()
+            if sandbox is not None:
+                annotation = await bridge_and_annotate(
+                    sandbox, file_path, offset, limit
+                )
+                if annotation:
+                    result["content"][0]["text"] += annotation
+        return result
 
     result = _get_sandbox_and_path(file_path)
     if isinstance(result, dict):
@@ -104,9 +194,16 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
 
     try:
         parent = os.path.dirname(remote)
-        if parent and parent != E2B_WORKDIR:
+        if parent and parent not in E2B_ALLOWED_DIRS:
             await sandbox.files.make_dir(parent)
-        await sandbox.files.write(remote, content)
+        canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+        if canonical_parent is None:
+            return _mcp(
+                f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
+                error=True,
+            )
+        remote = os.path.join(canonical_parent, os.path.basename(remote))
+        await _sandbox_write(sandbox, remote, content)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 
@@ -130,6 +227,15 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         return result
     sandbox, remote = result
 
+    parent = os.path.dirname(remote)
+    canonical_parent = await _check_sandbox_symlink_escape(sandbox, parent)
+    if canonical_parent is None:
+        return _mcp(
+            f"Path must be within {E2B_ALLOWED_DIRS_STR}: {os.path.basename(parent)}",
+            error=True,
+        )
+    remote = os.path.join(canonical_parent, os.path.basename(remote))
+
     try:
         raw: bytes = await sandbox.files.read(remote, format="bytes")
         content = raw.decode("utf-8", errors="replace")
@@ -152,7 +258,7 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
         else content.replace(old_string, new_string, 1)
     )
     try:
-        await sandbox.files.write(remote, updated)
+        await _sandbox_write(sandbox, remote, updated)
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 
@@ -219,6 +325,103 @@ async def _handle_grep(args: dict[str, Any]) -> dict[str, Any]:
     return _mcp(output if output else "No matches found.")
 
 
+# Bridging: copy SDK-internal files into E2B sandbox
+
+# Files larger than this are written to /home/user/ via sandbox.files.write()
+# instead of /tmp/ via shell base64, to avoid shell argument length limits
+# and E2B command timeouts.  Base64 expands content by ~33%, so keep this
+# well under the typical Linux ARG_MAX (128 KB).
+_BRIDGE_SHELL_MAX_BYTES = 32 * 1024  # 32 KB
+# Files larger than this are skipped entirely to avoid excessive transfer times.
+_BRIDGE_SKIP_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+async def bridge_to_sandbox(
+    sandbox: Any, file_path: str, offset: int, limit: int
+) -> str | None:
+    """Best-effort copy of a host-side SDK file into the E2B sandbox.
+
+    When the model reads an SDK-internal file (e.g. tool-results), it often
+    wants to process the data with bash.  Copying the file into the sandbox
+    under a stable name lets ``bash_exec`` access it without extra steps.
+
+    Only copies when offset=0 and limit is large enough to indicate the model
+    wants the full file.  Errors are logged but never propagated.
+
+    Returns the sandbox path on success, or ``None`` on skip/failure.
+
+    Size handling:
+    - <= 32 KB: written to ``/tmp/<hash>-<basename>`` via shell base64
+      (``_sandbox_write``).  Kept small to stay within ARG_MAX.
+    - 32 KB - 50 MB: written to ``/home/user/<hash>-<basename>`` via
+      ``sandbox.files.write()`` to avoid shell argument length limits.
+    - > 50 MB: skipped entirely with a warning.
+
+    The sandbox filename is prefixed with a short hash of the full source
+    path to avoid collisions when different source files share the same
+    basename (e.g. multiple ``result.json`` files).
+    """
+    if offset != 0 or limit < _DEFAULT_READ_LIMIT:
+        return None
+    try:
+        expanded = os.path.realpath(os.path.expanduser(file_path))
+        basename = os.path.basename(expanded)
+        source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+        unique_name = f"{source_id}-{basename}"
+        file_size = os.path.getsize(expanded)
+        if file_size > _BRIDGE_SKIP_BYTES:
+            logger.warning(
+                "[E2B] Skipping bridge for large file (%d bytes): %s",
+                file_size,
+                basename,
+            )
+            return None
+
+        def _read_bytes() -> bytes:
+            with open(expanded, "rb") as fh:
+                return fh.read()
+
+        raw_content = await asyncio.to_thread(_read_bytes)
+        try:
+            text_content: str | None = raw_content.decode("utf-8")
+        except UnicodeDecodeError:
+            text_content = None
+        data: str | bytes = text_content if text_content is not None else raw_content
+        if file_size <= _BRIDGE_SHELL_MAX_BYTES:
+            sandbox_path = f"/tmp/{unique_name}"
+            await _sandbox_write(sandbox, sandbox_path, data)
+        else:
+            sandbox_path = f"/home/user/{unique_name}"
+            await sandbox.files.write(sandbox_path, data)
+        logger.info(
+            "[E2B] Bridged SDK file to sandbox: %s -> %s", basename, sandbox_path
+        )
+        return sandbox_path
+    except Exception:
+        logger.warning(
+            "[E2B] Failed to bridge SDK file to sandbox: %s",
+            file_path,
+            exc_info=True,
+        )
+        return None
+
+
+async def bridge_and_annotate(
+    sandbox: Any, file_path: str, offset: int, limit: int
+) -> str | None:
+    """Bridge a host file to the sandbox and return a newline-prefixed annotation.
+
+    Combines ``bridge_to_sandbox`` with the standard annotation suffix so
+    callers don't need to duplicate the pattern.  Returns a string like
+    ``"\\n[Sandbox copy available at /tmp/abc-file.txt]"`` on success, or
+    ``None`` if bridging was skipped or failed.
+    """
+    sandbox_path = await bridge_to_sandbox(sandbox, file_path, offset, limit)
+    if sandbox_path is None:
+        return None
+    return f"\n[Sandbox copy available at {sandbox_path}]"
+
+
 # Local read (for SDK-internal paths)
 
 
@@ -245,14 +448,14 @@ def _read_local(file_path: str, offset: int, limit: int) -> dict[str, Any]:
 E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     (
         "read_file",
-        "Read a file from the cloud sandbox (/home/user). "
+        "Read a file from the cloud sandbox (/home/user or /tmp). "
         "Use offset and limit for large files.",
         {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute).",
+                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
                 },
                 "offset": {
                     "type": "integer",
@@ -269,7 +472,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
     ),
     (
         "write_file",
-        "Write or create a file in the cloud sandbox (/home/user). "
+        "Write or create a file in the cloud sandbox (/home/user or /tmp). "
         "Parent directories are created automatically. "
         "To copy a workspace file into the sandbox, use "
         "read_workspace_file with save_to_path instead.",
@@ -278,7 +481,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute).",
+                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
                 },
                 "content": {"type": "string", "description": "Content to write."},
             },
@@ -295,7 +498,7 @@ E2B_FILE_TOOLS: list[tuple[str, str, dict[str, Any], Callable[..., Any]]] = [
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path (relative to /home/user, or absolute).",
+                    "description": "Path (relative to /home/user, or absolute under /home/user or /tmp).",
                 },
                 "old_string": {"type": "string", "description": "Text to find."},
                 "new_string": {"type": "string", "description": "Replacement text."},

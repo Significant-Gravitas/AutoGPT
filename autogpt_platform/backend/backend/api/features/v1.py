@@ -63,11 +63,16 @@ from backend.data.onboarding import (
     UserOnboardingUpdate,
     complete_onboarding_step,
     complete_re_run_agent,
+    format_onboarding_for_extraction,
     get_recommended_agents,
     get_user_onboarding,
-    onboarding_enabled,
     reset_user_onboarding,
     update_user_onboarding,
+)
+from backend.data.tally import extract_business_understanding
+from backend.data.understanding import (
+    BusinessUnderstandingInput,
+    upsert_business_understanding,
 )
 from backend.data.user import (
     get_or_create_user,
@@ -282,35 +287,33 @@ async def get_onboarding_agents(
     return await get_recommended_agents(user_id)
 
 
-class OnboardingStatusResponse(pydantic.BaseModel):
-    """Response for onboarding status check."""
+class OnboardingProfileRequest(pydantic.BaseModel):
+    """Request body for onboarding profile submission."""
 
-    is_onboarding_enabled: bool
-    is_chat_enabled: bool
+    user_name: str = pydantic.Field(min_length=1, max_length=100)
+    user_role: str = pydantic.Field(min_length=1, max_length=100)
+    pain_points: list[str] = pydantic.Field(default_factory=list, max_length=20)
+
+
+class OnboardingStatusResponse(pydantic.BaseModel):
+    """Response for onboarding completion check."""
+
+    is_completed: bool
 
 
 @v1_router.get(
-    "/onboarding/enabled",
-    summary="Is onboarding enabled",
+    "/onboarding/completed",
+    summary="Check if onboarding is completed",
     tags=["onboarding", "public"],
     response_model=OnboardingStatusResponse,
+    dependencies=[Security(requires_user)],
 )
-async def is_onboarding_enabled(
+async def is_onboarding_completed(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> OnboardingStatusResponse:
-    # Check if chat is enabled for user
-    is_chat_enabled = await is_feature_enabled(Flag.CHAT, user_id, False)
-
-    # If chat is enabled, skip legacy onboarding
-    if is_chat_enabled:
-        return OnboardingStatusResponse(
-            is_onboarding_enabled=False,
-            is_chat_enabled=True,
-        )
-
+    user_onboarding = await get_user_onboarding(user_id)
     return OnboardingStatusResponse(
-        is_onboarding_enabled=await onboarding_enabled(),
-        is_chat_enabled=False,
+        is_completed=OnboardingStep.VISIT_COPILOT in user_onboarding.completedSteps,
     )
 
 
@@ -323,6 +326,38 @@ async def is_onboarding_enabled(
 )
 async def reset_onboarding(user_id: Annotated[str, Security(get_user_id)]):
     return await reset_user_onboarding(user_id)
+
+
+@v1_router.post(
+    "/onboarding/profile",
+    summary="Submit onboarding profile",
+    tags=["onboarding"],
+    dependencies=[Security(requires_user)],
+)
+async def submit_onboarding_profile(
+    data: OnboardingProfileRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+):
+    formatted = format_onboarding_for_extraction(
+        user_name=data.user_name,
+        user_role=data.user_role,
+        pain_points=data.pain_points,
+    )
+
+    try:
+        understanding_input = await extract_business_understanding(formatted)
+    except Exception:
+        understanding_input = BusinessUnderstandingInput.model_construct()
+
+    # Ensure the direct fields are set even if LLM missed them
+    understanding_input.user_name = data.user_name
+    understanding_input.user_role = data.user_role
+    if not understanding_input.pain_points:
+        understanding_input.pain_points = data.pain_points
+
+    await upsert_business_understanding(user_id, understanding_input)
+
+    return {"status": "ok"}
 
 
 ########################################################
@@ -592,6 +627,11 @@ async def fulfill_checkout(user_id: Annotated[str, Security(get_user_id)]):
 async def configure_user_auto_top_up(
     request: AutoTopUpConfig, user_id: Annotated[str, Security(get_user_id)]
 ) -> str:
+    """Configure auto top-up settings and perform an immediate top-up if needed.
+
+    Raises HTTPException(422) if the request parameters are invalid or if
+    the credit top-up fails.
+    """
     if request.threshold < 0:
         raise HTTPException(status_code=422, detail="Threshold must be greater than 0")
     if request.amount < 500 and request.amount != 0:
@@ -606,10 +646,20 @@ async def configure_user_auto_top_up(
     user_credit_model = await get_user_credit_model(user_id)
     current_balance = await user_credit_model.get_credits(user_id)
 
-    if current_balance < request.threshold:
-        await user_credit_model.top_up_credits(user_id, request.amount)
-    else:
-        await user_credit_model.top_up_credits(user_id, 0)
+    try:
+        if current_balance < request.threshold:
+            await user_credit_model.top_up_credits(user_id, request.amount)
+        else:
+            await user_credit_model.top_up_credits(user_id, 0)
+    except ValueError as e:
+        known_messages = (
+            "must not be negative",
+            "already exists for user",
+            "No payment method found",
+        )
+        if any(msg in str(e) for msg in known_messages):
+            raise HTTPException(status_code=422, detail=str(e))
+        raise
 
     await set_auto_top_up(
         user_id, AutoTopUpConfig(threshold=request.threshold, amount=request.amount)
@@ -965,14 +1015,16 @@ async def execute_graph(
     source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
+    dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
-    user_credit_model = await get_user_credit_model(user_id)
-    current_balance = await user_credit_model.get_credits(user_id)
-    if current_balance <= 0:
-        raise HTTPException(
-            status_code=402,
-            detail="Insufficient balance to execute the agent. Please top up your account.",
-        )
+    if not dry_run:
+        user_credit_model = await get_user_credit_model(user_id)
+        current_balance = await user_credit_model.get_credits(user_id)
+        if current_balance <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient balance to execute the agent. Please top up your account.",
+            )
 
     try:
         result = await execution_utils.add_graph_execution(
@@ -982,6 +1034,7 @@ async def execute_graph(
             preset_id=preset_id,
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
+            dry_run=dry_run,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)

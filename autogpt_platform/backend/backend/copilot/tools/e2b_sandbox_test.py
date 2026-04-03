@@ -157,14 +157,17 @@ class TestGetOrCreateSandbox:
 
         assert result is new_sb
         mock_cls.create.assert_awaited_once()
-        # Verify lifecycle param is set
+        # Verify lifecycle: pause + auto_resume enabled
         _, kwargs = mock_cls.create.call_args
-        assert kwargs.get("lifecycle") == {"on_timeout": "pause"}
+        assert kwargs.get("lifecycle") == {
+            "on_timeout": "pause",
+            "auto_resume": True,
+        }
         # sandbox_id should be saved to Redis
         redis.set.assert_awaited()
 
     def test_create_with_on_timeout_kill(self):
-        """on_timeout='kill' is passed through to AsyncSandbox.create."""
+        """on_timeout='kill' disables auto_resume automatically."""
         new_sb = _mock_sandbox("sb-new")
         redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
         with (
@@ -179,7 +182,10 @@ class TestGetOrCreateSandbox:
             )
 
         _, kwargs = mock_cls.create.call_args
-        assert kwargs.get("lifecycle") == {"on_timeout": "kill"}
+        assert kwargs.get("lifecycle") == {
+            "on_timeout": "kill",
+            "auto_resume": False,
+        }
 
     def test_create_failure_releases_slot(self):
         """If sandbox creation fails, the Redis creation slot is deleted."""

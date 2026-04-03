@@ -1,14 +1,19 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  Message,
+  MessageActions,
+  MessageContent,
+} from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import {
   buildRenderSegments,
@@ -19,6 +24,7 @@ import {
   splitReasoningAndResponse,
 } from "./helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
+import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
@@ -30,13 +36,15 @@ interface Props {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
-  headerSlot?: React.ReactNode;
   sessionID?: string | null;
+  onRetry?: () => void;
+  historicalDurations?: Map<string, number>;
 }
 
 function renderSegments(
   segments: RenderSegment[],
   messageID: string,
+  onRetry?: () => void,
 ): React.ReactNode[] {
   return segments.map((seg, segIdx) => {
     if (seg.kind === "collapsed-group") {
@@ -48,6 +56,7 @@ function renderSegments(
         part={seg.part}
         messageID={messageID}
         partIndex={seg.index}
+        onRetry={onRetry}
       />
     );
   });
@@ -102,8 +111,9 @@ export function ChatMessagesContainer({
   status,
   error,
   isLoading,
-  headerSlot,
   sessionID,
+  onRetry,
+  historicalDurations,
 }: Props) {
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
@@ -132,10 +142,28 @@ export function ChatMessagesContainer({
   const showThinking =
     status === "submitted" || (status === "streaming" && !hasInflight);
 
+  const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
+  // Reset when a new streaming turn begins.
+  const frozenElapsedRef = useRef(0);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isActivelyStreaming) {
+      if (!wasStreamingRef.current) {
+        frozenElapsedRef.current = 0;
+      }
+      if (elapsedSeconds > 0) {
+        frozenElapsedRef.current = elapsedSeconds;
+      }
+    }
+    wasStreamingRef.current = isActivelyStreaming;
+  });
+
   return (
     <Conversation className="min-h-0 flex-1">
       <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
-        {headerSlot}
         {isLoading && messages.length === 0 && (
           <div
             className="flex flex-1 items-center justify-center"
@@ -164,9 +192,12 @@ export function ChatMessagesContainer({
             (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
           );
           const lastTextPart = textParts[textParts.length - 1];
+          const markerType =
+            lastTextPart !== undefined
+              ? parseSpecialMarkers(lastTextPart.text).markerType
+              : null;
           const hasErrorMarker =
-            lastTextPart !== undefined &&
-            parseSpecialMarkers(lastTextPart.text).markerType === "error";
+            markerType === "error" || markerType === "retryable_error";
           const showActions =
             isLastInTurn &&
             !isCurrentlyStreaming &&
@@ -203,6 +234,7 @@ export function ChatMessagesContainer({
                 className={
                   "text-[1rem] leading-relaxed " +
                   "group-[.is-user]:rounded-xl group-[.is-user]:bg-purple-100 group-[.is-user]:px-3 group-[.is-user]:py-2.5 group-[.is-user]:text-slate-900 group-[.is-user]:[border-bottom-right-radius:0] " +
+                  "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold " +
                   "group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900"
                 }
               >
@@ -212,24 +244,43 @@ export function ChatMessagesContainer({
                   </ReasoningCollapse>
                 )}
                 {responseSegments
-                  ? renderSegments(responseSegments, message.id)
+                  ? renderSegments(
+                      responseSegments,
+                      message.id,
+                      isLastAssistant ? onRetry : undefined,
+                    )
                   : message.parts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
                         part={part}
                         messageID={message.id}
                         partIndex={i}
+                        onRetry={isLastAssistant ? onRetry : undefined}
                       />
                     ))}
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}
+                    elapsedSeconds={
+                      messageIndex === messages.length - 1
+                        ? frozenElapsedRef.current
+                        : undefined
+                    }
+                    durationMs={historicalDurations?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (
-                  <ThinkingIndicator active={showThinking} />
+                  <ThinkingIndicator
+                    active={showThinking}
+                    elapsedSeconds={elapsedSeconds}
+                  />
                 )}
               </MessageContent>
+              {message.role === "user" && textParts.length > 0 && (
+                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  <CopyButton text={textParts.map((p) => p.text).join("\n")} />
+                </MessageActions>
+              )}
               {fileParts.length > 0 && (
                 <MessageAttachments
                   files={fileParts}
@@ -248,7 +299,10 @@ export function ChatMessagesContainer({
         {showThinking && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
-              <ThinkingIndicator active={showThinking} />
+              <ThinkingIndicator
+                active={showThinking}
+                elapsedSeconds={elapsedSeconds}
+              />
             </MessageContent>
           </Message>
         )}

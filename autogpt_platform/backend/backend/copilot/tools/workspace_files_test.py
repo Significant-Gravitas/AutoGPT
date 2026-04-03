@@ -2,18 +2,25 @@
 
 import base64
 import os
+import shutil
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot.context import SDK_PROJECTS_DIR, _current_project_dir
 from backend.copilot.tools._test_data import make_session, setup_test_data
+from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.workspace_files import (
+    _MAX_LOCAL_TOOL_RESULT_BYTES,
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
     WorkspaceDeleteResponse,
+    WorkspaceFileContentResponse,
     WorkspaceFileListResponse,
     WorkspaceWriteResponse,
     WriteWorkspaceFileTool,
+    _read_local_tool_result,
     _resolve_write_content,
     _validate_ephemeral_path,
 )
@@ -325,3 +332,294 @@ async def test_write_workspace_file_source_path(setup_test_data):
     await delete_tool._execute(
         user_id=user.id, session=session, file_id=write_resp.file_id
     )
+
+
+# ---------------------------------------------------------------------------
+# _read_local_tool_result — local disk fallback for SDK tool-result files
+# ---------------------------------------------------------------------------
+
+_CONV_UUID = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+
+
+class TestReadLocalToolResult:
+    """Tests for _read_local_tool_result (local disk fallback)."""
+
+    def _make_tool_result(self, encoded: str, filename: str, content: bytes) -> str:
+        """Create a tool-results file and return its path."""
+        tool_dir = os.path.join(SDK_PROJECTS_DIR, encoded, _CONV_UUID, "tool-results")
+        os.makedirs(tool_dir, exist_ok=True)
+        filepath = os.path.join(tool_dir, filename)
+        with open(filepath, "wb") as f:
+            f.write(content)
+        return filepath
+
+    def _cleanup(self, encoded: str) -> None:
+        shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
+
+    def test_read_text_file(self):
+        """Read a UTF-8 text tool-result file."""
+        encoded = "-tmp-copilot-local-read-text"
+        path = self._make_tool_result(encoded, "output.txt", b"hello world")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "hello world"
+            assert "text/plain" in result.mime_type
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_read_text_with_offset(self):
+        """Read a slice of a text file using char_offset and char_length."""
+        encoded = "-tmp-copilot-local-read-offset"
+        path = self._make_tool_result(encoded, "data.txt", b"ABCDEFGHIJ")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 3, 4, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "DEFG"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_read_binary_file(self):
+        """Binary files are returned as raw base64."""
+        encoded = "-tmp-copilot-local-read-binary"
+        binary_data = bytes(range(256))
+        path = self._make_tool_result(encoded, "image.png", binary_data)
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64)
+            assert decoded == binary_data
+            assert "binary" in result.message
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_disallowed_path_rejected(self):
+        """Paths not under allowed directories are rejected."""
+        result = _read_local_tool_result("/etc/passwd", 0, None, "s1")
+        assert isinstance(result, ErrorResponse)
+        assert "not allowed" in result.message.lower()
+
+    def test_file_not_found(self):
+        """Missing files return an error."""
+        encoded = "-tmp-copilot-local-read-missing"
+        tool_dir = os.path.join(SDK_PROJECTS_DIR, encoded, _CONV_UUID, "tool-results")
+        os.makedirs(tool_dir, exist_ok=True)
+        path = os.path.join(tool_dir, "nope.txt")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, ErrorResponse)
+            assert "not found" in result.message.lower()
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_file_too_large(self, monkeypatch):
+        """Files exceeding the size limit are rejected."""
+        encoded = "-tmp-copilot-local-read-large"
+        # Create a small file but fake os.path.getsize to return a huge value
+        path = self._make_tool_result(encoded, "big.txt", b"small")
+        token = _current_project_dir.set(encoded)
+        monkeypatch.setattr(
+            "os.path.getsize", lambda _: _MAX_LOCAL_TOOL_RESULT_BYTES + 1
+        )
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, ErrorResponse)
+            assert "too large" in result.message.lower()
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_offset_beyond_file_length(self):
+        """Offset past end-of-file returns empty content."""
+        encoded = "-tmp-copilot-local-read-past-eof"
+        path = self._make_tool_result(encoded, "short.txt", b"abc")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 999, 10, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == ""
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_zero_length_read(self):
+        """Requesting zero characters returns empty content."""
+        encoded = "-tmp-copilot-local-read-zero-len"
+        path = self._make_tool_result(encoded, "data.txt", b"ABCDEF")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 2, 0, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == ""
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_mime_type_from_json_extension(self):
+        """JSON files get application/json MIME type, not hardcoded text/plain."""
+        encoded = "-tmp-copilot-local-read-json"
+        path = self._make_tool_result(encoded, "result.json", b'{"key": "value"}')
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            assert result.mime_type == "application/json"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_mime_type_from_png_extension(self):
+        """Binary .png files get image/png MIME type via mimetypes."""
+        encoded = "-tmp-copilot-local-read-png-mime"
+        binary_data = bytes(range(256))
+        path = self._make_tool_result(encoded, "chart.png", binary_data)
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 0, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            assert result.mime_type == "image/png"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_explicit_sdk_cwd_parameter(self):
+        """The sdk_cwd parameter overrides get_sdk_cwd() for path validation."""
+        encoded = "-tmp-copilot-local-read-sdkcwd"
+        path = self._make_tool_result(encoded, "out.txt", b"content")
+        token = _current_project_dir.set(encoded)
+        try:
+            # Pass sdk_cwd explicitly — should still succeed because the path
+            # is under SDK_PROJECTS_DIR which is always allowed.
+            result = _read_local_tool_result(
+                path, 0, None, "s1", sdk_cwd="/tmp/copilot-test"
+            )
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "content"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+    def test_offset_with_no_length_reads_to_end(self):
+        """When char_length is None, read from offset to end of file."""
+        encoded = "-tmp-copilot-local-read-offset-noLen"
+        path = self._make_tool_result(encoded, "data.txt", b"0123456789")
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local_tool_result(path, 5, None, "s1")
+            assert isinstance(result, WorkspaceFileContentResponse)
+            decoded = base64.b64decode(result.content_base64).decode("utf-8")
+            assert decoded == "56789"
+        finally:
+            _current_project_dir.reset(token)
+            self._cleanup(encoded)
+
+
+# ---------------------------------------------------------------------------
+# ReadWorkspaceFileTool fallback to _read_local_tool_result
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_falls_back_to_local_tool_result(setup_test_data):
+    """When _resolve_file returns ErrorResponse for an allowed local path,
+    ReadWorkspaceFileTool should fall back to _read_local_tool_result."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    # Create a real tool-result file on disk so the fallback can read it.
+    encoded = "-tmp-copilot-fallback-test"
+    conv_uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    tool_dir = os.path.join(SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-results")
+    os.makedirs(tool_dir, exist_ok=True)
+    filepath = os.path.join(tool_dir, "result.txt")
+    with open(filepath, "w") as f:
+        f.write("fallback content")
+
+    token = _current_project_dir.set(encoded)
+    try:
+        # Mock _resolve_file to return an ErrorResponse (simulating "file not
+        # found in workspace") so the fallback branch is exercised.
+        mock_resolve = AsyncMock(
+            return_value=ErrorResponse(
+                message="File not found at path: result.txt",
+                session_id=session.session_id,
+            )
+        )
+        with patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve):
+            read_tool = ReadWorkspaceFileTool()
+            result = await read_tool._execute(
+                user_id=user.id,
+                session=session,
+                path=filepath,
+            )
+
+        # Should have fallen back to _read_local_tool_result and succeeded.
+        assert isinstance(result, WorkspaceFileContentResponse), (
+            f"Expected fallback to local read, got {type(result).__name__}: "
+            f"{getattr(result, 'message', '')}"
+        )
+        decoded = base64.b64decode(result.content_base64).decode("utf-8")
+        assert decoded == "fallback content"
+        mock_resolve.assert_awaited_once()
+    finally:
+        _current_project_dir.reset(token)
+        shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_data):
+    """When _resolve_file succeeds, the local-disk fallback must NOT be invoked."""
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+
+    fake_file_id = "fake-file-id-001"
+    fake_content = b"workspace content"
+
+    # Build a minimal file_info stub that the tool's happy-path needs.
+    class _FakeFileInfo:
+        id = fake_file_id
+        name = "result.json"
+        path = "/result.json"
+        mime_type = "text/plain"
+        size_bytes = len(fake_content)
+
+    mock_resolve = AsyncMock(return_value=(fake_file_id, _FakeFileInfo()))
+
+    mock_manager = AsyncMock()
+    mock_manager.read_file_by_id = AsyncMock(return_value=fake_content)
+
+    with (
+        patch("backend.copilot.tools.workspace_files._resolve_file", mock_resolve),
+        patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ),
+        patch(
+            "backend.copilot.tools.workspace_files._read_local_tool_result"
+        ) as patched_local,
+    ):
+        read_tool = ReadWorkspaceFileTool()
+        result = await read_tool._execute(
+            user_id=user.id,
+            session=session,
+            file_id=fake_file_id,
+        )
+
+    # Fallback must not have been called.
+    patched_local.assert_not_called()
+    # Normal workspace path must have produced a content response.
+    assert isinstance(result, WorkspaceFileContentResponse)
+    assert base64.b64decode(result.content_base64) == fake_content

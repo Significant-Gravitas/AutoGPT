@@ -188,6 +188,7 @@ async def upload_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     file: UploadFile,
     session_id: str | None = Query(default=None),
+    overwrite: bool = Query(default=False),
 ) -> UploadFileResponse:
     """
     Upload a file to the user's workspace.
@@ -248,7 +249,9 @@ async def upload_file(
     # Write file via WorkspaceManager
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     try:
-        workspace_file = await manager.write_file(content, filename)
+        workspace_file = await manager.write_file(
+            content, filename, overwrite=overwrite
+        )
     except ValueError as e:
         raise fastapi.HTTPException(status_code=409, detail=str(e)) from e
 

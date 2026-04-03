@@ -1,7 +1,6 @@
 "use client";
 
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import * as React from "react";
 
 interface BecomeACreatorProps {
   title?: string;
@@ -10,17 +9,11 @@ interface BecomeACreatorProps {
 }
 
 export function BecomeACreator({
-  title = "Become a creator",
   description = "Join a community where your AI creations can inspire, engage, and be downloaded by users around the world.",
   buttonText = "Upload your agent",
 }: BecomeACreatorProps) {
   return (
-    <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
-      {/* Title */}
-      <h2 className="mb-[77px] font-poppins text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
-        {title}
-      </h2>
-
+    <div className="relative mx-auto mt-16 h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
       {/* Content Container */}
       <div className="mx-auto w-full max-w-[900px] px-4 text-center md:px-6 lg:px-0">
         <h2 className="mb-6 text-center font-poppins text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12">

@@ -43,6 +43,7 @@ class ResponseType(str, Enum):
     ERROR = "error"
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
+    STATUS = "status"
 
 
 class StreamBaseResponse(BaseModel):
@@ -186,12 +187,43 @@ class StreamToolOutputAvailable(StreamBaseResponse):
 
 
 class StreamUsage(StreamBaseResponse):
-    """Token usage statistics."""
+    """Token usage statistics.
+
+    Emitted as an SSE comment so the Vercel AI SDK parser ignores it
+    (it uses z.strictObject() and rejects unknown event types).
+    Usage data is recorded server-side (session DB + Redis counters).
+    """
 
     type: ResponseType = ResponseType.USAGE
-    promptTokens: int = Field(..., description="Number of prompt tokens")
-    completionTokens: int = Field(..., description="Number of completion tokens")
-    totalTokens: int = Field(..., description="Total number of tokens")
+    prompt_tokens: int = Field(
+        ...,
+        serialization_alias="promptTokens",
+        description="Number of uncached prompt tokens",
+    )
+    completion_tokens: int = Field(
+        ...,
+        serialization_alias="completionTokens",
+        description="Number of completion tokens",
+    )
+    total_tokens: int = Field(
+        ...,
+        serialization_alias="totalTokens",
+        description="Total number of tokens (raw, not weighted)",
+    )
+    cache_read_tokens: int = Field(
+        default=0,
+        serialization_alias="cacheReadTokens",
+        description="Prompt tokens served from cache (10% cost)",
+    )
+    cache_creation_tokens: int = Field(
+        default=0,
+        serialization_alias="cacheCreationTokens",
+        description="Prompt tokens written to cache (25% cost)",
+    )
+
+    def to_sse(self) -> str:
+        """Emit as SSE comment so the AI SDK parser ignores it."""
+        return f": usage {self.model_dump_json(exclude_none=True, by_alias=True)}\n\n"
 
 
 class StreamError(StreamBaseResponse):
@@ -232,3 +264,19 @@ class StreamHeartbeat(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE comment format to keep connection alive."""
         return ": heartbeat\n\n"
+
+
+class StreamStatus(StreamBaseResponse):
+    """Transient status notification shown to the user during long operations.
+
+    Used to provide feedback when the backend performs behind-the-scenes work
+    (e.g., compacting conversation context on a retry) that would otherwise
+    leave the user staring at an unexplained pause.
+
+    Sent as a proper ``data:`` event so the frontend can display it to the
+    user.  The AI SDK stream parser gracefully skips unknown chunk types
+    (logs a console warning), so this does not break the stream.
+    """
+
+    type: ResponseType = ResponseType.STATUS
+    message: str = Field(..., description="Human-readable status message")

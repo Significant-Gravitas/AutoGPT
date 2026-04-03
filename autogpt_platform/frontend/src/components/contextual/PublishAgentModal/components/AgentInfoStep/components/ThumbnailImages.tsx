@@ -108,6 +108,7 @@ export function ThumbnailImages({
                 className="relative flex-shrink-0 overflow-visible"
               >
                 <button
+                  type="button"
                   onClick={() => handleRemoveImage(index)}
                   className="absolute -right-2 -top-2 z-50 inline-flex size-6 items-center justify-center rounded-full bg-slate-900"
                   aria-label="Remove image"

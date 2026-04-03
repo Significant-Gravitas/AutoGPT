@@ -23,24 +23,38 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DotsThree, PlusCircleIcon, PlusIcon } from "@phosphor-icons/react";
+import {
+  CheckCircle,
+  CircleNotch,
+  DotsThree,
+  PlusCircleIcon,
+  PlusIcon,
+} from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import { formatNotificationTitle } from "../../helpers";
 import { useCopilotUIStore } from "../../store";
+import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
+import { UsageLimits } from "../UsageLimits/UsageLimits";
 
 export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
+  const {
+    sessionToDelete,
+    setSessionToDelete,
+    completedSessionIDs,
+    clearCompletedSession,
+  } = useCopilotUIStore();
 
   const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
-    useGetV2ListSessions({ limit: 50 });
+    useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
 
   const { mutate: deleteSession, isPending: isDeleting } =
     useDeleteV2DeleteSession({
@@ -98,6 +112,21 @@ export function ChatSidebar() {
       renameInputRef.current.select();
     }
   }, [editingSessionId]);
+
+  // Refetch session list when active session changes
+  useEffect(() => {
+    queryClient.invalidateQueries({
+      queryKey: getGetV2ListSessionsQueryKey(),
+    });
+  }, [sessionId, queryClient]);
+
+  // Clear completed indicator when navigating to a session (works for all paths)
+  useEffect(() => {
+    if (!sessionId || !completedSessionIDs.has(sessionId)) return;
+    clearCompletedSession(sessionId);
+    const remaining = Math.max(0, completedSessionIDs.size - 1);
+    document.title = formatNotificationTitle(remaining);
+  }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
@@ -228,7 +257,9 @@ export function ChatSidebar() {
                 <Text variant="h3" size="body-medium">
                   Your chats
                 </Text>
-                <div className="relative left-6">
+                <div className="flex items-center">
+                  <UsageLimits />
+                  <NotificationToggle />
                   <SidebarTrigger />
                 </div>
               </div>
@@ -259,12 +290,12 @@ export function ChatSidebar() {
                 <div className="flex min-h-[30rem] items-center justify-center py-4">
                   <LoadingSpinner size="small" className="text-neutral-600" />
                 </div>
-              ) : sessions.length === 0 ? (
+              ) : !sessions?.length ? (
                 <p className="py-4 text-center text-sm text-neutral-500">
                   No conversations yet
                 </p>
               ) : (
-                sessions.map((session) => (
+                sessions?.map((session) => (
                   <div
                     key={session.id}
                     className={cn(
@@ -305,8 +336,8 @@ export function ChatSidebar() {
                         onClick={() => handleSelectSession(session.id)}
                         className="w-full px-3 py-2.5 pr-10 text-left"
                       >
-                        <div className="flex min-w-0 max-w-full flex-col overflow-hidden">
-                          <div className="min-w-0 max-w-full">
+                        <div className="flex min-w-0 max-w-full items-center gap-2">
+                          <div className="min-w-0 flex-1">
                             <Text
                               variant="body"
                               className={cn(
@@ -329,10 +360,25 @@ export function ChatSidebar() {
                                 </motion.span>
                               </AnimatePresence>
                             </Text>
+                            <Text variant="small" className="text-neutral-400">
+                              {formatDate(session.updated_at)}
+                            </Text>
                           </div>
-                          <Text variant="small" className="text-neutral-400">
-                            {formatDate(session.updated_at)}
-                          </Text>
+                          {session.is_processing &&
+                            session.id !== sessionId &&
+                            !completedSessionIDs.has(session.id) && (
+                              <CircleNotch
+                                className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
+                                weight="bold"
+                              />
+                            )}
+                          {completedSessionIDs.has(session.id) &&
+                            session.id !== sessionId && (
+                              <CheckCircle
+                                className="h-4 w-4 shrink-0 text-green-500"
+                                weight="fill"
+                              />
+                            )}
                         </div>
                       </button>
                     )}

@@ -8,7 +8,6 @@ import prisma.enums
 import prisma.errors
 import prisma.models
 import prisma.types
-from prisma.enums import SubmissionStatus
 
 import backend.api.features.store.image_gen as store_image_gen
 import backend.api.features.store.media as store_media
@@ -342,12 +341,15 @@ async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
     graph_version: Optional[int] = None,
+    include_archived: bool = False,
 ) -> library_model.LibraryAgent | None:
     filter: prisma.types.LibraryAgentWhereInput = {
         "agentGraphId": graph_id,
         "userId": user_id,
         "isDeleted": False,
     }
+    if not include_archived:
+        filter["isArchived"] = False
     if graph_version is not None:
         filter["agentGraphVersion"] = graph_version
 
@@ -439,31 +441,56 @@ async def create_library_agent(
     async with transaction() as tx:
         library_agents = await asyncio.gather(
             *(
-                prisma.models.LibraryAgent.prisma(tx).create(
-                    data=prisma.types.LibraryAgentCreateInput(
-                        isCreatedByUser=(user_id == user_id),
-                        useGraphIsActiveVersion=True,
-                        User={"connect": {"id": user_id}},
-                        AgentGraph={
-                            "connect": {
-                                "graphVersionId": {
-                                    "id": graph_entry.id,
-                                    "version": graph_entry.version,
+                prisma.models.LibraryAgent.prisma(tx).upsert(
+                    where={
+                        "userId_agentGraphId_agentGraphVersion": {
+                            "userId": user_id,
+                            "agentGraphId": graph_entry.id,
+                            "agentGraphVersion": graph_entry.version,
+                        }
+                    },
+                    data={
+                        "create": prisma.types.LibraryAgentCreateInput(
+                            isCreatedByUser=(user_id == graph.user_id),
+                            useGraphIsActiveVersion=True,
+                            User={"connect": {"id": user_id}},
+                            AgentGraph={
+                                "connect": {
+                                    "graphVersionId": {
+                                        "id": graph_entry.id,
+                                        "version": graph_entry.version,
+                                    }
                                 }
-                            }
+                            },
+                            settings=SafeJson(
+                                GraphSettings(
+                                    human_in_the_loop_safe_mode=hitl_safe_mode,
+                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
+                                ).model_dump()
+                            ),
+                            **(
+                                {"Folder": {"connect": {"id": folder_id}}}
+                                if folder_id and graph_entry is graph
+                                else {}
+                            ),
+                        ),
+                        "update": {
+                            "isDeleted": False,
+                            "isArchived": False,
+                            "useGraphIsActiveVersion": True,
+                            "settings": SafeJson(
+                                GraphSettings(
+                                    human_in_the_loop_safe_mode=hitl_safe_mode,
+                                    sensitive_action_safe_mode=sensitive_action_safe_mode,
+                                ).model_dump()
+                            ),
+                            **(
+                                {"Folder": {"connect": {"id": folder_id}}}
+                                if folder_id and graph_entry is graph
+                                else {}
+                            ),
                         },
-                        settings=SafeJson(
-                            GraphSettings(
-                                human_in_the_loop_safe_mode=hitl_safe_mode,
-                                sensitive_action_safe_mode=sensitive_action_safe_mode,
-                            ).model_dump()
-                        ),
-                        **(
-                            {"Folder": {"connect": {"id": folder_id}}}
-                            if folder_id and graph_entry is graph
-                            else {}
-                        ),
-                    ),
+                    },
                     include=library_agent_include(
                         user_id, include_nodes=False, include_executions=False
                     ),
@@ -587,7 +614,9 @@ async def update_graph_in_library(
 
     created_graph = await graph_db.create_graph(graph_model, user_id)
 
-    library_agent = await get_library_agent_by_graph_id(user_id, created_graph.id)
+    library_agent = await get_library_agent_by_graph_id(
+        user_id, created_graph.id, include_archived=True
+    )
     if not library_agent:
         raise NotFoundError(f"Library agent not found for graph {created_graph.id}")
 
@@ -802,88 +831,46 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
 async def add_store_agent_to_library(
     store_listing_version_id: str, user_id: str
 ) -> library_model.LibraryAgent:
+    """Adds a marketplace agent to the user's library.
+
+    See also: `add_store_agent_to_library_as_admin()` which uses
+    `get_graph_as_admin` to bypass marketplace status checks for admin review.
     """
-    Adds an agent from a store listing version to the user's library if they don't already have it.
+    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
 
-    Args:
-        store_listing_version_id: The ID of the store listing version containing the agent.
-        user_id: The user's library to which the agent is being added.
-
-    Returns:
-        The newly created LibraryAgent if successfully added, the existing corresponding one if any.
-
-    Raises:
-        NotFoundError: If the store listing or associated agent is not found.
-        DatabaseError: If there's an issue creating the LibraryAgent record.
-    """
     logger.debug(
         f"Adding agent from store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-
-    listing_version = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}
+    graph_id, graph_version = await resolve_graph_for_library(
+        store_listing_version_id, user_id, admin=False
     )
-    if (
-        not listing_version
-        or not listing_version.AgentGraph
-        or listing_version.submissionStatus != SubmissionStatus.APPROVED
-        or listing_version.isDeleted
-    ):
-        logger.warning(
-            "Store listing version not found or not available: "
-            f"{store_listing_version_id}"
-        )
-        raise NotFoundError(
-            f"Store listing version {store_listing_version_id} not found "
-            "or not available"
-        )
+    library_agent = await add_graph_to_library(graph_id, graph_version, user_id)
 
-    graph_id = listing_version.agentGraphId
-    graph_version = listing_version.agentGraphVersion
-
-    # Check if user already has this agent (non-deleted)
-    if existing := await get_library_agent_by_graph_id(
-        user_id, graph_id, graph_version
-    ):
-        return existing
-
-    # Check for soft-deleted version and restore it
-    deleted_agent = await prisma.models.LibraryAgent.prisma().find_unique(
-        where={
-            "userId_agentGraphId_agentGraphVersion": {
-                "userId": user_id,
-                "agentGraphId": graph_id,
-                "agentGraphVersion": graph_version,
-            }
-        },
-    )
-    if deleted_agent and deleted_agent.isDeleted:
-        return await update_library_agent(deleted_agent.id, user_id, is_deleted=False)
-
-    # Create LibraryAgent entry
-    added_agent = await prisma.models.LibraryAgent.prisma().create(
-        data={
-            "User": {"connect": {"id": user_id}},
-            "AgentGraph": {
-                "connect": {
-                    "graphVersionId": {"id": graph_id, "version": graph_version}
-                }
-            },
-            "isCreatedByUser": False,
-            "useGraphIsActiveVersion": False,
-            "settings": SafeJson(GraphSettings().model_dump()),
-        },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
-        ),
-    )
     logger.debug(
-        f"Added graph #{graph_id} v{graph_version}"
-        f"for store listing version #{listing_version.id} "
+        f"Added graph #{graph_id} v{graph_version} "
+        f"for store listing version #{store_listing_version_id} "
         f"to library for user #{user_id}"
     )
-    return library_model.LibraryAgent.from_db(added_agent)
+
+    return library_agent
+
+
+async def add_store_agent_to_library_as_admin(
+    store_listing_version_id: str, user_id: str
+) -> library_model.LibraryAgent:
+    """Admin variant that uses `get_graph_as_admin` to bypass marketplace
+    APPROVED-only checks, allowing admins to add pending agents for review."""
+    from ._add_to_library import add_graph_to_library, resolve_graph_for_library
+
+    logger.warning(
+        f"ADMIN adding agent from store listing version "
+        f"#{store_listing_version_id} to library for user #{user_id}"
+    )
+    graph_id, graph_version = await resolve_graph_for_library(
+        store_listing_version_id, user_id, admin=True
+    )
+    return await add_graph_to_library(graph_id, graph_version, user_id)
 
 
 ##############################################

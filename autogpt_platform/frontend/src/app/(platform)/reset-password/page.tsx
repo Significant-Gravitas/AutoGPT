@@ -42,6 +42,14 @@ function ResetPasswordContent() {
 
       if (isExpiredOrUsed) {
         setShowExpiredMessage(true);
+        // Also show a toast with the Supabase error detail for debugging
+        if (errorDescription) {
+          toast({
+            title: "Link Expired",
+            description: errorDescription,
+            variant: "destructive",
+          });
+        }
       } else {
         // Show toast for other errors
         const errorMessage =

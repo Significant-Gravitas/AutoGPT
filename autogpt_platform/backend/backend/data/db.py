@@ -38,6 +38,10 @@ POOL_TIMEOUT = os.getenv("DB_POOL_TIMEOUT")
 if POOL_TIMEOUT:
     DATABASE_URL = add_param(DATABASE_URL, "pool_timeout", POOL_TIMEOUT)
 
+STMT_CACHE_SIZE = os.getenv("DB_STATEMENT_CACHE_SIZE")
+if STMT_CACHE_SIZE:
+    DATABASE_URL = add_param(DATABASE_URL, "statement_cache_size", STMT_CACHE_SIZE)
+
 HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
 
 prisma = Prisma(

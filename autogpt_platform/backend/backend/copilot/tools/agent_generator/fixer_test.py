@@ -475,6 +475,111 @@ class TestFixAiModelParameter:
 
         assert result["nodes"][0]["input_default"]["model"] == "claude-opus-4-6"
 
+    def test_block_specific_enum_uses_block_default(self):
+        """Blocks with their own model enum (e.g. PerplexityBlock) should use
+        the block's allowed models and default, not the generic ones."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=block_id,
+            input_default={"model": "gpt-5.2-2025-12-11"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "name": "PerplexityBlock",
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "enum": [
+                                "perplexity/sonar",
+                                "perplexity/sonar-pro",
+                                "perplexity/sonar-deep-research",
+                            ],
+                            "default": "perplexity/sonar",
+                        }
+                    },
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar"
+
+    def test_block_specific_enum_valid_model_unchanged(self):
+        """A valid block-specific model should not be replaced."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(
+            node_id="n1",
+            block_id=block_id,
+            input_default={"model": "perplexity/sonar-pro"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "name": "PerplexityBlock",
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "enum": [
+                                "perplexity/sonar",
+                                "perplexity/sonar-pro",
+                                "perplexity/sonar-deep-research",
+                            ],
+                            "default": "perplexity/sonar",
+                        }
+                    },
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar-pro"
+
+    def test_block_specific_enum_missing_model_gets_block_default(self):
+        """Missing model on a block with enum should use the block's default."""
+        fixer = AgentFixer()
+        block_id = generate_uuid()
+        node = _make_node(node_id="n1", block_id=block_id, input_default={})
+        agent = _make_agent(nodes=[node])
+
+        blocks = [
+            {
+                "id": block_id,
+                "name": "PerplexityBlock",
+                "categories": [{"category": "AI"}],
+                "inputSchema": {
+                    "properties": {
+                        "model": {
+                            "type": "string",
+                            "enum": [
+                                "perplexity/sonar",
+                                "perplexity/sonar-pro",
+                                "perplexity/sonar-deep-research",
+                            ],
+                            "default": "perplexity/sonar",
+                        }
+                    },
+                },
+            }
+        ]
+
+        result = fixer.fix_ai_model_parameter(agent, blocks)
+
+        assert result["nodes"][0]["input_default"]["model"] == "perplexity/sonar"
+
 
 class TestFixAgentExecutorBlocks:
     """Tests for fix_agent_executor_blocks."""

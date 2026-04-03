@@ -613,5 +613,5 @@ async def cleanup_expired_files_async() -> int:
             )
             return deleted_count
         except Exception as e:
-            logger.error(f"[CloudStorage] Error during cloud storage cleanup: {e}")
+            logger.warning(f"[CloudStorage] Error during cloud storage cleanup: {e}")
             return 0

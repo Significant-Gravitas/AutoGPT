@@ -40,18 +40,14 @@ def add_exception_handlers(app: fastapi.FastAPI) -> None:
     """
     for exception, handler in {
         # It's the client's problem: HTTP 4XX
-        NotFoundError: _handle_error(status.HTTP_404_NOT_FOUND, log_error=False),
-        NotAuthorizedError: _handle_error(status.HTTP_403_FORBIDDEN, log_error=False),
+        NotFoundError: _handle_error(status.HTTP_404_NOT_FOUND),
+        NotAuthorizedError: _handle_error(status.HTTP_403_FORBIDDEN),
         PreconditionFailed: _handle_error(status.HTTP_428_PRECONDITION_REQUIRED),
         RequestValidationError: _handle_validation_error,
         pydantic.ValidationError: _handle_validation_error,
         PrismaRecordNotFoundError: _handle_error(status.HTTP_404_NOT_FOUND),
-        FolderAlreadyExistsError: _handle_error(
-            status.HTTP_409_CONFLICT, log_error=False
-        ),
-        FolderValidationError: _handle_error(
-            status.HTTP_400_BAD_REQUEST, log_error=False
-        ),
+        FolderAlreadyExistsError: _handle_error(status.HTTP_409_CONFLICT),
+        FolderValidationError: _handle_error(status.HTTP_400_BAD_REQUEST),
         ValueError: _handle_error(status.HTTP_400_BAD_REQUEST),
         # It's the backend's problem: HTTP 5XX
         MissingConfigError: _handle_error(status.HTTP_503_SERVICE_UNAVAILABLE),
@@ -64,13 +60,22 @@ def add_exception_handlers(app: fastapi.FastAPI) -> None:
 def _handle_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
-            logger.exception(
-                "%s %s failed. Investigate and resolve the underlying issue: %s",
-                request.method,
-                request.url.path,
-                exc,
-                exc_info=exc,
-            )
+            if status_code >= 500:
+                logger.exception(
+                    "%s %s failed. Investigate and resolve the underlying issue: %s",
+                    request.method,
+                    request.url.path,
+                    exc,
+                    exc_info=exc,
+                )
+            else:
+                logger.warning(
+                    "%s %s failed with %d: %s",
+                    request.method,
+                    request.url.path,
+                    status_code,
+                    exc,
+                )
 
         hint = (
             "Adjust the request and retry."

@@ -8,10 +8,10 @@ from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
 from prisma.models import UserWorkspaceFile
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
@@ -20,12 +20,25 @@ from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
+    ChatSessionMetadata,
     append_and_save_message,
     create_chat_session,
     delete_chat_session,
     get_chat_session,
     get_user_sessions,
     update_session_title,
+)
+from backend.copilot.rate_limit import (
+    CoPilotUsageStatus,
+    RateLimitExceeded,
+    acquire_reset_lock,
+    check_rate_limit,
+    get_daily_reset_count,
+    get_global_rate_limits,
+    get_usage_status,
+    increment_daily_reset_count,
+    release_reset_lock,
+    reset_daily_usage,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -53,16 +66,22 @@ from backend.copilot.tools.models import (
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
+from backend.data.redis_client import get_redis_async
+from backend.data.understanding import get_business_understanding
 from backend.data.workspace import get_or_create_workspace
-from backend.util.exceptions import NotFoundError
+from backend.util.exceptions import InsufficientBalanceError, NotFoundError
+from backend.util.settings import Settings
+
+settings = Settings()
+
+logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
-
-logger = logging.getLogger(__name__)
 
 
 async def _validate_and_get_session(
@@ -94,12 +113,25 @@ class StreamChatRequest(BaseModel):
     )  # Workspace file IDs attached to this message
 
 
+class CreateSessionRequest(BaseModel):
+    """Request model for creating a new chat session.
+
+    ``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.
+    Extra/unknown fields are rejected (422) to prevent silent mis-use.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dry_run: bool = False
+
+
 class CreateSessionResponse(BaseModel):
     """Response model containing information on a newly created chat session."""
 
     id: str
     created_at: str
     user_id: str | None
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
 
 
 class ActiveStreamInfo(BaseModel):
@@ -118,6 +150,9 @@ class SessionDetailResponse(BaseModel):
     user_id: str | None
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
 
 
 class SessionSummaryResponse(BaseModel):
@@ -127,6 +162,7 @@ class SessionSummaryResponse(BaseModel):
     created_at: str
     updated_at: str
     title: str | None = None
+    is_processing: bool
 
 
 class ListSessionsResponse(BaseModel):
@@ -185,6 +221,28 @@ async def list_sessions(
     """
     sessions, total_count = await get_user_sessions(user_id, limit, offset)
 
+    # Batch-check Redis for active stream status on each session
+    processing_set: set[str] = set()
+    if sessions:
+        try:
+            redis = await get_redis_async()
+            pipe = redis.pipeline(transaction=False)
+            for session in sessions:
+                pipe.hget(
+                    f"{config.session_meta_prefix}{session.session_id}",
+                    "status",
+                )
+            statuses = await pipe.execute()
+            processing_set = {
+                session.session_id
+                for session, st in zip(sessions, statuses)
+                if st == "running"
+            }
+        except Exception:
+            logger.warning(
+                "Failed to fetch processing status from Redis; defaulting to empty"
+            )
+
     return ListSessionsResponse(
         sessions=[
             SessionSummaryResponse(
@@ -192,6 +250,7 @@ async def list_sessions(
                 created_at=session.started_at.isoformat(),
                 updated_at=session.updated_at.isoformat(),
                 title=session.title,
+                is_processing=session.session_id in processing_set,
             )
             for session in sessions
         ],
@@ -203,7 +262,8 @@ async def list_sessions(
     "/sessions",
 )
 async def create_session(
-    user_id: Annotated[str, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    request: CreateSessionRequest | None = None,
 ) -> CreateSessionResponse:
     """
     Create a new chat session.
@@ -212,22 +272,28 @@ async def create_session(
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
+        request: Optional request body. When provided, ``dry_run=True``
+            forces run_block and run_agent calls to use dry-run simulation.
 
     Returns:
         CreateSessionResponse: Details of the created session.
 
     """
+    dry_run = request.dry_run if request else False
+
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
+        f"{', dry_run=True' if dry_run else ''}"
     )
 
-    session = await create_chat_session(user_id)
+    session = await create_chat_session(user_id, dry_run=dry_run)
 
     return CreateSessionResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
         user_id=session.user_id,
+        metadata=session.metadata,
     )
 
 
@@ -322,7 +388,7 @@ async def update_session_title_route(
 )
 async def get_session(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
@@ -363,6 +429,10 @@ async def get_session(
             last_message_id=last_message_id,
         )
 
+    # Sum token usage from session
+    total_prompt = sum(u.prompt_tokens for u in session.usage)
+    total_completion = sum(u.completion_tokens for u in session.usage)
+
     return SessionDetailResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
@@ -370,6 +440,204 @@ async def get_session(
         user_id=session.user_id or None,
         messages=messages,
         active_stream=active_stream_info,
+        total_prompt_tokens=total_prompt,
+        total_completion_tokens=total_completion,
+        metadata=session.metadata,
+    )
+
+
+@router.get(
+    "/usage",
+)
+async def get_copilot_usage(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> CoPilotUsageStatus:
+    """Get CoPilot usage status for the authenticated user.
+
+    Returns current token usage vs limits for daily and weekly windows.
+    Global defaults sourced from LaunchDarkly (falling back to config).
+    """
+    daily_limit, weekly_limit = await get_global_rate_limits(
+        user_id, config.daily_token_limit, config.weekly_token_limit
+    )
+    return await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=daily_limit,
+        weekly_token_limit=weekly_limit,
+        rate_limit_reset_cost=config.rate_limit_reset_cost,
+    )
+
+
+class RateLimitResetResponse(BaseModel):
+    """Response from resetting the daily rate limit."""
+
+    success: bool
+    credits_charged: int = Field(description="Credits charged (in cents)")
+    remaining_balance: int = Field(description="Credit balance after charge (in cents)")
+    usage: CoPilotUsageStatus = Field(description="Updated usage status after reset")
+
+
+@router.post(
+    "/usage/reset",
+    status_code=200,
+    responses={
+        400: {
+            "description": "Bad Request (feature disabled or daily limit not reached)"
+        },
+        402: {"description": "Payment Required (insufficient credits)"},
+        429: {
+            "description": "Too Many Requests (max daily resets exceeded or reset in progress)"
+        },
+        503: {
+            "description": "Service Unavailable (Redis reset failed; credits refunded or support needed)"
+        },
+    },
+)
+async def reset_copilot_usage(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> RateLimitResetResponse:
+    """Reset the daily CoPilot rate limit by spending credits.
+
+    Allows users who have hit their daily token limit to spend credits
+    to reset their daily usage counter and continue working.
+    Returns 400 if the feature is disabled or the user is not over the limit.
+    Returns 402 if the user has insufficient credits.
+    """
+    cost = config.rate_limit_reset_cost
+    if cost <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Rate limit reset is not available.",
+        )
+
+    if not settings.config.enable_credit:
+        raise HTTPException(
+            status_code=400,
+            detail="Rate limit reset is not available (credit system is disabled).",
+        )
+
+    daily_limit, weekly_limit = await get_global_rate_limits(
+        user_id, config.daily_token_limit, config.weekly_token_limit
+    )
+
+    if daily_limit <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No daily limit is configured — nothing to reset.",
+        )
+
+    # Check max daily resets.  get_daily_reset_count returns None when Redis
+    # is unavailable; reject the reset in that case to prevent unlimited
+    # free resets when the counter store is down.
+    reset_count = await get_daily_reset_count(user_id)
+    if reset_count is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to verify reset eligibility — please try again later.",
+        )
+    if config.max_daily_resets > 0 and reset_count >= config.max_daily_resets:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You've used all {config.max_daily_resets} resets for today.",
+        )
+
+    # Acquire a per-user lock to prevent TOCTOU races (concurrent resets).
+    if not await acquire_reset_lock(user_id):
+        raise HTTPException(
+            status_code=429,
+            detail="A reset is already in progress. Please try again.",
+        )
+
+    try:
+        # Verify the user is actually at or over their daily limit.
+        # (rate_limit_reset_cost intentionally omitted — this object is only
+        # used for limit checks, not returned to the client.)
+        usage_status = await get_usage_status(
+            user_id=user_id,
+            daily_token_limit=daily_limit,
+            weekly_token_limit=weekly_limit,
+        )
+        if daily_limit > 0 and usage_status.daily.used < daily_limit:
+            raise HTTPException(
+                status_code=400,
+                detail="You have not reached your daily limit yet.",
+            )
+
+        # If the weekly limit is also exhausted, resetting the daily counter
+        # won't help — the user would still be blocked by the weekly limit.
+        if weekly_limit > 0 and usage_status.weekly.used >= weekly_limit:
+            raise HTTPException(
+                status_code=400,
+                detail="Your weekly limit is also reached. Resetting the daily limit won't help.",
+            )
+
+        # Charge credits.
+        credit_model = await get_user_credit_model(user_id)
+        try:
+            remaining = await credit_model.spend_credits(
+                user_id=user_id,
+                cost=cost,
+                metadata=UsageTransactionMetadata(
+                    reason="CoPilot daily rate limit reset",
+                ),
+            )
+        except InsufficientBalanceError as e:
+            raise HTTPException(
+                status_code=402,
+                detail="Insufficient credits to reset your rate limit.",
+            ) from e
+
+        # Reset daily usage in Redis.  If this fails, refund the credits
+        # so the user is not charged for a service they did not receive.
+        if not await reset_daily_usage(user_id, daily_token_limit=daily_limit):
+            # Compensate: refund the charged credits.
+            refunded = False
+            try:
+                await credit_model.top_up_credits(user_id, cost)
+                refunded = True
+                logger.warning(
+                    "Refunded %d credits to user %s after Redis reset failure",
+                    cost,
+                    user_id[:8],
+                )
+            except Exception:
+                logger.error(
+                    "CRITICAL: Failed to refund %d credits to user %s "
+                    "after Redis reset failure — manual intervention required",
+                    cost,
+                    user_id[:8],
+                    exc_info=True,
+                )
+            if refunded:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Rate limit reset failed — please try again later. "
+                    "Your credits have not been charged.",
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="Rate limit reset failed and the automatic refund "
+                "also failed. Please contact support for assistance.",
+            )
+
+        # Track the reset count for daily cap enforcement.
+        await increment_daily_reset_count(user_id)
+    finally:
+        await release_reset_lock(user_id)
+
+    # Return updated usage status.
+    updated_usage = await get_usage_status(
+        user_id=user_id,
+        daily_token_limit=daily_limit,
+        weekly_token_limit=weekly_limit,
+        rate_limit_reset_cost=config.rate_limit_reset_cost,
+    )
+
+    return RateLimitResetResponse(
+        success=True,
+        credits_charged=cost,
+        remaining_balance=remaining,
+        usage=updated_usage,
     )
 
 
@@ -379,7 +647,7 @@ async def get_session(
 )
 async def cancel_session_task(
     session_id: str,
-    user_id: Annotated[str | None, Depends(auth.get_user_id)],
+    user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> CancelSessionResponse:
     """Cancel the active streaming task for a session.
 
@@ -424,7 +692,7 @@ async def cancel_session_task(
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -441,7 +709,7 @@ async def stream_chat_post(
     Args:
         session_id: The chat session identifier to associate with the streamed messages.
         request: Request body containing message, is_user_message, and optional context.
-        user_id: Optional authenticated user ID.
+        user_id: Authenticated user ID.
     Returns:
         StreamingResponse: SSE-formatted response chunks.
 
@@ -450,9 +718,7 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
-    log_meta = {"component": "ChatStream", "session_id": session_id}
-    if user_id:
-        log_meta["user_id"] = user_id
+    log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
         f"[TIMING] stream_chat_post STARTED, session={session_id}, "
@@ -469,6 +735,22 @@ async def stream_chat_post(
             }
         },
     )
+
+    # Pre-turn rate limit check (token-based).
+    # check_rate_limit short-circuits internally when both limits are 0.
+    # Global defaults sourced from LaunchDarkly, falling back to config.
+    if user_id:
+        try:
+            daily_limit, weekly_limit = await get_global_rate_limits(
+                user_id, config.daily_token_limit, config.weekly_token_limit
+            )
+            await check_rate_limit(
+                user_id=user_id,
+                daily_token_limit=daily_limit,
+                weekly_token_limit=weekly_limit,
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(status_code=429, detail=str(e)) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -704,7 +986,7 @@ async def stream_chat_post(
 )
 async def resume_session_stream(
     session_id: str,
-    user_id: str | None = Depends(auth.get_user_id),
+    user_id: str = Security(auth.get_user_id),
 ):
     """
     Resume an active stream for a session.
@@ -828,6 +1110,47 @@ async def session_assign_user(
     return {"status": "ok"}
 
 
+# ========== Suggested Prompts ==========
+
+
+class SuggestedTheme(BaseModel):
+    """A themed group of suggested prompts."""
+
+    name: str
+    prompts: list[str]
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response model for user-specific suggested prompts grouped by theme."""
+
+    themes: list[SuggestedTheme]
+
+
+@router.get(
+    "/suggested-prompts",
+    dependencies=[Security(auth.requires_user)],
+)
+async def get_suggested_prompts(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> SuggestedPromptsResponse:
+    """
+    Get LLM-generated suggested prompts grouped by theme.
+
+    Returns personalized quick-action prompts based on the user's
+    business understanding. Returns empty themes list if no custom
+    prompts are available.
+    """
+    understanding = await get_business_understanding(user_id)
+    if understanding is None or not understanding.suggested_prompts:
+        return SuggestedPromptsResponse(themes=[])
+
+    themes = [
+        SuggestedTheme(name=name, prompts=prompts)
+        for name, prompts in understanding.suggested_prompts.items()
+    ]
+    return SuggestedPromptsResponse(themes=themes)
+
+
 # ========== Configuration ==========
 
 
@@ -876,7 +1199,7 @@ async def health_check() -> dict:
     )
 
     # Create and retrieve session to verify full data layer
-    session = await create_chat_session(health_check_user_id)
+    session = await create_chat_session(health_check_user_id, dry_run=False)
     await get_chat_session(session.session_id, health_check_user_id)
 
     return {

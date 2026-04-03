@@ -1,11 +1,16 @@
 "use client";
 
 import {
+  getGetV1ListGraphExecutionsQueryKey,
+  usePostV1ExecuteGraphAgent,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
   getGetV1ListExecutionSchedulesForAGraphQueryOptions,
   useDeleteV1DeleteExecutionSchedule,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
@@ -13,6 +18,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { useToast } from "@/components/molecules/Toast/use-toast";
@@ -24,15 +30,24 @@ interface Props {
   agent: LibraryAgent;
   schedule: GraphExecutionJobInfo;
   onDeleted?: () => void;
+  onRunCreated?: (runID: string) => void;
 }
 
-export function ScheduleActionsDropdown({ agent, schedule, onDeleted }: Props) {
+export function ScheduleActionsDropdown({
+  agent,
+  schedule,
+  onDeleted,
+  onRunCreated,
+}: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const { mutateAsync: deleteSchedule, isPending: isDeleting } =
     useDeleteV1DeleteExecutionSchedule();
+
+  const { mutateAsync: executeAgent, isPending: isRunning } =
+    usePostV1ExecuteGraphAgent();
 
   async function handleDelete() {
     try {
@@ -60,6 +75,43 @@ export function ScheduleActionsDropdown({ agent, schedule, onDeleted }: Props) {
     }
   }
 
+  async function handleRunNow(e: React.MouseEvent) {
+    e.stopPropagation();
+
+    try {
+      toast({ title: "Run started" });
+
+      const res = await executeAgent({
+        graphId: schedule.graph_id,
+        graphVersion: schedule.graph_version,
+        data: {
+          inputs: schedule.input_data || {},
+          credentials_inputs: schedule.input_credentials || {},
+          source: "library",
+        },
+      });
+
+      const newRunID = okData(res)?.id;
+
+      await queryClient.invalidateQueries({
+        queryKey: getGetV1ListGraphExecutionsQueryKey(agent.graph_id),
+      });
+
+      if (newRunID) {
+        onRunCreated?.(newRunID);
+      }
+    } catch (error: unknown) {
+      toast({
+        title: "Failed to start run",
+        description:
+          error instanceof Error
+            ? error.message
+            : "An unexpected error occurred.",
+        variant: "destructive",
+      });
+    }
+  }
+
   return (
     <>
       <DropdownMenu>
@@ -73,6 +125,14 @@ export function ScheduleActionsDropdown({ agent, schedule, onDeleted }: Props) {
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={handleRunNow}
+            disabled={isRunning}
+            className="flex items-center gap-2"
+          >
+            {isRunning ? "Running..." : "Run now"}
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={(e) => {
               e.stopPropagation();

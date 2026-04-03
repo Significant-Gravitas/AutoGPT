@@ -4,6 +4,7 @@ import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpo
 import { getGetV2ListLibraryAgentsQueryKey } from "@/app/api/__generated__/endpoints/library/library";
 import {
   useGetV2ListLibraryFolders,
+  useGetV2GetFolder,
   usePostV2BulkMoveAgents,
   getGetV2ListLibraryFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/folders/folders";
@@ -106,9 +107,12 @@ export function useLibraryAgentList({
         fetchNextPage: fetchNextPage,
       };
 
-  const { data: rawFoldersData } = useGetV2ListLibraryFolders(undefined, {
-    query: { select: okData },
-  });
+  const { data: rawFoldersData } = useGetV2ListLibraryFolders(
+    { parent_id: selectedFolderId ?? undefined },
+    {
+      query: { select: okData },
+    },
+  );
 
   const foldersData = searchTerm ? undefined : rawFoldersData;
 
@@ -185,11 +189,15 @@ export function useLibraryAgentList({
     });
   }
 
-  const currentFolder = selectedFolderId
-    ? foldersData?.folders.find((f) => f.id === selectedFolderId)
-    : null;
+  const { data: currentFolderData } = useGetV2GetFolder(
+    selectedFolderId ?? "",
+    {
+      query: { select: okData, enabled: !!selectedFolderId },
+    },
+  );
+  const currentFolder = selectedFolderId ? currentFolderData : null;
 
-  const showFolders = !isFavoritesTab && !selectedFolderId;
+  const showFolders = !isFavoritesTab;
 
   function handleFolderDeleted() {
     if (selectedFolderId === deletingFolder?.id) {
@@ -201,6 +209,8 @@ export function useLibraryAgentList({
     isFavoritesTab,
     agentLoading,
     agentCount,
+    allAgentsCount,
+    favoritesCount: favoriteAgentsData.agentCount,
     agents,
     hasNextPage: agentsHasNextPage,
     isFetchingNextPage: agentsIsFetchingNextPage,

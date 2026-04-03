@@ -13,6 +13,7 @@ export type RenderSegment =
   | { kind: "collapsed-group"; parts: ToolUIPart[] };
 
 const CUSTOM_TOOL_TYPES = new Set([
+  "tool-ask_question",
   "tool-find_block",
   "tool-find_agent",
   "tool-find_library_agent",
@@ -172,16 +173,22 @@ export function getTurnMessages(
 // The hex suffix makes it virtually impossible for an LLM to accidentally
 // produce these strings in normal conversation.
 const COPILOT_ERROR_PREFIX = "[__COPILOT_ERROR_f7a1__]";
+const COPILOT_RETRYABLE_ERROR_PREFIX = "[__COPILOT_RETRYABLE_ERROR_a9c2__]";
 const COPILOT_SYSTEM_PREFIX = "[__COPILOT_SYSTEM_e3b0__]";
 
-export type MarkerType = "error" | "system" | null;
+export type MarkerType = "error" | "retryable_error" | "system" | null;
 
 /** Escape all regex special characters in a string. */
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Pre-compiled marker regexes (avoids re-creating on every call / render)
+// Pre-compiled marker regexes (avoids re-creating on every call / render).
+// Retryable check must come first since it's more specific.
+const RETRYABLE_ERROR_MARKER_RE = new RegExp(
+  `${escapeRegExp(COPILOT_RETRYABLE_ERROR_PREFIX)}\\s*(.+?)$`,
+  "s",
+);
 const ERROR_MARKER_RE = new RegExp(
   `${escapeRegExp(COPILOT_ERROR_PREFIX)}\\s*(.+?)$`,
   "s",
@@ -196,6 +203,15 @@ export function parseSpecialMarkers(text: string): {
   markerText: string;
   cleanText: string;
 } {
+  const retryableMatch = text.match(RETRYABLE_ERROR_MARKER_RE);
+  if (retryableMatch) {
+    return {
+      markerType: "retryable_error",
+      markerText: retryableMatch[1].trim(),
+      cleanText: text.replace(retryableMatch[0], "").trim(),
+    };
+  }
+
   const errorMatch = text.match(ERROR_MARKER_RE);
   if (errorMatch) {
     return {

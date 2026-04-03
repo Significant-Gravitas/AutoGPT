@@ -1,64 +1,63 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
 
 interface UseGraphContentProps {
   searchQuery: string;
   filteredNodes: SearchableNode[];
-  onNodeSelect: (nodeId: string) => void;
+  onNodeSelect: (nodeID: string) => void;
 }
 
-export const useGraphContent = ({
+export function useGraphContent({
   searchQuery,
   filteredNodes,
   onNodeSelect,
-}: UseGraphContentProps) => {
+}: UseGraphContentProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     setSelectedIndex(0);
   }, [searchQuery]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
+  useEffect(() => {
+    const el = itemRefs.current.get(selectedIndex);
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  }, [selectedIndex]);
+
+  const setItemRef = useCallback((index: number, el: HTMLDivElement | null) => {
+    if (el) {
+      itemRefs.current.set(index, el);
+    } else {
+      itemRefs.current.delete(index);
+    }
+  }, []);
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown" && filteredNodes.length > 0) {
       e.preventDefault();
       setSelectedIndex((prev) => Math.min(prev + 1, filteredNodes.length - 1));
-    } else if (e.key === "ArrowUp") {
+    } else if (e.key === "ArrowUp" && filteredNodes.length > 0) {
       e.preventDefault();
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
     } else if (e.key === "Enter" && filteredNodes.length > 0) {
       e.preventDefault();
-      onNodeSelect(filteredNodes[selectedIndex].id);
-    }
-  };
-
-  const getNodeInputOutputSummary = (node: SearchableNode) => {
-    // Safety check for node data
-    if (!node || !node.data) {
-      return "";
-    }
-
-    const inputs = Object.keys(node.data?.inputSchema?.properties || {});
-    const outputs = Object.keys(node.data?.outputSchema?.properties || {});
-    const parts = [];
-
-    if (inputs.length > 0) {
-      parts.push(
-        `Inputs: ${inputs.slice(0, 3).join(", ")}${inputs.length > 3 ? "..." : ""}`,
+      const safeIndex = Math.max(
+        0,
+        Math.min(selectedIndex, filteredNodes.length - 1),
       );
+      const node = filteredNodes[safeIndex];
+      if (node) {
+        onNodeSelect(node.id);
+      }
     }
-    if (outputs.length > 0) {
-      parts.push(
-        `Outputs: ${outputs.slice(0, 3).join(", ")}${outputs.length > 3 ? "..." : ""}`,
-      );
-    }
-
-    return parts.join(" | ");
-  };
+  }
 
   return {
     selectedIndex,
     setSelectedIndex,
+    setItemRef,
     handleKeyDown,
-    getNodeInputOutputSummary,
   };
-};
+}

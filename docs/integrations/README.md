@@ -181,6 +181,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Read Spreadsheet](block-integrations/data.md#read-spreadsheet) | Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows |
 | [Related Keyword Extractor](block-integrations/dataforseo/related_keywords.md#related-keyword-extractor) | Extract individual fields from a RelatedKeyword object |
 | [Retrieve Information](block-integrations/data.md#retrieve-information) | Retrieve key-value information for the current user |
+| [SQL Query](block-integrations/data.md#sql-query) | Execute a SQL query |
 | [Screenshot Web Page](block-integrations/data.md#screenshot-web-page) | Takes a screenshot of a specified website using ScreenshotOne API |
 
 ## Text Processing
@@ -209,8 +210,8 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [AI Ad Maker Video Creator](block-integrations/llm.md#ai-ad-maker-video-creator) | Creates an AI‑generated 30‑second advert (text + images) |
 | [AI Condition](block-integrations/llm.md#ai-condition) | Uses AI to evaluate natural language conditions and provide conditional outputs |
 | [AI Conversation](block-integrations/llm.md#ai-conversation) | A block that facilitates multi-turn conversations with a Large Language Model (LLM), maintaining context across message exchanges |
-| [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana model from Gemini 2 |
-| [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using BlackForest Labs' Flux Kontext models |
+| [AI Image Customizer](block-integrations/llm.md#ai-image-customizer) | Generate and edit custom images using Google's Nano-Banana models from Gemini |
+| [AI Image Editor](block-integrations/llm.md#ai-image-editor) | Edit images using Flux Kontext or Google Nano Banana models |
 | [AI Image Generator](block-integrations/llm.md#ai-image-generator) | Generate images using various AI models through a unified interface |
 | [AI List Generator](block-integrations/llm.md#ai-list-generator) | A block that creates lists of items based on prompts using a Large Language Model (LLM), with optional source data for context |
 | [AI Music Generator](block-integrations/llm.md#ai-music-generator) | This block generates music using Meta's MusicGen model on Replicate |
@@ -230,10 +231,10 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Ideogram Model](block-integrations/llm.md#ideogram-model) | This block runs Ideogram models with both simple and advanced settings |
 | [Jina Chunking](block-integrations/jina/chunking.md#jina-chunking) | Chunks texts using Jina AI's segmentation service |
 | [Jina Embedding](block-integrations/jina/embeddings.md#jina-embedding) | Generates embeddings using Jina AI |
+| [Orchestrator](block-integrations/llm.md#orchestrator) | Uses AI to intelligently decide what tool to use |
 | [Perplexity](block-integrations/llm.md#perplexity) | Query Perplexity's sonar models with real-time web search capabilities and receive annotated responses with source citations |
 | [Replicate Flux Advanced Model](block-integrations/replicate/flux_advanced.md#replicate-flux-advanced-model) | This block runs Flux models on Replicate with advanced settings |
 | [Replicate Model](block-integrations/replicate/replicate_block.md#replicate-model) | Run Replicate models synchronously |
-| [Smart Decision Maker](block-integrations/llm.md#smart-decision-maker) | Uses AI to intelligently decide what tool to use |
 | [Stagehand Act](block-integrations/stagehand/blocks.md#stagehand-act) | Interact with a web page by performing actions on a web page |
 | [Stagehand Extract](block-integrations/stagehand/blocks.md#stagehand-extract) | Extract structured data from a webpage |
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |
@@ -332,7 +333,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To Facebook](block-integrations/ayrshare/post_to_facebook.md#post-to-facebook) | Post to Facebook using Ayrshare |
 | [Post To GMB](block-integrations/ayrshare/post_to_gmb.md#post-to-gmb) | Post to Google My Business using Ayrshare |
 | [Post To Instagram](block-integrations/ayrshare/post_to_instagram.md#post-to-instagram) | Post to Instagram using Ayrshare |
-| [Post To Linked In](block-integrations/ayrshare/post_to_linkedin.md#post-to-linked-in) | Post to LinkedIn using Ayrshare |
+| [Post To LinkedIn](block-integrations/ayrshare/post_to_linkedin.md#post-to-linkedin) | Post to LinkedIn using Ayrshare |
 | [Post To Pinterest](block-integrations/ayrshare/post_to_pinterest.md#post-to-pinterest) | Post to Pinterest using Ayrshare |
 | [Post To Reddit](block-integrations/ayrshare/post_to_reddit.md#post-to-reddit) | Post to Reddit using Ayrshare |
 | [Post To Snapchat](block-integrations/ayrshare/post_to_snapchat.md#post-to-snapchat) | Post to Snapchat using Ayrshare |
@@ -340,9 +341,9 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Post To Threads](block-integrations/ayrshare/post_to_threads.md#post-to-threads) | Post to Threads using Ayrshare |
 | [Post To Tik Tok](block-integrations/ayrshare/post_to_tiktok.md#post-to-tik-tok) | Post to TikTok using Ayrshare |
 | [Post To X](block-integrations/ayrshare/post_to_x.md#post-to-x) | Post to X / Twitter using Ayrshare |
-| [Post To You Tube](block-integrations/ayrshare/post_to_youtube.md#post-to-you-tube) | Post to YouTube using Ayrshare |
+| [Post To YouTube](block-integrations/ayrshare/post_to_youtube.md#post-to-youtube) | Post to YouTube using Ayrshare |
 | [Publish To Medium](block-integrations/misc.md#publish-to-medium) | Publishes a post to Medium |
-| [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads messages from a Discord channel using a bot token |
+| [Read Discord Messages](block-integrations/discord/bot_blocks.md#read-discord-messages) | Reads new messages from a Discord channel using a bot token and triggers when a new message is posted |
 | [Reddit Get My Posts](block-integrations/misc.md#reddit-get-my-posts) | Fetch posts created by the authenticated Reddit user (you) |
 | [Reply To Discord Message](block-integrations/discord/bot_blocks.md#reply-to-discord-message) | Replies to a specific Discord message |
 | [Reply To Reddit Comment](block-integrations/misc.md#reply-to-reddit-comment) | Reply to a specific Reddit comment |
@@ -418,6 +419,43 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 
 | Block Name | Description |
 |------------|-------------|
+| [Agent Mail Create Draft](block-integrations/agent_mail/drafts.md#agent-mail-create-draft) | Create a draft email for review or scheduled sending |
+| [Agent Mail Create Inbox](block-integrations/agent_mail/inbox.md#agent-mail-create-inbox) | Create a new email inbox for an AI agent via AgentMail |
+| [Agent Mail Create List Entry](block-integrations/agent_mail/lists.md#agent-mail-create-list-entry) | Add an email address or domain to an allow/block list |
+| [Agent Mail Create Pod](block-integrations/agent_mail/pods.md#agent-mail-create-pod) | Create a new pod for multi-tenant customer isolation |
+| [Agent Mail Create Pod Inbox](block-integrations/agent_mail/pods.md#agent-mail-create-pod-inbox) | Create a new email inbox within a pod |
+| [Agent Mail Delete Draft](block-integrations/agent_mail/drafts.md#agent-mail-delete-draft) | Delete a draft or cancel a scheduled email |
+| [Agent Mail Delete Inbox](block-integrations/agent_mail/inbox.md#agent-mail-delete-inbox) | Permanently delete an AgentMail inbox and all its messages, threads, and drafts |
+| [Agent Mail Delete Inbox Thread](block-integrations/agent_mail/threads.md#agent-mail-delete-inbox-thread) | Permanently delete a conversation thread and all its messages |
+| [Agent Mail Delete List Entry](block-integrations/agent_mail/lists.md#agent-mail-delete-list-entry) | Remove an email address or domain from an allow/block list to stop filtering it |
+| [Agent Mail Delete Pod](block-integrations/agent_mail/pods.md#agent-mail-delete-pod) | Permanently delete a pod |
+| [Agent Mail Forward Message](block-integrations/agent_mail/messages.md#agent-mail-forward-message) | Forward an email message to one or more recipients |
+| [Agent Mail Get Draft](block-integrations/agent_mail/drafts.md#agent-mail-get-draft) | Retrieve a draft email to review its contents, recipients, and scheduled send status |
+| [Agent Mail Get Inbox](block-integrations/agent_mail/inbox.md#agent-mail-get-inbox) | Retrieve details of an existing AgentMail inbox including its email address, display name, and configuration |
+| [Agent Mail Get Inbox Thread](block-integrations/agent_mail/threads.md#agent-mail-get-inbox-thread) | Retrieve a conversation thread with all its messages |
+| [Agent Mail Get List Entry](block-integrations/agent_mail/lists.md#agent-mail-get-list-entry) | Check if an email address or domain is in an allow/block list |
+| [Agent Mail Get Message](block-integrations/agent_mail/messages.md#agent-mail-get-message) | Retrieve a specific email message by ID |
+| [Agent Mail Get Message Attachment](block-integrations/agent_mail/attachments.md#agent-mail-get-message-attachment) | Download a file attachment from an email message |
+| [Agent Mail Get Org Thread](block-integrations/agent_mail/threads.md#agent-mail-get-org-thread) | Retrieve a conversation thread by ID from anywhere in the organization, without needing the inbox ID |
+| [Agent Mail Get Pod](block-integrations/agent_mail/pods.md#agent-mail-get-pod) | Retrieve details of an existing pod including its client_id mapping and metadata |
+| [Agent Mail Get Thread Attachment](block-integrations/agent_mail/attachments.md#agent-mail-get-thread-attachment) | Download a file attachment from a conversation thread |
+| [Agent Mail List Drafts](block-integrations/agent_mail/drafts.md#agent-mail-list-drafts) | List drafts in an AgentMail inbox |
+| [Agent Mail List Entries](block-integrations/agent_mail/lists.md#agent-mail-list-entries) | List all entries in an AgentMail allow/block list |
+| [Agent Mail List Inbox Threads](block-integrations/agent_mail/threads.md#agent-mail-list-inbox-threads) | List all conversation threads in an AgentMail inbox |
+| [Agent Mail List Inboxes](block-integrations/agent_mail/inbox.md#agent-mail-list-inboxes) | List all email inboxes in your AgentMail organization with pagination support |
+| [Agent Mail List Messages](block-integrations/agent_mail/messages.md#agent-mail-list-messages) | List messages in an AgentMail inbox |
+| [Agent Mail List Org Drafts](block-integrations/agent_mail/drafts.md#agent-mail-list-org-drafts) | List all drafts across every inbox in your organization |
+| [Agent Mail List Org Threads](block-integrations/agent_mail/threads.md#agent-mail-list-org-threads) | List threads across ALL inboxes in your organization |
+| [Agent Mail List Pod Drafts](block-integrations/agent_mail/pods.md#agent-mail-list-pod-drafts) | List all drafts across all inboxes within a pod |
+| [Agent Mail List Pod Inboxes](block-integrations/agent_mail/pods.md#agent-mail-list-pod-inboxes) | List all inboxes within a pod |
+| [Agent Mail List Pod Threads](block-integrations/agent_mail/pods.md#agent-mail-list-pod-threads) | List all conversation threads across all inboxes within a pod |
+| [Agent Mail List Pods](block-integrations/agent_mail/pods.md#agent-mail-list-pods) | List all tenant pods in your organization |
+| [Agent Mail Reply To Message](block-integrations/agent_mail/messages.md#agent-mail-reply-to-message) | Reply to an existing email in the same conversation thread |
+| [Agent Mail Send Draft](block-integrations/agent_mail/drafts.md#agent-mail-send-draft) | Send a draft immediately, converting it into a delivered message |
+| [Agent Mail Send Message](block-integrations/agent_mail/messages.md#agent-mail-send-message) | Send a new email from an AgentMail inbox |
+| [Agent Mail Update Draft](block-integrations/agent_mail/drafts.md#agent-mail-update-draft) | Update a draft's content, recipients, or scheduled send time |
+| [Agent Mail Update Inbox](block-integrations/agent_mail/inbox.md#agent-mail-update-inbox) | Update the display name of an AgentMail inbox |
+| [Agent Mail Update Message](block-integrations/agent_mail/messages.md#agent-mail-update-message) | Add or remove labels on an email message |
 | [Baas Bot Join Meeting](block-integrations/baas/bots.md#baas-bot-join-meeting) | Deploy a bot to join and record a meeting |
 | [Baas Bot Leave Meeting](block-integrations/baas/bots.md#baas-bot-leave-meeting) | Remove a bot from an ongoing meeting |
 | [Gmail Add Label](block-integrations/google/gmail.md#gmail-add-label) | A block that adds a label to a specific email message in Gmail, creating the label if it doesn't exist |
@@ -579,6 +617,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Block Name | Description |
 |------------|-------------|
 | [Agent Executor](block-integrations/misc.md#agent-executor) | Executes an existing agent inside your agent |
+| [AutoPilot](block-integrations/misc.md#autopilot) | Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more) |
 
 ## CRM Services
 

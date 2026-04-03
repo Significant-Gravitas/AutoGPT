@@ -13,7 +13,9 @@ import type { FileUIPart } from "ai";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
+import { useCopilotNotifications } from "./useCopilotNotifications";
 import { useCopilotStream } from "./useCopilotStream";
+import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
 const TITLE_POLL_INTERVAL_MS = 2_000;
 const TITLE_POLL_MAX_ATTEMPTS = 5;
@@ -37,6 +39,7 @@ export function useCopilotPage() {
     sessionId,
     setSessionId,
     hydratedMessages,
+    historicalDurations,
     hasActiveStream,
     isLoadingSession,
     isSessionError,
@@ -52,13 +55,18 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
     hasActiveStream,
     refetchSession,
   });
+
+  useCopilotNotifications(sessionId);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =
@@ -91,16 +99,23 @@ export function useCopilotPage() {
     breakpoint === "base" || breakpoint === "sm" || breakpoint === "md";
 
   const pendingFilesRef = useRef<File[]>([]);
+  // Pre-built file parts from workflow import (already uploaded, skip re-upload)
+  const pendingFilePartsRef = useRef<FileUIPart[]>([]);
 
   // --- Send pending message after session creation ---
   useEffect(() => {
     if (!sessionId || pendingMessage === null) return;
     const msg = pendingMessage;
     const files = pendingFilesRef.current;
+    const prebuiltParts = pendingFilePartsRef.current;
     setPendingMessage(null);
     pendingFilesRef.current = [];
+    pendingFilePartsRef.current = [];
 
-    if (files.length > 0) {
+    if (prebuiltParts.length > 0) {
+      // File already uploaded (e.g. workflow import) — send directly
+      sendMessage({ text: msg, files: prebuiltParts });
+    } else if (files.length > 0) {
       setIsUploadingFiles(true);
       void uploadFiles(files, sessionId)
         .then((uploaded) => {
@@ -123,6 +138,13 @@ export function useCopilotPage() {
       sendMessage({ text: msg });
     }
   }, [sessionId, pendingMessage, sendMessage]);
+
+  // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
+  useWorkflowImportAutoSubmit({
+    createSession,
+    setPendingMessage,
+    pendingFilePartsRef,
+  });
 
   async function uploadFiles(
     files: File[],
@@ -331,6 +353,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
@@ -355,5 +378,10 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }

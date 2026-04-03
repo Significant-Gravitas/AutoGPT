@@ -1,11 +1,12 @@
 "use client";
 
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { EyeIcon, TrashIcon } from "@phosphor-icons/react";
+import { EyeIcon, Play, TrashIcon } from "@phosphor-icons/react";
 import { AgentActionsDropdown } from "../../../AgentActionsDropdown";
 import { SelectedActionsWrap } from "../../../SelectedActionsWrap";
 import { useSelectedScheduleActions } from "./useSelectedScheduleActions";
@@ -13,13 +14,17 @@ import { useSelectedScheduleActions } from "./useSelectedScheduleActions";
 type Props = {
   agent: LibraryAgent;
   scheduleId: string;
+  schedule?: GraphExecutionJobInfo;
   onDeleted?: () => void;
+  onSelectRun?: (id: string) => void;
 };
 
 export function SelectedScheduleActions({
   agent,
   scheduleId,
+  schedule,
   onDeleted,
+  onSelectRun,
 }: Props) {
   const {
     openInBuilderHref,
@@ -27,11 +32,32 @@ export function SelectedScheduleActions({
     setShowDeleteDialog,
     handleDelete,
     isDeleting,
-  } = useSelectedScheduleActions({ agent, scheduleId, onDeleted });
+    handleRunNow,
+    isRunning,
+  } = useSelectedScheduleActions({
+    agent,
+    scheduleId,
+    schedule,
+    onDeleted,
+    onSelectRun,
+  });
 
   return (
     <>
       <SelectedActionsWrap>
+        <Button
+          variant="icon"
+          size="icon"
+          aria-label="Run now"
+          onClick={handleRunNow}
+          disabled={isRunning || !schedule}
+        >
+          {isRunning ? (
+            <LoadingSpinner size="small" />
+          ) : (
+            <Play weight="bold" size={18} className="text-zinc-700" />
+          )}
+        </Button>
         {openInBuilderHref && (
           <Button
             variant="icon"

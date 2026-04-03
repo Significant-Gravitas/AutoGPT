@@ -1,20 +1,22 @@
 "use client";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
+import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import useCredits from "@/hooks/useCredits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DotsThree, UploadSimple } from "@phosphor-icons/react";
-import { useCallback, useRef, useState } from "react";
+import { UploadSimple } from "@phosphor-icons/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
+import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
+import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
+import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
 
@@ -69,6 +71,7 @@ export function CopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     createSession,
     onSend,
     isLoadingSession,
@@ -87,13 +90,51 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
-    // Delete functionality
+    // Delete functionality (available via ChatSidebar context menu on all viewports)
     sessionToDelete,
     isDeleting,
-    handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotPage();
+
+  const {
+    data: usage,
+    isSuccess: hasUsage,
+    isError: usageError,
+  } = useGetV2GetCopilotUsage({
+    query: {
+      select: (res) => res.data as CoPilotUsageStatus,
+      refetchInterval: 30000,
+      staleTime: 10000,
+    },
+  });
+  const resetCost = usage?.reset_cost;
+
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
+  const hasInsufficientCredits =
+    credits !== null && resetCost != null && credits < resetCost;
+
+  // Fall back to a toast when the credit-based reset feature is disabled or
+  // when the usage query fails (so the user still gets feedback).
+  useEffect(() => {
+    if (
+      rateLimitMessage &&
+      (usageError || (hasUsage && (resetCost ?? 0) <= 0))
+    ) {
+      toast({
+        title: "Usage limit reached",
+        description: rateLimitMessage,
+        variant: "destructive",
+      });
+      dismissRateLimit();
+    }
+  }, [rateLimitMessage, resetCost, hasUsage, usageError, dismissRateLimit]);
 
   if (isUserLoading || !isLoggedIn) {
     return (
@@ -117,6 +158,7 @@ export function CopilotPage() {
         onDrop={handleDrop}
       >
         {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+        <NotificationBanner />
         {/* Drop overlay */}
         <div
           className={cn(
@@ -139,44 +181,14 @@ export function CopilotPage() {
             isSessionError={isSessionError}
             isCreatingSession={isCreatingSession}
             isReconnecting={isReconnecting}
+            isSyncing={isSyncing}
             onCreateSession={createSession}
             onSend={onSend}
             onStop={stop}
             isUploadingFiles={isUploadingFiles}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={handleDroppedFilesConsumed}
-            headerSlot={
-              isMobile && sessionId ? (
-                <div className="flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className="rounded p-1.5 hover:bg-neutral-100"
-                        aria-label="More actions"
-                      >
-                        <DotsThree className="h-5 w-5 text-neutral-600" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          const session = sessions.find(
-                            (s) => s.id === sessionId,
-                          );
-                          if (session) {
-                            handleDeleteClick(session.id, session.title);
-                          }
-                        }}
-                        disabled={isDeleting}
-                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                      >
-                        Delete chat
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : undefined
-            }
+            historicalDurations={historicalDurations}
           />
         </div>
       </div>
@@ -201,6 +213,21 @@ export function CopilotPage() {
           onCancel={handleCancelDelete}
         />
       )}
+      <NotificationDialog />
+      <RateLimitResetDialog
+        isOpen={!!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0}
+        onClose={dismissRateLimit}
+        resetCost={resetCost ?? 0}
+        resetMessage={rateLimitMessage ?? ""}
+        isWeeklyExhausted={
+          hasUsage &&
+          usage.weekly.limit > 0 &&
+          usage.weekly.used >= usage.weekly.limit
+        }
+        hasInsufficientCredits={hasInsufficientCredits}
+        isBillingEnabled={isBillingEnabled}
+        onCreditChange={fetchCredits}
+      />
     </SidebarProvider>
   );
 }

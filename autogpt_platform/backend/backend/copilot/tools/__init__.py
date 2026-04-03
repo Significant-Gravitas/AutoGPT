@@ -10,8 +10,10 @@ from backend.copilot.tracking import track_tool_called
 from .add_understanding import AddUnderstandingTool
 from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
+from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
+from .connect_integration import ConnectIntegrationTool
 from .continue_run_block import ContinueRunBlockTool
 from .create_agent import CreateAgentTool
 from .customize_agent import CustomizeAgentTool
@@ -56,6 +58,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     tool.name: tool
     for tool in [
         AddUnderstandingTool(),
+        AskQuestionTool(),
         CreateAgentTool(),
         CustomizeAgentTool(),
         EditAgentTool(),
@@ -86,6 +89,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
         BrowserScreenshotTool(),
         # Sandboxed code execution (bubblewrap)
         BashExecTool(),
+        ConnectIntegrationTool(),
         # Persistent workspace tools (cloud storage, survives across sessions)
         # Feature request tools
         SearchFeatureRequestsTool(),

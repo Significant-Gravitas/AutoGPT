@@ -14,8 +14,10 @@ from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
+from mcp.types import ToolAnnotations
 
 from backend.copilot.context import (
+    _current_permissions,
     _current_project_dir,
     _current_sandbox,
     _current_sdk_cwd,
@@ -36,10 +38,12 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
-from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS
+from .e2b_file_tools import E2B_FILE_TOOL_NAMES, E2B_FILE_TOOLS, bridge_and_annotate
 
 if TYPE_CHECKING:
     from e2b import AsyncSandbox
+
+    from backend.copilot.permissions import CopilotPermissions
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +70,23 @@ _stash_event: ContextVar[asyncio.Event | None] = ContextVar(
     "_stash_event", default=None
 )
 
+# Circuit breaker: tracks consecutive tool failures to detect infinite retry loops.
+# When a tool is called repeatedly with empty/identical args and keeps failing,
+# this counter is incremented.  After _MAX_CONSECUTIVE_TOOL_FAILURES identical
+# failures the tool handler returns a hard-stop message instead of the raw error.
+_MAX_CONSECUTIVE_TOOL_FAILURES = 3
+_consecutive_tool_failures: ContextVar[dict[str, int]] = ContextVar(
+    "_consecutive_tool_failures",
+    default=None,  # type: ignore[arg-type]
+)
+
 
 def set_execution_context(
     user_id: str | None,
     session: ChatSession,
     sandbox: "AsyncSandbox | None" = None,
     sdk_cwd: str | None = None,
+    permissions: "CopilotPermissions | None" = None,
 ) -> None:
     """Set the execution context for tool calls.
 
@@ -83,14 +98,40 @@ def set_execution_context(
         session: Current chat session.
         sandbox: Optional E2B sandbox; when set, bash_exec routes commands there.
         sdk_cwd: SDK working directory; used to scope tool-results reads.
+        permissions: Optional capability filter restricting tools/blocks.
     """
     _current_user_id.set(user_id)
     _current_session.set(session)
     _current_sandbox.set(sandbox)
     _current_sdk_cwd.set(sdk_cwd or "")
     _current_project_dir.set(_encode_cwd_for_cli(sdk_cwd) if sdk_cwd else "")
+    _current_permissions.set(permissions)
     _pending_tool_outputs.set({})
     _stash_event.set(asyncio.Event())
+    _consecutive_tool_failures.set({})
+
+
+def reset_stash_event() -> None:
+    """Clear any stale stash signal left over from a previous stream attempt.
+
+    ``_stash_event`` is set once per session in ``set_execution_context`` and
+    reused across retry attempts.  A PostToolUse hook from a failed attempt may
+    leave the event set; calling this at the start of each retry prevents
+    ``wait_for_stash`` from returning prematurely on a stale signal.
+    """
+    event = _stash_event.get(None)
+    if event is not None:
+        event.clear()
+
+
+def reset_tool_failure_counters() -> None:
+    """Reset all tool-level circuit breaker counters.
+
+    Called at the start of each SDK retry attempt so that failure counts
+    from a previous (rolled-back) attempt do not carry over and prematurely
+    trip the breaker on a fresh attempt with different context.
+    """
+    _consecutive_tool_failures.set({})
 
 
 def pop_pending_tool_output(tool_name: str) -> str | None:
@@ -146,7 +187,7 @@ def stash_pending_tool_output(tool_name: str, output: Any) -> None:
         event.set()
 
 
-async def wait_for_stash(timeout: float = 0.5) -> bool:
+async def wait_for_stash(timeout: float = 2.0) -> bool:
     """Wait for a PostToolUse hook to stash tool output.
 
     The SDK fires PostToolUse hooks asynchronously via ``start_soon()`` —
@@ -155,12 +196,9 @@ async def wait_for_stash(timeout: float = 0.5) -> bool:
     by waiting on the ``_stash_event``, which is signaled by
     :func:`stash_pending_tool_output`.
 
-    After the event fires, callers should ``await asyncio.sleep(0)`` to
-    give any remaining concurrent hooks a chance to complete.
-
-    Returns ``True`` if a stash signal was received, ``False`` on timeout.
-    The timeout is a safety net — normally the stash happens within
-    microseconds of yielding to the event loop.
+    Uses ``asyncio.Event.wait()`` so it returns the instant the hook signals —
+    the timeout is purely a safety net for the case where the hook never fires.
+    Returns ``True`` if the stash signal was received, ``False`` on timeout.
     """
     event = _stash_event.get(None)
     if event is None:
@@ -169,7 +207,7 @@ async def wait_for_stash(timeout: float = 0.5) -> bool:
     if event.is_set():
         event.clear()
         return True
-    # Slow path: wait for the hook to signal.
+    # Slow path: block until the hook signals or the safety timeout expires.
     try:
         async with asyncio.timeout(timeout):
             await event.wait()
@@ -185,11 +223,7 @@ async def _execute_tool_sync(
     session: ChatSession,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a tool synchronously and return MCP-formatted response.
-
-    Note: ``@@agptfile:`` expansion is handled upstream in the ``_truncating`` wrapper
-    so all registered handlers (BaseTool, E2B, Read) expand uniformly.
-    """
+    """Execute a tool synchronously and return MCP-formatted response."""
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
@@ -217,6 +251,66 @@ def _mcp_error(message: str) -> dict[str, Any]:
     }
 
 
+def _failure_key(tool_name: str, args: dict[str, Any]) -> str:
+    """Compute a stable fingerprint for (tool_name, args) used by the circuit breaker."""
+    args_key = json.dumps(args, sort_keys=True, default=str)
+    return f"{tool_name}:{args_key}"
+
+
+def _check_circuit_breaker(tool_name: str, args: dict[str, Any]) -> str | None:
+    """Check if a tool has hit the consecutive failure limit.
+
+    Tracks failures keyed by (tool_name, args_fingerprint). Returns an error
+    message if the circuit breaker has tripped, or None if the call should proceed.
+    """
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return None
+
+    key = _failure_key(tool_name, args)
+    count = tracker.get(key, 0)
+    if count >= _MAX_CONSECUTIVE_TOOL_FAILURES:
+        logger.warning(
+            "Circuit breaker tripped for tool %s after %d consecutive "
+            "identical failures (args=%s)",
+            tool_name,
+            count,
+            key[len(tool_name) + 1 :][:200],
+        )
+        return (
+            f"STOP: Tool '{tool_name}' has failed {count} consecutive times with "
+            f"the same arguments. Do NOT retry this tool call. "
+            f"If you were trying to write content to a file, instead respond with "
+            f"the content directly as a text message to the user."
+        )
+    return None
+
+
+def _record_tool_failure(tool_name: str, args: dict[str, Any]) -> None:
+    """Record a tool failure for circuit breaker tracking."""
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return
+    key = _failure_key(tool_name, args)
+    tracker[key] = tracker.get(key, 0) + 1
+
+
+def _clear_tool_failures(tool_name: str) -> None:
+    """Clear failure tracking for a tool on success.
+
+    Clears ALL args variants for the tool, not just the successful call's args.
+    This gives the tool a "fresh start" on any success, which is appropriate for
+    the primary use case (detecting infinite loops with identical failing args).
+    """
+    tracker = _consecutive_tool_failures.get(None)
+    if tracker is None:
+        return
+    # Clear all entries for this tool name
+    keys_to_remove = [k for k in tracker if k.startswith(f"{tool_name}:")]
+    for k in keys_to_remove:
+        del tracker[k]
+
+
 def create_tool_handler(base_tool: BaseTool):
     """Create an async handler function for a BaseTool.
 
@@ -234,8 +328,12 @@ def create_tool_handler(base_tool: BaseTool):
         try:
             return await _execute_tool_sync(base_tool, user_id, session, args)
         except Exception as e:
-            logger.error(f"Error executing tool {base_tool.name}: {e}", exc_info=True)
-            return _mcp_error(f"Failed to execute {base_tool.name}: {e}")
+            logger.error(
+                "Error executing tool %s: %s", base_tool.name, e, exc_info=True
+            )
+            return _mcp_error(
+                f"Failed to execute {base_tool.name}. Check server logs for details."
+            )
 
     return tool_handler
 
@@ -285,11 +383,20 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
 
     resolved = os.path.realpath(os.path.expanduser(file_path))
     try:
-        with open(resolved) as f:
+        with open(resolved, encoding="utf-8", errors="replace") as f:
             selected = list(itertools.islice(f, offset, offset + limit))
         # Cleanup happens in _cleanup_sdk_tool_results after session ends;
         # don't delete here — the SDK may read in multiple chunks.
-        return _mcp_ok("".join(selected))
+        #
+        # When E2B is active, also copy the file into the sandbox so
+        # bash_exec can process it (the model often uses Read then bash).
+        text = "".join(selected)
+        sandbox = _current_sandbox.get(None)
+        if sandbox is not None:
+            annotation = await bridge_and_annotate(sandbox, resolved, offset, limit)
+            if annotation:
+                text += annotation
+        return _mcp_ok(text)
     except FileNotFoundError:
         return _mcp_err(f"File not found: {file_path}")
     except Exception as e:
@@ -338,8 +445,18 @@ def _text_from_mcp_result(result: dict[str, Any]) -> str:
     )
 
 
+_PARALLEL_ANNOTATION = ToolAnnotations(readOnlyHint=True)
+
+
 def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
+
+    All tools are annotated with ``readOnlyHint=True`` so the SDK CLI
+    dispatches concurrent tool calls in parallel rather than sequentially.
+    This is a deliberate override: even side-effect tools use the hint
+    because the MCP tools are already individually sandboxed and the
+    pre-launch duplicate-execution bug (SECRT-2204) is worse than
+    sequential dispatch.
 
     When *use_e2b* is True, five additional MCP file tools are registered
     that route directly to the E2B sandbox filesystem, and the caller should
@@ -347,7 +464,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     :func:`get_sdk_disallowed_tools`.
     """
 
-    def _truncating(fn, tool_name: str):
+    def _truncating(fn, tool_name: str, input_schema: dict[str, Any] | None = None):
         """Wrap a tool handler so its response is truncated to stay under the
         SDK's 10 MB JSON buffer, and stash the (truncated) output for the
         response adapter before the SDK can apply its own head-truncation.
@@ -358,11 +475,45 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         Applied once to every registered tool."""
 
         async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+            # Empty tool args = model's output was truncated by the API's
+            # max_tokens limit.  Instead of letting the tool fail with a
+            # confusing error (and eventually tripping the circuit breaker),
+            # return clear guidance so the model can self-correct.
+            if not args and input_schema and input_schema.get("required"):
+                logger.warning(
+                    "[MCP] %s called with empty args (likely output "
+                    "token truncation) — returning guidance",
+                    tool_name,
+                )
+                return _mcp_error(
+                    f"Your call to {tool_name} had empty arguments — "
+                    f"this means your previous response was too long and "
+                    f"the tool call input was truncated by the API. "
+                    f"To fix this: break your work into smaller steps. "
+                    f"For large content, first write it to a file using "
+                    f"bash_exec with cat >> (append section by section), "
+                    f"then pass it via @@agptfile:filename reference. "
+                    f"Do NOT retry with the same approach — it will "
+                    f"be truncated again."
+                )
+
+            # Circuit breaker: stop infinite retry loops with identical args.
+            # Use the original (pre-expansion) args for fingerprinting so
+            # check and record always use the same key — @@agptfile:
+            # expansion mutates args, which would cause a key mismatch.
+            original_args = args
+            stop_msg = _check_circuit_breaker(tool_name, original_args)
+            if stop_msg:
+                return _mcp_error(stop_msg)
+
             user_id, session = get_execution_context()
             if session is not None:
                 try:
-                    args = await expand_file_refs_in_args(args, user_id, session)
+                    args = await expand_file_refs_in_args(
+                        args, user_id, session, input_schema=input_schema
+                    )
                 except FileRefExpansionError as exc:
+                    _record_tool_failure(tool_name, original_args)
                     return _mcp_error(
                         f"@@agptfile: reference could not be resolved: {exc}. "
                         "Ensure the file exists before referencing it. "
@@ -371,6 +522,12 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                     )
             result = await fn(args)
             truncated = truncate(result, _MCP_MAX_CHARS)
+
+            # Track consecutive failures for circuit breaker
+            if truncated.get("isError"):
+                _record_tool_failure(tool_name, original_args)
+            else:
+                _clear_tool_failures(tool_name)
 
             # Stash the text so the response adapter can forward our
             # middle-out truncated version to the frontend instead of the
@@ -389,24 +546,36 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
         handler = create_tool_handler(base_tool)
+        schema = _build_input_schema(base_tool)
+        # All tools annotated readOnlyHint=True to enable parallel dispatch.
+        # The SDK CLI uses this hint to dispatch concurrent tool calls in
+        # parallel rather than sequentially.  Side-effect safety is ensured
+        # by the tool implementations themselves (idempotency, credentials).
         decorated = tool(
             tool_name,
             base_tool.description,
-            _build_input_schema(base_tool),
-        )(_truncating(handler, tool_name))
+            schema,
+            annotations=_PARALLEL_ANNOTATION,
+        )(_truncating(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
     if use_e2b:
         for name, desc, schema, handler in E2B_FILE_TOOLS:
-            decorated = tool(name, desc, schema)(_truncating(handler, name))
+            decorated = tool(
+                name,
+                desc,
+                schema,
+                annotations=_PARALLEL_ANNOTATION,
+            )(_truncating(handler, name))
             sdk_tools.append(decorated)
 
-    # Read tool for SDK-truncated tool results (always needed).
+    # Read tool for SDK-truncated tool results (always needed, read-only).
     read_tool = tool(
         _READ_TOOL_NAME,
         _READ_TOOL_DESCRIPTION,
         _READ_TOOL_SCHEMA,
+        annotations=_PARALLEL_ANNOTATION,
     )(_truncating(_read_file_handler, _READ_TOOL_NAME))
     sdk_tools.append(read_tool)
 
@@ -421,13 +590,14 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # Security hooks validate that file paths stay within sdk_cwd.
 # Bash is NOT included — use the sandboxed MCP bash_exec tool instead,
 # which provides kernel-level network isolation via unshare --net.
-# Task allows spawning sub-agents (rate-limited by security hooks).
+# Task/Agent allows spawning sub-agents (rate-limited by security hooks).
+#   The CLI renamed "Task" → "Agent" in v2.x; both are listed for compat.
 # WebSearch uses Brave Search via Anthropic's API — safe, no SSRF risk.
 # TodoWrite manages the task checklist shown in the UI — no security concern.
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "WebSearch", "TodoWrite"]
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.

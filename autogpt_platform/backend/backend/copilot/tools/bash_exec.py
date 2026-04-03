@@ -22,6 +22,10 @@ from e2b import AsyncSandbox
 from e2b.exceptions import TimeoutException
 
 from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
+from backend.copilot.integration_creds import (
+    get_github_user_git_identity,
+    get_integration_env_vars,
+)
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -41,15 +45,9 @@ class BashExecTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Execute a Bash command or script. "
-            "Full Bash scripting is supported (loops, conditionals, pipes, "
-            "functions, etc.). "
-            "The working directory is shared with the SDK Read/Write/Edit/Glob/Grep "
-            "tools — files created by either are immediately visible to both. "
-            "Execution is killed after the timeout (default 30s, max 120s). "
-            "Returns stdout and stderr. "
-            "Useful for file manipulation, data processing, running scripts, "
-            "and installing packages."
+            "Execute a Bash command or script. Shares filesystem with SDK file tools. "
+            "Useful for scripts, data processing, and package installation. "
+            "Killed after timeout (default 30s, max 120s)."
         )
 
     @property
@@ -59,13 +57,11 @@ class BashExecTool(BaseTool):
             "properties": {
                 "command": {
                     "type": "string",
-                    "description": "Bash command or script to execute.",
+                    "description": "Bash command or script.",
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": (
-                        "Max execution time in seconds (default 30, max 120)."
-                    ),
+                    "description": "Max seconds (default 30, max 120).",
                     "default": 30,
                 },
             },
@@ -74,18 +70,31 @@ class BashExecTool(BaseTool):
 
     @property
     def requires_auth(self) -> bool:
-        return False
+        # True because _execute_on_e2b injects user tokens (GH_TOKEN etc.)
+        # when user_id is present.  Defense-in-depth: ensures only authenticated
+        # users reach the token injection path.
+        return True
 
     async def _execute(
         self,
         user_id: str | None,
         session: ChatSession,
+        command: str = "",
+        timeout: int = 30,
         **kwargs: Any,
     ) -> ToolResponseBase:
+        """Run a bash command on E2B (if available) or in a bubblewrap sandbox.
+
+        Dispatches to :meth:`_execute_on_e2b` when a sandbox is present in the
+        current execution context, otherwise falls back to the local bubblewrap
+        sandbox.  Returns a :class:`BashExecResponse` on success or an
+        :class:`ErrorResponse` when the sandbox is unavailable or the command
+        is empty.
+        """
         session_id = session.session_id if session else None
 
-        command: str = (kwargs.get("command") or "").strip()
-        timeout: int = int(kwargs.get("timeout", 30))
+        command = command.strip()
+        timeout = int(timeout)
 
         if not command:
             return ErrorResponse(
@@ -96,7 +105,9 @@ class BashExecTool(BaseTool):
 
         sandbox = get_current_sandbox()
         if sandbox is not None:
-            return await self._execute_on_e2b(sandbox, command, timeout, session_id)
+            return await self._execute_on_e2b(
+                sandbox, command, timeout, session_id, user_id
+            )
 
         # Bubblewrap fallback: local isolated execution.
         if not has_full_sandbox():
@@ -133,19 +144,48 @@ class BashExecTool(BaseTool):
         command: str,
         timeout: int,
         session_id: str | None,
+        user_id: str | None = None,
     ) -> ToolResponseBase:
-        """Execute *command* on the E2B sandbox via commands.run()."""
+        """Execute *command* on the E2B sandbox via commands.run().
+
+        Integration tokens (e.g. GH_TOKEN) are injected into the sandbox env
+        for any user with connected accounts. E2B has full internet access, so
+        CLI tools like ``gh`` work without manual authentication.
+        """
+        envs: dict[str, str] = {
+            "PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+        }
+        # Collect injected secret values so we can scrub them from output.
+        secret_values: list[str] = []
+        if user_id is not None:
+            integration_env = await get_integration_env_vars(user_id)
+            secret_values = [v for v in integration_env.values() if v]
+            envs.update(integration_env)
+
+            # Set git author/committer identity from the user's GitHub profile
+            # so commits made in the sandbox are attributed correctly.
+            git_identity = await get_github_user_git_identity(user_id)
+            if git_identity:
+                envs.update(git_identity)
+
         try:
             result = await sandbox.commands.run(
                 f"bash -c {shlex.quote(command)}",
                 cwd=E2B_WORKDIR,
                 timeout=timeout,
-                envs={"PATH": "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
+                envs=envs,
             )
+            stdout = result.stdout or ""
+            stderr = result.stderr or ""
+            # Scrub injected tokens from command output to prevent exfiltration
+            # via `echo $GH_TOKEN`, `env`, `printenv`, etc.
+            for secret in secret_values:
+                stdout = stdout.replace(secret, "[REDACTED]")
+                stderr = stderr.replace(secret, "[REDACTED]")
             return BashExecResponse(
                 message=f"Command executed on E2B (exit {result.exit_code})",
-                stdout=result.stdout or "",
-                stderr=result.stderr or "",
+                stdout=stdout,
+                stderr=stderr,
                 exit_code=result.exit_code,
                 timed_out=False,
                 session_id=session_id,
