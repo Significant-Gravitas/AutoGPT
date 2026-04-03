@@ -160,8 +160,11 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
+            {/* Mode toggle hidden until baseline transcript support is fully tested.
+                Backend logic is ready — this just hides the UI button. */}
             <button
               type="button"
+              hidden
               disabled={isStreaming}
               onClick={() =>
                 setCopilotMode(
