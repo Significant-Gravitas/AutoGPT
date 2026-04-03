@@ -190,6 +190,10 @@ jobs:
             --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}" \
             --git-ref "${{ github.ref }}"
 
+          # Debug: check if SOURCEMAPS made it into the resolved compose
+          echo "=== SOURCEMAPS in resolved compose ==="
+          grep -i "SOURCEMAPS" docker-compose.resolved.yml || echo "SOURCEMAPS NOT FOUND in resolved compose!"
+
           # Build with bake using the resolved compose file (now includes cache config)
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
         env:
