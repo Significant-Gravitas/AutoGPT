@@ -2,6 +2,7 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
 interface SessionChatMessage {
+  id: string | null;
   role: string;
   content: string | null;
   tool_call_id: string | null;
@@ -19,22 +20,28 @@ function coerceSessionChatMessages(
       const role = typeof msg.role === "string" ? msg.role : null;
       if (!role) return null;
 
-      return {
-        role,
-        content:
-          typeof msg.content === "string"
-            ? msg.content
-            : msg.content == null
-              ? null
-              : String(msg.content),
-        tool_call_id:
-          typeof msg.tool_call_id === "string"
-            ? msg.tool_call_id
-            : msg.tool_call_id == null
-              ? null
-              : String(msg.tool_call_id),
-        tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
-      };
+return {
+  id:
+    typeof msg.id === "string"
+      ? msg.id
+      : msg.id == null
+        ? null
+        : String(msg.id),
+  role,
+  content:
+    typeof msg.content === "string"
+      ? msg.content
+      : msg.content == null
+        ? null
+        : String(msg.content),
+  tool_call_id:
+    typeof msg.tool_call_id === "string"
+      ? msg.tool_call_id
+      : msg.tool_call_id == null
+        ? null
+        : String(msg.tool_call_id),
+  tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
+};
     })
     .filter((m): m is SessionChatMessage => m !== null);
 }
@@ -189,12 +196,12 @@ export function convertChatSessionMessagesToUiMessages(
       return;
     }
 
-    uiMessages.push({
-      id: `${sessionId}-${index}`,
-      role: msg.role,
-      parts,
-    });
+  uiMessages.push({
+    id: msg.id ?? `${sessionId}-${index}`,
+    role: msg.role,
+    parts,
   });
+});
 
   return uiMessages;
 }
