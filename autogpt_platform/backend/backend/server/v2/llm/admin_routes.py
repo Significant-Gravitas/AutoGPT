@@ -216,18 +216,19 @@ async def update_model(
 
 @router.delete(
     "/llm/models/{slug:path}",
-    status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
 async def delete_model(
     slug: str,
-) -> None:
-    """Delete an LLM model.
+    replacement_model_slug: str | None = None,
+) -> dict[str, Any]:
+    """Delete an LLM model with optional migration.
 
-    Requires admin authentication.
+    If workflows are using this model and no replacement_model_slug is given,
+    returns 400 with the node count. Provide replacement_model_slug to migrate
+    affected nodes before deletion.
     """
     try:
-        # Find model by slug first to get ID
         import prisma.models
 
         existing = await prisma.models.LlmModel.prisma().find_unique(
@@ -238,15 +239,132 @@ async def delete_model(
                 status_code=404, detail=f"Model with slug '{slug}' not found"
             )
 
-        await db_write.delete_model(model_id=existing.id)
+        result = await db_write.delete_model(
+            model_id=existing.id,
+            replacement_model_slug=replacement_model_slug,
+        )
         await db_write.refresh_runtime_caches()
-        logger.info(f"Deleted model '{slug}' (id: {existing.id})")
+        logger.info(
+            f"Deleted model '{slug}' (migrated {result['nodes_migrated']} nodes)"
+        )
+        return result
     except ValueError as e:
         logger.warning(f"Model deletion validation failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception(f"Failed to delete model: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete model")
+
+
+@router.get(
+    "/llm/models/{slug:path}/usage",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def get_model_usage(slug: str) -> dict[str, Any]:
+    """Get usage count for a model — how many workflow nodes reference it."""
+    try:
+        return await db_write.get_model_usage(slug)
+    except Exception as e:
+        logger.exception(f"Failed to get model usage: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get model usage")
+
+
+@router.post(
+    "/llm/models/{slug:path}/toggle",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def toggle_model(
+    slug: str,
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    """Toggle a model's enabled status with optional migration when disabling.
+
+    Body params:
+        is_enabled: bool
+        migrate_to_slug: optional str
+        migration_reason: optional str
+        custom_credit_cost: optional int
+    """
+    try:
+        import prisma.models
+
+        existing = await prisma.models.LlmModel.prisma().find_unique(
+            where={"slug": slug}
+        )
+        if not existing:
+            raise HTTPException(
+                status_code=404, detail=f"Model with slug '{slug}' not found"
+            )
+
+        result = await db_write.toggle_model_with_migration(
+            model_id=existing.id,
+            is_enabled=request.get("is_enabled", True),
+            migrate_to_slug=request.get("migrate_to_slug"),
+            migration_reason=request.get("migration_reason"),
+            custom_credit_cost=request.get("custom_credit_cost"),
+        )
+        await db_write.refresh_runtime_caches()
+        logger.info(
+            f"Toggled model '{slug}' enabled={request.get('is_enabled')} "
+            f"(migrated {result['nodes_migrated']} nodes)"
+        )
+        return result
+    except ValueError as e:
+        logger.warning(f"Model toggle failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Failed to toggle model: {e}")
+        raise HTTPException(status_code=500, detail="Failed to toggle model")
+
+
+@router.get(
+    "/llm/migrations",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def list_migrations(
+    include_reverted: bool = False,
+) -> dict[str, Any]:
+    """List model migrations."""
+    try:
+        migrations = await db_write.list_migrations(
+            include_reverted=include_reverted
+        )
+        return {"migrations": migrations}
+    except Exception as e:
+        logger.exception(f"Failed to list migrations: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to list migrations"
+        )
+
+
+@router.post(
+    "/llm/migrations/{migration_id}/revert",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def revert_migration(
+    migration_id: str,
+    re_enable_source_model: bool = True,
+) -> dict[str, Any]:
+    """Revert a model migration, restoring affected nodes."""
+    try:
+        result = await db_write.revert_migration(
+            migration_id=migration_id,
+            re_enable_source_model=re_enable_source_model,
+        )
+        await db_write.refresh_runtime_caches()
+        logger.info(
+            f"Reverted migration {migration_id}: "
+            f"{result['nodes_reverted']} nodes restored"
+        )
+        return result
+    except ValueError as e:
+        logger.warning(f"Migration revert failed: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception(f"Failed to revert migration: {e}")
+        raise HTTPException(
+            status_code=500, detail="Failed to revert migration"
+        )
 
 
 @router.post(
