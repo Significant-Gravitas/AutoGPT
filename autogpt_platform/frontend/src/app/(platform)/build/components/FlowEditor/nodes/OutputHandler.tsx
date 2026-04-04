@@ -28,7 +28,7 @@ export const OutputHandler = ({
 }) => {
   const { isOutputConnected } = useEdgeStore();
   const properties = outputSchema?.properties || {};
-  const [isOutputVisible, setIsOutputVisible] = useState(true);
+  const [isOutputVisible, setIsOutputVisible] = useState(false);
   const brokenOutputs = useBrokenOutputs(nodeId);
   const [expandedObjects, setExpandedObjects] = useState<
     Record<string, boolean>
@@ -171,6 +171,18 @@ export const OutputHandler = ({
     );
   };
 
+  const totalOutputs = Object.keys(properties).length;
+  const connectedOutputs = Object.keys(properties).filter((key) => {
+    const isConnected = isOutputConnected(nodeId, key);
+    const isBroken = brokenOutputs.has(key);
+    const fieldSchema = properties[key] as RJSFSchema;
+    const hasDescendant =
+      fieldSchema?.properties &&
+      hasConnectedOrBrokenDescendant(fieldSchema.properties, key);
+    return isConnected || isBroken || hasDescendant;
+  }).length;
+  const hiddenCount = totalOutputs - connectedOutputs;
+
   return (
     <div className="flex flex-col items-end justify-between gap-2 rounded-b-xlarge border-t border-zinc-200 bg-white py-3.5">
       <Button
@@ -183,6 +195,11 @@ export const OutputHandler = ({
           className="flex items-center gap-2 !font-semibold text-slate-700"
         >
           Output{" "}
+          {!isOutputVisible && hiddenCount > 0 && (
+            <span className="text-xs font-normal text-slate-400">
+              +{hiddenCount} more
+            </span>
+          )}
           <CaretDownIcon
             size={16}
             weight="bold"
