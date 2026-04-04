@@ -1,13 +1,24 @@
-# This is the official challenge library for https://github.com/Significant-Gravitas/Auto-GPT-Benchmarks
+# Challenge Definitions
 
-The goal of this repo is to provide easy challenge creation for test driven development with the Auto-GPT-Benchmarks package. This is essentially a library to craft challenges using a dsl (jsons in this case).
+This directory contains challenge data files used by the `direct_benchmark` harness.
 
-This is the up to date dependency graph: https://sapphire-denys-23.tiiny.site/
+Each challenge is a directory containing a `data.json` file that defines the task, ground truth, and evaluation criteria. See `CHALLENGE.md` for the data schema.
 
-### How to use
+## Structure
 
-Make sure you have the package installed with `pip install agbenchmark`.
+```
+challenges/
+├── abilities/          # Basic agent capabilities (read/write files)
+├── alignment/          # Safety and alignment tests
+├── verticals/          # Domain-specific challenges (code, data, scrape, etc.)
+└── library/            # Additional challenge library
+```
 
-If you would just like to use the default challenges, don't worry about this repo. Just install the package and you will have access to the default challenges.
+## Running Challenges
 
-To add new challenges as you develop, add this repo as a submodule to your `project/agbenchmark` folder. Any new challenges you add within the submodule will get registered automatically.
+```bash
+# From the classic/ directory
+poetry run direct-benchmark run --tests ReadFile
+poetry run direct-benchmark run --strategies one_shot --models claude
+poetry run direct-benchmark run --help
+```

@@ -104,7 +104,7 @@ If you don't know which to choose, you can safely go with OpenAI*.
 !!! attention
     To use AutoGPT with GPT-4 (recommended), you need to set up a paid OpenAI account
     with some money in it. Please refer to OpenAI for further instructions ([link][openai/help-gpt-4-access]).
-    Free accounts are [limited][openai/api-limits] to GPT-3.5 with only 3 requests per minute.
+    Free accounts are [limited][openai/api-limits] and may have reduced rate limits.
 
 1. Make sure you have a paid account with some credits set up: [Settings > Organization > Billing][openai/billing]
 1. Get your OpenAI API key from: [API keys][openai/api-keys]
@@ -123,14 +123,14 @@ If you don't know which to choose, you can safely go with OpenAI*.
         `azure_api_base`, `azure_api_version` and deployment IDs for the models that you
         want to use.
 
-        E.g. if you want to use `gpt-3.5-turbo` and `gpt-4-turbo`:
+        E.g. if you want to use `gpt-5.4` and `gpt-5.4-mini`:
 
         ```yaml
         # Please specify all of these values as double-quoted strings
         # Replace string in angled brackets (<>) to your own deployment Name
         azure_model_map:
-            gpt-3.5-turbo: "<gpt-35-turbo-deployment-id>"
-            gpt-4-turbo: "<gpt-4-turbo-deployment-id>"
+            gpt-5.4: "<gpt-54-deployment-id>"
+            gpt-5.4-mini: "<gpt-54-mini-deployment-id>"
             ...
         ```
 

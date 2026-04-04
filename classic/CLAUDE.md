@@ -16,9 +16,9 @@ classic/
 │   └── forge/              # Core agent framework package
 ├── original_autogpt/
 │   └── autogpt/            # AutoGPT agent package
-├── direct_benchmark/
-│   └── direct_benchmark/   # Benchmark harness package
-└── benchmark/              # Challenge definitions (data, not code)
+└── direct_benchmark/
+    ├── direct_benchmark/   # Benchmark harness package
+    └── challenges/         # Challenge definitions (data)
 ```
 
 All packages are managed by a single `pyproject.toml` at the classic/ root.
@@ -112,7 +112,7 @@ The `forge` package is the foundation that other components depend on:
 ### Direct Benchmark
 Benchmark harness for testing agent performance:
 - `direct_benchmark/direct_benchmark/` - CLI and harness code
-- `benchmark/agbenchmark/challenges/` - Test cases organized by category (code, retrieval, data, etc.)
+- `direct_benchmark/challenges/` - Test cases organized by category (code, retrieval, data, etc.)
 - Reports generated in `direct_benchmark/reports/`
 
 ### Package Structure
