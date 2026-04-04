@@ -304,11 +304,18 @@ export function useCopilotStream({
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
     setMessages((prev) => {
-      if (prev.length >= hydratedMessages.length) return prev;
-      return deduplicateMessages(hydratedMessages);
-    });
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
+    const syntheticPrefix = sessionId ? `${sessionId}-` : null;
+    const hasSyntheticIds = syntheticPrefix
+      ? prev.some((m) => m.id.startsWith(syntheticPrefix))
+      : false;
 
+    if (prev.length >= hydratedMessages.length && !hasSyntheticIds) return prev;
+    return deduplicateMessages(hydratedMessages);
+});
+  if (prev.length >= hydratedMessages.length && !hasSyntheticIds) return prev;
+  return deduplicateMessages(hydratedMessages);
+});
+  }, [hydratedMessages, setMessages, status, isReconnectScheduled, sessionId]);
   // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
