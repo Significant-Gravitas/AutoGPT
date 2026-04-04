@@ -20,6 +20,10 @@ class ValidateAgentGraphTool(BaseTool):
         return "validate_agent_graph"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Validate agent JSON for correctness: block_ids, links, required fields, "

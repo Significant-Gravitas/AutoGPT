@@ -4,6 +4,8 @@ import logging
 import uuid
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
@@ -19,6 +21,14 @@ class CustomizeAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "customize_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [
+            APIKeyPermission.WRITE_GRAPH,
+            APIKeyPermission.WRITE_LIBRARY,
+            # READ_STORE permission not needed since we only use public marketplace data
+        ]
 
     @property
     def description(self) -> str:

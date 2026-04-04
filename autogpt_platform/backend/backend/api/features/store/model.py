@@ -117,19 +117,24 @@ class StoreAgentDetails(pydantic.BaseModel):
         )
 
 
-class Profile(pydantic.BaseModel):
+class ProfileUpdateRequest(pydantic.BaseModel):
     """Marketplace user profile (only attributes that the user can update)"""
+
+    username: str | None = None
+    name: str | None = None
+    description: str | None = None
+    avatar_url: str | None = None
+    links: list[str] | None = None
+
+
+class ProfileDetails(pydantic.BaseModel):
+    """Marketplace user profile (including read-only fields)"""
 
     username: str
     name: str
     description: str
     avatar_url: str | None
     links: list[str]
-
-
-class ProfileDetails(Profile):
-    """Marketplace user profile (including read-only fields)"""
-
     is_featured: bool
 
     @classmethod

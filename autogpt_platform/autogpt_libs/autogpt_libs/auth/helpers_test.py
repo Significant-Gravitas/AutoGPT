@@ -8,8 +8,7 @@ from unittest import mock
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
-from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
-from autogpt_libs.auth.jwt_utils import bearer_jwt_auth
+from autogpt_libs.auth.jwt_utils import add_auth_responses_to_openapi, bearer_jwt_auth
 
 
 def test_add_auth_responses_to_openapi_basic():

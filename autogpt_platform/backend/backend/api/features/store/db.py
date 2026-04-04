@@ -663,22 +663,22 @@ async def get_store_submissions(
 
 async def delete_store_submission(
     user_id: str,
-    submission_id: str,
+    store_listing_version_id: str,
 ) -> bool:
     """
     Delete a store submission version as the submitting user.
 
     Args:
         user_id: ID of the authenticated user
-        submission_id: StoreListingVersion ID to delete
+        store_listing_version_id: StoreListingVersion ID to delete
 
     Returns:
         bool: True if successfully deleted
     """
     try:
         # Find the submission version with ownership check
-        version = await prisma.models.StoreListingVersion.prisma().find_first(
-            where={"id": submission_id}, include={"StoreListing": True}
+        version = await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}, include={"StoreListing": True}
         )
 
         if (
@@ -691,7 +691,7 @@ async def delete_store_submission(
         # Prevent deletion of approved submissions
         if version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED:
             raise store_exceptions.InvalidOperationError(
-                "Cannot delete approved submissions"
+                "Cannot delete approved store listings"
             )
 
         # Delete the version
@@ -1061,7 +1061,7 @@ async def get_user_profile(
 
 
 async def update_profile(
-    user_id: str, profile: store_model.Profile
+    user_id: str, profile: store_model.ProfileUpdateRequest
 ) -> store_model.ProfileDetails:
     """
     Update the store profile for a user or create a new one if it doesn't exist.
@@ -1075,11 +1075,6 @@ async def update_profile(
     """
     logger.info(f"Updating profile for user {user_id} with data: {profile}")
     try:
-        # Sanitize username to allow only letters, numbers, and hyphens
-        username = "".join(
-            c if c.isalpha() or c == "-" or c.isnumeric() else ""
-            for c in profile.username
-        ).lower()
         # Check if profile exists for the given user_id
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
@@ -1102,17 +1097,26 @@ async def update_profile(
 
         logger.debug(f"Updating existing profile for user {user_id}")
         # Prepare update data, only including non-None values
-        update_data = {}
+        update_data: prisma.types.ProfileUpdateInput = {}
         if profile.name is not None:
-            update_data["name"] = profile.name
+            update_data["name"] = profile.name.strip()
         if profile.username is not None:
-            update_data["username"] = username
+            # Sanitize username to allow only letters, numbers, and hyphens
+            update_data["username"] = "".join(
+                c if c.isalpha() or c == "-" or c.isnumeric() else ""
+                for c in profile.username
+            ).lower()
         if profile.description is not None:
-            update_data["description"] = profile.description
+            update_data["description"] = profile.description.strip()
         if profile.links is not None:
-            update_data["links"] = profile.links
+            update_data["links"] = [
+                # Filter out empty links
+                link
+                for _link in profile.links
+                if (link := _link.strip())
+            ]
         if profile.avatar_url is not None:
-            update_data["avatarUrl"] = profile.avatar_url
+            update_data["avatarUrl"] = profile.avatar_url.strip() or None
 
         # Update the existing profile
         updated_profile = await prisma.models.Profile.prisma().update(
@@ -1141,12 +1145,13 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            # Filter for unpublished agents only:
+            # Filter for unsubmitted agents only:
             "AgentGraph": {
                 "is": {
                     "StoreListingVersions": {
                         "none": {
                             "isAvailable": True,
+                            "isDeleted": False,
                             "StoreListing": {"is": {"isDeleted": False}},
                         }
                     }

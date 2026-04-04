@@ -4,13 +4,17 @@ import logging
 import re
 import uuid
 from collections.abc import Sequence
-from typing import Any, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from backend.data.db_accessors import graph_db, library_db, store_db
 from backend.data.graph import Graph, Link, Node
 from backend.util.exceptions import DatabaseError, NotFoundError
 
 from .helpers import UUID_RE_STR
+
+if TYPE_CHECKING:
+    from backend.api.features.library.model import LibraryAgent
+
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,7 @@ class DecompositionResult(TypedDict, total=False):
     error_type: str
 
 
-AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary | dict[str, Any]
+AgentSummary = LibraryAgentSummary | MarketplaceAgentSummary
 
 
 _UUID_PATTERN = re.compile(UUID_RE_STR, re.IGNORECASE)
@@ -388,7 +392,7 @@ async def get_all_relevant_agents_for_generation(
 
 
 def extract_search_terms_from_steps(
-    decomposition_result: DecompositionResult | dict[str, Any],
+    decomposition_result: DecompositionResult,
 ) -> list[str]:
     """Extract search terms from decomposed instruction steps.
 
@@ -431,12 +435,12 @@ def extract_search_terms_from_steps(
 
 async def enrich_library_agents_from_steps(
     user_id: str,
-    decomposition_result: DecompositionResult | dict[str, Any],
-    existing_agents: Sequence[AgentSummary] | Sequence[dict[str, Any]],
+    decomposition_result: DecompositionResult,
+    existing_agents: Sequence[AgentSummary],
     exclude_graph_id: str | None = None,
     include_marketplace: bool = True,
     max_additional_results: int = 10,
-) -> list[AgentSummary] | list[dict[str, Any]]:
+) -> list[AgentSummary]:
     """Enrich library agents list with additional searches based on decomposed steps.
 
     This implements two-phase search: after decomposition, we search for additional
@@ -469,7 +473,7 @@ async def enrich_library_agents_from_steps(
         if graph_id and isinstance(graph_id, str):
             existing_ids.add(graph_id)
 
-    all_agents: list[AgentSummary] | list[dict[str, Any]] = list(existing_agents)
+    all_agents: list[AgentSummary] = list(existing_agents)
 
     for term in search_terms[:3]:
         try:
@@ -599,7 +603,7 @@ async def save_agent_to_library(
     user_id: str,
     is_update: bool = False,
     folder_id: str | None = None,
-) -> tuple[Graph, Any]:
+) -> tuple[Graph, "LibraryAgent"]:
     """Save agent to database and user's library.
 
     Args:

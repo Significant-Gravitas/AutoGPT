@@ -1,0 +1,5 @@
+{
+  "detail": "connection refused",
+  "hint": "Check server logs and dependent services.",
+  "message": "Failed to process GET /library/agents/some-id"
+}

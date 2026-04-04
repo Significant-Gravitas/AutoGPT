@@ -54,7 +54,12 @@ def test_server_host_plain_url():
 
 def test_server_host_strips_credentials():
     """netloc would expose user:pass — hostname must not."""
-    assert server_host("https://user:secret@mcp.example.com/mcp") == "mcp.example.com"
+    assert (
+        server_host(
+            "https://user:secret@mcp.example.com/mcp"  # pragma: allowlist secret
+        )
+        == "mcp.example.com"
+    )
 
 
 def test_server_host_with_port():
@@ -122,7 +127,7 @@ async def test_credential_bearing_url_returns_error():
     response = await tool._execute(
         user_id=_USER_ID,
         session=session,
-        server_url="https://user:secret@mcp.example.com/mcp",
+        server_url="https://user:secret@mcp.example.com/mcp",  # pragma: allowlist secret  # noqa: E501; fmt: skip
     )
     assert isinstance(response, ErrorResponse)
     assert (

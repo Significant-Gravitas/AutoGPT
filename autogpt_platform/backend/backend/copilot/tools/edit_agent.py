@@ -3,6 +3,8 @@
 import logging
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_generator import get_agent_as_json
@@ -19,6 +21,10 @@ class EditAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "edit_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY]
 
     @property
     def description(self) -> str:

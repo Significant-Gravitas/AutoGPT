@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from prisma.enums import APIKeyPermission
+
 from backend.copilot.model import ChatSession
 
 from .agent_search import search_agents
@@ -15,6 +17,10 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def name(self) -> str:
         return "find_library_agent"
+
+    @property
+    def allow_external_use(self):
+        return True, [APIKeyPermission.READ_LIBRARY]
 
     @property
     def description(self) -> str:

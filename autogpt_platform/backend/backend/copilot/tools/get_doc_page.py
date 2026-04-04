@@ -23,6 +23,10 @@ class GetDocPageTool(BaseTool):
         return "get_doc_page"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Read full documentation page content by path (from search_docs results)."

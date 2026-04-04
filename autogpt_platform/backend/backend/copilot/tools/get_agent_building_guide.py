@@ -41,6 +41,10 @@ class GetAgentBuildingGuideTool(BaseTool):
         return "get_agent_building_guide"
 
     @property
+    def allow_external_use(self):
+        return True, []
+
+    @property
     def description(self) -> str:
         return (
             "Get the agent JSON building guide (nodes, links, AgentExecutorBlock, MCPToolBlock usage, "

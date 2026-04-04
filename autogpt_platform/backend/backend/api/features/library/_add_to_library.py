@@ -7,12 +7,12 @@ logic lives in exactly one place.
 
 import logging
 
+import prisma.enums
 import prisma.errors
 import prisma.models
 
 import backend.api.features.library.model as library_model
-import backend.data.graph as graph_db
-from backend.data.graph import GraphModel, GraphSettings
+from backend.data.graph import GraphSettings
 from backend.data.includes import library_agent_include
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
@@ -25,38 +25,42 @@ async def resolve_graph_for_library(
     user_id: str,
     *,
     admin: bool,
-) -> GraphModel:
+) -> tuple[str, int]:
     """Look up a StoreListingVersion and resolve its graph.
 
     When ``admin=True``, uses ``get_graph_as_admin`` to bypass the marketplace
     APPROVED-only check.  Otherwise uses the regular ``get_graph``.
     """
-    slv = await prisma.models.StoreListingVersion.prisma().find_unique(
-        where={"id": store_listing_version_id}, include={"AgentGraph": True}
+    listing_version = await prisma.models.StoreListingVersion.prisma().find_unique(
+        where={"id": store_listing_version_id}
     )
-    if not slv or not slv.AgentGraph:
+    if (
+        not listing_version
+        or (
+            not admin
+            and listing_version.submissionStatus
+            != prisma.enums.SubmissionStatus.APPROVED
+        )
+        or listing_version.isDeleted
+    ):
+        logger.warning(
+            "Store listing version not found or not available: "
+            f"{store_listing_version_id}"
+        )
         raise NotFoundError(
-            f"Store listing version {store_listing_version_id} not found or invalid"
+            f"Store listing version {store_listing_version_id} not found "
+            "or not available"
         )
 
-    ag = slv.AgentGraph
-    if admin:
-        graph_model = await graph_db.get_graph_as_admin(
-            graph_id=ag.id, version=ag.version, user_id=user_id
-        )
-    else:
-        graph_model = await graph_db.get_graph(
-            graph_id=ag.id, version=ag.version, user_id=user_id
-        )
+    graph_id = listing_version.agentGraphId
+    graph_version = listing_version.agentGraphVersion
 
-    if not graph_model:
-        raise NotFoundError(f"Graph #{ag.id} v{ag.version} not found or accessible")
-    return graph_model
+    return graph_id, graph_version
 
 
 async def add_graph_to_library(
-    store_listing_version_id: str,
-    graph_model: GraphModel,
+    graph_id: str,
+    graph_version: int,
     user_id: str,
 ) -> library_model.LibraryAgent:
     """Check existing / restore soft-deleted / create new LibraryAgent.
@@ -66,7 +70,7 @@ async def add_graph_to_library(
     This is more robust than ``upsert`` because Prisma's upsert atomicity
     guarantees are not well-documented for all versions.
     """
-    settings_json = SafeJson(GraphSettings.from_graph(graph_model).model_dump())
+    settings_json = SafeJson(GraphSettings().model_dump())
     _include = library_agent_include(
         user_id, include_nodes=False, include_executions=False
     )
@@ -78,8 +82,8 @@ async def add_graph_to_library(
                 "AgentGraph": {
                     "connect": {
                         "graphVersionId": {
-                            "id": graph_model.id,
-                            "version": graph_model.version,
+                            "id": graph_id,
+                            "version": graph_version,
                         }
                     }
                 },
@@ -95,8 +99,8 @@ async def add_graph_to_library(
             where={
                 "userId_agentGraphId_agentGraphVersion": {
                     "userId": user_id,
-                    "agentGraphId": graph_model.id,
-                    "agentGraphVersion": graph_model.version,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": graph_version,
                 }
             },
             data={
@@ -108,13 +112,8 @@ async def add_graph_to_library(
         )
         if added_agent is None:
             raise NotFoundError(
-                f"LibraryAgent for graph #{graph_model.id} "
-                f"v{graph_model.version} not found after UniqueViolationError"
+                f"LibraryAgent for graph #{graph_id} "
+                f"v{graph_version} not found after UniqueViolationError"
             )
 
-    logger.debug(
-        f"Added graph #{graph_model.id} v{graph_model.version} "
-        f"for store listing version #{store_listing_version_id} "
-        f"to library for user #{user_id}"
-    )
     return library_model.LibraryAgent.from_db(added_agent)

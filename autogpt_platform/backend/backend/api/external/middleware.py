@@ -1,4 +1,4 @@
-from fastapi import HTTPException, Security, status
+from fastapi import FastAPI, HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
 
@@ -96,7 +96,9 @@ def require_permission(*permissions: APIKeyPermission):
     """
 
     async def check_permissions(
-        auth: APIAuthorizationInfo = Security(require_auth),
+        auth: APIAuthorizationInfo = Security(
+            require_auth, scopes=[p.value for p in permissions]
+        ),
     ) -> APIAuthorizationInfo:
         missing = [p for p in permissions if p not in auth.scopes]
         if missing:
@@ -108,3 +110,15 @@ def require_permission(*permissions: APIKeyPermission):
         return auth
 
     return check_permissions
+
+
+def add_auth_responses_to_openapi(app: FastAPI) -> None:
+    """
+    Add 401 responses to all endpoints secured with `require_auth`,
+    `require_api_key`, or `require_access_token` middleware.
+    """
+    from autogpt_libs.auth.helpers import add_auth_responses_to_openapi
+
+    add_auth_responses_to_openapi(
+        app, [api_key_header.scheme_name, bearer_auth.scheme_name]
+    )
