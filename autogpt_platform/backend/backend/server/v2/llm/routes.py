@@ -59,6 +59,7 @@ async def list_models(
             context_window=model.metadata.context_window,
             max_output_tokens=model.metadata.max_output_tokens,
             price_tier=model.metadata.price_tier,
+            is_enabled=model.is_enabled,
             is_recommended=model.is_recommended,
             capabilities=model.capabilities,
             costs=[
@@ -118,7 +119,8 @@ async def list_providers():
                         context_window=model.metadata.context_window,
                         max_output_tokens=model.metadata.max_output_tokens,
                         price_tier=model.metadata.price_tier,
-                        is_recommended=model.is_recommended,
+                        is_enabled=model.is_enabled,
+            is_recommended=model.is_recommended,
                         capabilities=model.capabilities,
                         costs=[
                             llm_model.LlmModelCost(
