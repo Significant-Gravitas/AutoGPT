@@ -5,7 +5,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { useState } from "react";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { ModalScheduleSection } from "./components/ModalScheduleSection/ModalScheduleSection";
-import { Text } from "@/components/atoms/Text/Text";
 import { useScheduleAgentModal } from "./useScheduleAgentModal";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 
@@ -64,15 +63,12 @@ export function ScheduleAgentModal({
 
   return (
     <Dialog
+      title="Schedule Run"
       controlled={{ isOpen, set: handleClose }}
       styling={{ maxWidth: "600px", maxHeight: "90vh" }}
     >
       <Dialog.Content>
         <div className="flex h-full flex-col">
-          <Text variant="lead" as="h2" className="!font-medium !text-black">
-            Schedule run
-          </Text>
-
           {/* Content */}
           <div className="overflow-y-auto">
             <ModalScheduleSection

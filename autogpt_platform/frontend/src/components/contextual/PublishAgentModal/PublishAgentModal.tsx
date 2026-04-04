@@ -106,6 +106,7 @@ export function PublishAgentModal({
   return (
     <>
       <Dialog
+        title="Publish Agent"
         styling={{
           maxWidth: "45rem",
         }}
