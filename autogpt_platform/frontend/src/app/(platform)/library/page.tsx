@@ -7,7 +7,8 @@ import { LibraryActionHeader } from "./components/LibraryActionHeader/LibraryAct
 import { LibraryAgentList } from "./components/LibraryAgentList/LibraryAgentList";
 import { useLibraryListPage } from "./components/useLibraryListPage";
 import { FavoriteAnimationProvider } from "./context/FavoriteAnimationContext";
-import { LibraryTab } from "./types";
+import type { LibraryTab, AgentStatusFilter } from "./types";
+import { useLibraryFleetSummary } from "./hooks/useLibraryFleetSummary";
 
 const LIBRARY_TABS: LibraryTab[] = [
   { id: "all", title: "All", icon: ListIcon },
@@ -19,6 +20,8 @@ export default function LibraryPage() {
     useLibraryListPage();
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(LIBRARY_TABS[0].id);
+  const [statusFilter, setStatusFilter] = useState<AgentStatusFilter>("all");
+  const fleetSummary = useLibraryFleetSummary();
 
   useEffect(() => {
     document.title = "Library – AutoGPT Platform";
@@ -50,6 +53,9 @@ export default function LibraryPage() {
           tabs={LIBRARY_TABS}
           activeTab={activeTab}
           onTabChange={handleTabChange}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          fleetSummary={fleetSummary}
         />
       </main>
     </FavoriteAnimationProvider>

@@ -13,6 +13,8 @@ import {
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
+import { PulseChips } from "../PulseChips/PulseChips";
+import { usePulseChips } from "../PulseChips/usePulseChips";
 
 interface Props {
   inputLayoutId: string;
@@ -34,6 +36,7 @@ export function EmptySession({
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
+  const pulseChips = usePulseChips();
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -79,6 +82,8 @@ export function EmptySession({
           <Text variant="h3" className="mb-8 !font-normal">
             Tell me about your work — I&apos;ll find what to automate.
           </Text>
+
+          <PulseChips chips={pulseChips} onChipClick={onSend} />
 
           <div className="mb-6">
             <motion.div

@@ -10,6 +10,8 @@ import {
 } from "./FolderIcon";
 import { useState } from "react";
 import { PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react";
+import type { AgentStatus } from "../../types";
+import { StatusBadge } from "../StatusBadge/StatusBadge";
 
 interface Props {
   id: string;
@@ -21,6 +23,8 @@ interface Props {
   onDelete?: () => void;
   onAgentDrop?: (agentId: string, folderId: string) => void;
   onClick?: () => void;
+  /** Worst status among child agents (optional, for status aggregation). */
+  worstStatus?: AgentStatus;
 }
 
 export function LibraryFolder({
@@ -33,6 +37,7 @@ export function LibraryFolder({
   onDelete,
   onAgentDrop,
   onClick,
+  worstStatus,
 }: Props) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -86,13 +91,18 @@ export function LibraryFolder({
           >
             {name}
           </Text>
-          <Text
-            variant="small"
-            className="text-zinc-500"
-            data-testid="library-folder-agent-count"
-          >
-            {agentCount} {agentCount === 1 ? "agent" : "agents"}
-          </Text>
+          <div className="flex items-center gap-2">
+            <Text
+              variant="small"
+              className="text-zinc-500"
+              data-testid="library-folder-agent-count"
+            >
+              {agentCount} {agentCount === 1 ? "agent" : "agents"}
+            </Text>
+            {worstStatus && worstStatus !== "idle" && (
+              <StatusBadge status={worstStatus} />
+            )}
+          </div>
         </div>
 
         {/* Right side - Custom folder icon */}

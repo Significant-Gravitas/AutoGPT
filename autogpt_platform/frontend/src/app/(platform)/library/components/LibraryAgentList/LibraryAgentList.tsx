@@ -16,8 +16,9 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
-import { LibraryTab } from "../../types";
+import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
+import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
 
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
@@ -70,6 +71,9 @@ interface Props {
   tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
+  statusFilter?: AgentStatusFilter;
+  onStatusFilterChange?: (filter: AgentStatusFilter) => void;
+  fleetSummary?: FleetSummary;
 }
 
 export function LibraryAgentList({
@@ -81,6 +85,9 @@ export function LibraryAgentList({
   tabs,
   activeTab,
   onTabChange,
+  statusFilter = "all",
+  onStatusFilterChange,
+  fleetSummary,
 }: Props) {
   const shouldReduceMotion = useReducedMotion();
   const activeContainerVariants = shouldReduceMotion
@@ -95,7 +102,8 @@ export function LibraryAgentList({
   const {
     isFavoritesTab,
     agentLoading,
-    allAgentsCount,
+    displayedCount,
+    allAgentIDs,
     favoritesCount,
     agents,
     hasNextPage,
@@ -116,18 +124,33 @@ export function LibraryAgentList({
     selectedFolderId,
     onFolderSelect,
     activeTab,
+    statusFilter,
   });
 
   return (
     <>
+      {!selectedFolderId && fleetSummary && (
+        <div className="mb-4">
+          <AgentBriefingPanel
+            summary={fleetSummary}
+            agentIDs={allAgentIDs}
+            onFilterChange={onStatusFilterChange}
+            activeFilter={statusFilter}
+          />
+        </div>
+      )}
+
       {!selectedFolderId && (
         <LibrarySubSection
           tabs={tabs}
           activeTab={activeTab}
           onTabChange={onTabChange}
-          allCount={allAgentsCount}
+          allCount={displayedCount}
           favoritesCount={favoritesCount}
           setLibrarySort={setLibrarySort}
+          statusFilter={statusFilter}
+          onStatusFilterChange={onStatusFilterChange}
+          fleetSummary={fleetSummary}
         />
       )}
 
