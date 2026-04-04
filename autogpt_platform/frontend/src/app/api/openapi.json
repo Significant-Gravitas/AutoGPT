@@ -9,9 +9,7 @@
   "paths": {
     "/api/analytics/log_raw_analytics": {
       "post": {
-        "tags": [
-          "analytics"
-        ],
+        "tags": ["analytics"],
         "summary": "Log Raw Analytics",
         "operationId": "postAnalyticsLogRawAnalytics",
         "requestBody": {
@@ -56,9 +54,7 @@
     },
     "/api/analytics/log_raw_metric": {
       "post": {
-        "tags": [
-          "analytics"
-        ],
+        "tags": ["analytics"],
         "summary": "Log Raw Metric",
         "operationId": "postAnalyticsLogRawMetric",
         "requestBody": {
@@ -103,10 +99,7 @@
     },
     "/api/api-keys": {
       "get": {
-        "tags": [
-          "v1",
-          "api-keys"
-        ],
+        "tags": ["v1", "api-keys"],
         "summary": "List user API keys",
         "description": "List all API keys for the user",
         "operationId": "getV1List user api keys",
@@ -136,10 +129,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v1",
-          "api-keys"
-        ],
+        "tags": ["v1", "api-keys"],
         "summary": "Create new API key",
         "description": "Create a new API key",
         "operationId": "postV1Create new api key",
@@ -187,10 +177,7 @@
     },
     "/api/api-keys/{key_id}": {
       "delete": {
-        "tags": [
-          "v1",
-          "api-keys"
-        ],
+        "tags": ["v1", "api-keys"],
         "summary": "Revoke API key",
         "description": "Revoke an API key",
         "operationId": "deleteV1Revoke api key",
@@ -237,10 +224,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v1",
-          "api-keys"
-        ],
+        "tags": ["v1", "api-keys"],
         "summary": "Get specific API key",
         "description": "Get a specific API key",
         "operationId": "getV1Get specific api key",
@@ -289,10 +273,7 @@
     },
     "/api/api-keys/{key_id}/permissions": {
       "put": {
-        "tags": [
-          "v1",
-          "api-keys"
-        ],
+        "tags": ["v1", "api-keys"],
         "summary": "Update key permissions",
         "description": "Update API key permissions",
         "operationId": "putV1Update key permissions",
@@ -351,10 +332,7 @@
     },
     "/api/api-keys/{key_id}/suspend": {
       "post": {
-        "tags": [
-          "v1",
-          "api-keys"
-        ],
+        "tags": ["v1", "api-keys"],
         "summary": "Suspend API key",
         "description": "Suspend an API key",
         "operationId": "postV1Suspend api key",
@@ -403,10 +381,7 @@
     },
     "/api/auth/user": {
       "post": {
-        "tags": [
-          "v1",
-          "auth"
-        ],
+        "tags": ["v1", "auth"],
         "summary": "Get or create user",
         "operationId": "postV1Get or create user",
         "responses": {
@@ -431,10 +406,7 @@
     },
     "/api/auth/user/email": {
       "post": {
-        "tags": [
-          "v1",
-          "auth"
-        ],
+        "tags": ["v1", "auth"],
         "summary": "Update user email",
         "operationId": "postV1Update user email",
         "requestBody": {
@@ -486,10 +458,7 @@
     },
     "/api/auth/user/preferences": {
       "get": {
-        "tags": [
-          "v1",
-          "auth"
-        ],
+        "tags": ["v1", "auth"],
         "summary": "Get notification preferences",
         "operationId": "getV1Get notification preferences",
         "responses": {
@@ -514,10 +483,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v1",
-          "auth"
-        ],
+        "tags": ["v1", "auth"],
         "summary": "Update notification preferences",
         "operationId": "postV1Update notification preferences",
         "requestBody": {
@@ -564,10 +530,7 @@
     },
     "/api/auth/user/timezone": {
       "get": {
-        "tags": [
-          "v1",
-          "auth"
-        ],
+        "tags": ["v1", "auth"],
         "summary": "Get user timezone",
         "description": "Get user timezone setting.",
         "operationId": "getV1Get user timezone",
@@ -593,10 +556,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v1",
-          "auth"
-        ],
+        "tags": ["v1", "auth"],
         "summary": "Update user timezone",
         "description": "Update user timezone. The timezone should be a valid IANA timezone identifier.",
         "operationId": "postV1Update user timezone",
@@ -644,10 +604,7 @@
     },
     "/api/blocks": {
       "get": {
-        "tags": [
-          "v1",
-          "blocks"
-        ],
+        "tags": ["v1", "blocks"],
         "summary": "List available blocks",
         "operationId": "getV1List available blocks",
         "responses": {
@@ -679,10 +636,7 @@
     },
     "/api/blocks/{block_id}/execute": {
       "post": {
-        "tags": [
-          "v1",
-          "blocks"
-        ],
+        "tags": ["v1", "blocks"],
         "summary": "Execute graph block",
         "operationId": "postV1Execute graph block",
         "security": [
@@ -747,9 +701,7 @@
     },
     "/api/builder/blocks": {
       "get": {
-        "tags": [
-          "v2"
-        ],
+        "tags": ["v2"],
         "summary": "Get Builder blocks",
         "description": "Get blocks based on either category, type, or provider.",
         "operationId": "getV2Get builder blocks",
@@ -782,12 +734,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": [
-                    "all",
-                    "input",
-                    "action",
-                    "output"
-                  ],
+                  "enum": ["all", "input", "action", "output"],
                   "type": "string"
                 },
                 {
@@ -864,9 +811,7 @@
     },
     "/api/builder/blocks/batch": {
       "get": {
-        "tags": [
-          "v2"
-        ],
+        "tags": ["v2"],
         "summary": "Get specific blocks",
         "description": "Get specific blocks by their IDs.",
         "operationId": "getV2Get specific blocks",
@@ -922,9 +867,7 @@
     },
     "/api/builder/categories": {
       "get": {
-        "tags": [
-          "v2"
-        ],
+        "tags": ["v2"],
         "summary": "Get Builder block categories",
         "description": "Get all block categories with a specified number of blocks per category.",
         "operationId": "getV2Get builder block categories",
@@ -978,9 +921,7 @@
     },
     "/api/builder/counts": {
       "get": {
-        "tags": [
-          "v2"
-        ],
+        "tags": ["v2"],
         "summary": "Get Builder item counts",
         "description": "Get item counts for the menu categories in the Blocks Menu.",
         "operationId": "getV2Get builder item counts",
@@ -1008,9 +949,7 @@
     },
     "/api/builder/providers": {
       "get": {
-        "tags": [
-          "v2"
-        ],
+        "tags": ["v2"],
         "summary": "Get Builder integration providers",
         "description": "Get all integration providers with their block counts.",
         "operationId": "getV2Get builder integration providers",
@@ -1070,11 +1009,7 @@
     },
     "/api/builder/search": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Builder search",
         "description": "Search for blocks (including integrations), marketplace agents, and user library agents.",
         "operationId": "getV2Builder search",
@@ -1201,9 +1136,7 @@
     },
     "/api/builder/suggestions": {
       "get": {
-        "tags": [
-          "v2"
-        ],
+        "tags": ["v2"],
         "summary": "Get Builder suggestions",
         "description": "Get all suggestions for the Blocks Menu.",
         "operationId": "getV2Get builder suggestions",
@@ -1231,11 +1164,7 @@
     },
     "/api/chat/config/ttl": {
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Get Ttl Config",
         "description": "Get the stream TTL configuration.\n\nReturns the Time-To-Live settings for chat streams, which determines\nhow long clients can reconnect to an active stream.\n\nReturns:\n    dict: TTL configuration with seconds and milliseconds values.",
         "operationId": "getV2GetTtlConfig",
@@ -1257,11 +1186,7 @@
     },
     "/api/chat/health": {
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Health Check",
         "description": "Health check endpoint for the chat service.\n\nPerforms a full cycle test of session creation and retrieval. Should always return healthy\nif the service and data layer are operational.\n\nReturns:\n    dict: A status dictionary indicating health, service name, and API version.",
         "operationId": "getV2HealthCheck",
@@ -1283,11 +1208,7 @@
     },
     "/api/chat/schema/tool-responses": {
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "[Dummy] Tool response type export for codegen",
         "description": "This endpoint is not meant to be called. It exists solely to expose tool response models in the OpenAPI schema for frontend codegen.",
         "operationId": "getV2[dummy] tool response type export for codegen",
@@ -1372,11 +1293,7 @@
     },
     "/api/chat/sessions": {
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "List Sessions",
         "description": "List chat sessions for the authenticated user.\n\nReturns a paginated list of chat sessions belonging to the current user,\nordered by most recently updated.\n\nArgs:\n    user_id: The authenticated user's ID.\n    limit: Maximum number of sessions to return (1-100).\n    offset: Number of sessions to skip for pagination.\n\nReturns:\n    ListSessionsResponse: List of session summaries and total count.",
         "operationId": "getV2ListSessions",
@@ -1437,11 +1354,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
         "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
@@ -1469,11 +1382,7 @@
     },
     "/api/chat/sessions/{session_id}": {
       "delete": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Delete Session",
         "description": "Delete a chat session.\n\nPermanently removes a chat session and all its messages.\nOnly the owner can delete their sessions.\n\nArgs:\n    session_id: The session ID to delete.\n    user_id: The authenticated user's ID.\n\nReturns:\n    204 No Content on success.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
         "operationId": "deleteV2DeleteSession",
@@ -1516,11 +1425,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
         "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
         "operationId": "getV2GetSession",
@@ -1569,11 +1474,7 @@
     },
     "/api/chat/sessions/{session_id}/assign-user": {
       "patch": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Session Assign User",
         "description": "Assign an authenticated user to a chat session.\n\nUsed (typically post-login) to claim an existing anonymous session as the current authenticated user.\n\nArgs:\n    session_id: The identifier for the (previously anonymous) session.\n    user_id: The authenticated user's ID to associate with the session.\n\nReturns:\n    dict: Status of the assignment.",
         "operationId": "patchV2SessionAssignUser",
@@ -1624,11 +1525,7 @@
     },
     "/api/chat/sessions/{session_id}/cancel": {
       "post": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Cancel Session Task",
         "description": "Cancel the active streaming task for a session.\n\nPublishes a cancel event to the executor via RabbitMQ FANOUT, then\npolls Redis until the task status flips from ``running`` or a timeout\n(5 s) is reached.  Returns only after the cancellation is confirmed.",
         "operationId": "postV2CancelSessionTask",
@@ -1677,11 +1574,7 @@
     },
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
         "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nArgs:\n    session_id: The chat session identifier.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse (SSE) when an active stream exists,\n    or 204 No Content when there is nothing to resume.",
         "operationId": "getV2ResumeSessionStream",
@@ -1726,11 +1619,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
         "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
         "operationId": "postV2StreamChatPost",
@@ -1787,11 +1676,7 @@
     },
     "/api/chat/sessions/{session_id}/title": {
       "patch": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Update session title",
         "description": "Update the title of a chat session.\n\nAllows the user to rename their chat session.\n\nArgs:\n    session_id: The session ID to update.\n    request: Request body containing the new title.\n    user_id: The authenticated user's ID.\n\nReturns:\n    dict: Status of the update.\n\nRaises:\n    HTTPException: 404 if session not found or not owned by user.",
         "operationId": "patchV2Update session title",
@@ -1855,11 +1740,7 @@
     },
     "/api/chat/usage": {
       "get": {
-        "tags": [
-          "v2",
-          "chat",
-          "chat"
-        ],
+        "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
         "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.",
         "operationId": "getV2GetCopilotUsage",
@@ -1887,10 +1768,7 @@
     },
     "/api/credits": {
       "get": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Get user credits",
         "operationId": "getV1Get user credits",
         "responses": {
@@ -1919,10 +1797,7 @@
         ]
       },
       "patch": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Fulfill checkout session",
         "operationId": "patchV1Fulfill checkout session",
         "responses": {
@@ -1945,10 +1820,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Request credit top up",
         "operationId": "postV1Request credit top up",
         "requestBody": {
@@ -1993,12 +1865,7 @@
     },
     "/api/credits/admin/add_credits": {
       "post": {
-        "tags": [
-          "v2",
-          "admin",
-          "credits",
-          "admin"
-        ],
+        "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Add Credits to User",
         "operationId": "postV2Add credits to user",
         "requestBody": {
@@ -2045,12 +1912,7 @@
     },
     "/api/credits/admin/users_history": {
       "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "credits",
-          "admin"
-        ],
+        "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Get All Users History",
         "operationId": "getV2Get all users history",
         "security": [
@@ -2141,10 +2003,7 @@
     },
     "/api/credits/auto-top-up": {
       "get": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Get auto top up",
         "operationId": "getV1Get auto top up",
         "responses": {
@@ -2169,10 +2028,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Configure auto top up",
         "description": "Configure auto top-up settings and perform an immediate top-up if needed.\n\nRaises HTTPException(422) if the request parameters are invalid or if\nthe credit top-up fails.",
         "operationId": "postV1Configure auto top up",
@@ -2221,10 +2077,7 @@
     },
     "/api/credits/manage": {
       "get": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
         "operationId": "getV1Manage payment methods",
         "responses": {
@@ -2255,10 +2108,7 @@
     },
     "/api/credits/refunds": {
       "get": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Get refund requests",
         "operationId": "getV1Get refund requests",
         "responses": {
@@ -2289,10 +2139,7 @@
     },
     "/api/credits/stripe_webhook": {
       "post": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Handle Stripe webhooks",
         "operationId": "postV1Handle stripe webhooks",
         "responses": {
@@ -2309,10 +2156,7 @@
     },
     "/api/credits/transactions": {
       "get": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Get credit history",
         "operationId": "getV1Get credit history",
         "security": [
@@ -2394,10 +2238,7 @@
     },
     "/api/credits/{transaction_key}/refund": {
       "post": {
-        "tags": [
-          "v1",
-          "credits"
-        ],
+        "tags": ["v1", "credits"],
         "summary": "Refund credit transaction",
         "operationId": "postV1Refund credit transaction",
         "security": [
@@ -2460,10 +2301,7 @@
     },
     "/api/email/": {
       "post": {
-        "tags": [
-          "v1",
-          "email"
-        ],
+        "tags": ["v1", "email"],
         "summary": "Handle Postmark Email Webhooks",
         "operationId": "postV1Handle postmark email webhooks",
         "requestBody": {
@@ -2536,10 +2374,7 @@
     },
     "/api/email/unsubscribe": {
       "post": {
-        "tags": [
-          "v1",
-          "email"
-        ],
+        "tags": ["v1", "email"],
         "summary": "One Click Email Unsubscribe",
         "operationId": "postV1One click email unsubscribe",
         "parameters": [
@@ -2577,10 +2412,7 @@
     },
     "/api/executions": {
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "List all executions",
         "operationId": "getV1List all executions",
         "responses": {
@@ -2611,12 +2443,7 @@
     },
     "/api/executions/admin/execution_accuracy_trends": {
       "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "admin",
-          "execution_analytics"
-        ],
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Get Execution Accuracy Trends and Alerts",
         "description": "Get execution accuracy trends with moving averages and alert detection.\nSimple single-query approach.",
         "operationId": "getV2Get execution accuracy trends and alerts",
@@ -2711,12 +2538,7 @@
     },
     "/api/executions/admin/execution_analytics": {
       "post": {
-        "tags": [
-          "v2",
-          "admin",
-          "admin",
-          "execution_analytics"
-        ],
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Generate Execution Analytics",
         "description": "Generate activity summaries and correctness scores for graph executions.\n\nThis endpoint:\n1. Fetches all completed executions matching the criteria\n2. Identifies executions missing activity_status or correctness_score\n3. Generates missing data using AI in batches\n4. Updates the database with new stats\n5. Returns a detailed report of the analytics operation",
         "operationId": "postV2Generate execution analytics",
@@ -2764,12 +2586,7 @@
     },
     "/api/executions/admin/execution_analytics/config": {
       "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "admin",
-          "execution_analytics"
-        ],
+        "tags": ["v2", "admin", "admin", "execution_analytics"],
         "summary": "Get Execution Analytics Configuration",
         "description": "Get the configuration for execution analytics including:\n- Available AI models with metadata\n- Default system and user prompts\n- Recommended model selection",
         "operationId": "getV2Get execution analytics configuration",
@@ -2797,10 +2614,7 @@
     },
     "/api/executions/{graph_exec_id}": {
       "delete": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Delete graph execution",
         "operationId": "deleteV1Delete graph execution",
         "security": [
@@ -2841,10 +2655,7 @@
     },
     "/api/files/upload": {
       "post": {
-        "tags": [
-          "v1",
-          "files"
-        ],
+        "tags": ["v1", "files"],
         "summary": "Upload file to cloud storage",
         "description": "Upload a file to cloud storage and return a storage key that can be used\nwith FileStoreBlock and AgentFileInputBlock.\n\nArgs:\n    file: The file to upload\n    user_id: The user ID\n    provider: Cloud storage provider (\"gcs\", \"s3\", \"azure\")\n    expiration_hours: Hours until file expires (1-48)\n\nReturns:\n    Dict containing the cloud storage path and signed URL",
         "operationId": "postV1Upload file to cloud storage",
@@ -2904,10 +2715,7 @@
     },
     "/api/graphs": {
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "List user graphs",
         "operationId": "getV1List user graphs",
         "responses": {
@@ -2936,10 +2744,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Create new graph",
         "operationId": "postV1Create new graph",
         "requestBody": {
@@ -2986,10 +2791,7 @@
     },
     "/api/graphs/{graph_id}": {
       "delete": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Delete graph permanently",
         "operationId": "deleteV1Delete graph permanently",
         "security": [
@@ -3035,10 +2837,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Get specific graph",
         "operationId": "getV1Get specific graph",
         "security": [
@@ -3110,10 +2909,7 @@
         }
       },
       "put": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Update graph version",
         "operationId": "putV1Update graph version",
         "security": [
@@ -3171,10 +2967,7 @@
     },
     "/api/graphs/{graph_id}/execute/{graph_version}": {
       "post": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Execute graph agent",
         "operationId": "postV1Execute graph agent",
         "security": [
@@ -3263,10 +3056,7 @@
     },
     "/api/graphs/{graph_id}/executions": {
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "List graph executions",
         "operationId": "getV1List graph executions",
         "security": [
@@ -3341,10 +3131,7 @@
     },
     "/api/graphs/{graph_id}/executions/{graph_exec_id}": {
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Get execution details",
         "operationId": "getV1Get execution details",
         "security": [
@@ -3409,9 +3196,7 @@
     },
     "/api/graphs/{graph_id}/executions/{graph_exec_id}/share": {
       "delete": {
-        "tags": [
-          "v1"
-        ],
+        "tags": ["v1"],
         "summary": "Disable Execution Sharing",
         "description": "Disable sharing for a graph execution.",
         "operationId": "deleteV1DisableExecutionSharing",
@@ -3460,9 +3245,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v1"
-        ],
+        "tags": ["v1"],
         "summary": "Enable Execution Sharing",
         "description": "Enable sharing for a graph execution.",
         "operationId": "postV1EnableExecutionSharing",
@@ -3530,10 +3313,7 @@
     },
     "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop": {
       "post": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Stop graph execution",
         "operationId": "postV1Stop graph execution",
         "security": [
@@ -3598,10 +3378,7 @@
     },
     "/api/graphs/{graph_id}/schedules": {
       "get": {
-        "tags": [
-          "v1",
-          "schedules"
-        ],
+        "tags": ["v1", "schedules"],
         "summary": "List execution schedules for a graph",
         "operationId": "getV1List execution schedules for a graph",
         "security": [
@@ -3651,10 +3428,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v1",
-          "schedules"
-        ],
+        "tags": ["v1", "schedules"],
         "summary": "Create execution schedule",
         "operationId": "postV1Create execution schedule",
         "security": [
@@ -3714,10 +3488,7 @@
     },
     "/api/graphs/{graph_id}/settings": {
       "patch": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Update graph settings",
         "description": "Update graph settings for the user's library agent.",
         "operationId": "patchV1Update graph settings",
@@ -3776,10 +3547,7 @@
     },
     "/api/graphs/{graph_id}/versions": {
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Get all graph versions",
         "operationId": "getV1Get all graph versions",
         "security": [
@@ -3831,10 +3599,7 @@
     },
     "/api/graphs/{graph_id}/versions/active": {
       "put": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Set active graph version",
         "operationId": "putV1Set active graph version",
         "security": [
@@ -3890,10 +3655,7 @@
     },
     "/api/graphs/{graph_id}/versions/{version}": {
       "get": {
-        "tags": [
-          "v1",
-          "graphs"
-        ],
+        "tags": ["v1", "graphs"],
         "summary": "Get graph version",
         "operationId": "getV1Get graph version",
         "security": [
@@ -3967,10 +3729,7 @@
     },
     "/api/integrations/ayrshare/sso_url": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Get Ayrshare Sso Url",
         "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
         "operationId": "getV1GetAyrshareSsoUrl",
@@ -3998,10 +3757,7 @@
     },
     "/api/integrations/credentials": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "List Credentials",
         "operationId": "getV1List credentials",
         "responses": {
@@ -4032,10 +3788,7 @@
     },
     "/api/integrations/providers": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "List Providers",
         "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
         "operationId": "getV1ListProviders",
@@ -4059,10 +3812,7 @@
     },
     "/api/integrations/providers/constants": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Get Provider Constants",
         "description": "Get provider names as constants.\n\nThis endpoint returns a model with provider names as constants,\nspecifically designed for OpenAPI code generation tools to create\nTypeScript constants.",
         "operationId": "getV1GetProviderConstants",
@@ -4082,10 +3832,7 @@
     },
     "/api/integrations/providers/enum-example": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Get Provider Enum Example",
         "description": "Example endpoint that uses the CompleteProviderNames enum.\n\nThis endpoint exists to ensure that the CompleteProviderNames enum is included\nin the OpenAPI schema, which will cause Orval to generate it as a\nTypeScript enum/constant.",
         "operationId": "getV1GetProviderEnumExample",
@@ -4105,10 +3852,7 @@
     },
     "/api/integrations/providers/names": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Get Provider Names",
         "description": "Get all provider names in a structured format.\n\nThis endpoint is specifically designed to expose the provider names\nin the OpenAPI schema so that code generators like Orval can create\nappropriate TypeScript constants.",
         "operationId": "getV1GetProviderNames",
@@ -4128,10 +3872,7 @@
     },
     "/api/integrations/providers/system": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "List System Providers",
         "description": "Get a list of providers that have platform credits (system credentials) available.\n\nThese providers can be used without the user providing their own API keys.",
         "operationId": "getV1ListSystemProviders",
@@ -4155,10 +3896,7 @@
     },
     "/api/integrations/webhooks/{webhook_id}/ping": {
       "post": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Webhook Ping",
         "operationId": "postV1WebhookPing",
         "security": [
@@ -4204,10 +3942,7 @@
     },
     "/api/integrations/{provider}/callback": {
       "post": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Exchange OAuth code for tokens",
         "operationId": "postV1Exchange oauth code for tokens",
         "security": [
@@ -4266,10 +4001,7 @@
     },
     "/api/integrations/{provider}/credentials": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "List Credentials By Provider",
         "operationId": "getV1ListCredentialsByProvider",
         "security": [
@@ -4320,10 +4052,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
         "operationId": "postV1Create credentials",
         "security": [
@@ -4428,10 +4157,7 @@
     },
     "/api/integrations/{provider}/credentials/{cred_id}": {
       "delete": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Delete Credentials",
         "operationId": "deleteV1DeleteCredentials",
         "security": [
@@ -4505,10 +4231,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Get Specific Credential By ID",
         "operationId": "getV1Get specific credential by id",
         "security": [
@@ -4589,10 +4312,7 @@
     },
     "/api/integrations/{provider}/login": {
       "get": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Initiate OAuth flow",
         "operationId": "getV1Initiate oauth flow",
         "security": [
@@ -4651,10 +4371,7 @@
     },
     "/api/integrations/{provider}/webhooks/{webhook_id}/ingress": {
       "post": {
-        "tags": [
-          "v1",
-          "integrations"
-        ],
+        "tags": ["v1", "integrations"],
         "summary": "Webhook Ingress Generic",
         "operationId": "postV1WebhookIngressGeneric",
         "parameters": [
@@ -4702,11 +4419,7 @@
     },
     "/api/library/agents": {
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "List Library Agents",
         "description": "Get all agents in the user's library (both created and saved).",
         "operationId": "getV2List library agents",
@@ -4829,11 +4542,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "Add Marketplace Agent",
         "description": "Add an agent from the marketplace to the user's library.",
         "operationId": "postV2Add marketplace agent",
@@ -4881,11 +4590,7 @@
     },
     "/api/library/agents/by-graph/{graph_id}": {
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent By Graph Id",
         "operationId": "getV2GetLibraryAgentByGraphId",
         "security": [
@@ -4949,11 +4654,7 @@
     },
     "/api/library/agents/favorites": {
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "List Favorite Library Agents",
         "description": "Get all favorite agents in the user's library.",
         "operationId": "getV2List favorite library agents",
@@ -5019,13 +4720,7 @@
     },
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "private",
-          "store",
-          "library"
-        ],
+        "tags": ["v2", "library", "private", "store", "library"],
         "summary": "Get Agent By Store ID",
         "description": "Get Library Agent from Store Listing Version ID.",
         "operationId": "getV2Get agent by store id",
@@ -5082,11 +4777,7 @@
     },
     "/api/library/agents/{library_agent_id}": {
       "delete": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "Delete Library Agent",
         "description": "Soft-delete the specified library agent.",
         "operationId": "deleteV2Delete library agent",
@@ -5131,11 +4822,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent",
         "operationId": "getV2Get library agent",
         "security": [
@@ -5181,11 +4868,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "Update Library Agent",
         "description": "Update the library agent with the given fields.",
         "operationId": "patchV2Update library agent",
@@ -5244,11 +4927,7 @@
     },
     "/api/library/agents/{library_agent_id}/fork": {
       "post": {
-        "tags": [
-          "v2",
-          "library",
-          "private"
-        ],
+        "tags": ["v2", "library", "private"],
         "summary": "Fork Library Agent",
         "operationId": "postV2Fork library agent",
         "security": [
@@ -5296,12 +4975,7 @@
     },
     "/api/library/folders": {
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "List Library Folders",
         "description": "List folders for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n    parent_id: Optional parent folder ID to filter by.\n    include_relations: Whether to include agent and subfolder relations for counts.\n\nReturns:\n    A FolderListResponse containing folders.",
         "operationId": "getV2List library folders",
@@ -5372,12 +5046,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Create Folder",
         "description": "Create a new folder.\n\nArgs:\n    payload: The folder creation request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The created LibraryFolder.",
         "operationId": "postV2Create folder",
@@ -5437,12 +5106,7 @@
     },
     "/api/library/folders/agents/bulk-move": {
       "post": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Bulk Move Agents",
         "description": "Move multiple agents to a folder.\n\nArgs:\n    payload: The bulk move request with agent IDs and target folder.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryAgents.",
         "operationId": "postV2Bulk move agents",
@@ -5500,12 +5164,7 @@
     },
     "/api/library/folders/tree": {
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Get Folder Tree",
         "description": "Get the full folder tree for the authenticated user.\n\nArgs:\n    user_id: ID of the authenticated user.\n\nReturns:\n    A FolderTreeResponse containing the nested folder structure.",
         "operationId": "getV2Get folder tree",
@@ -5536,12 +5195,7 @@
     },
     "/api/library/folders/{folder_id}": {
       "delete": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Delete Folder",
         "description": "Soft-delete a folder and all its contents.\n\nArgs:\n    folder_id: ID of the folder to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.",
         "operationId": "deleteV2Delete folder",
@@ -5587,12 +5241,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Get Folder",
         "description": "Get a specific folder.\n\nArgs:\n    folder_id: ID of the folder to retrieve.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The requested LibraryFolder.",
         "operationId": "getV2Get folder",
@@ -5645,12 +5294,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Update Folder",
         "description": "Update a folder's properties.\n\nArgs:\n    folder_id: ID of the folder to update.\n    payload: The folder update request.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The updated LibraryFolder.",
         "operationId": "patchV2Update folder",
@@ -5721,12 +5365,7 @@
     },
     "/api/library/folders/{folder_id}/move": {
       "post": {
-        "tags": [
-          "v2",
-          "library",
-          "folders",
-          "private"
-        ],
+        "tags": ["v2", "library", "folders", "private"],
         "summary": "Move Folder",
         "description": "Move a folder to a new parent.\n\nArgs:\n    folder_id: ID of the folder to move.\n    payload: The move request with target parent.\n    user_id: ID of the authenticated user.\n\nReturns:\n    The moved LibraryFolder.",
         "operationId": "postV2Move folder",
@@ -5797,10 +5436,7 @@
     },
     "/api/library/presets": {
       "get": {
-        "tags": [
-          "v2",
-          "presets"
-        ],
+        "tags": ["v2", "presets"],
         "summary": "List presets",
         "description": "Retrieve a paginated list of presets for the current user.",
         "operationId": "getV2List presets",
@@ -5878,10 +5514,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "presets"
-        ],
+        "tags": ["v2", "presets"],
         "summary": "Create a new preset",
         "description": "Create a new preset for the current user.",
         "operationId": "postV2Create a new preset",
@@ -5937,10 +5570,7 @@
     },
     "/api/library/presets/setup-trigger": {
       "post": {
-        "tags": [
-          "v2",
-          "presets"
-        ],
+        "tags": ["v2", "presets"],
         "summary": "Setup Trigger",
         "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
         "operationId": "postV2SetupTrigger",
@@ -5988,10 +5618,7 @@
     },
     "/api/library/presets/{preset_id}": {
       "delete": {
-        "tags": [
-          "v2",
-          "presets"
-        ],
+        "tags": ["v2", "presets"],
         "summary": "Delete a preset",
         "description": "Delete an existing preset by its ID.",
         "operationId": "deleteV2Delete a preset",
@@ -6031,10 +5658,7 @@
         }
       },
       "get": {
-        "tags": [
-          "v2",
-          "presets"
-        ],
+        "tags": ["v2", "presets"],
         "summary": "Get a specific preset",
         "description": "Retrieve details for a specific preset by its ID.",
         "operationId": "getV2Get a specific preset",
@@ -6081,10 +5705,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "v2",
-          "presets"
-        ],
+        "tags": ["v2", "presets"],
         "summary": "Update an existing preset",
         "description": "Update an existing preset by its ID.",
         "operationId": "patchV2Update an existing preset",
@@ -6143,11 +5764,7 @@
     },
     "/api/library/presets/{preset_id}/execute": {
       "post": {
-        "tags": [
-          "v2",
-          "presets",
-          "presets"
-        ],
+        "tags": ["v2", "presets", "presets"],
         "summary": "Execute a preset",
         "description": "Execute a preset with the given graph and node input for the current user.",
         "operationId": "postV2Execute a preset",
@@ -6205,11 +5822,7 @@
     },
     "/api/llm/admin/models": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Admin List Models",
         "description": "List all LLM models from the database.\n\nUnlike the public endpoint, this returns full model data including\ncosts and creator info. Requires admin authentication.",
         "operationId": "getV2AdminListModels",
@@ -6281,11 +5894,7 @@
     },
     "/api/llm/admin/providers": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Admin List Providers",
         "description": "List all LLM providers from the database.\n\nUnlike the public endpoint, this returns ALL providers including\nthose with no models. Requires admin authentication.",
         "operationId": "getV2AdminListProviders",
@@ -6315,11 +5924,7 @@
     },
     "/api/llm/creators": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "List Creators",
         "description": "List all LLM model creators.\n\nRequires admin authentication.",
         "operationId": "getV2ListCreators",
@@ -6347,11 +5952,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Create Creator",
         "description": "Create a new LLM model creator.",
         "operationId": "postV2CreateCreator",
@@ -6403,11 +6004,7 @@
     },
     "/api/llm/creators/{name}": {
       "delete": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Delete Creator",
         "description": "Delete an LLM model creator.",
         "operationId": "deleteV2DeleteCreator",
@@ -6447,11 +6044,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Update Creator",
         "description": "Update an existing LLM model creator.",
         "operationId": "patchV2UpdateCreator",
@@ -6514,11 +6107,7 @@
     },
     "/api/llm/migrations": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "List Migrations",
         "description": "List model migrations.",
         "operationId": "getV2ListMigrations",
@@ -6570,11 +6159,7 @@
     },
     "/api/llm/migrations/{migration_id}/revert": {
       "post": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Revert Migration",
         "description": "Revert a model migration, restoring affected nodes.",
         "operationId": "postV2RevertMigration",
@@ -6635,11 +6220,7 @@
     },
     "/api/llm/models": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "llm"
-        ],
+        "tags": ["v2", "llm", "llm"],
         "summary": "List Models",
         "description": "List all LLM models available to users.\n\nReturns models from the in-memory registry cache.\nUse enabled_only=true to filter to only enabled models (default).",
         "operationId": "getV2ListModels",
@@ -6689,11 +6270,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Create Model",
         "description": "Create a new LLM model.\n\nRequires admin authentication.",
         "operationId": "postV2CreateModel",
@@ -6743,11 +6320,7 @@
     },
     "/api/llm/models/{slug}": {
       "delete": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Delete Model",
         "description": "Delete an LLM model with optional migration.\n\nIf workflows are using this model and no replacement_model_slug is given,\nreturns 400 with the node count. Provide replacement_model_slug to migrate\naffected nodes before deletion.",
         "operationId": "deleteV2DeleteModel",
@@ -6812,11 +6385,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Update Model",
         "description": "Update an existing LLM model.\n\nRequires admin authentication.",
         "operationId": "patchV2UpdateModel",
@@ -6877,11 +6446,7 @@
     },
     "/api/llm/models/{slug}/toggle": {
       "post": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Toggle Model",
         "description": "Toggle a model's enabled status with optional migration when disabling.\n\nBody params:\n    is_enabled: bool\n    migrate_to_slug: optional str\n    migration_reason: optional str\n    custom_credit_cost: optional int",
         "operationId": "postV2ToggleModel",
@@ -6944,11 +6509,7 @@
     },
     "/api/llm/models/{slug}/usage": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Get Model Usage",
         "description": "Get usage count for a model \u2014 how many workflow nodes reference it.",
         "operationId": "getV2GetModelUsage",
@@ -6999,11 +6560,7 @@
     },
     "/api/llm/providers": {
       "get": {
-        "tags": [
-          "v2",
-          "llm",
-          "llm"
-        ],
+        "tags": ["v2", "llm", "llm"],
         "summary": "List Providers",
         "description": "List all LLM providers with their enabled models.\n\nGroups enabled models by provider from the in-memory registry.",
         "operationId": "getV2ListProviders",
@@ -7029,11 +6586,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Create Provider",
         "description": "Create a new LLM provider.\n\nRequires admin authentication.",
         "operationId": "postV2CreateProvider",
@@ -7083,11 +6636,7 @@
     },
     "/api/llm/providers/{name}": {
       "delete": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Delete Provider",
         "description": "Delete an LLM provider.\n\nRequires admin authentication.\nA provider can only be deleted if it has no associated models.",
         "operationId": "deleteV2DeleteProvider",
@@ -7127,11 +6676,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "v2",
-          "llm",
-          "admin"
-        ],
+        "tags": ["v2", "llm", "admin"],
         "summary": "Update Provider",
         "description": "Update an existing LLM provider.\n\nRequires admin authentication.",
         "operationId": "patchV2UpdateProvider",
@@ -7192,11 +6737,7 @@
     },
     "/api/mcp/discover-tools": {
       "post": {
-        "tags": [
-          "v2",
-          "mcp",
-          "mcp"
-        ],
+        "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
         "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically \u2014 no need to pass an explicit auth token.",
         "operationId": "postV2Discover available tools on an mcp server",
@@ -7244,11 +6785,7 @@
     },
     "/api/mcp/oauth/callback": {
       "post": {
-        "tags": [
-          "v2",
-          "mcp",
-          "mcp"
-        ],
+        "tags": ["v2", "mcp", "mcp"],
         "summary": "Exchange OAuth code for MCP tokens",
         "description": "Exchange the authorization code for tokens and store the credential.\n\nThe frontend calls this after receiving the OAuth code from the popup.\nOn success, subsequent ``/discover-tools`` calls for the same server URL\nwill automatically use the stored credential.",
         "operationId": "postV2Exchange oauth code for mcp tokens",
@@ -7296,11 +6833,7 @@
     },
     "/api/mcp/oauth/login": {
       "post": {
-        "tags": [
-          "v2",
-          "mcp",
-          "mcp"
-        ],
+        "tags": ["v2", "mcp", "mcp"],
         "summary": "Initiate OAuth login for an MCP server",
         "description": "Discover OAuth metadata from the MCP server and return a login URL.\n\n1. Discovers the protected-resource metadata (RFC 9728)\n2. Fetches the authorization server metadata (RFC 8414)\n3. Performs Dynamic Client Registration (RFC 7591) if available\n4. Returns the authorization URL for the frontend to open in a popup",
         "operationId": "postV2Initiate oauth login for an mcp server",
@@ -7348,11 +6881,7 @@
     },
     "/api/mcp/token": {
       "post": {
-        "tags": [
-          "v2",
-          "mcp",
-          "mcp"
-        ],
+        "tags": ["v2", "mcp", "mcp"],
         "summary": "Store a bearer token for an MCP server",
         "description": "Store a manually provided bearer token as an MCP credential.\n\nUsed by the Copilot MCPSetupCard when the server doesn't support the MCP\nOAuth discovery flow (returns 400 from /oauth/login).  Subsequent\n``run_mcp_tool`` calls will automatically pick up the token via\n``_auto_lookup_credential``.",
         "operationId": "postV2Store a bearer token for an mcp server",
@@ -7400,9 +6929,7 @@
     },
     "/api/oauth/app/{client_id}": {
       "get": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Get Oauth App Info",
         "description": "Get public information about an OAuth application.\n\nThis endpoint is used by the consent screen to display application details\nto the user before they authorize access.\n\nReturns:\n- name: Application name\n- description: Application description (if provided)\n- scopes: List of scopes the application is allowed to request",
         "operationId": "getOauthGetOauthAppInfo",
@@ -7454,9 +6981,7 @@
     },
     "/api/oauth/apps/mine": {
       "get": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "List My Oauth Apps",
         "description": "List all OAuth applications owned by the current user.\n\nReturns a list of OAuth applications with their details including:\n- id, name, description, logo_url\n- client_id (public identifier)\n- redirect_uris, grant_types, scopes\n- is_active status\n- created_at, updated_at timestamps\n\nNote: client_secret is never returned for security reasons.",
         "operationId": "getOauthListMyOauthApps",
@@ -7488,9 +7013,7 @@
     },
     "/api/oauth/apps/{app_id}/logo": {
       "patch": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Update App Logo",
         "description": "Update the logo URL for an OAuth application.\n\nOnly the application owner can update the logo.\nThe logo should be uploaded first using the media upload endpoint,\nthen this endpoint is called with the resulting URL.\n\nLogo requirements:\n- Must be square (1:1 aspect ratio)\n- Minimum 512x512 pixels\n- Maximum 2048x2048 pixels\n\nReturns the updated application info.",
         "operationId": "patchOauthUpdateAppLogo",
@@ -7549,9 +7072,7 @@
     },
     "/api/oauth/apps/{app_id}/logo/upload": {
       "post": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Upload App Logo",
         "description": "Upload a logo image for an OAuth application.\n\nRequirements:\n- Image must be square (1:1 aspect ratio)\n- Minimum 512x512 pixels\n- Maximum 2048x2048 pixels\n- Allowed formats: JPEG, PNG, WebP\n- Maximum file size: 3MB\n\nThe image is uploaded to cloud storage and the app's logoUrl is updated.\nReturns the updated application info.",
         "operationId": "postOauthUploadAppLogo",
@@ -7610,9 +7131,7 @@
     },
     "/api/oauth/apps/{app_id}/status": {
       "patch": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Update App Status",
         "description": "Enable or disable an OAuth application.\n\nOnly the application owner can update the status.\nWhen disabled, the application cannot be used for new authorizations\nand existing access tokens will fail validation.\n\nReturns the updated application info.",
         "operationId": "patchOauthUpdateAppStatus",
@@ -7671,9 +7190,7 @@
     },
     "/api/oauth/authorize": {
       "post": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Authorize",
         "description": "OAuth 2.0 Authorization Endpoint\n\nUser must be logged in (authenticated with Supabase JWT).\nThis endpoint creates an authorization code and returns a redirect URL.\n\nPKCE (Proof Key for Code Exchange) is REQUIRED for all authorization requests.\n\nThe frontend consent screen should call this endpoint after the user approves,\nthen redirect the user to the returned `redirect_url`.\n\nRequest Body:\n- client_id: The OAuth application's client ID\n- redirect_uri: Where to redirect after authorization (must match registered URI)\n- scopes: List of permissions (e.g., \"EXECUTE_GRAPH READ_GRAPH\")\n- state: Anti-CSRF token provided by client (will be returned in redirect)\n- response_type: Must be \"code\" (for authorization code flow)\n- code_challenge: PKCE code challenge (required)\n- code_challenge_method: \"S256\" (recommended) or \"plain\"\n\nReturns:\n- redirect_url: The URL to redirect the user to (includes authorization code)\n\nError cases return a redirect_url with error parameters, or raise HTTPException\nfor critical errors (like invalid redirect_uri).",
         "operationId": "postOauthAuthorize",
@@ -7721,9 +7238,7 @@
     },
     "/api/oauth/introspect": {
       "post": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Introspect",
         "description": "OAuth 2.0 Token Introspection Endpoint (RFC 7662)\n\nAllows clients to check if a token is valid and get its metadata.\n\nReturns:\n- active: Whether the token is currently active\n- scopes: List of authorized scopes (if active)\n- client_id: The client the token was issued to (if active)\n- user_id: The user the token represents (if active)\n- exp: Expiration timestamp (if active)\n- token_type: \"access_token\" or \"refresh_token\" (if active)",
         "operationId": "postOauthIntrospect",
@@ -7763,9 +7278,7 @@
     },
     "/api/oauth/revoke": {
       "post": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Revoke",
         "description": "OAuth 2.0 Token Revocation Endpoint (RFC 7009)\n\nAllows clients to revoke an access or refresh token.\n\nNote: Revoking a refresh token does NOT revoke associated access tokens.\nRevoking an access token does NOT revoke the associated refresh token.",
         "operationId": "postOauthRevoke",
@@ -7803,9 +7316,7 @@
     },
     "/api/oauth/token": {
       "post": {
-        "tags": [
-          "oauth"
-        ],
+        "tags": ["oauth"],
         "summary": "Token",
         "description": "OAuth 2.0 Token Endpoint\n\nExchanges authorization code or refresh token for access token.\n\nGrant Types:\n1. authorization_code: Exchange authorization code for tokens\n   - Required: grant_type, code, redirect_uri, client_id, client_secret\n   - Optional: code_verifier (required if PKCE was used)\n\n2. refresh_token: Exchange refresh token for new access token\n   - Required: grant_type, refresh_token, client_id, client_secret\n\nReturns:\n- access_token: Bearer token for API access (1 hour TTL)\n- token_type: \"Bearer\"\n- expires_in: Seconds until access token expires\n- refresh_token: Token for refreshing access (30 days TTL)\n- scopes: List of scopes",
         "operationId": "postOauthToken",
@@ -7853,10 +7364,7 @@
     },
     "/api/onboarding": {
       "get": {
-        "tags": [
-          "v1",
-          "onboarding"
-        ],
+        "tags": ["v1", "onboarding"],
         "summary": "Onboarding state",
         "operationId": "getV1Onboarding state",
         "responses": {
@@ -7881,10 +7389,7 @@
         ]
       },
       "patch": {
-        "tags": [
-          "v1",
-          "onboarding"
-        ],
+        "tags": ["v1", "onboarding"],
         "summary": "Update onboarding state",
         "operationId": "patchV1Update onboarding state",
         "requestBody": {
@@ -7931,10 +7436,7 @@
     },
     "/api/onboarding/agents": {
       "get": {
-        "tags": [
-          "v1",
-          "onboarding"
-        ],
+        "tags": ["v1", "onboarding"],
         "summary": "Recommended onboarding agents",
         "operationId": "getV1Recommended onboarding agents",
         "responses": {
@@ -7965,11 +7467,7 @@
     },
     "/api/onboarding/enabled": {
       "get": {
-        "tags": [
-          "v1",
-          "onboarding",
-          "public"
-        ],
+        "tags": ["v1", "onboarding", "public"],
         "summary": "Is onboarding enabled",
         "operationId": "getV1Is onboarding enabled",
         "responses": {
@@ -7996,10 +7494,7 @@
     },
     "/api/onboarding/reset": {
       "post": {
-        "tags": [
-          "v1",
-          "onboarding"
-        ],
+        "tags": ["v1", "onboarding"],
         "summary": "Reset onboarding progress",
         "operationId": "postV1Reset onboarding progress",
         "responses": {
@@ -8026,10 +7521,7 @@
     },
     "/api/onboarding/step": {
       "post": {
-        "tags": [
-          "v1",
-          "onboarding"
-        ],
+        "tags": ["v1", "onboarding"],
         "summary": "Complete onboarding step",
         "operationId": "postV1Complete onboarding step",
         "security": [
@@ -8087,10 +7579,7 @@
     },
     "/api/otto/ask": {
       "post": {
-        "tags": [
-          "v2",
-          "otto"
-        ],
+        "tags": ["v2", "otto"],
         "summary": "Proxy Otto Chat Request",
         "description": "Proxy requests to Otto API while adding necessary security headers and logging.\nRequires an authenticated user.",
         "operationId": "postV2Proxy otto chat request",
@@ -8138,9 +7627,7 @@
     },
     "/api/public/shared/{share_token}": {
       "get": {
-        "tags": [
-          "v1"
-        ],
+        "tags": ["v1"],
         "summary": "Get Shared Execution",
         "description": "Get a shared graph execution by share token (no auth required).",
         "operationId": "getV1GetSharedExecution",
@@ -8182,14 +7669,7 @@
     },
     "/api/review/action": {
       "post": {
-        "tags": [
-          "v2",
-          "executions",
-          "review",
-          "v2",
-          "executions",
-          "review"
-        ],
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Process Review Action",
         "description": "Process reviews with approve or reject actions.",
         "operationId": "postV2ProcessReviewAction",
@@ -8237,14 +7717,7 @@
     },
     "/api/review/execution/{graph_exec_id}": {
       "get": {
-        "tags": [
-          "v2",
-          "executions",
-          "review",
-          "v2",
-          "executions",
-          "review"
-        ],
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews for Execution",
         "description": "Get all pending reviews for a specific graph execution.\n\nRetrieves all reviews with status \"WAITING\" for the specified graph execution\nthat belong to the authenticated user. Results are ordered by creation time\n(oldest first) to preserve review order within the execution.\n\nArgs:\n    graph_exec_id: ID of the graph execution to get reviews for\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects for the specified execution\n\nRaises:\n    HTTPException:\n        - 404: If the graph execution doesn't exist or isn't owned by this user\n        - 500: If authentication fails or database error occurs\n\nNote:\n    Only returns reviews owned by the authenticated user for security.\n    Reviews with invalid status are excluded with warning logs.",
         "operationId": "getV2Get pending reviews for execution",
@@ -8306,14 +7779,7 @@
     },
     "/api/review/pending": {
       "get": {
-        "tags": [
-          "v2",
-          "executions",
-          "review",
-          "v2",
-          "executions",
-          "review"
-        ],
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
         "summary": "Get Pending Reviews",
         "description": "Get all pending reviews for the current user.\n\nRetrieves all reviews with status \"WAITING\" that belong to the authenticated user.\nResults are ordered by creation time (newest first).\n\nArgs:\n    user_id: Authenticated user ID from security dependency\n\nReturns:\n    List of pending review objects with status converted to typed literals\n\nRaises:\n    HTTPException: If authentication fails or database error occurs\n\nNote:\n    Reviews with invalid status values are logged as warnings but excluded\n    from results rather than failing the entire request.",
         "operationId": "getV2Get pending reviews",
@@ -8390,10 +7856,7 @@
     },
     "/api/schedules": {
       "get": {
-        "tags": [
-          "v1",
-          "schedules"
-        ],
+        "tags": ["v1", "schedules"],
         "summary": "List execution schedules for a user",
         "operationId": "getV1List execution schedules for a user",
         "responses": {
@@ -8424,10 +7887,7 @@
     },
     "/api/schedules/{schedule_id}": {
       "delete": {
-        "tags": [
-          "v1",
-          "schedules"
-        ],
+        "tags": ["v1", "schedules"],
         "summary": "Delete execution schedule",
         "operationId": "deleteV1Delete execution schedule",
         "security": [
@@ -8479,12 +7939,7 @@
     },
     "/api/store/admin/listings": {
       "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "store",
-          "admin"
-        ],
+        "tags": ["v2", "admin", "store", "admin"],
         "summary": "Get Admin Listings History",
         "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    Paginated listings with their versions",
         "operationId": "getV2Get admin listings history",
@@ -8576,14 +8031,7 @@
     },
     "/api/store/admin/submissions/download/{store_listing_version_id}": {
       "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "store",
-          "admin",
-          "store",
-          "admin"
-        ],
+        "tags": ["v2", "admin", "store", "admin", "store", "admin"],
         "summary": "Admin Download Agent File",
         "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
         "operationId": "getV2Admin download agent file",
@@ -8632,12 +8080,7 @@
     },
     "/api/store/admin/submissions/{store_listing_version_id}/review": {
       "post": {
-        "tags": [
-          "v2",
-          "admin",
-          "store",
-          "admin"
-        ],
+        "tags": ["v2", "admin", "store", "admin"],
         "summary": "Review Store Submission",
         "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user_id: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmissionAdminView with updated review information",
         "operationId": "postV2Review store submission",
@@ -8696,11 +8139,7 @@
     },
     "/api/store/agents": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "public"
-        ],
+        "tags": ["v2", "store", "public"],
         "summary": "List store agents",
         "description": "Get a paginated list of agents from the marketplace,\nwith optional filtering and sorting.\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
         "operationId": "getV2List store agents",
@@ -8838,11 +8277,7 @@
     },
     "/api/store/agents/{username}/{agent_name}": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "public"
-        ],
+        "tags": ["v2", "store", "public"],
         "summary": "Get specific agent",
         "description": "Get details of a marketplace agent",
         "operationId": "getV2Get specific agent",
@@ -8902,10 +8337,7 @@
     },
     "/api/store/agents/{username}/{agent_name}/review": {
       "post": {
-        "tags": [
-          "v2",
-          "store"
-        ],
+        "tags": ["v2", "store"],
         "summary": "Create agent review",
         "description": "Post a user review on a marketplace agent listing",
         "operationId": "postV2Create agent review",
@@ -8973,11 +8405,7 @@
     },
     "/api/store/creators": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "public"
-        ],
+        "tags": ["v2", "store", "public"],
         "summary": "List store creators",
         "description": "List or search marketplace creators",
         "operationId": "getV2List store creators",
@@ -9077,11 +8505,7 @@
     },
     "/api/store/creators/{username}": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "public"
-        ],
+        "tags": ["v2", "store", "public"],
         "summary": "Get creator details",
         "description": "Get details on a marketplace creator",
         "operationId": "getV2Get creator details",
@@ -9122,10 +8546,7 @@
     },
     "/api/store/listings/versions/{store_listing_version_id}": {
       "get": {
-        "tags": [
-          "v2",
-          "store"
-        ],
+        "tags": ["v2", "store"],
         "summary": "Get agent by version",
         "operationId": "getV2Get agent by version",
         "security": [
@@ -9173,10 +8594,7 @@
     },
     "/api/store/listings/versions/{store_listing_version_id}/graph": {
       "get": {
-        "tags": [
-          "v2",
-          "store"
-        ],
+        "tags": ["v2", "store"],
         "summary": "Get agent graph",
         "description": "Get outline of graph belonging to a specific marketplace listing version",
         "operationId": "getV2Get agent graph",
@@ -9225,11 +8643,7 @@
     },
     "/api/store/listings/versions/{store_listing_version_id}/graph/download": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "public"
-        ],
+        "tags": ["v2", "store", "public"],
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
@@ -9268,11 +8682,7 @@
     },
     "/api/store/metrics/cache": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "metrics"
-        ],
+        "tags": ["v2", "store", "metrics"],
         "summary": "Get cache metrics in Prometheus format",
         "description": "Get cache metrics in Prometheus text format.\n\nReturns Prometheus-compatible metrics for monitoring cache performance.\nMetrics include size, maxsize, TTL, and hit rate for each cache.\n\nReturns:\n    str: Prometheus-formatted metrics text",
         "operationId": "getV2Get cache metrics in prometheus format",
@@ -9292,11 +8702,7 @@
     },
     "/api/store/my-unpublished-agents": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Get my agents",
         "description": "List the authenticated user's unpublished agents",
         "operationId": "getV2Get my agents",
@@ -9358,11 +8764,7 @@
     },
     "/api/store/profile": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
         "description": "Get the profile details for the authenticated user.",
         "operationId": "getV2Get user profile",
@@ -9388,11 +8790,7 @@
         ]
       },
       "post": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Update user profile",
         "description": "Update the store profile for the authenticated user.",
         "operationId": "postV2Update user profile",
@@ -9440,11 +8838,7 @@
     },
     "/api/store/search": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "public"
-        ],
+        "tags": ["v2", "store", "public"],
         "summary": "Unified search across all content types",
         "description": "Search across all content types (marketplace agents, blocks, documentation)\nusing hybrid search.\n\nCombines semantic (embedding-based) and lexical (text-based) search for best results.",
         "operationId": "getV2Unified search across all content types",
@@ -9533,11 +8927,7 @@
     },
     "/api/store/submissions": {
       "get": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "List my submissions",
         "description": "List the authenticated user's marketplace listing submissions",
         "operationId": "getV2List my submissions",
@@ -9597,11 +8987,7 @@
         }
       },
       "post": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Create store submission",
         "description": "Submit a new marketplace listing for review",
         "operationId": "postV2Create store submission",
@@ -9649,11 +9035,7 @@
     },
     "/api/store/submissions/generate_image": {
       "post": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Generate submission image",
         "description": "Generate an image for a marketplace listing submission based on the properties\nof a given graph.",
         "operationId": "postV2Generate submission image",
@@ -9702,11 +9084,7 @@
     },
     "/api/store/submissions/media": {
       "post": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
         "description": "Upload media for a marketplace listing submission",
         "operationId": "postV2Upload submission media",
@@ -9755,11 +9133,7 @@
     },
     "/api/store/submissions/{store_listing_version_id}": {
       "put": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Edit store submission",
         "description": "Update a pending marketplace listing submission",
         "operationId": "putV2Edit store submission",
@@ -9818,11 +9192,7 @@
     },
     "/api/store/submissions/{submission_id}": {
       "delete": {
-        "tags": [
-          "v2",
-          "store",
-          "private"
-        ],
+        "tags": ["v2", "store", "private"],
         "summary": "Delete store submission",
         "description": "Delete a marketplace listing submission",
         "operationId": "deleteV2Delete store submission",
@@ -9872,9 +9242,7 @@
     },
     "/api/workspace/files/upload": {
       "post": {
-        "tags": [
-          "workspace"
-        ],
+        "tags": ["workspace"],
         "summary": "Upload file to workspace",
         "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
         "operationId": "postWorkspaceUpload file to workspace",
@@ -9950,9 +9318,7 @@
     },
     "/api/workspace/files/{file_id}": {
       "delete": {
-        "tags": [
-          "workspace"
-        ],
+        "tags": ["workspace"],
         "summary": "Delete a workspace file",
         "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
         "operationId": "deleteWorkspaceDelete a workspace file",
@@ -10001,9 +9367,7 @@
     },
     "/api/workspace/files/{file_id}/download": {
       "get": {
-        "tags": [
-          "workspace"
-        ],
+        "tags": ["workspace"],
         "summary": "Download file by ID",
         "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
         "operationId": "getWorkspaceDownload file by id",
@@ -10050,9 +9414,7 @@
     },
     "/api/workspace/storage/usage": {
       "get": {
-        "tags": [
-          "workspace"
-        ],
+        "tags": ["workspace"],
         "summary": "Get workspace storage usage",
         "description": "Get storage usage information for the user's workspace.",
         "operationId": "getWorkspaceGet workspace storage usage",
@@ -10080,9 +9442,7 @@
     },
     "/health": {
       "get": {
-        "tags": [
-          "health"
-        ],
+        "tags": ["health"],
         "summary": "Health",
         "operationId": "getHealthHealth",
         "responses": {
@@ -10147,10 +9507,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider",
-          "api_key"
-        ],
+        "required": ["provider", "api_key"],
         "title": "APIKeyCredentials"
       },
       "APIKeyInfo": {
@@ -10279,11 +9636,7 @@
       },
       "APIKeyStatus": {
         "type": "string",
-        "enum": [
-          "ACTIVE",
-          "REVOKED",
-          "SUSPENDED"
-        ],
+        "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
       "AccuracyAlertData": {
@@ -10427,10 +9780,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "latest_data",
-          "alert"
-        ],
+        "required": ["latest_data", "alert"],
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
       },
@@ -10446,10 +9796,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "turn_id",
-          "last_message_id"
-        ],
+        "required": ["turn_id", "last_message_id"],
         "title": "ActiveStreamInfo",
         "description": "Information about an active stream for reconnection."
       },
@@ -10465,10 +9812,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "new_balance",
-          "transaction_key"
-        ],
+        "required": ["new_balance", "transaction_key"],
         "title": "AddUserCreditsResponse"
       },
       "AgentDetails": {
@@ -10521,11 +9865,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description"
-        ],
+        "required": ["id", "name", "description"],
         "title": "AgentDetails",
         "description": "Detailed agent information."
       },
@@ -10582,10 +9922,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "agent"
-        ],
+        "required": ["message", "agent"],
         "title": "AgentDetailsResponse",
         "description": "Response for get_details action."
       },
@@ -10788,12 +10125,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "source"
-        ],
+        "required": ["id", "name", "description", "source"],
         "title": "AgentInfo",
         "description": "Information about an agent."
       },
@@ -10880,11 +10212,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "agent_name",
-          "agent_id"
-        ],
+        "required": ["message", "agent_name", "agent_id"],
         "title": "AgentOutputResponse",
         "description": "Response for agent_output tool."
       },
@@ -11041,11 +10369,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "agents",
-          "count"
-        ],
+        "required": ["message", "agents", "count"],
         "title": "AgentsFoundResponse",
         "description": "Response for find_agent tool."
       },
@@ -11068,11 +10392,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "answer",
-          "documents",
-          "success"
-        ],
+        "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
       "AuthorizeRequest": {
@@ -11113,10 +10433,7 @@
           },
           "code_challenge_method": {
             "type": "string",
-            "enum": [
-              "S256",
-              "plain"
-            ],
+            "enum": ["S256", "plain"],
             "title": "Code Challenge Method",
             "description": "PKCE code challenge method (S256 recommended)",
             "default": "S256"
@@ -11142,9 +10459,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "redirect_url"
-        ],
+        "required": ["redirect_url"],
         "title": "AuthorizeResponse",
         "description": "OAuth 2.0 authorization response with redirect URL"
       },
@@ -11160,10 +10475,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "amount",
-          "threshold"
-        ],
+        "required": ["amount", "threshold"],
         "title": "AutoTopUpConfig"
       },
       "AyrshareSSOResponse": {
@@ -11181,10 +10493,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "sso_url",
-          "expires_at"
-        ],
+        "required": ["sso_url", "expires_at"],
         "title": "AyrshareSSOResponse"
       },
       "BaseGraph-Input": {
@@ -11271,10 +10580,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "description"
-        ],
+        "required": ["name", "description"],
         "title": "BaseGraph",
         "description": "Graph with nodes, links, and computed I/O schema fields.\n\nUsed to represent sub-graphs within a `Graph`. Contains the full graph\nstructure including nodes and links, plus computed fields for schemas\nand trigger info. Does NOT include user_id or created_at (see GraphModel)."
       },
@@ -11432,11 +10738,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "total_blocks",
-          "blocks"
-        ],
+        "required": ["name", "total_blocks", "blocks"],
         "title": "BlockCategoryResponse"
       },
       "BlockCost": {
@@ -11455,20 +10757,12 @@
           }
         },
         "type": "object",
-        "required": [
-          "cost_amount",
-          "cost_filter",
-          "cost_type"
-        ],
+        "required": ["cost_amount", "cost_filter", "cost_type"],
         "title": "BlockCost"
       },
       "BlockCostType": {
         "type": "string",
-        "enum": [
-          "run",
-          "byte",
-          "second"
-        ],
+        "enum": ["run", "byte", "second"],
         "title": "BlockCostType"
       },
       "BlockDetails": {
@@ -11507,11 +10801,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description"
-        ],
+        "required": ["id", "name", "description"],
         "title": "BlockDetails",
         "description": "Detailed block information."
       },
@@ -11546,10 +10836,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "block"
-        ],
+        "required": ["message", "block"],
         "title": "BlockDetailsResponse",
         "description": "Response for block details (first run_block attempt)."
       },
@@ -11675,12 +10962,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "description",
-          "categories"
-        ],
+        "required": ["id", "name", "description", "categories"],
         "title": "BlockInfoSummary",
         "description": "Summary of a block for search results."
       },
@@ -11715,10 +10997,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "type"
-        ],
+        "required": ["name", "type"],
         "title": "BlockInputFieldInfo",
         "description": "Information about a block input field."
       },
@@ -11765,12 +11044,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "blocks",
-          "count",
-          "query"
-        ],
+        "required": ["message", "blocks", "count", "query"],
         "title": "BlockListResponse",
         "description": "Response for find_block tool."
       },
@@ -11818,12 +11092,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "block_id",
-          "block_name",
-          "outputs"
-        ],
+        "required": ["message", "block_id", "block_name", "outputs"],
         "title": "BlockOutputResponse",
         "description": "Response for run_block tool."
       },
@@ -11841,10 +11110,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "blocks",
-          "pagination"
-        ],
+        "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
       "Body_patchOauthUpdateAppStatus": {
@@ -11856,9 +11122,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "is_active"
-        ],
+        "required": ["is_active"],
         "title": "Body_patchOauthUpdateAppStatus"
       },
       "Body_postAnalyticsLogRawAnalytics": {
@@ -11880,11 +11144,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "type",
-          "data",
-          "data_index"
-        ],
+        "required": ["type", "data", "data_index"],
         "title": "Body_postAnalyticsLogRawAnalytics"
       },
       "Body_postOauthIntrospect": {
@@ -11898,10 +11158,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "access_token",
-                  "refresh_token"
-                ]
+                "enum": ["access_token", "refresh_token"]
               },
               {
                 "type": "null"
@@ -11922,11 +11179,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "token",
-          "client_id",
-          "client_secret"
-        ],
+        "required": ["token", "client_id", "client_secret"],
         "title": "Body_postOauthIntrospect"
       },
       "Body_postOauthRevoke": {
@@ -11940,10 +11193,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "access_token",
-                  "refresh_token"
-                ]
+                "enum": ["access_token", "refresh_token"]
               },
               {
                 "type": "null"
@@ -11964,11 +11214,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "token",
-          "client_id",
-          "client_secret"
-        ],
+        "required": ["token", "client_id", "client_secret"],
         "title": "Body_postOauthRevoke"
       },
       "Body_postOauthUploadAppLogo": {
@@ -11980,9 +11226,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_postOauthUploadAppLogo"
       },
       "Body_postV1Exchange_oauth_code_for_tokens": {
@@ -11997,10 +11241,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "code",
-          "state_token"
-        ],
+        "required": ["code", "state_token"],
         "title": "Body_postV1Exchange oauth code for tokens"
       },
       "Body_postV1Execute_graph_agent": {
@@ -12021,11 +11262,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "builder",
-                  "library",
-                  "onboarding"
-                ]
+                "enum": ["builder", "library", "onboarding"]
               },
               {
                 "type": "null"
@@ -12046,9 +11283,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_postV1Upload file to cloud storage"
       },
       "Body_postV2Add_credits_to_user": {
@@ -12067,11 +11302,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "user_id",
-          "amount",
-          "comments"
-        ],
+        "required": ["user_id", "amount", "comments"],
         "title": "Body_postV2Add credits to user"
       },
       "Body_postV2Add_marketplace_agent": {
@@ -12082,18 +11313,13 @@
           },
           "source": {
             "type": "string",
-            "enum": [
-              "onboarding",
-              "marketplace"
-            ],
+            "enum": ["onboarding", "marketplace"],
             "title": "Source",
             "default": "marketplace"
           }
         },
         "type": "object",
-        "required": [
-          "store_listing_version_id"
-        ],
+        "required": ["store_listing_version_id"],
         "title": "Body_postV2Add marketplace agent"
       },
       "Body_postV2Execute_a_preset": {
@@ -12123,9 +11349,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
       "Body_postWorkspaceUpload_file_to_workspace": {
@@ -12137,9 +11361,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_postWorkspaceUpload file to workspace"
       },
       "BulkMoveAgentsRequest": {
@@ -12164,9 +11386,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "agent_ids"
-        ],
+        "required": ["agent_ids"],
         "title": "BulkMoveAgentsRequest",
         "description": "Request model for moving multiple agents to a folder."
       },
@@ -12189,9 +11409,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "cancelled"
-        ],
+        "required": ["cancelled"],
         "title": "CancelSessionResponse",
         "description": "Response model for the cancel session endpoint."
       },
@@ -12212,11 +11430,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "version",
-          "changes_summary",
-          "date"
-        ],
+        "required": ["version", "changes_summary", "date"],
         "title": "ChangelogEntry"
       },
       "ChatRequest": {
@@ -12254,11 +11468,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "query",
-          "conversation_history",
-          "message_id"
-        ],
+        "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
       "ClarificationNeededResponse": {
@@ -12291,9 +11501,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "ClarificationNeededResponse",
         "description": "Response when the LLM needs more information from the user."
       },
@@ -12320,10 +11528,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "question",
-          "keyword"
-        ],
+        "required": ["question", "keyword"],
         "title": "ClarifyingQuestion",
         "description": "A question that needs user clarification."
       },
@@ -12337,10 +11542,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "daily",
-          "weekly"
-        ],
+        "required": ["daily", "weekly"],
         "title": "CoPilotUsageStatus",
         "description": "Current usage status for a user across all windows."
       },
@@ -12424,10 +11626,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "permissions"
-        ],
+        "required": ["name", "permissions"],
         "title": "CreateAPIKeyRequest"
       },
       "CreateAPIKeyResponse": {
@@ -12441,10 +11640,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "api_key",
-          "plain_text_key"
-        ],
+        "required": ["api_key", "plain_text_key"],
         "title": "CreateAPIKeyResponse"
       },
       "CreateGraph": {
@@ -12456,10 +11652,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "builder",
-                  "upload"
-                ]
+                "enum": ["builder", "upload"]
               },
               {
                 "type": "null"
@@ -12469,9 +11662,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "graph"
-        ],
+        "required": ["graph"],
         "title": "CreateGraph"
       },
       "CreateLlmModelRequest": {
@@ -12678,10 +11869,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "display_name"
-        ],
+        "required": ["name", "display_name"],
         "title": "CreateLlmProviderRequest",
         "description": "Request model for creating an LLM provider."
       },
@@ -12708,11 +11896,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "created_at",
-          "user_id"
-        ],
+        "required": ["id", "created_at", "user_id"],
         "title": "CreateSessionResponse",
         "description": "Response model containing information on a newly created chat session."
       },
@@ -12802,10 +11986,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "creators",
-          "pagination"
-        ],
+        "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
       "CredentialsDeletionNeedsConfirmationResponse": {
@@ -12828,9 +12009,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "CredentialsDeletionNeedsConfirmationResponse"
       },
       "CredentialsDeletionResponse": {
@@ -12855,9 +12034,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "revoked"
-        ],
+        "required": ["revoked"],
         "title": "CredentialsDeletionResponse"
       },
       "CredentialsMetaInput": {
@@ -12884,21 +12061,12 @@
           },
           "type": {
             "type": "string",
-            "enum": [
-              "api_key",
-              "oauth2",
-              "user_password",
-              "host_scoped"
-            ],
+            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
             "title": "Type"
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "provider",
-          "type"
-        ],
+        "required": ["id", "provider", "type"],
         "title": "CredentialsMetaInput",
         "credentials_provider": [],
         "credentials_types": []
@@ -12915,12 +12083,7 @@
           },
           "type": {
             "type": "string",
-            "enum": [
-              "api_key",
-              "oauth2",
-              "user_password",
-              "host_scoped"
-            ],
+            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
             "title": "Type"
           },
           "title": {
@@ -12973,25 +12136,12 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "provider",
-          "type",
-          "title",
-          "scopes",
-          "username"
-        ],
+        "required": ["id", "provider", "type", "title", "scopes", "username"],
         "title": "CredentialsMetaResponse"
       },
       "CreditTransactionType": {
         "type": "string",
-        "enum": [
-          "TOP_UP",
-          "USAGE",
-          "GRANT",
-          "REFUND",
-          "CARD_CHECK"
-        ],
+        "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
         "title": "CreditTransactionType"
       },
       "DeleteFileResponse": {
@@ -13002,9 +12152,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "deleted"
-        ],
+        "required": ["deleted"],
         "title": "DeleteFileResponse"
       },
       "DeleteGraphResponse": {
@@ -13015,9 +12163,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "version_counts"
-        ],
+        "required": ["version_counts"],
         "title": "DeleteGraphResponse"
       },
       "DiscoverToolsRequest": {
@@ -13041,9 +12187,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "server_url"
-        ],
+        "required": ["server_url"],
         "title": "DiscoverToolsRequest",
         "description": "Request to discover tools on an MCP server."
       },
@@ -13080,9 +12224,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tools"
-        ],
+        "required": ["tools"],
         "title": "DiscoverToolsResponse",
         "description": "Response containing the list of tools available on an MCP server."
       },
@@ -13132,12 +12274,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "title",
-          "path",
-          "content"
-        ],
+        "required": ["message", "title", "path", "content"],
         "title": "DocPageResponse",
         "description": "Response for get_doc_page tool."
       },
@@ -13176,13 +12313,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "title",
-          "path",
-          "section",
-          "snippet",
-          "score"
-        ],
+        "required": ["title", "path", "section", "snippet", "score"],
         "title": "DocSearchResult",
         "description": "A single documentation search result."
       },
@@ -13224,12 +12355,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "results",
-          "count",
-          "query"
-        ],
+        "required": ["message", "results", "count", "query"],
         "title": "DocSearchResultsResponse",
         "description": "Response for search_docs tool."
       },
@@ -13245,10 +12371,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "url",
-          "relevance_score"
-        ],
+        "required": ["url", "relevance_score"],
         "title": "Document"
       },
       "ErrorResponse": {
@@ -13297,9 +12420,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "ErrorResponse",
         "description": "Response for errors."
       },
@@ -13424,9 +12545,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "graph_id"
-        ],
+        "required": ["graph_id"],
         "title": "ExecutionAnalyticsRequest"
       },
       "ExecutionAnalyticsResponse": {
@@ -13640,11 +12759,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "execution_id",
-          "status",
-          "outputs"
-        ],
+        "required": ["execution_id", "status", "outputs"],
         "title": "ExecutionOutputInfo",
         "description": "Summary of a single execution's outputs."
       },
@@ -13710,12 +12825,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "execution_id",
-          "graph_id",
-          "graph_name"
-        ],
+        "required": ["message", "execution_id", "graph_id", "graph_name"],
         "title": "ExecutionStartedResponse",
         "description": "Response for run/schedule actions."
       },
@@ -13764,9 +12874,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "FolderCreateRequest",
         "description": "Request model for creating a folder."
       },
@@ -13784,10 +12892,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "folders",
-          "pagination"
-        ],
+        "required": ["folders", "pagination"],
         "title": "FolderListResponse",
         "description": "Response schema for a list of folders."
       },
@@ -13820,9 +12925,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "tree"
-        ],
+        "required": ["tree"],
         "title": "FolderTreeResponse",
         "description": "Response schema for folder tree structure."
       },
@@ -13959,10 +13062,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "description"
-        ],
+        "required": ["name", "description"],
         "title": "Graph",
         "description": "Creatable graph model used in API create/update endpoints."
       },
@@ -14499,10 +13599,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "executions",
-          "pagination"
-        ],
+        "required": ["executions", "pagination"],
         "title": "GraphExecutionsPaginated",
         "description": "Response schema for paginated graph executions."
       },
@@ -14936,11 +14033,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider",
-          "config_schema",
-          "credentials_input_name"
-        ],
+        "required": ["provider", "config_schema", "credentials_input_name"],
         "title": "GraphTriggerInfo"
       },
       "HTTPValidationError": {
@@ -15000,10 +14093,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider",
-          "host"
-        ],
+        "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
       "HostScopedCredentials-Output": {
@@ -15048,10 +14138,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider",
-          "host"
-        ],
+        "required": ["provider", "host"],
         "title": "HostScopedCredentials"
       },
       "ImageURLResponse": {
@@ -15062,9 +14149,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "image_url"
-        ],
+        "required": ["image_url"],
         "title": "ImageURLResponse"
       },
       "InputValidationErrorResponse": {
@@ -15126,11 +14211,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "unrecognized_fields",
-          "inputs"
-        ],
+        "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
       },
@@ -15545,11 +14626,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "graph_execution_id",
-          "name",
-          "description"
-        ],
+        "required": ["graph_execution_id", "name", "description"],
         "title": "LibraryAgentPresetCreatableFromGraphExecution",
         "description": "Request model used when creating a new preset for a library agent."
       },
@@ -15567,10 +14644,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "presets",
-          "pagination"
-        ],
+        "required": ["presets", "pagination"],
         "title": "LibraryAgentPresetResponse",
         "description": "Response schema for a list of agent presets and pagination info."
       },
@@ -15654,30 +14728,19 @@
           }
         },
         "type": "object",
-        "required": [
-          "agents",
-          "pagination"
-        ],
+        "required": ["agents", "pagination"],
         "title": "LibraryAgentResponse",
         "description": "Response schema for a list of library agents and pagination info."
       },
       "LibraryAgentSort": {
         "type": "string",
-        "enum": [
-          "createdAt",
-          "updatedAt"
-        ],
+        "enum": ["createdAt", "updatedAt"],
         "title": "LibraryAgentSort",
         "description": "Possible sort options for sorting library agents."
       },
       "LibraryAgentStatus": {
         "type": "string",
-        "enum": [
-          "COMPLETED",
-          "HEALTHY",
-          "WAITING",
-          "ERROR"
-        ],
+        "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
       },
       "LibraryAgentUpdateRequest": {
@@ -15827,13 +14890,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "user_id",
-          "name",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
         "title": "LibraryFolder",
         "description": "Represents a folder for organizing library agents."
       },
@@ -15914,13 +14971,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "user_id",
-          "name",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "user_id", "name", "created_at", "updated_at"],
         "title": "LibraryFolderTree",
         "description": "Folder with nested children for tree view."
       },
@@ -15953,12 +15004,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "source_id",
-          "sink_id",
-          "source_name",
-          "sink_name"
-        ],
+        "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
       "ListSessionsResponse": {
@@ -15976,10 +15022,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "sessions",
-          "total"
-        ],
+        "required": ["sessions", "total"],
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
       },
@@ -16126,11 +15169,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "unit",
-          "credit_cost",
-          "credential_provider"
-        ],
+        "required": ["unit", "credit_cost", "credential_provider"],
         "title": "LlmModelCost",
         "description": "Cost configuration for an LLM model."
       },
@@ -16183,11 +15222,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "display_name"
-        ],
+        "required": ["id", "name", "display_name"],
         "title": "LlmModelCreator",
         "description": "Represents the organization that created/trained the model."
       },
@@ -16206,10 +15241,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "models",
-          "total"
-        ],
+        "required": ["models", "total"],
         "title": "LlmModelsResponse",
         "description": "Response for GET /llm/models."
       },
@@ -16232,10 +15264,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "display_name"
-        ],
+        "required": ["name", "display_name"],
         "title": "LlmProvider",
         "description": "Provider with its enabled models."
       },
@@ -16250,9 +15279,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "providers"
-        ],
+        "required": ["providers"],
         "title": "LlmProvidersResponse",
         "description": "Response for GET /llm/providers."
       },
@@ -16274,11 +15301,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "metric_name",
-          "metric_value",
-          "data_string"
-        ],
+        "required": ["metric_name", "metric_value", "data_string"],
         "title": "LogRawMetricRequest"
       },
       "LoginResponse": {
@@ -16293,10 +15316,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "login_url",
-          "state_token"
-        ],
+        "required": ["login_url", "state_token"],
         "title": "LoginResponse"
       },
       "MCPOAuthCallbackRequest": {
@@ -16313,10 +15333,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "code",
-          "state_token"
-        ],
+        "required": ["code", "state_token"],
         "title": "MCPOAuthCallbackRequest",
         "description": "Request to exchange an OAuth code for tokens."
       },
@@ -16329,9 +15346,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "server_url"
-        ],
+        "required": ["server_url"],
         "title": "MCPOAuthLoginRequest",
         "description": "Request to start an OAuth flow for an MCP server."
       },
@@ -16347,10 +15362,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "login_url",
-          "state_token"
-        ],
+        "required": ["login_url", "state_token"],
         "title": "MCPOAuthLoginResponse",
         "description": "Response with the OAuth login URL for the user to authenticate."
       },
@@ -16371,10 +15383,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "server_url",
-          "token"
-        ],
+        "required": ["server_url", "token"],
         "title": "MCPStoreTokenRequest",
         "description": "Request to store a bearer token for an MCP server that doesn't support OAuth."
       },
@@ -16395,11 +15404,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "description",
-          "input_schema"
-        ],
+        "required": ["name", "description", "input_schema"],
         "title": "MCPToolInfo",
         "description": "Information about a single MCP tool discovered from a server."
       },
@@ -16442,11 +15447,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "server_url",
-          "tool_name"
-        ],
+        "required": ["message", "server_url", "tool_name"],
         "title": "MCPToolOutputResponse",
         "description": "Response after executing an MCP tool."
       },
@@ -16467,11 +15468,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "description",
-          "input_schema"
-        ],
+        "required": ["name", "description", "input_schema"],
         "title": "MCPToolResponse",
         "description": "A single MCP tool returned by discovery."
       },
@@ -16509,11 +15506,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "server_url",
-          "tools"
-        ],
+        "required": ["message", "server_url", "tools"],
         "title": "MCPToolsDiscoveredResponse",
         "description": "Response when MCP tools are discovered from a server (agent-internal)."
       },
@@ -16536,12 +15529,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "creator"
-        ],
+        "required": ["id", "name", "slug", "creator"],
         "title": "MarketplaceListing",
         "description": "Marketplace listing information for a library agent."
       },
@@ -16561,11 +15549,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "id",
-          "slug"
-        ],
+        "required": ["name", "id", "slug"],
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
       },
@@ -16581,10 +15565,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "query",
-          "response"
-        ],
+        "required": ["query", "response"],
         "title": "Message"
       },
       "ModelInfo": {
@@ -16603,11 +15584,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "value",
-          "label",
-          "provider"
-        ],
+        "required": ["value", "label", "provider"],
         "title": "ModelInfo"
       },
       "MyUnpublishedAgent": {
@@ -16680,10 +15657,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "agents",
-          "pagination"
-        ],
+        "required": ["agents", "pagination"],
         "title": "MyUnpublishedAgentsResponse"
       },
       "NeedLoginResponse": {
@@ -16721,9 +15695,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "NeedLoginResponse",
         "description": "Response when login is needed."
       },
@@ -16763,9 +15735,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "NoResultsResponse",
         "description": "Response when no agents found."
       },
@@ -16805,9 +15775,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "block_id"
-        ],
+        "required": ["block_id"],
         "title": "Node"
       },
       "NodeExecutionResult": {
@@ -16972,11 +15940,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "block_id",
-          "graph_id",
-          "graph_version"
-        ],
+        "required": ["block_id", "graph_id", "graph_version"],
         "title": "NodeModel"
       },
       "NotificationPreference": {
@@ -17018,10 +15982,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "user_id",
-          "email"
-        ],
+        "required": ["user_id", "email"],
         "title": "NotificationPreference"
       },
       "NotificationPreferenceDTO": {
@@ -17050,11 +16011,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "email",
-          "preferences",
-          "daily_limit"
-        ],
+        "required": ["email", "preferences", "daily_limit"],
         "title": "NotificationPreferenceDTO"
       },
       "NotificationType": {
@@ -17168,11 +16125,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider",
-          "access_token",
-          "scopes"
-        ],
+        "required": ["provider", "access_token", "scopes"],
         "title": "OAuth2Credentials"
       },
       "OAuthApplicationInfo": {
@@ -17304,10 +16257,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "scopes"
-        ],
+        "required": ["name", "scopes"],
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },
@@ -17323,10 +16273,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "is_onboarding_enabled",
-          "is_chat_enabled"
-        ],
+        "required": ["is_onboarding_enabled", "is_chat_enabled"],
         "title": "OnboardingStatusResponse",
         "description": "Response for onboarding status check."
       },
@@ -17364,42 +16311,29 @@
             "type": "integer",
             "title": "Total Items",
             "description": "Total number of items.",
-            "examples": [
-              42
-            ]
+            "examples": [42]
           },
           "total_pages": {
             "type": "integer",
             "title": "Total Pages",
             "description": "Total number of pages.",
-            "examples": [
-              2
-            ]
+            "examples": [2]
           },
           "current_page": {
             "type": "integer",
             "title": "Current Page",
             "description": "Current_page page number.",
-            "examples": [
-              1
-            ]
+            "examples": [1]
           },
           "page_size": {
             "type": "integer",
             "title": "Page Size",
             "description": "Number of items per page.",
-            "examples": [
-              25
-            ]
+            "examples": [25]
           }
         },
         "type": "object",
-        "required": [
-          "total_items",
-          "total_pages",
-          "current_page",
-          "page_size"
-        ],
+        "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
       "PendingHumanReviewModel": {
@@ -17566,28 +16500,8 @@
       "PostmarkBounceEnum": {
         "type": "integer",
         "enum": [
-          1,
-          2,
-          16,
-          32,
-          64,
-          128,
-          256,
-          512,
-          1024,
-          2048,
-          4096,
-          8192,
-          16384,
-          100000,
-          100001,
-          100002,
-          100003,
-          100006,
-          100007,
-          100008,
-          100009,
-          100010
+          1, 2, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384,
+          100000, 100001, 100002, 100003, 100006, 100007, 100008, 100009, 100010
         ],
         "title": "PostmarkBounceEnum"
       },
@@ -18154,13 +17068,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "username",
-          "name",
-          "description",
-          "avatar_url",
-          "links"
-        ],
+        "required": ["username", "name", "description", "avatar_url", "links"],
         "title": "Profile",
         "description": "Marketplace user profile (only attributes that the user can update)"
       },
@@ -18230,11 +17138,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "description",
-          "integration_count"
-        ],
+        "required": ["name", "description", "integration_count"],
         "title": "Provider"
       },
       "ProviderConstants": {
@@ -18270,9 +17174,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider"
-        ],
+        "required": ["provider"],
         "title": "ProviderEnumResponse",
         "description": "Response containing a provider from the enum."
       },
@@ -18305,10 +17207,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "providers",
-          "pagination"
-        ],
+        "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
       "RecentExecution": {
@@ -18341,9 +17240,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "title": "RecentExecution",
         "description": "Summary of a recent execution for quality assessment.\n\nUsed by the LLM to understand the agent's recent performance with specific examples\nrather than just aggregate statistics."
       },
@@ -18416,9 +17313,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "credit_amount"
-        ],
+        "required": ["credit_amount"],
         "title": "RequestTopUp"
       },
       "ResponseType": {
@@ -18534,10 +17429,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "node_exec_id",
-          "approved"
-        ],
+        "required": ["node_exec_id", "approved"],
         "title": "ReviewItem",
         "description": "Single review item for processing."
       },
@@ -18553,9 +17445,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "reviews"
-        ],
+        "required": ["reviews"],
         "title": "ReviewRequest",
         "description": "Request model for processing ALL pending reviews for an execution.\n\nThis request must include ALL pending reviews for a graph execution.\nEach review will be either approved (with optional data modifications)\nor rejected (data ignored). The execution will resume only after ALL reviews are processed.\n\nEach review item can individually specify whether to auto-approve future executions\nof the same block via the `auto_approve_future` field on ReviewItem."
       },
@@ -18590,21 +17480,13 @@
           }
         },
         "type": "object",
-        "required": [
-          "approved_count",
-          "rejected_count",
-          "failed_count"
-        ],
+        "required": ["approved_count", "rejected_count", "failed_count"],
         "title": "ReviewResponse",
         "description": "Response from review endpoint."
       },
       "ReviewStatus": {
         "type": "string",
-        "enum": [
-          "WAITING",
-          "APPROVED",
-          "REJECTED"
-        ],
+        "enum": ["WAITING", "APPROVED", "REJECTED"],
         "title": "ReviewStatus"
       },
       "ReviewSubmissionRequest": {
@@ -18634,11 +17516,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "store_listing_version_id",
-          "is_approved",
-          "comments"
-        ],
+        "required": ["store_listing_version_id", "is_approved", "comments"],
         "title": "ReviewSubmissionRequest"
       },
       "ScheduleCreationRequest": {
@@ -18688,11 +17566,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "cron",
-          "inputs"
-        ],
+        "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
       "SearchEntry": {
@@ -18800,12 +17674,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "items",
-          "search_id",
-          "total_items",
-          "pagination"
-        ],
+        "required": ["items", "search_id", "total_items", "pagination"],
         "title": "SearchResponse"
       },
       "SessionDetailResponse": {
@@ -18863,13 +17732,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "created_at",
-          "updated_at",
-          "user_id",
-          "messages"
-        ],
+        "required": ["id", "created_at", "updated_at", "user_id", "messages"],
         "title": "SessionDetailResponse",
         "description": "Response model providing complete details for a chat session, including messages."
       },
@@ -18904,12 +17767,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "id",
-          "created_at",
-          "updated_at",
-          "is_processing"
-        ],
+        "required": ["id", "created_at", "updated_at", "is_processing"],
         "title": "SessionSummaryResponse",
         "description": "Response model for a session summary (without messages)."
       },
@@ -18921,9 +17779,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "active_graph_version"
-        ],
+        "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
       },
       "SetupInfo": {
@@ -18949,10 +17805,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "agent_id",
-          "agent_name"
-        ],
+        "required": ["agent_id", "agent_name"],
         "title": "SetupInfo",
         "description": "Complete setup information."
       },
@@ -19004,10 +17857,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "setup_info"
-        ],
+        "required": ["message", "setup_info"],
         "title": "SetupRequirementsResponse",
         "description": "Response for validate action."
       },
@@ -19029,10 +17879,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "share_url",
-          "share_token"
-        ],
+        "required": ["share_url", "share_token"],
         "title": "ShareResponse",
         "description": "Response from share endpoints."
       },
@@ -19191,12 +18038,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "used_bytes",
-          "limit_bytes",
-          "used_percent",
-          "file_count"
-        ],
+        "required": ["used_bytes", "limit_bytes", "used_percent", "file_count"],
         "title": "StorageUsageResponse"
       },
       "StoreAgent": {
@@ -19423,29 +18265,17 @@
           }
         },
         "type": "object",
-        "required": [
-          "agents",
-          "pagination"
-        ],
+        "required": ["agents", "pagination"],
         "title": "StoreAgentsResponse"
       },
       "StoreAgentsSortOptions": {
         "type": "string",
-        "enum": [
-          "rating",
-          "runs",
-          "name",
-          "updated_at"
-        ],
+        "enum": ["rating", "runs", "name", "updated_at"],
         "title": "StoreAgentsSortOptions"
       },
       "StoreCreatorsSortOptions": {
         "type": "string",
-        "enum": [
-          "agent_rating",
-          "agent_runs",
-          "num_agents"
-        ],
+        "enum": ["agent_rating", "agent_runs", "num_agents"],
         "title": "StoreCreatorsSortOptions"
       },
       "StoreListingWithVersionsAdminView": {
@@ -19509,11 +18339,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "listing_id",
-          "graph_id",
-          "slug"
-        ],
+        "required": ["listing_id", "graph_id", "slug"],
         "title": "StoreListingWithVersionsAdminView",
         "description": "A store listing with its version history"
       },
@@ -19531,10 +18357,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "listings",
-          "pagination"
-        ],
+        "required": ["listings", "pagination"],
         "title": "StoreListingsWithVersionsAdminViewResponse",
         "description": "Response model for listings with version history"
       },
@@ -19557,9 +18380,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "score"
-        ],
+        "required": ["score"],
         "title": "StoreReview"
       },
       "StoreReviewCreate": {
@@ -19585,10 +18406,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "store_listing_version_id",
-          "score"
-        ],
+        "required": ["store_listing_version_id", "score"],
         "title": "StoreReviewCreate"
       },
       "StoreSubmission": {
@@ -20067,10 +18885,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "sub_heading"
-        ],
+        "required": ["name", "sub_heading"],
         "title": "StoreSubmissionEditRequest"
       },
       "StoreSubmissionRequest": {
@@ -20200,10 +19015,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "submissions",
-          "pagination"
-        ],
+        "required": ["submissions", "pagination"],
         "title": "StoreSubmissionsResponse"
       },
       "StreamChatRequest": {
@@ -20248,20 +19060,13 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
       },
       "SubmissionStatus": {
         "type": "string",
-        "enum": [
-          "DRAFT",
-          "PENDING",
-          "APPROVED",
-          "REJECTED"
-        ],
+        "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
       "SuggestedGoalResponse": {
@@ -20304,20 +19109,14 @@
           },
           "goal_type": {
             "type": "string",
-            "enum": [
-              "vague",
-              "unachievable"
-            ],
+            "enum": ["vague", "unachievable"],
             "title": "Goal Type",
             "description": "Type: 'vague' or 'unachievable'",
             "default": "vague"
           }
         },
         "type": "object",
-        "required": [
-          "message",
-          "suggested_goal"
-        ],
+        "required": ["message", "suggested_goal"],
         "title": "SuggestedGoalResponse",
         "description": "Response when the goal needs refinement with a suggested alternative."
       },
@@ -20347,11 +19146,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "recent_searches",
-          "providers",
-          "top_blocks"
-        ],
+        "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
       },
       "TimezoneResponse": {
@@ -20969,9 +19764,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "timezone"
-        ],
+        "required": ["timezone"],
         "title": "TimezoneResponse"
       },
       "TokenIntrospectionResult": {
@@ -21031,10 +19824,7 @@
             "anyOf": [
               {
                 "type": "string",
-                "enum": [
-                  "access_token",
-                  "refresh_token"
-                ]
+                "enum": ["access_token", "refresh_token"]
               },
               {
                 "type": "null"
@@ -21044,9 +19834,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "active"
-        ],
+        "required": ["active"],
         "title": "TokenIntrospectionResult",
         "description": "Result of token introspection (RFC 7662)"
       },
@@ -21189,10 +19977,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "transactions",
-          "next_transaction_time"
-        ],
+        "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
       "TriggeredPresetSetupRequest": {
@@ -21228,12 +20013,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "graph_id",
-          "graph_version",
-          "trigger_config"
-        ],
+        "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
       },
       "UnderstandingUpdatedResponse": {
@@ -21271,9 +20051,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "message"
-        ],
+        "required": ["message"],
         "title": "UnderstandingUpdatedResponse",
         "description": "Response for add_understanding tool."
       },
@@ -21291,10 +20069,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "results",
-          "pagination"
-        ],
+        "required": ["results", "pagination"],
         "title": "UnifiedSearchResponse",
         "description": "Response model for unified search across all content types."
       },
@@ -21371,11 +20146,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "content_type",
-          "content_id",
-          "searchable_text"
-        ],
+        "required": ["content_type", "content_id", "searchable_text"],
         "title": "UnifiedSearchResult",
         "description": "A single result from unified hybrid search across all content types."
       },
@@ -21388,9 +20159,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "logo_url"
-        ],
+        "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
       },
       "UpdateLlmModelRequest": {
@@ -21665,9 +20434,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "permissions"
-        ],
+        "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
       },
       "UpdateSessionTitleRequest": {
@@ -21678,9 +20445,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "title"
-        ],
+        "required": ["title"],
         "title": "UpdateSessionTitleRequest",
         "description": "Request model for updating a session's title."
       },
@@ -22292,9 +21057,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "timezone"
-        ],
+        "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
       "UsageWindow": {
@@ -22315,11 +21078,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "used",
-          "limit",
-          "resets_at"
-        ],
+        "required": ["used", "limit", "resets_at"],
         "title": "UsageWindow",
         "description": "Usage within a single time window."
       },
@@ -22337,10 +21096,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "history",
-          "pagination"
-        ],
+        "required": ["history", "pagination"],
         "title": "UserHistoryResponse",
         "description": "Response model for listings with version history"
       },
@@ -22620,11 +21376,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "provider",
-          "username",
-          "password"
-        ],
+        "required": ["provider", "username", "password"],
         "title": "UserPasswordCredentials"
       },
       "UserReadiness": {
@@ -22776,9 +21528,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "user_id"
-        ],
+        "required": ["user_id"],
         "title": "UserTransaction"
       },
       "ValidationError": {
@@ -22814,11 +21564,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
       },
       "Webhook": {
@@ -22912,13 +21658,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "file_id",
-          "name",
-          "path",
-          "mime_type",
-          "size_bytes"
-        ],
+        "required": ["file_id", "name", "path", "mime_type", "size_bytes"],
         "title": "UploadFileResponse"
       },
       "backend__api__model__UploadFileResponse": {
