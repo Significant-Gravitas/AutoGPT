@@ -326,10 +326,17 @@ class GoogleSheetsReadBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
         if not input_data.spreadsheet:
             yield "error", "No spreadsheet selected"
+            return
+        if not credentials:
+            yield "error", "Google credentials are required"
             return
 
         # Check if the selected file is actually a Google Sheets spreadsheet
