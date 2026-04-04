@@ -1,3 +1,4 @@
+import logging
 import time
 import urllib.parse
 from typing import ClassVar, Optional
@@ -5,6 +6,8 @@ from typing import ClassVar, Optional
 from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.util.request import Requests
+
+logger = logging.getLogger(__name__)
 
 
 class TwitterOAuthHandler(BaseOAuthHandler):
@@ -128,8 +131,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         if not response.ok:
             error_text = response.text
-            print("HTTP Error:", response.status)
-            print("Response Content:", error_text)
+            logger.error("HTTP Error: %s, Response: %s", response.status, error_text)
             raise ValueError(f"HTTP Error: {response.status} - {error_text}")
 
         tokens = response.json()
@@ -166,8 +168,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         if not response.ok:
             error_text = response.text
-            print("HTTP Error:", response.status)
-            print("Response Content:", error_text)
+            logger.error("HTTP Error: %s, Response: %s", response.status, error_text)
             raise ValueError(f"HTTP Error: {response.status} - {error_text}")
 
         return response.ok
