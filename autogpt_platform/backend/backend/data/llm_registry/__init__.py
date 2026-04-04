@@ -1,6 +1,6 @@
 """LLM Registry - Dynamic model management system."""
 
-from .model import ModelMetadata
+from backend.blocks.llm import ModelMetadata
 from .registry import (
     RegistryModel,
     RegistryModelCost,

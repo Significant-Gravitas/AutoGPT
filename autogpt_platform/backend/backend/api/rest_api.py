@@ -137,10 +137,17 @@ async def lifespan_context(app: fastapi.FastAPI):
     try:
         await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     except Exception as e:
-        logger.warning(
-            f"Failed to migrate LLM models at startup: {e}. "
-            "This is expected in test environments without AgentNode table."
-        )
+        err_str = str(e)
+        if "AgentNode" in err_str or "does not exist" in err_str:
+            logger.warning(
+                f"migrate_llm_models skipped: AgentNode table not found ({e}). "
+                "This is expected in test environments."
+            )
+        else:
+            logger.error(
+                f"migrate_llm_models failed unexpectedly: {e}",
+                exc_info=True,
+            )
 
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
