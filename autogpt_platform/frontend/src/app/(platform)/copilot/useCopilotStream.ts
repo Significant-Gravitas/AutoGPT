@@ -300,22 +300,23 @@ export function useCopilotStream({
 
   // Hydrate messages from REST API when not actively streaming
   useEffect(() => {
-    if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    if (isReconnectScheduled) return;
-    setMessages((prev) => {
+  if (!hydratedMessages || hydratedMessages.length === 0) return;
+  if (status === "streaming" || status === "submitted") return;
+  if (isReconnectScheduled) return;
+
+  setMessages((prev) => {
     const syntheticPrefix = sessionId ? `${sessionId}-` : null;
     const hasSyntheticIds = syntheticPrefix
       ? prev.some((m) => m.id.startsWith(syntheticPrefix))
       : false;
 
-    if (prev.length >= hydratedMessages.length && !hasSyntheticIds) return prev;
+    if (prev.length >= hydratedMessages.length && !hasSyntheticIds) {
+      return prev;
+    }
+
     return deduplicateMessages(hydratedMessages);
-});
-  if (prev.length >= hydratedMessages.length && !hasSyntheticIds) return prev;
-  return deduplicateMessages(hydratedMessages);
-});
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled, sessionId]);
+  });
+}, [hydratedMessages, setMessages, status, isReconnectScheduled, sessionId]);
   // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
