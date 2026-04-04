@@ -1,6 +1,6 @@
 // auth.spec.ts
 
-import test from "@playwright/test";
+import { test } from "./coverage-fixture";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import { hasUrl, isHidden, isVisible } from "./utils/assertion";

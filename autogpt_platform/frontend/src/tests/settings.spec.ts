@@ -1,4 +1,4 @@
-import test, { expect } from "@playwright/test";
+import { test, expect } from "./coverage-fixture";
 import { getTestUser } from "./utils/auth";
 import { LoginPage } from "./pages/login.page";
 import { hasAttribute, hasUrl, isHidden, isVisible } from "./utils/assertion";

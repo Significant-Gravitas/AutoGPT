@@ -1,4 +1,4 @@
-import test from "@playwright/test";
+import { test } from "./coverage-fixture";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import {
