@@ -620,6 +620,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
     llama_api_key: str = Field(default="", description="Llama API Key")
+    minimax_api_key: str = Field(default="", description="MiniMax API key")
     v0_api_key: str = Field(default="", description="v0 by Vercel API key")
     webshare_proxy_username: str = Field(
         default="", description="Webshare Proxy Username"
