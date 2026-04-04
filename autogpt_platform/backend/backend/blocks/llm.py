@@ -170,6 +170,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
     GEMINI_2_5_FLASH_LITE_PREVIEW = "google/gemini-2.5-flash-lite-preview-06-17"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
+    GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
@@ -450,6 +451,15 @@ MODEL_METADATA = {
         1048576,
         8192,
         "Gemini 2.0 Flash Lite 001",
+        "OpenRouter",
+        "Google",
+        1,
+    ),
+    LlmModel.GEMMA_4_31B_IT: ModelMetadata(
+        "open_router",
+        262144,
+        131072,
+        "Gemma 4 31B",
         "OpenRouter",
         "Google",
         1,
