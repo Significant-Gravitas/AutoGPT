@@ -60,15 +60,19 @@ export function ChatSidebar() {
     useDeleteV2DeleteSession({
       mutation: {
         onSuccess: () => {
+          const wasSelected = sessionToDelete?.id === sessionId;
+          // Close dialog first so the UI updates immediately, before the
+          // setSessionId(null) cascade tears down the chat view.
+          setSessionToDelete(null);
           queryClient.invalidateQueries({
             queryKey: getGetV2ListSessionsQueryKey(),
           });
-          if (sessionToDelete?.id === sessionId) {
+          if (wasSelected) {
             setSessionId(null);
           }
-          setSessionToDelete(null);
         },
         onError: (error) => {
+          const wasSelected = sessionToDelete?.id === sessionId;
           toast({
             title: "Failed to delete chat",
             description:
@@ -76,6 +80,15 @@ export function ChatSidebar() {
             variant: "destructive",
           });
           setSessionToDelete(null);
+          // The session may have been deleted server-side even if we got an
+          // error (e.g. Cloudflare 524 timeout). Refresh the list so stale
+          // entries disappear and navigate away from the deleted chat.
+          queryClient.invalidateQueries({
+            queryKey: getGetV2ListSessionsQueryKey(),
+          });
+          if (wasSelected) {
+            setSessionId(null);
+          }
         },
       },
     });
