@@ -422,7 +422,10 @@ async def update_org_member(
             data=update_data,
         )
     members = await list_org_members(org_id)
-    return next(m for m in members if m.user_id == user_id)
+    match = next((m for m in members if m.user_id == user_id), None)
+    if match is None:
+        raise NotFoundError(f"Member {user_id} not found in org {org_id} after update")
+    return match
 
 
 async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) -> None:

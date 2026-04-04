@@ -977,6 +977,10 @@ class TestWorkspaceDbMembers:
     async def test_add_workspace_member_requires_org_membership(self):
         from backend.api.features.orgs.workspace_db import add_workspace_member
 
+        # Workspace belongs to the org
+        self.prisma.orgworkspace.find_unique = AsyncMock(
+            return_value=_make_workspace(orgId=ORG_ID)
+        )
         self.prisma.orgmember.find_unique = AsyncMock(return_value=None)
 
         with pytest.raises(ValueError, match="not a member of the organization"):
@@ -990,6 +994,10 @@ class TestWorkspaceDbMembers:
     async def test_add_workspace_member_success(self):
         from backend.api.features.orgs.workspace_db import add_workspace_member
 
+        # Workspace belongs to the org
+        self.prisma.orgworkspace.find_unique = AsyncMock(
+            return_value=_make_workspace(orgId=ORG_ID)
+        )
         org_mem = _make_member(userId=OTHER_USER_ID)
         self.prisma.orgmember.find_unique = AsyncMock(return_value=org_mem)
         ws_mem = _make_ws_member(
@@ -2490,3 +2498,75 @@ class TestPRReviewBugs:
         with pytest.raises(fastapi.HTTPException) as exc_info:
             await create_workspace(org_id="org-B", request=request, ctx=ctx)
         assert exc_info.value.status_code == 403
+
+
+class TestPRReviewBugsRound2:
+    """Second round of PR review bugs — TDD: xfail first, fix, remove xfail."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, mocker):
+        self.prisma = MagicMock()
+        mocker.patch("backend.api.features.orgs.db.prisma", self.prisma)
+        mocker.patch("backend.api.features.orgs.workspace_db.prisma", self.prisma)
+
+    # --- Bug: update_org_member bare next() raises StopIteration ---
+
+    @pytest.mark.asyncio
+    async def test_update_org_member_missing_member_after_update_raises_not_found(self):
+        """If the member disappears between update and re-fetch, should raise
+        NotFoundError not StopIteration."""
+        from backend.api.features.orgs.db import update_org_member
+
+        member = _make_member(userId=OTHER_USER_ID, isOwner=False)
+        self.prisma.orgmember.find_unique = AsyncMock(return_value=member)
+        self.prisma.orgmember.update = AsyncMock()
+        # list_org_members returns empty — member was deleted concurrently
+        self.prisma.orgmember.find_many = AsyncMock(return_value=[])
+
+        with pytest.raises(NotFoundError):
+            await update_org_member(ORG_ID, OTHER_USER_ID, is_admin=True, is_billing_manager=None)
+
+    # --- Bug: test_assign_seat asserts wrong seat type ---
+
+    @pytest.mark.asyncio
+    async def test_assign_seat_returns_requested_type(self):
+        """assign_seat should return the seat type that was requested, not the mock default."""
+        from backend.data.org_credit import assign_seat
+
+        # Mock returns the requested values
+        mock_prisma = MagicMock()
+        mock_prisma.organizationseatassignment.upsert = AsyncMock(
+            return_value=MagicMock(userId="u1", seatType="PAID", status="ACTIVE")
+        )
+
+        import backend.data.org_credit
+
+        original = backend.data.org_credit.prisma
+        backend.data.org_credit.prisma = mock_prisma
+        try:
+            result = await assign_seat("org-1", "u1", seat_type="PAID")
+            assert result["seatType"] == "PAID"
+        finally:
+            backend.data.org_credit.prisma = original
+
+    # --- Bug: add_workspace_member doesn't verify workspace belongs to org ---
+
+    @pytest.mark.asyncio
+    async def test_add_workspace_member_verifies_workspace_in_org(self):
+        """add_workspace_member should verify the workspace actually belongs to
+        the claimed org, not just that the user is in the org."""
+        from backend.api.features.orgs.workspace_db import add_workspace_member
+
+        # User is an org member of org-A
+        self.prisma.orgmember.find_unique = AsyncMock(
+            return_value=_make_member(orgId="org-A")
+        )
+        # But the workspace belongs to org-B
+        self.prisma.orgworkspace.find_unique = AsyncMock(
+            return_value=_make_workspace(orgId="org-B")
+        )
+
+        with pytest.raises(ValueError, match="does not belong"):
+            await add_workspace_member(
+                ws_id=WS_ID, user_id=OTHER_USER_ID, org_id="org-A"
+            )

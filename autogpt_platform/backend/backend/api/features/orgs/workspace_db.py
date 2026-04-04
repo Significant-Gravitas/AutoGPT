@@ -160,7 +160,12 @@ async def add_workspace_member(
     is_billing_manager: bool = False,
     invited_by: str | None = None,
 ) -> WorkspaceMemberResponse:
-    """Add a member to a workspace. Must be an org member."""
+    """Add a member to a workspace. Must be an org member, workspace must belong to org."""
+    # Verify workspace belongs to the org
+    ws = await prisma.orgworkspace.find_unique(where={"id": ws_id})
+    if ws is None or ws.orgId != org_id:
+        raise ValueError(f"Workspace {ws_id} does not belong to org {org_id}")
+
     # Verify user is in the org
     org_member = await prisma.orgmember.find_unique(
         where={"orgId_userId": {"orgId": org_id, "userId": user_id}}

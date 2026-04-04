@@ -180,8 +180,11 @@ class TestSeatManagement:
 
     @pytest.mark.asyncio
     async def test_assign_seat(self, mock_prisma):
+        mock_prisma.organizationseatassignment.upsert = AsyncMock(
+            return_value=MagicMock(userId="user-1", seatType="PAID", status="ACTIVE")
+        )
         result = await assign_seat("org-1", "user-1", seat_type="PAID")
-        assert result["seatType"] == "FREE"  # From the mock default
+        assert result["seatType"] == "PAID"
         mock_prisma.organizationseatassignment.upsert.assert_called_once()
 
     @pytest.mark.asyncio

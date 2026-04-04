@@ -265,11 +265,11 @@ async def get_request_context(
 def requires_org_permission(
     *actions: OrgAction,
 ):
-    """
-    Factory that returns a FastAPI dependency enforcing one or more org-level
-    permissions.  The request is allowed if the user holds **all** listed actions.
+    """Factory returning a FastAPI dependency that enforces org-level permissions.
 
-    Usage::
+    The request is allowed only if the user holds **all** listed actions.
+
+    Example::
 
         @router.delete("/org/{org_id}")
         async def delete_org(
@@ -295,12 +295,12 @@ def requires_org_permission(
 def requires_workspace_permission(
     *actions: WorkspaceAction,
 ):
-    """
-    Factory that returns a FastAPI dependency enforcing one or more
-    workspace-level permissions.  The user must be in a workspace context
-    (workspace_id is set) and hold **all** listed actions.
+    """Factory returning a FastAPI dependency that enforces workspace-level permissions.
 
-    Usage::
+    The user must be in a workspace context (workspace_id is set) and
+    hold **all** listed actions.
+
+    Example::
 
         @router.post("/workspace/{ws_id}/agents")
         async def create_agent(
