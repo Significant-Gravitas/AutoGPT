@@ -29,6 +29,9 @@ export function LibrarySortMenu({ setLibrarySort }: Props) {
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
+            <SelectItem value={LibraryAgentSort.lastExecuted}>
+              Last Executed
+            </SelectItem>
             <SelectItem value={LibraryAgentSort.createdAt}>
               Creation Date
             </SelectItem>
