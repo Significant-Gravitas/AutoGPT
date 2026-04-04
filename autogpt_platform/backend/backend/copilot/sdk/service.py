@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sys
+import threading
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
