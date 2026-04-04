@@ -33,22 +33,27 @@ function normalizeCoverageSourcePath(filePath: string) {
   return withoutWebpackPrefix;
 }
 
-// Resolve source maps from the copied .next/static directory
+// Resolve source maps from the copied .next/static directory.
+// Cache parsed results to avoid repeated disk reads during report generation.
+const sourceMapCache = new Map<string, object | undefined>();
+
 function resolveSourceMap(sourcePath: string) {
   // sourcePath is the sourceMappingURL, e.g.:
   //   "http://localhost:3000/_next/static/chunks/abc123.js.map"
-  // or just "_next/static/chunks/abc123.js.map"
   const match = sourcePath.match(/_next\/static\/(.+)$/);
-  if (!match) {
+  if (!match) return undefined;
+
+  const mapFile = path.join(staticCoverageDir, match[1]);
+  if (sourceMapCache.has(mapFile)) return sourceMapCache.get(mapFile);
+
+  try {
+    const result = JSON.parse(fs.readFileSync(mapFile, "utf8")) as object;
+    sourceMapCache.set(mapFile, result);
+    return result;
+  } catch {
+    sourceMapCache.set(mapFile, undefined);
     return undefined;
   }
-
-  // match[1] is already "chunks/abc123.js.map" — don't append .map again
-  const mapFile = path.join(staticCoverageDir, match[1]);
-  if (fs.existsSync(mapFile)) {
-    return JSON.parse(fs.readFileSync(mapFile, "utf8"));
-  }
-  return undefined;
 }
 
 export default defineConfig({

@@ -1,7 +1,7 @@
 import { test as base } from "@playwright/test";
 import { addCoverageReport } from "monocart-reporter";
 
-const test = base.extend<{ autoTestFixture: string }>({
+const test = base.extend<{ autoTestFixture: void }>({
   autoTestFixture: [
     async ({ page }, use) => {
       let hasCoverage = false;
@@ -12,12 +12,16 @@ const test = base.extend<{ autoTestFixture: string }>({
         // coverage API not available (e.g. non-browser tests)
       }
 
-      await use("");
+      await use();
 
       if (hasCoverage) {
-        const jsCoverageList = await page.coverage.stopJSCoverage();
-        if (jsCoverageList.length > 0) {
-          await addCoverageReport(jsCoverageList, test.info());
+        try {
+          const jsCoverageList = await page.coverage.stopJSCoverage();
+          if (jsCoverageList.length > 0) {
+            await addCoverageReport(jsCoverageList, test.info());
+          }
+        } catch {
+          // Don't let coverage teardown failures mask real test failures
         }
       }
     },
