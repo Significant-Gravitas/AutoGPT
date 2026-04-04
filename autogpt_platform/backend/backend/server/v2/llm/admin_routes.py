@@ -126,7 +126,7 @@ async def create_model(
 
 
 @router.patch(
-    "/llm/models/{slug}",
+    "/llm/models/{slug:path}",
     dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
 async def update_model(
@@ -178,7 +178,7 @@ async def update_model(
 
 
 @router.delete(
-    "/llm/models/{slug}",
+    "/llm/models/{slug:path}",
     status_code=status.HTTP_204_NO_CONTENT,
     dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
