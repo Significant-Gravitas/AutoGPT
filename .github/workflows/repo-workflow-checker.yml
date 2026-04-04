@@ -1,7 +1,7 @@
 name: Repo - PR Status Checker
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, labeled]
   merge_group:
 
 jobs:
