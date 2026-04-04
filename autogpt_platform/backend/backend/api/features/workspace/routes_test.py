@@ -88,7 +88,9 @@ def test_list_files_with_session_id(mock_manager_cls, mock_get_workspace):
     data = response.json()
     assert data["total_count"] == 0
     assert data["files"] == []
-    mock_manager_cls.assert_called_once_with("test-user-id", "ws-001", "sess-123")
+    mock_manager_cls.assert_called_once_with(
+        "3e53486c-cf57-477e-ba2a-cb02dc828e1a", "ws-001", "sess-123"
+    )
     mock_instance.list_files.assert_called_once_with(include_all_sessions=False)
 
 
@@ -99,7 +101,9 @@ def test_list_files_null_metadata_defaults_to_empty_dict(
 ):
     mock_get_workspace.return_value = _make_workspace()
     mock_instance = AsyncMock()
-    mock_instance.list_files.return_value = [_make_file(metadata=None)]
+    file_with_null_metadata = _make_file()
+    file_with_null_metadata.metadata = None  # type: ignore[assignment]
+    mock_instance.list_files.return_value = [file_with_null_metadata]
     mock_manager_cls.return_value = mock_instance
 
     response = client.get("/files")
