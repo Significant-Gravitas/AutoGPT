@@ -1,7 +1,7 @@
 "use client";
 
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { useOrgWorkspaceStore } from "@/services/org-workspace/store";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useEffect, useRef } from "react";
 
@@ -10,19 +10,19 @@ interface Props {
 }
 
 /**
- * Initializes org/workspace context on login and clears it on logout.
+ * Initializes org/team context on login and clears it on logout.
  *
  * On mount (when logged in):
  * 1. Fetches the user's org list from GET /api/orgs
  * 2. If no activeOrgID is stored, sets the personal org as default
- * 3. Fetches workspaces for the active org
+ * 3. Fetches teams for the active org
  *
- * On org/workspace switch: clears React Query cache to force refetch.
+ * On org/team switch: clears React Query cache to force refetch.
  */
-export default function OrgWorkspaceProvider({ children }: Props) {
+export default function OrgTeamProvider({ children }: Props) {
   const { isLoggedIn, user } = useSupabase();
   const { activeOrgID, setActiveOrg, setOrgs, setLoaded, clearContext } =
-    useOrgWorkspaceStore();
+    useOrgTeamStore();
 
   const prevOrgID = useRef(activeOrgID);
 

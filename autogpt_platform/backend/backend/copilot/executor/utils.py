@@ -159,7 +159,7 @@ class CoPilotExecutionEntry(BaseModel):
     organization_id: str | None = None
     """Active organization for tenant-scoped execution"""
 
-    org_workspace_id: str | None = None
+    team_id: str | None = None
     """Active workspace for tenant-scoped execution"""
 
 
@@ -182,7 +182,7 @@ async def enqueue_copilot_turn(
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
-    org_workspace_id: str | None = None,
+    team_id: str | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -206,7 +206,7 @@ async def enqueue_copilot_turn(
         context=context,
         file_ids=file_ids,
         organization_id=organization_id,
-        org_workspace_id=org_workspace_id,
+        team_id=team_id,
     )
 
     queue_client = await get_async_copilot_queue()

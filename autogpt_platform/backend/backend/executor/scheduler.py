@@ -160,7 +160,7 @@ async def _execute_graph(**kwargs):
             inputs=args.input_data,
             graph_credentials_inputs=args.input_credentials,
             organization_id=args.organization_id,
-            org_workspace_id=args.org_workspace_id,
+            team_id=args.team_id,
         )
         await db.increment_onboarding_runs(args.user_id)
         elapsed = asyncio.get_event_loop().time() - start_time
@@ -393,7 +393,7 @@ class GraphExecutionJobArgs(BaseModel):
     input_data: GraphInput
     input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
     organization_id: str | None = None
-    org_workspace_id: str | None = None
+    team_id: str | None = None
 
 
 class GraphExecutionJobInfo(GraphExecutionJobArgs):
@@ -672,7 +672,7 @@ class Scheduler(AppService):
         name: Optional[str] = None,
         user_timezone: str | None = None,
         organization_id: Optional[str] = None,
-        org_workspace_id: Optional[str] = None,
+        team_id: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -710,7 +710,7 @@ class Scheduler(AppService):
             input_data=input_data,
             input_credentials=input_credentials,
             organization_id=organization_id,
-            org_workspace_id=org_workspace_id,
+            team_id=team_id,
         )
         job = self.scheduler.add_job(
             execute_graph,

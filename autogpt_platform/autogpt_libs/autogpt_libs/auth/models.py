@@ -26,10 +26,10 @@ class User:
 class RequestContext:
     user_id: str
     org_id: str
-    workspace_id: str | None  # None = org-home context
+    team_id: str | None  # None = org-home context
     is_org_owner: bool
     is_org_admin: bool
     is_org_billing_manager: bool
-    is_workspace_admin: bool
-    is_workspace_billing_manager: bool
+    is_team_admin: bool
+    is_team_billing_manager: bool
     seat_status: str  # ACTIVE, INACTIVE, PENDING, NONE

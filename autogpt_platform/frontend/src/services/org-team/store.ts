@@ -10,7 +10,7 @@ interface Org {
   memberCount: number;
 }
 
-interface Workspace {
+interface Team {
   id: string;
   name: string;
   slug: string | null;
@@ -19,50 +19,50 @@ interface Workspace {
   orgId: string;
 }
 
-interface OrgWorkspaceState {
+interface OrgTeamState {
   activeOrgID: string | null;
-  activeWorkspaceID: string | null;
+  activeTeamID: string | null;
   orgs: Org[];
-  workspaces: Workspace[];
+  teams: Team[];
   isLoaded: boolean;
 
   setActiveOrg(orgID: string): void;
-  setActiveWorkspace(workspaceID: string | null): void;
+  setActiveTeam(teamID: string | null): void;
   setOrgs(orgs: Org[]): void;
-  setWorkspaces(workspaces: Workspace[]): void;
+  setTeams(teams: Team[]): void;
   setLoaded(loaded: boolean): void;
   clearContext(): void;
 }
 
-export const useOrgWorkspaceStore = create<OrgWorkspaceState>((set) => ({
+export const useOrgTeamStore = create<OrgTeamState>((set) => ({
   activeOrgID: storage.get(Key.ACTIVE_ORG) || null,
-  activeWorkspaceID: storage.get(Key.ACTIVE_WORKSPACE) || null,
+  activeTeamID: storage.get(Key.ACTIVE_TEAM) || null,
   orgs: [],
-  workspaces: [],
+  teams: [],
   isLoaded: false,
 
   setActiveOrg(orgID: string) {
     storage.set(Key.ACTIVE_ORG, orgID);
-    set({ activeOrgID: orgID, activeWorkspaceID: null });
-    // Clear workspace when switching org — provider will resolve default
-    storage.clean(Key.ACTIVE_WORKSPACE);
+    set({ activeOrgID: orgID, activeTeamID: null });
+    // Clear team when switching org — provider will resolve default
+    storage.clean(Key.ACTIVE_TEAM);
   },
 
-  setActiveWorkspace(workspaceID: string | null) {
-    if (workspaceID) {
-      storage.set(Key.ACTIVE_WORKSPACE, workspaceID);
+  setActiveTeam(teamID: string | null) {
+    if (teamID) {
+      storage.set(Key.ACTIVE_TEAM, teamID);
     } else {
-      storage.clean(Key.ACTIVE_WORKSPACE);
+      storage.clean(Key.ACTIVE_TEAM);
     }
-    set({ activeWorkspaceID: workspaceID });
+    set({ activeTeamID: teamID });
   },
 
   setOrgs(orgs: Org[]) {
     set({ orgs });
   },
 
-  setWorkspaces(workspaces: Workspace[]) {
-    set({ workspaces });
+  setTeams(teams: Team[]) {
+    set({ teams });
   },
 
   setLoaded(loaded: boolean) {
@@ -71,12 +71,12 @@ export const useOrgWorkspaceStore = create<OrgWorkspaceState>((set) => ({
 
   clearContext() {
     storage.clean(Key.ACTIVE_ORG);
-    storage.clean(Key.ACTIVE_WORKSPACE);
+    storage.clean(Key.ACTIVE_TEAM);
     set({
       activeOrgID: null,
-      activeWorkspaceID: null,
+      activeTeamID: null,
       orgs: [],
-      workspaces: [],
+      teams: [],
       isLoaded: false,
     });
   },

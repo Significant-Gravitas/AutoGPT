@@ -5,19 +5,19 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class CreateWorkspaceRequest(BaseModel):
+class CreateTeamRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
     join_policy: str = "OPEN"  # OPEN or PRIVATE
 
 
-class UpdateWorkspaceRequest(BaseModel):
+class UpdateTeamRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     join_policy: str | None = None  # OPEN or PRIVATE
 
 
-class WorkspaceResponse(BaseModel):
+class TeamResponse(BaseModel):
     id: str
     name: str
     slug: str | None
@@ -29,8 +29,8 @@ class WorkspaceResponse(BaseModel):
     created_at: datetime
 
     @staticmethod
-    def from_db(ws, member_count: int = 0) -> "WorkspaceResponse":
-        return WorkspaceResponse(
+    def from_db(ws, member_count: int = 0) -> "TeamResponse":
+        return TeamResponse(
             id=ws.id,
             name=ws.name,
             slug=ws.slug,
@@ -43,7 +43,7 @@ class WorkspaceResponse(BaseModel):
         )
 
 
-class WorkspaceMemberResponse(BaseModel):
+class TeamMemberResponse(BaseModel):
     id: str
     user_id: str
     email: str
@@ -53,8 +53,8 @@ class WorkspaceMemberResponse(BaseModel):
     joined_at: datetime
 
     @staticmethod
-    def from_db(member) -> "WorkspaceMemberResponse":
-        return WorkspaceMemberResponse(
+    def from_db(member) -> "TeamMemberResponse":
+        return TeamMemberResponse(
             id=member.id,
             user_id=member.userId,
             email=member.User.email if member.User else "",
@@ -65,12 +65,12 @@ class WorkspaceMemberResponse(BaseModel):
         )
 
 
-class AddWorkspaceMemberRequest(BaseModel):
+class AddTeamMemberRequest(BaseModel):
     user_id: str
     is_admin: bool = False
     is_billing_manager: bool = False
 
 
-class UpdateWorkspaceMemberRequest(BaseModel):
+class UpdateTeamMemberRequest(BaseModel):
     is_admin: bool | None = None
     is_billing_manager: bool | None = None

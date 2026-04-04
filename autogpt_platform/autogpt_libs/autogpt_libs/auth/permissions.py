@@ -24,7 +24,7 @@ class OrgAction(str, Enum):
     SHARE_RESOURCES = "SHARE_RESOURCES"
 
 
-class WorkspaceAction(str, Enum):
+class TeamAction(str, Enum):
     MANAGE_MEMBERS = "MANAGE_MEMBERS"
     MANAGE_SETTINGS = "MANAGE_SETTINGS"
     MANAGE_CREDENTIALS = "MANAGE_CREDENTIALS"
@@ -53,16 +53,16 @@ _ORG_PERMISSIONS: dict[OrgAction, set[str]] = {
 }
 
 # Workspace permission map: action -> set of roles that are allowed.
-# "ws_member" means any workspace member with no special workspace role.
-_WORKSPACE_PERMISSIONS: dict[WorkspaceAction, set[str]] = {
-    WorkspaceAction.MANAGE_MEMBERS: {"ws_admin"},
-    WorkspaceAction.MANAGE_SETTINGS: {"ws_admin"},
-    WorkspaceAction.MANAGE_CREDENTIALS: {"ws_admin"},
-    WorkspaceAction.VIEW_SPEND: {"ws_admin", "ws_billing_manager"},
-    WorkspaceAction.CREATE_AGENTS: {"ws_admin", "ws_member"},
-    WorkspaceAction.USE_CREDENTIALS: {"ws_admin", "ws_member"},
-    WorkspaceAction.VIEW_EXECUTIONS: {"ws_admin", "ws_member"},
-    WorkspaceAction.DELETE_AGENTS: {"ws_admin"},
+# "team_member" means any workspace member with no special workspace role.
+_TEAM_PERMISSIONS: dict[TeamAction, set[str]] = {
+    TeamAction.MANAGE_MEMBERS: {"team_admin"},
+    TeamAction.MANAGE_SETTINGS: {"team_admin"},
+    TeamAction.MANAGE_CREDENTIALS: {"team_admin"},
+    TeamAction.VIEW_SPEND: {"team_admin", "team_billing_manager"},
+    TeamAction.CREATE_AGENTS: {"team_admin", "team_member"},
+    TeamAction.USE_CREDENTIALS: {"team_admin", "team_member"},
+    TeamAction.VIEW_EXECUTIONS: {"team_admin", "team_member"},
+    TeamAction.DELETE_AGENTS: {"team_admin"},
 }
 
 
@@ -86,18 +86,18 @@ def _get_org_roles(ctx: RequestContext) -> set[str]:
     return roles
 
 
-def _get_workspace_roles(ctx: RequestContext) -> set[str]:
+def _get_team_roles(ctx: RequestContext) -> set[str]:
     """Derive the set of workspace-level role tags from a RequestContext."""
     roles: set[str] = set()
-    if ctx.is_workspace_admin:
-        roles.add("ws_admin")
-    if ctx.is_workspace_billing_manager:
-        roles.add("ws_billing_manager")
-    # Regular workspace members (not admin, not billing_manager) get ws_member.
-    # WS admins also get ws_member (they can do everything a member can).
-    if ctx.workspace_id is not None:
-        if ctx.is_workspace_admin or (not ctx.is_workspace_billing_manager):
-            roles.add("ws_member")
+    if ctx.is_team_admin:
+        roles.add("team_admin")
+    if ctx.is_team_billing_manager:
+        roles.add("team_billing_manager")
+    # Regular workspace members (not admin, not billing_manager) get team_member.
+    # WS admins also get team_member (they can do everything a member can).
+    if ctx.team_id is not None:
+        if ctx.is_team_admin or (not ctx.is_team_billing_manager):
+            roles.add("team_member")
     return roles
 
 
@@ -107,9 +107,9 @@ def check_org_permission(ctx: RequestContext, action: OrgAction) -> bool:
     return bool(_get_org_roles(ctx) & allowed_roles)
 
 
-def check_workspace_permission(ctx: RequestContext, action: WorkspaceAction) -> bool:
+def check_team_permission(ctx: RequestContext, action: TeamAction) -> bool:
     """Return True if the RequestContext grants the given workspace-level action."""
-    if ctx.workspace_id is None:
+    if ctx.team_id is None:
         return False
-    allowed_roles = _WORKSPACE_PERMISSIONS.get(action, set())
-    return bool(_get_workspace_roles(ctx) & allowed_roles)
+    allowed_roles = _TEAM_PERMISSIONS.get(action, set())
+    return bool(_get_team_roles(ctx) & allowed_roles)

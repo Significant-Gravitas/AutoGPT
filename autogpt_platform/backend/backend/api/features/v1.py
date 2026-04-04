@@ -860,7 +860,7 @@ async def create_new_graph(
         graph,
         user_id=user_id,
         organization_id=ctx.org_id,
-        org_workspace_id=ctx.workspace_id,
+        team_id=ctx.team_id,
     )
     await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
@@ -918,7 +918,7 @@ async def update_graph(
         graph,
         user_id=user_id,
         organization_id=ctx.org_id,
-        org_workspace_id=ctx.workspace_id,
+        team_id=ctx.team_id,
     )
 
     if new_graph_version.is_active:
@@ -1050,7 +1050,7 @@ async def execute_graph(
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
             organization_id=ctx.org_id,
-            org_workspace_id=ctx.workspace_id,
+            team_id=ctx.team_id,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
@@ -1429,7 +1429,7 @@ async def create_graph_execution_schedule(
         input_credentials=schedule_params.credentials,
         user_timezone=user_timezone,
         organization_id=ctx.org_id,
-        org_workspace_id=ctx.workspace_id,
+        team_id=ctx.team_id,
     )
 
     # Convert the next_run_time back to user timezone for display

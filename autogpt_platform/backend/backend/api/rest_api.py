@@ -31,13 +31,13 @@ import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
 import backend.api.features.orgs.invitation_routes
 import backend.api.features.orgs.routes as org_routes
-import backend.api.features.orgs.workspace_routes
+import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
-import backend.api.features.workspace.routes as workspace_routes
+import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
@@ -357,7 +357,7 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
-    workspace_routes.router,
+    team_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )
@@ -377,7 +377,7 @@ app.include_router(
     prefix="/api/orgs",
 )
 app.include_router(
-    backend.api.features.orgs.workspace_routes.router,
+    backend.api.features.orgs.team_routes.router,
     tags=["v2", "orgs", "workspaces"],
     prefix="/api/orgs/{org_id}/workspaces",
 )
@@ -450,12 +450,12 @@ class AgentServer(backend.util.service.AppProcess):
         ctx = RequestContext(
             user_id=user_id,
             org_id="test-org",
-            workspace_id="test-workspace",
+            team_id="test-workspace",
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,
-            is_workspace_admin=True,
-            is_workspace_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
         return await backend.api.features.v1.execute_graph(
@@ -488,12 +488,12 @@ class AgentServer(backend.util.service.AppProcess):
         ctx = RequestContext(
             user_id=user_id,
             org_id="test-org",
-            workspace_id="test-workspace",
+            team_id="test-workspace",
             is_org_owner=True,
             is_org_admin=True,
             is_org_billing_manager=False,
-            is_workspace_admin=True,
-            is_workspace_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
             seat_status="ACTIVE",
         )
         return await backend.api.features.v1.create_new_graph(

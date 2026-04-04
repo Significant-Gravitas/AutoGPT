@@ -13,9 +13,9 @@ from .jwt_utils import get_jwt_payload, verify_user
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
-    WorkspaceAction,
+    TeamAction,
     check_org_permission,
-    check_workspace_permission,
+    check_team_permission,
 )
 
 optional_bearer = HTTPBearer(auto_error=False)
@@ -128,7 +128,7 @@ async def get_user_id(
 # ---------------------------------------------------------------------------
 
 ORG_HEADER_NAME = "X-Org-Id"
-WORKSPACE_HEADER_NAME = "X-Workspace-Id"
+TEAM_HEADER_NAME = "X-Team-Id"
 
 
 async def get_request_context(
@@ -142,8 +142,8 @@ async def get_request_context(
       1. Extract user_id from JWT (supports admin impersonation via X-Act-As-User-Id).
       2. Read X-Org-Id header; fall back to the user's personal org; fail if none.
       3. Validate that the user has an ACTIVE OrgMember row for that org.
-      4. Read X-Workspace-Id header (optional). If set, validate that the
-         workspace belongs to the org AND the user has an OrgWorkspaceMember
+      4. Read X-Team-Id header (optional). If set, validate that the
+         workspace belongs to the org AND the user has an TeamMember
          row. On failure, silently fall back to None (org-home).
       5. Populate all role flags and return a RequestContext.
     """
@@ -214,50 +214,50 @@ async def get_request_context(
     is_org_billing_manager = org_member.isBillingManager
     seat_status = "ACTIVE"  # validated above; seat assignment checked separately
 
-    # --- 4. workspace_id (optional) -------------------------------------------
-    workspace_id: str | None = (
-        request.headers.get(WORKSPACE_HEADER_NAME, "").strip() or None
+    # --- 4. team_id (optional) -------------------------------------------
+    team_id: str | None = (
+        request.headers.get(TEAM_HEADER_NAME, "").strip() or None
     )
-    is_workspace_admin = False
-    is_workspace_billing_manager = False
+    is_team_admin = False
+    is_team_billing_manager = False
 
-    if workspace_id is not None:
+    if team_id is not None:
         # Validate workspace belongs to org AND user has a membership row
-        ws_member = await prisma.orgworkspacemember.find_unique(
+        ws_member = await prisma.teammember.find_unique(
             where={
-                "workspaceId_userId": {
-                    "workspaceId": workspace_id,
+                "teamId_userId": {
+                    "teamId": team_id,
                     "userId": user_id,
                 },
             },
-            include={"Workspace": True},
+            include={"Team": True},
         )
         if (
             ws_member is None
-            or ws_member.Workspace is None
-            or ws_member.Workspace.orgId != org_id
+            or ws_member.Team is None
+            or ws_member.Team.orgId != org_id
         ):
             logger.debug(
                 "Workspace %s not valid for user %s in org %s; falling back to org-home",
-                workspace_id,
+                team_id,
                 user_id,
                 org_id,
             )
-            workspace_id = None
+            team_id = None
         else:
-            is_workspace_admin = ws_member.isAdmin
-            is_workspace_billing_manager = ws_member.isBillingManager
+            is_team_admin = ws_member.isAdmin
+            is_team_billing_manager = ws_member.isBillingManager
 
     # --- 5. build context -----------------------------------------------------
     return RequestContext(
         user_id=user_id,
         org_id=org_id,
-        workspace_id=workspace_id,
+        team_id=team_id,
         is_org_owner=is_org_owner,
         is_org_admin=is_org_admin,
         is_org_billing_manager=is_org_billing_manager,
-        is_workspace_admin=is_workspace_admin,
-        is_workspace_billing_manager=is_workspace_billing_manager,
+        is_team_admin=is_team_admin,
+        is_team_billing_manager=is_team_billing_manager,
         seat_status=seat_status,
     )
 
@@ -292,12 +292,12 @@ def requires_org_permission(
     return _dependency
 
 
-def requires_workspace_permission(
-    *actions: WorkspaceAction,
+def requires_team_permission(
+    *actions: TeamAction,
 ):
     """Factory returning a FastAPI dependency that enforces workspace-level permissions.
 
-    The user must be in a workspace context (workspace_id is set) and
+    The user must be in a workspace context (team_id is set) and
     hold **all** listed actions.
 
     Example::
@@ -305,7 +305,7 @@ def requires_workspace_permission(
         @router.post("/workspace/{ws_id}/agents")
         async def create_agent(
             ctx: RequestContext = Security(
-                requires_workspace_permission(WorkspaceAction.CREATE_AGENTS)
+                requires_team_permission(TeamAction.CREATE_AGENTS)
             ),
         ):
             ...
@@ -314,13 +314,13 @@ def requires_workspace_permission(
     async def _dependency(
         ctx: RequestContext = fastapi.Security(get_request_context),
     ) -> RequestContext:
-        if ctx.workspace_id is None:
+        if ctx.team_id is None:
             raise fastapi.HTTPException(
                 status_code=400,
                 detail="Workspace context required for this action",
             )
         for action in actions:
-            if not check_workspace_permission(ctx, action):
+            if not check_team_permission(ctx, action):
                 raise fastapi.HTTPException(
                     status_code=403,
                     detail=f"Missing workspace permission: {action.value}",

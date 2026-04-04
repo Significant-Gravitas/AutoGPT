@@ -5,16 +5,16 @@ from .dependencies import (
     get_user_id,
     requires_admin_user,
     requires_org_permission,
+    requires_team_permission,
     requires_user,
-    requires_workspace_permission,
 )
 from .helpers import add_auth_responses_to_openapi
 from .models import RequestContext, User
 from .permissions import (
     OrgAction,
-    WorkspaceAction,
+    TeamAction,
     check_org_permission,
-    check_workspace_permission,
+    check_team_permission,
 )
 
 __all__ = [
@@ -25,12 +25,12 @@ __all__ = [
     "get_optional_user_id",
     "get_request_context",
     "requires_org_permission",
-    "requires_workspace_permission",
+    "requires_team_permission",
     "add_auth_responses_to_openapi",
     "User",
     "RequestContext",
     "OrgAction",
-    "WorkspaceAction",
+    "TeamAction",
     "check_org_permission",
-    "check_workspace_permission",
+    "check_team_permission",
 ]

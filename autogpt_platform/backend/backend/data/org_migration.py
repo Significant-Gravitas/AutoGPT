@@ -129,8 +129,8 @@ async def create_orgs_for_existing_users() -> int:
             }
         )
 
-        # Create default OrgWorkspace
-        workspace = await prisma.orgworkspace.create(
+        # Create default Team
+        workspace = await prisma.team.create(
             data={
                 "name": "Default",
                 "Org": {"connect": {"id": org.id}},
@@ -140,8 +140,8 @@ async def create_orgs_for_existing_users() -> int:
             }
         )
 
-        # Create OrgWorkspaceMember
-        await prisma.orgworkspacemember.create(
+        # Create TeamMember
+        await prisma.teammember.create(
             data={
                 "Workspace": {"connect": {"id": workspace.id}},
                 "User": {"connect": {"id": user_id}},
@@ -239,13 +239,13 @@ async def migrate_credit_transactions() -> int:
     return result
 
 
-async def _assign_workspace_tenancy(table_sql: "LiteralString") -> int:
-    """Assign organizationId + orgWorkspaceId on a single table's unassigned rows."""
+async def _assign_team_tenancy(table_sql: "LiteralString") -> int:
+    """Assign organizationId + teamId on a single table's unassigned rows."""
     return await prisma.execute_raw(table_sql)
 
 
-async def assign_resources_to_workspaces() -> dict[str, int]:
-    """Set organizationId and orgWorkspaceId on all tenant-bound rows that lack them.
+async def assign_resources_to_teams() -> dict[str, int]:
+    """Set organizationId and teamId on all tenant-bound rows that lack them.
 
     Uses the user's personal org and its default workspace.
 
@@ -253,92 +253,92 @@ async def assign_resources_to_workspaces() -> dict[str, int]:
     """
     results: dict[str, int] = {}
 
-    # --- Tables needing both organizationId + orgWorkspaceId ---
+    # --- Tables needing both organizationId + teamId ---
 
-    results["AgentGraph"] = await _assign_workspace_tenancy(
+    results["AgentGraph"] = await _assign_team_tenancy(
         """
         UPDATE "AgentGraph" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["AgentGraphExecution"] = await _assign_workspace_tenancy(
+    results["AgentGraphExecution"] = await _assign_team_tenancy(
         """
         UPDATE "AgentGraphExecution" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["ChatSession"] = await _assign_workspace_tenancy(
+    results["ChatSession"] = await _assign_team_tenancy(
         """
         UPDATE "ChatSession" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["AgentPreset"] = await _assign_workspace_tenancy(
+    results["AgentPreset"] = await _assign_team_tenancy(
         """
         UPDATE "AgentPreset" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["LibraryAgent"] = await _assign_workspace_tenancy(
+    results["LibraryAgent"] = await _assign_team_tenancy(
         """
         UPDATE "LibraryAgent" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["LibraryFolder"] = await _assign_workspace_tenancy(
+    results["LibraryFolder"] = await _assign_team_tenancy(
         """
         UPDATE "LibraryFolder" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["IntegrationWebhook"] = await _assign_workspace_tenancy(
+    results["IntegrationWebhook"] = await _assign_team_tenancy(
         """
         UPDATE "IntegrationWebhook" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
 
-    results["APIKey"] = await _assign_workspace_tenancy(
+    results["APIKey"] = await _assign_team_tenancy(
         """
         UPDATE "APIKey" t
-        SET "organizationId" = o."id", "orgWorkspaceId" = w."id"
+        SET "organizationId" = o."id", "teamId" = w."id"
         FROM "OrgMember" om
         JOIN "Organization" o ON o."id" = om."orgId" AND o."isPersonal" = true
-        JOIN "OrgWorkspace" w ON w."orgId" = o."id" AND w."isDefault" = true
+        JOIN "Team" w ON w."orgId" = o."id" AND w."isDefault" = true
         WHERE t."userId" = om."userId" AND om."isOwner" = true AND t."organizationId" IS NULL
         """
     )
@@ -450,7 +450,7 @@ async def run_migration() -> None:
     orgs_created = await create_orgs_for_existing_users()
     await migrate_org_balances()
     await migrate_credit_transactions()
-    resource_counts = await assign_resources_to_workspaces()
+    resource_counts = await assign_resources_to_teams()
     await migrate_store_listings()
     await create_store_listing_aliases()
 

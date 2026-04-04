@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "WorkspaceJoinPolicy" AS ENUM ('OPEN', 'PRIVATE');
+CREATE TYPE "TeamJoinPolicy" AS ENUM ('OPEN', 'PRIVATE');
 
 -- CreateEnum
 CREATE TYPE "ResourceVisibility" AS ENUM ('PRIVATE', 'WORKSPACE', 'ORG');
@@ -29,42 +29,42 @@ CREATE TYPE "CredentialOwnerType" AS ENUM ('USER', 'WORKSPACE', 'ORG');
 ALTER TABLE "BuilderSearchHistory" ADD COLUMN     "organizationId" TEXT;
 
 -- AlterTable
-ALTER TABLE "ChatSession" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "ChatSession" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
-ALTER TABLE "AgentGraph" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "AgentGraph" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
-ALTER TABLE "AgentPreset" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "AgentPreset" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
-ALTER TABLE "LibraryAgent" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "LibraryAgent" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
-ALTER TABLE "LibraryFolder" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "LibraryFolder" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
-ALTER TABLE "AgentGraphExecution" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "AgentGraphExecution" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
-ALTER TABLE "PendingHumanReview" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT;
+ALTER TABLE "PendingHumanReview" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT;
 
 -- AlterTable
-ALTER TABLE "IntegrationWebhook" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "IntegrationWebhook" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
@@ -74,15 +74,15 @@ ALTER TABLE "StoreListing" ADD COLUMN     "owningOrgId" TEXT;
 ALTER TABLE "StoreListingVersion" ADD COLUMN     "organizationId" TEXT;
 
 -- AlterTable
-ALTER TABLE "APIKey" ADD COLUMN     "orgWorkspaceId" TEXT,
-ADD COLUMN     "organizationId" TEXT,
+ALTER TABLE "APIKey" ADD COLUMN     "organizationId" TEXT,
 ADD COLUMN     "ownerType" "CredentialOwnerType",
-ADD COLUMN     "workspaceIdRestriction" TEXT;
+ADD COLUMN     "teamId" TEXT,
+ADD COLUMN     "teamIdRestriction" TEXT;
 
 -- AlterTable
 ALTER TABLE "OAuthApplication" ADD COLUMN     "organizationId" TEXT,
 ADD COLUMN     "ownerType" "CredentialOwnerType",
-ADD COLUMN     "workspaceIdRestriction" TEXT;
+ADD COLUMN     "teamIdRestriction" TEXT;
 
 -- CreateTable
 CREATE TABLE "Organization" (
@@ -166,13 +166,13 @@ CREATE TABLE "OrgInvitation" (
     "acceptedAt" TIMESTAMP(3),
     "revokedAt" TIMESTAMP(3),
     "invitedByUserId" TEXT NOT NULL,
-    "workspaceIds" TEXT[],
+    "teamIds" TEXT[],
 
     CONSTRAINT "OrgInvitation_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "OrgWorkspace" (
+CREATE TABLE "Team" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -180,20 +180,20 @@ CREATE TABLE "OrgWorkspace" (
     "slug" TEXT,
     "description" TEXT,
     "isDefault" BOOLEAN NOT NULL DEFAULT false,
-    "joinPolicy" "WorkspaceJoinPolicy" NOT NULL DEFAULT 'OPEN',
+    "joinPolicy" "TeamJoinPolicy" NOT NULL DEFAULT 'OPEN',
     "orgId" TEXT NOT NULL,
     "archivedAt" TIMESTAMP(3),
     "createdByUserId" TEXT,
 
-    CONSTRAINT "OrgWorkspace_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "Team_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "OrgWorkspaceMember" (
+CREATE TABLE "TeamMember" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-    "workspaceId" TEXT NOT NULL,
+    "teamId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "isAdmin" BOOLEAN NOT NULL DEFAULT false,
     "isBillingManager" BOOLEAN NOT NULL DEFAULT false,
@@ -201,14 +201,14 @@ CREATE TABLE "OrgWorkspaceMember" (
     "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "invitedByUserId" TEXT,
 
-    CONSTRAINT "OrgWorkspaceMember_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "TeamMember_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
-CREATE TABLE "WorkspaceInvite" (
+CREATE TABLE "TeamInvite" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "workspaceId" TEXT NOT NULL,
+    "teamId" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "targetUserId" TEXT,
     "isAdmin" BOOLEAN NOT NULL DEFAULT false,
@@ -220,7 +220,7 @@ CREATE TABLE "WorkspaceInvite" (
     "revokedAt" TIMESTAMP(3),
     "invitedByUserId" TEXT NOT NULL,
 
-    CONSTRAINT "WorkspaceInvite_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "TeamInvite_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -269,7 +269,7 @@ CREATE TABLE "OrgCreditTransaction" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "orgId" TEXT NOT NULL,
     "initiatedByUserId" TEXT,
-    "workspaceId" TEXT,
+    "teamId" TEXT,
     "amount" INTEGER NOT NULL,
     "type" "CreditTransactionType" NOT NULL,
     "runningBalance" INTEGER,
@@ -302,7 +302,7 @@ CREATE TABLE "TransferRequest" (
 CREATE TABLE "AuditLog" (
     "id" TEXT NOT NULL,
     "organizationId" TEXT,
-    "workspaceId" TEXT,
+    "teamId" TEXT,
     "actorUserId" TEXT NOT NULL,
     "entityType" TEXT NOT NULL,
     "entityId" TEXT,
@@ -321,6 +321,7 @@ CREATE TABLE "IntegrationCredential" (
     "organizationId" TEXT NOT NULL,
     "ownerType" "CredentialOwnerType" NOT NULL,
     "ownerId" TEXT NOT NULL,
+    "teamId" TEXT,
     "provider" TEXT NOT NULL,
     "credentialType" TEXT NOT NULL,
     "displayName" TEXT NOT NULL,
@@ -338,9 +339,6 @@ CREATE TABLE "IntegrationCredential" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Organization_slug_key" ON "Organization"("slug");
-
--- CreateIndex
-CREATE INDEX "Organization_slug_idx" ON "Organization"("slug");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "OrganizationAlias_aliasSlug_key" ON "OrganizationAlias"("aliasSlug");
@@ -376,34 +374,34 @@ CREATE INDEX "OrgInvitation_token_idx" ON "OrgInvitation"("token");
 CREATE INDEX "OrgInvitation_orgId_idx" ON "OrgInvitation"("orgId");
 
 -- CreateIndex
-CREATE INDEX "OrgWorkspace_orgId_isDefault_idx" ON "OrgWorkspace"("orgId", "isDefault");
+CREATE INDEX "Team_orgId_isDefault_idx" ON "Team"("orgId", "isDefault");
 
 -- CreateIndex
-CREATE INDEX "OrgWorkspace_orgId_joinPolicy_idx" ON "OrgWorkspace"("orgId", "joinPolicy");
+CREATE INDEX "Team_orgId_joinPolicy_idx" ON "Team"("orgId", "joinPolicy");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "OrgWorkspace_orgId_name_key" ON "OrgWorkspace"("orgId", "name");
+CREATE UNIQUE INDEX "Team_orgId_name_key" ON "Team"("orgId", "name");
 
 -- CreateIndex
-CREATE INDEX "OrgWorkspaceMember_userId_idx" ON "OrgWorkspaceMember"("userId");
+CREATE INDEX "TeamMember_userId_idx" ON "TeamMember"("userId");
 
 -- CreateIndex
-CREATE INDEX "OrgWorkspaceMember_workspaceId_status_idx" ON "OrgWorkspaceMember"("workspaceId", "status");
+CREATE INDEX "TeamMember_teamId_status_idx" ON "TeamMember"("teamId", "status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "OrgWorkspaceMember_workspaceId_userId_key" ON "OrgWorkspaceMember"("workspaceId", "userId");
+CREATE UNIQUE INDEX "TeamMember_teamId_userId_key" ON "TeamMember"("teamId", "userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "WorkspaceInvite_token_key" ON "WorkspaceInvite"("token");
+CREATE UNIQUE INDEX "TeamInvite_token_key" ON "TeamInvite"("token");
 
 -- CreateIndex
-CREATE INDEX "WorkspaceInvite_email_idx" ON "WorkspaceInvite"("email");
+CREATE INDEX "TeamInvite_email_idx" ON "TeamInvite"("email");
 
 -- CreateIndex
-CREATE INDEX "WorkspaceInvite_token_idx" ON "WorkspaceInvite"("token");
+CREATE INDEX "TeamInvite_token_idx" ON "TeamInvite"("token");
 
 -- CreateIndex
-CREATE INDEX "WorkspaceInvite_workspaceId_idx" ON "WorkspaceInvite"("workspaceId");
+CREATE INDEX "TeamInvite_teamId_idx" ON "TeamInvite"("teamId");
 
 -- CreateIndex
 CREATE INDEX "OrganizationSeatAssignment_organizationId_status_idx" ON "OrganizationSeatAssignment"("organizationId", "status");
@@ -445,52 +443,52 @@ CREATE INDEX "IntegrationCredential_ownerId_ownerType_idx" ON "IntegrationCreden
 CREATE INDEX "IntegrationCredential_createdByUserId_idx" ON "IntegrationCredential"("createdByUserId");
 
 -- CreateIndex
-CREATE INDEX "ChatSession_orgWorkspaceId_updatedAt_idx" ON "ChatSession"("orgWorkspaceId", "updatedAt");
+CREATE INDEX "ChatSession_teamId_updatedAt_idx" ON "ChatSession"("teamId", "updatedAt");
 
 -- CreateIndex
-CREATE INDEX "AgentGraph_orgWorkspaceId_isActive_id_version_idx" ON "AgentGraph"("orgWorkspaceId", "isActive", "id", "version");
+CREATE INDEX "AgentGraph_teamId_isActive_id_version_idx" ON "AgentGraph"("teamId", "isActive", "id", "version");
 
 -- CreateIndex
-CREATE INDEX "AgentPreset_orgWorkspaceId_idx" ON "AgentPreset"("orgWorkspaceId");
+CREATE INDEX "AgentPreset_teamId_idx" ON "AgentPreset"("teamId");
 
 -- CreateIndex
-CREATE INDEX "LibraryAgent_orgWorkspaceId_idx" ON "LibraryAgent"("orgWorkspaceId");
+CREATE INDEX "LibraryAgent_teamId_idx" ON "LibraryAgent"("teamId");
 
 -- CreateIndex
-CREATE INDEX "AgentGraphExecution_orgWorkspaceId_isDeleted_createdAt_idx" ON "AgentGraphExecution"("orgWorkspaceId", "isDeleted", "createdAt");
+CREATE INDEX "AgentGraphExecution_teamId_isDeleted_createdAt_idx" ON "AgentGraphExecution"("teamId", "isDeleted", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "StoreListing_owningOrgId_idx" ON "StoreListing"("owningOrgId");
 
 -- CreateIndex
-CREATE INDEX "APIKey_orgWorkspaceId_idx" ON "APIKey"("orgWorkspaceId");
+CREATE INDEX "APIKey_teamId_idx" ON "APIKey"("teamId");
 
 -- AddForeignKey
-ALTER TABLE "ChatSession" ADD CONSTRAINT "ChatSession_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "ChatSession" ADD CONSTRAINT "ChatSession_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AgentGraph" ADD CONSTRAINT "AgentGraph_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "AgentGraph" ADD CONSTRAINT "AgentGraph_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "AgentPreset" ADD CONSTRAINT "AgentPreset_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LibraryAgent" ADD CONSTRAINT "LibraryAgent_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "LibraryAgent" ADD CONSTRAINT "LibraryAgent_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "LibraryFolder" ADD CONSTRAINT "LibraryFolder_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "LibraryFolder" ADD CONSTRAINT "LibraryFolder_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AgentGraphExecution" ADD CONSTRAINT "AgentGraphExecution_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "AgentGraphExecution" ADD CONSTRAINT "AgentGraphExecution_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "IntegrationWebhook" ADD CONSTRAINT "IntegrationWebhook_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "IntegrationWebhook" ADD CONSTRAINT "IntegrationWebhook_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "StoreListing" ADD CONSTRAINT "StoreListing_owningOrgId_fkey" FOREIGN KEY ("owningOrgId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "APIKey" ADD CONSTRAINT "APIKey_orgWorkspaceId_fkey" FOREIGN KEY ("orgWorkspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "APIKey" ADD CONSTRAINT "APIKey_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "OrganizationAlias" ADD CONSTRAINT "OrganizationAlias_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -508,13 +506,16 @@ ALTER TABLE "OrgMember" ADD CONSTRAINT "OrgMember_userId_fkey" FOREIGN KEY ("use
 ALTER TABLE "OrgInvitation" ADD CONSTRAINT "OrgInvitation_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "OrgWorkspace" ADD CONSTRAINT "OrgWorkspace_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Team" ADD CONSTRAINT "Team_orgId_fkey" FOREIGN KEY ("orgId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "OrgWorkspaceMember" ADD CONSTRAINT "OrgWorkspaceMember_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "OrgWorkspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "OrgWorkspaceMember" ADD CONSTRAINT "OrgWorkspaceMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "TeamMember" ADD CONSTRAINT "TeamMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "TeamInvite" ADD CONSTRAINT "TeamInvite_teamId_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "OrganizationSubscription" ADD CONSTRAINT "OrganizationSubscription_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -544,5 +545,5 @@ ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_organizationId_fkey" FOREIGN KEY
 ALTER TABLE "IntegrationCredential" ADD CONSTRAINT "IntegrationCredential_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "IntegrationCredential" ADD CONSTRAINT "IntegrationCredential_workspace_fkey" FOREIGN KEY ("ownerId") REFERENCES "OrgWorkspace"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "IntegrationCredential" ADD CONSTRAINT "IntegrationCredential_workspace_fkey" FOREIGN KEY ("teamId") REFERENCES "Team"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 

@@ -23,7 +23,7 @@ _cryptor = JSONCryptor()
 async def get_scoped_credentials(
     user_id: str,
     organization_id: str,
-    workspace_id: str | None = None,
+    team_id: str | None = None,
     provider: str | None = None,
 ) -> list[dict]:
     """Get credentials visible to the user in the current org/workspace context.
@@ -52,11 +52,11 @@ async def get_scoped_credentials(
         results.append(_cred_to_metadata(c, scope="USER"))
 
     # 2. Workspace-scoped credentials (only if workspace is active)
-    if workspace_id:
+    if team_id:
         ws_where: dict = {
             "organizationId": organization_id,
             "ownerType": "WORKSPACE",
-            "ownerId": workspace_id,
+            "ownerId": team_id,
             "status": "active",
         }
         if provider:
@@ -87,7 +87,7 @@ async def get_credential_by_id(
     credential_id: str,
     user_id: str,
     organization_id: str,
-    workspace_id: str | None = None,
+    team_id: str | None = None,
     decrypt: bool = False,
 ) -> Optional[dict]:
     """Get a specific credential by ID if the user has access.

@@ -1090,7 +1090,7 @@ async def get_graph(
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
-    workspace_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -1104,16 +1104,16 @@ async def get_graph(
     graph = None
 
     # Only search graph directly on owned graph (or access check is skipped)
-    if skip_access_check or user_id is not None or workspace_id is not None:
+    if skip_access_check or user_id is not None or team_id is not None:
         graph_where_clause: AgentGraphWhereInput = {
             "id": graph_id,
         }
         if version is not None:
             graph_where_clause["version"] = version
-        # Prefer workspace_id scoping over user_id when both are available
+        # Prefer team_id scoping over user_id when both are available
         if not skip_access_check:
-            if workspace_id is not None:
-                graph_where_clause["orgWorkspaceId"] = workspace_id
+            if team_id is not None:
+                graph_where_clause["teamId"] = team_id
             elif user_id is not None:
                 graph_where_clause["userId"] = user_id
 
@@ -1341,11 +1341,11 @@ async def get_graph_all_versions(
     graph_id: str,
     user_id: str,
     limit: int = MAX_GRAPH_VERSIONS_FETCH,
-    workspace_id: str | None = None,
+    team_id: str | None = None,
 ) -> list[GraphModel]:
     where_clause: AgentGraphWhereInput = {"id": graph_id}
-    if workspace_id is not None:
-        where_clause["orgWorkspaceId"] = workspace_id
+    if team_id is not None:
+        where_clause["teamId"] = team_id
     else:
         where_clause["userId"] = user_id
 
@@ -1513,7 +1513,7 @@ async def create_graph(
     user_id: str,
     *,
     organization_id: str | None = None,
-    org_workspace_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(
@@ -1521,7 +1521,7 @@ async def create_graph(
             graph,
             user_id,
             organization_id=organization_id,
-            org_workspace_id=org_workspace_id,
+            team_id=team_id,
         )
 
     if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
@@ -1536,7 +1536,7 @@ async def fork_graph(
     user_id: str,
     *,
     organization_id: str | None = None,
-    org_workspace_id: str | None = None,
+    team_id: str | None = None,
 ) -> GraphModel:
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
@@ -1558,7 +1558,7 @@ async def fork_graph(
             graph,
             user_id,
             organization_id=organization_id,
-            org_workspace_id=org_workspace_id,
+            team_id=team_id,
         )
 
     return graph
@@ -1570,7 +1570,7 @@ async def __create_graph(
     user_id: str,
     *,
     organization_id: str | None = None,
-    org_workspace_id: str | None = None,
+    team_id: str | None = None,
 ):
     graphs = [graph] + graph.sub_graphs
 
@@ -1610,7 +1610,7 @@ async def __create_graph(
                 forkedFromVersion=graph.forked_from_version,
                 # Tenancy dual-write fields
                 organizationId=organization_id,
-                orgWorkspaceId=org_workspace_id,
+                teamId=team_id,
             )
             for graph in graphs
         ]

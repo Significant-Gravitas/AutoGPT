@@ -116,11 +116,11 @@ class TestDataCreator:
         self._user_org_cache: Dict[str, tuple[str | None, str | None]] = {}
 
     async def _get_user_org_ws(self, user_id: str) -> tuple[str | None, str | None]:
-        """Get (organization_id, org_workspace_id) for a user, with caching."""
+        """Get (organization_id, team_id) for a user, with caching."""
         if user_id not in self._user_org_cache:
-            from backend.api.features.orgs.db import get_user_default_org_workspace
+            from backend.api.features.orgs.db import get_user_default_team
 
-            org_id, ws_id = await get_user_default_org_workspace(user_id)
+            org_id, ws_id = await get_user_default_team(user_id)
             self._user_org_cache[user_id] = (org_id, ws_id)
         return self._user_org_cache[user_id]
 
@@ -383,7 +383,7 @@ class TestDataCreator:
                         graph,
                         user["id"],
                         organization_id=org_id,
-                        org_workspace_id=ws_id,
+                        team_id=ws_id,
                     )
                     graph_dict = created_graph.model_dump()
                     # Ensure userId is included for store submissions

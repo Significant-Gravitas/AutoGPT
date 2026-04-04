@@ -842,7 +842,7 @@ async def stream_chat_post(
         context=request.context,
         file_ids=sanitized_file_ids,
         organization_id=ctx.org_id,
-        org_workspace_id=ctx.workspace_id,
+        team_id=ctx.team_id,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000

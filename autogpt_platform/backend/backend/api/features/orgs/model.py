@@ -121,7 +121,7 @@ class CreateInvitationRequest(BaseModel):
     email: str
     is_admin: bool = False
     is_billing_manager: bool = False
-    workspace_ids: list[str] = Field(default_factory=list)
+    team_ids: list[str] = Field(default_factory=list)
 
 
 class InvitationResponse(BaseModel):
@@ -132,7 +132,7 @@ class InvitationResponse(BaseModel):
     token: str
     expires_at: datetime
     created_at: datetime
-    workspace_ids: list[str]
+    team_ids: list[str]
 
     @staticmethod
     def from_db(inv) -> "InvitationResponse":
@@ -144,5 +144,5 @@ class InvitationResponse(BaseModel):
             token=inv.token,
             expires_at=inv.expiresAt,
             created_at=inv.createdAt,
-            workspace_ids=inv.workspaceIds,
+            team_ids=inv.teamIds,
         )

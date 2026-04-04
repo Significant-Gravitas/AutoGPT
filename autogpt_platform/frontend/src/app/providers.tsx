@@ -6,7 +6,7 @@ import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import CredentialsProvider from "@/providers/agent-credentials/credentials-provider";
 import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
-import OrgWorkspaceProvider from "@/providers/org-workspace/OrgWorkspaceProvider";
+import OrgTeamProvider from "@/providers/org-team/OrgTeamProvider";
 import {
   PostHogPageViewTracker,
   PostHogProvider,
@@ -31,7 +31,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
               <PostHogPageViewTracker />
             </Suspense>
             <CredentialsProvider>
-              <OrgWorkspaceProvider>
+              <OrgTeamProvider>
                 <LaunchDarklyProvider>
                   <OnboardingProvider>
                     <ThemeProvider forcedTheme="light" {...props}>
@@ -39,7 +39,7 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
                     </ThemeProvider>
                   </OnboardingProvider>
                 </LaunchDarklyProvider>
-              </OrgWorkspaceProvider>
+              </OrgTeamProvider>
             </CredentialsProvider>
           </BackendAPIProvider>
         </PostHogProvider>

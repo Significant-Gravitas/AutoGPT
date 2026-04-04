@@ -96,11 +96,11 @@ class TestSpendOrgCredits:
         )
 
         await spend_org_credits(
-            "org-1", "user-1", 200, workspace_id="ws-1", metadata={"block": "llm"}
+            "org-1", "user-1", 200, team_id="ws-1", metadata={"block": "llm"}
         )
 
         tx_data = mock_prisma.orgcredittransaction.create.call_args[1]["data"]
-        assert tx_data["workspaceId"] == "ws-1"
+        assert tx_data["teamId"] == "ws-1"
         assert tx_data["amount"] == -200
 
 
@@ -148,7 +148,7 @@ class TestGetOrgTransactionHistory:
             type="USAGE",
             runningBalance=900,
             initiatedByUserId="user-1",
-            workspaceId="ws-1",
+            teamId="ws-1",
             metadata=None,
         )
         mock_prisma.orgcredittransaction.find_many = AsyncMock(return_value=[mock_tx])
@@ -156,7 +156,7 @@ class TestGetOrgTransactionHistory:
         result = await get_org_transaction_history("org-1", limit=10)
         assert len(result) == 1
         assert result[0]["amount"] == -100
-        assert result[0]["workspaceId"] == "ws-1"
+        assert result[0]["teamId"] == "ws-1"
 
 
 class TestSeatManagement:

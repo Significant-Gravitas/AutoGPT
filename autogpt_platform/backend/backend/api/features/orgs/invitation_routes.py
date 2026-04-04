@@ -55,7 +55,7 @@ async def create_invitation(
             "isBillingManager": request.is_billing_manager,
             "expiresAt": expires_at,
             "invitedByUserId": ctx.user_id,
-            "workspaceIds": request.workspace_ids,
+            "teamIds": request.team_ids,
         }
     )
 
@@ -162,11 +162,11 @@ async def accept_invitation(
         pass
 
     # Add to specified workspaces
-    for ws_id in invitation.workspaceIds:
+    for ws_id in invitation.teamIds:
         try:
-            from . import workspace_db as ws_db
+            from . import team_db as team_db
 
-            await ws_db.add_workspace_member(
+            await team_db.add_team_member(
                 ws_id=ws_id,
                 user_id=user_id,
                 org_id=invitation.orgId,

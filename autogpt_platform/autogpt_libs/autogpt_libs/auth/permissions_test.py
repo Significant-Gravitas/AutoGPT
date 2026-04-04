@@ -1,7 +1,7 @@
 """
 Exhaustive tests for org-level and workspace-level permission checks.
 
-Every OrgAction x role combination and every WorkspaceAction x role
+Every OrgAction x role combination and every TeamAction x role
 combination is covered.  These are pure-function tests -- no mocking,
 no database, no I/O.
 """
@@ -11,9 +11,9 @@ import pytest
 from autogpt_libs.auth.models import RequestContext
 from autogpt_libs.auth.permissions import (
     OrgAction,
-    WorkspaceAction,
+    TeamAction,
     check_org_permission,
-    check_workspace_permission,
+    check_team_permission,
 )
 
 # ---------------------------------------------------------------------------
@@ -26,20 +26,20 @@ def _make_ctx(
     is_org_owner: bool = False,
     is_org_admin: bool = False,
     is_org_billing_manager: bool = False,
-    is_workspace_admin: bool = False,
-    is_workspace_billing_manager: bool = False,
+    is_team_admin: bool = False,
+    is_team_billing_manager: bool = False,
     seat_status: str = "ACTIVE",
-    workspace_id: str | None = None,
+    team_id: str | None = None,
 ) -> RequestContext:
     return RequestContext(
         user_id="user-1",
         org_id="org-1",
-        workspace_id=workspace_id,
+        team_id=team_id,
         is_org_owner=is_org_owner,
         is_org_admin=is_org_admin,
         is_org_billing_manager=is_org_billing_manager,
-        is_workspace_admin=is_workspace_admin,
-        is_workspace_billing_manager=is_workspace_billing_manager,
+        is_team_admin=is_team_admin,
+        is_team_billing_manager=is_team_billing_manager,
         seat_status=seat_status,
     )
 
@@ -51,10 +51,10 @@ ORG_BILLING_MANAGER = _make_ctx(is_org_billing_manager=True)
 ORG_MEMBER = _make_ctx()  # ACTIVE seat, no special role flags
 
 
-# Convenience contexts for workspace-level roles (workspace_id is set)
-WS_ADMIN = _make_ctx(workspace_id="ws-1", is_workspace_admin=True)
-WS_BILLING_MANAGER = _make_ctx(workspace_id="ws-1", is_workspace_billing_manager=True)
-WS_MEMBER = _make_ctx(workspace_id="ws-1")  # regular workspace member
+# Convenience contexts for workspace-level roles (team_id is set)
+TEAM_ADMIN = _make_ctx(team_id="ws-1", is_team_admin=True)
+TEAM_BILLING_MGR = _make_ctx(team_id="ws-1", is_team_billing_manager=True)
+TEAM_MEMBER = _make_ctx(team_id="ws-1")  # regular workspace member
 
 
 # ---------------------------------------------------------------------------
@@ -178,85 +178,85 @@ class TestOrgPermissions:
 # Workspace permission matrix
 # ---------------------------------------------------------------------------
 
-_WS_EXPECTED: dict[WorkspaceAction, dict[str, bool]] = {
-    WorkspaceAction.MANAGE_MEMBERS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": False,
+_TEAM_EXPECTED: dict[TeamAction, dict[str, bool]] = {
+    TeamAction.MANAGE_MEMBERS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": False,
     },
-    WorkspaceAction.MANAGE_SETTINGS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": False,
+    TeamAction.MANAGE_SETTINGS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": False,
     },
-    WorkspaceAction.MANAGE_CREDENTIALS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": False,
+    TeamAction.MANAGE_CREDENTIALS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": False,
     },
-    WorkspaceAction.VIEW_SPEND: {
-        "ws_admin": True,
-        "ws_billing_manager": True,
-        "ws_member": False,
+    TeamAction.VIEW_SPEND: {
+        "team_admin": True,
+        "team_billing_manager": True,
+        "team_member": False,
     },
-    WorkspaceAction.CREATE_AGENTS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": True,
+    TeamAction.CREATE_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
     },
-    WorkspaceAction.USE_CREDENTIALS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": True,
+    TeamAction.USE_CREDENTIALS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
     },
-    WorkspaceAction.VIEW_EXECUTIONS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": True,
+    TeamAction.VIEW_EXECUTIONS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": True,
     },
-    WorkspaceAction.DELETE_AGENTS: {
-        "ws_admin": True,
-        "ws_billing_manager": False,
-        "ws_member": False,
+    TeamAction.DELETE_AGENTS: {
+        "team_admin": True,
+        "team_billing_manager": False,
+        "team_member": False,
     },
 }
 
-_WS_ROLE_CTX = {
-    "ws_admin": WS_ADMIN,
-    "ws_billing_manager": WS_BILLING_MANAGER,
-    "ws_member": WS_MEMBER,
+_TEAM_ROLE_CTX = {
+    "team_admin": TEAM_ADMIN,
+    "team_billing_manager": TEAM_BILLING_MGR,
+    "team_member": TEAM_MEMBER,
 }
 
 
-class TestWorkspacePermissions:
+class TestTeamPermissions:
     """Exhaustive workspace action x role matrix."""
 
     @pytest.mark.parametrize(
         "action",
-        list(WorkspaceAction),
-        ids=[a.value for a in WorkspaceAction],
+        list(TeamAction),
+        ids=[a.value for a in TeamAction],
     )
     @pytest.mark.parametrize(
         "role",
-        ["ws_admin", "ws_billing_manager", "ws_member"],
+        ["team_admin", "team_billing_manager", "team_member"],
     )
-    def test_workspace_permission_matrix(self, action: WorkspaceAction, role: str):
-        ctx = _WS_ROLE_CTX[role]
-        expected = _WS_EXPECTED[action][role]
-        result = check_workspace_permission(ctx, action)
+    def test_team_permission_matrix(self, action: TeamAction, role: str):
+        ctx = _TEAM_ROLE_CTX[role]
+        expected = _TEAM_EXPECTED[action][role]
+        result = check_team_permission(ctx, action)
         assert result is expected, (
-            f"WorkspaceAction.{action.value} for role={role}: "
+            f"TeamAction.{action.value} for role={role}: "
             f"expected {expected}, got {result}"
         )
 
-    def test_no_workspace_context_denies_all(self):
-        """Without a workspace_id, all workspace actions are denied."""
-        ctx = _make_ctx(is_workspace_admin=True)  # no workspace_id
-        for action in WorkspaceAction:
-            assert check_workspace_permission(ctx, action) is False
+    def test_no_team_context_denies_all(self):
+        """Without a team_id, all workspace actions are denied."""
+        ctx = _make_ctx(is_team_admin=True)  # no team_id
+        for action in TeamAction:
+            assert check_team_permission(ctx, action) is False
 
-    def test_ws_billing_manager_is_not_ws_member(self):
-        """A workspace billing manager should NOT get ws_member permissions."""
-        ctx = WS_BILLING_MANAGER
-        assert check_workspace_permission(ctx, WorkspaceAction.CREATE_AGENTS) is False
-        assert check_workspace_permission(ctx, WorkspaceAction.VIEW_SPEND) is True
+    def test_team_billing_manager_is_not_team_member(self):
+        """A workspace billing manager should NOT get team_member permissions."""
+        ctx = TEAM_BILLING_MGR
+        assert check_team_permission(ctx, TeamAction.CREATE_AGENTS) is False
+        assert check_team_permission(ctx, TeamAction.VIEW_SPEND) is True

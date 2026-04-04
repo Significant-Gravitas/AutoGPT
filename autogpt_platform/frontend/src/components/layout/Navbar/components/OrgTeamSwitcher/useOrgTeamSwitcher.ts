@@ -1,20 +1,19 @@
-import { useOrgWorkspaceStore } from "@/services/org-workspace/store";
+import { useOrgTeamStore } from "@/services/org-team/store";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 
-export function useOrgWorkspaceSwitcher() {
+export function useOrgTeamSwitcher() {
   const {
     orgs,
-    workspaces,
+    teams,
     activeOrgID,
-    activeWorkspaceID,
+    activeTeamID,
     setActiveOrg,
-    setActiveWorkspace,
+    setActiveTeam,
     isLoaded,
-  } = useOrgWorkspaceStore();
+  } = useOrgTeamStore();
 
   const activeOrg = orgs.find((o) => o.id === activeOrgID) || null;
-  const activeWorkspace =
-    workspaces.find((w) => w.id === activeWorkspaceID) || null;
+  const activeTeam = teams.find((w) => w.id === activeTeamID) || null;
 
   function switchOrg(orgID: string) {
     if (orgID === activeOrgID) return;
@@ -24,21 +23,21 @@ export function useOrgWorkspaceSwitcher() {
     queryClient.clear();
   }
 
-  function switchWorkspace(workspaceID: string) {
-    if (workspaceID === activeWorkspaceID) return;
-    setActiveWorkspace(workspaceID);
-    // Clear cache for workspace-scoped data
+  function switchTeam(teamID: string) {
+    if (teamID === activeTeamID) return;
+    setActiveTeam(teamID);
+    // Clear cache for team-scoped data
     const queryClient = getQueryClient();
     queryClient.clear();
   }
 
   return {
     orgs,
-    workspaces,
+    teams,
     activeOrg,
-    activeWorkspace,
+    activeTeam,
     switchOrg,
-    switchWorkspace,
+    switchTeam,
     isLoaded,
   };
 }

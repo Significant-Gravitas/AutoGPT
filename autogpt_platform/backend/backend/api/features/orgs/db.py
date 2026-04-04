@@ -19,12 +19,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-async def get_user_default_org_workspace(
+async def get_user_default_team(
     user_id: str,
 ) -> tuple[str | None, str | None]:
     """Get the user's personal org ID and its default workspace ID.
 
-    Returns (organization_id, workspace_id). Either may be None if
+    Returns (organization_id, team_id). Either may be None if
     the user has no org (e.g., migration hasn't run yet).
     """
     member = await prisma.orgmember.find_first(
@@ -41,7 +41,7 @@ async def get_user_default_org_workspace(
         return None, None
 
     org_id = member.orgId
-    workspace = await prisma.orgworkspace.find_first(
+    workspace = await prisma.team.find_first(
         where={"orgId": org_id, "isDefault": True}
     )
     ws_id = workspace.id if workspace else None
@@ -80,7 +80,7 @@ async def _create_personal_org_for_user(
         }
     )
 
-    workspace = await prisma.orgworkspace.create(
+    workspace = await prisma.team.create(
         data={
             "name": "Default",
             "orgId": org.id,
@@ -90,9 +90,9 @@ async def _create_personal_org_for_user(
         }
     )
 
-    await prisma.orgworkspacemember.create(
+    await prisma.teammember.create(
         data={
-            "workspaceId": workspace.id,
+            "teamId": workspace.id,
             "userId": user_id,
             "isAdmin": True,
             "status": "ACTIVE",
@@ -169,7 +169,7 @@ async def create_org(
         }
     )
 
-    workspace = await prisma.orgworkspace.create(
+    workspace = await prisma.team.create(
         data={
             "name": "Default",
             "orgId": org.id,
@@ -179,9 +179,9 @@ async def create_org(
         }
     )
 
-    await prisma.orgworkspacemember.create(
+    await prisma.teammember.create(
         data={
-            "workspaceId": workspace.id,
+            "teamId": workspace.id,
             "userId": user_id,
             "isAdmin": True,
             "status": "ACTIVE",
@@ -381,13 +381,13 @@ async def add_org_member(
         include={"User": True},
     )
 
-    default_ws = await prisma.orgworkspace.find_first(
+    default_ws = await prisma.team.find_first(
         where={"orgId": org_id, "isDefault": True}
     )
     if default_ws:
-        await prisma.orgworkspacemember.create(
+        await prisma.teammember.create(
             data={
-                "workspaceId": default_ws.id,
+                "teamId": default_ws.id,
                 "userId": user_id,
                 "status": "ACTIVE",
             }
@@ -470,10 +470,10 @@ async def remove_org_member(org_id: str, user_id: str, requesting_user_id: str) 
     # For now, this is a placeholder for the schedule transfer requirement
 
     # Remove from all workspaces in this org
-    workspaces = await prisma.orgworkspace.find_many(where={"orgId": org_id})
+    workspaces = await prisma.team.find_many(where={"orgId": org_id})
     for ws in workspaces:
-        await prisma.orgworkspacemember.delete_many(
-            where={"workspaceId": ws.id, "userId": user_id}
+        await prisma.teammember.delete_many(
+            where={"teamId": ws.id, "userId": user_id}
         )
 
     # Remove org membership

@@ -12,7 +12,7 @@ import pytest
 from backend.data.org_migration import (
     _resolve_unique_slug,
     _sanitize_slug,
-    assign_resources_to_workspaces,
+    assign_resources_to_teams,
     create_orgs_for_existing_users,
     migrate_credit_transactions,
     migrate_org_balances,
@@ -30,8 +30,8 @@ def mock_prisma(mocker):
     mock.organizationalias.find_unique = AsyncMock(return_value=None)
     mock.organization.create = AsyncMock(return_value=MagicMock(id="org-1"))
     mock.orgmember.create = AsyncMock()
-    mock.orgworkspace.create = AsyncMock(return_value=MagicMock(id="ws-1"))
-    mock.orgworkspacemember.create = AsyncMock()
+    mock.team.create = AsyncMock(return_value=MagicMock(id="ws-1"))
+    mock.teammember.create = AsyncMock()
     mock.organizationprofile.create = AsyncMock()
     mock.organizationseatassignment.create = AsyncMock()
     mock.query_raw = AsyncMock(return_value=[])
@@ -171,8 +171,8 @@ class TestCreateOrgsForExistingUsers:
         assert create_data["bootstrapUserId"] == "user-1"
 
         # Verify workspace created
-        mock_prisma.orgworkspace.create.assert_called_once()
-        ws_data = mock_prisma.orgworkspace.create.call_args[1]["data"]
+        mock_prisma.team.create.assert_called_once()
+        ws_data = mock_prisma.team.create.call_args[1]["data"]
         assert ws_data["name"] == "Default"
         assert ws_data["isDefault"] is True
         assert ws_data["joinPolicy"] == "OPEN"
@@ -360,8 +360,8 @@ class TestCreateOrgsForExistingUsers:
         # Verify all 6 records created
         mock_prisma.organization.create.assert_called_once()
         mock_prisma.orgmember.create.assert_called_once()
-        mock_prisma.orgworkspace.create.assert_called_once()
-        mock_prisma.orgworkspacemember.create.assert_called_once()
+        mock_prisma.team.create.assert_called_once()
+        mock_prisma.teammember.create.assert_called_once()
         mock_prisma.organizationprofile.create.assert_called_once()
         mock_prisma.organizationseatassignment.create.assert_called_once()
 
@@ -371,7 +371,7 @@ class TestCreateOrgsForExistingUsers:
         assert member_data["isAdmin"] is True
 
         # Verify workspace is default+open
-        ws_data = mock_prisma.orgworkspace.create.call_args[1]["data"]
+        ws_data = mock_prisma.team.create.call_args[1]["data"]
         assert ws_data["isDefault"] is True
         assert ws_data["joinPolicy"] == "OPEN"
 
@@ -408,7 +408,7 @@ class TestMigrateCreditTransactions:
 
 
 # ---------------------------------------------------------------------------
-# assign_resources_to_workspaces
+# assign_resources_to_teams
 # ---------------------------------------------------------------------------
 
 
@@ -416,13 +416,13 @@ class TestAssignResources:
     @pytest.mark.asyncio
     async def test_updates_all_tables(self, mock_prisma, mocker):
         mocker.patch(
-            "backend.data.org_migration._assign_workspace_tenancy",
+            "backend.data.org_migration._assign_team_tenancy",
             new_callable=AsyncMock,
             return_value=10,
         )
         mock_prisma.execute_raw = AsyncMock(return_value=10)
 
-        result = await assign_resources_to_workspaces()
+        result = await assign_resources_to_teams()
 
         # 8 tables with workspace + 3 tables org-only = 11 entries
         assert len(result) == 11
@@ -435,12 +435,12 @@ class TestAssignResources:
     @pytest.mark.asyncio
     async def test_zero_updates_still_returns(self, mock_prisma, mocker):
         mocker.patch(
-            "backend.data.org_migration._assign_workspace_tenancy",
+            "backend.data.org_migration._assign_team_tenancy",
             new_callable=AsyncMock,
             return_value=0,
         )
         mock_prisma.execute_raw = AsyncMock(return_value=0)
-        result = await assign_resources_to_workspaces()
+        result = await assign_resources_to_teams()
         assert all(v == 0 for v in result.values())
 
 
@@ -480,7 +480,7 @@ class TestRunMigration:
             new_callable=lambda: lambda: _track(calls, "credits", 0),
         )
         mocker.patch(
-            "backend.data.org_migration.assign_resources_to_workspaces",
+            "backend.data.org_migration.assign_resources_to_teams",
             new_callable=lambda: lambda: _track(
                 calls, "assign_resources", {"AgentGraph": 5}
             ),

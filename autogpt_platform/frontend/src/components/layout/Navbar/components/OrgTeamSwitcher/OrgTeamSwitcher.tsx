@@ -7,20 +7,20 @@ import Avatar, {
   AvatarFallback,
   AvatarImage,
 } from "@/components/atoms/Avatar/Avatar";
-import { useOrgWorkspaceSwitcher } from "./useOrgWorkspaceSwitcher";
+import { useOrgTeamSwitcher } from "./useOrgTeamSwitcher";
 import { CaretDown, Check, Plus, GearSix } from "@phosphor-icons/react";
 import Link from "next/link";
 
-export function OrgWorkspaceSwitcher() {
+export function OrgTeamSwitcher() {
   const {
     orgs,
-    workspaces,
+    teams,
     activeOrg,
-    activeWorkspace,
+    activeTeam,
     switchOrg,
-    switchWorkspace,
+    switchTeam,
     isLoaded,
-  } = useOrgWorkspaceSwitcher();
+  } = useOrgTeamSwitcher();
 
   if (!isLoaded || orgs.length === 0) {
     return null;
@@ -91,36 +91,36 @@ export function OrgWorkspaceSwitcher() {
           </Link>
         </div>
 
-        {/* Workspace list (only if orgs exist) */}
-        {workspaces.length > 0 && (
+        {/* Team list (only if orgs exist) */}
+        {teams.length > 0 && (
           <>
             <div className="border-t border-neutral-100" />
             <div className="flex flex-col gap-0.5">
               <span className="px-2 py-1 text-xs font-medium uppercase text-neutral-400">
-                Workspaces
+                Teams
               </span>
-              {workspaces.map((ws) => (
+              {teams.map((ws) => (
                 <button
                   key={ws.id}
                   type="button"
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-neutral-100"
-                  onClick={() => switchWorkspace(ws.id)}
+                  onClick={() => switchTeam(ws.id)}
                 >
                   <span className="flex-1 truncate text-left">{ws.name}</span>
                   {ws.joinPolicy === "PRIVATE" && (
                     <span className="text-xs text-neutral-400">Private</span>
                   )}
-                  {ws.id === activeWorkspace?.id && (
+                  {ws.id === activeTeam?.id && (
                     <Check size={14} className="text-green-600" />
                   )}
                 </button>
               ))}
               <Link
-                href="/org/workspaces"
+                href="/org/teams"
                 className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-neutral-500 hover:bg-neutral-100"
               >
                 <GearSix size={14} />
-                <span>Manage workspaces</span>
+                <span>Manage teams</span>
               </Link>
             </div>
           </>

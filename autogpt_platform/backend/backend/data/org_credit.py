@@ -32,7 +32,7 @@ async def spend_org_credits(
     org_id: str,
     user_id: str,
     amount: int,
-    workspace_id: str | None = None,
+    team_id: str | None = None,
     metadata: dict | None = None,
 ) -> int:
     """Atomically spend credits from the org balance.
@@ -80,8 +80,8 @@ async def spend_org_credits(
         "type": CreditTransactionType.USAGE,
         "runningBalance": new_balance,
     }
-    if workspace_id:
-        tx_data["workspaceId"] = workspace_id
+    if team_id:
+        tx_data["teamId"] = team_id
     if metadata:
         tx_data["metadata"] = SafeJson(metadata)
 
@@ -156,7 +156,7 @@ async def get_org_transaction_history(
             "type": t.type,
             "runningBalance": t.runningBalance,
             "initiatedByUserId": t.initiatedByUserId,
-            "workspaceId": t.workspaceId,
+            "teamId": t.teamId,
             "metadata": t.metadata,
         }
         for t in transactions
