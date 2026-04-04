@@ -126,6 +126,7 @@ export function FileInput(props: Props) {
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [fileInfo, setFileInfo] = useState<{
     name: string;
     size: number;
@@ -309,6 +310,14 @@ export function FileInput(props: Props) {
     if (file) uploadFile(file);
   }
 
+  function requestClear() {
+    if (onDeleteFile) {
+      setShowDeleteConfirm(true);
+    } else {
+      handleClear();
+    }
+  }
+
   function handleClear() {
     if (value && onDeleteFile) {
       onDeleteFile(value);
@@ -318,9 +327,41 @@ export function FileInput(props: Props) {
     }
     onChange("");
     setFileInfo(null);
+    setShowDeleteConfirm(false);
   }
 
   const displayName = placeholder || "File";
+
+  const deleteConfirmDialog = (
+    <Dialog
+      title="Remove file"
+      styling={{ maxWidth: "30rem", minWidth: "auto" }}
+      controlled={{
+        isOpen: showDeleteConfirm,
+        set: async (open) => {
+          if (!open) setShowDeleteConfirm(false);
+        },
+      }}
+    >
+      <Dialog.Content>
+        <Text variant="body">
+          Are you sure you want to remove this file? This action cannot be
+          undone.
+        </Text>
+        <Dialog.Footer>
+          <Button
+            variant="secondary"
+            onClick={() => setShowDeleteConfirm(false)}
+          >
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={handleClear}>
+            Remove
+          </Button>
+        </Dialog.Footer>
+      </Dialog.Content>
+    </Dialog>
+  );
 
   if (variant === "compact") {
     return (
@@ -373,7 +414,7 @@ export function FileInput(props: Props) {
                 variant="outline"
                 size="small"
                 className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
-                onClick={handleClear}
+                onClick={requestClear}
                 type="button"
                 aria-label="Clear file"
               >
@@ -409,6 +450,8 @@ export function FileInput(props: Props) {
             {uploadError}
           </Text>
         )}
+
+        {deleteConfirmDialog}
       </div>
     );
   }
@@ -457,7 +500,7 @@ export function FileInput(props: Props) {
                   variant="outline"
                   size="small"
                   type="button"
-                  onClick={handleClear}
+                  onClick={requestClear}
                   aria-label="Clear file"
                   className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 >
@@ -508,6 +551,8 @@ export function FileInput(props: Props) {
         onChange={handleFileChange}
         disabled={isUploading}
       />
+
+      {deleteConfirmDialog}
     </div>
   );
 }
