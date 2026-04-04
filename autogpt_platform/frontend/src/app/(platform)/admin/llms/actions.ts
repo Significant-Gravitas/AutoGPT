@@ -264,37 +264,64 @@ export async function toggleLlmModelAction(formData: FormData): Promise<void> {
   const modelSlug = getRequiredFormField(formData, "model_id", "Model");
   const shouldEnable = formData.get("is_enabled") === "true";
 
-  // Toggle is just a PATCH on is_enabled
-  await adminFetch(`/api/llm/models/${modelSlug}`, {
-    method: "PATCH",
-    body: JSON.stringify({ is_enabled: shouldEnable }),
+  const payload: Record<string, any> = { is_enabled: shouldEnable };
+
+  // Migration params (only when disabling)
+  if (!shouldEnable) {
+    const migrateToSlug = formData.get("migrate_to_slug");
+    if (migrateToSlug) payload.migrate_to_slug = String(migrateToSlug);
+    const reason = formData.get("migration_reason");
+    if (reason) payload.migration_reason = String(reason);
+    const customCost = formData.get("custom_credit_cost");
+    if (customCost) payload.custom_credit_cost = Number(customCost);
+  }
+
+  await adminFetch(`/api/llm/models/${modelSlug}/toggle`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
   revalidatePath(ADMIN_LLM_PATH);
 }
 
 export async function deleteLlmModelAction(formData: FormData): Promise<void> {
   const modelSlug = getRequiredFormField(formData, "model_id", "Model");
-  await adminFetch(`/api/llm/models/${modelSlug}`, { method: "DELETE" });
+  const replacementSlug = formData.get("replacement_model_slug");
+  const params = new URLSearchParams();
+  if (replacementSlug) params.set("replacement_model_slug", String(replacementSlug));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  await adminFetch(`/api/llm/models/${modelSlug}${query}`, { method: "DELETE" });
   revalidatePath(ADMIN_LLM_PATH);
 }
 
-export async function fetchLlmModelUsage(_modelId: string) {
-  // Not yet implemented in backend - return 0
-  return { usage_count: 0 };
+export async function fetchLlmModelUsage(modelSlug: string) {
+  const { data } = await adminFetch(`/api/llm/models/${modelSlug}/usage`);
+  return data;
 }
 
 // =============================================================================
-// Migration Actions (not yet implemented in backend)
+// Migration Actions
 // =============================================================================
 
-export async function fetchLlmMigrations(_includeReverted: boolean = false) {
-  return { migrations: [] };
+export async function fetchLlmMigrations(includeReverted: boolean = false) {
+  const params = new URLSearchParams();
+  if (includeReverted) params.set("include_reverted", "true");
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const { data } = await adminFetch(`/api/llm/migrations${query}`);
+  return data;
 }
 
 export async function revertLlmMigrationAction(
-  _formData: FormData,
+  formData: FormData,
 ): Promise<void> {
-  throw new Error("Migrations not yet implemented");
+  const migrationId = getRequiredFormField(
+    formData,
+    "migration_id",
+    "Migration",
+  );
+  await adminFetch(`/api/llm/migrations/${migrationId}/revert`, {
+    method: "POST",
+  });
+  revalidatePath(ADMIN_LLM_PATH);
 }
 
 // =============================================================================

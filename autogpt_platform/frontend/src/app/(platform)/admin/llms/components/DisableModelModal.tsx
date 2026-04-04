@@ -31,7 +31,7 @@ export function DisableModelModal({
 
   async function fetchUsage() {
     try {
-      const usage = await fetchLlmModelUsage(model.id);
+      const usage = await fetchLlmModelUsage(model.slug);
       setUsageCount(usage.usage_count);
     } catch {
       setUsageCount(null);
