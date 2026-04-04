@@ -30,6 +30,7 @@ const DEFAULT_PANEL_WIDTH = 600;
 const isClient = typeof window !== "undefined";
 
 function getPersistedWidth(): number {
+  if (!isClient) return DEFAULT_PANEL_WIDTH;
   const saved = storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
   if (saved) {
     const parsed = parseInt(saved, 10);

@@ -99,12 +99,12 @@ export function ArtifactPanel({ mobile }: Props) {
     <AnimatePresence>
       <motion.div
         data-artifact-panel
-        initial={{ width: 0, opacity: 0 }}
-        animate={{ width: effectiveWidth, opacity: 1 }}
-        exit={{ width: 0, opacity: 0 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
         transition={{ duration: 0.25, ease: "easeInOut" }}
-        className="relative flex h-full flex-col border-l border-zinc-200 bg-white"
-        style={{ minWidth: 320 }}
+        className="relative flex h-full flex-col overflow-hidden border-l border-zinc-200 bg-white"
+        style={{ width: effectiveWidth }}
       >
         <ArtifactDragHandle onWidthChange={setArtifactPanelWidth} />
         <ArtifactPanelHeader {...headerProps} />
