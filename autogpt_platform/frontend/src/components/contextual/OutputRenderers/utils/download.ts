@@ -1,7 +1,7 @@
 import { OutputRenderer, OutputMetadata } from "../types";
 
 export interface DownloadItem {
-  value: any;
+  value: unknown;
   metadata?: OutputMetadata;
   renderer: OutputRenderer;
 }
