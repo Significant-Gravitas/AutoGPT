@@ -39,7 +39,7 @@ function ArtifactContentLoader({ artifact, isSourceView }: Props) {
   // Restore scroll position
   useEffect(() => {
     const saved = scrollPositions.current.get(artifact.id);
-    if (saved && scrollRef.current) {
+    if (saved != null && scrollRef.current) {
       scrollRef.current.scrollTop = saved;
     }
   }, [artifact.id]);
