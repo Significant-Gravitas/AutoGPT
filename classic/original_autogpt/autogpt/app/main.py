@@ -754,6 +754,16 @@ async def run_interaction_loop(
                 logger.info("User chose to exit after task completion.")
                 return
 
+            # Close the finish episode so the loop doesn't reuse it.
+            # AgentFinished is caught before execute() can register
+            # a result, leaving result=None — which the loop
+            # interprets as "episode in progress, reuse proposal".
+            from forge.models.action import ActionSuccessResult
+
+            agent.event_history.register_result(
+                ActionSuccessResult(outputs=e.message)
+            )
+
             # Start new task in same workspace, keeping prior context
             agent.state.task = next_task
 
