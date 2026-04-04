@@ -1,4 +1,4 @@
-import test, { expect } from "@playwright/test";
+import { test, expect } from "./coverage-fixture";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import { hasUrl } from "./utils/assertion";
