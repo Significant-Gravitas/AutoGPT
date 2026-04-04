@@ -10,6 +10,13 @@ metadata:
 
 # Worktree Setup
 
+## Current State
+
+- **Existing worktrees:**
+`!git worktree list 2>/dev/null || echo "not in a git repo"`
+
+Use the list above to pick the next available `AutoGPT<N>` name and avoid conflicts.
+
 ## Create the worktree
 
 Derive paths from the git toplevel. If a name is provided as argument, use it. Otherwise, check `git worktree list` and pick the next `AutoGPT<N>`.

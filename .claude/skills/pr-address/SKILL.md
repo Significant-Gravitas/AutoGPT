@@ -10,6 +10,14 @@ metadata:
 
 # PR Address
 
+## Current State
+
+- **Branch:** `!git branch --show-current`
+- **PR:** `!gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT --json number,url,title -q '.[0] | "\(.number) \(.url) \(.title)"' 2>/dev/null || echo "no PR found for current branch"`
+- **CI:** `!gh pr checks $(gh pr list --head $(git branch --show-current) --repo Significant-Gravitas/AutoGPT -q '.[0].number' 2>/dev/null) --repo Significant-Gravitas/AutoGPT --json bucket,name -q '[.[] | select(.bucket != "pass" and .bucket != "skipping")] | length | tostring + " failing/pending checks"' 2>/dev/null || echo "unknown"`
+
+Use the context above to skip the "Find the PR" step if a PR number is already shown.
+
 ## Find the PR
 
 ```bash
