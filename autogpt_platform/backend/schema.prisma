@@ -1429,8 +1429,8 @@ model LlmModelMigration {
   reason          String? // Why the migration happened (e.g., "Provider outage")
 
   // FK constraints ensure slugs reference valid models
-  SourceModel LlmModel @relation("SourceMigrations", fields: [sourceModelSlug], references: [slug], onDelete: Restrict)
-  TargetModel LlmModel @relation("TargetMigrations", fields: [targetModelSlug], references: [slug], onDelete: Restrict)
+  SourceModel LlmModel @relation("SourceMigrations", fields: [sourceModelSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
+  TargetModel LlmModel @relation("TargetMigrations", fields: [targetModelSlug], references: [slug], onDelete: Restrict, onUpdate: Cascade)
 
   // Track affected nodes as JSON array of node IDs
   // Format: ["node-uuid-1", "node-uuid-2", ...]
