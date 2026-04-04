@@ -334,4 +334,57 @@ describe("getAnimationText", () => {
     });
     expect(getAnimationText(part, "agent")).toBe("Agent still running\u2026");
   });
+
+  it("shows agent completed with summary for sync agent", () => {
+    const part = makePart({
+      type: `tool-${TOOL_AGENT}`,
+      state: "output-available",
+      input: { description: "analyze code" },
+      output: { status: "completed" },
+    });
+    expect(getAnimationText(part, "agent")).toBe(
+      "Agent completed: analyze code",
+    );
+  });
+
+  it("shows agent completed without summary", () => {
+    const part = makePart({
+      type: `tool-${TOOL_AGENT}`,
+      state: "output-available",
+      output: {},
+    });
+    expect(getAnimationText(part, "agent")).toBe("Agent completed");
+  });
+
+  it("shows error text for web search failure", () => {
+    const part = makePart({
+      type: "tool-WebSearch",
+      state: "output-error",
+    });
+    expect(getAnimationText(part, "web")).toBe("Search failed");
+  });
+
+  it("shows error text for web fetch failure", () => {
+    const part = makePart({
+      type: "tool-web_fetch",
+      state: "output-error",
+    });
+    expect(getAnimationText(part, "web")).toBe("Fetch failed");
+  });
+
+  it("shows error text for browser failure", () => {
+    const part = makePart({
+      type: "tool-browser_navigate",
+      state: "output-error",
+    });
+    expect(getAnimationText(part, "browser")).toBe("Browser action failed");
+  });
+
+  it("shows fallback text for unknown state", () => {
+    const part = makePart({
+      type: "tool-custom_tool",
+      state: "unknown-state" as any,
+    });
+    expect(getAnimationText(part, "other")).toBe("Running Custom tool\u2026");
+  });
 });
