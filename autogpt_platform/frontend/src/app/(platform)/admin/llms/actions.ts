@@ -287,9 +287,12 @@ export async function deleteLlmModelAction(formData: FormData): Promise<void> {
   const modelSlug = getRequiredFormField(formData, "model_id", "Model");
   const replacementSlug = formData.get("replacement_model_slug");
   const params = new URLSearchParams();
-  if (replacementSlug) params.set("replacement_model_slug", String(replacementSlug));
+  if (replacementSlug)
+    params.set("replacement_model_slug", String(replacementSlug));
   const query = params.toString() ? `?${params.toString()}` : "";
-  await adminFetch(`/api/llm/models/${modelSlug}${query}`, { method: "DELETE" });
+  await adminFetch(`/api/llm/models/${modelSlug}${query}`, {
+    method: "DELETE",
+  });
   revalidatePath(ADMIN_LLM_PATH);
 }
 
