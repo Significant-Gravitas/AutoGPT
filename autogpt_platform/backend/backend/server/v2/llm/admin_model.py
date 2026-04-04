@@ -77,6 +77,9 @@ class CreateLlmModelRequest(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict, description="Additional metadata"
     )
+    costs: list[dict[str, Any]] = Field(
+        default_factory=list, description="Cost entries for the model"
+    )
 
 
 class UpdateLlmModelRequest(BaseModel):

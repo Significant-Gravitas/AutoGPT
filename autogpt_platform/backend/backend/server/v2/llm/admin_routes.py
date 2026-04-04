@@ -11,6 +11,7 @@ All endpoints require admin authentication. Mutations refresh the registry cache
 import logging
 from typing import Any
 
+import prisma
 import autogpt_libs.auth
 from fastapi import APIRouter, HTTPException, Security, status
 
@@ -96,10 +97,27 @@ async def create_model(
     Requires admin authentication.
     """
     try:
+        import prisma.models as pm
+
+        # Resolve provider name to ID
+        provider = await pm.LlmProvider.prisma().find_unique(
+            where={"name": request.provider_id}
+        )
+        if not provider:
+            # Try as UUID fallback
+            provider = await pm.LlmProvider.prisma().find_unique(
+                where={"id": request.provider_id}
+            )
+        if not provider:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Provider '{request.provider_id}' not found",
+            )
+
         model = await db_write.create_model(
             slug=request.slug,
             display_name=request.display_name,
-            provider_id=request.provider_id,
+            provider_id=provider.id,
             context_window=request.context_window,
             price_tier=request.price_tier,
             description=request.description,
@@ -114,8 +132,27 @@ async def create_model(
             capabilities=request.capabilities,
             metadata=request.metadata,
         )
+        # Create costs if provided in the raw request body
+        if hasattr(request, 'costs') and request.costs:
+            for cost_input in request.costs:
+                await pm.LlmModelCost.prisma().create(
+                    data={
+                        "unit": cost_input.get("unit", "RUN"),
+                        "creditCost": int(cost_input.get("credit_cost", 1)),
+                        "credentialProvider": provider.name,
+                        "metadata": prisma.Json(cost_input.get("metadata", {})),
+                        "Model": {"connect": {"id": model.id}},
+                    }
+                )
+
         await db_write.refresh_runtime_caches()
         logger.info(f"Created model '{request.slug}' (id: {model.id})")
+
+        # Re-fetch with costs included
+        model = await pm.LlmModel.prisma().find_unique(
+            where={"id": model.id},
+            include={"Costs": True, "Creator": True},
+        )
         return _map_model_response(model)
     except ValueError as e:
         logger.warning(f"Model creation validation failed: {e}")
@@ -326,6 +363,83 @@ async def delete_provider(
 
 
 @router.get(
+    "/llm/admin/providers",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def admin_list_providers() -> dict[str, Any]:
+    """List all LLM providers from the database.
+
+    Unlike the public endpoint, this returns ALL providers including
+    those with no models. Requires admin authentication.
+    """
+    try:
+        import prisma.models
+
+        providers = await prisma.models.LlmProvider.prisma().find_many(
+            order={"name": "asc"},
+            include={"Models": True},
+        )
+        return {
+            "providers": [
+                {**_map_provider_response(p), "model_count": len(p.Models) if p.Models else 0}
+                for p in providers
+            ]
+        }
+    except Exception as e:
+        logger.exception(f"Failed to list providers: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list providers")
+
+
+@router.get(
+    "/llm/admin/models",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def admin_list_models(
+    page: int = 1,
+    page_size: int = 100,
+    enabled_only: bool = False,
+) -> dict[str, Any]:
+    """List all LLM models from the database.
+
+    Unlike the public endpoint, this returns full model data including
+    costs and creator info. Requires admin authentication.
+    """
+    try:
+        import prisma.models
+
+        where = {"isEnabled": True} if enabled_only else {}
+        models = await prisma.models.LlmModel.prisma().find_many(
+            where=where,
+            skip=(page - 1) * page_size,
+            take=page_size,
+            order={"displayName": "asc"},
+            include={"Costs": True, "Creator": True},
+        )
+        return {
+            "models": [
+                {
+                    **_map_model_response(m),
+                    "creator": _map_creator_response(m.Creator) if m.Creator else None,
+                    "costs": [
+                        {
+                            "unit": c.unit,
+                            "credit_cost": float(c.creditCost),
+                            "credential_provider": c.credentialProvider,
+                            "credential_type": c.credentialType,
+                            "metadata": dict(c.metadata or {}),
+                        }
+                        for c in (m.Costs or [])
+                    ],
+                }
+                for m in models
+            ]
+        }
+    except Exception as e:
+        logger.exception(f"Failed to list models: {e}")
+        raise HTTPException(status_code=500, detail="Failed to list models")
+
+
+@router.get(
     "/llm/creators",
     dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
 )
@@ -345,3 +459,113 @@ async def list_creators() -> dict[str, Any]:
     except Exception as e:
         logger.exception(f"Failed to list creators: {e}")
         raise HTTPException(status_code=500, detail="Failed to list creators")
+
+
+@router.post(
+    "/llm/creators",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def create_creator(
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    """Create a new LLM model creator."""
+    try:
+        import prisma.models
+
+        creator = await prisma.models.LlmModelCreator.prisma().create(
+            data={
+                "name": request["name"],
+                "displayName": request["display_name"],
+                "description": request.get("description"),
+                "websiteUrl": request.get("website_url"),
+                "logoUrl": request.get("logo_url"),
+                "metadata": prisma.Json(request.get("metadata", {})),
+            }
+        )
+        logger.info(f"Created creator '{creator.name}' (id: {creator.id})")
+        return _map_creator_response(creator)
+    except Exception as e:
+        logger.exception(f"Failed to create creator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch(
+    "/llm/creators/{name}",
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def update_creator(
+    name: str,
+    request: dict[str, Any],
+) -> dict[str, Any]:
+    """Update an existing LLM model creator."""
+    try:
+        import prisma.models
+
+        existing = await prisma.models.LlmModelCreator.prisma().find_unique(
+            where={"name": name}
+        )
+        if not existing:
+            raise HTTPException(
+                status_code=404, detail=f"Creator '{name}' not found"
+            )
+
+        data: dict[str, Any] = {}
+        if "display_name" in request:
+            data["displayName"] = request["display_name"]
+        if "description" in request:
+            data["description"] = request["description"]
+        if "website_url" in request:
+            data["websiteUrl"] = request["website_url"]
+        if "logo_url" in request:
+            data["logoUrl"] = request["logo_url"]
+
+        creator = await prisma.models.LlmModelCreator.prisma().update(
+            where={"id": existing.id},
+            data=data,
+        )
+        logger.info(f"Updated creator '{name}' (id: {creator.id})")
+        return _map_creator_response(creator)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to update creator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete(
+    "/llm/creators/{name}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Security(autogpt_libs.auth.requires_admin_user)],
+)
+async def delete_creator(
+    name: str,
+) -> None:
+    """Delete an LLM model creator."""
+    try:
+        import prisma.models
+
+        existing = await prisma.models.LlmModelCreator.prisma().find_unique(
+            where={"name": name},
+            include={"Models": True},
+        )
+        if not existing:
+            raise HTTPException(
+                status_code=404, detail=f"Creator '{name}' not found"
+            )
+
+        if existing.Models and len(existing.Models) > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete creator '{name}' — it has {len(existing.Models)} associated models",
+            )
+
+        await prisma.models.LlmModelCreator.prisma().delete(
+            where={"id": existing.id}
+        )
+        logger.info(f"Deleted creator '{name}' (id: {existing.id})")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to delete creator: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
