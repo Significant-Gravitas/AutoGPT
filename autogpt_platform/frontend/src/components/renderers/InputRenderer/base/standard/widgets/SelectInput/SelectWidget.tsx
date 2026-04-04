@@ -24,7 +24,9 @@ export const SelectWidget = (props: WidgetProps) => {
     id,
     formContext,
   } = props;
-  const enumOptions = options.enumOptions || [];
+  const enumOptions = (options.enumOptions || []).filter(
+    (option: any) => option.value !== "",
+  );
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
 
@@ -61,7 +63,7 @@ export const SelectWidget = (props: WidgetProps) => {
         hideLabel={true}
         disabled={disabled || readonly}
         size={selectSize as any}
-        value={value ?? ""}
+        value={value === "" || value == null ? undefined : value}
         onValueChange={onChange}
         options={
           enumOptions?.map((option: any) => ({
