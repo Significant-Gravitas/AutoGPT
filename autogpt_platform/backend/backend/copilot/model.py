@@ -81,6 +81,49 @@ class ChatMessage(BaseModel):
         )
 
 
+def is_message_duplicate(
+    messages: list[ChatMessage],
+    role: str,
+    content: str,
+) -> bool:
+    """Check whether *content* is already present in the current pending turn.
+
+    Only inspects trailing messages that share the given *role* (i.e. the
+    current turn). This ensures legitimately repeated messages across different
+    turns are not suppressed, while same-turn duplicates from stale cache are
+    still caught.
+    """
+    for m in reversed(messages):
+        if m.role == role:
+            if m.content == content:
+                return True
+        else:
+            break
+    return False
+
+
+def maybe_append_user_message(
+    session: "ChatSession",
+    message: str | None,
+    is_user_message: bool,
+) -> bool:
+    """Append a user/assistant message to the session if not already present.
+
+    The route handler already persists the user message before enqueueing,
+    so we check trailing same-role messages to avoid re-appending when the
+    session cache is slightly stale.
+
+    Returns True if the message was appended, False if skipped.
+    """
+    if not message:
+        return False
+    role = "user" if is_user_message else "assistant"
+    if is_message_duplicate(session.messages, role, message):
+        return False
+    session.messages.append(ChatMessage(role=role, content=message))
+    return True
+
+
 class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
