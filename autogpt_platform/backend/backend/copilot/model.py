@@ -47,6 +47,7 @@ def _get_session_cache_key(session_id: str) -> str:
 
 
 class ChatMessage(BaseModel):
+    id: str | None = None
     role: str
     content: str | None = None
     name: str | None = None
@@ -57,8 +58,8 @@ class ChatMessage(BaseModel):
 
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
-        """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
         return ChatMessage(
+            id=prisma_message.id,
             role=prisma_message.role,
             content=prisma_message.content,
             name=prisma_message.name,
