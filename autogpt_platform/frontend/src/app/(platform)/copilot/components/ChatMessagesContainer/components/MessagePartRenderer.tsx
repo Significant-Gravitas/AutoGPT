@@ -2,7 +2,7 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useState } from "react";
+import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
 import { EditAgentTool } from "../../../tools/EditAgent/EditAgent";
@@ -28,12 +28,10 @@ import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
  */
 function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
-  const [imgFailed, setImgFailed] = useState(false);
-  const isWorkspace = src?.includes("/workspace/files/") ?? false;
 
   if (!src) return null;
 
-  if (alt?.startsWith("video:") || (imgFailed && isWorkspace)) {
+  if (alt?.startsWith("video:")) {
     return (
       <span className="my-2 inline-block">
         <video
@@ -55,9 +53,6 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
       alt={alt || "Image"}
       className="h-auto max-w-full rounded-md border border-zinc-200"
       loading="lazy"
-      onError={() => {
-        if (isWorkspace) setImgFailed(true);
-      }}
       {...rest}
     />
   );
@@ -129,6 +124,8 @@ export function MessagePartRenderer({
         </MessageResponse>
       );
     }
+    case "tool-ask_question":
+      return <AskQuestionTool key={key} part={part as ToolUIPart} />;
     case "tool-find_block":
       return <FindBlocksTool key={key} part={part as ToolUIPart} />;
     case "tool-find_agent":

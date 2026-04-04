@@ -1,6 +1,14 @@
 import type { ToolUIPart } from "ai";
 
 /* ------------------------------------------------------------------ */
+/*  Sub-agent tool name constants                                      */
+/* ------------------------------------------------------------------ */
+
+export const TOOL_AGENT = "Agent";
+export const TOOL_TASK = "Task";
+export const TOOL_TASK_OUTPUT = "TaskOutput";
+
+/* ------------------------------------------------------------------ */
 /*  Tool name helpers                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -28,6 +36,7 @@ export type ToolCategory =
   | "edit"
   | "todo"
   | "compaction"
+  | "agent"
   | "other";
 
 export function getToolCategory(toolName: string): ToolCategory {
@@ -66,6 +75,10 @@ export function getToolCategory(toolName: string): ToolCategory {
       return "todo";
     case "context_compaction":
       return "compaction";
+    case TOOL_AGENT:
+    case TOOL_TASK:
+    case TOOL_TASK_OUTPUT:
+      return "agent";
     default:
       return "other";
   }
@@ -134,6 +147,15 @@ function getInputSummary(toolName: string, input: unknown): string | null {
       if (active && typeof active.content === "string") return active.content;
       return null;
     }
+    case TOOL_AGENT:
+    case TOOL_TASK:
+      return typeof inp.description === "string"
+        ? inp.description
+        : typeof inp.prompt === "string"
+          ? truncate(inp.prompt, 60)
+          : null;
+    case TOOL_TASK_OUTPUT:
+      return typeof inp.agentId === "string" ? inp.agentId : null;
     default:
       return null;
   }
@@ -235,6 +257,14 @@ export function getAnimationText(
           return shortSummary ? `${shortSummary}` : "Updating task list\u2026";
         case "compaction":
           return "Summarizing earlier messages\u2026";
+        case "agent":
+          if (toolName === TOOL_TASK_OUTPUT)
+            return shortSummary
+              ? `Checking agent ${shortSummary}\u2026`
+              : "Checking agent result\u2026";
+          return shortSummary
+            ? `Running agent: ${shortSummary}`
+            : "Starting agent\u2026";
         default:
           return `Running ${formatToolName(toolName)}\u2026`;
       }
@@ -288,6 +318,28 @@ export function getAnimationText(
           return "Updated task list";
         case "compaction":
           return "Earlier messages were summarized";
+        case "agent": {
+          if (toolName === TOOL_TASK_OUTPUT) {
+            const taskOut =
+              part.output && typeof part.output === "object"
+                ? (part.output as Record<string, unknown>)
+                : null;
+            if (taskOut?.retrieval_status === "timeout")
+              return "Agent still running\u2026";
+            return "Agent result received";
+          }
+          const agentOut =
+            part.output && typeof part.output === "object"
+              ? (part.output as Record<string, unknown>)
+              : null;
+          if (agentOut?.isAsync || agentOut?.status === "async_launched")
+            return shortSummary
+              ? `Agent started (background): ${shortSummary}`
+              : "Agent started in background";
+          return shortSummary
+            ? `Agent completed: ${shortSummary}`
+            : "Agent completed";
+        }
         default:
           return `${formatToolName(toolName)} completed`;
       }

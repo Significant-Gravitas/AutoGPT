@@ -709,6 +709,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The LaunchDarkly SDK key for feature flag management",
     )
 
+    agentmail_api_key: str = Field(default="", description="AgentMail API Key")
+
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
     ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
 

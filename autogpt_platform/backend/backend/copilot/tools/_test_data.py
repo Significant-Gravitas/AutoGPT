@@ -102,7 +102,6 @@ async def setup_test_data(server):
             "value": "",
             "advanced": False,
             "description": "Test input field",
-            "placeholder_values": [],
         },
         metadata={"position": {"x": 0, "y": 0}},
     )
@@ -242,7 +241,6 @@ async def setup_llm_test_data(server):
             "value": "",
             "advanced": False,
             "description": "Prompt for the LLM",
-            "placeholder_values": [],
         },
         metadata={"position": {"x": 0, "y": 0}},
     )
@@ -396,7 +394,6 @@ async def setup_firecrawl_test_data(server):
             "value": "",
             "advanced": False,
             "description": "URL for Firecrawl to scrape",
-            "placeholder_values": [],
         },
         metadata={"position": {"x": 0, "y": 0}},
     )

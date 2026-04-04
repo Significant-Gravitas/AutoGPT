@@ -16,6 +16,7 @@ class ProviderName(str, Enum):
     APOLLO = "apollo"
     AVIAN = "avian"
     COMPASS = "compass"
+    DATABASE = "database"
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"

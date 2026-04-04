@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./coverage-fixture";
 import { getTestUserWithLibraryAgents } from "./credentials";
 import { LoginPage } from "./pages/login.page";
 import { MarketplacePage } from "./pages/marketplace.page";

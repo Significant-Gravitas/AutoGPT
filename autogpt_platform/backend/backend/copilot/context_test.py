@@ -134,6 +134,21 @@ def test_is_allowed_local_path_tool_results_with_uuid():
         _current_project_dir.set("")
 
 
+def test_is_allowed_local_path_tool_outputs_with_uuid():
+    """Files under <encoded-cwd>/<uuid>/tool-outputs/ are also allowed."""
+    encoded = "test-encoded-dir"
+    conv_uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+    path = os.path.join(
+        SDK_PROJECTS_DIR, encoded, conv_uuid, "tool-outputs", "output.json"
+    )
+
+    _current_project_dir.set(encoded)
+    try:
+        assert is_allowed_local_path(path, sdk_cwd=None)
+    finally:
+        _current_project_dir.set("")
+
+
 def test_is_allowed_local_path_tool_results_without_uuid_rejected():
     """Direct <encoded-cwd>/tool-results/ (no UUID) is rejected."""
     encoded = "test-encoded-dir"
@@ -159,7 +174,7 @@ def test_is_allowed_local_path_sibling_of_tool_results_is_rejected():
 
 
 def test_is_allowed_local_path_valid_uuid_wrong_segment_name_rejected():
-    """A valid UUID dir but non-'tool-results' second segment is rejected."""
+    """A valid UUID dir but non-'tool-results'/'tool-outputs' second segment is rejected."""
     encoded = "test-encoded-dir"
     uuid_str = "12345678-1234-5678-9abc-def012345678"
     path = os.path.join(
@@ -198,10 +213,32 @@ def test_resolve_sandbox_path_normalizes_dots():
 
 
 def test_resolve_sandbox_path_escape_raises():
-    with pytest.raises(ValueError, match="/home/user"):
+    with pytest.raises(ValueError, match="must be within"):
         resolve_sandbox_path("/home/user/../../etc/passwd")
 
 
 def test_resolve_sandbox_path_absolute_outside_raises():
-    with pytest.raises(ValueError, match="/home/user"):
+    with pytest.raises(ValueError):
         resolve_sandbox_path("/etc/passwd")
+
+
+def test_resolve_sandbox_path_tmp_allowed():
+    assert resolve_sandbox_path("/tmp/data.txt") == "/tmp/data.txt"
+
+
+def test_resolve_sandbox_path_tmp_nested():
+    assert resolve_sandbox_path("/tmp/a/b/c.txt") == "/tmp/a/b/c.txt"
+
+
+def test_resolve_sandbox_path_tmp_itself():
+    assert resolve_sandbox_path("/tmp") == "/tmp"
+
+
+def test_resolve_sandbox_path_tmp_escape_raises():
+    with pytest.raises(ValueError):
+        resolve_sandbox_path("/tmp/../etc/passwd")
+
+
+def test_resolve_sandbox_path_tmp_prefix_collision_raises():
+    with pytest.raises(ValueError):
+        resolve_sandbox_path("/tmp_evil/malicious.txt")

@@ -3,6 +3,7 @@
 Pure unit tests with no external dependencies (no E2B, no sandbox).
 """
 
+import hashlib
 import os
 import shutil
 from types import SimpleNamespace
@@ -13,10 +14,25 @@ import pytest
 from backend.copilot.context import E2B_WORKDIR, SDK_PROJECTS_DIR, _current_project_dir
 
 from .e2b_file_tools import (
+    _BRIDGE_SHELL_MAX_BYTES,
+    _BRIDGE_SKIP_BYTES,
+    _DEFAULT_READ_LIMIT,
     _check_sandbox_symlink_escape,
     _read_local,
+    _sandbox_write,
+    bridge_and_annotate,
+    bridge_to_sandbox,
     resolve_sandbox_path,
 )
+
+
+def _expected_bridge_path(file_path: str, prefix: str = "/tmp") -> str:
+    """Compute the expected sandbox path for a bridged file."""
+    expanded = os.path.realpath(os.path.expanduser(file_path))
+    basename = os.path.basename(expanded)
+    source_id = hashlib.sha256(expanded.encode()).hexdigest()[:12]
+    return f"{prefix}/{source_id}-{basename}"
+
 
 # ---------------------------------------------------------------------------
 # resolve_sandbox_path — sandbox path normalisation & boundary enforcement
@@ -39,23 +55,23 @@ class TestResolveSandboxPath:
         assert resolve_sandbox_path("./README.md") == f"{E2B_WORKDIR}/README.md"
 
     def test_traversal_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("../../etc/passwd")
 
     def test_absolute_traversal_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path(f"{E2B_WORKDIR}/../../etc/passwd")
 
     def test_absolute_outside_sandbox_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/etc/passwd")
 
     def test_root_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/")
 
     def test_home_other_user_blocked(self):
-        with pytest.raises(ValueError, match=f"must be within {E2B_WORKDIR}"):
+        with pytest.raises(ValueError, match="must be within"):
             resolve_sandbox_path("/home/other/file.txt")
 
     def test_deep_nested_allowed(self):
@@ -68,13 +84,31 @@ class TestResolveSandboxPath:
         """Path that resolves back within E2B_WORKDIR is allowed."""
         assert resolve_sandbox_path("a/b/../c.txt") == f"{E2B_WORKDIR}/a/c.txt"
 
+    def test_tmp_absolute_allowed(self):
+        assert resolve_sandbox_path("/tmp/data.txt") == "/tmp/data.txt"
+
+    def test_tmp_nested_allowed(self):
+        assert resolve_sandbox_path("/tmp/a/b/c.txt") == "/tmp/a/b/c.txt"
+
+    def test_tmp_itself_allowed(self):
+        assert resolve_sandbox_path("/tmp") == "/tmp"
+
+    def test_tmp_escape_blocked(self):
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_sandbox_path("/tmp/../etc/passwd")
+
+    def test_tmp_prefix_collision_blocked(self):
+        """A path like /tmp_evil should be blocked (not a prefix match)."""
+        with pytest.raises(ValueError, match="must be within"):
+            resolve_sandbox_path("/tmp_evil/malicious.txt")
+
 
 # ---------------------------------------------------------------------------
 # _read_local — host filesystem reads with allowlist enforcement
 #
-# In E2B mode, _read_local only allows tool-results paths (via
-# is_allowed_local_path without sdk_cwd).  Regular files live on the
-# sandbox, not the host.
+# In E2B mode, _read_local only allows tool-results/tool-outputs paths
+# (via is_allowed_local_path without sdk_cwd).  Regular files live on
+# the sandbox, not the host.
 # ---------------------------------------------------------------------------
 
 
@@ -100,13 +134,32 @@ class TestReadLocal:
         )
         token = _current_project_dir.set(encoded)
         try:
-            result = _read_local(filepath, offset=0, limit=2000)
+            result = _read_local(filepath, offset=0, limit=_DEFAULT_READ_LIMIT)
             assert result["isError"] is False
             assert "line 1" in result["content"][0]["text"]
             assert "line 2" in result["content"][0]["text"]
         finally:
             _current_project_dir.reset(token)
             os.unlink(filepath)
+
+    def test_read_tool_outputs_file(self):
+        """Reading a tool-outputs file should also succeed."""
+        encoded = "-tmp-copilot-e2b-test-read-outputs"
+        tool_outputs_dir = os.path.join(
+            SDK_PROJECTS_DIR, encoded, self._CONV_UUID, "tool-outputs"
+        )
+        os.makedirs(tool_outputs_dir, exist_ok=True)
+        filepath = os.path.join(tool_outputs_dir, "sdk-abc123.json")
+        with open(filepath, "w") as f:
+            f.write('{"data": "test"}\n')
+        token = _current_project_dir.set(encoded)
+        try:
+            result = _read_local(filepath, offset=0, limit=_DEFAULT_READ_LIMIT)
+            assert result["isError"] is False
+            assert "test" in result["content"][0]["text"]
+        finally:
+            _current_project_dir.reset(token)
+            shutil.rmtree(os.path.join(SDK_PROJECTS_DIR, encoded), ignore_errors=True)
 
     def test_read_disallowed_path_blocked(self):
         """Reading /etc/passwd should be blocked by the allowlist."""
@@ -227,3 +280,288 @@ class TestCheckSandboxSymlinkEscape:
         sandbox = _make_sandbox(stdout=f"{E2B_WORKDIR}/a/b/c/d\n", exit_code=0)
         result = await _check_sandbox_symlink_escape(sandbox, f"{E2B_WORKDIR}/a/b/c/d")
         assert result == f"{E2B_WORKDIR}/a/b/c/d"
+
+    @pytest.mark.asyncio
+    async def test_tmp_path_allowed(self):
+        """Paths resolving to /tmp are allowed."""
+        sandbox = _make_sandbox(stdout="/tmp/workdir\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/tmp/workdir")
+        assert result == "/tmp/workdir"
+
+    @pytest.mark.asyncio
+    async def test_tmp_itself_allowed(self):
+        """The /tmp directory itself is allowed."""
+        sandbox = _make_sandbox(stdout="/tmp\n", exit_code=0)
+        result = await _check_sandbox_symlink_escape(sandbox, "/tmp")
+        assert result == "/tmp"
+
+
+# ---------------------------------------------------------------------------
+# _sandbox_write — routing writes through shell for /tmp paths
+# ---------------------------------------------------------------------------
+
+
+class TestSandboxWrite:
+    @pytest.mark.asyncio
+    async def test_tmp_path_uses_shell_command(self):
+        """Writes to /tmp should use commands.run (shell) instead of files.write."""
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        files = SimpleNamespace(write=AsyncMock())
+        sandbox = SimpleNamespace(commands=commands, files=files)
+
+        await _sandbox_write(sandbox, "/tmp/test.py", "print('hello')")
+
+        commands.run.assert_called_once()
+        files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_home_user_path_uses_files_api(self):
+        """Writes to /home/user should use sandbox.files.write."""
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        files = SimpleNamespace(write=AsyncMock())
+        sandbox = SimpleNamespace(commands=commands, files=files)
+
+        await _sandbox_write(sandbox, "/home/user/test.py", "print('hello')")
+
+        files.write.assert_called_once_with("/home/user/test.py", "print('hello')")
+        commands.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tmp_nested_path_uses_shell_command(self):
+        """Writes to nested /tmp paths should use commands.run."""
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        files = SimpleNamespace(write=AsyncMock())
+        sandbox = SimpleNamespace(commands=commands, files=files)
+
+        await _sandbox_write(sandbox, "/tmp/subdir/file.txt", "content")
+
+        commands.run.assert_called_once()
+        files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tmp_write_shell_failure_raises(self):
+        """Shell write failure should raise RuntimeError."""
+        run_result = SimpleNamespace(stdout="", stderr="No space left", exit_code=1)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        sandbox = SimpleNamespace(commands=commands)
+
+        with pytest.raises(RuntimeError, match="shell write failed"):
+            await _sandbox_write(sandbox, "/tmp/test.txt", "content")
+
+    @pytest.mark.asyncio
+    async def test_tmp_write_preserves_content_with_special_chars(self):
+        """Content with special shell characters should be preserved via base64."""
+        import base64
+
+        run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+        commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+        sandbox = SimpleNamespace(commands=commands)
+
+        content = "print(\"Hello $USER\")\n# a `backtick` and 'quotes'\n"
+        await _sandbox_write(sandbox, "/tmp/special.py", content)
+
+        # Verify the command contains base64-encoded content
+        call_args = commands.run.call_args[0][0]
+        # Extract the base64 string from the command
+        encoded_in_cmd = call_args.split("echo ")[1].split(" |")[0].strip("'")
+        decoded = base64.b64decode(encoded_in_cmd).decode()
+        assert decoded == content
+
+
+# ---------------------------------------------------------------------------
+# bridge_to_sandbox — copy SDK-internal files into E2B sandbox
+# ---------------------------------------------------------------------------
+
+
+def _make_bridge_sandbox() -> SimpleNamespace:
+    """Build a sandbox mock suitable for bridge_to_sandbox tests."""
+    run_result = SimpleNamespace(stdout="", stderr="", exit_code=0)
+    commands = SimpleNamespace(run=AsyncMock(return_value=run_result))
+    files = SimpleNamespace(write=AsyncMock())
+    return SimpleNamespace(commands=commands, files=files)
+
+
+class TestBridgeToSandbox:
+    @pytest.mark.asyncio
+    async def test_happy_path_small_file(self, tmp_path):
+        """A small file is bridged to /tmp/<hash>-<basename> via _sandbox_write."""
+        f = tmp_path / "result.json"
+        f.write_text('{"ok": true}')
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        expected = _expected_bridge_path(str(f))
+        assert result == expected
+        sandbox.commands.run.assert_called_once()
+        cmd = sandbox.commands.run.call_args[0][0]
+        assert "result.json" in cmd
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skip_when_offset_nonzero(self, tmp_path):
+        """Bridging is skipped when offset != 0 (partial read)."""
+        f = tmp_path / "data.txt"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=10, limit=_DEFAULT_READ_LIMIT
+        )
+
+        assert result is None
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skip_when_limit_too_small(self, tmp_path):
+        """Bridging is skipped when limit < _DEFAULT_READ_LIMIT (partial read)."""
+        f = tmp_path / "data.txt"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+
+        await bridge_to_sandbox(sandbox, str(f), offset=0, limit=100)
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_file_does_not_raise(self, tmp_path):
+        """Bridging a non-existent file logs but does not propagate errors."""
+        sandbox = _make_bridge_sandbox()
+
+        await bridge_to_sandbox(
+            sandbox, str(tmp_path / "ghost.txt"), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_sandbox_write_failure_returns_none(self, tmp_path):
+        """If sandbox write fails, returns None (best-effort)."""
+        f = tmp_path / "data.txt"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+        sandbox.commands.run.side_effect = RuntimeError("E2B timeout")
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_large_file_uses_files_api(self, tmp_path):
+        """Files > 32 KB but <= 50 MB are written to /home/user/ via files.write."""
+        f = tmp_path / "big.json"
+        f.write_bytes(b"x" * (_BRIDGE_SHELL_MAX_BYTES + 1))
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        expected = _expected_bridge_path(str(f), prefix="/home/user")
+        assert result == expected
+        sandbox.files.write.assert_called_once()
+        call_args = sandbox.files.write.call_args[0]
+        assert call_args[0] == expected
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_small_binary_file_preserves_bytes(self, tmp_path):
+        """A small binary file is bridged to /tmp via base64 without corruption."""
+        binary_data = bytes(range(256))
+        f = tmp_path / "image.png"
+        f.write_bytes(binary_data)
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        expected = _expected_bridge_path(str(f))
+        assert result == expected
+        sandbox.commands.run.assert_called_once()
+        cmd = sandbox.commands.run.call_args[0][0]
+        assert "base64" in cmd
+        sandbox.files.write.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_large_binary_file_writes_raw_bytes(self, tmp_path):
+        """A large binary file is bridged to /home/user/ as raw bytes."""
+        binary_data = bytes(range(256)) * 200
+        f = tmp_path / "photo.jpg"
+        f.write_bytes(binary_data)
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        expected = _expected_bridge_path(str(f), prefix="/home/user")
+        assert result == expected
+        sandbox.files.write.assert_called_once()
+        call_args = sandbox.files.write.call_args[0]
+        assert call_args[0] == expected
+        assert call_args[1] == binary_data
+        sandbox.commands.run.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_very_large_file_skipped(self, tmp_path):
+        """Files > 50 MB are skipped entirely."""
+        f = tmp_path / "huge.bin"
+        # Create a sparse file to avoid actually writing 50 MB
+        with open(f, "wb") as fh:
+            fh.seek(_BRIDGE_SKIP_BYTES + 1)
+            fh.write(b"\0")
+        sandbox = _make_bridge_sandbox()
+
+        result = await bridge_to_sandbox(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        assert result is None
+
+        sandbox.commands.run.assert_not_called()
+        sandbox.files.write.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# bridge_and_annotate — shared helper wrapping bridge_to_sandbox + annotation
+# ---------------------------------------------------------------------------
+
+
+class TestBridgeAndAnnotate:
+    @pytest.mark.asyncio
+    async def test_returns_annotation_on_success(self, tmp_path):
+        """On success, returns a newline-prefixed annotation with the sandbox path."""
+        f = tmp_path / "data.json"
+        f.write_text('{"ok": true}')
+        sandbox = _make_bridge_sandbox()
+
+        annotation = await bridge_and_annotate(
+            sandbox, str(f), offset=0, limit=_DEFAULT_READ_LIMIT
+        )
+
+        expected_path = _expected_bridge_path(str(f))
+        assert annotation == f"\n[Sandbox copy available at {expected_path}]"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_skipped(self, tmp_path):
+        """When bridging is skipped (e.g. offset != 0), returns None."""
+        f = tmp_path / "data.json"
+        f.write_text("content")
+        sandbox = _make_bridge_sandbox()
+
+        annotation = await bridge_and_annotate(
+            sandbox, str(f), offset=10, limit=_DEFAULT_READ_LIMIT
+        )
+
+        assert annotation is None

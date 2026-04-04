@@ -157,9 +157,10 @@ class SearchFeatureRequestsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
         **kwargs,
     ) -> ToolResponseBase:
-        query = kwargs.get("query", "").strip()
+        query = (query or "").strip()
         session_id = session.session_id if session else None
 
         if not query:
@@ -288,11 +289,13 @@ class CreateFeatureRequestTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        title: str = "",
+        description: str = "",
+        existing_issue_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        title = kwargs.get("title", "").strip()
-        description = kwargs.get("description", "").strip()
-        existing_issue_id = kwargs.get("existing_issue_id")
+        title = (title or "").strip()
+        description = (description or "").strip()
         session_id = session.session_id if session else None
 
         if not title or not description:

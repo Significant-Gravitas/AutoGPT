@@ -17,6 +17,8 @@ from .model import (
     ChatSession,
     Usage,
     get_chat_session,
+    is_message_duplicate,
+    maybe_append_user_message,
     upsert_chat_session,
 )
 
@@ -46,7 +48,7 @@ messages = [
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_serialization_deserialization():
-    s = ChatSession.new(user_id="abc123")
+    s = ChatSession.new(user_id="abc123", dry_run=False)
     s.messages = messages
     s.usage = [Usage(prompt_tokens=100, completion_tokens=200, total_tokens=300)]
     serialized = s.model_dump_json()
@@ -57,7 +59,7 @@ async def test_chatsession_serialization_deserialization():
 @pytest.mark.asyncio(loop_scope="session")
 async def test_chatsession_redis_storage(setup_test_user, test_user_id):
 
-    s = ChatSession.new(user_id=test_user_id)
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
     s.messages = messages
 
     s = await upsert_chat_session(s)
@@ -75,7 +77,7 @@ async def test_chatsession_redis_storage_user_id_mismatch(
     setup_test_user, test_user_id
 ):
 
-    s = ChatSession.new(user_id=test_user_id)
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
     s.messages = messages
     s = await upsert_chat_session(s)
 
@@ -90,7 +92,7 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
     from backend.data.redis_client import get_redis_async
 
     # Create session with messages including assistant message
-    s = ChatSession.new(user_id=test_user_id)
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
     s.messages = messages  # Contains user, assistant, and tool messages
     assert s.session_id is not None, "Session id is not set"
     # Upsert to save to both cache and DB
@@ -241,7 +243,7 @@ _raw_tc2 = {
 
 def test_add_tool_call_appends_to_existing_assistant():
     """When the last assistant is from the current turn, tool_call is added to it."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="hi"),
         ChatMessage(role="assistant", content="working on it"),
@@ -254,7 +256,7 @@ def test_add_tool_call_appends_to_existing_assistant():
 
 def test_add_tool_call_creates_assistant_when_none_exists():
     """When there's no current-turn assistant, a new one is created."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="hi"),
     ]
@@ -267,7 +269,7 @@ def test_add_tool_call_creates_assistant_when_none_exists():
 
 def test_add_tool_call_does_not_cross_user_boundary():
     """A user message acts as a boundary — previous assistant is not modified."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="assistant", content="old turn"),
         ChatMessage(role="user", content="new message"),
@@ -282,7 +284,7 @@ def test_add_tool_call_does_not_cross_user_boundary():
 
 def test_add_tool_call_multiple_times():
     """Multiple long-running tool calls accumulate on the same assistant."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="hi"),
         ChatMessage(role="assistant", content="doing stuff"),
@@ -300,7 +302,7 @@ def test_add_tool_call_multiple_times():
 
 def test_to_openai_messages_merges_split_assistants():
     """End-to-end: session with split assistants produces valid OpenAI messages."""
-    session = ChatSession.new(user_id="u")
+    session = ChatSession.new(user_id="u", dry_run=False)
     session.messages = [
         ChatMessage(role="user", content="build agent"),
         ChatMessage(role="assistant", content="Let me build that"),
@@ -352,7 +354,7 @@ async def test_concurrent_saves_collision_detection(setup_test_user, test_user_i
     import asyncio
 
     # Create a session with initial messages
-    session = ChatSession.new(user_id=test_user_id)
+    session = ChatSession.new(user_id=test_user_id, dry_run=False)
     for i in range(3):
         session.messages.append(
             ChatMessage(
@@ -424,3 +426,151 @@ async def test_concurrent_saves_collision_detection(setup_test_user, test_user_i
     assert "Streaming message 1" in contents
     assert "Streaming message 2" in contents
     assert "Callback result" in contents
+
+
+# --------------------------------------------------------------------------- #
+#  is_message_duplicate                                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_duplicate_detected_in_trailing_same_role():
+    """Duplicate user message at the tail is detected."""
+    msgs = [
+        ChatMessage(role="user", content="hello"),
+        ChatMessage(role="assistant", content="hi there"),
+        ChatMessage(role="user", content="yes"),
+    ]
+    assert is_message_duplicate(msgs, "user", "yes") is True
+
+
+def test_duplicate_not_detected_across_turns():
+    """Same text in a previous turn (separated by assistant) is NOT a duplicate."""
+    msgs = [
+        ChatMessage(role="user", content="yes"),
+        ChatMessage(role="assistant", content="ok"),
+    ]
+    assert is_message_duplicate(msgs, "user", "yes") is False
+
+
+def test_no_duplicate_on_empty_messages():
+    """Empty message list never reports a duplicate."""
+    assert is_message_duplicate([], "user", "hello") is False
+
+
+def test_no_duplicate_when_content_differs():
+    """Different content in the trailing same-role block is not a duplicate."""
+    msgs = [
+        ChatMessage(role="assistant", content="response"),
+        ChatMessage(role="user", content="first message"),
+    ]
+    assert is_message_duplicate(msgs, "user", "second message") is False
+
+
+def test_duplicate_with_multiple_trailing_same_role():
+    """Detects duplicate among multiple consecutive same-role messages."""
+    msgs = [
+        ChatMessage(role="assistant", content="response"),
+        ChatMessage(role="user", content="msg1"),
+        ChatMessage(role="user", content="msg2"),
+    ]
+    assert is_message_duplicate(msgs, "user", "msg1") is True
+    assert is_message_duplicate(msgs, "user", "msg2") is True
+    assert is_message_duplicate(msgs, "user", "msg3") is False
+
+
+def test_duplicate_check_for_assistant_role():
+    """Works correctly when checking assistant role too."""
+    msgs = [
+        ChatMessage(role="user", content="hi"),
+        ChatMessage(role="assistant", content="hello"),
+        ChatMessage(role="assistant", content="how can I help?"),
+    ]
+    assert is_message_duplicate(msgs, "assistant", "hello") is True
+    assert is_message_duplicate(msgs, "assistant", "new response") is False
+
+
+def test_no_false_positive_when_content_is_none():
+    """Messages with content=None in the trailing block do not match."""
+    msgs = [
+        ChatMessage(role="user", content=None),
+        ChatMessage(role="user", content="hello"),
+    ]
+    assert is_message_duplicate(msgs, "user", "hello") is True
+    # None-content message should not match any string
+    msgs2 = [
+        ChatMessage(role="user", content=None),
+    ]
+    assert is_message_duplicate(msgs2, "user", "hello") is False
+
+
+def test_all_same_role_messages():
+    """When all messages share the same role, the entire list is scanned."""
+    msgs = [
+        ChatMessage(role="user", content="first"),
+        ChatMessage(role="user", content="second"),
+        ChatMessage(role="user", content="third"),
+    ]
+    assert is_message_duplicate(msgs, "user", "first") is True
+    assert is_message_duplicate(msgs, "user", "new") is False
+
+
+# --------------------------------------------------------------------------- #
+#  maybe_append_user_message                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_maybe_append_user_message_appends_new():
+    """A new user message is appended and returns True."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="assistant", content="hello"),
+    ]
+    result = maybe_append_user_message(session, "new msg", is_user_message=True)
+    assert result is True
+    assert len(session.messages) == 2
+    assert session.messages[-1].role == "user"
+    assert session.messages[-1].content == "new msg"
+
+
+def test_maybe_append_user_message_skips_duplicate():
+    """A duplicate user message is skipped and returns False."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="assistant", content="hello"),
+        ChatMessage(role="user", content="dup"),
+    ]
+    result = maybe_append_user_message(session, "dup", is_user_message=True)
+    assert result is False
+    assert len(session.messages) == 2
+
+
+def test_maybe_append_user_message_none_message():
+    """None/empty message returns False without appending."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    assert maybe_append_user_message(session, None, is_user_message=True) is False
+    assert maybe_append_user_message(session, "", is_user_message=True) is False
+    assert len(session.messages) == 0
+
+
+def test_maybe_append_assistant_message():
+    """Works for assistant role when is_user_message=False."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="user", content="hi"),
+    ]
+    result = maybe_append_user_message(session, "response", is_user_message=False)
+    assert result is True
+    assert session.messages[-1].role == "assistant"
+    assert session.messages[-1].content == "response"
+
+
+def test_maybe_append_assistant_skips_duplicate():
+    """Duplicate assistant message is skipped."""
+    session = ChatSession.new(user_id="u", dry_run=False)
+    session.messages = [
+        ChatMessage(role="user", content="hi"),
+        ChatMessage(role="assistant", content="dup"),
+    ]
+    result = maybe_append_user_message(session, "dup", is_user_message=False)
+    assert result is False
+    assert len(session.messages) == 2
