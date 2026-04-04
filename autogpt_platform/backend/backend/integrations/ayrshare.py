@@ -502,7 +502,7 @@ class AyrshareClient:
         # It seems like there is only ever one post in the array, and within that
         # there are multiple postIds
 
-        # There is a seperate endpoint for bulk posting, so feels safe to just take
+        # There is a separate endpoint for bulk posting, so feels safe to just take
         # the first post from the array
 
         if len(response_data["posts"]) == 0:
