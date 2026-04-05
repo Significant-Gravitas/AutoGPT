@@ -1,7 +1,7 @@
 "use client";
 
-import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
+import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import {
   buildReactArtifactSrcDoc,
   collectPreviewStyles,
@@ -58,13 +58,7 @@ export function ArtifactReactPreview({ source, title }: Props) {
   }
 
   if (!srcDoc) {
-    return (
-      <div className="space-y-3 p-4">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <ArtifactSkeleton />;
   }
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
 import type { ArtifactRef } from "../../../store";
@@ -123,14 +123,7 @@ function ArtifactContentLoader({ artifact, isSourceView }: Props) {
   }, [artifact.id, artifact.sourceUrl, classification.type]);
 
   if (isLoading) {
-    return (
-      <div className="space-y-3 p-4">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-4 w-5/6" />
-        <Skeleton className="h-32 w-full" />
-      </div>
-    );
+    return <ArtifactSkeleton extraLine />;
   }
 
   if (error) {
@@ -286,15 +279,7 @@ function ArtifactRenderer({
 
 export function ArtifactContent(props: Props) {
   return (
-    <Suspense
-      fallback={
-        <div className="space-y-3 p-4">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-4 w-1/2" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      }
-    >
+    <Suspense fallback={<ArtifactSkeleton />}>
       <ArtifactContentLoader {...props} />
     </Suspense>
   );
