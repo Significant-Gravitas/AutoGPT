@@ -11,6 +11,7 @@ import base64
 import logging
 import os
 import re
+import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncGenerator, Sequence
@@ -154,12 +155,19 @@ async def _prepare_baseline_attachments(
                 )
             else:
                 safe = _UNSAFE_FILENAME.sub("_", file_info.name) or "file"
-                local_path = os.path.join(working_dir, safe)
-                with open(local_path, "wb") as f:
+                candidate = os.path.join(working_dir, safe)
+                if os.path.exists(candidate):
+                    stem, ext = os.path.splitext(safe)
+                    idx = 1
+                    while os.path.exists(candidate):
+                        candidate = os.path.join(working_dir, f"{stem}_{idx}{ext}")
+                        idx += 1
+                with open(candidate, "wb") as f:
                     f.write(content)
                 file_descriptions.append(
                     f"- {file_info.name} ({mime}, "
-                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                    f"{file_info.size_bytes:,} bytes) saved to "
+                    f"{os.path.basename(candidate)}"
                 )
         except Exception:
             logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
@@ -979,10 +987,11 @@ async def stream_chat_completion_baseline(
             openai_messages.append({"role": msg.role, "content": msg.content})
 
     # --- File attachments (feature parity with SDK path) ---
-    working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
+    working_dir: str | None = None
     attachment_hint = ""
     image_blocks: list[dict[str, Any]] = []
     if file_ids and user_id:
+        working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
         attachment_hint, image_blocks = await _prepare_baseline_attachments(
             file_ids, user_id, session_id, working_dir
         )
@@ -999,37 +1008,32 @@ async def stream_chat_completion_baseline(
         else:
             context_hint = f"\n[The user shared a URL: {url}]"
 
-    # Append attachment + context hints to the last user message
+    # Append attachment + context hints and image blocks to the last user
+    # message in a single reverse scan.
     extra_hint = attachment_hint + context_hint
-    if extra_hint:
-        # Append to the last user message in openai_messages
+    if extra_hint or image_blocks:
         for i in range(len(openai_messages) - 1, -1, -1):
             if openai_messages[i].get("role") == "user":
                 existing = openai_messages[i].get("content", "")
                 if isinstance(existing, str):
-                    openai_messages[i]["content"] = existing + "\n" + extra_hint
-                break
-
-    # Embed vision content blocks for attached images (OpenAI format)
-    if image_blocks:
-        for i in range(len(openai_messages) - 1, -1, -1):
-            if openai_messages[i].get("role") == "user":
-                existing = openai_messages[i].get("content", "")
-                if isinstance(existing, str):
-                    parts: list[dict[str, Any]] = [{"type": "text", "text": existing}]
-                    for img in image_blocks:
-                        parts.append(
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": (
-                                        f"data:{img['source']['media_type']};"
-                                        f"base64,{img['source']['data']}"
-                                    )
-                                },
-                            }
-                        )
-                    openai_messages[i]["content"] = parts
+                    text = existing + "\n" + extra_hint if extra_hint else existing
+                    if image_blocks:
+                        parts: list[dict[str, Any]] = [{"type": "text", "text": text}]
+                        for img in image_blocks:
+                            parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": (
+                                            f"data:{img['source']['media_type']};"
+                                            f"base64,{img['source']['data']}"
+                                        )
+                                    },
+                                }
+                            )
+                        openai_messages[i]["content"] = parts
+                    else:
+                        openai_messages[i]["content"] = text
                 break
 
     tools = get_available_tools()
@@ -1205,6 +1209,10 @@ async def stream_chat_completion_baseline(
                 transcript_builder=transcript_builder,
                 session_msg_count=len(session.messages),
             )
+
+        # Clean up the ephemeral working directory used for file attachments.
+        if working_dir is not None:
+            shutil.rmtree(working_dir, ignore_errors=True)
 
     # Yield usage and finish AFTER try/finally (not inside finally).
     # PEP 525 prohibits yielding from finally in async generators during
