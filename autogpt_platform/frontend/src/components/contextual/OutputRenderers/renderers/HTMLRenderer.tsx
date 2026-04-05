@@ -1,4 +1,5 @@
 import React from "react";
+import { cspMetaTag, wrapWithHeadInjection } from "@/lib/iframe-sandbox-csp";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -7,10 +8,14 @@ import {
 } from "../types";
 
 function HTMLPreview({ value }: { value: string }) {
+  // Inject CSP meta so AI-generated HTML running in this sandboxed iframe
+  // can't fetch/XHR out. Wrap headless fragments in a full document so the
+  // meta lands inside <head> where browsers honor it.
+  const srcDoc = wrapWithHeadInjection(value, cspMetaTag());
   return (
     <iframe
       sandbox="allow-scripts"
-      srcDoc={value}
+      srcDoc={srcDoc}
       className="h-96 w-full rounded border border-zinc-200"
       title="HTML preview"
     />

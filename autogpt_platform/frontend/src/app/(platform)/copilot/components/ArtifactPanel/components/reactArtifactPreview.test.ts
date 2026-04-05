@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { escapeHtml } from "./reactArtifactPreview";
+import {
+  buildReactArtifactSrcDoc,
+  collectPreviewStyles,
+  escapeHtml,
+} from "./reactArtifactPreview";
 
 describe("escapeHtml", () => {
   it("escapes &, <, >, \", '", () => {
@@ -27,5 +31,60 @@ describe("escapeHtml", () => {
   it("is safe on empty / plain strings", () => {
     expect(escapeHtml("")).toBe("");
     expect(escapeHtml("plain text 123")).toBe("plain text 123");
+  });
+});
+
+describe("buildReactArtifactSrcDoc", () => {
+  const STYLES = collectPreviewStyles();
+
+  it("contains a CSP meta tag in <head>", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toMatch(
+      /<meta http-equiv="Content-Security-Policy"[^>]*connect-src 'none'/,
+    );
+  });
+
+  it("includes SRI-pinned React and ReactDOM bundles", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain(
+      'src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"',
+    );
+    expect(doc).toContain('integrity="sha384-');
+    expect(doc).toContain(
+      'src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"',
+    );
+  });
+
+  it("escapes the title into the <title> tag", () => {
+    const doc = buildReactArtifactSrcDoc(
+      "module.exports = {};",
+      "</title><script>alert(1)</script>",
+      STYLES,
+    );
+    expect(doc).not.toMatch(/<title><\/title><script>/);
+    expect(doc).toContain("&lt;/title&gt;");
+  });
+
+  it("escapes </script> sequences in compiled code so the inline script can't be broken out of", () => {
+    // A legitimate artifact may contain the literal string "</script>" inside
+    // a JSX template or string; it must be \u003c-escaped before embedding.
+    const compiled = 'const x = "</script><script>alert(1)</script>";';
+    const doc = buildReactArtifactSrcDoc(compiled, "A", STYLES);
+    // The raw compiled string should NOT appear verbatim inside the srcDoc
+    // (that would break out of the runtime <script>).
+    expect(doc).not.toContain('"</script><script>alert(1)</script>"');
+    // Instead, the escaped \u003c/script> form is what we expect.
+    expect(doc).toContain("\\u003c/script>");
+  });
+
+  it("wires up #root and #error containers", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain('<div id="root">');
+    expect(doc).toContain('<div id="error">');
+  });
+
+  it("injects the styles markup supplied by collectPreviewStyles", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("box-sizing: border-box");
   });
 });

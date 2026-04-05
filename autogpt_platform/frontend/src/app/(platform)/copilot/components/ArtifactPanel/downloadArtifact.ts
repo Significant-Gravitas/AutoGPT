@@ -9,8 +9,14 @@ import type { ArtifactRef } from "../../store";
  * before `.click()` fires the download.
  */
 export function downloadArtifact(artifact: ArtifactRef): Promise<void> {
+  // Replace path separators, Windows-reserved chars, control chars, and
+  // parent-dir sequences so the browser-assigned filename is safe to write
+  // anywhere on the user's filesystem.
   const safeName =
-    artifact.title.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_") || "download";
+    artifact.title
+      .replace(/\.\./g, "_")
+      .replace(/[\\/:*?"<>|\x00-\x1f]/g, "_")
+      .replace(/^\.+/, "") || "download";
   return fetch(artifact.sourceUrl)
     .then((res) => {
       if (!res.ok) throw new Error(`Download failed: ${res.status}`);

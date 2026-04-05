@@ -480,3 +480,123 @@ def test_delete_file_no_workspace(mocker):
     response = client.delete("/files/file-aaa-bbb")
     assert response.status_code == 404
     assert "Workspace not found" in response.text
+
+
+def test_upload_write_file_too_large_returns_413(mocker):
+    """write_file raises ValueError("File too large: …") → must map to 413."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=ValueError("File too large: 900 bytes exceeds 1MB limit")
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 413
+    assert "File too large" in response.text
+
+
+def test_upload_write_file_conflict_returns_409(mocker):
+    """Non-'File too large' ValueErrors from write_file stay as 409."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=ValueError("File already exists at path: /sessions/x/a.txt")
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 409
+    assert "already exists" in response.text
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_has_more_true_when_limit_exceeded(
+    mock_manager_cls, mock_get_workspace
+):
+    """The limit+1 fetch trick must flip has_more=True and trim the page."""
+    mock_get_workspace.return_value = _make_workspace()
+    # Backend was asked for limit+1=3, and returned exactly 3 items.
+    files = [
+        _make_file(id="f1", name="a.txt"),
+        _make_file(id="f2", name="b.txt"),
+        _make_file(id="f3", name="c.txt"),
+    ]
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = files
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["has_more"] is True
+    assert len(data["files"]) == 2
+    assert data["files"][0]["id"] == "f1"
+    assert data["files"][1]["id"] == "f2"
+    mock_instance.list_files.assert_called_once_with(
+        limit=3, offset=0, include_all_sessions=True
+    )
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_has_more_false_when_exactly_page_size(
+    mock_manager_cls, mock_get_workspace
+):
+    """Exactly `limit` rows means we're on the last page — has_more=False."""
+    mock_get_workspace.return_value = _make_workspace()
+    files = [_make_file(id="f1", name="a.txt"), _make_file(id="f2", name="b.txt")]
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = files
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["has_more"] is False
+    assert len(data["files"]) == 2
+
+
+@patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.WorkspaceManager")
+def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
+    mock_get_workspace.return_value = _make_workspace()
+    mock_instance = AsyncMock()
+    mock_instance.list_files.return_value = []
+    mock_manager_cls.return_value = mock_instance
+
+    response = client.get("/files?offset=50&limit=10")
+    assert response.status_code == 200
+    assert response.json()["offset"] == 50
+    mock_instance.list_files.assert_called_once_with(
+        limit=11, offset=50, include_all_sessions=True
+    )

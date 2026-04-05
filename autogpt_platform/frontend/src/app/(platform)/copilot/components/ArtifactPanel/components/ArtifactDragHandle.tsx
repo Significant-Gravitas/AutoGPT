@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { useRef, useState } from "react";
+import { DEFAULT_PANEL_WIDTH } from "../../../store";
 
 interface Props {
   onWidthChange: (width: number) => void;
@@ -27,7 +28,7 @@ export function ArtifactDragHandle({
     const panel = (e.target as HTMLElement).closest(
       "[data-artifact-panel]",
     ) as HTMLElement | null;
-    startWidthRef.current = panel?.offsetWidth ?? 600;
+    startWidthRef.current = panel?.offsetWidth ?? DEFAULT_PANEL_WIDTH;
 
     function handlePointerMove(moveEvent: PointerEvent) {
       const delta = startXRef.current - moveEvent.clientX;

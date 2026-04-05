@@ -4,9 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 
-// Cap on cached text artifacts per panel mount. Long sessions with many
-// large artifacts would otherwise hold every opened one in memory.
+// Cap on cached text artifacts. Long sessions with many large artifacts
+// would otherwise hold every opened one in memory.
 const CONTENT_CACHE_MAX = 12;
+
+// Module-level LRU keyed by artifact id so a sibling action (e.g. Copy
+// in ArtifactPanelHeader) can read what the panel already fetched without
+// re-hitting the network.
+const contentCache = new Map<string, string>();
+
+export function getCachedArtifactContent(id: string): string | undefined {
+  return contentCache.get(id);
+}
 
 export function useArtifactContent(
   artifact: ArtifactRef,
@@ -16,12 +25,16 @@ export function useArtifactContent(
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Bumped by `retry()` to force the fetch effect to re-run.
+  const [retryNonce, setRetryNonce] = useState(0);
   const scrollPositions = useRef(new Map<string, number>());
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Cache fetched text content by artifact id so A→B→A doesn't re-fetch.
-  // Kept at component scope (not module-level) so it's collected when the
-  // panel unmounts — artifact content can be large.
-  const contentCache = useRef(new Map<string, string>());
+
+  function retry() {
+    // Drop any cached failure/content for this id so we actually re-fetch.
+    contentCache.delete(artifact.id);
+    setRetryNonce((n) => n + 1);
+  }
 
   // Save scroll position when switching artifacts. Only save when the
   // content div has actually been mounted with a nonzero scrollTop, so we
@@ -93,7 +106,7 @@ export function useArtifactContent(
     setPdfUrl(null);
     // LRU touch — re-insert so the most-recently-used entry sits at the
     // tail and the oldest entry falls off the head first.
-    const cache = contentCache.current;
+    const cache = contentCache;
     const cached = cache.get(artifact.id);
     if (cached !== undefined) {
       cache.delete(artifact.id);
@@ -131,7 +144,7 @@ export function useArtifactContent(
     return () => {
       cancelled = true;
     };
-  }, [artifact.id, artifact.sourceUrl, classification.type]);
+  }, [artifact.id, artifact.sourceUrl, classification.type, retryNonce]);
 
-  return { content, pdfUrl, isLoading, error, scrollRef };
+  return { content, pdfUrl, isLoading, error, scrollRef, retry };
 }

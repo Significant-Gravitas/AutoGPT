@@ -3,8 +3,12 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
+import { getCachedArtifactContent } from "./components/useArtifactContent";
 import { downloadArtifact } from "./downloadArtifact";
 import { classifyArtifact } from "./helpers";
+
+// SSR fallback for viewport width before window is available.
+const DEFAULT_VIEWPORT_WIDTH = 1280;
 
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
@@ -52,16 +56,26 @@ export function useArtifactPanel() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [artifactPanel.isOpen, closeArtifactPanel]);
 
-  // Track viewport width reactively for maximize mode
+  // Track viewport width reactively for maximize mode.
   const [viewportWidth, setViewportWidth] = useState(
-    typeof window !== "undefined" ? window.innerWidth : 1280,
+    typeof window !== "undefined" ? window.innerWidth : DEFAULT_VIEWPORT_WIDTH,
   );
   useEffect(() => {
+    // Throttle to ~10Hz: resize fires continuously during drag, but we only
+    // need the panel width to follow the viewport within a frame or two.
+    let timer: ReturnType<typeof setTimeout> | null = null;
     function handleResize() {
-      setViewportWidth(window.innerWidth);
+      if (timer) return;
+      timer = setTimeout(() => {
+        setViewportWidth(window.innerWidth);
+        timer = null;
+      }, 100);
     }
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   const canCopy =
@@ -72,11 +86,16 @@ export function useArtifactPanel() {
 
   function handleCopy() {
     if (!activeArtifact || !canCopy) return;
-    fetch(activeArtifact.sourceUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Copy failed: ${res.status}`);
-        return res.text();
-      })
+    // Reuse content already fetched by the preview pane when available —
+    // Copy should feel instant, not trigger a second network round-trip.
+    const cached = getCachedArtifactContent(activeArtifact.id);
+    const textPromise = cached
+      ? Promise.resolve(cached)
+      : fetch(activeArtifact.sourceUrl).then((res) => {
+          if (!res.ok) throw new Error(`Copy failed: ${res.status}`);
+          return res.text();
+        });
+    textPromise
       .then((text) => navigator.clipboard.writeText(text))
       .then(() => {
         toast({ title: "Copied to clipboard" });

@@ -46,7 +46,7 @@ interface ArtifactPanelState {
   history: ArtifactRef[];
 }
 
-const DEFAULT_PANEL_WIDTH = 600;
+export const DEFAULT_PANEL_WIDTH = 600;
 
 const isClient = typeof window !== "undefined";
 

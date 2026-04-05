@@ -11,10 +11,8 @@ import {
   ARTIFACT_IFRAME_CSP,
   TAILWIND_CDN_URL,
 } from "./artifactPreviewConstants";
+import { wrapWithHeadInjection } from "@/lib/iframe-sandbox-csp";
 import { useArtifactContent } from "./useArtifactContent";
-
-// Matches an opening <head> tag (with or without attributes), case-insensitive.
-const HEAD_OPEN_RE = /<head(\s[^>]*)?>/i;
 
 interface Props {
   artifact: ArtifactRef;
@@ -27,10 +25,8 @@ function ArtifactContentLoader({
   isSourceView,
   classification,
 }: Props) {
-  const { content, pdfUrl, isLoading, error, scrollRef } = useArtifactContent(
-    artifact,
-    classification,
-  );
+  const { content, pdfUrl, isLoading, error, scrollRef, retry } =
+    useArtifactContent(artifact, classification);
 
   if (isLoading) {
     return <ArtifactSkeleton extraLine />;
@@ -38,9 +34,19 @@ function ArtifactContentLoader({
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 p-8 text-center">
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center gap-3 p-8 text-center"
+      >
         <p className="text-sm text-zinc-500">Failed to load content</p>
         <p className="text-xs text-zinc-400">{error}</p>
+        <button
+          type="button"
+          onClick={retry}
+          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          Try again
+        </button>
       </div>
     );
   }
@@ -108,13 +114,10 @@ function ArtifactRenderer({
   if (classification.type === "html") {
     const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_IFRAME_CSP}">`;
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const headInjection = `${cspMeta}${tailwindScript}`;
-    const wrapped = HEAD_OPEN_RE.test(content)
-      ? content.replace(HEAD_OPEN_RE, (match) => `${match}${headInjection}`)
-      : // Headless fragment: wrap in a full document so the CSP meta lives
-        // inside <head> where browsers will honor it (meta-CSP before
-        // <!doctype html> is ignored per HTML spec).
-        `<!doctype html><html><head>${headInjection}</head><body>${content}</body></html>`;
+    const wrapped = wrapWithHeadInjection(
+      content,
+      `${cspMeta}${tailwindScript}`,
+    );
     return (
       <iframe
         sandbox="allow-scripts"
