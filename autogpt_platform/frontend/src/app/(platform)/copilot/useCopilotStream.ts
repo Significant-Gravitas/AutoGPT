@@ -16,7 +16,7 @@ import {
   extractSendMessageText,
   hasActiveBackendStream,
   resolveInProgressTools,
-  shouldSuppressDuplicateSend,
+  getSendSuppressionReason,
 } from "./helpers";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -260,15 +260,25 @@ export function useCopilotStream({
   const sendMessage: typeof sdkSendMessage = async (...args) => {
     const text = extractSendMessageText(args[0]);
 
-    if (
-      shouldSuppressDuplicateSend({
-        text,
-        isReconnectScheduled: isReconnectScheduledRef.current,
-        lastSubmittedText: lastSubmittedMsgRef.current,
-        messages: rawMessages,
-      })
-    )
+    const suppressReason = getSendSuppressionReason({
+      text,
+      isReconnectScheduled: isReconnectScheduledRef.current,
+      lastSubmittedText: lastSubmittedMsgRef.current,
+      messages: rawMessages,
+    });
+
+    if (suppressReason === "reconnecting") {
+      // The ref flips to ``true`` synchronously while the React state that
+      // drives the UI's disabled state only updates on the next render, so
+      // the user may have clicked send against a still-enabled input. Tell
+      // them their message wasn't dropped silently.
+      toast({
+        title: "Reconnecting",
+        description: "Wait for the connection to resume before sending.",
+      });
       return;
+    }
+    if (suppressReason === "duplicate") return;
 
     lastSubmittedMsgRef.current = text;
     return sdkSendMessage(...args);
