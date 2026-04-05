@@ -108,9 +108,12 @@ export function useArtifactPanel() {
       });
   }
 
+  // Always clamp against the current viewport so a previously-dragged-wide
+  // panel doesn't spill offscreen after the user resizes their window.
+  const maxWidth = viewportWidth * 0.85;
   const effectiveWidth = artifactPanel.isMaximized
-    ? viewportWidth * 0.85
-    : artifactPanel.width;
+    ? maxWidth
+    : Math.min(artifactPanel.width, maxWidth);
 
   return {
     ...artifactPanel,
