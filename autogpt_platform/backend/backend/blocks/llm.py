@@ -737,6 +737,7 @@ class LLMResponse(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     reasoning: Optional[str] = None
+    provider_cost: float | None = None
 
 
 def convert_openai_tool_fmt_to_anthropic(
@@ -769,6 +770,26 @@ def convert_openai_tool_fmt_to_anthropic(
         anthropic_tools.append(anthropic_tool)
 
     return anthropic_tools
+
+
+def extract_openrouter_cost(response) -> float | None:
+    """Extract OpenRouter's `x-total-cost` header from an OpenAI SDK response.
+
+    OpenRouter returns the per-request USD cost in a response header. The
+    OpenAI SDK exposes the raw httpx response via an undocumented `_response`
+    attribute. If the SDK ever drops or renames that attribute, we silently
+    degrade to no cost tracking rather than raising.
+    """
+    try:
+        raw_resp = getattr(response, "_response", None)
+        if raw_resp is None or not hasattr(raw_resp, "headers"):
+            return None
+        cost_header = raw_resp.headers.get("x-total-cost")
+        if not cost_header:
+            return None
+        return float(cost_header)
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 def extract_openai_reasoning(response) -> str | None:
@@ -1103,6 +1124,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            provider_cost=extract_openrouter_cost(response),
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -1427,12 +1449,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     max_tokens=input_data.max_tokens,
                 )
                 response_text = llm_response.response
-                self.merge_stats(
-                    NodeExecutionStats(
-                        input_token_count=llm_response.prompt_tokens,
-                        output_token_count=llm_response.completion_tokens,
-                    )
+                cost_stats = NodeExecutionStats(
+                    input_token_count=llm_response.prompt_tokens,
+                    output_token_count=llm_response.completion_tokens,
                 )
+                if llm_response.provider_cost is not None:
+                    cost_stats.provider_cost = llm_response.provider_cost
+                self.merge_stats(cost_stats)
                 logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:

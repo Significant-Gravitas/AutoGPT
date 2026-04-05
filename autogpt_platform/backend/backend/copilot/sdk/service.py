@@ -29,6 +29,7 @@ from claude_agent_sdk import (
 )
 from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
@@ -2368,8 +2369,26 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
-        # --- Close OTEL context ---
+        # --- Close OTEL context (with cost attributes) ---
         if _otel_ctx is not None:
+            try:
+                span = otel_trace.get_current_span()
+                if span and span.is_recording():
+                    span.set_attribute("gen_ai.usage.prompt_tokens", turn_prompt_tokens)
+                    span.set_attribute(
+                        "gen_ai.usage.completion_tokens", turn_completion_tokens
+                    )
+                    span.set_attribute(
+                        "gen_ai.usage.cache_read_tokens", turn_cache_read_tokens
+                    )
+                    span.set_attribute(
+                        "gen_ai.usage.cache_creation_tokens",
+                        turn_cache_creation_tokens,
+                    )
+                    if turn_cost_usd is not None:
+                        span.set_attribute("gen_ai.usage.cost_usd", turn_cost_usd)
+            except Exception:
+                logger.debug("Failed to set OTEL cost attributes", exc_info=True)
             try:
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
@@ -2387,6 +2406,8 @@ async def stream_chat_completion_sdk(
             cache_creation_tokens=turn_cache_creation_tokens,
             log_prefix=log_prefix,
             cost_usd=turn_cost_usd,
+            model=config.model,
+            provider="anthropic",
         )
 
         # --- Persist session messages ---

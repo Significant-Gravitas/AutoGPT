@@ -1,0 +1,187 @@
+"""Helpers for platform cost tracking on system-credential block executions."""
+
+import asyncio
+import logging
+from typing import Any, cast
+
+from backend.blocks._base import Block, BlockSchema
+from backend.data.execution import NodeExecutionEntry
+from backend.data.model import NodeExecutionStats
+from backend.data.platform_cost import (
+    PlatformCostEntry,
+    log_platform_cost_safe,
+    usd_to_microdollars,
+)
+from backend.executor.utils import block_usage_cost
+from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.providers import ProviderName
+
+logger = logging.getLogger(__name__)
+
+# Provider groupings by billing model — used when the block didn't explicitly
+# declare stats.provider_cost_type and we fall back to provider-name
+# heuristics. Values match ProviderName enum values.
+_CHARACTER_BILLED_PROVIDERS = frozenset(
+    {ProviderName.D_ID.value, ProviderName.ELEVENLABS.value}
+)
+_WALLTIME_BILLED_PROVIDERS = frozenset(
+    {
+        ProviderName.FAL.value,
+        ProviderName.REVID.value,
+        ProviderName.REPLICATE.value,
+    }
+)
+
+# Hold strong references to in-flight log tasks so the event loop doesn't
+# garbage-collect them mid-execution. Tasks remove themselves on completion.
+_pending_log_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_log(entry: PlatformCostEntry) -> None:
+    task = asyncio.create_task(log_platform_cost_safe(entry))
+    _pending_log_tasks.add(task)
+    task.add_done_callback(_pending_log_tasks.discard)
+
+
+def resolve_tracking(
+    provider: str,
+    stats: NodeExecutionStats,
+    input_data: dict[str, Any],
+) -> tuple[str, float]:
+    """Return (tracking_type, tracking_amount) based on provider billing model.
+
+    Preference order:
+    1. Block-declared: if the block set `provider_cost_type` on its stats,
+       honor it directly (paired with `provider_cost` as the amount).
+    2. Heuristic fallback: infer from `provider_cost`/token counts, then
+       from provider name for per-character / per-second billing.
+    """
+    # 1. Block explicitly declared its cost type
+    if stats.provider_cost_type:
+        return stats.provider_cost_type, stats.provider_cost or 0.0
+
+    # 2. Provider returned actual USD cost (OpenRouter, Exa)
+    if stats.provider_cost is not None:
+        return "cost_usd", stats.provider_cost
+
+    # 3. LLM providers: track by tokens
+    if stats.input_token_count or stats.output_token_count:
+        return "tokens", float(
+            (stats.input_token_count or 0) + (stats.output_token_count or 0)
+        )
+
+    # 4. Provider-specific billing heuristics
+
+    # TTS: billed per character of input text
+    if provider == ProviderName.UNREAL_SPEECH.value:
+        text = input_data.get("text", "")
+        return "characters", float(len(text)) if isinstance(text, str) else 0.0
+
+    # D-ID + ElevenLabs voice: billed per character of script
+    if provider in _CHARACTER_BILLED_PROVIDERS:
+        text = (
+            input_data.get("script_input", "")
+            or input_data.get("text", "")
+            or input_data.get("script", "")  # VideoNarrationBlock uses `script`
+        )
+        return "characters", float(len(text)) if isinstance(text, str) else 0.0
+
+    # E2B: billed per second of sandbox time
+    if provider == ProviderName.E2B.value:
+        return "sandbox_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
+
+    # Video/image gen: walltime includes queue + generation + polling
+    if provider in _WALLTIME_BILLED_PROVIDERS:
+        return "walltime_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
+
+    # Per-request: Google Maps, Ideogram, Nvidia, Apollo, etc.
+    # All billed per API call - count 1 per block execution.
+    return "per_run", 1.0
+
+
+async def log_system_credential_cost(
+    node_exec: NodeExecutionEntry,
+    block: Block,
+    stats: NodeExecutionStats,
+) -> None:
+    """Check if a system credential was used and log the platform cost.
+
+    Logs only the first matching system credential field (one log per
+    execution). Any unexpected error is caught and logged — cost logging
+    is strictly best-effort and must never disrupt block execution.
+
+    Note: costMicrodollars is left null for providers that don't return
+    a USD cost. The credit_cost in metadata captures our internal credit
+    charge as a proxy.
+    """
+    try:
+        if node_exec.execution_context.dry_run:
+            return
+
+        input_data = node_exec.inputs
+        input_model = cast(type[BlockSchema], block.input_schema)
+
+        for field_name in input_model.get_credentials_fields():
+            cred_data = input_data.get(field_name)
+            if not cred_data or not isinstance(cred_data, dict):
+                continue
+            cred_id = cred_data.get("id", "")
+            if not cred_id or not is_system_credential(cred_id):
+                continue
+
+            model_name = input_data.get("model")
+            if model_name is not None and not isinstance(model_name, str):
+                model_name = (
+                    str(model_name) if not isinstance(model_name, dict) else None
+                )
+
+            credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
+
+            provider_name = cred_data.get("provider", "unknown")
+            tracking_type, tracking_amount = resolve_tracking(
+                provider=provider_name,
+                stats=stats,
+                input_data=input_data,
+            )
+
+            # Only treat provider_cost as USD when the tracking type says so.
+            # For other types (items, characters, per_run, ...) the
+            # provider_cost field holds the raw amount, not a dollar value.
+            cost_microdollars = None
+            if tracking_type == "cost_usd":
+                cost_microdollars = usd_to_microdollars(stats.provider_cost)
+
+            meta: dict[str, Any] = {
+                "tracking_type": tracking_type,
+                "tracking_amount": tracking_amount,
+            }
+            if credit_cost:
+                meta["credit_cost"] = credit_cost
+            if stats.provider_cost is not None:
+                meta["provider_cost_usd"] = stats.provider_cost
+
+            _schedule_log(
+                PlatformCostEntry(
+                    user_id=node_exec.user_id,
+                    graph_exec_id=node_exec.graph_exec_id,
+                    node_exec_id=node_exec.node_exec_id,
+                    graph_id=node_exec.graph_id,
+                    node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
+                    block_name=block.name,
+                    provider=provider_name,
+                    credential_id=cred_id,
+                    cost_microdollars=cost_microdollars,
+                    input_tokens=stats.input_token_count,
+                    output_tokens=stats.output_token_count,
+                    data_size=stats.output_size if stats.output_size > 0 else None,
+                    duration=stats.walltime if stats.walltime > 0 else None,
+                    model=model_name,
+                    tracking_type=tracking_type,
+                    tracking_amount=tracking_amount,
+                    metadata=meta or None,
+                )
+            )
+            return  # One log per execution is enough
+    except Exception:
+        logger.exception("log_system_credential_cost failed unexpectedly")

@@ -9,6 +9,7 @@ from typing import Union
 
 from pydantic import BaseModel
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -116,3 +117,10 @@ class ExaCodeContextBlock(Block):
         yield "cost_dollars", context.cost_dollars
         yield "search_time", context.search_time
         yield "output_tokens", context.output_tokens
+
+        # Parse cost_dollars (API returns as string, e.g. "0.005")
+        try:
+            cost_usd = float(context.cost_dollars)
+            self.merge_stats(NodeExecutionStats(provider_cost=cost_usd))
+        except (ValueError, TypeError):
+            pass

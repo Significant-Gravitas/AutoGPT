@@ -987,3 +987,51 @@ class TestLlmModelMissing:
         assert (
             llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
         )
+
+
+class TestExtractOpenRouterCost:
+    """Tests for extract_openrouter_cost — the x-total-cost header parser."""
+
+    def _mk_response(self, headers: dict | None):
+        response = MagicMock()
+        if headers is None:
+            response._response = None
+        else:
+            raw = MagicMock()
+            raw.headers = headers
+            response._response = raw
+        return response
+
+    def test_extracts_numeric_cost(self):
+        response = self._mk_response({"x-total-cost": "0.0042"})
+        assert llm.extract_openrouter_cost(response) == 0.0042
+
+    def test_returns_none_when_header_missing(self):
+        response = self._mk_response({})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_header_empty_string(self):
+        response = self._mk_response({"x-total-cost": ""})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_header_non_numeric(self):
+        response = self._mk_response({"x-total-cost": "not-a-number"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_no_response_attr(self):
+        response = MagicMock(spec=[])  # no _response attr
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_raw_is_none(self):
+        response = self._mk_response(None)
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_raw_has_no_headers(self):
+        response = MagicMock()
+        response._response = MagicMock(spec=[])  # no headers attr
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_zero_for_zero_cost(self):
+        """Zero-cost is a valid value (free tier) and must not become None."""
+        response = self._mk_response({"x-total-cost": "0"})
+        assert llm.extract_openrouter_cost(response) == 0.0

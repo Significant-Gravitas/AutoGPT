@@ -17,6 +17,7 @@ from typing import Any, cast
 import orjson
 from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from opentelemetry import trace as otel_trace
 
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import (
@@ -88,6 +89,7 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    cost_usd: float | None = None
 
 
 async def _baseline_llm_caller(
@@ -103,6 +105,7 @@ async def _baseline_llm_caller(
     state.pending_events.append(StreamStartStep())
 
     round_text = ""
+    response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
         typed_messages = cast(list[ChatCompletionMessageParam], messages)
@@ -165,6 +168,18 @@ async def _baseline_llm_caller(
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
     finally:
+        # Extract OpenRouter cost from response headers (in finally so we
+        # capture cost even when the stream errors mid-way — we already paid).
+        # Accumulate across multi-round tool-calling turns.
+        try:
+            raw_resp = getattr(response, "response", None)
+            if raw_resp and hasattr(raw_resp, "headers"):
+                cost_header = raw_resp.headers.get("x-total-cost")
+                if cost_header:
+                    state.cost_usd = (state.cost_usd or 0.0) + float(cost_header)
+        except (ValueError, AttributeError, UnboundLocalError):
+            pass
+
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -534,8 +549,22 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
-        # Close Langfuse trace context
+        # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
+            try:
+                span = otel_trace.get_current_span()
+                if span and span.is_recording():
+                    span.set_attribute(
+                        "gen_ai.usage.prompt_tokens", state.turn_prompt_tokens
+                    )
+                    span.set_attribute(
+                        "gen_ai.usage.completion_tokens",
+                        state.turn_completion_tokens,
+                    )
+                    if state.cost_usd is not None:
+                        span.set_attribute("gen_ai.usage.cost_usd", state.cost_usd)
+            except Exception:
+                logger.debug("[Baseline] Failed to set OTEL cost attributes")
             try:
                 _trace_ctx.__exit__(None, None, None)
             except Exception:
@@ -577,6 +606,8 @@ async def stream_chat_completion_baseline(
             prompt_tokens=state.turn_prompt_tokens,
             completion_tokens=state.turn_completion_tokens,
             log_prefix="[Baseline]",
+            cost_usd=state.cost_usd,
+            model=config.model,
         )
 
         # Persist assistant response

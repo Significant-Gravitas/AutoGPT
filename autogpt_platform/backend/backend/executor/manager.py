@@ -45,6 +45,7 @@ from backend.data.notifications import (
     ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.cost_tracking import log_system_credential_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.notifications.notifications import queue_notification
 from backend.util import json
@@ -691,6 +692,14 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
+
+        # Log platform cost if system credentials were used (only on success)
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+            )
 
         return execution_stats
 
@@ -2047,9 +2056,6 @@ class ExecutionManager(AppProcess):
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 
         super().cleanup()
-
-
-# ------- UTILITIES ------- #
 
 
 def get_db_client() -> "DatabaseManagerClient":

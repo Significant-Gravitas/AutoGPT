@@ -1,7 +1,7 @@
 import pytest
 from pydantic import SecretStr
 
-from backend.data.model import HostScopedCredentials
+from backend.data.model import HostScopedCredentials, NodeExecutionStats
 
 
 class TestHostScopedCredentials:
@@ -166,3 +166,46 @@ class TestHostScopedCredentials:
         )
 
         assert creds.matches_url(test_url) == expected
+
+
+class TestNodeExecutionStatsIadd:
+    def test_adds_numeric_fields(self):
+        a = NodeExecutionStats(input_token_count=100, output_token_count=50)
+        b = NodeExecutionStats(input_token_count=200, output_token_count=30)
+        a += b
+        assert a.input_token_count == 300
+        assert a.output_token_count == 80
+
+    def test_none_does_not_overwrite(self):
+        a = NodeExecutionStats(provider_cost=0.5, error="some error")
+        b = NodeExecutionStats(provider_cost=None, error=None)
+        a += b
+        assert a.provider_cost == 0.5
+        assert a.error == "some error"
+
+    def test_none_is_skipped_preserving_existing_value(self):
+        a = NodeExecutionStats(input_token_count=100)
+        b = NodeExecutionStats()
+        a += b
+        assert a.input_token_count == 100
+
+    def test_dict_fields_are_merged(self):
+        a = NodeExecutionStats(
+            cleared_inputs={"field1": ["val1"]},
+        )
+        b = NodeExecutionStats(
+            cleared_inputs={"field2": ["val2"]},
+        )
+        a += b
+        assert a.cleared_inputs == {"field1": ["val1"], "field2": ["val2"]}
+
+    def test_returns_self(self):
+        a = NodeExecutionStats()
+        b = NodeExecutionStats(input_token_count=10)
+        result = a.__iadd__(b)
+        assert result is a
+
+    def test_not_implemented_for_non_stats(self):
+        a = NodeExecutionStats()
+        result = a.__iadd__("not a stats")  # type: ignore[arg-type]
+        assert result is NotImplemented

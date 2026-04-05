@@ -4,16 +4,45 @@ Both the baseline (OpenRouter) and SDK (Anthropic) service layers need to:
   1. Append a ``Usage`` record to the session.
   2. Log the turn's token counts.
   3. Record weighted usage in Redis for rate-limiting.
+  4. Write a PlatformCostLog entry for admin cost tracking.
 
 This module extracts that common logic so both paths stay in sync.
 """
 
+import asyncio
 import logging
+
+from backend.data.platform_cost import (
+    PlatformCostEntry,
+    log_platform_cost_safe,
+    usd_to_microdollars,
+)
 
 from .model import ChatSession, Usage
 from .rate_limit import record_token_usage
 
 logger = logging.getLogger(__name__)
+
+# Identifiers used by PlatformCostLog for copilot turns (not tied to a real
+# block/credential in the block_cost_config or credentials_store tables).
+COPILOT_BLOCK_ID = "copilot"
+COPILOT_CREDENTIAL_ID = "copilot_system"
+
+# Hold strong references to in-flight log tasks to prevent GC.
+_pending_log_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_log(entry: PlatformCostEntry) -> None:
+    task = asyncio.create_task(log_platform_cost_safe(entry))
+    _pending_log_tasks.add(task)
+    task.add_done_callback(_pending_log_tasks.discard)
+
+
+def _copilot_block_name(log_prefix: str) -> str:
+    """Turn a log prefix like ``"[SDK]"`` into a stable block_name
+    ``"copilot:SDK"``. Empty prefix becomes just ``"copilot"``."""
+    tag = log_prefix.strip(" []")
+    return f"{COPILOT_BLOCK_ID}:{tag}" if tag else COPILOT_BLOCK_ID
 
 
 async def persist_and_record_usage(
@@ -26,6 +55,8 @@ async def persist_and_record_usage(
     cache_creation_tokens: int = 0,
     log_prefix: str = "",
     cost_usd: float | str | None = None,
+    model: str | None = None,
+    provider: str = "open_router",
 ) -> int:
     """Persist token usage to session and record for rate limiting.
 
@@ -38,6 +69,7 @@ async def persist_and_record_usage(
         cache_creation_tokens: Tokens written to prompt cache (Anthropic only).
         log_prefix: Prefix for log messages (e.g. "[SDK]", "[Baseline]").
         cost_usd: Optional cost for logging (float from SDK, str otherwise).
+        provider: Cost provider name (e.g. "anthropic", "open_router").
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -94,5 +126,48 @@ async def persist_and_record_usage(
             )
         except Exception as usage_err:
             logger.warning(f"{log_prefix} Failed to record token usage: {usage_err}")
+
+    # Log to PlatformCostLog for admin cost dashboard
+    if user_id and total_tokens > 0:
+        cost_float = None
+        if cost_usd is not None:
+            try:
+                cost_float = float(cost_usd)
+            except (ValueError, TypeError):
+                pass
+
+        cost_microdollars = usd_to_microdollars(cost_float)
+        session_id = session.session_id if session else None
+
+        if cost_float is not None:
+            tracking_type = "cost_usd"
+            tracking_amount = cost_float
+        else:
+            tracking_type = "tokens"
+            tracking_amount = total_tokens
+
+        _schedule_log(
+            PlatformCostEntry(
+                user_id=user_id,
+                graph_exec_id=session_id,
+                block_id=COPILOT_BLOCK_ID,
+                block_name=_copilot_block_name(log_prefix),
+                provider=provider,
+                credential_id=COPILOT_CREDENTIAL_ID,
+                cost_microdollars=cost_microdollars,
+                input_tokens=prompt_tokens,
+                output_tokens=completion_tokens,
+                model=model,
+                tracking_type=tracking_type,
+                tracking_amount=tracking_amount,
+                metadata={
+                    "tracking_type": tracking_type,
+                    "tracking_amount": tracking_amount,
+                    "cache_read_tokens": cache_read_tokens,
+                    "cache_creation_tokens": cache_creation_tokens,
+                    "source": "copilot",
+                },
+            )
+        )
 
     return total_tokens
