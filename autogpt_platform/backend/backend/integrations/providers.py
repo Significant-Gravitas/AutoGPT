@@ -14,6 +14,7 @@ class ProviderName(str, Enum):
     AIML_API = "aiml_api"
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
+    AVIAN = "avian"
     COMPASS = "compass"
     DATABASE = "database"
     DISCORD = "discord"

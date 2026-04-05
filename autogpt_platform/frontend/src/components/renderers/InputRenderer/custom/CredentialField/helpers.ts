@@ -94,6 +94,7 @@ export const providerIcons: Partial<Record<string, Icon>> = {
   aiml_api: KeyholeIcon,
   anthropic: KeyholeIcon,
   apollo: KeyholeIcon,
+  avian: KeyholeIcon,
   e2b: KeyholeIcon,
   github: GithubLogoIcon,
   google: GoogleLogoIcon,
