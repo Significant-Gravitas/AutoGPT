@@ -1,10 +1,11 @@
 "use client";
 
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
 import { CaretRight, DownloadSimple } from "@phosphor-icons/react";
-import { memo } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
+import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
 
 interface Props {
@@ -18,7 +19,7 @@ function formatSize(bytes?: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export const ArtifactCard = memo(function ArtifactCard({ artifact }: Props) {
+export function ArtifactCard({ artifact }: Props) {
   const activeID = useCopilotUIStore((s) => s.artifactPanel.activeArtifact?.id);
   const isOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
@@ -31,12 +32,22 @@ export const ArtifactCard = memo(function ArtifactCard({ artifact }: Props) {
   );
   const Icon = classification.icon;
 
+  function handleDownloadOnly() {
+    downloadArtifact(artifact).catch(() => {
+      toast({
+        title: "Download failed",
+        description: "Couldn't fetch the file.",
+        variant: "destructive",
+      });
+    });
+  }
+
   if (!classification.openable) {
     return (
-      <a
-        href={artifact.sourceUrl}
-        download={artifact.title}
-        className="my-1 flex items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 transition-colors hover:bg-zinc-50"
+      <button
+        type="button"
+        onClick={handleDownloadOnly}
+        className="my-1 flex w-full items-center gap-3 rounded-lg border border-zinc-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-zinc-50"
       >
         <Icon size={20} className="shrink-0 text-zinc-400" />
         <div className="min-w-0 flex-1">
@@ -51,7 +62,7 @@ export const ArtifactCard = memo(function ArtifactCard({ artifact }: Props) {
           </p>
         </div>
         <DownloadSimple size={16} className="shrink-0 text-zinc-400" />
-      </a>
+      </button>
     );
   }
 
@@ -100,4 +111,4 @@ export const ArtifactCard = memo(function ArtifactCard({ artifact }: Props) {
       />
     </button>
   );
-});
+}
