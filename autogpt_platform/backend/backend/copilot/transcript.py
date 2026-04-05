@@ -658,6 +658,7 @@ async def upload_transcript(
     content: str,
     message_count: int = 0,
     log_prefix: str = "[Transcript]",
+    skip_strip: bool = False,
 ) -> None:
     """Strip progress entries and stale thinking blocks, then upload transcript.
 
@@ -670,11 +671,18 @@ async def upload_transcript(
     Args:
         content: Complete JSONL transcript (from TranscriptBuilder).
         message_count: ``len(session.messages)`` at upload time.
+        skip_strip: When ``True``, skip the strip + re-validate pass.
+            Safe for builder-generated content (baseline path) which
+            never emits progress entries or stale thinking blocks.
     """
-    # Strip metadata entries and stale thinking blocks in a single parse pass.
-    # SDK-built transcripts shouldn't have progress entries, but strip for safety.
-    stripped = strip_for_upload(content)
-    if not validate_transcript(stripped):
+    if skip_strip:
+        # Caller guarantees the content is already clean and valid.
+        stripped = content
+    else:
+        # Strip metadata entries and stale thinking blocks in a single parse.
+        # SDK-built transcripts may have progress entries; strip for safety.
+        stripped = strip_for_upload(content)
+    if not skip_strip and not validate_transcript(stripped):
         # Log entry types for debugging — helps identify why validation failed
         entry_types = [
             json.loads(line, fallback={"type": "INVALID_JSON"}).get("type", "?")
@@ -695,27 +703,34 @@ async def upload_transcript(
     storage = await get_workspace_storage()
     wid, fid, fname = _storage_path_parts(user_id, session_id)
     encoded = stripped.encode("utf-8")
+    meta = {"message_count": message_count, "uploaded_at": time.time()}
+    mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
+    meta_encoded = json.dumps(meta).encode("utf-8")
 
-    await storage.store(
-        workspace_id=wid,
-        file_id=fid,
-        filename=fname,
-        content=encoded,
-    )
-
-    # Update metadata so message_count stays current.  The gap-fill logic
-    # in _build_query_message relies on it to avoid re-compressing messages.
-    try:
-        meta = {"message_count": message_count, "uploaded_at": time.time()}
-        mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
-        await storage.store(
+    # Transcript + metadata are independent objects at different keys, so
+    # write them concurrently.  ``return_exceptions`` keeps a metadata
+    # failure from sinking the transcript write.
+    transcript_result, metadata_result = await asyncio.gather(
+        storage.store(
+            workspace_id=wid,
+            file_id=fid,
+            filename=fname,
+            content=encoded,
+        ),
+        storage.store(
             workspace_id=mwid,
             file_id=mfid,
             filename=mfname,
-            content=json.dumps(meta).encode("utf-8"),
-        )
-    except Exception as e:
-        logger.warning("%s Failed to write metadata: %s", log_prefix, e)
+            content=meta_encoded,
+        ),
+        return_exceptions=True,
+    )
+    if isinstance(transcript_result, BaseException):
+        raise transcript_result
+    if isinstance(metadata_result, BaseException):
+        # Metadata is best-effort — the gap-fill logic in
+        # _build_query_message tolerates a missing metadata file.
+        logger.warning("%s Failed to write metadata: %s", log_prefix, metadata_result)
 
     logger.info(
         "%s Uploaded %dB (stripped from %dB, msg_count=%d)",

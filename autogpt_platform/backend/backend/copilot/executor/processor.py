@@ -10,11 +10,10 @@ import os
 import subprocess
 import threading
 import time
-from typing import Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
-from backend.copilot.config import ChatConfig
+from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -34,10 +33,10 @@ logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]"
 # ============ Mode Routing ============ #
 
 
-async def _resolve_effective_mode(
-    mode: Literal["fast", "extended_thinking"] | None,
+async def resolve_effective_mode(
+    mode: CopilotMode | None,
     user_id: str | None,
-) -> Literal["fast", "extended_thinking"] | None:
+) -> CopilotMode | None:
     """Strip ``mode`` when the user is not entitled to the toggle.
 
     The UI gates the mode toggle behind ``CHAT_MODE_OPTION``; the
@@ -57,8 +56,8 @@ async def _resolve_effective_mode(
     return mode
 
 
-async def _resolve_use_sdk(
-    mode: Literal["fast", "extended_thinking"] | None,
+async def resolve_use_sdk_for_mode(
+    mode: CopilotMode | None,
     user_id: str | None,
     *,
     use_claude_code_subscription: bool,
@@ -306,10 +305,8 @@ class CoPilotProcessor:
             else:
                 # Enforce server-side feature-flag gate so unauthorised
                 # users cannot force a mode by crafting the request.
-                effective_mode = await _resolve_effective_mode(
-                    entry.mode, entry.user_id
-                )
-                use_sdk = await _resolve_use_sdk(
+                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
+                use_sdk = await resolve_use_sdk_for_mode(
                     effective_mode,
                     entry.user_id,
                     use_claude_code_subscription=config.use_claude_code_subscription,

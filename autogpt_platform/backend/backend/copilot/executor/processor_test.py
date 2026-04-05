@@ -14,10 +14,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.executor.processor import _resolve_effective_mode, _resolve_use_sdk
+from backend.copilot.executor.processor import (
+    resolve_effective_mode,
+    resolve_use_sdk_for_mode,
+)
 
 
-class TestResolveUseSdk:
+class TestResolveUseSdkForMode:
     """Tests for the per-request mode routing logic."""
 
     @pytest.mark.asyncio
@@ -28,7 +31,7 @@ class TestResolveUseSdk:
             new=AsyncMock(return_value=True),
         ):
             assert (
-                await _resolve_use_sdk(
+                await resolve_use_sdk_for_mode(
                     "fast",
                     "user-1",
                     use_claude_code_subscription=True,
@@ -45,7 +48,7 @@ class TestResolveUseSdk:
             new=AsyncMock(return_value=False),
         ):
             assert (
-                await _resolve_use_sdk(
+                await resolve_use_sdk_for_mode(
                     "extended_thinking",
                     "user-1",
                     use_claude_code_subscription=False,
@@ -62,7 +65,7 @@ class TestResolveUseSdk:
             new=AsyncMock(return_value=False),
         ):
             assert (
-                await _resolve_use_sdk(
+                await resolve_use_sdk_for_mode(
                     None,
                     "user-1",
                     use_claude_code_subscription=True,
@@ -79,7 +82,7 @@ class TestResolveUseSdk:
             new=AsyncMock(return_value=True),
         ) as flag_mock:
             assert (
-                await _resolve_use_sdk(
+                await resolve_use_sdk_for_mode(
                     None,
                     "user-1",
                     use_claude_code_subscription=False,
@@ -98,7 +101,7 @@ class TestResolveUseSdk:
             new=AsyncMock(return_value=True),
         ):
             assert (
-                await _resolve_use_sdk(
+                await resolve_use_sdk_for_mode(
                     None,
                     "user-1",
                     use_claude_code_subscription=False,
@@ -115,7 +118,7 @@ class TestResolveUseSdk:
             new=AsyncMock(return_value=False),
         ):
             assert (
-                await _resolve_use_sdk(
+                await resolve_use_sdk_for_mode(
                     None,
                     "user-1",
                     use_claude_code_subscription=False,
@@ -135,7 +138,7 @@ class TestResolveEffectiveMode:
             "backend.copilot.executor.processor.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ) as flag_mock:
-            assert await _resolve_effective_mode(None, "user-1") is None
+            assert await resolve_effective_mode(None, "user-1") is None
             flag_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -145,8 +148,8 @@ class TestResolveEffectiveMode:
             "backend.copilot.executor.processor.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ):
-            assert await _resolve_effective_mode("fast", "user-1") is None
-            assert await _resolve_effective_mode("extended_thinking", "user-1") is None
+            assert await resolve_effective_mode("fast", "user-1") is None
+            assert await resolve_effective_mode("extended_thinking", "user-1") is None
 
     @pytest.mark.asyncio
     async def test_mode_preserved_when_flag_enabled(self):
@@ -155,9 +158,9 @@ class TestResolveEffectiveMode:
             "backend.copilot.executor.processor.is_feature_enabled",
             new=AsyncMock(return_value=True),
         ):
-            assert await _resolve_effective_mode("fast", "user-1") == "fast"
+            assert await resolve_effective_mode("fast", "user-1") == "fast"
             assert (
-                await _resolve_effective_mode("extended_thinking", "user-1")
+                await resolve_effective_mode("extended_thinking", "user-1")
                 == "extended_thinking"
             )
 
@@ -168,5 +171,5 @@ class TestResolveEffectiveMode:
             "backend.copilot.executor.processor.is_feature_enabled",
             new=AsyncMock(return_value=False),
         ) as flag_mock:
-            assert await _resolve_effective_mode("fast", None) is None
+            assert await resolve_effective_mode("fast", None) is None
             flag_mock.assert_awaited_once()

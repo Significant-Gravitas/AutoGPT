@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from collections.abc import AsyncGenerator
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
-from backend.copilot.config import ChatConfig
+from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
@@ -111,7 +111,7 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
-    mode: Literal["fast", "extended_thinking"] | None = Field(
+    mode: CopilotMode | None = Field(
         default=None,
         description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
         "If None, uses the server default (extended_thinking).",

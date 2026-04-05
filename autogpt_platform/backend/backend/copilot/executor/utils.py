@@ -6,10 +6,10 @@ Defines two exchanges and queues following the graph executor pattern:
 """
 
 import logging
-from typing import Literal
 
 from pydantic import BaseModel
 
+from backend.copilot.config import CopilotMode
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 
@@ -157,7 +157,7 @@ class CoPilotExecutionEntry(BaseModel):
     file_ids: list[str] | None = None
     """Workspace file IDs attached to the user's message"""
 
-    mode: Literal["fast", "extended_thinking"] | None = None
+    mode: CopilotMode | None = None
     """Autopilot mode override: 'fast' or 'extended_thinking'. None = server default."""
 
 
@@ -179,7 +179,7 @@ async def enqueue_copilot_turn(
     is_user_message: bool = True,
     context: dict[str, str] | None = None,
     file_ids: list[str] | None = None,
-    mode: Literal["fast", "extended_thinking"] | None = None,
+    mode: CopilotMode | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 

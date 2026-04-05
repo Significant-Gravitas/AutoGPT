@@ -159,20 +159,29 @@ describe("ChatInput mode toggle", () => {
     expect(button.hasAttribute("disabled")).toBe(true);
   });
 
-  it("exposes role='switch' with aria-checked", () => {
+  it("exposes aria-pressed=true in extended_thinking mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "extended_thinking";
     render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByRole("switch");
-    expect(button.getAttribute("aria-checked")).toBe("false");
+    const button = screen.getByLabelText(/switch to fast mode/i);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("sets aria-checked=true in fast mode", () => {
+  it("sets aria-pressed=false in fast mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "fast";
     render(<ChatInput onSend={mockOnSend} />);
-    const button = screen.getByRole("switch");
-    expect(button.getAttribute("aria-checked")).toBe("true");
+    const button = screen.getByLabelText(/switch to extended thinking/i);
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("uses streaming-specific tooltip when disabled", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} isStreaming />);
+    const button = screen.getByLabelText(/switch to fast mode/i);
+    expect(button.getAttribute("title")).toBe(
+      "Mode cannot be changed while streaming",
+    );
   });
 
   it("shows a toast when the user toggles mode", async () => {
@@ -180,7 +189,7 @@ describe("ChatInput mode toggle", () => {
     mockFlagValue = true;
     mockCopilotMode = "extended_thinking";
     render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: expect.stringMatching(/switched to fast mode/i),

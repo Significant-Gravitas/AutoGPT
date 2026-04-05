@@ -4,11 +4,18 @@ These tests cover ``_baseline_conversation_updater`` and ``_BaselineStreamState`
 without requiring API keys, database connections, or network access.
 """
 
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
 from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _BaselineStreamState,
+    _compress_session_messages,
 )
+from backend.copilot.model import ChatMessage
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
 
 
@@ -232,3 +239,129 @@ class TestBaselineConversationUpdater:
         # Should not raise — invalid JSON falls back to {} in transcript
         assert len(messages) == 2
         assert messages[0]["tool_calls"][0]["function"]["arguments"] == "not-json"
+
+
+class TestCompressSessionMessagesPreservesToolCalls:
+    """``_compress_session_messages`` must round-trip tool_calls + tool_call_id.
+
+    Compression serialises ChatMessage to dict for ``compress_context`` and
+    reifies the result back to ChatMessage.  A regression that drops
+    ``tool_calls`` or ``tool_call_id`` would corrupt the OpenAI message
+    list and break downstream tool-execution rounds.
+    """
+
+    @pytest.mark.asyncio
+    async def test_compressed_output_keeps_tool_calls_and_ids(self):
+        # Simulate compression that returns a summary + the most recent
+        # assistant(tool_call) + tool(tool_result) intact.
+        summary = {"role": "system", "content": "prior turns: user asked X"}
+        assistant_with_tc = {
+            "role": "assistant",
+            "content": "calling tool",
+            "tool_calls": [
+                {
+                    "id": "tc_abc",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": '{"q":"y"}'},
+                }
+            ],
+        }
+        tool_result = {
+            "role": "tool",
+            "tool_call_id": "tc_abc",
+            "content": "search result",
+        }
+
+        compress_result = CompressResult(
+            messages=[summary, assistant_with_tc, tool_result],
+            token_count=100,
+            was_compacted=True,
+            original_token_count=5000,
+            messages_summarized=10,
+            messages_dropped=0,
+        )
+
+        # Input: messages that should be compressed.
+        input_messages = [
+            ChatMessage(role="user", content="q1"),
+            ChatMessage(
+                role="assistant",
+                content="calling tool",
+                tool_calls=[
+                    {
+                        "id": "tc_abc",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q":"y"}',
+                        },
+                    }
+                ],
+            ),
+            ChatMessage(
+                role="tool",
+                tool_call_id="tc_abc",
+                content="search result",
+            ),
+        ]
+
+        with patch(
+            "backend.copilot.baseline.service.compress_context",
+            new=AsyncMock(return_value=compress_result),
+        ):
+            compressed = await _compress_session_messages(
+                input_messages, model="openrouter/anthropic/claude-opus-4"
+            )
+
+        # Summary, assistant(tool_calls), tool(tool_call_id).
+        assert len(compressed) == 3
+        # Assistant message must keep its tool_calls intact.
+        assistant_msg = compressed[1]
+        assert assistant_msg.role == "assistant"
+        assert assistant_msg.tool_calls is not None
+        assert len(assistant_msg.tool_calls) == 1
+        assert assistant_msg.tool_calls[0]["id"] == "tc_abc"
+        assert assistant_msg.tool_calls[0]["function"]["name"] == "search"
+        # Tool-role message must keep tool_call_id for OpenAI linkage.
+        tool_msg = compressed[2]
+        assert tool_msg.role == "tool"
+        assert tool_msg.tool_call_id == "tc_abc"
+        assert tool_msg.content == "search result"
+
+    @pytest.mark.asyncio
+    async def test_uncompressed_passthrough_keeps_fields(self):
+        """When compression is a no-op (was_compacted=False), the original
+        messages must be returned unchanged — including tool_calls."""
+        input_messages = [
+            ChatMessage(
+                role="assistant",
+                content="c",
+                tool_calls=[
+                    {
+                        "id": "t1",
+                        "type": "function",
+                        "function": {"name": "f", "arguments": "{}"},
+                    }
+                ],
+            ),
+            ChatMessage(role="tool", tool_call_id="t1", content="ok"),
+        ]
+
+        noop_result = CompressResult(
+            messages=[],  # ignored when was_compacted=False
+            token_count=10,
+            was_compacted=False,
+        )
+
+        with patch(
+            "backend.copilot.baseline.service.compress_context",
+            new=AsyncMock(return_value=noop_result),
+        ):
+            out = await _compress_session_messages(
+                input_messages, model="openrouter/anthropic/claude-opus-4"
+            )
+
+        assert out is input_messages  # same list returned
+        assert out[0].tool_calls is not None
+        assert out[0].tool_calls[0]["id"] == "t1"
+        assert out[1].tool_call_id == "t1"

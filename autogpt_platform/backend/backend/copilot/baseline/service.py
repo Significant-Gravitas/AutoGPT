@@ -12,12 +12,13 @@ import uuid
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Literal, cast
+from typing import Any, cast
 
 import orjson
 from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
+from backend.copilot.config import CopilotMode
 from backend.copilot.context import set_execution_context
 from backend.copilot.model import (
     ChatMessage,
@@ -55,6 +56,7 @@ from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
+    TranscriptDownload,
     download_transcript,
     upload_transcript,
     validate_transcript,
@@ -82,7 +84,7 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 _MAX_TOOL_ROUNDS = 30
 
 
-def _resolve_baseline_model(mode: Literal["fast", "extended_thinking"] | None) -> str:
+def _resolve_baseline_model(mode: CopilotMode | None) -> str:
     """Pick the model for the baseline path based on the per-request mode.
 
     Only ``mode='fast'`` downgrades to the cheaper/faster model.  Any other
@@ -356,7 +358,7 @@ def _record_turn_to_transcript(
         for tc in response.tool_calls:
             try:
                 args = orjson.loads(tc.arguments) if tc.arguments else {}
-            except Exception as parse_err:
+            except (ValueError, TypeError, orjson.JSONDecodeError) as parse_err:
                 logger.debug(
                     "[Baseline] Failed to parse tool_call arguments "
                     "(tool=%s, id=%s): %s",
@@ -466,8 +468,7 @@ async def _compress_session_messages(
 
     if result.was_compacted:
         logger.info(
-            "[Baseline] Context compacted: %d -> %d tokens "
-            "(%d summarized, %d dropped)",
+            "[Baseline] Context compacted: %d -> %d tokens (%d summarized, %d dropped)",
             result.original_token_count,
             result.token_count,
             result.messages_summarized,
@@ -484,6 +485,39 @@ async def _compress_session_messages(
         ]
 
     return messages
+
+
+def is_transcript_stale(dl: TranscriptDownload | None, session_msg_count: int) -> bool:
+    """Return ``True`` when a download doesn't cover the current session.
+
+    A transcript is stale when it has a known ``message_count`` and that
+    count doesn't reach ``session_msg_count - 1`` (i.e. the session has
+    already advanced beyond what the stored transcript captures).
+    Loading a stale transcript would silently drop intermediate turns,
+    so callers should treat stale as "skip load, skip upload".
+
+    An unknown ``message_count`` (``0``) is treated as **not stale**
+    because older transcripts uploaded before msg_count tracking
+    existed must still be usable.
+    """
+    if dl is None:
+        return False
+    if not dl.message_count:
+        return False
+    return dl.message_count < session_msg_count - 1
+
+
+def should_upload_transcript(
+    user_id: str | None, transcript_covers_prefix: bool
+) -> bool:
+    """Return ``True`` when the caller should upload the final transcript.
+
+    Uploads require a logged-in user (for the storage key) *and* a
+    transcript that covered the session prefix when loaded — otherwise
+    we'd be overwriting a more complete version in storage with a
+    partial one built from just the current turn.
+    """
+    return bool(user_id) and transcript_covers_prefix
 
 
 async def _load_prior_transcript(
@@ -513,10 +547,7 @@ async def _load_prior_transcript(
         logger.warning("[Baseline] Downloaded transcript but invalid")
         return False
 
-    # Reject stale transcripts: if msg_count is known and doesn't cover
-    # the current session, loading it would silently drop intermediate
-    # turns from the transcript.
-    if dl.message_count and dl.message_count < session_msg_count - 1:
+    if is_transcript_stale(dl, session_msg_count):
         logger.warning(
             "[Baseline] Transcript stale: covers %d of %d messages, skipping",
             dl.message_count,
@@ -539,21 +570,37 @@ async def _upload_final_transcript(
     transcript_builder: TranscriptBuilder,
     session_msg_count: int,
 ) -> None:
-    """Serialize and upload the transcript for next-turn continuity."""
+    """Serialize and upload the transcript for next-turn continuity.
+
+    Uses the builder's own invariants to decide whether to upload,
+    avoiding a JSONL re-parse.  A builder that ends with an assistant
+    entry is structurally complete; a builder that doesn't (empty, or
+    ends mid-turn) is skipped.
+    """
     try:
-        content = transcript_builder.to_jsonl()
-        if content and validate_transcript(content):
-            await asyncio.shield(
-                upload_transcript(
-                    user_id=user_id,
-                    session_id=session_id,
-                    content=content,
-                    message_count=session_msg_count,
-                    log_prefix="[Baseline]",
-                )
+        if transcript_builder.last_entry_type != "assistant":
+            logger.debug(
+                "[Baseline] No complete assistant turn to upload (last_entry=%s)",
+                transcript_builder.last_entry_type,
             )
-        else:
-            logger.debug("[Baseline] No valid transcript to upload")
+            return
+        content = transcript_builder.to_jsonl()
+        if not content:
+            logger.debug("[Baseline] Empty transcript content, skipping upload")
+            return
+        upload_task = asyncio.shield(
+            upload_transcript(
+                user_id=user_id,
+                session_id=session_id,
+                content=content,
+                message_count=session_msg_count,
+                log_prefix="[Baseline]",
+                skip_strip=True,
+            )
+        )
+        # Bound the shielded upload: a hung storage backend must not
+        # block the response from finishing.
+        await asyncio.wait_for(upload_task, timeout=30)
     except Exception as upload_err:
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
@@ -564,7 +611,7 @@ async def stream_chat_completion_baseline(
     is_user_message: bool = True,
     user_id: str | None = None,
     session: ChatSession | None = None,
-    mode: Literal["fast", "extended_thinking"] | None = None,
+    mode: CopilotMode | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -601,13 +648,28 @@ async def stream_chat_completion_baseline(
     transcript_builder = TranscriptBuilder()
     transcript_covers_prefix = True
 
+    # Build system prompt only on the first turn to avoid mid-conversation
+    # changes from concurrent chats updating business understanding.
+    is_first_turn = len(session.messages) <= 1
+    if is_first_turn:
+        prompt_task = _build_system_prompt(user_id, has_conversation_history=False)
+    else:
+        prompt_task = _build_system_prompt(user_id=None, has_conversation_history=True)
+
+    # Run download + prompt build concurrently — both are independent I/O
+    # on the request critical path.
     if user_id and len(session.messages) > 1:
-        transcript_covers_prefix = await _load_prior_transcript(
-            user_id=user_id,
-            session_id=session_id,
-            session_msg_count=len(session.messages),
-            transcript_builder=transcript_builder,
+        transcript_covers_prefix, (base_system_prompt, _) = await asyncio.gather(
+            _load_prior_transcript(
+                user_id=user_id,
+                session_id=session_id,
+                session_msg_count=len(session.messages),
+                transcript_builder=transcript_builder,
+            ),
+            prompt_task,
         )
+    else:
+        base_system_prompt, _ = await prompt_task
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
@@ -632,18 +694,6 @@ async def stream_chat_completion_baseline(
                 task.add_done_callback(_background_tasks.discard)
 
     message_id = str(uuid.uuid4())
-
-    # Build system prompt only on the first turn to avoid mid-conversation
-    # changes from concurrent chats updating business understanding.
-    is_first_turn = len(session.messages) <= 1
-    if is_first_turn:
-        base_system_prompt, _ = await _build_system_prompt(
-            user_id, has_conversation_history=False
-        )
-    else:
-        base_system_prompt, _ = await _build_system_prompt(
-            user_id=None, has_conversation_history=True
-        )
 
     # Append tool documentation and technical notes
     system_prompt = base_system_prompt + get_baseline_supplement()
@@ -839,7 +889,7 @@ async def stream_chat_completion_baseline(
                     stop_reason=STOP_REASON_END_TURN,
                 )
 
-        if user_id and transcript_covers_prefix:
+        if user_id and should_upload_transcript(user_id, transcript_covers_prefix):
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,

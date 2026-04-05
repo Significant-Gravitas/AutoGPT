@@ -850,7 +850,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_no_client_uses_truncation(self):
         """Path (a): ``get_openai_client()`` returns None → truncation only."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated"}]
@@ -885,7 +885,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_success_returns_llm_result(self):
         """Path (b): ``get_openai_client()`` returns a client → LLM compresses."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         llm_result = self._make_compress_result(
             True, [{"role": "user", "content": "LLM summary"}]
@@ -916,7 +916,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_failure_falls_back_to_truncation(self):
         """Path (c): LLM call raises → truncation fallback used instead."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated fallback"}]
@@ -953,7 +953,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_timeout_falls_back_to_truncation(self):
         """Path (d): LLM call exceeds timeout → truncation fallback used."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated after timeout"}]
@@ -1007,7 +1007,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories matching copilot pattern older than threshold are removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1039,7 +1039,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_ignores_non_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories not matching copilot pattern are left alone."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
@@ -1062,7 +1062,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_ttl_boundary_not_removed(self, tmp_path, monkeypatch):
         """A directory exactly at the TTL boundary should NOT be removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1088,7 +1088,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_skips_non_directory_entries(self, tmp_path, monkeypatch):
         """Regular files matching the copilot pattern are not removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1114,7 +1114,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_missing_base_dir_returns_zero(self, tmp_path, monkeypatch):
         """If the projects base directory doesn't exist, return 0 gracefully."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         nonexistent = str(tmp_path / "does-not-exist" / "projects")
         monkeypatch.setattr(
@@ -1129,7 +1129,7 @@ class TestCleanupStaleProjectDirs:
         """When encoded_cwd is supplied only that directory is swept."""
         import time
 
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1160,7 +1160,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_scoped_fresh_dir_not_removed(self, tmp_path, monkeypatch):
         """Scoped sweep leaves a fresh directory alone."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
@@ -1181,7 +1181,7 @@ class TestCleanupStaleProjectDirs:
         """Scoped sweep refuses to remove a non-copilot directory."""
         import time
 
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )

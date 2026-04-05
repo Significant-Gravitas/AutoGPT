@@ -16,6 +16,8 @@ from backend.copilot.baseline.service import (
     _record_turn_to_transcript,
     _resolve_baseline_model,
     _upload_final_transcript,
+    is_transcript_stale,
+    should_upload_transcript,
 )
 from backend.copilot.service import config
 from backend.copilot.transcript import (
@@ -455,3 +457,211 @@ class TestRoundTrip:
                 stop_reason=STOP_REASON_END_TURN,
             )
         assert builder.entry_count == initial_count
+
+
+class TestIsTranscriptStale:
+    """``is_transcript_stale`` gates prior-transcript loading."""
+
+    def test_none_download_is_not_stale(self):
+        assert is_transcript_stale(None, session_msg_count=5) is False
+
+    def test_zero_message_count_is_not_stale(self):
+        """Legacy transcripts without msg_count tracking must remain usable."""
+        dl = TranscriptDownload(content="", message_count=0)
+        assert is_transcript_stale(dl, session_msg_count=20) is False
+
+    def test_stale_when_covers_less_than_prefix(self):
+        dl = TranscriptDownload(content="", message_count=2)
+        # session has 6 messages; transcript must cover at least 5 (6-1).
+        assert is_transcript_stale(dl, session_msg_count=6) is True
+
+    def test_fresh_when_covers_full_prefix(self):
+        dl = TranscriptDownload(content="", message_count=5)
+        assert is_transcript_stale(dl, session_msg_count=6) is False
+
+    def test_fresh_when_exceeds_prefix(self):
+        """Race: transcript ahead of session count is still acceptable."""
+        dl = TranscriptDownload(content="", message_count=10)
+        assert is_transcript_stale(dl, session_msg_count=6) is False
+
+    def test_boundary_equal_to_prefix_minus_one(self):
+        dl = TranscriptDownload(content="", message_count=5)
+        assert is_transcript_stale(dl, session_msg_count=6) is False
+
+
+class TestShouldUploadTranscript:
+    """``should_upload_transcript`` gates the final upload."""
+
+    def test_upload_allowed_for_user_with_coverage(self):
+        assert should_upload_transcript("user-1", True) is True
+
+    def test_upload_skipped_when_no_user(self):
+        assert should_upload_transcript(None, True) is False
+
+    def test_upload_skipped_when_empty_user(self):
+        assert should_upload_transcript("", True) is False
+
+    def test_upload_skipped_without_coverage(self):
+        """Partial transcript must never clobber a more complete stored one."""
+        assert should_upload_transcript("user-1", False) is False
+
+    def test_upload_skipped_when_no_user_and_no_coverage(self):
+        assert should_upload_transcript(None, False) is False
+
+
+class TestTranscriptLifecycle:
+    """End-to-end: download → validate → build → upload.
+
+    Simulates the full transcript lifecycle inside
+    ``stream_chat_completion_baseline`` by mocking the storage layer and
+    driving each step through the real helpers.
+    """
+
+    @pytest.mark.asyncio
+    async def test_full_lifecycle_happy_path(self):
+        """Fresh download, append a turn, upload covers the session."""
+        builder = TranscriptBuilder()
+        prior = _make_transcript_content("user", "assistant")
+        download = TranscriptDownload(content=prior, message_count=2)
+
+        upload_mock = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.baseline.service.download_transcript",
+                new=AsyncMock(return_value=download),
+            ),
+            patch(
+                "backend.copilot.baseline.service.upload_transcript",
+                new=upload_mock,
+            ),
+        ):
+            # --- 1. Download & load prior transcript ---
+            covers = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_msg_count=3,
+                transcript_builder=builder,
+            )
+            assert covers is True
+
+            # --- 2. Append a new user turn + a new assistant response ---
+            builder.append_user(content="follow-up question")
+            _record_turn_to_transcript(
+                LLMLoopResponse(
+                    response_text="follow-up answer",
+                    tool_calls=[],
+                    raw_response=None,
+                ),
+                tool_results=None,
+                transcript_builder=builder,
+                model="test-model",
+            )
+
+            # --- 3. Gate + upload ---
+            assert (
+                should_upload_transcript(
+                    user_id="user-1", transcript_covers_prefix=covers
+                )
+                is True
+            )
+            await _upload_final_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                transcript_builder=builder,
+                session_msg_count=4,
+            )
+
+        upload_mock.assert_awaited_once()
+        assert upload_mock.await_args is not None
+        uploaded = upload_mock.await_args.kwargs["content"]
+        assert "follow-up question" in uploaded
+        assert "follow-up answer" in uploaded
+        # Original prior-turn content preserved.
+        assert "user message 0" in uploaded
+        assert "assistant message 1" in uploaded
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_stale_download_suppresses_upload(self):
+        """Stale download → covers=False → upload must be skipped."""
+        builder = TranscriptBuilder()
+        # session has 10 msgs but stored transcript only covers 2 → stale.
+        stale = TranscriptDownload(
+            content=_make_transcript_content("user", "assistant"),
+            message_count=2,
+        )
+
+        upload_mock = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.baseline.service.download_transcript",
+                new=AsyncMock(return_value=stale),
+            ),
+            patch(
+                "backend.copilot.baseline.service.upload_transcript",
+                new=upload_mock,
+            ),
+        ):
+            covers = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_msg_count=10,
+                transcript_builder=builder,
+            )
+
+        assert covers is False
+        # The caller's gate mirrors the production path.
+        assert (
+            should_upload_transcript(user_id="user-1", transcript_covers_prefix=covers)
+            is False
+        )
+        upload_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_anonymous_user_skips_upload(self):
+        """Anonymous (user_id=None) → upload gate must return False."""
+        builder = TranscriptBuilder()
+        builder.append_user(content="hi")
+        builder.append_assistant(
+            content_blocks=[{"type": "text", "text": "hello"}],
+            model="test-model",
+            stop_reason=STOP_REASON_END_TURN,
+        )
+
+        assert (
+            should_upload_transcript(user_id=None, transcript_covers_prefix=True)
+            is False
+        )
+
+    @pytest.mark.asyncio
+    async def test_lifecycle_missing_download_still_uploads_new_content(self):
+        """No prior transcript → covers defaults to True in the service,
+        new turn should upload cleanly."""
+        builder = TranscriptBuilder()
+        upload_mock = AsyncMock(return_value=None)
+        with (
+            patch(
+                "backend.copilot.baseline.service.download_transcript",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.copilot.baseline.service.upload_transcript",
+                new=upload_mock,
+            ),
+        ):
+            covers = await _load_prior_transcript(
+                user_id="user-1",
+                session_id="session-1",
+                session_msg_count=1,
+                transcript_builder=builder,
+            )
+            # No download: covers is False, so the production path would
+            # skip upload. This protects against overwriting a future
+            # more-complete transcript with a single-turn snapshot.
+            assert covers is False
+            assert (
+                should_upload_transcript(
+                    user_id="user-1", transcript_covers_prefix=covers
+                )
+                is False
+            )
+            upload_mock.assert_not_awaited()

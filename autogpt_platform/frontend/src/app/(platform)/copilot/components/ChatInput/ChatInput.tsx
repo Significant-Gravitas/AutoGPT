@@ -9,10 +9,10 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Brain, Lightning } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { FileChips } from "./components/FileChips";
+import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { useCopilotUIStore } from "../../store";
@@ -47,7 +47,7 @@ export function ChatInput({
   onDroppedFilesConsumed,
 }: Props) {
   const { copilotMode, setCopilotMode } = useCopilotUIStore();
-  const isFastModeEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const [files, setFiles] = useState<File[]>([]);
 
   function handleToggleMode() {
@@ -179,43 +179,12 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
-            {isFastModeEnabled && (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={copilotMode === "fast"}
-                disabled={isStreaming}
-                onClick={handleToggleMode}
-                className={cn(
-                  "inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                  copilotMode === "extended_thinking"
-                    ? "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
-                    : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
-                  isStreaming && "cursor-not-allowed opacity-50",
-                )}
-                aria-label={
-                  copilotMode === "extended_thinking"
-                    ? "Switch to Fast mode"
-                    : "Switch to Extended Thinking mode"
-                }
-                title={
-                  copilotMode === "extended_thinking"
-                    ? "Extended Thinking mode — deeper reasoning (click to switch to Fast mode)"
-                    : "Fast mode — quicker responses (click to switch to Extended Thinking)"
-                }
-              >
-                {copilotMode === "extended_thinking" ? (
-                  <>
-                    <Brain size={14} />
-                    Thinking
-                  </>
-                ) : (
-                  <>
-                    <Lightning size={14} />
-                    Fast
-                  </>
-                )}
-              </button>
+            {showModeToggle && (
+              <ModeToggleButton
+                mode={copilotMode}
+                isStreaming={isStreaming}
+                onToggle={handleToggleMode}
+              />
             )}
           </PromptInputTools>
 
