@@ -613,6 +613,12 @@ async def _upload_final_transcript(
         await asyncio.wait_for(
             asyncio.shield(upload_task), timeout=_TRANSCRIPT_UPLOAD_TIMEOUT_S
         )
+    except asyncio.TimeoutError:
+        # Upload is still running in _background_tasks; we just stopped waiting.
+        logger.info(
+            "[Baseline] Transcript upload exceeded %ss wait — continuing as background task",
+            _TRANSCRIPT_UPLOAD_TIMEOUT_S,
+        )
     except Exception as upload_err:
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
