@@ -44,10 +44,12 @@ export function ArtifactDragHandle({
         setIsDragging(false);
         document.removeEventListener("pointermove", handlePointerMove);
         document.removeEventListener("pointerup", handlePointerUp);
+        document.removeEventListener("pointercancel", handlePointerUp);
       };
 
       document.addEventListener("pointermove", handlePointerMove);
       document.addEventListener("pointerup", handlePointerUp);
+      document.addEventListener("pointercancel", handlePointerUp);
     },
     [onWidthChange, minWidth, maxWidthPercent],
   );

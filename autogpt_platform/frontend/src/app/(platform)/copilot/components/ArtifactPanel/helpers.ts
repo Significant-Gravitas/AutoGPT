@@ -317,11 +317,14 @@ export function classifyArtifact(
     };
   }
 
+  // Unknown extension + unknown MIME: don't open — we can't safely assume
+  // this is text, and fetching a binary to dump it into a <pre> wastes
+  // bandwidth and shows garbage.
   return {
-    type: "text",
+    type: "download-only",
     icon: File,
     label: "File",
-    openable: true,
+    openable: false,
     hasSourceToggle: false,
   };
 }

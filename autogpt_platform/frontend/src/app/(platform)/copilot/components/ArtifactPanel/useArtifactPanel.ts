@@ -71,7 +71,10 @@ export function useArtifactPanel() {
   function handleCopy() {
     if (!activeArtifact || !canCopy) return;
     fetch(activeArtifact.sourceUrl)
-      .then((res) => res.text())
+      .then((res) => {
+        if (!res.ok) throw new Error(`Copy failed: ${res.status}`);
+        return res.text();
+      })
       .then((text) => navigator.clipboard.writeText(text))
       .catch(() => {
         /* clipboard permission denied or fetch failed — silent for now */

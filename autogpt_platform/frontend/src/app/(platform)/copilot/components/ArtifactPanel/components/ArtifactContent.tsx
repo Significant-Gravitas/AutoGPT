@@ -202,8 +202,9 @@ function ArtifactRenderer({
   if (classification.type === "html") {
     // Always inject Tailwind CDN so AI-generated HTML with Tailwind classes renders correctly
     const tailwindScript = `<script src="https://cdn.tailwindcss.com"></script>`;
-    const htmlWithTailwind = content.includes("<head>")
-      ? content.replace("<head>", `<head>${tailwindScript}`)
+    const headOpenRe = /<head(\s[^>]*)?>/i;
+    const htmlWithTailwind = headOpenRe.test(content)
+      ? content.replace(headOpenRe, (match) => `${match}${tailwindScript}`)
       : `${tailwindScript}${content}`;
     return (
       <iframe

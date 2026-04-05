@@ -279,7 +279,13 @@ async def upload_file(
     # If a concurrent upload pushed us over the limit, undo this write.
     new_total = await get_workspace_total_size(workspace.id)
     if storage_limit_bytes and new_total > storage_limit_bytes:
-        await soft_delete_workspace_file(workspace_file.id, workspace.id)
+        try:
+            await soft_delete_workspace_file(workspace_file.id, workspace.id)
+        except Exception as e:
+            logger.warning(
+                f"Failed to soft-delete over-quota file {workspace_file.id} "
+                f"in workspace {workspace.id}: {e}"
+            )
         raise fastapi.HTTPException(
             status_code=413,
             detail={
