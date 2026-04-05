@@ -49,7 +49,10 @@ export function MessageAttachments({ files, isUser }: Props) {
     <div className="mt-2 flex flex-col gap-2">
       {files.map((file, i) => {
         if (isArtifactsEnabled) {
-          const artifactRef = filePartToArtifactRef(file);
+          const artifactRef = filePartToArtifactRef(
+            file,
+            isUser ? "user-upload" : "agent",
+          );
           if (artifactRef) {
             return (
               <ArtifactCard

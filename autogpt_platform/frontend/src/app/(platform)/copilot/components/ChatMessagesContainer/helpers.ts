@@ -239,7 +239,10 @@ export function parseSpecialMarkers(text: string): {
   return { markerType: null, markerText: "", cleanText: text };
 }
 
-export function filePartToArtifactRef(file: FileUIPart): ArtifactRef | null {
+export function filePartToArtifactRef(
+  file: FileUIPart,
+  origin: ArtifactRef["origin"] = "user-upload",
+): ArtifactRef | null {
   if (!file.url) return null;
   const match = file.url.match(WORKSPACE_FILE_PATTERN);
   if (!match) return null;
@@ -248,7 +251,7 @@ export function filePartToArtifactRef(file: FileUIPart): ArtifactRef | null {
     title: file.filename || "File",
     mimeType: file.mediaType || null,
     sourceUrl: file.url,
-    origin: "user-upload",
+    origin,
   };
 }
 
@@ -303,7 +306,8 @@ export function getMessageArtifacts(
     }
 
     if (part.type === "file") {
-      const artifact = filePartToArtifactRef(part);
+      const origin = message.role === "user" ? "user-upload" : "agent";
+      const artifact = filePartToArtifactRef(part, origin);
       if (!artifact || seen.has(artifact.id)) continue;
       seen.add(artifact.id);
       artifacts.push(artifact);

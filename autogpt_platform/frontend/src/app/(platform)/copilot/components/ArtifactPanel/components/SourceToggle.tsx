@@ -12,6 +12,7 @@ export function SourceToggle({ isSourceView, onToggle }: Props) {
     <div className="flex items-center rounded-md border border-zinc-200 bg-zinc-50 p-0.5 text-xs font-medium">
       <button
         type="button"
+        aria-pressed={!isSourceView}
         className={cn(
           "rounded px-2 py-1 transition-colors",
           !isSourceView
@@ -24,6 +25,7 @@ export function SourceToggle({ isSourceView, onToggle }: Props) {
       </button>
       <button
         type="button"
+        aria-pressed={isSourceView}
         className={cn(
           "rounded px-2 py-1 transition-colors",
           isSourceView

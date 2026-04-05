@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useEffect, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 import { classifyArtifact } from "./helpers";
@@ -76,8 +77,15 @@ export function useArtifactPanel() {
         return res.text();
       })
       .then((text) => navigator.clipboard.writeText(text))
+      .then(() => {
+        toast({ title: "Copied to clipboard" });
+      })
       .catch(() => {
-        /* clipboard permission denied or fetch failed — silent for now */
+        toast({
+          title: "Copy failed",
+          description: "Couldn't read the file or access the clipboard.",
+          variant: "destructive",
+        });
       });
   }
 
