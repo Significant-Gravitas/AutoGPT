@@ -7041,6 +7041,70 @@
         }
       }
     },
+    "/api/workspace/files": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "List workspace files",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.",
+        "operationId": "getWorkspaceList workspace files",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListFilesResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
@@ -10691,6 +10755,24 @@
         "type": "object",
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
+      },
+      "ListFilesResponse": {
+        "properties": {
+          "files": {
+            "items": { "$ref": "#/components/schemas/WorkspaceFileItem" },
+            "type": "array",
+            "title": "Files"
+          },
+          "offset": { "type": "integer", "title": "Offset", "default": 0 },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["files"],
+        "title": "ListFilesResponse"
       },
       "ListSessionsResponse": {
         "properties": {
@@ -15210,6 +15292,31 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkspaceFileItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": { "type": "string", "title": "Created At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "mime_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "title": "WorkspaceFileItem"
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {

@@ -7,7 +7,73 @@ export interface DeleteTarget {
   title: string | null | undefined;
 }
 
+/**
+ * A single workspace artifact surfaced in the copilot chat.
+ *
+ * Rendered by `ArtifactCard` (inline) and `ArtifactPanel` (preview pane).
+ * Typically extracted from `workspace://<id>` URIs in assistant text parts
+ * or from `FileUIPart` attachments; see `getMessageArtifacts` in
+ * `ChatMessagesContainer/helpers.ts`.
+ */
+export interface ArtifactRef {
+  /** Workspace file ID (matches the backend `WorkspaceFile.id`). */
+  id: string;
+  /** Human-visible filename, used as both title and download filename. */
+  title: string;
+  /** MIME type if known (from backend metadata or `workspace://id#mime`). */
+  mimeType: string | null;
+  /**
+   * Fully-qualified URL the preview/download code will fetch from. Today
+   * this is always the same-origin proxy path
+   * `/api/proxy/api/workspace/files/{id}/download`.
+   */
+  sourceUrl: string;
+  /**
+   * Who produced the artifact — drives the origin badge color in
+   * `ArtifactPanelHeader`. Derived from the emitting message's role.
+   */
+  origin: "agent" | "user-upload";
+  /** Size in bytes if known — used by `classifyArtifact` for size gating. */
+  sizeBytes?: number;
+}
+
+interface ArtifactPanelState {
+  isOpen: boolean;
+  isMinimized: boolean;
+  isMaximized: boolean;
+  width: number;
+  activeArtifact: ArtifactRef | null;
+  history: ArtifactRef[];
+}
+
+export const DEFAULT_PANEL_WIDTH = 600;
+
 const isClient = typeof window !== "undefined";
+
+function getPersistedWidth(): number {
+  if (!isClient) return DEFAULT_PANEL_WIDTH;
+  const saved = storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
+  if (saved) {
+    const parsed = parseInt(saved, 10);
+    // Match the drag-handle clamp so a stale/corrupt value can't open the
+    // panel wider than 85% of the viewport.
+    const maxWidth = window.innerWidth * 0.85;
+    if (!isNaN(parsed) && parsed >= 320) {
+      return Math.min(parsed, maxWidth);
+    }
+  }
+  return DEFAULT_PANEL_WIDTH;
+}
+
+let panelWidthPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function schedulePanelWidthPersist(width: number) {
+  if (!isClient) return;
+  if (panelWidthPersistTimer) clearTimeout(panelWidthPersistTimer);
+  panelWidthPersistTimer = setTimeout(() => {
+    storage.set(Key.COPILOT_ARTIFACT_PANEL_WIDTH, String(width));
+    panelWidthPersistTimer = null;
+  }, 200);
+}
 
 function persistCompletedSessions(ids: Set<string>) {
   if (!isClient) return;
@@ -46,6 +112,16 @@ interface CopilotUIState {
 
   showNotificationDialog: boolean;
   setShowNotificationDialog: (show: boolean) => void;
+
+  // Artifact panel
+  artifactPanel: ArtifactPanelState;
+  openArtifact: (ref: ArtifactRef) => void;
+  closeArtifactPanel: () => void;
+  minimizeArtifactPanel: () => void;
+  maximizeArtifactPanel: () => void;
+  restoreArtifactPanel: () => void;
+  setArtifactPanelWidth: (width: number) => void;
+  goBackArtifact: () => void;
 
   clearCopilotLocalData: () => void;
 }
@@ -104,16 +180,113 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   showNotificationDialog: false,
   setShowNotificationDialog: (show) => set({ showNotificationDialog: show }),
 
+  // Artifact panel
+  artifactPanel: {
+    isOpen: false,
+    isMinimized: false,
+    isMaximized: false,
+    width: getPersistedWidth(),
+    activeArtifact: null,
+    history: [],
+  },
+  openArtifact: (ref) =>
+    set((state) => {
+      const { activeArtifact, history: prevHistory } = state.artifactPanel;
+      // If we're returning to the artifact at the top of history, pop it
+      // instead of pushing — so ping-ponging between two artifacts doesn't
+      // produce an ever-growing back-chain.
+      const topOfHistory = prevHistory[prevHistory.length - 1];
+      const isReturningToTop = topOfHistory?.id === ref.id;
+      const history = isReturningToTop
+        ? prevHistory.slice(0, -1)
+        : activeArtifact && activeArtifact.id !== ref.id
+          ? [...prevHistory, activeArtifact]
+          : prevHistory;
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          isOpen: true,
+          isMinimized: false,
+          activeArtifact: ref,
+          history,
+        },
+      };
+    }),
+  closeArtifactPanel: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: false,
+        isMinimized: false,
+        // Keep activeArtifact so exit animations can reference it
+        history: [],
+      },
+    })),
+  minimizeArtifactPanel: () =>
+    set((state) => ({
+      artifactPanel: { ...state.artifactPanel, isMinimized: true },
+    })),
+  maximizeArtifactPanel: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isMaximized: true,
+        isMinimized: false,
+      },
+    })),
+  restoreArtifactPanel: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isMaximized: false,
+        isMinimized: false,
+      },
+    })),
+  setArtifactPanelWidth: (width) => {
+    // Debounced localStorage write — drag events fire 60×/s, but we only
+    // need the final value. A timer flushes 200ms after the last update.
+    schedulePanelWidthPersist(width);
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        width,
+        isMaximized: false,
+      },
+    }));
+  },
+  goBackArtifact: () =>
+    set((state) => {
+      const { history } = state.artifactPanel;
+      if (history.length === 0) return state;
+      const previous = history[history.length - 1];
+      return {
+        artifactPanel: {
+          ...state.artifactPanel,
+          activeArtifact: previous,
+          history: history.slice(0, -1),
+        },
+      };
+    }),
+
   clearCopilotLocalData: () => {
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
+    storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
       isSoundEnabled: true,
+      artifactPanel: {
+        isOpen: false,
+        isMinimized: false,
+        isMaximized: false,
+        width: DEFAULT_PANEL_WIDTH,
+        activeArtifact: null,
+        history: [],
+      },
     });
     if (isClient) {
       document.title = ORIGINAL_TITLE;

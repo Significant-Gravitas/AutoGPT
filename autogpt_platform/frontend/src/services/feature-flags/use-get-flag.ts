@@ -13,6 +13,7 @@ export enum Flag {
   AGENT_FAVORITING = "agent-favoriting",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
+  ARTIFACTS = "artifacts",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -26,6 +27,7 @@ const defaultFlags = {
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
+  [Flag.ARTIFACTS]: false,
 };
 
 type FlagValues = typeof defaultFlags;
