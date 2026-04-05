@@ -38,6 +38,7 @@ class Flag(str, Enum):
     AGENT_ACTIVITY = "agent-activity"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT = "chat"
+    CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
     COPILOT_DAILY_TOKEN_LIMIT = "copilot-daily-token-limit"
     COPILOT_WEEKLY_TOKEN_LIMIT = "copilot-weekly-token-limit"

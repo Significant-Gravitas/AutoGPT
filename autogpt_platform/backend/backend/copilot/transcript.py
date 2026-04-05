@@ -735,33 +735,44 @@ async def download_transcript(
 
     Returns a ``TranscriptDownload`` with the JSONL content and the
     ``message_count`` watermark from the upload, or ``None`` if not found.
+
+    The content and metadata fetches run concurrently since they are
+    independent objects in the bucket.
     """
     storage = await get_workspace_storage()
     path = _build_storage_path(user_id, session_id, storage)
+    meta_path = _build_meta_storage_path(user_id, session_id, storage)
 
-    try:
-        data = await storage.retrieve(path)
-        content = data.decode("utf-8")
-    except FileNotFoundError:
+    content_task = asyncio.create_task(storage.retrieve(path))
+    meta_task = asyncio.create_task(storage.retrieve(meta_path))
+    content_result, meta_result = await asyncio.gather(
+        content_task, meta_task, return_exceptions=True
+    )
+
+    if isinstance(content_result, FileNotFoundError):
         logger.debug("%s No transcript in storage", log_prefix)
         return None
-    except Exception as e:
-        logger.warning("%s Failed to download transcript: %s", log_prefix, e)
+    if isinstance(content_result, BaseException):
+        logger.warning(
+            "%s Failed to download transcript: %s", log_prefix, content_result
+        )
         return None
 
-    # Try to load metadata (best-effort — old transcripts won't have it)
+    content = content_result.decode("utf-8")
+
+    # Metadata is best-effort — old transcripts won't have it.
     message_count = 0
     uploaded_at = 0.0
-    try:
-        meta_path = _build_meta_storage_path(user_id, session_id, storage)
-        meta_data = await storage.retrieve(meta_path)
-        meta = json.loads(meta_data.decode("utf-8"), fallback={})
+    if isinstance(meta_result, FileNotFoundError):
+        pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
+    elif isinstance(meta_result, BaseException):
+        logger.debug(
+            "%s Failed to load transcript metadata: %s", log_prefix, meta_result
+        )
+    else:
+        meta = json.loads(meta_result.decode("utf-8"), fallback={})
         message_count = meta.get("message_count", 0)
         uploaded_at = meta.get("uploaded_at", 0.0)
-    except FileNotFoundError:
-        pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
-    except Exception as e:
-        logger.debug("%s Failed to load transcript metadata: %s", log_prefix, e)
 
     logger.info(
         "%s Downloaded %dB (msg_count=%d)", log_prefix, len(content), message_count
@@ -803,6 +814,7 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
 
 # JSONL protocol values used in transcript serialization.
 STOP_REASON_END_TURN = "end_turn"
+STOP_REASON_TOOL_USE = "tool_use"
 COMPACT_MSG_ID_PREFIX = "msg_compact_"
 ENTRY_TYPE_MESSAGE = "message"
 

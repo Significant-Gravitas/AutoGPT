@@ -5,6 +5,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -18,7 +19,7 @@ import { useCopilotUIStore } from "../../store";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
 
-export interface Props {
+interface Props {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -48,6 +49,22 @@ export function ChatInput({
   const { copilotMode, setCopilotMode } = useCopilotUIStore();
   const isFastModeEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
   const [files, setFiles] = useState<File[]>([]);
+
+  function handleToggleMode() {
+    const next =
+      copilotMode === "extended_thinking" ? "fast" : "extended_thinking";
+    setCopilotMode(next);
+    toast({
+      title:
+        next === "fast"
+          ? "Switched to Fast mode"
+          : "Switched to Extended Thinking mode",
+      description:
+        next === "fast"
+          ? "Response quality may differ."
+          : "Responses may take longer.",
+    });
+  }
 
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
@@ -165,14 +182,10 @@ export function ChatInput({
             {isFastModeEnabled && (
               <button
                 type="button"
+                role="switch"
+                aria-checked={copilotMode === "fast"}
                 disabled={isStreaming}
-                onClick={() =>
-                  setCopilotMode(
-                    copilotMode === "extended_thinking"
-                      ? "fast"
-                      : "extended_thinking",
-                  )
-                }
+                onClick={handleToggleMode}
                 className={cn(
                   "inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
                   copilotMode === "extended_thinking"

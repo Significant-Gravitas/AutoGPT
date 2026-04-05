@@ -10,6 +10,7 @@ import os
 import subprocess
 import threading
 import time
+from typing import Literal
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
@@ -28,6 +29,57 @@ from backend.util.workspace_storage import shutdown_workspace_storage
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
+
+
+# ============ Mode Routing ============ #
+
+
+async def _resolve_effective_mode(
+    mode: Literal["fast", "extended_thinking"] | None,
+    user_id: str | None,
+) -> Literal["fast", "extended_thinking"] | None:
+    """Strip ``mode`` when the user is not entitled to the toggle.
+
+    The UI gates the mode toggle behind ``CHAT_MODE_OPTION``; the
+    processor enforces the same gate server-side so an authenticated
+    user cannot bypass the flag by crafting a request directly.
+    """
+    if mode is None:
+        return None
+    allowed = await is_feature_enabled(
+        Flag.CHAT_MODE_OPTION,
+        user_id or "anonymous",
+        default=False,
+    )
+    if not allowed:
+        logger.info(f"Ignoring mode={mode} — CHAT_MODE_OPTION is disabled for user")
+        return None
+    return mode
+
+
+async def _resolve_use_sdk(
+    mode: Literal["fast", "extended_thinking"] | None,
+    user_id: str | None,
+    *,
+    use_claude_code_subscription: bool,
+    config_default: bool,
+) -> bool:
+    """Pick the SDK vs baseline path for a single turn.
+
+    Per-request ``mode`` wins whenever it is set (after the
+    ``CHAT_MODE_OPTION`` gate has been applied upstream).  Otherwise
+    falls back to the Claude Code subscription override, then the
+    ``COPILOT_SDK`` LaunchDarkly flag, then the config default.
+    """
+    if mode == "fast":
+        return False
+    if mode == "extended_thinking":
+        return True
+    return use_claude_code_subscription or await is_feature_enabled(
+        Flag.COPILOT_SDK,
+        user_id or "anonymous",
+        default=config_default,
+    )
 
 
 # ============ Module Entry Points ============ #
@@ -250,23 +302,19 @@ class CoPilotProcessor:
             if config.test_mode:
                 stream_fn = stream_chat_completion_dummy
                 log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                effective_mode = None
             else:
-                # Per-request mode override from the frontend takes priority.
-                # 'fast' → baseline (OpenAI-compatible), 'extended_thinking' → SDK.
-                if entry.mode == "fast":
-                    use_sdk = False
-                elif entry.mode == "extended_thinking":
-                    use_sdk = True
-                else:
-                    # No mode specified — fall back to feature flag / config.
-                    use_sdk = (
-                        config.use_claude_code_subscription
-                        or await is_feature_enabled(
-                            Flag.COPILOT_SDK,
-                            entry.user_id or "anonymous",
-                            default=config.use_claude_agent_sdk,
-                        )
-                    )
+                # Enforce server-side feature-flag gate so unauthorised
+                # users cannot force a mode by crafting the request.
+                effective_mode = await _resolve_effective_mode(
+                    entry.mode, entry.user_id
+                )
+                use_sdk = await _resolve_use_sdk(
+                    effective_mode,
+                    entry.user_id,
+                    use_claude_code_subscription=config.use_claude_code_subscription,
+                    config_default=config.use_claude_agent_sdk,
+                )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk
                     if use_sdk
@@ -274,7 +322,7 @@ class CoPilotProcessor:
                 )
                 log.info(
                     f"Using {'SDK' if use_sdk else 'baseline'} service "
-                    f"(mode={entry.mode or 'default'})"
+                    f"(mode={effective_mode or 'default'})"
                 )
 
             # Stream chat completion and publish chunks to Redis.
@@ -287,6 +335,7 @@ class CoPilotProcessor:
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
+                mode=effective_mode,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,

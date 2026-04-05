@@ -27,6 +27,11 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => mockFlagValue,
 }));
 
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: vi.fn(),
+  useToast: () => ({ toast: vi.fn(), dismiss: vi.fn() }),
+}));
+
 vi.mock("../useVoiceRecording", () => ({
   useVoiceRecording: () => ({
     isRecording: false,
@@ -152,5 +157,34 @@ describe("ChatInput mode toggle", () => {
     render(<ChatInput onSend={mockOnSend} isStreaming />);
     const button = screen.getByLabelText(/switch to fast mode/i);
     expect(button.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("exposes role='switch' with aria-checked", () => {
+    mockFlagValue = true;
+    mockCopilotMode = "extended_thinking";
+    render(<ChatInput onSend={mockOnSend} />);
+    const button = screen.getByRole("switch");
+    expect(button.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("sets aria-checked=true in fast mode", () => {
+    mockFlagValue = true;
+    mockCopilotMode = "fast";
+    render(<ChatInput onSend={mockOnSend} />);
+    const button = screen.getByRole("switch");
+    expect(button.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("shows a toast when the user toggles mode", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockFlagValue = true;
+    mockCopilotMode = "extended_thinking";
+    render(<ChatInput onSend={mockOnSend} />);
+    fireEvent.click(screen.getByRole("switch"));
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringMatching(/switched to fast mode/i),
+      }),
+    );
   });
 });

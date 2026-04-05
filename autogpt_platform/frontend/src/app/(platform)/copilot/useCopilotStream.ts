@@ -10,7 +10,7 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   deduplicateMessages,
   extractSendMessageText,
@@ -40,8 +40,8 @@ interface UseCopilotStreamArgs {
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
-  /** Autopilot mode to use for requests. */
-  copilotMode: "extended_thinking" | "fast";
+  /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
+  copilotMode: "extended_thinking" | "fast" | undefined;
 }
 
 export function useCopilotStream({
@@ -53,7 +53,9 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
-  const dismissRateLimit = useCallback(() => setRateLimitMessage(null), []);
+  function dismissRateLimit() {
+    setRateLimitMessage(null);
+  }
   // Use a ref for copilotMode so the transport closure always reads the
   // latest value without recreating the DefaultChatTransport (which would
   // reset useChat's internal Chat instance and break mid-session streaming).
@@ -89,7 +91,7 @@ export function useCopilotStream({
                   is_user_message: last.role === "user",
                   context: null,
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
-                  mode: copilotModeRef.current,
+                  mode: copilotModeRef.current ?? null,
                 },
                 headers: await getAuthHeaders(),
               };
