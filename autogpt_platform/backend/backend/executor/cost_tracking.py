@@ -4,12 +4,13 @@ import asyncio
 import logging
 from typing import Any, cast
 
-from backend.blocks._base import BlockSchema
+from backend.blocks._base import Block, BlockSchema
+from backend.data.execution import NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
 from backend.data.platform_cost import (
-    MICRODOLLARS_PER_USD,
     PlatformCostEntry,
     log_platform_cost_safe,
+    usd_to_microdollars,
 )
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import is_system_credential
@@ -84,8 +85,8 @@ def resolve_tracking(
 
 
 async def log_system_credential_cost(
-    node_exec: Any,
-    block: Any,
+    node_exec: NodeExecutionEntry,
+    block: Block,
     stats: NodeExecutionStats,
 ) -> None:
     """Check if a system credential was used and log the platform cost.
@@ -132,8 +133,8 @@ async def log_system_credential_cost(
             # For other types (items, characters, per_run, ...) the
             # provider_cost field holds the raw amount, not a dollar value.
             cost_microdollars = None
-            if tracking_type == "cost_usd" and stats.provider_cost is not None:
-                cost_microdollars = round(stats.provider_cost * MICRODOLLARS_PER_USD)
+            if tracking_type == "cost_usd":
+                cost_microdollars = usd_to_microdollars(stats.provider_cost)
 
             meta: dict[str, Any] = {
                 "tracking_type": tracking_type,

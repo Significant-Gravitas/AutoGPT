@@ -13,15 +13,20 @@ import asyncio
 import logging
 
 from backend.data.platform_cost import (
-    MICRODOLLARS_PER_USD,
     PlatformCostEntry,
     log_platform_cost_safe,
+    usd_to_microdollars,
 )
 
 from .model import ChatSession, Usage
 from .rate_limit import record_token_usage
 
 logger = logging.getLogger(__name__)
+
+# Identifiers used by PlatformCostLog for copilot turns (not tied to a real
+# block/credential in the block_cost_config or credentials_store tables).
+COPILOT_BLOCK_ID = "copilot"
+COPILOT_CREDENTIAL_ID = "copilot_system"
 
 # Hold strong references to in-flight log tasks to prevent GC.
 _pending_log_tasks: set[asyncio.Task] = set()
@@ -31,6 +36,13 @@ def _schedule_log(entry: PlatformCostEntry) -> None:
     task = asyncio.create_task(log_platform_cost_safe(entry))
     _pending_log_tasks.add(task)
     task.add_done_callback(_pending_log_tasks.discard)
+
+
+def _copilot_block_name(log_prefix: str) -> str:
+    """Turn a log prefix like ``"[SDK]"`` into a stable block_name
+    ``"copilot:SDK"``. Empty prefix becomes just ``"copilot"``."""
+    tag = log_prefix.strip(" []")
+    return f"{COPILOT_BLOCK_ID}:{tag}" if tag else COPILOT_BLOCK_ID
 
 
 async def persist_and_record_usage(
@@ -124,9 +136,7 @@ async def persist_and_record_usage(
             except (ValueError, TypeError):
                 pass
 
-        cost_microdollars = (
-            round(cost_float * MICRODOLLARS_PER_USD) if cost_float is not None else None
-        )
+        cost_microdollars = usd_to_microdollars(cost_float)
         session_id = session.session_id if session else None
 
         if cost_float is not None:
@@ -140,10 +150,10 @@ async def persist_and_record_usage(
             PlatformCostEntry(
                 user_id=user_id,
                 graph_exec_id=session_id,
-                block_id="copilot",
-                block_name=f"copilot:{log_prefix.strip(' []')}".rstrip(":"),
+                block_id=COPILOT_BLOCK_ID,
+                block_name=_copilot_block_name(log_prefix),
                 provider=provider,
-                credential_id="copilot_system",
+                credential_id=COPILOT_CREDENTIAL_ID,
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,

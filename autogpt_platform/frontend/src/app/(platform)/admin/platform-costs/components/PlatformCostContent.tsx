@@ -129,8 +129,11 @@ function PlatformCostContent({ searchParams }: Props) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end gap-3 rounded-lg border p-4">
         <div className="flex flex-col gap-1">
-          <label className="text-sm text-muted-foreground">Start Date</label>
+          <label htmlFor="start-date" className="text-sm text-muted-foreground">
+            Start Date
+          </label>
           <input
+            id="start-date"
             type="datetime-local"
             className="rounded border px-3 py-1.5 text-sm"
             value={startInput}
@@ -138,8 +141,11 @@ function PlatformCostContent({ searchParams }: Props) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm text-muted-foreground">End Date</label>
+          <label htmlFor="end-date" className="text-sm text-muted-foreground">
+            End Date
+          </label>
           <input
+            id="end-date"
             type="datetime-local"
             className="rounded border px-3 py-1.5 text-sm"
             value={endInput}
@@ -147,8 +153,14 @@ function PlatformCostContent({ searchParams }: Props) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm text-muted-foreground">Provider</label>
+          <label
+            htmlFor="provider-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Provider
+          </label>
           <input
+            id="provider-filter"
             type="text"
             placeholder="e.g. openai"
             className="rounded border px-3 py-1.5 text-sm"
@@ -157,8 +169,14 @@ function PlatformCostContent({ searchParams }: Props) {
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-sm text-muted-foreground">User ID</label>
+          <label
+            htmlFor="user-id-filter"
+            className="text-sm text-muted-foreground"
+          >
+            User ID
+          </label>
           <input
+            id="user-id-filter"
             type="text"
             placeholder="Filter by user"
             className="rounded border px-3 py-1.5 text-sm"
@@ -175,7 +193,7 @@ function PlatformCostContent({ searchParams }: Props) {
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-700 dark:bg-red-900/20 dark:text-red-400">
+        <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
           {error}
         </div>
       )}
@@ -209,10 +227,12 @@ function PlatformCostContent({ searchParams }: Props) {
             </div>
           )}
 
-          <div className="flex gap-2 border-b">
+          <div role="tablist" className="flex gap-2 border-b">
             {["overview", "by-user", "logs"].map((t) => (
               <button
                 key={t}
+                role="tab"
+                aria-selected={tab === t}
                 onClick={() => updateUrl({ tab: t, page: "1" })}
                 className={`px-4 py-2 text-sm font-medium ${tab === t ? "border-b-2 border-blue-600 text-blue-600" : "text-muted-foreground hover:text-foreground"}`}
               >

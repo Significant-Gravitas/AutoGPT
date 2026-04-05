@@ -13,6 +13,13 @@ logger = logging.getLogger(__name__)
 MICRODOLLARS_PER_USD = 1_000_000
 
 
+def usd_to_microdollars(cost_usd: float | None) -> int | None:
+    """Convert a USD amount (float) to microdollars (int). None-safe."""
+    if cost_usd is None:
+        return None
+    return round(cost_usd * MICRODOLLARS_PER_USD)
+
+
 class PlatformCostEntry(BaseModel):
     user_id: str
     graph_exec_id: str | None = None
@@ -199,6 +206,7 @@ async def get_platform_cost_dashboard(
             GROUP BY p."provider",
                 COALESCE(p."trackingType", p."metadata"->>'tracking_type')
             ORDER BY total_cost DESC
+            LIMIT 500
             """,
             *params_p,
         ),
