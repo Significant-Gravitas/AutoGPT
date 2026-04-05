@@ -58,7 +58,15 @@ function setupHandlers({
     getGetV2ListLibraryFoldersMockHandler(
       folders
         ? getGetV2ListLibraryFoldersResponseMock(folders)
-        : { folders: [] },
+        : {
+            folders: [],
+            pagination: {
+              total_items: 0,
+              total_pages: 1,
+              current_page: 1,
+              page_size: 20,
+            },
+          },
     ),
     getGetV1ListAllExecutionsMockHandler(executions ?? []),
   );

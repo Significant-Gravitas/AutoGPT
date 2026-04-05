@@ -48,7 +48,10 @@ app/(platform)/library/
 ```tsx
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
-import { getGetV2ListLibraryAgentsMockHandler200 } from "@/app/api/__generated__/endpoints/library/library.msw";
+import {
+  getGetV2ListLibraryAgentsMockHandler200,
+  getGetV2ListLibraryAgentsMockHandler422,
+} from "@/app/api/__generated__/endpoints/library/library.msw";
 import LibraryPage from "../page";
 
 describe("LibraryPage", () => {
@@ -84,7 +87,7 @@ To override with custom data, pass a resolver:
 import { http, HttpResponse } from "msw";
 
 server.use(
-  http.get("http://localhost:3000/api/proxy/api/v2/library/agents", () => {
+  http.get("http://localhost:3000/api/proxy/api/library/agents", () => {
     return HttpResponse.json({
       agents: [{ id: "1", name: "My Agent" }],
       pagination: { total: 1 },
@@ -97,7 +100,7 @@ All handlers are aggregated in `src/mocks/mock-handlers.ts` and the MSW server i
 
 ### Test utilities
 
-- **`@/tests/integrations/test-utils`** — custom `render()` that wraps components with `QueryClientProvider`, `BackendAPIProvider`, `OnboardingProvider`
+- **`@/tests/integrations/test-utils`** — custom `render()` that wraps components with `QueryClientProvider`, `BackendAPIProvider`, `OnboardingProvider`, `NuqsTestingAdapter`, and `TooltipProvider`, so query-state hooks and tooltips work out of the box in page-level tests
 - **`@/tests/integrations/setup-nextjs-mocks`** — mocks for `next/navigation`, `next/image`, `next/headers`, `next/link`
 - **`@/tests/integrations/mock-supabase-request`** — mocks Supabase auth (returns null user by default)
 
