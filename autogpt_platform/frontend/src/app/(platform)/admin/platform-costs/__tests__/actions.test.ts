@@ -36,8 +36,8 @@ describe("getPlatformCostDashboard", () => {
     });
     expect(mockGetDashboard).toHaveBeenCalledTimes(1);
     const params = mockGetDashboard.mock.calls[0][0];
-    expect(params.start).toBeInstanceOf(Date);
-    expect(params.end).toBeInstanceOf(Date);
+    expect(params.start).toBe("2026-01-01T00:00:00");
+    expect(params.end).toBe("2026-06-01T00:00:00");
     expect(params.provider).toBe("openai");
     expect(params.user_id).toBe("user-1");
   });
@@ -76,12 +76,12 @@ describe("getPlatformCostLogs", () => {
     expect(params.page_size).toBe(25);
   });
 
-  it("converts start date string to Date", async () => {
+  it("passes start date string through to API", async () => {
     mockGetLogs.mockReset();
     mockGetLogs.mockResolvedValue({ status: 200, data: { logs: [] } });
     await getPlatformCostLogs({ start: "2026-03-01T00:00:00" });
     expect(mockGetLogs).toHaveBeenCalledTimes(1);
     const params = mockGetLogs.mock.calls[0][0];
-    expect(params.start).toBeInstanceOf(Date);
+    expect(params.start).toBe("2026-03-01T00:00:00");
   });
 });
