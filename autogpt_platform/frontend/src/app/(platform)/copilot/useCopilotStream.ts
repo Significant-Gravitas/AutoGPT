@@ -18,6 +18,7 @@ import {
   resolveInProgressTools,
   getSendSuppressionReason,
 } from "./helpers";
+import type { CopilotMode } from "./store";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -41,7 +42,7 @@ interface UseCopilotStreamArgs {
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
-  copilotMode: "extended_thinking" | "fast" | undefined;
+  copilotMode: CopilotMode | undefined;
 }
 
 export function useCopilotStream({

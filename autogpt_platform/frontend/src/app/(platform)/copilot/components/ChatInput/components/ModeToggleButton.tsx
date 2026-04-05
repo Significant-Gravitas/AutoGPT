@@ -2,8 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { Brain, Lightning } from "@phosphor-icons/react";
-
-type CopilotMode = "extended_thinking" | "fast";
+import type { CopilotMode } from "../../../store";
 
 interface Props {
   mode: CopilotMode;

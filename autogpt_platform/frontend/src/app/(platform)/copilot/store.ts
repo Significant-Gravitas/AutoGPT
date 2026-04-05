@@ -7,6 +7,9 @@ export interface DeleteTarget {
   title: string | null | undefined;
 }
 
+/** Autopilot response mode. */
+export type CopilotMode = "extended_thinking" | "fast";
+
 const isClient = typeof window !== "undefined";
 
 function persistCompletedSessions(ids: Set<string>) {
@@ -48,8 +51,8 @@ interface CopilotUIState {
   setShowNotificationDialog: (show: boolean) => void;
 
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
-  copilotMode: "extended_thinking" | "fast";
-  setCopilotMode: (mode: "extended_thinking" | "fast") => void;
+  copilotMode: CopilotMode;
+  setCopilotMode: (mode: CopilotMode) => void;
 
   clearCopilotLocalData: () => void;
 }
