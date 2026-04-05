@@ -4,56 +4,65 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
 from typing import Any
 
 import prisma.models
+from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.llm import ModelMetadata
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class RegistryModelCost:
+class RegistryModelCost(BaseModel):
     """Cost configuration for an LLM model."""
+
+    model_config = ConfigDict(frozen=True)
 
     unit: str  # "RUN" or "TOKENS"
     credit_cost: int
     credential_provider: str
-    credential_id: str | None
-    credential_type: str | None
-    currency: str | None
-    metadata: dict[str, Any]
+    credential_id: str | None = None
+    credential_type: str | None = None
+    currency: str | None = None
+    metadata: dict[str, Any] = {}
 
 
-@dataclass(frozen=True)
-class RegistryModelCreator:
+class RegistryModelCreator(BaseModel):
     """Creator information for an LLM model."""
+
+    model_config = ConfigDict(frozen=True)
 
     id: str
     name: str
     display_name: str
-    description: str | None
-    website_url: str | None
-    logo_url: str | None
+    description: str | None = None
+    website_url: str | None = None
+    logo_url: str | None = None
 
 
-@dataclass(frozen=True)
-class RegistryModel:
+class RegistryModel(BaseModel):
     """Represents a model in the LLM registry."""
+
+    model_config = ConfigDict(frozen=True)
 
     slug: str
     display_name: str
-    description: str | None
+    description: str | None = None
     metadata: ModelMetadata
-    capabilities: dict[str, Any]
-    extra_metadata: dict[str, Any]
+    capabilities: dict[str, Any] = {}
+    extra_metadata: dict[str, Any] = {}
     provider_display_name: str
     is_enabled: bool
     is_recommended: bool = False
-    costs: tuple[RegistryModelCost, ...] = field(default_factory=tuple)
+    costs: tuple[RegistryModelCost, ...] = ()
     creator: RegistryModelCreator | None = None
+
+    # Typed capability fields from DB schema
+    supports_tools: bool = False
+    supports_json_output: bool = False
+    supports_reasoning: bool = False
+    supports_parallel_tool_calls: bool = False
 
 
 # In-memory cache (will be replaced with Redis in PR #6)
@@ -148,6 +157,10 @@ def _record_to_registry_model(record: prisma.models.LlmModel) -> RegistryModel:
         is_recommended=record.isRecommended,
         costs=costs,
         creator=creator,
+        supports_tools=record.supportsTools,
+        supports_json_output=record.supportsJsonOutput,
+        supports_reasoning=record.supportsReasoning,
+        supports_parallel_tool_calls=record.supportsParallelToolCalls,
     )
 
 
