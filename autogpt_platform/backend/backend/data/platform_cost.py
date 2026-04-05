@@ -167,6 +167,14 @@ async def get_platform_cost_dashboard(
     provider: str | None = None,
     user_id: str | None = None,
 ) -> PlatformCostDashboard:
+    """Aggregate platform cost logs for the admin dashboard.
+
+    Note: by_provider rows are keyed on (provider, tracking_type). A single
+    provider can therefore appear in multiple rows if it has entries with
+    different billing models (e.g. "openai" with both "tokens" and "cost_usd"
+    if pricing is later added for some entries). Frontend treats each row
+    independently rather than as a provider primary key.
+    """
     where_p, params_p = _build_where(start, end, provider, user_id, "p")
 
     by_provider_rows, user_count_rows, by_user_rows = await asyncio.gather(

@@ -1,6 +1,5 @@
 """Helpers for platform cost tracking on system-credential block executions."""
 
-import asyncio
 import logging
 from typing import Any, cast
 
@@ -66,54 +65,59 @@ async def log_system_credential_cost(
 ) -> None:
     """Check if a system credential was used and log the platform cost.
 
-    Note: costMicrodollars is left null for now. To populate it, we would
-    need per-token pricing tables or extract cost from provider responses
-    (e.g. OpenRouter returns a cost field). The credit_cost in metadata
-    captures our internal credit charge as a proxy.
+    Logs only the first matching system credential field (one log per
+    execution). Any unexpected error is caught and logged — cost logging
+    is strictly best-effort and must never disrupt block execution.
+
+    Note: costMicrodollars is left null for providers that don't return
+    a USD cost. The credit_cost in metadata captures our internal credit
+    charge as a proxy.
     """
-    if node_exec.execution_context.dry_run:
-        return
+    try:
+        if node_exec.execution_context.dry_run:
+            return
 
-    input_data = node_exec.inputs
-    input_model = cast(type[BlockSchema], block.input_schema)
+        input_data = node_exec.inputs
+        input_model = cast(type[BlockSchema], block.input_schema)
 
-    for field_name in input_model.get_credentials_fields():
-        cred_data = input_data.get(field_name)
-        if not cred_data or not isinstance(cred_data, dict):
-            continue
-        cred_id = cred_data.get("id", "")
-        if not cred_id or not is_system_credential(cred_id):
-            continue
+        for field_name in input_model.get_credentials_fields():
+            cred_data = input_data.get(field_name)
+            if not cred_data or not isinstance(cred_data, dict):
+                continue
+            cred_id = cred_data.get("id", "")
+            if not cred_id or not is_system_credential(cred_id):
+                continue
 
-        model_name = input_data.get("model")
-        if model_name is not None and not isinstance(model_name, str):
-            model_name = str(model_name) if not isinstance(model_name, dict) else None
+            model_name = input_data.get("model")
+            if model_name is not None and not isinstance(model_name, str):
+                model_name = (
+                    str(model_name) if not isinstance(model_name, dict) else None
+                )
 
-        credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
+            credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
 
-        # Convert provider_cost (USD) to microdollars if available
-        cost_microdollars = None
-        if stats.provider_cost is not None:
-            cost_microdollars = round(stats.provider_cost * MICRODOLLARS_PER_USD)
+            # Convert provider_cost (USD) to microdollars if available
+            cost_microdollars = None
+            if stats.provider_cost is not None:
+                cost_microdollars = round(stats.provider_cost * MICRODOLLARS_PER_USD)
 
-        provider_name = cred_data.get("provider", "unknown")
-        tracking_type, tracking_amount = resolve_tracking(
-            provider=provider_name,
-            stats=stats,
-            input_data=input_data,
-        )
+            provider_name = cred_data.get("provider", "unknown")
+            tracking_type, tracking_amount = resolve_tracking(
+                provider=provider_name,
+                stats=stats,
+                input_data=input_data,
+            )
 
-        meta: dict[str, Any] = {
-            "tracking_type": tracking_type,
-            "tracking_amount": tracking_amount,
-        }
-        if credit_cost:
-            meta["credit_cost"] = credit_cost
-        if stats.provider_cost is not None:
-            meta["provider_cost_usd"] = stats.provider_cost
+            meta: dict[str, Any] = {
+                "tracking_type": tracking_type,
+                "tracking_amount": tracking_amount,
+            }
+            if credit_cost:
+                meta["credit_cost"] = credit_cost
+            if stats.provider_cost is not None:
+                meta["provider_cost_usd"] = stats.provider_cost
 
-        asyncio.create_task(
-            log_platform_cost_safe(
+            await log_platform_cost_safe(
                 PlatformCostEntry(
                     user_id=node_exec.user_id,
                     graph_exec_id=node_exec.graph_exec_id,
@@ -134,5 +138,6 @@ async def log_system_credential_cost(
                     metadata=meta or None,
                 )
             )
-        )
-        return  # One log per execution is enough
+            return  # One log per execution is enough
+    except Exception:
+        logger.exception("log_system_credential_cost failed unexpectedly")

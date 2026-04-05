@@ -46,8 +46,17 @@ function PlatformCostContent({ searchParams }: Props) {
     urlParams.get("provider") || searchParams.provider || "";
   const userFilter = urlParams.get("user_id") || searchParams.user_id || "";
 
-  const [startInput, setStartInput] = useState(startDate);
-  const [endInput, setEndInput] = useState(endDate);
+  // URL holds UTC ISO; datetime-local inputs need local "YYYY-MM-DDTHH:mm".
+  const toLocalInput = (iso: string) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const [startInput, setStartInput] = useState(toLocalInput(startDate));
+  const [endInput, setEndInput] = useState(toLocalInput(endDate));
   const [providerInput, setProviderInput] = useState(providerFilter);
   const [userInput, setUserInput] = useState(userFilter);
 
@@ -92,9 +101,16 @@ function PlatformCostContent({ searchParams }: Props) {
   }
 
   function handleFilter() {
+    // datetime-local emits naive local time; convert to UTC ISO so the
+    // backend filter window matches what the admin sees in their browser.
+    const toUtcIso = (local: string) => {
+      if (!local) return "";
+      const d = new Date(local);
+      return isNaN(d.getTime()) ? "" : d.toISOString();
+    };
     updateUrl({
-      start: startInput,
-      end: endInput,
+      start: toUtcIso(startInput),
+      end: toUtcIso(endInput),
       provider: providerInput,
       user_id: userInput,
       page: "1",
