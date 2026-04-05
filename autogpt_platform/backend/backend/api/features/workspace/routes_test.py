@@ -1,3 +1,4 @@
+import io
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,6 +11,16 @@ from backend.data.workspace import Workspace, WorkspaceFile
 
 app = fastapi.FastAPI()
 app.include_router(router)
+
+
+@app.exception_handler(ValueError)
+async def _value_error_handler(
+    request: fastapi.Request, exc: ValueError
+) -> fastapi.responses.JSONResponse:
+    """Mirror the production ValueError → 400 mapping from the REST app."""
+    return fastapi.responses.JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
 client = fastapi.testclient.TestClient(app)
 
 
@@ -178,3 +189,288 @@ def test_upload_returns_409_on_file_conflict(
     )
     assert response.status_code == 409
     assert "already exists" in response.json()["detail"]
+
+
+# -- Restored upload/download/delete security + invariant tests --
+
+
+def _upload(
+    filename: str = "hello.txt",
+    content: bytes = b"Hello, world!",
+    content_type: str = "text/plain",
+):
+    return client.post(
+        "/files/upload?session_id=sess-1",
+        files={"file": (filename, io.BytesIO(content), content_type)},
+    )
+
+
+_MOCK_FILE = WorkspaceFile(
+    id="file-aaa-bbb",
+    workspace_id="ws-001",
+    created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    name="hello.txt",
+    path="/sessions/sess-1/hello.txt",
+    mime_type="text/plain",
+    size_bytes=13,
+    storage_path="local://hello.txt",
+)
+
+
+def test_upload_happy_path(mocker):
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 200
+    data = response.json()
+    assert data["file_id"] == "file-aaa-bbb"
+    assert data["name"] == "hello.txt"
+    assert data["size_bytes"] == 13
+
+
+def test_upload_exceeds_max_file_size(mocker):
+    """Files larger than max_file_size_mb should be rejected with 413."""
+    cfg = mocker.patch("backend.api.features.workspace.routes.Config")
+    cfg.return_value.max_file_size_mb = 0  # 0 MB → any content is too big
+    cfg.return_value.max_workspace_storage_mb = 500
+
+    response = _upload(content=b"x" * 1024)
+    assert response.status_code == 413
+
+
+def test_upload_storage_quota_exceeded(mocker):
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=500 * 1024 * 1024,
+    )
+
+    response = _upload()
+    assert response.status_code == 413
+    assert "Storage limit exceeded" in response.text
+
+
+def test_upload_post_write_quota_race(mocker):
+    """Concurrent upload tipping over limit after write should soft-delete + 413."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        side_effect=[0, 600 * 1024 * 1024],
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+    mock_delete = mocker.patch(
+        "backend.api.features.workspace.routes.soft_delete_workspace_file",
+        return_value=None,
+    )
+
+    response = _upload()
+    assert response.status_code == 413
+    mock_delete.assert_called_once_with("file-aaa-bbb", "ws-001")
+
+
+def test_upload_any_extension(mocker):
+    """Any file extension should be accepted — ClamAV is the security layer."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload(filename="data.xyz", content=b"arbitrary")
+    assert response.status_code == 200
+
+
+def test_upload_blocked_by_virus_scan(mocker):
+    """Files flagged by ClamAV should be rejected and never written to storage."""
+    from backend.api.features.store.exceptions import VirusDetectedError
+
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        side_effect=VirusDetectedError("Eicar-Test-Signature"),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload(filename="evil.exe", content=b"X5O!P%@AP...")
+    assert response.status_code == 400
+    mock_manager.write_file.assert_not_called()
+
+
+def test_upload_file_without_extension(mocker):
+    """Files without an extension should be accepted and stored as-is."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload(
+        filename="Makefile",
+        content=b"all:\n\techo hello",
+        content_type="application/octet-stream",
+    )
+    assert response.status_code == 200
+    mock_manager.write_file.assert_called_once()
+    assert mock_manager.write_file.call_args[0][1] == "Makefile"
+
+
+def test_upload_strips_path_components(mocker):
+    """Path-traversal filenames should be reduced to their basename."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.scan_content_safe",
+        return_value=None,
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    _upload(filename="../../etc/passwd.txt")
+
+    mock_manager.write_file.assert_called_once()
+    call_args = mock_manager.write_file.call_args
+    assert call_args[0][1] == "passwd.txt"
+
+
+def test_download_file_not_found(mocker):
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_file",
+        return_value=None,
+    )
+
+    response = client.get("/files/some-file-id/download")
+    assert response.status_code == 404
+
+
+def test_delete_file_success(mocker):
+    """Deleting an existing file should return {"deleted": true}."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=_make_workspace(),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.delete_file = mocker.AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = client.delete("/files/file-aaa-bbb")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": True}
+    mock_manager.delete_file.assert_called_once_with("file-aaa-bbb")
+
+
+def test_delete_file_not_found(mocker):
+    """Deleting a non-existent file should return 404."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=_make_workspace(),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.delete_file = mocker.AsyncMock(return_value=False)
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = client.delete("/files/nonexistent-id")
+    assert response.status_code == 404
+    assert "File not found" in response.text
+
+
+def test_delete_file_no_workspace(mocker):
+    """Deleting when user has no workspace should return 404."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=None,
+    )
+
+    response = client.delete("/files/file-aaa-bbb")
+    assert response.status_code == 404
+    assert "Workspace not found" in response.text
