@@ -11,11 +11,12 @@ import {
   X,
 } from "@phosphor-icons/react";
 import type { ArtifactRef } from "../../../store";
-import { classifyArtifact } from "../helpers";
+import type { ArtifactClassification } from "../helpers";
 import { SourceToggle } from "./SourceToggle";
 
 interface Props {
   artifact: ArtifactRef;
+  classification: ArtifactClassification;
   canGoBack: boolean;
   isMaximized: boolean;
   isSourceView: boolean;
@@ -56,6 +57,7 @@ function HeaderButton({
 
 export function ArtifactPanelHeader({
   artifact,
+  classification,
   canGoBack,
   isMaximized,
   isSourceView,
@@ -71,11 +73,6 @@ export function ArtifactPanelHeader({
   onDownload,
   onSourceToggle,
 }: Props) {
-  const classification = classifyArtifact(
-    artifact.mimeType,
-    artifact.title,
-    artifact.sizeBytes,
-  );
   const Icon = classification.icon;
 
   return (

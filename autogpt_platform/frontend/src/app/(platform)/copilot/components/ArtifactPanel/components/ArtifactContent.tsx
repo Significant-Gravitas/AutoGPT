@@ -4,7 +4,7 @@ import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
 import { Suspense } from "react";
 import type { ArtifactRef } from "../../../store";
-import { classifyArtifact } from "../helpers";
+import type { ArtifactClassification } from "../helpers";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import {
@@ -16,14 +16,14 @@ import { useArtifactContent } from "./useArtifactContent";
 interface Props {
   artifact: ArtifactRef;
   isSourceView: boolean;
+  classification: ArtifactClassification;
 }
 
-function ArtifactContentLoader({ artifact, isSourceView }: Props) {
-  const classification = classifyArtifact(
-    artifact.mimeType,
-    artifact.title,
-    artifact.sizeBytes,
-  );
+function ArtifactContentLoader({
+  artifact,
+  isSourceView,
+  classification,
+}: Props) {
   const { content, pdfUrl, isLoading, error, scrollRef } = useArtifactContent(
     artifact,
     classification,
@@ -66,7 +66,7 @@ function ArtifactRenderer({
   content: string | null;
   pdfUrl: string | null;
   isSourceView: boolean;
-  classification: ReturnType<typeof classifyArtifact>;
+  classification: ArtifactClassification;
 }) {
   // Image: render directly from URL (no content fetch)
   if (classification.type === "image") {

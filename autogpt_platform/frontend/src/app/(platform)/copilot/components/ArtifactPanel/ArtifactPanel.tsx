@@ -39,14 +39,15 @@ export function ArtifactPanel({ mobile }: Props) {
     handleDownload,
   } = useArtifactPanel();
 
-  if (!activeArtifact) return null;
+  if (!activeArtifact || !classification) return null;
 
   const headerProps = {
     artifact: activeArtifact,
+    classification,
     canGoBack: history.length > 0,
     isMaximized,
     isSourceView,
-    hasSourceToggle: classification?.hasSourceToggle ?? false,
+    hasSourceToggle: classification.hasSourceToggle,
     mobile: !!mobile,
     canCopy,
     onBack: goBackArtifact,
@@ -77,6 +78,7 @@ export function ArtifactPanel({ mobile }: Props) {
           <ArtifactContent
             artifact={activeArtifact}
             isSourceView={isSourceView}
+            classification={classification}
           />
         </SheetContent>
       </Sheet>
@@ -88,6 +90,7 @@ export function ArtifactPanel({ mobile }: Props) {
     return (
       <ArtifactMinimizedStrip
         artifact={activeArtifact}
+        classification={classification}
         onExpand={restoreArtifactPanel}
       />
     );
@@ -113,6 +116,7 @@ export function ArtifactPanel({ mobile }: Props) {
           <ArtifactContent
             artifact={activeArtifact}
             isSourceView={isSourceView}
+            classification={classification}
           />
         </motion.div>
       )}

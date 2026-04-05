@@ -2,19 +2,19 @@
 
 import { ArrowsOutSimple } from "@phosphor-icons/react";
 import type { ArtifactRef } from "../../../store";
-import { classifyArtifact } from "../helpers";
+import type { ArtifactClassification } from "../helpers";
 
 interface Props {
   artifact: ArtifactRef;
+  classification: ArtifactClassification;
   onExpand: () => void;
 }
 
-export function ArtifactMinimizedStrip({ artifact, onExpand }: Props) {
-  const classification = classifyArtifact(
-    artifact.mimeType,
-    artifact.title,
-    artifact.sizeBytes,
-  );
+export function ArtifactMinimizedStrip({
+  artifact,
+  classification,
+  onExpand,
+}: Props) {
   const Icon = classification.icon;
 
   return (
