@@ -22,6 +22,10 @@ export function useArtifactContent(
   const [error, setError] = useState<string | null>(null);
   const scrollPositions = useRef(new Map<string, number>());
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Cache fetched text content by artifact id so A→B→A doesn't re-fetch.
+  // Kept at component scope (not module-level) so it's collected when the
+  // panel unmounts — artifact content can be large.
+  const contentCache = useRef(new Map<string, string>());
 
   // Save scroll position when switching artifacts. Only save when the
   // content div has actually been mounted with a nonzero scrollTop, so we
@@ -91,6 +95,14 @@ export function useArtifactContent(
     }
 
     setPdfUrl(null);
+    const cached = contentCache.current.get(artifact.id);
+    if (cached !== undefined) {
+      setContent(cached);
+      setIsLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
     fetch(artifact.sourceUrl)
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
@@ -98,6 +110,7 @@ export function useArtifactContent(
       })
       .then((text) => {
         if (!cancelled) {
+          contentCache.current.set(artifact.id, text);
           setContent(text);
           setIsLoading(false);
         }

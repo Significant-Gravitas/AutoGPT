@@ -12,12 +12,15 @@ function fingerprintArtifacts(artifacts: ArtifactRef[]): string {
     .join("|");
 }
 
-interface Props {
+interface UseAutoOpenArtifactsOptions {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   sessionId: string | null;
 }
 
-export function useAutoOpenArtifacts({ messages, sessionId }: Props) {
+export function useAutoOpenArtifacts({
+  messages,
+  sessionId,
+}: UseAutoOpenArtifactsOptions) {
   const openArtifact = useCopilotUIStore((state) => state.openArtifact);
   const messageFingerprintsRef = useRef<Map<string, string>>(new Map());
   const hasInitializedRef = useRef(false);

@@ -7,12 +7,33 @@ export interface DeleteTarget {
   title: string | null | undefined;
 }
 
+/**
+ * A single workspace artifact surfaced in the copilot chat.
+ *
+ * Rendered by `ArtifactCard` (inline) and `ArtifactPanel` (preview pane).
+ * Typically extracted from `workspace://<id>` URIs in assistant text parts
+ * or from `FileUIPart` attachments; see `getMessageArtifacts` in
+ * `ChatMessagesContainer/helpers.ts`.
+ */
 export interface ArtifactRef {
+  /** Workspace file ID (matches the backend `WorkspaceFile.id`). */
   id: string;
+  /** Human-visible filename, used as both title and download filename. */
   title: string;
+  /** MIME type if known (from backend metadata or `workspace://id#mime`). */
   mimeType: string | null;
+  /**
+   * Fully-qualified URL the preview/download code will fetch from. Today
+   * this is always the same-origin proxy path
+   * `/api/proxy/api/workspace/files/{id}/download`.
+   */
   sourceUrl: string;
+  /**
+   * Who produced the artifact — drives the origin badge color in
+   * `ArtifactPanelHeader`. Derived from the emitting message's role.
+   */
   origin: "agent" | "user-upload";
+  /** Size in bytes if known — used by `classifyArtifact` for size gating. */
   sizeBytes?: number;
 }
 
@@ -42,6 +63,16 @@ function getPersistedWidth(): number {
     }
   }
   return DEFAULT_PANEL_WIDTH;
+}
+
+let panelWidthPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function schedulePanelWidthPersist(width: number) {
+  if (!isClient) return;
+  if (panelWidthPersistTimer) clearTimeout(panelWidthPersistTimer);
+  panelWidthPersistTimer = setTimeout(() => {
+    storage.set(Key.COPILOT_ARTIFACT_PANEL_WIDTH, String(width));
+    panelWidthPersistTimer = null;
+  }, 200);
 }
 
 function persistCompletedSessions(ids: Set<string>) {
@@ -212,7 +243,9 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       },
     })),
   setArtifactPanelWidth: (width) => {
-    storage.set(Key.COPILOT_ARTIFACT_PANEL_WIDTH, String(width));
+    // Debounced localStorage write — drag events fire 60×/s, but we only
+    // need the final value. A timer flushes 200ms after the last update.
+    schedulePanelWidthPersist(width);
     set((state) => ({
       artifactPanel: {
         ...state.artifactPanel,
