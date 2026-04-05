@@ -12,7 +12,7 @@ import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.workspace import (
     WorkspaceFile,
@@ -137,7 +137,7 @@ class WorkspaceFileItem(BaseModel):
     path: str
     mime_type: str
     size_bytes: int
-    metadata: dict = {}
+    metadata: dict = Field(default_factory=dict)
     created_at: str
 
 

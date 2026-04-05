@@ -39,7 +39,7 @@ export function ArtifactPanel({ mobile }: Props) {
     handleDownload,
   } = useArtifactPanel();
 
-  if (!activeArtifact || (!isOpen && !mobile)) return null;
+  if (!activeArtifact) return null;
 
   const headerProps = {
     artifact: activeArtifact,
@@ -83,10 +83,8 @@ export function ArtifactPanel({ mobile }: Props) {
     );
   }
 
-  if (!isOpen) return null;
-
   // Minimized strip
-  if (isMinimized) {
+  if (isOpen && isMinimized) {
     return (
       <ArtifactMinimizedStrip
         artifact={activeArtifact}
@@ -95,24 +93,29 @@ export function ArtifactPanel({ mobile }: Props) {
     );
   }
 
+  // Keep AnimatePresence mounted across the open→closed transition so the
+  // exit animation on the motion.div has a chance to run.
   return (
     <AnimatePresence>
-      <motion.div
-        data-artifact-panel
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.25, ease: "easeInOut" }}
-        className="relative flex h-full flex-col overflow-hidden border-l border-zinc-200 bg-white"
-        style={{ width: effectiveWidth }}
-      >
-        <ArtifactDragHandle onWidthChange={setArtifactPanelWidth} />
-        <ArtifactPanelHeader {...headerProps} />
-        <ArtifactContent
-          artifact={activeArtifact}
-          isSourceView={isSourceView}
-        />
-      </motion.div>
+      {isOpen && (
+        <motion.div
+          key="artifact-panel"
+          data-artifact-panel
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.25, ease: "easeInOut" }}
+          className="relative flex h-full flex-col overflow-hidden border-l border-zinc-200 bg-white"
+          style={{ width: effectiveWidth }}
+        >
+          <ArtifactDragHandle onWidthChange={setArtifactPanelWidth} />
+          <ArtifactPanelHeader {...headerProps} />
+          <ArtifactContent
+            artifact={activeArtifact}
+            isSourceView={isSourceView}
+          />
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }

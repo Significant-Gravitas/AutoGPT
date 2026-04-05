@@ -39,13 +39,16 @@ function ArtifactContentLoader({ artifact, isSourceView }: Props) {
     };
   }, [artifact.id]);
 
-  // Restore scroll position
+  // Restore scroll position — wait until isLoading flips to false, since
+  // the scroll container is replaced by a Skeleton during loading and the
+  // real content div would otherwise mount with scrollTop=0.
   useEffect(() => {
+    if (isLoading) return;
     const saved = scrollPositions.current.get(artifact.id);
     if (saved != null && scrollRef.current) {
       scrollRef.current.scrollTop = saved;
     }
-  }, [artifact.id]);
+  }, [artifact.id, isLoading]);
 
   useEffect(() => {
     if (classification.type === "image") {

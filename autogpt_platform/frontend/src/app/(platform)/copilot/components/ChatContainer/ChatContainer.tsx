@@ -1,6 +1,7 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback } from "react";
@@ -51,8 +52,16 @@ export const ChatContainer = ({
   onDroppedFilesConsumed,
   historicalDurations,
 }: ChatContainerProps) => {
-  const isArtifactOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
-  useAutoOpenArtifacts({ messages, sessionId });
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  // When the flag is off we must not auto-open artifacts or let the panel's
+  // open state drive layout width; an artifact generated in a stale session
+  // state would otherwise shrink the chat column with no panel rendered.
+  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
+  useAutoOpenArtifacts({
+    messages: isArtifactsEnabled ? messages : [],
+    sessionId,
+  });
   const isBusy =
     status === "streaming" ||
     status === "submitted" ||
