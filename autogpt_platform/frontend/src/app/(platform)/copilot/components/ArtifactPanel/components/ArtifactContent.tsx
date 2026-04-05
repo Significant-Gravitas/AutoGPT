@@ -1,12 +1,13 @@
 "use client";
 
-import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
+import { Suspense } from "react";
 import type { ArtifactRef } from "../../../store";
 import { classifyArtifact } from "../helpers";
-import { Suspense, useEffect, useRef, useState } from "react";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
+import { ArtifactSkeleton } from "./ArtifactSkeleton";
+import { useArtifactContent } from "./useArtifactContent";
 
 interface Props {
   artifact: ArtifactRef;
@@ -14,113 +15,15 @@ interface Props {
 }
 
 function ArtifactContentLoader({ artifact, isSourceView }: Props) {
-  const [content, setContent] = useState<string | null>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const scrollPositions = useRef(new Map<string, number>());
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   const classification = classifyArtifact(
     artifact.mimeType,
     artifact.title,
     artifact.sizeBytes,
   );
-
-  // Save scroll position when switching artifacts. Only save when the
-  // content div has actually been mounted with a nonzero scrollTop, so we
-  // don't overwrite a previously-saved position with 0 from a skeleton render.
-  useEffect(() => {
-    return () => {
-      const node = scrollRef.current;
-      if (node && node.scrollTop > 0) {
-        scrollPositions.current.set(artifact.id, node.scrollTop);
-      }
-    };
-  }, [artifact.id]);
-
-  // Restore scroll position — wait until isLoading flips to false, since
-  // the scroll container is replaced by a Skeleton during loading and the
-  // real content div would otherwise mount with scrollTop=0.
-  useEffect(() => {
-    if (isLoading) return;
-    const saved = scrollPositions.current.get(artifact.id);
-    if (saved != null && scrollRef.current) {
-      scrollRef.current.scrollTop = saved;
-    }
-  }, [artifact.id, isLoading]);
-
-  useEffect(() => {
-    if (classification.type === "image") {
-      setContent(null);
-      setPdfUrl(null);
-      setError(null);
-      setIsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
-
-    if (classification.type === "pdf") {
-      let objectUrl: string | null = null;
-
-      setContent(null);
-      setPdfUrl(null);
-      fetch(artifact.sourceUrl)
-        .then((res) => {
-          if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-          return res.blob();
-        })
-        .then((blob) => {
-          objectUrl = URL.createObjectURL(blob);
-          if (cancelled) {
-            URL.revokeObjectURL(objectUrl);
-            objectUrl = null;
-            return;
-          }
-          setPdfUrl(objectUrl);
-          setIsLoading(false);
-        })
-        .catch((err) => {
-          if (!cancelled) {
-            setError(err.message);
-            setIsLoading(false);
-          }
-        });
-
-      return () => {
-        cancelled = true;
-        if (objectUrl) {
-          URL.revokeObjectURL(objectUrl);
-        }
-      };
-    }
-
-    setPdfUrl(null);
-    fetch(artifact.sourceUrl)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-        return res.text();
-      })
-      .then((text) => {
-        if (!cancelled) {
-          setContent(text);
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err.message);
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [artifact.id, artifact.sourceUrl, classification.type]);
+  const { content, pdfUrl, isLoading, error, scrollRef } = useArtifactContent(
+    artifact,
+    classification,
+  );
 
   if (isLoading) {
     return <ArtifactSkeleton extraLine />;
@@ -196,12 +99,19 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "html") {
-    // Always inject Tailwind CDN so AI-generated HTML with Tailwind classes renders correctly
-    const tailwindScript = `<script src="https://cdn.tailwindcss.com"></script>`;
+    // CSP meta: block `connect-src` and `form-action` so AI-generated HTML
+    // can't use fetch/XHR/<form> to exfiltrate its own content. Tailwind's
+    // JIT runtime (`cdn.tailwindcss.com`) needs script + style + img.
+    const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'">`;
+    // Pin Tailwind CDN to a specific major version to reduce exposure to
+    // unannounced upstream changes (SRI isn't possible because the JIT
+    // runtime is generated on demand).
+    const tailwindScript = `<script src="https://cdn.tailwindcss.com/3.4.16"></script>`;
     const headOpenRe = /<head(\s[^>]*)?>/i;
+    const headInjection = `${cspMeta}${tailwindScript}`;
     const htmlWithTailwind = headOpenRe.test(content)
-      ? content.replace(headOpenRe, (match) => `${match}${tailwindScript}`)
-      : `${tailwindScript}${content}`;
+      ? content.replace(headOpenRe, (match) => `${match}${headInjection}`)
+      : `${headInjection}${content}`;
     return (
       <iframe
         sandbox="allow-scripts"

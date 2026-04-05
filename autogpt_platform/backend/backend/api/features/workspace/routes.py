@@ -144,6 +144,8 @@ class WorkspaceFileItem(BaseModel):
 class ListFilesResponse(BaseModel):
     files: list[WorkspaceFileItem]
     total_count: int
+    offset: int = 0
+    has_more: bool = False
 
 
 @router.get(
@@ -339,12 +341,15 @@ async def get_storage_usage(
 async def list_workspace_files(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     session_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
 ) -> ListFilesResponse:
     """
     List files in the user's workspace.
 
     When session_id is provided, only files for that session are returned.
-    Otherwise, all files across sessions are listed.
+    Otherwise, all files across sessions are listed. Results are paginated
+    via `limit`/`offset`; `has_more` indicates whether additional pages exist.
     """
     workspace = await get_or_create_workspace(user_id)
 
@@ -355,7 +360,14 @@ async def list_workspace_files(
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None
-    files = await manager.list_files(include_all_sessions=include_all)
+    # Fetch one extra to compute has_more without a separate count query.
+    files = await manager.list_files(
+        limit=limit + 1,
+        offset=offset,
+        include_all_sessions=include_all,
+    )
+    has_more = len(files) > limit
+    page = files[:limit]
 
     return ListFilesResponse(
         files=[
@@ -368,7 +380,9 @@ async def list_workspace_files(
                 metadata=f.metadata or {},
                 created_at=f.created_at.isoformat(),
             )
-            for f in files
+            for f in page
         ],
-        total_count=len(files),
+        total_count=len(page),
+        offset=offset,
+        has_more=has_more,
     )

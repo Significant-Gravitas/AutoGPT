@@ -282,7 +282,7 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
       id: parsed.fileID,
       title,
       mimeType: parsed.mimeType,
-      sourceUrl: `/api/proxy/api/workspace/files/${parsed.fileID}/download`,
+      sourceUrl: `/api/proxy${getGetWorkspaceDownloadFileByIdUrl(parsed.fileID)}`,
       origin: "agent",
     });
   }

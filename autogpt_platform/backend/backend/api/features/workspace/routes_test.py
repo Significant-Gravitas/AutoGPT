@@ -103,7 +103,9 @@ def test_list_files_returns_all_when_no_session(mock_manager_cls, mock_get_works
     assert data["files"][0]["id"] == "f1"
     assert data["files"][0]["metadata"] == {"origin": "user-upload"}
     assert data["files"][1]["id"] == "f2"
-    mock_instance.list_files.assert_called_once_with(include_all_sessions=True)
+    mock_instance.list_files.assert_called_once_with(
+        limit=201, offset=0, include_all_sessions=True
+    )
 
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
@@ -123,7 +125,9 @@ def test_list_files_scopes_to_session_when_provided(
     assert data["total_count"] == 0
     assert data["files"] == []
     mock_manager_cls.assert_called_once_with(test_user_id, "ws-001", "sess-123")
-    mock_instance.list_files.assert_called_once_with(include_all_sessions=False)
+    mock_instance.list_files.assert_called_once_with(
+        limit=201, offset=0, include_all_sessions=False
+    )
 
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
