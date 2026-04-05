@@ -262,11 +262,16 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
 
     if (!parsed || seen.has(parsed.fileID)) continue;
 
+    // Skip URIs inside image markdown (`![alt](workspace://...)`). Images are
+    // rendered inline via resolveWorkspaceUrls — surfacing them as cards too
+    // would double-render the same asset.
+    const escapedUri = fullUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const imagePattern = new RegExp(`!\\[[^\\]]*\\]\\(${escapedUri}\\)`);
+    if (imagePattern.test(text)) continue;
+
     seen.add(parsed.fileID);
 
-    const linkPattern = new RegExp(
-      `\\[([^\\]]+)\\]\\(${fullUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\)`,
-    );
+    const linkPattern = new RegExp(`\\[([^\\]]+)\\]\\(${escapedUri}\\)`);
     const linkMatch = text.match(linkPattern);
     const title = linkMatch?.[1] ?? `File ${parsed.fileID.slice(0, 8)}`;
 
