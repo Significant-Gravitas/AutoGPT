@@ -588,7 +588,10 @@ async def _upload_final_transcript(
         if not content:
             logger.debug("[Baseline] Empty transcript content, skipping upload")
             return
-        upload_task = asyncio.shield(
+        # Track the upload as a background task so a timeout doesn't leak an
+        # orphaned coroutine; shield it so cancellation of this caller doesn't
+        # abort the in-flight GCS write.
+        upload_task = asyncio.create_task(
             upload_transcript(
                 user_id=user_id,
                 session_id=session_id,
@@ -598,9 +601,12 @@ async def _upload_final_transcript(
                 skip_strip=True,
             )
         )
-        # Bound the shielded upload: a hung storage backend must not
-        # block the response from finishing.
-        await asyncio.wait_for(upload_task, timeout=30)
+        _background_tasks.add(upload_task)
+        upload_task.add_done_callback(_background_tasks.discard)
+        # Bound the wait: a hung storage backend must not block the response
+        # from finishing. The task keeps running in _background_tasks on
+        # timeout and will be cleaned up when it resolves.
+        await asyncio.wait_for(asyncio.shield(upload_task), timeout=30)
     except Exception as upload_err:
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
