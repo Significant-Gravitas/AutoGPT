@@ -50,7 +50,7 @@ from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig
+from ..config import ChatConfig, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -1677,6 +1677,7 @@ async def stream_chat_completion_sdk(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    mode: CopilotMode | None = None,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -1685,7 +1686,10 @@ async def stream_chat_completion_sdk(
         file_ids: Optional workspace file IDs attached to the user's message.
             Images are embedded as vision content blocks; other files are
             saved to the SDK working directory for the Read tool.
+        mode: Accepted for signature compatibility with the baseline path.
+            The SDK path does not currently branch on this value.
     """
+    _ = mode  # SDK path ignores the requested mode.
 
     if session is None:
         session = await get_chat_session(session_id, user_id)
