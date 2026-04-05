@@ -381,6 +381,11 @@ app.include_router(
     tags=["v2", "llm"],
     prefix="/api",
 )
+app.include_router(
+    backend.server.v2.llm.admin_router,
+    tags=["v2", "llm", "admin"],
+    prefix="/api",
+)
 
 app.mount("/external-api", external_api)
 
