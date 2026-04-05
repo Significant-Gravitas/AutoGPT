@@ -24,6 +24,16 @@
 
 **Location:** `src/tests/*.spec.ts` (centralized, as there will be fewer of them)
 
+**Import:** Always import `test` and `expect` from `./coverage-fixture` instead of `@playwright/test`. This auto-collects V8 coverage per test for Codecov reporting.
+
+```ts
+// correct
+import { test, expect } from "./coverage-fixture";
+
+// wrong - bypasses coverage collection
+import { test, expect } from "@playwright/test";
+```
+
 ### ✅ Integration Tests (Vitest + RTL)
 
 **Use for:** Testing components with their dependencies (API calls, state).
