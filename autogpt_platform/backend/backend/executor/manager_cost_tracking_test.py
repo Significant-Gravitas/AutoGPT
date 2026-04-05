@@ -80,6 +80,31 @@ class TestResolveTracking:
         assert tt == "characters"
         assert amt == 9.0
 
+    def test_block_declared_cost_type_items(self):
+        """Block explicitly setting provider_cost_type='items' short-circuits heuristics."""
+        stats = self._stats(provider_cost=5.0, provider_cost_type="items")
+        tt, amt = resolve_tracking("google_maps", stats, {})
+        assert tt == "items"
+        assert amt == 5.0
+
+    def test_block_declared_cost_type_characters(self):
+        """TTS block can declare characters directly, bypassing input_data lookup."""
+        stats = self._stats(provider_cost=42.0, provider_cost_type="characters")
+        tt, amt = resolve_tracking("unreal_speech", stats, {})
+        assert tt == "characters"
+        assert amt == 42.0
+
+    def test_block_declared_cost_type_wins_over_tokens(self):
+        """provider_cost_type takes precedence over token-based heuristic."""
+        stats = self._stats(
+            provider_cost=1.0,
+            provider_cost_type="per_run",
+            input_token_count=500,
+        )
+        tt, amt = resolve_tracking("openai", stats, {})
+        assert tt == "per_run"
+        assert amt == 1.0
+
     def test_e2b_returns_sandbox_seconds(self):
         stats = self._stats(walltime=45.123)
         tt, amt = resolve_tracking("e2b", stats, {})

@@ -819,6 +819,17 @@ class RefundRequest(BaseModel):
     updated_at: datetime
 
 
+ProviderCostType = Literal[
+    "cost_usd",  # Actual USD cost reported by the provider
+    "tokens",  # LLM token counts (sum of input + output)
+    "characters",  # Per-character billing (TTS providers)
+    "sandbox_seconds",  # Per-second compute billing (e.g. E2B)
+    "walltime_seconds",  # Per-second billing incl. queue/polling
+    "per_run",  # Per-API-call billing with fixed cost
+    "items",  # Per-item billing (lead/organization/result count)
+]
+
+
 class NodeExecutionStats(BaseModel):
     """Execution statistics for a node execution."""
 
@@ -839,6 +850,10 @@ class NodeExecutionStats(BaseModel):
     extra_cost: int = 0
     extra_steps: int = 0
     provider_cost: float | None = None
+    # Type of the provider-reported cost/usage captured above. When set
+    # by a block, resolve_tracking honors this directly instead of
+    # guessing from provider name.
+    provider_cost_type: Optional[ProviderCostType] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
     cleared_outputs: Optional[dict[str, list[str]]] = None

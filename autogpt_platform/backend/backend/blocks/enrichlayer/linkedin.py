@@ -15,12 +15,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    NodeExecutionStats,
-    SchemaField,
-)
+from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 from backend.util.type import MediaFileType
 
 from ._api import (
@@ -200,7 +195,6 @@ class GetLinkedinProfileBlock(Block):
                 include_social_media=input_data.include_social_media,
                 include_extra=input_data.include_extra,
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "profile", profile
         except Exception as e:
             logger.error(f"Error fetching LinkedIn profile: {str(e)}")
@@ -347,7 +341,6 @@ class LinkedinPersonLookupBlock(Block):
                 include_similarity_checks=input_data.include_similarity_checks,
                 enrich_profile=input_data.enrich_profile,
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "lookup_result", lookup_result
         except Exception as e:
             logger.error(f"Error looking up LinkedIn profile: {str(e)}")
@@ -450,7 +443,6 @@ class LinkedinRoleLookupBlock(Block):
                 company_name=input_data.company_name,
                 enrich_profile=input_data.enrich_profile,
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "role_lookup_result", role_lookup_result
         except Exception as e:
             logger.error(f"Error looking up role in company: {str(e)}")
@@ -531,7 +523,6 @@ class GetLinkedinProfilePictureBlock(Block):
                 credentials=credentials,
                 linkedin_profile_url=input_data.linkedin_profile_url,
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "profile_picture_url", profile_picture
         except Exception as e:
             logger.error(f"Error getting profile picture: {str(e)}")

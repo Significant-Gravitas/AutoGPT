@@ -15,7 +15,6 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
-    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -147,7 +146,6 @@ class GetWeatherInformationBlock(Block, GetRequest):
         weather_data = await self.get_request(url, json=True)
 
         if "main" in weather_data and "weather" in weather_data:
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "temperature", str(weather_data["main"]["temp"])
             yield "humidity", str(weather_data["main"]["humidity"])
             yield "condition", weather_data["weather"][0]["description"]

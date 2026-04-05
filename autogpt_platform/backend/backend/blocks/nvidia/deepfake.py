@@ -10,7 +10,7 @@ from backend.blocks.nvidia._auth import (
     NvidiaCredentialsField,
     NvidiaCredentialsInput,
 )
-from backend.data.model import NodeExecutionStats, SchemaField
+from backend.data.model import SchemaField
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
@@ -69,7 +69,6 @@ class NvidiaDeepfakeDetectBlock(Block):
             data = response.json()
 
             result = data.get("data", [{}])[0]
-            self.merge_stats(NodeExecutionStats(output_size=1))
 
             # Get deepfake probability from first bounding box if any
             deepfake_prob = 0.0

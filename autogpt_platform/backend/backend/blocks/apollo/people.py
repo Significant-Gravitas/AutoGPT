@@ -366,5 +366,9 @@ class SearchPeopleBlock(Block):
                 *(enrich_or_fallback(person) for person in people)
             )
 
-        self.merge_stats(NodeExecutionStats(output_size=len(people)))
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(people)), provider_cost_type="items"
+            )
+        )
         yield "people", people

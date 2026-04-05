@@ -14,7 +14,6 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
-    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -228,7 +227,6 @@ class IdeogramModelBlock(Block):
                 image_url=result,
             )
 
-        self.merge_stats(NodeExecutionStats(output_size=1))
         yield "result", result
 
     async def run_model(

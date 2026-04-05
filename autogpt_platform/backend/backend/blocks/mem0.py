@@ -8,7 +8,6 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
-    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -154,7 +153,6 @@ class AddMemoryBlock(Block, Mem0Base):
                 messages,
                 **params,
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
 
             results = result.get("results", [])
             yield "results", results
@@ -257,7 +255,6 @@ class SearchMemoryBlock(Block, Mem0Base):
             result: list[dict[str, Any]] = client.search(
                 input_data.query, version="v2", filters=filters
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "memories", result
 
         except Exception as e:
@@ -343,7 +340,6 @@ class GetAllMemoriesBlock(Block, Mem0Base):
                 filters=filters,
                 version="v2",
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
 
             yield "memories", memories
 
@@ -438,7 +434,6 @@ class GetLatestMemoryBlock(Block, Mem0Base):
                 filters=filters,
                 version="v2",
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
 
             if memories:
                 # Return the latest memory (first in the list as they're sorted by recency)

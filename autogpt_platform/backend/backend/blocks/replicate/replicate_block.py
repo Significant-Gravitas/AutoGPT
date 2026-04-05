@@ -17,12 +17,7 @@ from backend.blocks.replicate._auth import (
     ReplicateCredentialsInput,
 )
 from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
-from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    NodeExecutionStats,
-    SchemaField,
-)
+from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 logger = logging.getLogger(__name__)
@@ -113,7 +108,6 @@ class ReplicateModelBlock(Block):
             result = await self.run_model(
                 model_ref, input_data.model_inputs, credentials.api_key
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "result", result
             yield "status", "succeeded"
             yield "model_name", input_data.model_name

@@ -16,7 +16,6 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
-    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -186,7 +185,6 @@ class ScreenshotWebPageBlock(Block):
                 block_chats=input_data.block_chats,
                 cache=input_data.cache,
             )
-            self.merge_stats(NodeExecutionStats(output_size=1))
             yield "image", screenshot_data["image"]
         except Exception as e:
             yield "error", str(e)

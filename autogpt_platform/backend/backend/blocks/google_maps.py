@@ -118,7 +118,11 @@ class GoogleMapsSearchBlock(Block):
             input_data.radius,
             input_data.max_results,
         )
-        self.merge_stats(NodeExecutionStats(output_size=len(places)))
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(places)), provider_cost_type="items"
+            )
+        )
         for place in places:
             yield "place", place
 

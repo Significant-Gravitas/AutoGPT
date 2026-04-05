@@ -105,5 +105,10 @@ class UnrealTextToSpeechBlock(Block):
             input_data.text,
             input_data.voice_id,
         )
-        self.merge_stats(NodeExecutionStats(output_size=len(input_data.text)))
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(input_data.text)),
+                provider_cost_type="characters",
+            )
+        )
         yield "mp3_url", api_response["OutputUri"]
