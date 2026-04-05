@@ -11,6 +11,7 @@ import { PaginationControls } from "../../../../../components/__legacy__/ui/pagi
 import { SearchAndFilterAdminSpending } from "./SearchAndFilterAdminSpending";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./AddMoneyButton";
+import { RateLimitModal } from "./RateLimitModal";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 
 export async function AdminUserGrantHistory({
@@ -80,10 +81,7 @@ export async function AdminUserGrantHistory({
 
   return (
     <div className="space-y-4">
-      <SearchAndFilterAdminSpending
-        initialStatus={initialStatus}
-        initialSearch={initialSearch}
-      />
+      <SearchAndFilterAdminSpending initialSearch={initialSearch} />
 
       <div className="rounded-md border bg-white">
         <Table>
@@ -105,7 +103,7 @@ export async function AdminUserGrantHistory({
             {history.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={9}
                   className="py-10 text-center text-gray-500"
                 >
                   No transactions found
@@ -114,7 +112,7 @@ export async function AdminUserGrantHistory({
             ) : (
               history.map((transaction) => (
                 <TableRow
-                  key={transaction.user_id}
+                  key={`${transaction.user_id}-${transaction.transaction_time}`}
                   className="hover:bg-gray-50"
                 >
                   <TableCell className="font-medium">
@@ -147,25 +145,29 @@ export async function AdminUserGrantHistory({
                     ${transaction.current_balance / 100}
                   </TableCell> */}
                   <TableCell className="text-right">
-                    <AdminAddMoneyButton
-                      userId={transaction.user_id}
-                      userEmail={
-                        transaction.user_email ?? "User Email wasn't attached"
-                      }
-                      currentBalance={transaction.current_balance}
-                      defaultAmount={
-                        transaction.transaction_type ===
-                        CreditTransactionType.USAGE
-                          ? -transaction.amount
-                          : undefined
-                      }
-                      defaultComments={
-                        transaction.transaction_type ===
-                        CreditTransactionType.USAGE
-                          ? "Refund for usage"
-                          : undefined
-                      }
-                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <RateLimitModal
+                        userId={transaction.user_id}
+                        userEmail={transaction.user_email ?? ""}
+                      />
+                      <AdminAddMoneyButton
+                        userId={transaction.user_id}
+                        userEmail={transaction.user_email ?? ""}
+                        currentBalance={transaction.current_balance}
+                        defaultAmount={
+                          transaction.transaction_type ===
+                          CreditTransactionType.USAGE
+                            ? -transaction.amount
+                            : undefined
+                        }
+                        defaultComments={
+                          transaction.transaction_type ===
+                          CreditTransactionType.USAGE
+                            ? "Refund for usage"
+                            : undefined
+                        }
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

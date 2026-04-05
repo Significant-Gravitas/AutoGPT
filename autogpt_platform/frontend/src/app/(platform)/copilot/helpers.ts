@@ -1,5 +1,52 @@
 import type { UIMessage } from "ai";
 
+export const ORIGINAL_TITLE = "AutoGPT";
+
+/**
+ * Build the document title showing how many sessions are ready.
+ * Returns the base title when count is 0.
+ */
+export function formatNotificationTitle(count: number): string {
+  return count > 0
+    ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
+    : ORIGINAL_TITLE;
+}
+
+/**
+ * Safely parse a JSON string (from localStorage) into a `Set<string>` of
+ * session IDs. Returns an empty set for `null`, malformed, or non-array values.
+ */
+export function parseSessionIDs(raw: string | null | undefined): Set<string> {
+  if (!raw) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set<string>(parsed.filter((v) => typeof v === "string"))
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Check whether a refetchSession result indicates the backend still has an
+ * active SSE stream for this session.
+ */
+export function hasActiveBackendStream(result: { data?: unknown }): boolean {
+  const d = result.data;
+  return (
+    d != null &&
+    typeof d === "object" &&
+    "status" in d &&
+    d.status === 200 &&
+    "data" in d &&
+    d.data != null &&
+    typeof d.data === "object" &&
+    "active_stream" in d.data &&
+    !!d.data.active_stream
+  );
+}
+
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 export function resolveInProgressTools(
   messages: UIMessage[],

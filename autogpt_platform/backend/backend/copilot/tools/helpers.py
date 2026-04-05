@@ -48,27 +48,41 @@ logger = logging.getLogger(__name__)
 def get_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract input field info from JSON schema."""
+    """Extract input field info from JSON schema.
+
+    When *input_data* is provided, each field's ``value`` key is populated
+    with the value the CoPilot already supplied — so the frontend can
+    prefill the form instead of showing empty inputs.  Fields marked
+    ``advanced`` in the schema are flagged so the frontend can hide them
+    by default (matching the builder behaviour).
+    """
     if not isinstance(input_schema, dict):
         return []
 
     exclude = exclude_fields or set()
     properties = input_schema.get("properties", {})
     required = set(input_schema.get("required", []))
+    provided = input_data or {}
 
-    return [
-        {
+    results: list[dict[str, Any]] = []
+    for name, schema in properties.items():
+        if name in exclude:
+            continue
+        entry: dict[str, Any] = {
             "name": name,
             "title": schema.get("title", name),
             "type": schema.get("type", "string"),
             "description": schema.get("description", ""),
             "required": name in required,
             "default": schema.get("default"),
+            "advanced": schema.get("advanced", False),
         }
-        for name, schema in properties.items()
-        if name not in exclude
-    ]
+        if name in provided:
+            entry["value"] = provided[name]
+        results.append(entry)
+    return results
 
 
 async def execute_block(
@@ -81,7 +95,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -114,11 +128,9 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
             return BlockOutputResponse(
-                message=(
-                    f"[DRY RUN] Block '{block.name}' simulated successfully "
-                    "— no real execution occurred."
-                ),
+                message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
@@ -337,7 +349,7 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -448,7 +460,9 @@ async def prepare_block_for_execution(
                 requirements={
                     "credentials": missing_creds_list,
                     "inputs": get_inputs_from_schema(
-                        input_schema, exclude_fields=credentials_fields
+                        input_schema,
+                        exclude_fields=credentials_fields,
+                        input_data=input_data,
                     ),
                     "execution_modes": ["immediate"],
                 },
@@ -537,7 +551,7 @@ async def check_hitl_review(
         )
 
     synthetic_node_exec_id = (
-        f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}" f"{uuid.uuid4().hex[:8]}"
+        f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"
     )
 
     review_context = ExecutionContext(
@@ -582,7 +596,16 @@ def _resolve_discriminated_credentials(
     block: AnyBlockSchema,
     input_data: dict[str, Any],
 ) -> dict[str, CredentialsFieldInfo]:
-    """Resolve credential requirements, applying discriminator logic where needed."""
+    """Resolve credential requirements, applying discriminator logic where needed.
+
+    Handles two discrimination modes:
+    1. **Provider-based** (``discriminator_mapping`` is set): the discriminator
+       field value selects the provider (e.g. an AI model name -> provider).
+    2. **URL/host-based** (``discriminator`` is set but ``discriminator_mapping``
+       is ``None``): the discriminator field value (typically a URL) is added to
+       ``discriminator_values`` so that host-scoped credential matching can
+       compare the credential's host against the target URL.
+    """
     credentials_fields_info = block.input_schema.get_credentials_fields_info()
     if not credentials_fields_info:
         return {}
@@ -592,25 +615,42 @@ def _resolve_discriminated_credentials(
     for field_name, field_info in credentials_fields_info.items():
         effective_field_info = field_info
 
-        if field_info.discriminator and field_info.discriminator_mapping:
+        if field_info.discriminator:
             discriminator_value = input_data.get(field_info.discriminator)
             if discriminator_value is None:
                 field = block.input_schema.model_fields.get(field_info.discriminator)
                 if field and field.default is not PydanticUndefined:
                     discriminator_value = field.default
 
-            if (
-                discriminator_value
-                and discriminator_value in field_info.discriminator_mapping
-            ):
-                effective_field_info = field_info.discriminate(discriminator_value)
-                effective_field_info.discriminator_values.add(discriminator_value)
-                logger.debug(
-                    "Discriminated provider for %s: %s -> %s",
-                    field_name,
-                    discriminator_value,
-                    effective_field_info.provider,
-                )
+            if discriminator_value is not None:
+                if field_info.discriminator_mapping:
+                    # Provider-based discrimination (e.g. model -> provider)
+                    if discriminator_value in field_info.discriminator_mapping:
+                        effective_field_info = field_info.discriminate(
+                            discriminator_value
+                        )
+                        effective_field_info.discriminator_values.add(
+                            discriminator_value
+                        )
+                        # Model names are safe to log (not PII); URLs are
+                        # intentionally omitted in the host-based branch below.
+                        logger.debug(
+                            "Discriminated provider for %s: %s -> %s",
+                            field_name,
+                            discriminator_value,
+                            effective_field_info.provider,
+                        )
+                else:
+                    # URL/host-based discrimination (e.g. url -> host matching).
+                    # Deep copy to avoid mutating the cached schema-level
+                    # field_info (model_copy() is shallow — the mutable set
+                    # would be shared).
+                    effective_field_info = field_info.model_copy(deep=True)
+                    effective_field_info.discriminator_values.add(discriminator_value)
+                    logger.debug(
+                        "Added discriminator value for host matching on %s",
+                        field_name,
+                    )
 
         resolved[field_name] = effective_field_info
 

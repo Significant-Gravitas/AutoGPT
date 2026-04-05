@@ -1,14 +1,13 @@
 """Set up the AI and its goals"""
+
 import logging
 from typing import Optional
+
+from autogpt.app.config import AppConfig
 
 from forge.config.ai_directives import AIDirectives
 from forge.config.ai_profile import AIProfile
 from forge.logging.utils import print_attribute
-
-from autogpt.app.config import AppConfig
-
-from .input import clean_input
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +48,7 @@ async def interactively_revise_ai_settings(
     directives: AIDirectives,
     app_config: AppConfig,
 ):
-    """Interactively revise the AI settings.
+    """Print AI settings and return them.
 
     Args:
         ai_profile (AIConfig): The current AI profile.
@@ -57,126 +56,20 @@ async def interactively_revise_ai_settings(
         app_config (Config): The application configuration.
 
     Returns:
-        AIConfig: The revised AI settings.
+        AIConfig: The AI settings.
     """
     logger = logging.getLogger("revise_ai_profile")
 
-    revised = False
-
-    while True:
-        # Print the current AI configuration
-        print_ai_settings(
-            title="Current AI Settings" if not revised else "Revised AI Settings",
-            ai_profile=ai_profile,
-            directives=directives,
-            logger=logger,
-        )
-
-        if (
-            clean_input("Continue with these settings? [Y/n]").lower()
-            or app_config.authorise_key
-        ) == app_config.authorise_key:
-            break
-
-        # Ask for revised ai_profile
-        ai_profile.ai_name = (
-            clean_input("Enter AI name (or press enter to keep current):")
-            or ai_profile.ai_name
-        )
-        ai_profile.ai_role = (
-            clean_input("Enter new AI role (or press enter to keep current):")
-            or ai_profile.ai_role
-        )
-
-        # Revise constraints
-        i = 0
-        while i < len(directives.constraints):
-            constraint = directives.constraints[i]
-            print_attribute(f"Constraint {i+1}:", f'"{constraint}"')
-            new_constraint = (
-                clean_input(
-                    f"Enter new constraint {i+1}"
-                    " (press enter to keep current, or '-' to remove):",
-                )
-                or constraint
-            )
-
-            if new_constraint == "-":
-                directives.constraints.remove(constraint)
-                continue
-            elif new_constraint:
-                directives.constraints[i] = new_constraint
-
-            i += 1
-
-        # Add new constraints
-        while True:
-            new_constraint = clean_input(
-                "Press enter to finish, or enter a constraint to add:",
-            )
-            if not new_constraint:
-                break
-            directives.constraints.append(new_constraint)
-
-        # Revise resources
-        i = 0
-        while i < len(directives.resources):
-            resource = directives.resources[i]
-            print_attribute(f"Resource {i+1}:", f'"{resource}"')
-            new_resource = (
-                clean_input(
-                    f"Enter new resource {i+1}"
-                    " (press enter to keep current, or '-' to remove):",
-                )
-                or resource
-            )
-            if new_resource == "-":
-                directives.resources.remove(resource)
-                continue
-            elif new_resource:
-                directives.resources[i] = new_resource
-
-            i += 1
-
-        # Add new resources
-        while True:
-            new_resource = clean_input(
-                "Press enter to finish, or enter a resource to add:",
-            )
-            if not new_resource:
-                break
-            directives.resources.append(new_resource)
-
-        # Revise best practices
-        i = 0
-        while i < len(directives.best_practices):
-            best_practice = directives.best_practices[i]
-            print_attribute(f"Best Practice {i+1}:", f'"{best_practice}"')
-            new_best_practice = (
-                clean_input(
-                    f"Enter new best practice {i+1}"
-                    " (press enter to keep current, or '-' to remove):",
-                )
-                or best_practice
-            )
-            if new_best_practice == "-":
-                directives.best_practices.remove(best_practice)
-                continue
-            elif new_best_practice:
-                directives.best_practices[i] = new_best_practice
-
-            i += 1
-
-        # Add new best practices
-        while True:
-            new_best_practice = clean_input(
-                "Press enter to finish, or add a best practice to add:",
-            )
-            if not new_best_practice:
-                break
-            directives.best_practices.append(new_best_practice)
-
-        revised = True
+    print_ai_settings(
+        title="AI Settings",
+        ai_profile=ai_profile,
+        directives=directives,
+        logger=logger,
+    )
+    logger.info(
+        "To customize, use CLI args: --ai-name, --ai-role, "
+        "--constraint, --resource, --best-practice"
+    )
 
     return ai_profile, directives
 

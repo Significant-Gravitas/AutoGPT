@@ -102,6 +102,7 @@ class TestExecuteBlockCreditCharging:
                 session_id=_SESSION,
                 node_exec_id="exec-1",
                 matched_credentials={},
+                dry_run=False,
             )
 
         assert isinstance(result, BlockOutputResponse)
@@ -132,6 +133,7 @@ class TestExecuteBlockCreditCharging:
                 session_id=_SESSION,
                 node_exec_id="exec-1",
                 matched_credentials={},
+                dry_run=False,
             )
 
         assert isinstance(result, ErrorResponse)
@@ -158,6 +160,7 @@ class TestExecuteBlockCreditCharging:
                 session_id=_SESSION,
                 node_exec_id="exec-1",
                 matched_credentials={},
+                dry_run=False,
             )
 
         assert isinstance(result, BlockOutputResponse)
@@ -194,6 +197,7 @@ class TestExecuteBlockCreditCharging:
                 session_id=_SESSION,
                 node_exec_id="exec-1",
                 matched_credentials={},
+                dry_run=False,
             )
 
         # Block already executed (with side effects), so output is returned
@@ -277,6 +281,7 @@ async def test_coerce_json_string_to_nested_list():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-1",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -317,6 +322,7 @@ async def test_coerce_json_string_to_list():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-2",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -349,6 +355,7 @@ async def test_coerce_json_string_to_dict():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-3",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -382,6 +389,7 @@ async def test_no_coercion_when_type_matches():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-4",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -415,6 +423,7 @@ async def test_coerce_string_to_int():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-5",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -448,6 +457,7 @@ async def test_coerce_skips_none_values():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-6",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -481,6 +491,7 @@ async def test_coerce_union_type_preserves_valid_member():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-7",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -516,6 +527,7 @@ async def test_coerce_inner_elements_of_generic():
             session_id=_TEST_SESSION_ID,
             node_exec_id="exec-8",
             matched_credentials={},
+            dry_run=False,
         )
 
     assert isinstance(response, BlockOutputResponse)
@@ -592,6 +604,7 @@ async def test_prepare_block_not_found() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, ErrorResponse)
     assert "not found" in result.message
@@ -612,6 +625,7 @@ async def test_prepare_block_disabled() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, ErrorResponse)
     assert "disabled" in result.message
@@ -640,6 +654,7 @@ async def test_prepare_block_unrecognized_fields() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, InputValidationErrorResponse)
     assert "unknown_field" in result.unrecognized_fields
@@ -669,6 +684,7 @@ async def test_prepare_block_missing_credentials() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, SetupRequirementsResponse)
 
@@ -698,6 +714,7 @@ async def test_prepare_block_success_returns_preparation() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, BlockPreparation)
     assert result.required_non_credential_keys == {"text"}
@@ -802,6 +819,7 @@ async def test_prepare_block_excluded_by_type() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, ErrorResponse)
     assert "cannot be run directly" in result.message
@@ -824,6 +842,7 @@ async def test_prepare_block_excluded_by_id() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, ErrorResponse)
     assert "cannot be run directly" in result.message
@@ -857,6 +876,7 @@ async def test_prepare_block_file_ref_expansion_error() -> None:
             user_id=_PREP_USER,
             session=_make_prep_session(),
             session_id=_PREP_SESSION,
+            dry_run=False,
         )
     assert isinstance(result, ErrorResponse)
     assert "file reference" in result.message.lower()

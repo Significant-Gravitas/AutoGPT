@@ -1,6 +1,6 @@
 import { LoginPage } from "./pages/login.page";
 import { ProfilePage } from "./pages/profile.page";
-import test, { expect } from "@playwright/test";
+import { test, expect } from "./coverage-fixture";
 import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
 

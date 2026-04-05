@@ -18,7 +18,14 @@ from prisma.types import (
 from backend.data import db
 from backend.util.json import SafeJson, sanitize_string
 
-from .model import ChatMessage, ChatSession, ChatSessionInfo
+from .model import (
+    ChatMessage,
+    ChatSession,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+    cache_chat_session,
+)
+from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +42,7 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
 async def create_chat_session(
     session_id: str,
     user_id: str,
+    metadata: ChatSessionMetadata | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
     data = ChatSessionCreateInput(
@@ -43,6 +51,7 @@ async def create_chat_session(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
+        metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)
     return ChatSessionInfo.from_db(prisma_session)
@@ -57,7 +66,12 @@ async def update_chat_session(
     total_completion_tokens: int | None = None,
     title: str | None = None,
 ) -> ChatSession | None:
-    """Update a chat session's metadata."""
+    """Update a chat session's mutable fields.
+
+    Note: ``metadata`` (which includes ``dry_run``) is intentionally omitted —
+    it is set once at creation time and treated as immutable for the lifetime
+    of the session.
+    """
     data: ChatSessionUpdateInput = {"updatedAt": datetime.now(UTC)}
 
     if credentials is not None:
@@ -217,6 +231,9 @@ async def add_chat_messages_batch(
                     if msg.get("function_call") is not None:
                         data["functionCall"] = SafeJson(msg["function_call"])
 
+                    if msg.get("duration_ms") is not None:
+                        data["durationMs"] = msg["duration_ms"]
+
                     messages_data.append(data)
 
                 # Run create_many and session update in parallel within transaction
@@ -359,3 +376,33 @@ async def update_tool_message_content(
             f"tool_call_id {tool_call_id}: {e}"
         )
         return False
+
+
+async def set_turn_duration(session_id: str, duration_ms: int) -> None:
+    """Set durationMs on the last assistant message in a session.
+
+    Updates the Redis cache in-place instead of invalidating it.
+    Invalidation would delete the key, creating a window where concurrent
+    ``get_chat_session`` calls re-populate the cache from DB — potentially
+    with stale data if the DB write from the previous turn hasn't propagated.
+    This race caused duplicate user messages on the next turn.
+    """
+    last_msg = await PrismaChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "role": "assistant"},
+        order={"sequence": "desc"},
+    )
+    if last_msg:
+        await PrismaChatMessage.prisma().update(
+            where={"id": last_msg.id},
+            data={"durationMs": duration_ms},
+        )
+        # Update cache in-place rather than invalidating to avoid a
+        # race window where the empty cache gets re-populated with
+        # stale data by a concurrent get_chat_session call.
+        session = await get_chat_session_cached(session_id)
+        if session and session.messages:
+            for msg in reversed(session.messages):
+                if msg.role == "assistant":
+                    msg.duration_ms = duration_ms
+                    break
+            await cache_chat_session(session)

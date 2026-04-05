@@ -7,6 +7,7 @@ interface SessionChatMessage {
   content: string | null;
   tool_call_id: string | null;
   tool_calls: unknown[] | null;
+  duration_ms: number | null;
 }
 
 function coerceSessionChatMessages(
@@ -20,28 +21,31 @@ function coerceSessionChatMessages(
       const role = typeof msg.role === "string" ? msg.role : null;
       if (!role) return null;
 
-return {
-  id:
-    typeof msg.id === "string"
-      ? msg.id
-      : msg.id == null
-        ? null
-        : String(msg.id),
-  role,
-  content:
-    typeof msg.content === "string"
-      ? msg.content
-      : msg.content == null
-        ? null
-        : String(msg.content),
-  tool_call_id:
-    typeof msg.tool_call_id === "string"
-      ? msg.tool_call_id
-      : msg.tool_call_id == null
-        ? null
-        : String(msg.tool_call_id),
-  tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
-};
+      return {
+        id:
+          typeof msg.id === "string"
+            ? msg.id
+            : msg.id == null
+              ? null
+              : String(msg.id),
+        role,
+        content:
+          typeof msg.content === "string"
+            ? msg.content
+            : msg.content == null
+              ? null
+              : String(msg.content),
+        tool_call_id:
+          typeof msg.tool_call_id === "string"
+            ? msg.tool_call_id
+            : msg.tool_call_id == null
+              ? null
+              : String(msg.tool_call_id),
+        tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
+        duration_ms:
+          typeof msg.duration_ms === "number" ? msg.duration_ms : null,
+      };
+    
     })
     .filter((m): m is SessionChatMessage => m !== null);
 }
@@ -109,7 +113,10 @@ export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
   options?: { isComplete?: boolean },
-): UIMessage<unknown, UIDataTypes, UITools>[] {
+): {
+  messages: UIMessage<unknown, UIDataTypes, UITools>[];
+  durations: Map<string, number>;
+} {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
 
@@ -121,6 +128,7 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
+  const durations = new Map<string, number>();
 
   messages.forEach((msg, index) => {
     if (msg.role === "tool") return;
@@ -193,15 +201,25 @@ export function convertChatSessionMessagesToUiMessages(
     const prevUI = uiMessages[uiMessages.length - 1];
     if (msg.role === "assistant" && prevUI && prevUI.role === "assistant") {
       prevUI.parts.push(...parts);
+      // Capture duration on merged message (last assistant msg wins)
+      if (msg.duration_ms != null) {
+        durations.set(prevUI.id, msg.duration_ms);
+      }
       return;
     }
 
-  uiMessages.push({
-    id: msg.id ?? `${sessionId}-${index}`,
-    role: msg.role,
-    parts,
+    const msgId = msg.id ?? `${sessionId}-${index}`;
+    uiMessages.push({
+      id: msgId,
+      role: msg.role,
+      parts,
+    });
+
+    if (msg.role === "assistant" && msg.duration_ms != null) {
+      durations.set(msgId, msg.duration_ms);
+    }dev
   });
 });
 
-  return uiMessages;
+  return { messages: uiMessages, durations };
 }

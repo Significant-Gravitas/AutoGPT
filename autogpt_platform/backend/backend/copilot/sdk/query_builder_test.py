@@ -49,22 +49,22 @@ def test_format_assistant_tool_calls():
         )
     ]
     result = _format_conversation_context(msgs)
-    assert result is not None
-    assert 'You called tool: search({"q": "test"})' in result
+    # Assistant with no content and tool_calls omitted produces no lines
+    assert result is None
 
 
 def test_format_tool_result():
     msgs = [ChatMessage(role="tool", content='{"result": "ok"}')]
     result = _format_conversation_context(msgs)
     assert result is not None
-    assert 'Tool result: {"result": "ok"}' in result
+    assert 'Tool output: {"result": "ok"}' in result
 
 
 def test_format_tool_result_none_content():
     msgs = [ChatMessage(role="tool", content=None)]
     result = _format_conversation_context(msgs)
     assert result is not None
-    assert "Tool result: " in result
+    assert "Tool output: " in result
 
 
 def test_format_full_conversation():
@@ -84,8 +84,8 @@ def test_format_full_conversation():
     assert result is not None
     assert "User: find agents" in result
     assert "You responded: I'll search for agents." in result
-    assert "You called tool: find_agents" in result
-    assert "Tool result:" in result
+    # tool_calls are omitted to prevent model mimicry
+    assert "Tool output:" in result
     assert "You responded: Found Agent1." in result
 
 

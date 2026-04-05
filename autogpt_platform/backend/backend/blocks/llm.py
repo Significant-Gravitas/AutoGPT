@@ -104,6 +104,18 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
+
+    @classmethod
+    def _missing_(cls, value: object) -> "LlmModel | None":
+        """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
+        if isinstance(value, str) and "/" in value:
+            stripped = value.split("/", 1)[1]
+            try:
+                return cls(stripped)
+            except ValueError:
+                return None
+        return None
+
     # OpenAI models
     O3_MINI = "o3-mini"
     O3 = "o3-2025-04-16"
@@ -193,6 +205,19 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    # Z.ai (Zhipu) models
+    ZAI_GLM_4_32B = "z-ai/glm-4-32b"
+    ZAI_GLM_4_5 = "z-ai/glm-4.5"
+    ZAI_GLM_4_5_AIR = "z-ai/glm-4.5-air"
+    ZAI_GLM_4_5_AIR_FREE = "z-ai/glm-4.5-air:free"
+    ZAI_GLM_4_5V = "z-ai/glm-4.5v"
+    ZAI_GLM_4_6 = "z-ai/glm-4.6"
+    ZAI_GLM_4_6V = "z-ai/glm-4.6v"
+    ZAI_GLM_4_7 = "z-ai/glm-4.7"
+    ZAI_GLM_4_7_FLASH = "z-ai/glm-4.7-flash"
+    ZAI_GLM_5 = "z-ai/glm-5"
+    ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
+    ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
@@ -618,6 +643,43 @@ MODEL_METADATA = {
     LlmModel.QWEN3_CODER: ModelMetadata(
         "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
     ),
+    # https://openrouter.ai/models?q=z-ai
+    LlmModel.ZAI_GLM_4_32B: ModelMetadata(
+        "open_router", 128000, 128000, "GLM 4 32B", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_5: ModelMetadata(
+        "open_router", 131072, 98304, "GLM 4.5", "OpenRouter", "Z.ai", 2
+    ),
+    LlmModel.ZAI_GLM_4_5_AIR: ModelMetadata(
+        "open_router", 131072, 98304, "GLM 4.5 Air", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_5_AIR_FREE: ModelMetadata(
+        "open_router", 131072, 96000, "GLM 4.5 Air (Free)", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_5V: ModelMetadata(
+        "open_router", 65536, 16384, "GLM 4.5V", "OpenRouter", "Z.ai", 2
+    ),
+    LlmModel.ZAI_GLM_4_6: ModelMetadata(
+        "open_router", 204800, 204800, "GLM 4.6", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_6V: ModelMetadata(
+        "open_router", 131072, 131072, "GLM 4.6V", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_7: ModelMetadata(
+        "open_router", 202752, 65535, "GLM 4.7", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_7_FLASH: ModelMetadata(
+        "open_router", 202752, 202752, "GLM 4.7 Flash", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_5: ModelMetadata(
+        "open_router", 80000, 80000, "GLM 5", "OpenRouter", "Z.ai", 2
+    ),
+    LlmModel.ZAI_GLM_5_TURBO: ModelMetadata(
+        "open_router", 202752, 131072, "GLM 5 Turbo", "OpenRouter", "Z.ai", 3
+    ),
+    LlmModel.ZAI_GLM_5V_TURBO: ModelMetadata(
+        "open_router", 202752, 131072, "GLM 5V Turbo", "OpenRouter", "Z.ai", 3
+    ),
     # Llama API models
     LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata(
         "llama_api",
@@ -712,6 +774,9 @@ def convert_openai_tool_fmt_to_anthropic(
 def extract_openai_reasoning(response) -> str | None:
     """Extract reasoning from OpenAI-compatible response if available."""
     """Note: This will likely not working since the reasoning is not present in another Response API"""
+    if not response.choices:
+        logger.warning("LLM response has empty choices in extract_openai_reasoning")
+        return None
     reasoning = None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
@@ -727,6 +792,9 @@ def extract_openai_reasoning(response) -> str | None:
 
 def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
     """Extract tool calls from OpenAI-compatible response."""
+    if not response.choices:
+        logger.warning("LLM response has empty choices in extract_openai_tool_calls")
+        return None
     if response.choices[0].message.tool_calls:
         return [
             ToolContentBlock(
@@ -960,6 +1028,8 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
         )
+        if not response.choices:
+            raise ValueError("Groq returned empty choices in response")
         return LLMResponse(
             raw_response=response.choices[0].message,
             prompt=prompt,
@@ -1019,12 +1089,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls_param,
         )
 
-        # If there's no response, raise an error
         if not response.choices:
-            if response:
-                raise ValueError(f"OpenRouter error: {response}")
-            else:
-                raise ValueError("No response from OpenRouter.")
+            raise ValueError(f"OpenRouter returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1061,12 +1127,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls_param,
         )
 
-        # If there's no response, raise an error
         if not response.choices:
-            if response:
-                raise ValueError(f"Llama API error: {response}")
-            else:
-                raise ValueError("No response from Llama API.")
+            raise ValueError(f"Llama API returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1096,6 +1158,8 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
         )
+        if not completion.choices:
+            raise ValueError("AI/ML API returned empty choices in response")
 
         return LLMResponse(
             raw_response=completion.choices[0].message,
@@ -1131,6 +1195,9 @@ async def llm_call(
             tools=tools_param,  # type: ignore
             parallel_tool_calls=parallel_tool_calls_param,
         )
+
+        if not response.choices:
+            raise ValueError(f"v0 API returned empty choices: {response}")
 
         tool_calls = extract_openai_tool_calls(response)
         reasoning = extract_openai_reasoning(response)
@@ -1999,6 +2066,19 @@ class AIConversationBlock(AIBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
+        has_messages = any(
+            isinstance(m, dict)
+            and isinstance(m.get("content"), str)
+            and bool(m["content"].strip())
+            for m in (input_data.messages or [])
+        )
+        has_prompt = bool(input_data.prompt and input_data.prompt.strip())
+        if not has_messages and not has_prompt:
+            raise ValueError(
+                "Cannot call LLM with no messages and no prompt. "
+                "Provide at least one message or a non-empty prompt."
+            )
+
         response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=input_data.prompt,
