@@ -61,7 +61,7 @@ export function ChatInput({
           : "Switched to Extended Thinking mode",
       description:
         next === "fast"
-          ? "Response quality may differ."
+          ? "Optimized for speed — ideal for simpler tasks."
           : "Responses may take longer.",
     });
   }
