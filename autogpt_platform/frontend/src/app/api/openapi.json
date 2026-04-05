@@ -15275,8 +15275,7 @@
           "metadata": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Metadata",
-            "default": {}
+            "title": "Metadata"
           },
           "created_at": { "type": "string", "title": "Created At" }
         },
