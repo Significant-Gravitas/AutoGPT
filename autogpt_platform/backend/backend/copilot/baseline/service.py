@@ -170,9 +170,7 @@ class _ThinkingStripper:
                         min(_MAX_OPEN_TAG_LEN - 1, len(self._buffer)), 0, -1
                     ):
                         tail = self._buffer[-keep:]
-                        if any(
-                            o[:keep] == tail for o, _ in _REASONING_TAG_PAIRS
-                        ):
+                        if any(o[:keep] == tail for o, _ in _REASONING_TAG_PAIRS):
                             safe_end = len(self._buffer) - keep
                             break
                     out.append(self._buffer[:safe_end])

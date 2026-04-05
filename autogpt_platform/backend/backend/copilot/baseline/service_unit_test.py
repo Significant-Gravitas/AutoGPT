@@ -12,6 +12,7 @@ from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _BaselineStreamState,
     _compress_session_messages,
+    _ThinkingStripper,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.transcript_builder import TranscriptBuilder
@@ -369,8 +370,6 @@ class TestCompressSessionMessagesPreservesToolCalls:
 
 # ---- _ThinkingStripper tests ---- #
 
-from backend.copilot.baseline.service import _ThinkingStripper
-
 
 def test_thinking_stripper_basic_thinking_tag() -> None:
     """<thinking>...</thinking> blocks are fully stripped."""
@@ -381,7 +380,10 @@ def test_thinking_stripper_basic_thinking_tag() -> None:
 def test_thinking_stripper_internal_reasoning_tag() -> None:
     """<internal_reasoning>...</internal_reasoning> blocks (Gemini) are stripped."""
     s = _ThinkingStripper()
-    assert s.process("<internal_reasoning>step by step</internal_reasoning>Answer") == "Answer"
+    assert (
+        s.process("<internal_reasoning>step by step</internal_reasoning>Answer")
+        == "Answer"
+    )
 
 
 def test_thinking_stripper_split_across_chunks() -> None:
@@ -395,13 +397,18 @@ def test_thinking_stripper_split_across_chunks() -> None:
 def test_thinking_stripper_plain_text_preserved() -> None:
     """Plain text with the word 'thinking' is not stripped."""
     s = _ThinkingStripper()
-    assert s.process("I am thinking about this problem") == "I am thinking about this problem"
+    assert (
+        s.process("I am thinking about this problem")
+        == "I am thinking about this problem"
+    )
 
 
 def test_thinking_stripper_multiple_blocks() -> None:
     """Multiple reasoning blocks in one stream are all stripped."""
     s = _ThinkingStripper()
-    result = s.process("A<thinking>x</thinking>B<internal_reasoning>y</internal_reasoning>C")
+    result = s.process(
+        "A<thinking>x</thinking>B<internal_reasoning>y</internal_reasoning>C"
+    )
     assert result == "ABC"
 
 
