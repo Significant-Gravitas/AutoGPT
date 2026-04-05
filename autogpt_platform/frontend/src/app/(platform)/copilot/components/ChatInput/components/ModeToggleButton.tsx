@@ -21,8 +21,8 @@ export function ModeToggleButton({ mode, isStreaming, onToggle }: Props) {
       className={cn(
         "inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
         isExtended
-          ? "bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
-          : "bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
+          ? "bg-purple-100 text-purple-900 hover:bg-purple-200"
+          : "bg-amber-100 text-amber-900 hover:bg-amber-200",
         isStreaming && "cursor-not-allowed opacity-50",
       )}
       aria-label={
