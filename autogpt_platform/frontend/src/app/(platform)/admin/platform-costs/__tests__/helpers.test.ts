@@ -131,7 +131,9 @@ describe("estimateCostForRow", () => {
       request_count: 10,
     });
     // override = 0.05 * 10 * 1_000_000 = 500_000
-    expect(estimateCostForRow(row, { google_maps: 0.05 })).toBe(500_000);
+    expect(estimateCostForRow(row, { "google_maps:per_run": 0.05 })).toBe(
+      500_000,
+    );
   });
 
   it("uses default per-run cost when no override", () => {
@@ -153,20 +155,47 @@ describe("estimateCostForRow", () => {
     expect(estimateCostForRow(row, {})).toBeNull();
   });
 
-  it("returns cost for other tracking types when cost > 0", () => {
+  it("returns null for duration tracking with no rate and no cost", () => {
     const row = makeRow({
-      tracking_type: "duration_seconds",
-      total_cost_microdollars: 42_000,
-    });
-    expect(estimateCostForRow(row, {})).toBe(42_000);
-  });
-
-  it("returns null for other tracking types when cost is 0", () => {
-    const row = makeRow({
+      provider: "openai",
       tracking_type: "duration_seconds",
       total_cost_microdollars: 0,
+      total_duration_seconds: 100,
     });
     expect(estimateCostForRow(row, {})).toBeNull();
+  });
+
+  it("estimates cost from default rate for characters tracking", () => {
+    const row = makeRow({
+      provider: "elevenlabs",
+      tracking_type: "characters",
+      total_cost_microdollars: 0,
+      total_tracking_amount: 2000,
+    });
+    // 2000 chars / 1000 * 0.18 USD * 1_000_000 = 360_000
+    expect(estimateCostForRow(row, {})).toBe(360_000);
+  });
+
+  it("estimates cost from default rate for items tracking", () => {
+    const row = makeRow({
+      provider: "apollo",
+      tracking_type: "items",
+      total_cost_microdollars: 0,
+      total_tracking_amount: 50,
+    });
+    // 50 * 0.02 * 1_000_000 = 1_000_000
+    expect(estimateCostForRow(row, {})).toBe(1_000_000);
+  });
+
+  it("estimates cost from default rate for duration tracking", () => {
+    const row = makeRow({
+      provider: "e2b",
+      tracking_type: "sandbox_seconds",
+      total_cost_microdollars: 0,
+      total_duration_seconds: 1_000_000,
+    });
+    // 1_000_000 * 0.000014 * 1_000_000 = 14_000_000
+    expect(estimateCostForRow(row, {})).toBe(14_000_000);
   });
 });
 
@@ -185,7 +214,7 @@ describe("trackingValue", () => {
       total_input_tokens: 500,
       total_output_tokens: 500,
     });
-    expect(trackingValue(row)).toBe("1.0K");
+    expect(trackingValue(row)).toBe("1.0K tokens");
   });
 
   it("returns formatted duration for duration_seconds", () => {
@@ -204,13 +233,20 @@ describe("trackingValue", () => {
     expect(trackingValue(row)).toBe("42 runs");
   });
 
-  it("returns formatted token count for characters tracking", () => {
+  it("returns formatted character count for characters tracking", () => {
     const row = makeRow({
       tracking_type: "characters",
-      total_input_tokens: 2000,
-      total_output_tokens: 500,
+      total_tracking_amount: 2500,
     });
-    expect(trackingValue(row)).toBe("2.5K");
+    expect(trackingValue(row)).toBe("2.5K chars");
+  });
+
+  it("returns formatted item count for items tracking", () => {
+    const row = makeRow({
+      tracking_type: "items",
+      total_tracking_amount: 1234,
+    });
+    expect(trackingValue(row)).toBe("1,234 items");
   });
 
   it("returns formatted duration for sandbox_seconds", () => {
