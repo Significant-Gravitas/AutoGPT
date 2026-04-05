@@ -52,7 +52,11 @@ def resolve_tracking(
 
     # D-ID + ElevenLabs voice: billed per character of script
     if provider in ("d_id", "elevenlabs"):
-        text = input_data.get("script_input", "") or input_data.get("text", "")
+        text = (
+            input_data.get("script_input", "")
+            or input_data.get("text", "")
+            or input_data.get("script", "")  # VideoNarrationBlock uses `script`
+        )
         return "characters", float(len(text)) if isinstance(text, str) else 0.0
 
     # E2B: billed per second of sandbox time

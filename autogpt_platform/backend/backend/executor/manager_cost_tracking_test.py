@@ -73,6 +73,13 @@ class TestResolveTracking:
         assert tt == "characters"
         assert amt == 13.0
 
+    def test_elevenlabs_uses_script_field(self):
+        """VideoNarrationBlock (elevenlabs) uses `script` field, not script_input/text."""
+        stats = self._stats()
+        tt, amt = resolve_tracking("elevenlabs", stats, {"script": "Narration"})
+        assert tt == "characters"
+        assert amt == 9.0
+
     def test_e2b_returns_sandbox_seconds(self):
         stats = self._stats(walltime=45.123)
         tt, amt = resolve_tracking("e2b", stats, {})
