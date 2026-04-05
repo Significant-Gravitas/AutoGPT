@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DEFAULT_PANEL_WIDTH } from "../../../store";
 
 interface Props {
@@ -18,10 +18,47 @@ export function ArtifactDragHandle({
   const [isDragging, setIsDragging] = useState(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
+  // Use refs for the callback + bounds so the drag listeners can read the
+  // latest values without having to detach/reattach between re-renders.
+  const onWidthChangeRef = useRef(onWidthChange);
+  const minWidthRef = useRef(minWidth);
+  const maxWidthPercentRef = useRef(maxWidthPercent);
+  onWidthChangeRef.current = onWidthChange;
+  minWidthRef.current = minWidth;
+  maxWidthPercentRef.current = maxWidthPercent;
+
+  // Attach document listeners only while dragging, and always tear them down
+  // on unmount — otherwise closing the panel mid-drag leaves listeners bound
+  // to a handler that calls setState on the unmounted component.
+  useEffect(() => {
+    if (!isDragging) return;
+
+    function handlePointerMove(moveEvent: PointerEvent) {
+      const delta = startXRef.current - moveEvent.clientX;
+      const maxWidth = window.innerWidth * (maxWidthPercentRef.current / 100);
+      const newWidth = Math.min(
+        maxWidth,
+        Math.max(minWidthRef.current, startWidthRef.current + delta),
+      );
+      onWidthChangeRef.current(newWidth);
+    }
+
+    function handlePointerUp() {
+      setIsDragging(false);
+    }
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerUp);
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [isDragging]);
 
   function handlePointerDown(e: React.PointerEvent) {
     e.preventDefault();
-    setIsDragging(true);
     startXRef.current = e.clientX;
 
     // Get the panel's current width from its parent
@@ -30,26 +67,7 @@ export function ArtifactDragHandle({
     ) as HTMLElement | null;
     startWidthRef.current = panel?.offsetWidth ?? DEFAULT_PANEL_WIDTH;
 
-    function handlePointerMove(moveEvent: PointerEvent) {
-      const delta = startXRef.current - moveEvent.clientX;
-      const maxWidth = window.innerWidth * (maxWidthPercent / 100);
-      const newWidth = Math.min(
-        maxWidth,
-        Math.max(minWidth, startWidthRef.current + delta),
-      );
-      onWidthChange(newWidth);
-    }
-
-    function handlePointerUp() {
-      setIsDragging(false);
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerUp);
-      document.removeEventListener("pointercancel", handlePointerUp);
-    }
-
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerUp);
-    document.addEventListener("pointercancel", handlePointerUp);
+    setIsDragging(true);
   }
 
   return (
