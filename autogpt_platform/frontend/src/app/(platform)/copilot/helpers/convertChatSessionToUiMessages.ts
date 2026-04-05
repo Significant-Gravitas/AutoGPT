@@ -45,6 +45,7 @@ function coerceSessionChatMessages(
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
       };
+    })
     .filter((m): m is SessionChatMessage => m !== null);
 }
 
@@ -216,7 +217,7 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.role === "assistant" && msg.duration_ms != null) {
       durations.set(msgId, msg.duration_ms);
     }
-});
+  });
 
   return { messages: uiMessages, durations };
 }
