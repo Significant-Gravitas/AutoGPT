@@ -7,6 +7,10 @@ import type { ArtifactRef } from "../../../store";
 import { classifyArtifact } from "../helpers";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
+import {
+  ARTIFACT_IFRAME_CSP,
+  TAILWIND_CDN_URL,
+} from "./artifactPreviewConstants";
 import { useArtifactContent } from "./useArtifactContent";
 
 interface Props {
@@ -99,14 +103,8 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "html") {
-    // CSP meta: block `connect-src` and `form-action` so AI-generated HTML
-    // can't use fetch/XHR/<form> to exfiltrate its own content. Tailwind's
-    // JIT runtime (`cdn.tailwindcss.com`) needs script + style + img.
-    const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'">`;
-    // Pin Tailwind CDN to a specific major version to reduce exposure to
-    // unannounced upstream changes (SRI isn't possible because the JIT
-    // runtime is generated on demand).
-    const tailwindScript = `<script src="https://cdn.tailwindcss.com/3.4.16"></script>`;
+    const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_IFRAME_CSP}">`;
+    const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
     const headOpenRe = /<head(\s[^>]*)?>/i;
     const headInjection = `${cspMeta}${tailwindScript}`;
     const htmlWithTailwind = headOpenRe.test(content)

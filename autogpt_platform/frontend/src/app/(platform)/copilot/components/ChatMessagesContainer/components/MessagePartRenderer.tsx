@@ -3,7 +3,6 @@ import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useMemo } from "react";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
@@ -70,7 +69,7 @@ const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
 function TextWithArtifactCards({ text }: { text: string }) {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-  const artifacts = useMemo(() => extractWorkspaceArtifacts(text), [text]);
+  const artifacts = extractWorkspaceArtifacts(text);
   const resolved = resolveWorkspaceUrls(text);
 
   return (

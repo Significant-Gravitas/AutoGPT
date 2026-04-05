@@ -18,6 +18,11 @@
  * React is loaded from unpkg with pinned version and SRI integrity hashes.
  */
 
+import {
+  ARTIFACT_IFRAME_CSP,
+  TAILWIND_CDN_URL,
+} from "./artifactPreviewConstants";
+
 export { transpileReactArtifactSource } from "./transpileReactArtifact";
 
 function escapeHtml(value: string): string {
@@ -56,7 +61,7 @@ export function buildReactArtifactSrcDoc(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: 'unsafe-inline' 'unsafe-eval'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com; style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://fonts.googleapis.com; img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'">
+    <meta http-equiv="Content-Security-Policy" content="${ARTIFACT_IFRAME_CSP}">
     <title>${safeTitle}</title>
     ${stylesMarkup}
     <style>
@@ -92,7 +97,7 @@ export function buildReactArtifactSrcDoc(
         white-space: pre-wrap;
       }
     </style>
-    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script src="${TAILWIND_CDN_URL}"></script>
     <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z"></script>
     <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1"></script>
   </head>

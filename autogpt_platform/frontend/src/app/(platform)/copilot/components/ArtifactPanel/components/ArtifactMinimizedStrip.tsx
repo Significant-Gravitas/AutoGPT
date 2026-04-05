@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLineLeft } from "@phosphor-icons/react";
+import { ArrowsOutSimple } from "@phosphor-icons/react";
 import type { ArtifactRef } from "../../../store";
 import { classifyArtifact } from "../helpers";
 
@@ -25,7 +25,7 @@ export function ArtifactMinimizedStrip({ artifact, onExpand }: Props) {
         className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
         title="Expand panel"
       >
-        <ArrowLineLeft size={16} />
+        <ArrowsOutSimple size={16} />
       </button>
       <div className="mt-3 text-zinc-400">
         <Icon size={16} />
