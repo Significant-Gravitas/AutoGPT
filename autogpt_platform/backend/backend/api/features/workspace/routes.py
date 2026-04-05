@@ -211,6 +211,9 @@ async def upload_file(
     Files are stored in session-scoped paths when session_id is provided,
     so the agent's session-scoped tools can discover them automatically.
     """
+    # Empty-string session_id drops session scoping; normalize to None.
+    session_id = session_id or None
+
     config = Config()
 
     # Sanitize filename — strip any directory components
@@ -344,6 +347,11 @@ async def list_workspace_files(
     Otherwise, all files across sessions are listed.
     """
     workspace = await get_or_create_workspace(user_id)
+
+    # Treat empty-string session_id the same as omitted — an empty value
+    # would otherwise silently list files across every session instead of
+    # scoping to one.
+    session_id = session_id or None
 
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     include_all = session_id is None

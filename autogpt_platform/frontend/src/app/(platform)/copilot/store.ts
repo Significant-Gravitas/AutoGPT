@@ -34,7 +34,12 @@ function getPersistedWidth(): number {
   const saved = storage.get(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
   if (saved) {
     const parsed = parseInt(saved, 10);
-    if (!isNaN(parsed) && parsed >= 320) return parsed;
+    // Match the drag-handle clamp so a stale/corrupt value can't open the
+    // panel wider than 85% of the viewport.
+    const maxWidth = window.innerWidth * 0.85;
+    if (!isNaN(parsed) && parsed >= 320) {
+      return Math.min(parsed, maxWidth);
+    }
   }
   return DEFAULT_PANEL_WIDTH;
 }

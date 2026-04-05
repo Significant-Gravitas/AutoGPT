@@ -7,43 +7,48 @@ import {
 } from "../types";
 
 function parseCSV(text: string): { headers: string[]; rows: string[][] } {
-  const normalized = text.replace(/\r\n?/g, "\n").trim();
+  const normalized = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/^\ufeff/, "")
+    .trim();
   if (normalized.length === 0) return { headers: [], rows: [] };
-  const lines = normalized.split("\n");
 
-  const parseLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"' && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else if (ch === '"') {
-          inQuotes = false;
-        } else {
-          current += ch;
-        }
+  // Character-by-character parse so embedded newlines inside "quoted" cells
+  // (allowed by RFC 4180) don't break the row split.
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+    if (inQuotes) {
+      if (ch === '"' && normalized[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else if (ch === '"') {
+        inQuotes = false;
       } else {
-        if (ch === '"') {
-          inQuotes = true;
-        } else if (ch === ",") {
-          result.push(current);
-          current = "";
-        } else {
-          current += ch;
-        }
+        current += ch;
       }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(current);
+      current = "";
+    } else if (ch === "\n") {
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = "";
+    } else {
+      current += ch;
     }
-    result.push(current);
-    return result;
-  };
+  }
+  row.push(current);
+  rows.push(row);
 
-  const headers = parseLine(lines[0]);
-  const rows = lines.slice(1).map(parseLine);
-  return { headers, rows };
+  const headers = rows[0] ?? [];
+  return { headers, rows: rows.slice(1) };
 }
 
 function CSVTable({ value }: { value: string }) {
