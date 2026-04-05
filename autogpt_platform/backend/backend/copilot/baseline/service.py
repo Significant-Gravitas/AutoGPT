@@ -101,6 +101,69 @@ def _resolve_baseline_model(mode: CopilotMode | None) -> str:
     return config.model
 
 
+_THINKING_OPEN = "<thinking>"
+_THINKING_CLOSE = "</thinking>"
+
+
+class _ThinkingStripper:
+    """Strip ``<thinking>...</thinking>`` blocks from a stream of text deltas.
+
+    Buffers just enough characters to detect a tag that may be split
+    across chunks; emits text immediately when no tag is in-flight.
+    Robust to single chunks that open and close a block, multiple
+    blocks per stream, and tags that straddle chunk boundaries.
+    """
+
+    def __init__(self) -> None:
+        self._buffer: str = ""
+        self._in_thinking: bool = False
+
+    def process(self, chunk: str) -> str:
+        """Feed a chunk and return the text that is safe to emit now."""
+        self._buffer += chunk
+        out: list[str] = []
+        while self._buffer:
+            if self._in_thinking:
+                end = self._buffer.find(_THINKING_CLOSE)
+                if end == -1:
+                    # Closing tag not yet arrived; keep a small tail in
+                    # case it straddles the next chunk, drop the rest.
+                    keep = len(_THINKING_CLOSE) - 1
+                    self._buffer = self._buffer[-keep:] if keep else ""
+                    return "".join(out)
+                self._buffer = self._buffer[end + len(_THINKING_CLOSE) :]
+                self._in_thinking = False
+            else:
+                start = self._buffer.find(_THINKING_OPEN)
+                if start == -1:
+                    # No opening tag; emit everything except a tail that
+                    # could start a partial opener on the next chunk.
+                    safe_end = len(self._buffer)
+                    for keep in range(
+                        min(len(_THINKING_OPEN) - 1, len(self._buffer)), 0, -1
+                    ):
+                        if self._buffer[-keep:] == _THINKING_OPEN[:keep]:
+                            safe_end = len(self._buffer) - keep
+                            break
+                    out.append(self._buffer[:safe_end])
+                    self._buffer = self._buffer[safe_end:]
+                    return "".join(out)
+                out.append(self._buffer[:start])
+                self._buffer = self._buffer[start + len(_THINKING_OPEN) :]
+                self._in_thinking = True
+        return "".join(out)
+
+    def flush(self) -> str:
+        """Return any remaining emittable text when the stream ends."""
+        if self._in_thinking:
+            # Unclosed thinking block — discard the buffered reasoning.
+            self._buffer = ""
+            return ""
+        out = self._buffer
+        self._buffer = ""
+        return out
+
+
 @dataclass
 class _BaselineStreamState:
     """Mutable state shared between the tool-call loop callbacks.
@@ -116,6 +179,7 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
 
 
 async def _baseline_llm_caller(
@@ -129,6 +193,9 @@ async def _baseline_llm_caller(
     Extracted from ``stream_chat_completion_baseline`` for readability.
     """
     state.pending_events.append(StreamStartStep())
+    # Fresh thinking-strip state per round so a malformed unclosed
+    # block in one LLM call cannot silently drop content in the next.
+    state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
     try:
@@ -162,13 +229,17 @@ async def _baseline_llm_caller(
                 continue
 
             if delta.content:
-                if not state.text_started:
-                    state.pending_events.append(StreamTextStart(id=state.text_block_id))
-                    state.text_started = True
-                round_text += delta.content
-                state.pending_events.append(
-                    StreamTextDelta(id=state.text_block_id, delta=delta.content)
-                )
+                emit = state.thinking_stripper.process(delta.content)
+                if emit:
+                    if not state.text_started:
+                        state.pending_events.append(
+                            StreamTextStart(id=state.text_block_id)
+                        )
+                        state.text_started = True
+                    round_text += emit
+                    state.pending_events.append(
+                        StreamTextDelta(id=state.text_block_id, delta=emit)
+                    )
 
             if delta.tool_calls:
                 for tc in delta.tool_calls:
@@ -187,6 +258,16 @@ async def _baseline_llm_caller(
                     if tc.function and tc.function.arguments:
                         entry["arguments"] += tc.function.arguments
 
+        # Flush any buffered text held back by the thinking stripper.
+        tail = state.thinking_stripper.flush()
+        if tail:
+            if not state.text_started:
+                state.pending_events.append(StreamTextStart(id=state.text_block_id))
+                state.text_started = True
+            round_text += tail
+            state.pending_events.append(
+                StreamTextDelta(id=state.text_block_id, delta=tail)
+            )
         # Close text block
         if state.text_started:
             state.pending_events.append(StreamTextEnd(id=state.text_block_id))
