@@ -1,5 +1,6 @@
 """Helpers for platform cost tracking on system-credential block executions."""
 
+import asyncio
 import logging
 from typing import Any, cast
 
@@ -14,6 +15,16 @@ from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import is_system_credential
 
 logger = logging.getLogger(__name__)
+
+# Hold strong references to in-flight log tasks so the event loop doesn't
+# garbage-collect them mid-execution. Tasks remove themselves on completion.
+_pending_log_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_log(entry: PlatformCostEntry) -> None:
+    task = asyncio.create_task(log_platform_cost_safe(entry))
+    _pending_log_tasks.add(task)
+    task.add_done_callback(_pending_log_tasks.discard)
 
 
 def resolve_tracking(
@@ -117,7 +128,7 @@ async def log_system_credential_cost(
             if stats.provider_cost is not None:
                 meta["provider_cost_usd"] = stats.provider_cost
 
-            await log_platform_cost_safe(
+            _schedule_log(
                 PlatformCostEntry(
                     user_id=node_exec.user_id,
                     graph_exec_id=node_exec.graph_exec_id,
@@ -131,8 +142,8 @@ async def log_system_credential_cost(
                     cost_microdollars=cost_microdollars,
                     input_tokens=stats.input_token_count,
                     output_tokens=stats.output_token_count,
-                    data_size=stats.output_size if stats.output_size else None,
-                    duration=stats.walltime if stats.walltime else None,
+                    data_size=stats.output_size if stats.output_size > 0 else None,
+                    duration=stats.walltime if stats.walltime > 0 else None,
                     model=model_name,
                     tracking_type=tracking_type,
                     metadata=meta or None,

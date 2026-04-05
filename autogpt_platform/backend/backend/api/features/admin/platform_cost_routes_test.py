@@ -140,5 +140,19 @@ def test_get_dashboard_requires_admin() -> None:
     try:
         response = client.get("/platform-costs/dashboard")
         assert response.status_code == 401
+        response = client.get("/platform-costs/logs")
+        assert response.status_code == 401
     finally:
         app.dependency_overrides.clear()
+
+
+def test_get_dashboard_rejects_non_admin(mock_jwt_user, mock_jwt_admin) -> None:
+    """Non-admin JWT must be rejected with 403 by requires_admin_user."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    try:
+        response = client.get("/platform-costs/dashboard")
+        assert response.status_code == 403
+        response = client.get("/platform-costs/logs")
+        assert response.status_code == 403
+    finally:
+        app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]

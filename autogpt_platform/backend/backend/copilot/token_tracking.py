@@ -9,6 +9,7 @@ Both the baseline (OpenRouter) and SDK (Anthropic) service layers need to:
 This module extracts that common logic so both paths stay in sync.
 """
 
+import asyncio
 import logging
 
 from backend.data.platform_cost import (
@@ -21,6 +22,15 @@ from .model import ChatSession, Usage
 from .rate_limit import record_token_usage
 
 logger = logging.getLogger(__name__)
+
+# Hold strong references to in-flight log tasks to prevent GC.
+_pending_log_tasks: set[asyncio.Task] = set()
+
+
+def _schedule_log(entry: PlatformCostEntry) -> None:
+    task = asyncio.create_task(log_platform_cost_safe(entry))
+    _pending_log_tasks.add(task)
+    task.add_done_callback(_pending_log_tasks.discard)
 
 
 async def persist_and_record_usage(
@@ -126,7 +136,7 @@ async def persist_and_record_usage(
             tracking_type = "tokens"
             tracking_amount = total_tokens
 
-        await log_platform_cost_safe(
+        _schedule_log(
             PlatformCostEntry(
                 user_id=user_id,
                 graph_exec_id=session_id,

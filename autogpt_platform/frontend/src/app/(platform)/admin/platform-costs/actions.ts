@@ -5,8 +5,13 @@ import {
   getV2GetPlatformCostLogs,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
-import { toDateOrUndefined } from "./helpers";
 
+// Backend expects ISO datetime strings. The generated client's URL builder
+// calls .toString() on values, which for Date objects produces the human
+// "Tue Mar 31 2026 22:00:00 GMT+0000 (Coordinated Universal Time)" format
+// that FastAPI rejects with 422. We already pass UTC ISO from the URL, so
+// forward the raw strings through the `as unknown as Date` cast to match
+// the generated typing without triggering Date.toString().
 export async function getPlatformCostDashboard(params?: {
   start?: string;
   end?: string;
@@ -14,8 +19,8 @@ export async function getPlatformCostDashboard(params?: {
   user_id?: string;
 }) {
   const response = await getV2GetPlatformCostDashboard({
-    start: toDateOrUndefined(params?.start),
-    end: toDateOrUndefined(params?.end),
+    start: (params?.start || undefined) as unknown as Date | undefined,
+    end: (params?.end || undefined) as unknown as Date | undefined,
     provider: params?.provider || undefined,
     user_id: params?.user_id || undefined,
   });
@@ -31,8 +36,8 @@ export async function getPlatformCostLogs(params?: {
   page_size?: number;
 }) {
   const response = await getV2GetPlatformCostLogs({
-    start: toDateOrUndefined(params?.start),
-    end: toDateOrUndefined(params?.end),
+    start: (params?.start || undefined) as unknown as Date | undefined,
+    end: (params?.end || undefined) as unknown as Date | undefined,
     provider: params?.provider || undefined,
     user_id: params?.user_id || undefined,
     page: params?.page,
