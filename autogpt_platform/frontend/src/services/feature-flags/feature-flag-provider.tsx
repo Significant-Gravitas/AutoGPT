@@ -26,11 +26,18 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       };
     }
 
+    // Mirror the context built by the backend
+    // (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
+    // rules evaluate identically on both sides.
     return {
       kind: "user" as const,
       key: user.id,
-      ...(user.email && { email: user.email }),
       anonymous: false,
+      ...(user.email && {
+        email: user.email,
+        email_domain: user.email.split("@").at(-1),
+      }),
+      ...(user.role && { role: user.role }),
       custom: {
         ...(user.role && { role: user.role }),
       },
