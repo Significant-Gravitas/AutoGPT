@@ -26,7 +26,7 @@ class ChatConfig(BaseSettings):
         description="Default model for extended thinking mode",
     )
     fast_model: str = Field(
-        default="google/gemini-2.5-flash",
+        default="anthropic/claude-sonnet-4",
         description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
     )
     title_model: str = Field(

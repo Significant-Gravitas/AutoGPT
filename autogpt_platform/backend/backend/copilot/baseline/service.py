@@ -7,19 +7,23 @@ shared tool registry as the SDK path.
 """
 
 import asyncio
+import base64
 import logging
+import os
+import re
+import tempfile
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from backend.copilot.config import CopilotMode
-from backend.copilot.context import set_execution_context
+from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -75,6 +79,9 @@ from backend.util.tool_call_loop import (
     tool_call_loop,
 )
 
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
+
 logger = logging.getLogger(__name__)
 
 # Set to hold background tasks to prevent garbage collection
@@ -86,6 +93,117 @@ _MAX_TOOL_ROUNDS = 30
 # Max seconds to wait for transcript upload in the finally block before
 # letting it continue as a background task (tracked in _background_tasks).
 _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
+
+# MIME types that can be embedded as vision content blocks (OpenAI format).
+_VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
+# Max size for embedding images directly in the user message (20 MiB raw).
+_MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
+
+# Matches characters unsafe for filenames.
+_UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+
+async def _prepare_baseline_attachments(
+    file_ids: list[str],
+    user_id: str,
+    session_id: str,
+    working_dir: str,
+) -> tuple[str, list[dict[str, Any]]]:
+    """Download workspace files and prepare them for the baseline LLM.
+
+    Images become OpenAI-format vision content blocks.  Non-image files are
+    saved to *working_dir* so tool handlers can access them.
+
+    Returns ``(hint_text, image_blocks)``.
+    """
+    if not file_ids or not user_id:
+        return "", []
+
+    try:
+        manager = await get_workspace_manager(user_id, session_id)
+    except Exception:
+        logger.warning(
+            "Failed to create workspace manager for file attachments",
+            exc_info=True,
+        )
+        return "", []
+
+    image_blocks: list[dict[str, Any]] = []
+    file_descriptions: list[str] = []
+
+    for fid in file_ids:
+        try:
+            file_info = await manager.get_file_info(fid)
+            if file_info is None:
+                continue
+            content = await manager.read_file_by_id(fid)
+            mime = (file_info.mime_type or "").split(";")[0].strip().lower()
+
+            if mime in _VISION_MIME_TYPES and len(content) <= _MAX_INLINE_IMAGE_BYTES:
+                b64 = base64.b64encode(content).decode("ascii")
+                image_blocks.append(
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": mime, "data": b64},
+                    }
+                )
+                file_descriptions.append(
+                    f"- {file_info.name} ({mime}, "
+                    f"{file_info.size_bytes:,} bytes) [embedded as image]"
+                )
+            else:
+                safe = _UNSAFE_FILENAME.sub("_", file_info.name) or "file"
+                local_path = os.path.join(working_dir, safe)
+                with open(local_path, "wb") as f:
+                    f.write(content)
+                file_descriptions.append(
+                    f"- {file_info.name} ({mime}, "
+                    f"{file_info.size_bytes:,} bytes) saved to {local_path}"
+                )
+        except Exception:
+            logger.warning("Failed to prepare file %s", fid[:12], exc_info=True)
+
+    if not file_descriptions:
+        return "", []
+
+    noun = "file" if len(file_descriptions) == 1 else "files"
+    has_non_images = len(file_descriptions) > len(image_blocks)
+    read_hint = (
+        " Use the read_workspace_file tool to view non-image files."
+        if has_non_images
+        else ""
+    )
+    hint = (
+        f"\n[The user attached {len(file_descriptions)} {noun}.{read_hint}\n"
+        + "\n".join(file_descriptions)
+        + "]"
+    )
+    return hint, image_blocks
+
+
+def _filter_tools_by_permissions(
+    tools: list[ChatCompletionToolParam],
+    permissions: "CopilotPermissions",
+) -> list[ChatCompletionToolParam]:
+    """Filter OpenAI-format tools based on CopilotPermissions.
+
+    Uses short tool names (the ``function.name`` field) to compute the
+    effective allowed set, then keeps only matching tools.
+    """
+    from backend.copilot.permissions import all_known_tool_names
+
+    if permissions.is_empty():
+        return tools
+
+    all_tools = all_known_tool_names()
+    effective = permissions.effective_allowed_tools(all_tools)
+
+    return [
+        t
+        for t in tools
+        if t.get("function", {}).get("name") in effective  # type: ignore[union-attr]
+    ]
 
 
 def _resolve_baseline_model(mode: CopilotMode | None) -> str:
@@ -739,6 +857,9 @@ async def stream_chat_completion_baseline(
     is_user_message: bool = True,
     user_id: str | None = None,
     session: ChatSession | None = None,
+    file_ids: list[str] | None = None,
+    permissions: "CopilotPermissions | None" = None,
+    context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
@@ -857,10 +978,70 @@ async def stream_chat_completion_baseline(
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
+    # --- File attachments (feature parity with SDK path) ---
+    working_dir = tempfile.mkdtemp(prefix=f"copilot-baseline-{session_id[:8]}-")
+    attachment_hint = ""
+    image_blocks: list[dict[str, Any]] = []
+    if file_ids and user_id:
+        attachment_hint, image_blocks = await _prepare_baseline_attachments(
+            file_ids, user_id, session_id, working_dir
+        )
+
+    # --- URL context ---
+    context_hint = ""
+    if context and context.get("url"):
+        url = context["url"]
+        content_text = context.get("content", "")
+        if content_text:
+            context_hint = (
+                f"\n[The user shared a URL: {url}\n" f"Content:\n{content_text[:8000]}]"
+            )
+        else:
+            context_hint = f"\n[The user shared a URL: {url}]"
+
+    # Append attachment + context hints to the last user message
+    extra_hint = attachment_hint + context_hint
+    if extra_hint:
+        # Append to the last user message in openai_messages
+        for i in range(len(openai_messages) - 1, -1, -1):
+            if openai_messages[i].get("role") == "user":
+                existing = openai_messages[i].get("content", "")
+                if isinstance(existing, str):
+                    openai_messages[i]["content"] = existing + "\n" + extra_hint
+                break
+
+    # Embed vision content blocks for attached images (OpenAI format)
+    if image_blocks:
+        for i in range(len(openai_messages) - 1, -1, -1):
+            if openai_messages[i].get("role") == "user":
+                existing = openai_messages[i].get("content", "")
+                if isinstance(existing, str):
+                    parts: list[dict[str, Any]] = [{"type": "text", "text": existing}]
+                    for img in image_blocks:
+                        parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": (
+                                        f"data:{img['source']['media_type']};"
+                                        f"base64,{img['source']['data']}"
+                                    )
+                                },
+                            }
+                        )
+                    openai_messages[i]["content"] = parts
+                break
+
     tools = get_available_tools()
 
+    # --- Permission filtering ---
+    if permissions is not None:
+        tools = _filter_tools_by_permissions(tools, permissions)
+
     # Propagate execution context so tool handlers can read session-level flags.
-    set_execution_context(user_id, session)
+    set_execution_context(
+        user_id, session, sdk_cwd=working_dir, permissions=permissions
+    )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
 
