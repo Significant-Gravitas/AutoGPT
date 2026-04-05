@@ -29,7 +29,6 @@ export const metadata: Metadata = {
   description: "Your one stop shop to creating AI Agents",
   icons: {
     icon: faviconPath,
-    apple: "/apple-touch-icon.png",
   },
 };
 
