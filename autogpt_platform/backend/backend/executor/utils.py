@@ -15,7 +15,7 @@ from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
 from backend.data import onboarding as onboarding_db
 from backend.data import user as user_db
-from backend.data import workspace as workspace_db
+from backend.data import workspace as team_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
@@ -869,6 +869,8 @@ async def add_graph_execution(
     execution_context: Optional[ExecutionContext] = None,
     graph_exec_id: Optional[str] = None,
     dry_run: bool = False,
+    organization_id: Optional[str] = None,
+    team_id: Optional[str] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -895,7 +897,7 @@ async def add_graph_execution(
         udb = user_db
         gdb = graph_db
         odb = onboarding_db
-        wdb = workspace_db
+        wdb = team_db
     else:
         edb = udb = gdb = odb = wdb = get_database_manager_async_client()
 
@@ -953,6 +955,8 @@ async def add_graph_execution(
             preset_id=preset_id,
             parent_graph_exec_id=parent_exec_id,
             is_dry_run=dry_run,
+            organization_id=organization_id,
+            team_id=team_id,
         )
 
         logger.info(
@@ -983,7 +987,7 @@ async def add_graph_execution(
             # Execution hierarchy
             root_execution_id=graph_exec.id,
             # Workspace (enables workspace:// file resolution in blocks)
-            workspace_id=workspace.id,
+            team_id=workspace.id,
         )
 
     try:

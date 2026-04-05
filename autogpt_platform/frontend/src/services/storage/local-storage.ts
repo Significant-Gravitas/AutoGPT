@@ -15,6 +15,8 @@ export enum Key {
   COPILOT_NOTIFICATIONS_ENABLED = "copilot-notifications-enabled",
   COPILOT_NOTIFICATION_BANNER_DISMISSED = "copilot-notification-banner-dismissed",
   COPILOT_NOTIFICATION_DIALOG_DISMISSED = "copilot-notification-dialog-dismissed",
+  ACTIVE_ORG = "active-org-id",
+  ACTIVE_TEAM = "active-team-id",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
 }
 

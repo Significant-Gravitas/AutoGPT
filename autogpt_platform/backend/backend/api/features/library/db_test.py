@@ -24,6 +24,7 @@ async def test_get_library_agents(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         )
     ]
 
@@ -49,6 +50,7 @@ async def test_get_library_agents(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
+                visibility=prisma.enums.ResourceVisibility.PRIVATE,
             ),
         )
     ]
@@ -113,6 +115,7 @@ async def test_add_agent_to_library(mocker):
             userId="creator",
             isActive=True,
             createdAt=datetime.now(),
+            visibility=prisma.enums.ResourceVisibility.PRIVATE,
         ),
     )
 

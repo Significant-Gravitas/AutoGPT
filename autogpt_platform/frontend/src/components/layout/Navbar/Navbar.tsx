@@ -13,6 +13,7 @@ import { environment } from "@/services/environment";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
+import { OrgTeamSwitcher } from "./components/OrgTeamSwitcher/OrgTeamSwitcher";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
@@ -93,6 +94,7 @@ export function Navbar() {
           {isLoggedIn && !isSmallScreen ? (
             <div className="flex flex-1 items-center justify-end gap-4">
               <div className="flex items-center gap-4">
+                <OrgTeamSwitcher />
                 <FeedbackButton />
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}

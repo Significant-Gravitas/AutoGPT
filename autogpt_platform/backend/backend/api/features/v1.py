@@ -9,8 +9,9 @@ from typing import Annotated, Any, Sequence, get_args
 
 import pydantic
 import stripe
-from autogpt_libs.auth import get_user_id, requires_user
+from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
+from autogpt_libs.auth.models import RequestContext
 from fastapi import (
     APIRouter,
     Body,
@@ -849,12 +850,18 @@ async def get_graph_all_versions(
 async def create_new_graph(
     create_graph: CreateGraph,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
     graph.validate_graph(for_run=False)
 
-    await graph_db.create_graph(graph, user_id=user_id)
+    await graph_db.create_graph(
+        graph,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
     await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
@@ -891,6 +898,7 @@ async def update_graph(
     graph_id: str,
     graph: graph_db.Graph,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
     if graph.id and graph.id != graph_id:
         raise HTTPException(400, detail="Graph ID does not match ID in URI")
@@ -906,7 +914,12 @@ async def update_graph(
     graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
     graph.validate_graph(for_run=False)
 
-    new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
+    new_graph_version = await graph_db.create_graph(
+        graph,
+        user_id=user_id,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
+    )
 
     if new_graph_version.is_active:
         await library_db.update_library_agent_version_and_settings(
@@ -1008,6 +1021,7 @@ async def update_graph_settings(
 async def execute_graph(
     graph_id: str,
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     credentials_inputs: Annotated[
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
@@ -1035,6 +1049,8 @@ async def execute_graph(
             graph_version=graph_version,
             graph_credentials_inputs=credentials_inputs,
             dry_run=dry_run,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
         )
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
@@ -1381,6 +1397,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 )
 async def create_graph_execution_schedule(
     user_id: Annotated[str, Security(get_user_id)],
+    ctx: Annotated[RequestContext, Security(get_request_context)],
     graph_id: str = Path(..., description="ID of the graph to schedule"),
     schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
@@ -1411,6 +1428,8 @@ async def create_graph_execution_schedule(
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,
         user_timezone=user_timezone,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
 
     # Convert the next_run_time back to user timezone for display

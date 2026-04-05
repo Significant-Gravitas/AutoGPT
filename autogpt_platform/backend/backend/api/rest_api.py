@@ -29,15 +29,19 @@ import backend.api.features.library.model
 import backend.api.features.library.routes
 import backend.api.features.mcp.routes as mcp_routes
 import backend.api.features.oauth
+import backend.api.features.orgs.invitation_routes
+import backend.api.features.orgs.routes as org_routes
+import backend.api.features.orgs.team_routes
 import backend.api.features.otto.routes
 import backend.api.features.postmark.postmark
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.v1
-import backend.api.features.workspace.routes as workspace_routes
+import backend.api.features.workspace.routes as team_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.org_migration
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -129,6 +133,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
+    await backend.data.org_migration.run_migration()
 
     with launch_darkly_context():
         yield
@@ -352,7 +357,7 @@ app.include_router(
     prefix="/api/chat",
 )
 app.include_router(
-    workspace_routes.router,
+    team_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )
@@ -365,6 +370,26 @@ app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
     prefix="/api/oauth",
+)
+app.include_router(
+    org_routes.router,
+    tags=["v2", "orgs"],
+    prefix="/api/orgs",
+)
+app.include_router(
+    backend.api.features.orgs.team_routes.router,
+    tags=["v2", "orgs", "workspaces"],
+    prefix="/api/orgs/{org_id}/workspaces",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.org_router,
+    tags=["v2", "orgs", "invitations"],
+    prefix="/api/orgs/{org_id}/invitations",
+)
+app.include_router(
+    backend.api.features.orgs.invitation_routes.router,
+    tags=["v2", "invitations"],
+    prefix="/api/invitations",
 )
 
 app.mount("/external-api", external_api)
@@ -420,8 +445,22 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id="test-org",
+            team_id="test-workspace",
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
         return await backend.api.features.v1.execute_graph(
             user_id=user_id,
+            ctx=ctx,
             graph_id=graph_id,
             graph_version=graph_version,
             inputs=node_input or {},
@@ -444,7 +483,22 @@ class AgentServer(backend.util.service.AppProcess):
         create_graph: backend.api.features.v1.CreateGraph,
         user_id: str,
     ):
-        return await backend.api.features.v1.create_new_graph(create_graph, user_id)
+        from autogpt_libs.auth.models import RequestContext
+
+        ctx = RequestContext(
+            user_id=user_id,
+            org_id="test-org",
+            team_id="test-workspace",
+            is_org_owner=True,
+            is_org_admin=True,
+            is_org_billing_manager=False,
+            is_team_admin=True,
+            is_team_billing_manager=False,
+            seat_status="ACTIVE",
+        )
+        return await backend.api.features.v1.create_new_graph(
+            create_graph, user_id, ctx
+        )
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):

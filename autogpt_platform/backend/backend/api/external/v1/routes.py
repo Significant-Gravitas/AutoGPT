@@ -147,11 +147,18 @@ async def execute_graph(
     ),
 ) -> dict[str, Any]:
     try:
+        # Resolve org/team from user's default (PR14 will add key-level org context)
+        from backend.api.features.orgs.db import get_user_default_team
+
+        org_id, team_id = await get_user_default_team(auth.user_id)
+
         graph_exec = await add_graph_execution(
             graph_id=graph_id,
             user_id=auth.user_id,
             inputs=node_input,
             graph_version=graph_version,
+            organization_id=org_id,
+            team_id=team_id,
         )
         return {"id": graph_exec.id}
     except Exception as e:

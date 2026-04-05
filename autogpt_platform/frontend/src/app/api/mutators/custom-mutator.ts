@@ -69,6 +69,20 @@ export const customMutator = async <
         error,
       );
     }
+
+    // Inject org/team context headers
+    try {
+      const activeOrgID = localStorage.getItem("active-org-id");
+      const activeTeamID = localStorage.getItem("active-team-id");
+      if (activeOrgID) {
+        headers["X-Org-Id"] = activeOrgID;
+      }
+      if (activeTeamID) {
+        headers["X-Team-Id"] = activeTeamID;
+      }
+    } catch (error) {
+      console.error("Org context: Failed to access localStorage:", error);
+    }
   }
 
   const isFormData = data instanceof FormData;

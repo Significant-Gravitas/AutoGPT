@@ -42,6 +42,9 @@ async def get_chat_session(session_id: str) -> ChatSession | None:
 async def create_chat_session(
     session_id: str,
     user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
 ) -> ChatSessionInfo:
     """Create a new chat session in the database."""
@@ -51,6 +54,9 @@ async def create_chat_session(
         credentials=SafeJson({}),
         successfulAgentRuns=SafeJson({}),
         successfulAgentSchedules=SafeJson({}),
+        # Tenancy dual-write fields
+        **({"organizationId": organization_id} if organization_id else {}),
+        **({"teamId": team_id} if team_id else {}),
         metadata=SafeJson((metadata or ChatSessionMetadata()).model_dump()),
     )
     prisma_session = await PrismaChatSession.prisma().create(data=data)

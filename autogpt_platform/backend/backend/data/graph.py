@@ -1090,6 +1090,7 @@ async def get_graph(
     for_export: bool = False,
     include_subgraphs: bool = False,
     skip_access_check: bool = False,
+    team_id: str | None = None,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -1103,14 +1104,18 @@ async def get_graph(
     graph = None
 
     # Only search graph directly on owned graph (or access check is skipped)
-    if skip_access_check or user_id is not None:
+    if skip_access_check or user_id is not None or team_id is not None:
         graph_where_clause: AgentGraphWhereInput = {
             "id": graph_id,
         }
         if version is not None:
             graph_where_clause["version"] = version
-        if not skip_access_check and user_id is not None:
-            graph_where_clause["userId"] = user_id
+        # Prefer team_id scoping over user_id when both are available
+        if not skip_access_check:
+            if team_id is not None:
+                graph_where_clause["teamId"] = team_id
+            elif user_id is not None:
+                graph_where_clause["userId"] = user_id
 
         graph = await AgentGraph.prisma().find_first(
             where=graph_where_clause,
@@ -1333,10 +1338,19 @@ async def set_graph_active_version(graph_id: str, version: int, user_id: str) ->
 
 
 async def get_graph_all_versions(
-    graph_id: str, user_id: str, limit: int = MAX_GRAPH_VERSIONS_FETCH
+    graph_id: str,
+    user_id: str,
+    limit: int = MAX_GRAPH_VERSIONS_FETCH,
+    team_id: str | None = None,
 ) -> list[GraphModel]:
+    where_clause: AgentGraphWhereInput = {"id": graph_id}
+    if team_id is not None:
+        where_clause["teamId"] = team_id
+    else:
+        where_clause["userId"] = user_id
+
     graph_versions = await AgentGraph.prisma().find_many(
-        where={"id": graph_id, "userId": user_id},
+        where=where_clause,
         order={"version": "desc"},
         include=AGENT_GRAPH_INCLUDE,
         take=limit,
@@ -1494,9 +1508,21 @@ async def is_graph_published_in_marketplace(graph_id: str, graph_version: int) -
     return marketplace_listing is not None
 
 
-async def create_graph(graph: Graph, user_id: str) -> GraphModel:
+async def create_graph(
+    graph: Graph,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> GraphModel:
     async with transaction() as tx:
-        await __create_graph(tx, graph, user_id)
+        await __create_graph(
+            tx,
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
 
     if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
         return created_graph
@@ -1504,7 +1530,14 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
-async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphModel:
+async def fork_graph(
+    graph_id: str,
+    graph_version: int,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+) -> GraphModel:
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
@@ -1520,12 +1553,25 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     graph.validate_graph(for_run=False)
 
     async with transaction() as tx:
-        await __create_graph(tx, graph, user_id)
+        await __create_graph(
+            tx,
+            graph,
+            user_id,
+            organization_id=organization_id,
+            team_id=team_id,
+        )
 
     return graph
 
 
-async def __create_graph(tx, graph: Graph, user_id: str):
+async def __create_graph(
+    tx,
+    graph: Graph,
+    user_id: str,
+    *,
+    organization_id: str | None = None,
+    team_id: str | None = None,
+):
     graphs = [graph] + graph.sub_graphs
 
     # Auto-increment version for any graph entry (parent or sub-graph) whose
@@ -1562,6 +1608,9 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 userId=user_id,
                 forkedFromId=graph.forked_from_id,
                 forkedFromVersion=graph.forked_from_version,
+                # Tenancy dual-write fields
+                organizationId=organization_id,
+                teamId=team_id,
             )
             for graph in graphs
         ]

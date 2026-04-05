@@ -80,6 +80,10 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+
+  // Organization & Workspace relations
+  OrgMemberships  OrgMember[]
+  TeamMemberships TeamMember[]
 }
 
 enum SubscriptionTier {
@@ -213,6 +217,9 @@ model BuilderSearchHistory {
 
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tenancy
+  organizationId String?
 }
 
 ////////////////////////////////////////////////////////////
@@ -246,7 +253,14 @@ model ChatSession {
 
   Messages ChatMessage[]
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@index([userId, updatedAt])
+  @@index([teamId, updatedAt])
 }
 
 model ChatMessage {
@@ -304,9 +318,16 @@ model AgentGraph {
   LibraryAgents        LibraryAgent[]
   StoreListingVersions StoreListingVersion[]
 
+  // Tenancy columns (nullable during migration, NOT NULL after cutover)
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive, id, version])
   @@index([forkedFromId, forkedFromVersion])
+  @@index([teamId, isActive, id, version])
 }
 
 ////////////////////////////////////////////////////////////
@@ -347,9 +368,16 @@ model AgentPreset {
 
   isDeleted Boolean @default(false)
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@index([userId])
   @@index([agentGraphId, agentGraphVersion])
   @@index([webhookId])
+  @@index([teamId])
 }
 
 enum NotificationType {
@@ -393,6 +421,10 @@ model UserNotificationBatch {
 
   Notifications NotificationEvent[]
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
 }
@@ -428,10 +460,17 @@ model LibraryAgent {
 
   settings Json @default("{}")
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@unique([userId, agentGraphId, agentGraphVersion])
   @@index([agentGraphId, agentGraphVersion])
   @@index([creatorId])
   @@index([folderId])
+  @@index([teamId])
 }
 
 model LibraryFolder {
@@ -453,6 +492,12 @@ model LibraryFolder {
   isDeleted Boolean @default(false)
 
   LibraryAgents LibraryAgent[]
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@unique([userId, parentId, name]) // Name unique per parent per user
 }
@@ -587,12 +632,19 @@ model AgentGraphExecution {
   shareToken String?   @unique
   sharedAt   DateTime?
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
   @@index([createdAt])
   @@index([agentPresetId])
   @@index([shareToken])
   @@index([parentGraphExecutionId])
+  @@index([teamId, isDeleted, createdAt])
 }
 
 // This model describes the execution of an AgentNode.
@@ -685,6 +737,10 @@ model PendingHumanReview {
 
   User User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+
   @@unique([nodeExecId]) // One pending review per node execution
   @@index([userId, status])
   @@index([graphExecId, status])
@@ -711,6 +767,12 @@ model IntegrationWebhook {
 
   AgentNodes   AgentNode[]
   AgentPresets AgentPreset[]
+
+  // Tenancy
+  organizationId String?
+  teamId         String?
+  visibility     ResourceVisibility @default(PRIVATE)
+  Team           Team?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
 }
 
 model AnalyticsDetails {
@@ -772,6 +834,68 @@ enum CreditTransactionType {
   GRANT
   REFUND
   CARD_CHECK
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////   ORGANIZATION & WORKSPACE ENUMS    /////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+enum TeamJoinPolicy {
+  OPEN
+  PRIVATE
+}
+
+enum ResourceVisibility {
+  PRIVATE
+  WORKSPACE
+  ORG
+}
+
+enum CredentialScope {
+  USER
+  WORKSPACE
+  ORG
+}
+
+enum OrgAliasType {
+  MIGRATION
+  RENAME
+  MANUAL
+}
+
+enum OrgMemberStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum SeatType {
+  FREE
+  PAID
+}
+
+enum SeatStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+}
+
+enum TransferStatus {
+  PENDING
+  SOURCE_APPROVED
+  TARGET_APPROVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum CredentialOwnerType {
+  USER
+  WORKSPACE
+  ORG
 }
 
 model CreditTransaction {
@@ -1013,7 +1137,7 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentGraphId String       @unique
+  agentGraphId String @unique
 
   owningUserId   String
   OwningUser     User    @relation(fields: [owningUserId], references: [id])
@@ -1022,9 +1146,14 @@ model StoreListing {
   // Relations
   Versions StoreListingVersion[] @relation("ListingVersions")
 
+  // Tenancy — owningOrgId will replace owningUserId as canonical owner after cutover
+  owningOrgId String?
+  OwningOrg   Organization? @relation("OrgStoreListings", fields: [owningOrgId], references: [id])
+
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
+  @@index([owningOrgId])
 }
 
 model StoreListingVersion {
@@ -1084,6 +1213,9 @@ model StoreListingVersion {
 
   // Note: Embeddings now stored in UnifiedContentEmbedding table
   // Use contentType=STORE_AGENT and contentId=storeListingVersionId
+
+  // Tenancy
+  organizationId String?
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
@@ -1193,8 +1325,16 @@ model APIKey {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // Tenancy
+  organizationId    String?
+  teamId            String?
+  ownerType         CredentialOwnerType?
+  teamIdRestriction String?
+  Team              Team?                @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([head, name])
   @@index([userId, status])
+  @@index([teamId])
 }
 
 model UserBalance {
@@ -1247,6 +1387,11 @@ model OAuthApplication {
   AuthorizationCodes OAuthAuthorizationCode[]
   AccessTokens       OAuthAccessToken[]
   RefreshTokens      OAuthRefreshToken[]
+
+  // Tenancy
+  organizationId    String?
+  ownerType         CredentialOwnerType?
+  teamIdRestriction String?
 
   @@index([clientId])
   @@index([ownerId])
@@ -1321,4 +1466,322 @@ model OAuthRefreshToken {
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+////////   ORGANIZATION & WORKSPACE MODELS    //////////////
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+
+model Organization {
+  id                   String    @id @default(uuid())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  name                 String
+  slug                 String    @unique
+  avatarUrl            String?
+  description          String?
+  isPersonal           Boolean   @default(false)
+  settings             Json      @default("{}")
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  topUpConfig          Json?
+  archivedAt           DateTime?
+  deletedAt            DateTime?
+  bootstrapUserId      String?
+
+  Members            OrgMember[]
+  Teams              Team[]
+  Aliases            OrganizationAlias[]
+  Balance            OrgBalance?
+  CreditTransactions OrgCreditTransaction[]
+  Invitations        OrgInvitation[]
+  StoreListings      StoreListing[]               @relation("OrgStoreListings")
+  Credentials        IntegrationCredential[]
+  Profile            OrganizationProfile?
+  Subscription       OrganizationSubscription?
+  SeatAssignments    OrganizationSeatAssignment[]
+  TransfersFrom      TransferRequest[]            @relation("TransferSource")
+  TransfersTo        TransferRequest[]            @relation("TransferTarget")
+  AuditLogs          AuditLog[]
+  // slug already has @unique which creates an index — no separate @@index needed
+}
+
+model OrganizationAlias {
+  id              String       @id @default(uuid())
+  organizationId  String
+  aliasSlug       String       @unique
+  aliasType       OrgAliasType
+  createdAt       DateTime     @default(now())
+  createdByUserId String?
+  removedAt       DateTime?
+  removedByUserId String?
+  isRemovable     Boolean      @default(true)
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([aliasSlug])
+  @@index([organizationId])
+}
+
+model OrganizationProfile {
+  organizationId String   @id
+  username       String   @unique
+  displayName    String?
+  avatarUrl      String?
+  bio            String?
+  socialLinks    Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model OrgMember {
+  id               String          @id @default(uuid())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  orgId            String
+  userId           String
+  isOwner          Boolean         @default(false)
+  isAdmin          Boolean         @default(false)
+  isBillingManager Boolean         @default(false)
+  status           OrgMemberStatus @default(ACTIVE)
+  joinedAt         DateTime        @default(now())
+  invitedByUserId  String?
+
+  Org            Organization                @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  User           User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  SeatAssignment OrganizationSeatAssignment? @relation
+
+  @@unique([orgId, userId])
+  @@index([userId])
+  @@index([orgId, status])
+}
+
+model OrgInvitation {
+  id               String    @id @default(uuid())
+  createdAt        DateTime  @default(now())
+  orgId            String
+  email            String
+  targetUserId     String?
+  isAdmin          Boolean   @default(false)
+  isBillingManager Boolean   @default(false)
+  token            String    @unique @default(uuid())
+  tokenHash        String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  invitedByUserId  String
+  teamIds          String[]
+
+  Org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@index([orgId])
+}
+
+model Team {
+  id              String         @id @default(uuid())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  name            String
+  slug            String?
+  description     String?
+  isDefault       Boolean        @default(false)
+  joinPolicy      TeamJoinPolicy @default(OPEN)
+  orgId           String
+  archivedAt      DateTime?
+  createdByUserId String?
+
+  Org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  Members TeamMember[]
+
+  AgentGraphs    AgentGraph[]
+  Executions     AgentGraphExecution[]
+  ChatSessions   ChatSession[]
+  Presets        AgentPreset[]
+  LibraryAgents  LibraryAgent[]
+  LibraryFolders LibraryFolder[]
+  Webhooks       IntegrationWebhook[]
+  APIKeys        APIKey[]
+  Credentials    IntegrationCredential[] @relation("TeamCredentials")
+  TeamInvites    TeamInvite[]
+
+  @@unique([orgId, name])
+  @@index([orgId, isDefault])
+  @@index([orgId, joinPolicy])
+}
+
+model TeamMember {
+  id               String          @id @default(uuid())
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  teamId           String
+  userId           String
+  isAdmin          Boolean         @default(false)
+  isBillingManager Boolean         @default(false)
+  status           OrgMemberStatus @default(ACTIVE)
+  joinedAt         DateTime        @default(now())
+  invitedByUserId  String?
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  User User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@index([teamId, status])
+}
+
+model TeamInvite {
+  id               String    @id @default(uuid())
+  createdAt        DateTime  @default(now())
+  teamId           String
+  email            String
+  targetUserId     String?
+  isAdmin          Boolean   @default(false)
+  isBillingManager Boolean   @default(false)
+  token            String    @unique @default(uuid())
+  tokenHash        String?
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  revokedAt        DateTime?
+  invitedByUserId  String
+
+  Team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@index([teamId])
+}
+
+model OrganizationSubscription {
+  organizationId       String    @id
+  planCode             String?
+  planTier             String?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String    @default("active")
+  renewalAt            DateTime?
+  cancelAt             DateTime?
+  entitlements         Json      @default("{}")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model OrganizationSeatAssignment {
+  id               String     @id @default(uuid())
+  organizationId   String
+  userId           String
+  seatType         SeatType   @default(FREE)
+  status           SeatStatus @default(ACTIVE)
+  assignedByUserId String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  OrgMember    OrgMember?   @relation(fields: [organizationId, userId], references: [orgId, userId])
+  Organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, status])
+}
+
+model OrgBalance {
+  orgId     String   @id
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  Org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model OrgCreditTransaction {
+  transactionKey    String                @default(uuid())
+  createdAt         DateTime              @default(now())
+  orgId             String
+  initiatedByUserId String?
+  teamId            String?
+  amount            Int
+  type              CreditTransactionType
+  runningBalance    Int?
+  isActive          Boolean               @default(true)
+  metadata          Json?
+
+  Org Organization @relation(fields: [orgId], references: [id], onDelete: NoAction)
+
+  @@id(name: "orgCreditTransactionIdentifier", [transactionKey, orgId])
+  @@index([orgId, createdAt])
+  @@index([initiatedByUserId])
+}
+
+model TransferRequest {
+  id                     String         @id @default(uuid())
+  resourceType           String
+  resourceId             String
+  sourceOrganizationId   String
+  targetOrganizationId   String
+  initiatedByUserId      String
+  status                 TransferStatus @default(PENDING)
+  sourceApprovedByUserId String?
+  targetApprovedByUserId String?
+  completedAt            DateTime?
+  reason                 String?
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  SourceOrg Organization @relation("TransferSource", fields: [sourceOrganizationId], references: [id])
+  TargetOrg Organization @relation("TransferTarget", fields: [targetOrganizationId], references: [id])
+
+  @@index([sourceOrganizationId])
+  @@index([targetOrganizationId])
+  @@index([status])
+}
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String?
+  teamId         String?
+  actorUserId    String
+  entityType     String
+  entityId       String?
+  action         String
+  beforeJson     Json?
+  afterJson      Json?
+  correlationId  String?
+  createdAt      DateTime @default(now())
+
+  Organization Organization? @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model IntegrationCredential {
+  id               String              @id @default(uuid())
+  organizationId   String
+  ownerType        CredentialOwnerType
+  ownerId          String // userId, teamId, or orgId depending on ownerType
+  teamId           String? // Dedicated FK for workspace-scoped creds (set when ownerType=WORKSPACE)
+  provider         String
+  credentialType   String
+  displayName      String
+  encryptedPayload String
+  createdByUserId  String
+  lastUsedAt       DateTime?
+  status           String              @default("active")
+  metadata         Json?
+  expiresAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  Organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  Workspace    Team?        @relation("TeamCredentials", fields: [teamId], references: [id], onDelete: Cascade, map: "IntegrationCredential_workspace_fkey")
+
+  @@index([organizationId, ownerType, provider])
+  @@index([ownerId, ownerType])
+  @@index([createdByUserId])
 }

@@ -697,6 +697,7 @@ async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
+    ctx: auth.RequestContext = Security(auth.get_request_context),
 ):
     """
     Stream chat responses for a session (POST with context support).
@@ -840,6 +841,8 @@ async def stream_chat_post(
         is_user_message=request.is_user_message,
         context=request.context,
         file_ids=sanitized_file_ids,
+        organization_id=ctx.org_id,
+        team_id=ctx.team_id,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
