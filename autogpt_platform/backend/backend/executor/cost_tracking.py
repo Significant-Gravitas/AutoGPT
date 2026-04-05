@@ -14,8 +14,23 @@ from backend.data.platform_cost import (
 )
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import is_system_credential
+from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
+
+# Provider groupings by billing model — used when the block didn't explicitly
+# declare stats.provider_cost_type and we fall back to provider-name
+# heuristics. Values match ProviderName enum values.
+_CHARACTER_BILLED_PROVIDERS = frozenset(
+    {ProviderName.D_ID.value, ProviderName.ELEVENLABS.value}
+)
+_WALLTIME_BILLED_PROVIDERS = frozenset(
+    {
+        ProviderName.FAL.value,
+        ProviderName.REVID.value,
+        ProviderName.REPLICATE.value,
+    }
+)
 
 # Hold strong references to in-flight log tasks so the event loop doesn't
 # garbage-collect them mid-execution. Tasks remove themselves on completion.
@@ -58,12 +73,12 @@ def resolve_tracking(
     # 4. Provider-specific billing heuristics
 
     # TTS: billed per character of input text
-    if provider == "unreal_speech":
+    if provider == ProviderName.UNREAL_SPEECH.value:
         text = input_data.get("text", "")
         return "characters", float(len(text)) if isinstance(text, str) else 0.0
 
     # D-ID + ElevenLabs voice: billed per character of script
-    if provider in ("d_id", "elevenlabs"):
+    if provider in _CHARACTER_BILLED_PROVIDERS:
         text = (
             input_data.get("script_input", "")
             or input_data.get("text", "")
@@ -72,11 +87,11 @@ def resolve_tracking(
         return "characters", float(len(text)) if isinstance(text, str) else 0.0
 
     # E2B: billed per second of sandbox time
-    if provider == "e2b":
+    if provider == ProviderName.E2B.value:
         return "sandbox_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
 
     # Video/image gen: walltime includes queue + generation + polling
-    if provider in ("fal", "revid", "replicate"):
+    if provider in _WALLTIME_BILLED_PROVIDERS:
         return "walltime_seconds", round(stats.walltime, 3) if stats.walltime else 0.0
 
     # Per-request: Google Maps, Ideogram, Nvidia, Apollo, etc.

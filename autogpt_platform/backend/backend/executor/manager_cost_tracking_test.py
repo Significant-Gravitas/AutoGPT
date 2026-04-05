@@ -441,6 +441,27 @@ class TestMergeStats:
         assert stats.provider_cost == 0.005
         assert stats.output_size == 10
 
+    def test_provider_cost_accumulates(self):
+        """Multiple merge_stats with provider_cost should sum (multi-round
+        tool-calling in copilot / retries can report cost separately)."""
+        stats = NodeExecutionStats()
+        stats += NodeExecutionStats(provider_cost=0.001)
+        stats += NodeExecutionStats(provider_cost=0.002)
+        stats += NodeExecutionStats(provider_cost=0.003)
+        assert stats.provider_cost == pytest.approx(0.006)
+
+    def test_provider_cost_none_does_not_overwrite(self):
+        """A None provider_cost must not wipe a previously-set value."""
+        stats = NodeExecutionStats(provider_cost=0.01)
+        stats += NodeExecutionStats()  # provider_cost=None by default
+        assert stats.provider_cost == 0.01
+
+    def test_provider_cost_type_last_write_wins(self):
+        """provider_cost_type is a Literal — last set value wins on merge."""
+        stats = NodeExecutionStats(provider_cost_type="tokens")
+        stats += NodeExecutionStats(provider_cost_type="items")
+        assert stats.provider_cost_type == "items"
+
 
 # ---------------------------------------------------------------------------
 # on_node_execution -> log_system_credential_cost integration

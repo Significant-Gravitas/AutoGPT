@@ -859,30 +859,34 @@ class NodeExecutionStats(BaseModel):
     cleared_outputs: Optional[dict[str, list[str]]] = None
 
     def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
-        """Mutate this instance by adding another NodeExecutionStats."""
+        """Mutate this instance by adding another NodeExecutionStats.
+
+        Avoids calling model_dump() twice per merge (called on every
+        merge_stats() from ~20+ blocks); reads via getattr/vars instead.
+        """
         if not isinstance(other, NodeExecutionStats):
             return NotImplemented
 
-        stats_dict = other.model_dump()
-        current_stats = self.model_dump()
+        # vars() returns __dict__ for fields that are set (plus extras via
+        # model_config.extra='allow') — much cheaper than model_dump() which
+        # validates + serialises every field.
+        other_fields = vars(other)
+        self_fields = vars(self)
 
-        for key, value in stats_dict.items():
+        for key, value in other_fields.items():
             if value is None:
                 # Never overwrite an existing value with None
                 continue
-            if key not in current_stats:
-                # Field doesn't exist yet, just set it
+            current = self_fields.get(key)
+            if current is None:
+                # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
-            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
-                current_stats[key].update(value)
-                setattr(self, key, current_stats[key])
-            elif isinstance(value, (int, float)) and isinstance(
-                current_stats[key], (int, float)
-            ):
-                setattr(self, key, current_stats[key] + value)
-            elif isinstance(value, list) and isinstance(current_stats[key], list):
-                current_stats[key].extend(value)
-                setattr(self, key, current_stats[key])
+            elif isinstance(value, dict) and isinstance(current, dict):
+                current.update(value)
+            elif isinstance(value, (int, float)) and isinstance(current, (int, float)):
+                setattr(self, key, current + value)
+            elif isinstance(value, list) and isinstance(current, list):
+                current.extend(value)
             else:
                 setattr(self, key, value)
 
