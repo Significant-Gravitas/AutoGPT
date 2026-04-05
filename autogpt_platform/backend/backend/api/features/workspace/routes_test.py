@@ -160,12 +160,14 @@ def test_upload_passes_user_upload_origin_metadata(
 
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
+@patch("backend.api.features.workspace.routes.get_workspace_total_size")
 @patch("backend.api.features.workspace.routes.scan_content_safe")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_upload_returns_409_on_file_conflict(
-    mock_manager_cls, mock_scan, mock_get_workspace
+    mock_manager_cls, mock_scan, mock_total_size, mock_get_workspace
 ):
     mock_get_workspace.return_value = _make_workspace()
+    mock_total_size.return_value = 100
     mock_instance = AsyncMock()
     mock_instance.write_file.side_effect = ValueError("File already exists at path")
     mock_manager_cls.return_value = mock_instance
