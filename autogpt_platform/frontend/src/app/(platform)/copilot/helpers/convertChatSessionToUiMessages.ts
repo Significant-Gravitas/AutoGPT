@@ -2,6 +2,7 @@ import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endp
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
 interface SessionChatMessage {
+  id: string | null;
   role: string;
   content: string | null;
   tool_call_id: string | null;
@@ -21,6 +22,12 @@ function coerceSessionChatMessages(
       if (!role) return null;
 
       return {
+        id:
+          typeof msg.id === "string"
+            ? msg.id
+            : msg.id == null
+              ? null
+              : String(msg.id),
         role,
         content:
           typeof msg.content === "string"
@@ -200,7 +207,7 @@ export function convertChatSessionMessagesToUiMessages(
       return;
     }
 
-    const msgId = `${sessionId}-${index}`;
+    const msgId = msg.id ?? `${sessionId}-${index}`;
     uiMessages.push({
       id: msgId,
       role: msg.role,
