@@ -494,12 +494,19 @@ class RunAgentTool(BaseTool):
         library_agent = await get_or_create_library_agent(graph, user_id)
 
         # Execute
+        # Resolve org/team context for tenancy
+        from backend.api.features.orgs.db import get_user_default_team
+
+        org_id, team_id = await get_user_default_team(user_id)
+
         execution = await execution_utils.add_graph_execution(
             graph_id=library_agent.graph_id,
             user_id=user_id,
             inputs=inputs,
             graph_credentials_inputs=graph_credentials,
             dry_run=dry_run,
+            organization_id=org_id,
+            team_id=team_id,
         )
 
         # Track successful run (dry runs don't count against the session limit)

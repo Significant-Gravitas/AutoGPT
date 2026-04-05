@@ -44,6 +44,10 @@ ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';
 
 -- AlterTable
+ALTER TABLE "UserNotificationBatch" ADD COLUMN     "organizationId" TEXT,
+ADD COLUMN     "teamId" TEXT;
+
+-- AlterTable
 ALTER TABLE "LibraryAgent" ADD COLUMN     "organizationId" TEXT,
 ADD COLUMN     "teamId" TEXT,
 ADD COLUMN     "visibility" "ResourceVisibility" NOT NULL DEFAULT 'PRIVATE';

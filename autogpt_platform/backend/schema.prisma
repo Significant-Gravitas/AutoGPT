@@ -421,6 +421,10 @@ model UserNotificationBatch {
 
   Notifications NotificationEvent[]
 
+  // Tenancy
+  organizationId String?
+  teamId         String?
+
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
 }

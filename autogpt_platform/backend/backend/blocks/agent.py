@@ -95,6 +95,8 @@ class AgentExecutorBlock(Block):
                 update={"parent_execution_id": graph_exec_id},
             ),
             dry_run=execution_context.dry_run,
+            organization_id=execution_context.organization_id,
+            team_id=execution_context.team_id,
         )
 
         logger = execution_utils.LogMetadata(
