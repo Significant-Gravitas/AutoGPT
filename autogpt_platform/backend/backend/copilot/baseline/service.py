@@ -83,6 +83,10 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 # Maximum number of tool-call rounds before forcing a text response.
 _MAX_TOOL_ROUNDS = 30
 
+# Max seconds to wait for transcript upload in the finally block before
+# letting it continue as a background task (tracked in _background_tasks).
+_TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
+
 
 def _resolve_baseline_model(mode: CopilotMode | None) -> str:
     """Pick the model for the baseline path based on the per-request mode.
@@ -606,7 +610,9 @@ async def _upload_final_transcript(
         # Bound the wait: a hung storage backend must not block the response
         # from finishing. The task keeps running in _background_tasks on
         # timeout and will be cleaned up when it resolves.
-        await asyncio.wait_for(asyncio.shield(upload_task), timeout=30)
+        await asyncio.wait_for(
+            asyncio.shield(upload_task), timeout=_TRANSCRIPT_UPLOAD_TIMEOUT_S
+        )
     except Exception as upload_err:
         logger.error("[Baseline] Transcript upload failed: %s", upload_err)
 
