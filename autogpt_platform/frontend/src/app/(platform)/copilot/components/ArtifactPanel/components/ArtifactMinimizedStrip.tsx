@@ -22,7 +22,7 @@ export function ArtifactMinimizedStrip({
       <button
         type="button"
         onClick={onExpand}
-        className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+        className="rounded p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         title="Expand panel"
       >
         <ArrowsOutSimple size={16} />

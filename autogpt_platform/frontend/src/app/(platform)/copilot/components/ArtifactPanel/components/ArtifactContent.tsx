@@ -13,6 +13,9 @@ import {
 } from "./artifactPreviewConstants";
 import { useArtifactContent } from "./useArtifactContent";
 
+// Matches an opening <head> tag (with or without attributes), case-insensitive.
+const HEAD_OPEN_RE = /<head(\s[^>]*)?>/i;
+
 interface Props {
   artifact: ArtifactRef;
   isSourceView: boolean;
@@ -105,15 +108,17 @@ function ArtifactRenderer({
   if (classification.type === "html") {
     const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_IFRAME_CSP}">`;
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const headOpenRe = /<head(\s[^>]*)?>/i;
     const headInjection = `${cspMeta}${tailwindScript}`;
-    const htmlWithTailwind = headOpenRe.test(content)
-      ? content.replace(headOpenRe, (match) => `${match}${headInjection}`)
-      : `${headInjection}${content}`;
+    const wrapped = HEAD_OPEN_RE.test(content)
+      ? content.replace(HEAD_OPEN_RE, (match) => `${match}${headInjection}`)
+      : // Headless fragment: wrap in a full document so the CSP meta lives
+        // inside <head> where browsers will honor it (meta-CSP before
+        // <!doctype html> is ignored per HTML spec).
+        `<!doctype html><html><head>${headInjection}</head><body>${content}</body></html>`;
     return (
       <iframe
         sandbox="allow-scripts"
-        srcDoc={htmlWithTailwind}
+        srcDoc={wrapped}
         className="h-full w-full border-0"
         title={artifact.title}
       />

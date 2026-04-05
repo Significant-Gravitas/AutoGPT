@@ -4,18 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 
-interface Result {
-  content: string | null;
-  pdfUrl: string | null;
-  isLoading: boolean;
-  error: string | null;
-  scrollRef: React.RefObject<HTMLDivElement>;
-}
+// Cap on cached text artifacts per panel mount. Long sessions with many
+// large artifacts would otherwise hold every opened one in memory.
+const CONTENT_CACHE_MAX = 12;
 
 export function useArtifactContent(
   artifact: ArtifactRef,
   classification: ArtifactClassification,
-): Result {
+) {
   const [content, setContent] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -95,8 +91,13 @@ export function useArtifactContent(
     }
 
     setPdfUrl(null);
-    const cached = contentCache.current.get(artifact.id);
+    // LRU touch — re-insert so the most-recently-used entry sits at the
+    // tail and the oldest entry falls off the head first.
+    const cache = contentCache.current;
+    const cached = cache.get(artifact.id);
     if (cached !== undefined) {
+      cache.delete(artifact.id);
+      cache.set(artifact.id, cached);
       setContent(cached);
       setIsLoading(false);
       return () => {
@@ -110,7 +111,12 @@ export function useArtifactContent(
       })
       .then((text) => {
         if (!cancelled) {
-          contentCache.current.set(artifact.id, text);
+          if (cache.size >= CONTENT_CACHE_MAX) {
+            // Map preserves insertion order — first key is the oldest.
+            const oldest = cache.keys().next().value;
+            if (oldest !== undefined) cache.delete(oldest);
+          }
+          cache.set(artifact.id, text);
           setContent(text);
           setIsLoading(false);
         }

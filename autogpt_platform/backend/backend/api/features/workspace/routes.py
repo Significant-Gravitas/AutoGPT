@@ -143,7 +143,6 @@ class WorkspaceFileItem(BaseModel):
 
 class ListFilesResponse(BaseModel):
     files: list[WorkspaceFileItem]
-    total_count: int
     offset: int = 0
     has_more: bool = False
 
@@ -382,7 +381,6 @@ async def list_workspace_files(
             )
             for f in page
         ],
-        total_count=len(page),
         offset=offset,
         has_more=has_more,
     )

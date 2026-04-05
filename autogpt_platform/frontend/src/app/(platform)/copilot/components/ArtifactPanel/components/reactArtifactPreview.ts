@@ -13,7 +13,8 @@
  *   - Inline script execution (needed to render React components)
  *   - `new Function()` is used to evaluate the compiled code (eval-equivalent)
  *   - Full DOM access within the iframe
- *   - Network requests via fetch/XHR (allowed — only artifact content is visible)
+ *   - Outbound fetch/XHR is BLOCKED by the injected CSP (`connect-src 'none'`)
+ *     so AI-generated code cannot exfiltrate its own content over the network
  *
  * React is loaded from unpkg with pinned version and SRI integrity hashes.
  */
@@ -25,7 +26,7 @@ import {
 
 export { transpileReactArtifactSource } from "./transpileReactArtifact";
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")

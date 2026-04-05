@@ -52,12 +52,23 @@ export function ArtifactDragHandle({
   }
 
   return (
+    // 12px transparent hit target with the visible 1px line centered inside
+    // (WCAG-compliant, matches ~8-12px conventions of other resizable panels).
     <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize panel"
       className={cn(
-        "absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:w-1.5 hover:bg-violet-400",
-        isDragging && "w-1.5 bg-violet-500",
+        "group absolute -left-1.5 top-0 z-10 flex h-full w-3 cursor-col-resize items-stretch justify-center",
       )}
       onPointerDown={handlePointerDown}
-    />
+    >
+      <div
+        className={cn(
+          "h-full w-px bg-transparent transition-colors group-hover:w-0.5 group-hover:bg-violet-400",
+          isDragging && "w-0.5 bg-violet-500",
+        )}
+      />
+    </div>
   );
 }

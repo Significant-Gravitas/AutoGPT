@@ -28,48 +28,151 @@ export interface ArtifactClassification {
 
 const TEN_MB = 10 * 1024 * 1024;
 
-const CODE_EXTENSIONS = new Set([
-  ".js",
-  ".ts",
-  ".py",
-  ".rb",
-  ".go",
-  ".rs",
-  ".java",
-  ".c",
-  ".cpp",
-  ".h",
-  ".cs",
-  ".php",
-  ".swift",
-  ".kt",
-  ".sh",
-  ".bash",
-  ".zsh",
-  ".yml",
-  ".yaml",
-  ".toml",
-  ".ini",
-  ".cfg",
-  ".sql",
-  ".r",
-  ".lua",
-  ".pl",
-  ".scala",
-]);
+// Catalog of classification kinds. Each entry defines the shared output
+// shape; extension/MIME → kind mapping is handled by the lookup tables below.
+const KIND: Record<string, ArtifactClassification> = {
+  image: {
+    type: "image",
+    icon: Image,
+    label: "Image",
+    openable: true,
+    hasSourceToggle: false,
+  },
+  pdf: {
+    type: "pdf",
+    icon: FileText,
+    label: "PDF",
+    openable: true,
+    hasSourceToggle: false,
+  },
+  csv: {
+    type: "csv",
+    icon: Table,
+    label: "Spreadsheet",
+    openable: true,
+    hasSourceToggle: true,
+  },
+  html: {
+    type: "html",
+    icon: FileHtml,
+    label: "HTML",
+    openable: true,
+    hasSourceToggle: true,
+  },
+  react: {
+    type: "react",
+    icon: FileHtml,
+    label: "React",
+    openable: true,
+    hasSourceToggle: true,
+  },
+  markdown: {
+    type: "markdown",
+    icon: FileText,
+    label: "Document",
+    openable: true,
+    hasSourceToggle: true,
+  },
+  json: {
+    type: "json",
+    icon: Code,
+    label: "Data",
+    openable: true,
+    hasSourceToggle: true,
+  },
+  code: {
+    type: "code",
+    icon: Code,
+    label: "Code",
+    openable: true,
+    hasSourceToggle: false,
+  },
+  text: {
+    type: "text",
+    icon: FileText,
+    label: "Text",
+    openable: true,
+    hasSourceToggle: false,
+  },
+  "download-only": {
+    type: "download-only",
+    icon: File,
+    label: "File",
+    openable: false,
+    hasSourceToggle: false,
+  },
+};
 
-const REACT_EXTENSIONS = new Set([".jsx", ".tsx"]);
+// Extension → kind. First match wins.
+const EXT_KIND: Record<string, string> = {
+  ".png": "image",
+  ".jpg": "image",
+  ".jpeg": "image",
+  ".gif": "image",
+  ".webp": "image",
+  ".svg": "image",
+  ".bmp": "image",
+  ".ico": "image",
+  ".pdf": "pdf",
+  ".csv": "csv",
+  ".html": "html",
+  ".htm": "html",
+  ".jsx": "react",
+  ".tsx": "react",
+  ".md": "markdown",
+  ".mdx": "markdown",
+  ".json": "json",
+  ".txt": "text",
+  ".log": "text",
+  // code extensions
+  ".js": "code",
+  ".ts": "code",
+  ".py": "code",
+  ".rb": "code",
+  ".go": "code",
+  ".rs": "code",
+  ".java": "code",
+  ".c": "code",
+  ".cpp": "code",
+  ".h": "code",
+  ".cs": "code",
+  ".php": "code",
+  ".swift": "code",
+  ".kt": "code",
+  ".sh": "code",
+  ".bash": "code",
+  ".zsh": "code",
+  ".yml": "code",
+  ".yaml": "code",
+  ".toml": "code",
+  ".ini": "code",
+  ".cfg": "code",
+  ".sql": "code",
+  ".r": "code",
+  ".lua": "code",
+  ".pl": "code",
+  ".scala": "code",
+};
 
-const IMAGE_EXTENSIONS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".svg",
-  ".bmp",
-  ".ico",
-]);
+// Exact-match MIME → kind (fallback when extension doesn't match).
+const MIME_KIND: Record<string, string> = {
+  "application/pdf": "pdf",
+  "text/csv": "csv",
+  "text/html": "html",
+  "text/jsx": "react",
+  "text/tsx": "react",
+  "application/jsx": "react",
+  "application/x-typescript-jsx": "react",
+  "text/markdown": "markdown",
+  "text/x-markdown": "markdown",
+  "application/json": "json",
+  "application/javascript": "code",
+  "text/javascript": "code",
+  "application/typescript": "code",
+  "text/typescript": "code",
+  "application/xml": "code",
+  "text/xml": "code",
+};
 
 const BINARY_MIMES = new Set([
   "application/zip",
@@ -96,235 +199,31 @@ export function classifyArtifact(
   filename?: string,
   sizeBytes?: number,
 ): ArtifactClassification {
-  const mime = mimeType?.toLowerCase() ?? "";
+  // Size gate: >10MB is download-only regardless of type.
+  if (sizeBytes && sizeBytes > TEN_MB) return KIND["download-only"];
+
+  // Extension first (more reliable than MIME for AI-generated files).
   const ext = getExtension(filename);
+  const extKind = EXT_KIND[ext];
+  if (extKind) return KIND[extKind];
 
-  // Size gate: >10MB is download-only
-  if (sizeBytes && sizeBytes > TEN_MB) {
-    return {
-      type: "download-only",
-      icon: File,
-      label: "File",
-      openable: false,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (IMAGE_EXTENSIONS.has(ext)) {
-    return {
-      type: "image",
-      icon: Image,
-      label: "Image",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (ext === ".pdf") {
-    return {
-      type: "pdf",
-      icon: FileText,
-      label: "PDF",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (ext === ".csv") {
-    return {
-      type: "csv",
-      icon: Table,
-      label: "Spreadsheet",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (ext === ".html" || ext === ".htm") {
-    return {
-      type: "html",
-      icon: FileHtml,
-      label: "HTML",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (REACT_EXTENSIONS.has(ext)) {
-    return {
-      type: "react",
-      icon: FileHtml,
-      label: "React",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (ext === ".md" || ext === ".mdx") {
-    return {
-      type: "markdown",
-      icon: FileText,
-      label: "Document",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (ext === ".json") {
-    return {
-      type: "json",
-      icon: Code,
-      label: "Data",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (CODE_EXTENSIONS.has(ext)) {
-    return {
-      type: "code",
-      icon: Code,
-      label: "Code",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (ext === ".txt" || ext === ".log") {
-    return {
-      type: "text",
-      icon: FileText,
-      label: "Text",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (mime.startsWith("image/")) {
-    return {
-      type: "image",
-      icon: Image,
-      label: "Image",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (mime === "application/pdf") {
-    return {
-      type: "pdf",
-      icon: FileText,
-      label: "PDF",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
-  if (mime === "text/csv") {
-    return {
-      type: "csv",
-      icon: Table,
-      label: "Spreadsheet",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (mime === "text/html") {
-    return {
-      type: "html",
-      icon: FileHtml,
-      label: "HTML",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (
-    mime === "text/jsx" ||
-    mime === "text/tsx" ||
-    mime === "application/jsx" ||
-    mime === "application/x-typescript-jsx"
-  ) {
-    return {
-      type: "react",
-      icon: FileHtml,
-      label: "React",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (mime === "text/markdown" || mime === "text/x-markdown") {
-    return {
-      type: "markdown",
-      icon: FileText,
-      label: "Document",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (mime === "application/json") {
-    return {
-      type: "json",
-      icon: Code,
-      label: "Data",
-      openable: true,
-      hasSourceToggle: true,
-    };
-  }
-
-  if (
-    mime.startsWith("text/x-") ||
-    mime === "application/javascript" ||
-    mime === "text/javascript" ||
-    mime === "application/typescript" ||
-    mime === "text/typescript" ||
-    mime === "application/xml" ||
-    mime === "text/xml"
-  ) {
-    return {
-      type: "code",
-      icon: Code,
-      label: "Code",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
-
+  // MIME fallbacks.
+  const mime = (mimeType ?? "").toLowerCase();
+  if (mime.startsWith("image/")) return KIND.image;
+  const mimeKind = MIME_KIND[mime];
+  if (mimeKind) return KIND[mimeKind];
+  if (mime.startsWith("text/x-")) return KIND.code;
   if (
     BINARY_MIMES.has(mime) ||
     mime.startsWith("audio/") ||
     mime.startsWith("video/")
   ) {
-    return {
-      type: "download-only",
-      icon: File,
-      label: "File",
-      openable: false,
-      hasSourceToggle: false,
-    };
+    return KIND["download-only"];
   }
-
-  if (mime.startsWith("text/")) {
-    return {
-      type: "text",
-      icon: FileText,
-      label: "Text",
-      openable: true,
-      hasSourceToggle: false,
-    };
-  }
+  if (mime.startsWith("text/")) return KIND.text;
 
   // Unknown extension + unknown MIME: don't open — we can't safely assume
   // this is text, and fetching a binary to dump it into a <pre> wastes
   // bandwidth and shows garbage.
-  return {
-    type: "download-only",
-    icon: File,
-    label: "File",
-    openable: false,
-    hasSourceToggle: false,
-  };
+  return KIND["download-only"];
 }

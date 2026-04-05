@@ -10763,7 +10763,6 @@
             "type": "array",
             "title": "Files"
           },
-          "total_count": { "type": "integer", "title": "Total Count" },
           "offset": { "type": "integer", "title": "Offset", "default": 0 },
           "has_more": {
             "type": "boolean",
@@ -10772,7 +10771,7 @@
           }
         },
         "type": "object",
-        "required": ["files", "total_count"],
+        "required": ["files"],
         "title": "ListFilesResponse"
       },
       "ListSessionsResponse": {
