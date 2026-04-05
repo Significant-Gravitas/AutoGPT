@@ -30,10 +30,41 @@ const defaultFlags = {
 
 type FlagValues = typeof defaultFlags;
 
+/**
+ * Read a per-flag override from the build-time env.
+ *
+ * Set ``NEXT_PUBLIC_FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value
+ * with ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for that flag
+ * in local dev.  Returns ``undefined`` when no override is configured so
+ * the caller falls through to LaunchDarkly / ``defaultFlags``.
+ *
+ * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
+ * time, so the frontend image must be rebuilt after changing them.
+ */
+function envFlagOverride<T extends Flag>(flag: T): FlagValues[T] | undefined {
+  const envName =
+    "NEXT_PUBLIC_FORCE_FLAG_" + flag.toUpperCase().replace(/-/g, "_");
+  const raw = process.env[envName];
+  if (raw === undefined) return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true as FlagValues[T];
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false as FlagValues[T];
+  }
+  return undefined;
+}
+
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   const currentFlags = useFlags<FlagValues>();
   const flagValue = currentFlags[flag];
   const areFlagsEnabled = environment.areFeatureFlagsEnabled();
+
+  const override = envFlagOverride(flag);
+  if (override !== undefined) {
+    return override;
+  }
 
   if (!areFlagsEnabled || isPwMockEnabled) {
     return defaultFlags[flag];
