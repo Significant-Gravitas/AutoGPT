@@ -27,11 +27,14 @@ function ArtifactContentLoader({ artifact, isSourceView }: Props) {
     artifact.sizeBytes,
   );
 
-  // Save scroll position when switching artifacts
+  // Save scroll position when switching artifacts. Only save when the
+  // content div has actually been mounted with a nonzero scrollTop, so we
+  // don't overwrite a previously-saved position with 0 from a skeleton render.
   useEffect(() => {
     return () => {
-      if (scrollRef.current) {
-        scrollPositions.current.set(artifact.id, scrollRef.current.scrollTop);
+      const node = scrollRef.current;
+      if (node && node.scrollTop > 0) {
+        scrollPositions.current.set(artifact.id, node.scrollTop);
       }
     };
   }, [artifact.id]);

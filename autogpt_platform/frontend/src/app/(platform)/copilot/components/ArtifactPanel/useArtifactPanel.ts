@@ -80,10 +80,29 @@ export function useArtifactPanel() {
 
   function handleDownload() {
     if (!activeArtifact) return;
-    const a = document.createElement("a");
-    a.href = activeArtifact.sourceUrl;
-    a.download = activeArtifact.title;
-    a.click();
+    // Fetch + blob URL so the `download` attribute is honored even when the
+    // source URL is cross-origin (GCS signed URLs) and across browsers that
+    // require the anchor to be in the DOM (Firefox).
+    const safeName =
+      activeArtifact.title.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_") || "download";
+    fetch(activeArtifact.sourceUrl)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = safeName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => {
+        /* fetch or blob creation failed — silent for now */
+      });
   }
 
   const effectiveWidth = artifactPanel.isMaximized

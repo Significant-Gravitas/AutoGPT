@@ -155,11 +155,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   },
   openArtifact: (ref) =>
     set((state) => {
-      const history =
-        state.artifactPanel.activeArtifact &&
-        state.artifactPanel.activeArtifact.id !== ref.id
-          ? [...state.artifactPanel.history, state.artifactPanel.activeArtifact]
-          : state.artifactPanel.history;
+      const { activeArtifact, history: prevHistory } = state.artifactPanel;
+      // If we're returning to the artifact at the top of history, pop it
+      // instead of pushing — so ping-ponging between two artifacts doesn't
+      // produce an ever-growing back-chain.
+      const topOfHistory = prevHistory[prevHistory.length - 1];
+      const isReturningToTop = topOfHistory?.id === ref.id;
+      const history = isReturningToTop
+        ? prevHistory.slice(0, -1)
+        : activeArtifact && activeArtifact.id !== ref.id
+          ? [...prevHistory, activeArtifact]
+          : prevHistory;
       return {
         artifactPanel: {
           ...state.artifactPanel,

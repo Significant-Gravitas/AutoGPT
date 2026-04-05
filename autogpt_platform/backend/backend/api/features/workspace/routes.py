@@ -268,7 +268,12 @@ async def upload_file(
             content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
         )
     except ValueError as e:
-        raise fastapi.HTTPException(status_code=409, detail=str(e)) from e
+        # write_file raises ValueError for both path-conflict and size-limit
+        # cases; map each to its correct HTTP status.
+        message = str(e)
+        if message.startswith("File too large"):
+            raise fastapi.HTTPException(status_code=413, detail=message) from e
+        raise fastapi.HTTPException(status_code=409, detail=message) from e
 
     # Post-write storage check — eliminates TOCTOU race on the quota.
     # If a concurrent upload pushed us over the limit, undo this write.

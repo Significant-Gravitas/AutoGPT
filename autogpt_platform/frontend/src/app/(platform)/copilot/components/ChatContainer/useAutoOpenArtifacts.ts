@@ -4,10 +4,13 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useRef } from "react";
 import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
-import {
-  getMessageArtifactFingerprint,
-  getMessageArtifacts,
-} from "../ChatMessagesContainer/helpers";
+import { getMessageArtifacts } from "../ChatMessagesContainer/helpers";
+
+function fingerprintArtifacts(artifacts: ArtifactRef[]): string {
+  return artifacts
+    .map((a) => `${a.id}:${a.title}:${a.mimeType ?? ""}:${a.sourceUrl}`)
+    .join("|");
+}
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -36,7 +39,8 @@ export function useAutoOpenArtifacts({ messages, sessionId }: Props) {
     for (const message of messages) {
       if (message.role !== "assistant") continue;
 
-      const fingerprint = getMessageArtifactFingerprint(message);
+      const artifacts = getMessageArtifacts(message);
+      const fingerprint = fingerprintArtifacts(artifacts);
       nextFingerprints.set(message.id, fingerprint);
 
       if (!hasInitializedRef.current || fingerprint.length === 0) {
@@ -50,7 +54,6 @@ export function useAutoOpenArtifacts({ messages, sessionId }: Props) {
         continue;
       }
 
-      const artifacts = getMessageArtifacts(message);
       nextArtifact = artifacts[artifacts.length - 1] ?? nextArtifact;
     }
 

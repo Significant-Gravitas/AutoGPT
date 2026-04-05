@@ -308,17 +308,6 @@ export function getMessageArtifacts(
   return artifacts;
 }
 
-export function getMessageArtifactFingerprint(
-  message: UIMessage<unknown, UIDataTypes, UITools>,
-): string {
-  return getMessageArtifacts(message)
-    .map(
-      (artifact) =>
-        `${artifact.id}:${artifact.title}:${artifact.mimeType ?? ""}:${artifact.sourceUrl}`,
-    )
-    .join("|");
-}
-
 /**
  * Resolve workspace:// URLs in markdown text to proxy download URLs.
  *
