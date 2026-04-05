@@ -232,12 +232,31 @@ export function buildReactArtifactSrcDoc(
             return { createRoot: ReactDOM.createRoot };
           }
 
-          if (name === "react/jsx-runtime") {
-            return {
-              Fragment: React.Fragment,
-              jsx: React.createElement,
-              jsxs: React.createElement,
-            };
+          if (name === "react/jsx-runtime" || name === "react/jsx-dev-runtime") {
+            // jsx/jsxs signature: (type, config, key) where config.children is
+            // the children (single value for jsx, array for jsxs). createElement
+            // wants variadic children, so we have to unpack config.children.
+            function jsx(type, config, key) {
+              var props = {};
+              if (config != null) {
+                for (var k in config) {
+                  if (k !== "children") props[k] = config[k];
+                }
+              }
+              if (key !== undefined) props.key = key;
+              var children =
+                config != null && "children" in config ? config.children : undefined;
+              if (Array.isArray(children)) {
+                return React.createElement.apply(
+                  null,
+                  [type, props].concat(children),
+                );
+              }
+              return children === undefined
+                ? React.createElement(type, props)
+                : React.createElement(type, props, children);
+            }
+            return { Fragment: React.Fragment, jsx: jsx, jsxs: jsx };
           }
 
           throw new Error("Unsupported import in artifact preview: " + name);
