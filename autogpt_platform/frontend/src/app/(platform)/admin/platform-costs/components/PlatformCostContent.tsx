@@ -34,9 +34,11 @@ function PlatformCostContent({ searchParams }: Props) {
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [costPerRunOverrides, setCostPerRunOverrides] = useState<
-    Record<string, number>
-  >({});
+  // Rate overrides keyed on `${provider}:${tracking_type}` so the same
+  // provider can have independent rates per billing model.
+  const [rateOverrides, setRateOverrides] = useState<Record<string, number>>(
+    {},
+  );
 
   const tab = urlParams.get("tab") || searchParams.tab || "overview";
   const page = parseInt(urlParams.get("page") || searchParams.page || "1", 10);
@@ -119,7 +121,7 @@ function PlatformCostContent({ searchParams }: Props) {
 
   const totalEstimatedCost =
     dashboard?.by_provider.reduce((sum, row) => {
-      const est = estimateCostForRow(row, costPerRunOverrides);
+      const est = estimateCostForRow(row, rateOverrides);
       return sum + (est ?? 0);
     }, 0) ?? 0;
 
@@ -226,9 +228,9 @@ function PlatformCostContent({ searchParams }: Props) {
           {tab === "overview" && dashboard && (
             <ProviderTable
               data={dashboard.by_provider}
-              costPerRunOverrides={costPerRunOverrides}
-              onCostOverride={(provider, val) =>
-                setCostPerRunOverrides((prev) => ({ ...prev, [provider]: val }))
+              rateOverrides={rateOverrides}
+              onRateOverride={(key, val) =>
+                setRateOverrides((prev) => ({ ...prev, [key]: val }))
               }
             />
           )}

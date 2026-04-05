@@ -12246,6 +12246,11 @@
             "title": "Total Duration Seconds",
             "default": 0.0
           },
+          "total_tracking_amount": {
+            "type": "number",
+            "title": "Total Tracking Amount",
+            "default": 0.0
+          },
           "request_count": { "type": "integer", "title": "Request Count" }
         },
         "type": "object",

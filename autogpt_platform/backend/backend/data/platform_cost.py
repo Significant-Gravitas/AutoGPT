@@ -30,6 +30,7 @@ class PlatformCostEntry(BaseModel):
     duration: float | None = None
     model: str | None = None
     tracking_type: str | None = None
+    tracking_amount: float | None = None
     metadata: dict[str, Any] | None = None
 
 
@@ -40,10 +41,11 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
             ("id", "createdAt", "userId", "graphExecId", "nodeExecId",
              "graphId", "nodeId", "blockId", "blockName", "provider",
              "credentialId", "costMicrodollars", "inputTokens", "outputTokens",
-             "dataSize", "duration", "model", "trackingType", "metadata")
+             "dataSize", "duration", "model", "trackingType", "trackingAmount",
+             "metadata")
         VALUES (
             gen_random_uuid(), NOW(), $1, $2, $3, $4, $5, $6, $7, $8, $9,
-            $10, $11, $12, $13, $14, $15, $16, $17::jsonb
+            $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb
         )
         """,
         entry.user_id,
@@ -62,6 +64,7 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
         entry.duration,
         entry.model,
         entry.tracking_type,
+        entry.tracking_amount,
         _json_or_none(entry.metadata),
     )
 
@@ -92,6 +95,7 @@ class ProviderCostSummary(BaseModel):
     total_input_tokens: int
     total_output_tokens: int
     total_duration_seconds: float = 0.0
+    total_tracking_amount: float = 0.0
     request_count: int
 
 
@@ -188,6 +192,7 @@ async def get_platform_cost_dashboard(
                 COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
                 COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
                 COALESCE(SUM(p."duration"), 0)::float AS total_duration,
+                COALESCE(SUM(p."trackingAmount"), 0)::float AS total_tracking_amount,
                 COUNT(*)::bigint AS request_count
             FROM {{schema_prefix}}"PlatformCostLog" p
             WHERE {where_p}
@@ -238,6 +243,7 @@ async def get_platform_cost_dashboard(
                 total_input_tokens=r["total_input_tokens"],
                 total_output_tokens=r["total_output_tokens"],
                 total_duration_seconds=r.get("total_duration", 0.0),
+                total_tracking_amount=r.get("total_tracking_amount", 0.0),
                 request_count=r["request_count"],
             )
             for r in by_provider_rows

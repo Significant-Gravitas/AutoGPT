@@ -121,17 +121,19 @@ async def log_system_credential_cost(
 
             credit_cost, _ = block_usage_cost(block=block, input_data=input_data)
 
-            # Convert provider_cost (USD) to microdollars if available
-            cost_microdollars = None
-            if stats.provider_cost is not None:
-                cost_microdollars = round(stats.provider_cost * MICRODOLLARS_PER_USD)
-
             provider_name = cred_data.get("provider", "unknown")
             tracking_type, tracking_amount = resolve_tracking(
                 provider=provider_name,
                 stats=stats,
                 input_data=input_data,
             )
+
+            # Only treat provider_cost as USD when the tracking type says so.
+            # For other types (items, characters, per_run, ...) the
+            # provider_cost field holds the raw amount, not a dollar value.
+            cost_microdollars = None
+            if tracking_type == "cost_usd" and stats.provider_cost is not None:
+                cost_microdollars = round(stats.provider_cost * MICRODOLLARS_PER_USD)
 
             meta: dict[str, Any] = {
                 "tracking_type": tracking_type,
@@ -160,6 +162,7 @@ async def log_system_credential_cost(
                     duration=stats.walltime if stats.walltime > 0 else None,
                     model=model_name,
                     tracking_type=tracking_type,
+                    tracking_amount=tracking_amount,
                     metadata=meta or None,
                 )
             )

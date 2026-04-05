@@ -149,6 +149,7 @@ async def persist_and_record_usage(
                 output_tokens=completion_tokens,
                 model=model,
                 tracking_type=tracking_type,
+                tracking_amount=tracking_amount,
                 metadata={
                     "tracking_type": tracking_type,
                     "tracking_amount": tracking_amount,

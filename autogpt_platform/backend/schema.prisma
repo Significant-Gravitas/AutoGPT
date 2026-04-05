@@ -845,8 +845,9 @@ model PlatformCostLog {
   dataSize     Int? // bytes
   duration     Float? // seconds
   model        String?
-  trackingType String? // e.g. "cost_usd", "tokens", "per_run"
-  metadata     Json?
+  trackingType   String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
+  trackingAmount Float? // Amount in the unit implied by trackingType
+  metadata       Json?
 
   @@index([userId, createdAt])
   @@index([provider, createdAt])

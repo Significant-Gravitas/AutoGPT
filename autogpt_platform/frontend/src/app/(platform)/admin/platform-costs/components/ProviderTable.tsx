@@ -1,19 +1,21 @@
 import type { ProviderCostSummary } from "@/app/api/__generated__/models/providerCostSummary";
 import {
-  DEFAULT_COST_PER_RUN,
+  defaultRateFor,
   estimateCostForRow,
   formatMicrodollars,
+  rateKey,
+  rateUnitLabel,
   trackingValue,
 } from "../helpers";
 import { trackingBadge } from "./TrackingBadge";
 
 interface Props {
   data: ProviderCostSummary[];
-  costPerRunOverrides: Record<string, number>;
-  onCostOverride: (provider: string, val: number) => void;
+  rateOverrides: Record<string, number>;
+  onRateOverride: (key: string, val: number) => void;
 }
 
-function ProviderTable({ data, costPerRunOverrides, onCostOverride }: Props) {
+function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
@@ -25,19 +27,21 @@ function ProviderTable({ data, costPerRunOverrides, onCostOverride }: Props) {
             <th className="px-4 py-3 text-right">Requests</th>
             <th className="px-4 py-3 text-right">Known Cost</th>
             <th className="px-4 py-3 text-right">Est. Cost</th>
-            <th className="px-4 py-3 text-right">$/run</th>
+            <th className="px-4 py-3 text-right">Rate</th>
           </tr>
         </thead>
         <tbody>
           {data.map((row) => {
-            const est = estimateCostForRow(row, costPerRunOverrides);
+            const est = estimateCostForRow(row, rateOverrides);
             const tt = row.tracking_type || "per_run";
-            const showCostInput = tt === "per_run";
+            // For cost_usd rows the provider reports USD directly so rate
+            // input doesn't apply; otherwise show an editable input.
+            const showRateInput = tt !== "cost_usd";
+            const key = rateKey(row.provider, tt);
+            const fallback = defaultRateFor(row.provider, tt);
+            const currentRate = rateOverrides[key] ?? fallback;
             return (
-              <tr
-                key={`${row.provider}-${row.tracking_type}`}
-                className="border-b hover:bg-muted"
-              >
+              <tr key={key} className="border-b hover:bg-muted">
                 <td className="px-4 py-3 font-medium">{row.provider}</td>
                 <td className="px-4 py-3">
                   {trackingBadge(row.tracking_type)}
@@ -59,25 +63,27 @@ function ProviderTable({ data, costPerRunOverrides, onCostOverride }: Props) {
                   )}
                 </td>
                 <td className="px-4 py-2 text-right">
-                  {showCostInput ? (
-                    <input
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      className="w-20 rounded border px-2 py-1 text-right text-xs"
-                      placeholder={String(
-                        DEFAULT_COST_PER_RUN[row.provider] ?? "0",
-                      )}
-                      defaultValue={
-                        costPerRunOverrides[row.provider] ??
-                        DEFAULT_COST_PER_RUN[row.provider] ??
-                        ""
-                      }
-                      onChange={(e) => {
-                        const val = parseFloat(e.target.value);
-                        if (!isNaN(val)) onCostOverride(row.provider, val);
-                      }}
-                    />
+                  {showRateInput ? (
+                    <div className="flex items-center justify-end gap-1">
+                      <input
+                        type="number"
+                        step="0.0001"
+                        min="0"
+                        className="w-24 rounded border px-2 py-1 text-right text-xs"
+                        placeholder={fallback !== null ? String(fallback) : "0"}
+                        defaultValue={currentRate ?? ""}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!isNaN(val)) onRateOverride(key, val);
+                        }}
+                      />
+                      <span
+                        className="text-[10px] text-muted-foreground"
+                        title={rateUnitLabel(tt)}
+                      >
+                        {rateUnitLabel(tt)}
+                      </span>
+                    </div>
                   ) : (
                     <span className="text-xs text-muted-foreground">auto</span>
                   )}
