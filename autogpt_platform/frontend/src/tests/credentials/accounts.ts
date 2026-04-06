@@ -64,12 +64,14 @@ export function getAuthStatePath(accountKey: SeededTestAccountKey) {
   return path.join(AUTH_DIRECTORY, "states", `${accountKey}.json`);
 }
 
-export const SMOKE_AUTH_STATES = {
+export const E2E_AUTH_STATES = {
   builder: getAuthStatePath("smokeBuilder"),
   library: getAuthStatePath("smokeLibrary"),
   marketplace: getAuthStatePath("smokeMarketplace"),
   settings: getAuthStatePath("smokeSettings"),
 } as const;
+
+export const SMOKE_AUTH_STATES = E2E_AUTH_STATES;
 
 export function getSeededTestUser(
   accountKey: SeededTestAccountKey = "primary",

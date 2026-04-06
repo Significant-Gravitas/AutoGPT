@@ -578,7 +578,7 @@ async function fillVisibleTaskInputs(page: Page): Promise<void> {
         ? seededEmail
         : type === "number"
           ? "1"
-          : "smoke-input";
+          : "e2e-input";
 
     await input.fill(value).catch(() => {});
   }

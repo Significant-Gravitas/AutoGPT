@@ -303,8 +303,8 @@ jobs:
         id: playwright-suite
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "merge_group" ]]; then
-            echo "command=pnpm test:smoke:no-build" >> "$GITHUB_OUTPUT"
-            echo "mode=smoke" >> "$GITHUB_OUTPUT"
+            echo "command=pnpm test:pr-e2e:no-build" >> "$GITHUB_OUTPUT"
+            echo "mode=pr-e2e" >> "$GITHUB_OUTPUT"
           else
             echo "command=pnpm test:no-build" >> "$GITHUB_OUTPUT"
             echo "mode=full" >> "$GITHUB_OUTPUT"
@@ -323,27 +323,27 @@ jobs:
           files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           disable_search: true
 
-      - name: Build Playwright smoke summary
-        if: always() && steps.playwright-suite.outputs.mode == 'smoke'
+      - name: Build Playwright PR E2E summary
+        if: always() && steps.playwright-suite.outputs.mode == 'pr-e2e'
         run: |
-          if [[ -f test-results/smoke-report.json ]]; then
-            pnpm test:smoke:summary
+          if [[ -f test-results/pr-e2e-report.json ]]; then
+            pnpm test:pr-e2e:summary
           else
-            echo "Smoke report not found; skipping smoke summary generation."
+            echo "PR E2E report not found; skipping PR E2E summary generation."
           fi
 
-      - name: Upload Playwright smoke summary
-        if: always() && steps.playwright-suite.outputs.mode == 'smoke'
+      - name: Upload Playwright PR E2E summary
+        if: always() && steps.playwright-suite.outputs.mode == 'pr-e2e'
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-smoke-summary
+          name: playwright-pr-e2e-summary
           path: |
-            autogpt_platform/frontend/test-results/smoke-summary.json
-            autogpt_platform/frontend/test-results/smoke-summary.md
+            autogpt_platform/frontend/test-results/pr-e2e-summary.json
+            autogpt_platform/frontend/test-results/pr-e2e-summary.md
           if-no-files-found: ignore
           retention-days: 3
 
-      - name: Comment Playwright smoke summary on PR
+      - name: Comment Playwright PR E2E summary on PR
         if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v8
         with:
@@ -353,15 +353,15 @@ jobs:
 
             const summaryPath = path.join(
               process.cwd(),
-              "autogpt_platform/frontend/test-results/smoke-summary.md",
+              "autogpt_platform/frontend/test-results/pr-e2e-summary.md",
             );
 
             if (!fs.existsSync(summaryPath)) {
-              core.info("No smoke summary found; skipping PR comment.");
+              core.info("No PR E2E summary found; skipping PR comment.");
               return;
             }
 
-            const marker = "<!-- playwright-pr-smoke -->";
+            const marker = "<!-- playwright-pr-e2e -->";
             const body = `${marker}\n${fs.readFileSync(summaryPath, "utf8")}`;
             const issue_number = context.issue.number;
             const { owner, repo } = context.repo;
@@ -385,7 +385,7 @@ jobs:
                 comment_id: existingComment.id,
                 body,
               });
-              core.info(`Updated Playwright smoke summary comment ${existingComment.id}.`);
+              core.info(`Updated Playwright PR E2E summary comment ${existingComment.id}.`);
             } else {
               await github.rest.issues.createComment({
                 owner,
@@ -393,7 +393,7 @@ jobs:
                 issue_number,
                 body,
               });
-              core.info("Created Playwright smoke summary comment.");
+              core.info("Created Playwright PR E2E summary comment.");
             }
 
       - name: Upload Playwright report

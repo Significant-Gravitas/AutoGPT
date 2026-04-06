@@ -1,9 +1,9 @@
-import { expect, test } from "../coverage-fixture";
-import { SMOKE_AUTH_STATES } from "../credentials/accounts";
+import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
 
-test.use({ storageState: SMOKE_AUTH_STATES.settings });
+test.use({ storageState: E2E_AUTH_STATES.settings });
 
-test("@smoke copilot happy path: user can create a deterministic AutoPilot session and keep it after reload", async ({
+test("copilot happy path: user can create a deterministic AutoPilot session and keep it after reload", async ({
   page,
 }) => {
   test.setTimeout(120000);

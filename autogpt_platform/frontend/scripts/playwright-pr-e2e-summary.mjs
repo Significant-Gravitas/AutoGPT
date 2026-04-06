@@ -3,10 +3,10 @@ import path from "path";
 
 const inputPath =
   process.env.PLAYWRIGHT_JSON_OUTPUT_FILE ||
-  path.resolve(process.cwd(), "test-results", "smoke-report.json");
+  path.resolve(process.cwd(), "test-results", "pr-e2e-report.json");
 const outputDirectory = path.resolve(process.cwd(), "test-results");
-const jsonOutputPath = path.join(outputDirectory, "smoke-summary.json");
-const markdownOutputPath = path.join(outputDirectory, "smoke-summary.md");
+const jsonOutputPath = path.join(outputDirectory, "pr-e2e-summary.json");
+const markdownOutputPath = path.join(outputDirectory, "pr-e2e-summary.md");
 
 function ensureOutputDirectory() {
   fs.mkdirSync(outputDirectory, { recursive: true });
@@ -97,7 +97,7 @@ function buildSummary(results) {
 
 function buildMarkdown(summary) {
   const lines = [
-    "## Playwright PR Smoke",
+    "## Playwright PR E2E",
     "",
     `- Total flows: ${summary.totals.flows}`,
     `- Passed: ${summary.totals.passed}`,
@@ -128,16 +128,15 @@ function buildMarkdown(summary) {
 ensureOutputDirectory();
 
 if (!fs.existsSync(inputPath)) {
-  throw new Error(`Playwright smoke report not found at ${inputPath}`);
+  throw new Error(`Playwright PR E2E report not found at ${inputPath}`);
 }
 
 const rawReport = JSON.parse(fs.readFileSync(inputPath, "utf8"));
 const specs = collectSpecs(rawReport.suites ?? []);
-const smokeSpecs = specs.filter((spec) => spec.title.includes("@smoke"));
-const summary = buildSummary(smokeSpecs.map(toFlowResult));
+const summary = buildSummary(specs.map(toFlowResult));
 
 fs.writeFileSync(jsonOutputPath, JSON.stringify(summary, null, 2));
 fs.writeFileSync(markdownOutputPath, buildMarkdown(summary));
 
-console.log(`Smoke summary written to ${jsonOutputPath}`);
-console.log(`Smoke markdown written to ${markdownOutputPath}`);
+console.log(`PR E2E summary written to ${jsonOutputPath}`);
+console.log(`PR E2E markdown written to ${markdownOutputPath}`);

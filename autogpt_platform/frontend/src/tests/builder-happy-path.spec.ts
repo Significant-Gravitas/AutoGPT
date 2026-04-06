@@ -1,13 +1,13 @@
 import { Page } from "@playwright/test";
-import { expect, test } from "../coverage-fixture";
-import { SMOKE_AUTH_STATES } from "../credentials/accounts";
-import { BuildPage } from "../pages/build.page";
+import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
+import { BuildPage } from "./pages/build.page";
 import {
   navigateToAgentByName,
   waitForAgentPageLoad,
-} from "../pages/library.page";
+} from "./pages/library.page";
 
-test.use({ storageState: SMOKE_AUTH_STATES.builder });
+test.use({ storageState: E2E_AUTH_STATES.builder });
 
 function createUniqueAgentName(prefix: string) {
   return `${prefix} ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -50,7 +50,7 @@ async function createAndSaveAgent(page: Page, prefix: string) {
   const agentName = createUniqueAgentName(prefix);
 
   await addSimpleAgentBlocks(buildPage);
-  await buildPage.saveAgent(agentName, "PR smoke builder coverage");
+  await buildPage.saveAgent(agentName, "PR E2E builder coverage");
   await buildPage.waitForSaveComplete();
   await buildPage.waitForSaveButton();
 
@@ -86,7 +86,7 @@ async function openSavedAgentInLibrary(page: Page, agentName: string) {
   await waitForAgentPageLoad(page);
 }
 
-test("@smoke builder happy path: user can complete or skip the builder tutorial successfully", async ({
+test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
   page,
 }) => {
   test.setTimeout(90000);
@@ -99,7 +99,7 @@ test("@smoke builder happy path: user can complete or skip the builder tutorial 
   await expect(page.locator(".react-flow")).toBeVisible();
 });
 
-test("@smoke builder happy path: user can create a simple agent in builder with core blocks", async ({
+test("builder happy path: user can create a simple agent in builder with core blocks", async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -110,7 +110,7 @@ test("@smoke builder happy path: user can create a simple agent in builder with 
   await expect(buildPage.getNodeLocator()).toHaveCount(2);
 });
 
-test("@smoke builder happy path: user can save the created agent", async ({
+test("builder happy path: user can save the created agent", async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -121,7 +121,7 @@ test("@smoke builder happy path: user can save the created agent", async ({
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 });
 
-test("@smoke builder happy path: user can run the saved agent from builder", async ({
+test("builder happy path: user can run the saved agent from builder", async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -134,7 +134,7 @@ test("@smoke builder happy path: user can run the saved agent from builder", asy
   ).toBeVisible({ timeout: 15000 });
 });
 
-test("@smoke builder happy path: user can see the run result or execution status", async ({
+test("builder happy path: user can see the run result or execution status", async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -149,7 +149,7 @@ test("@smoke builder happy path: user can see the run result or execution status
     .not.toBe("unknown");
 });
 
-test("@smoke builder happy path: user can schedule the saved agent", async ({
+test("builder happy path: user can schedule the saved agent", async ({
   page,
 }) => {
   test.setTimeout(120000);
@@ -169,18 +169,24 @@ test("@smoke builder happy path: user can schedule the saved agent", async ({
   await expect(
     page.getByRole("dialog", { name: "Schedule Graph" }),
   ).toBeVisible();
+  const scheduleDialog = page.getByRole("dialog", { name: "Schedule Graph" });
   await page.locator("#schedule-name").fill(`Daily ${agentName}`);
-  await page.getByRole("button", { name: "Done" }).click();
 
-  await expect(page.getByText("Schedule created", { exact: true })).toBeVisible(
-    {
-      timeout: 15000,
-    },
+  const createScheduleResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/api\/proxy\/api\/graphs\/.+\/schedules$/.test(response.url()) &&
+      response.status() === 200,
+    { timeout: 15000 },
   );
+
+  await page.getByRole("button", { name: "Done" }).click();
+  await createScheduleResponse;
+  await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 });
 
-test("@smoke builder happy path: user can export the created agent", async ({
+test("builder happy path: user can export the created agent", async ({
   page,
 }) => {
   test.setTimeout(120000);

@@ -1,15 +1,15 @@
 import { Page } from "@playwright/test";
-import { expect, test } from "../coverage-fixture";
-import { SMOKE_AUTH_STATES } from "../credentials/accounts";
+import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
 import {
   clickRunButton,
   getRunStatus,
   waitForAgentPageLoad,
   waitForRunToComplete,
-} from "../pages/library.page";
-import { MarketplacePage } from "../pages/marketplace.page";
+} from "./pages/library.page";
+import { MarketplacePage } from "./pages/marketplace.page";
 
-test.use({ storageState: SMOKE_AUTH_STATES.marketplace });
+test.use({ storageState: E2E_AUTH_STATES.marketplace });
 
 const RUNNABLE_MARKETPLACE_AGENT_PATH =
   "/marketplace/agent/autogpt/unspirational-poster-maker";
@@ -36,7 +36,7 @@ async function openMarketplaceAgent(page: Page) {
   await expect(page.getByTestId("agent-title")).toBeVisible();
 }
 
-test("@smoke marketplace happy path: user can browse Marketplace and open an agent detail page", async ({
+test("marketplace happy path: user can browse Marketplace and open an agent detail page", async ({
   page,
 }) => {
   test.setTimeout(90000);
@@ -46,7 +46,7 @@ test("@smoke marketplace happy path: user can browse Marketplace and open an age
   await expect(page.getByTestId("agent-description")).toBeVisible();
 });
 
-test("@smoke marketplace happy path: user can add a Marketplace agent to Library and run it", async ({
+test("marketplace happy path: user can add a Marketplace agent to Library and run it", async ({
   page,
 }) => {
   test.setTimeout(120000);
