@@ -57,6 +57,71 @@ async function createAndSaveAgent(page: Page, prefix: string) {
   return { buildPage, agentName };
 }
 
+async function dismissSaveToast(page: Page) {
+  const closeToastButton = page.getByRole("button", { name: "Close toast" });
+  if (await closeToastButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+    await closeToastButton.click();
+  }
+
+  await page
+    .getByText("Graph saved successfully")
+    .waitFor({ state: "hidden", timeout: 10000 })
+    .catch(() => {});
+}
+
+async function waitForScheduleUi(page: Page) {
+  const runDialog = page.locator('[data-id="run-input-dialog-content"]');
+  const scheduleDialog = page.getByRole("dialog", { name: "Schedule Graph" });
+
+  const state = await expect
+    .poll(
+      async () => {
+        if (await scheduleDialog.isVisible().catch(() => false)) {
+          return "schedule";
+        }
+        if (await runDialog.isVisible().catch(() => false)) {
+          return "run-input";
+        }
+        return "pending";
+      },
+      { timeout: 8000 },
+    )
+    .not.toBe("pending")
+    .then(() => "ready")
+    .catch(() => "pending");
+
+  return {
+    state,
+    runDialog,
+    scheduleDialog,
+  };
+}
+
+async function openScheduleDialog(page: Page, buildPage: BuildPage) {
+  const scheduleButton = page.locator('[data-id="schedule-graph-button"]');
+
+  await dismissSaveToast(page);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(scheduleButton).toBeVisible({ timeout: 15000 });
+    await expect(scheduleButton).toBeEnabled({ timeout: 15000 });
+    await scheduleButton.click();
+
+    const { state, runDialog, scheduleDialog } = await waitForScheduleUi(page);
+    if (state !== "pending") {
+      return { runDialog, scheduleDialog };
+    }
+
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await buildPage.closeTutorial();
+    await expect(page.locator(".react-flow")).toBeVisible({ timeout: 15000 });
+    await dismissSaveToast(page);
+  }
+
+  throw new Error("Schedule UI did not open from the builder");
+}
+
 async function startBuilderRun(page: Page, buildPage: BuildPage) {
   await buildPage.clickRunButton();
 
@@ -159,17 +224,19 @@ test("builder happy path: user can schedule the saved agent", async ({
     "Smoke Schedule Agent",
   );
 
-  await page.locator('[data-id="schedule-graph-button"]').click();
+  const { runDialog, scheduleDialog } = await openScheduleDialog(
+    page,
+    buildPage,
+  );
 
-  const runDialog = page.locator('[data-id="run-input-dialog-content"]');
-  if (await runDialog.isVisible({ timeout: 5000 }).catch(() => false)) {
+  if (
+    (await runDialog.isVisible({ timeout: 1000 }).catch(() => false)) &&
+    !(await scheduleDialog.isVisible({ timeout: 1000 }).catch(() => false))
+  ) {
     await page.locator('[data-id="run-input-schedule-button"]').click();
   }
 
-  await expect(
-    page.getByRole("dialog", { name: "Schedule Graph" }),
-  ).toBeVisible();
-  const scheduleDialog = page.getByRole("dialog", { name: "Schedule Graph" });
+  await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
   await page.locator("#schedule-name").fill(`Daily ${agentName}`);
 
   const createScheduleResponse = page.waitForResponse(

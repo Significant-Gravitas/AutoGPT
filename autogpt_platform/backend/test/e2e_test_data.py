@@ -60,6 +60,10 @@ MAX_REVIEWS_PER_VERSION = 5
 GUARANTEED_FEATURED_AGENTS = 8
 GUARANTEED_FEATURED_CREATORS = 5
 GUARANTEED_TOP_AGENTS = 10
+E2E_MARKETPLACE_CREATOR_EMAIL = "test123@gmail.com"
+E2E_MARKETPLACE_CREATOR_USERNAME = "e2e-marketplace"
+E2E_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent"
+E2E_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent"
 SEEDED_TEST_EMAILS = [
     "test123@gmail.com",
     "e2e.qa.auth@example.com",
@@ -557,6 +561,41 @@ class TestDataCreator:
                 print(f"Error updating profile {profile.id}: {e}")
                 continue
 
+        deterministic_creator = next(
+            (user for user in self.users if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL),
+            None,
+        )
+        if deterministic_creator:
+            deterministic_profile = next(
+                (
+                    profile
+                    for profile in existing_profiles
+                    if profile.userId == deterministic_creator["id"]
+                ),
+                None,
+            )
+            if deterministic_profile:
+                try:
+                    updated_profile = await prisma.profile.update(
+                        where={"id": deterministic_profile.id},
+                        data={
+                            "name": "E2E Marketplace Creator",
+                            "username": E2E_MARKETPLACE_CREATOR_USERNAME,
+                            "description": "Deterministic marketplace creator for Playwright PR E2E coverage.",
+                            "links": ["https://example.com/e2e-marketplace"],
+                            "avatarUrl": get_image(),
+                            "isFeatured": True,
+                        },
+                    )
+                    profiles = [
+                        profile
+                        for profile in profiles
+                        if profile.get("id") != deterministic_profile.id
+                    ]
+                    profiles.append(updated_profile.model_dump())
+                except Exception as e:
+                    print(f"Error updating deterministic E2E creator profile: {e}")
+
         self.profiles = profiles
         return profiles
 
@@ -572,58 +611,75 @@ class TestDataCreator:
         featured_count = 0
         submission_counter = 0
 
-        # Create a special test submission for test123@gmail.com (ALWAYS approved + featured)
+        # Create a deterministic calculator marketplace agent for PR E2E coverage
         test_user = next(
-            (user for user in self.users if user["email"] == "test123@gmail.com"), None
+            (user for user in self.users if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL),
+            None
         )
         if test_user and self.agent_graphs:
-            test_submission_data = {
-                "user_id": test_user["id"],
-                "graph_id": self.agent_graphs[0]["id"],
-                "graph_version": 1,
-                "slug": "test-agent-submission",
-                "name": "Test Agent Submission",
-                "sub_heading": "A test agent for frontend testing",
-                "video_url": "https://www.youtube.com/watch?v=test123",
-                "image_urls": [
-                    "https://picsum.photos/200/300",
-                    "https://picsum.photos/200/301",
-                    "https://picsum.photos/200/302",
-                ],
-                "description": "This is a test agent submission specifically created for frontend testing purposes.",
-                "categories": ["test", "demo", "frontend"],
-                "changes_summary": "Initial test submission",
-            }
+            test_user_graphs = [
+                graph
+                for graph in self.agent_graphs
+                if graph.get("userId") == test_user["id"]
+            ]
+            deterministic_graph = next(
+                (
+                    graph
+                    for graph in test_user_graphs
+                    if not graph.get("name", "").startswith("DummyInput ")
+                ),
+                test_user_graphs[0] if test_user_graphs else None,
+            )
 
-            try:
-                test_submission = await create_store_submission(**test_submission_data)
-                submissions.append(test_submission.model_dump())
-                print("✅ Created special test store submission for test123@gmail.com")
+            if deterministic_graph:
+                test_submission_data = {
+                    "user_id": test_user["id"],
+                    "graph_id": deterministic_graph["id"],
+                    "graph_version": deterministic_graph.get("version", 1),
+                    "slug": E2E_MARKETPLACE_AGENT_SLUG,
+                    "name": E2E_MARKETPLACE_AGENT_NAME,
+                    "sub_heading": "A deterministic calculator agent for PR E2E coverage",
+                    "video_url": "https://www.youtube.com/watch?v=test123",
+                    "image_urls": [
+                        "https://picsum.photos/seed/e2e-marketplace-1/200/300",
+                        "https://picsum.photos/seed/e2e-marketplace-2/200/301",
+                        "https://picsum.photos/seed/e2e-marketplace-3/200/302",
+                    ],
+                    "description": "A simple marketplace agent built from Agent Input, Calculator, and Agent Output blocks for deterministic frontend E2E coverage.",
+                    "categories": ["test", "demo", "frontend"],
+                    "changes_summary": "Initial deterministic calculator submission",
+                }
 
-                # ALWAYS approve and feature the test submission
-                if test_submission.listing_version_id:
-                    approved_submission = await review_store_submission(
-                        store_listing_version_id=test_submission.listing_version_id,
-                        is_approved=True,
-                        external_comments="Test submission approved",
-                        internal_comments="Auto-approved test submission",
-                        reviewer_id=test_user["id"],
+                try:
+                    test_submission = await create_store_submission(**test_submission_data)
+                    submissions.append(test_submission.model_dump())
+                    print(
+                        f"✅ Created deterministic marketplace submission: {E2E_MARKETPLACE_AGENT_NAME}"
                     )
-                    approved_submissions.append(approved_submission.model_dump())
-                    print("✅ Approved test store submission")
 
-                    await prisma.storelistingversion.update(
-                        where={"id": test_submission.listing_version_id},
-                        data={"isFeatured": True},
-                    )
-                    featured_count += 1
-                    print("🌟 Marked test agent as FEATURED")
+                    if test_submission.listing_version_id:
+                        approved_submission = await review_store_submission(
+                            store_listing_version_id=test_submission.listing_version_id,
+                            is_approved=True,
+                            external_comments="Deterministic calculator submission approved",
+                            internal_comments="Auto-approved PR E2E marketplace submission",
+                            reviewer_id=test_user["id"],
+                        )
+                        approved_submissions.append(approved_submission.model_dump())
+                        print("✅ Approved deterministic marketplace submission")
 
-            except Exception as e:
-                print(f"Error creating test store submission: {e}")
-                import traceback
+                        await prisma.storelistingversion.update(
+                            where={"id": test_submission.listing_version_id},
+                            data={"isFeatured": True},
+                        )
+                        featured_count += 1
+                        print("🌟 Marked deterministic marketplace agent as FEATURED")
 
-                traceback.print_exc()
+                except Exception as e:
+                    print(f"Error creating deterministic marketplace submission: {e}")
+                    import traceback
+
+                    traceback.print_exc()
 
         # Create regular submissions for all users
         for user in self.users:

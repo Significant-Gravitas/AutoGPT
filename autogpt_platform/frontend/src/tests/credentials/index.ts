@@ -12,16 +12,16 @@ export const DummyInput = "DummyInput";
 
 // This will be used for testing agent submission for test123@gmail.com
 export const TEST_AGENT_DATA = {
-  name: "Test Agent Submission",
+  name: "E2E Calculator Agent",
   description:
-    "This is a test agent submission specifically created for frontend testing purposes.",
+    "A simple marketplace agent built from Agent Input, Calculator, and Agent Output blocks for deterministic frontend E2E coverage.",
   image_urls: [
-    "https://picsum.photos/200/300",
-    "https://picsum.photos/200/301",
-    "https://picsum.photos/200/302",
+    "https://picsum.photos/seed/e2e-marketplace-1/200/300",
+    "https://picsum.photos/seed/e2e-marketplace-2/200/301",
+    "https://picsum.photos/seed/e2e-marketplace-3/200/302",
   ],
   video_url: "https://www.youtube.com/watch?v=test123",
-  sub_heading: "A test agent for frontend testing",
+  sub_heading: "A deterministic calculator agent for PR E2E coverage",
   categories: ["test", "demo", "frontend"],
-  changes_summary: "Initial test submission",
+  changes_summary: "Initial deterministic calculator submission",
 } as const;
