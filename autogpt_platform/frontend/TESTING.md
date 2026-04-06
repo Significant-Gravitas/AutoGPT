@@ -14,15 +14,14 @@
 ## How Playwright setup works 🎭
 
 - Playwright runs from `frontend/playwright.config.ts` with a global setup step.
-- The global setup now writes a deterministic seeded user pool to `frontend/.auth/user-pool.json`.
 - It also logs in a small set of smoke-test accounts once and stores reusable auth states in `frontend/.auth/states`.
-- Most tests call `getTestUser()` (from `src/tests/utils/auth.ts`) which pulls a user from the seeded pool.
+- Most tests call `getTestUser()` (from `src/tests/utils/auth.ts`) which pulls directly from the deterministic seeded account list.
 - PR smoke tests use dedicated storage states so they skip repeated login and stay parallel without colliding.
 
 ## Test users 👤
 
-- **Deterministic seeded user pool**  
-  Created by `backend/test/e2e_test_data.py` and written locally by Playwright global setup.  
+- **Deterministic seeded QA accounts**  
+  Created by `backend/test/e2e_test_data.py`.  
   Used by `getTestUser()` in `src/tests/utils/auth.ts`.
 
 - **Reusable smoke-test auth states**  
@@ -33,7 +32,7 @@
 
 If you reset the Docker DB and logins start failing:
 
-1. Delete `frontend/.auth` so the seeded pool and stored auth states are regenerated.
+1. Delete `frontend/.auth/states` so the stored auth states are regenerated.
 2. Re-run the E2E data script to recreate the seeded QA users + library agents:
    - `poetry run python test/e2e_test_data.py`
 
@@ -45,11 +44,10 @@ If you reset the Docker DB and logins start failing:
 flowchart TD
   A[Start Docker stack] --> B[Run e2e_test_data.py]
   B --> C[Run Playwright tests]
-  C --> D[Global setup writes seeded user pool]
-  D --> E[Global setup generates smoke auth states]
-  E --> F{PR smoke or broader E2E?}
-  F -->|Smoke| G[Use dedicated storageState per flow]
-  F -->|Broader E2E| H[getTestUser from seeded pool]
+  C --> D[Global setup generates smoke auth states]
+  D --> E{PR smoke or broader E2E?}
+  E -->|Smoke| F[Use dedicated storageState per flow]
+  E -->|Broader E2E| G[getTestUser from seeded account list]
 ```
 
 - `pnpm storybook` – Run Storybook locally

@@ -59,7 +59,6 @@ export const SEEDED_AUTH_STATE_ACCOUNT_KEYS = [
 ] as const;
 
 export const AUTH_DIRECTORY = path.resolve(process.cwd(), ".auth");
-export const USER_POOL_PATH = path.join(AUTH_DIRECTORY, "user-pool.json");
 
 export function getAuthStatePath(accountKey: SeededTestAccountKey) {
   return path.join(AUTH_DIRECTORY, "states", `${accountKey}.json`);

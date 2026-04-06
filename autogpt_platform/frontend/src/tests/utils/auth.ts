@@ -5,8 +5,6 @@ import {
   SEEDED_AUTH_STATE_ACCOUNT_KEYS,
   SEEDED_TEST_ACCOUNTS,
   SEEDED_TEST_USERS,
-  SEEDED_USER_POOL_VERSION,
-  USER_POOL_PATH,
   getAuthStatePath,
 } from "../credentials/accounts";
 import { buildCookieConsentStorageState } from "../credentials/storage-state";
@@ -114,93 +112,14 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
   return users;
 }
 
-export async function saveUserPool(
-  users: TestUser[],
-  filePath?: string,
-): Promise<void> {
-  const finalPath = filePath || USER_POOL_PATH;
-
-  // Ensure .auth directory exists
-  const dirPath = path.dirname(finalPath);
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-
-  const userPool: UserPool = {
-    users,
-    createdAt: new Date().toISOString(),
-    version: SEEDED_USER_POOL_VERSION,
-  };
-
-  try {
-    fs.writeFileSync(finalPath, JSON.stringify(userPool, null, 2));
-    console.log(`✅ Successfully saved user pool to: ${finalPath}`);
-  } catch (error) {
-    console.error(`❌ Failed to save user pool to ${finalPath}:`, error);
-    throw error;
-  }
-}
-
-export async function loadUserPool(
-  filePath?: string,
-): Promise<UserPool | null> {
-  const finalPath = filePath || USER_POOL_PATH;
-
-  console.log(`📖 Loading user pool from: ${finalPath}`);
-
-  try {
-    if (!fs.existsSync(finalPath)) {
-      console.log(`⚠️ User pool file not found: ${finalPath}`);
-      return null;
-    }
-
-    const fileContent = fs.readFileSync(finalPath, "utf-8");
-    const userPool: UserPool = JSON.parse(fileContent);
-
-    console.log(
-      `✅ Successfully loaded ${userPool.users.length} users from: ${finalPath}`,
-    );
-    console.log(`📅 User pool created at: ${userPool.createdAt}`);
-    console.log(`🔖 User pool version: ${userPool.version}`);
-
-    return userPool;
-  } catch (error) {
-    console.error(`❌ Failed to load user pool from ${finalPath}:`, error);
-    return null;
-  }
-}
-
 export async function getTestUser(): Promise<TestUser> {
-  const userPool = await loadUserPool();
-  if (!userPool) {
-    throw new Error("User pool not found");
+  if (SEEDED_TEST_USERS.length === 0) {
+    throw new Error("No seeded E2E users are configured");
   }
 
-  if (userPool.users.length === 0) {
-    throw new Error("No users available in the pool");
-  }
-
-  // Return a random user from the pool
-  const randomIndex = Math.floor(Math.random() * userPool.users.length);
-  return userPool.users[randomIndex];
-}
-
-export function getSeededUserPool(): TestUser[] {
-  return SEEDED_TEST_USERS.map(({ email, password }) => ({ email, password }));
-}
-
-export function isExpectedUserPool(userPool: UserPool | null): boolean {
-  if (!userPool) return false;
-  if (userPool.version !== SEEDED_USER_POOL_VERSION) return false;
-
-  const expectedEmails = SEEDED_TEST_USERS.map((user) => user.email).sort();
-  const currentEmails = userPool.users.map((user) => user.email).sort();
-
-  return JSON.stringify(currentEmails) === JSON.stringify(expectedEmails);
-}
-
-export async function saveSeededUserPool(): Promise<void> {
-  await saveUserPool(getSeededUserPool());
+  const randomIndex = Math.floor(Math.random() * SEEDED_TEST_USERS.length);
+  const { email, password } = SEEDED_TEST_USERS[randomIndex];
+  return { email, password };
 }
 
 function hasStoredAuthState(accountKey: (typeof AUTH_STATE_KEYS)[number]) {

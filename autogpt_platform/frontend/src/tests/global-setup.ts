@@ -1,11 +1,5 @@
 import { FullConfig } from "@playwright/test";
-import {
-  ensureSeededAuthStates,
-  isExpectedUserPool,
-  loadUserPool,
-  saveSeededUserPool,
-  hasSeededAuthStates,
-} from "./utils/auth";
+import { ensureSeededAuthStates, hasSeededAuthStates } from "./utils/auth";
 
 function resolveBaseURL(config: FullConfig) {
   const configuredBaseURL =
@@ -26,15 +20,7 @@ async function globalSetup(config: FullConfig) {
   console.log("🚀 Starting global test setup...");
 
   try {
-    const existingUserPool = await loadUserPool();
     const baseURL = resolveBaseURL(config);
-
-    if (!isExpectedUserPool(existingUserPool)) {
-      console.log("🗂️ Refreshing deterministic seeded user pool...");
-      await saveSeededUserPool();
-    } else {
-      console.log("♻️ Reusing deterministic seeded user pool");
-    }
 
     if (hasSeededAuthStates()) {
       console.log("♻️ Reusing stored seeded auth states");
