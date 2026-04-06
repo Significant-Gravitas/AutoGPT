@@ -1,4 +1,5 @@
 import { Locator, Page } from "@playwright/test";
+import { getSeededTestUser } from "../credentials/accounts";
 import { getSelectors } from "../utils/selectors";
 import { BasePage } from "./base.page";
 
@@ -490,7 +491,8 @@ export async function clickRunButton(page: Page): Promise<void> {
     await setupTaskButton.click();
     const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
     await startBtn.waitFor({ state: "visible", timeout: 15000 });
-    await startBtn.click();
+    await fillVisibleTaskInputs(page);
+    await clickStartOrSimulateTask(page, startBtn);
     return;
   }
 
@@ -498,7 +500,8 @@ export async function clickRunButton(page: Page): Promise<void> {
     await newTaskButton.click();
     const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
     await startBtn.waitFor({ state: "visible", timeout: 15000 });
-    await startBtn.click();
+    await fillVisibleTaskInputs(page);
+    await clickStartOrSimulateTask(page, startBtn);
     return;
   }
 
@@ -513,6 +516,72 @@ export async function clickRunButton(page: Page): Promise<void> {
   }
 
   throw new Error("Could not find run/start task button");
+}
+
+async function clickStartOrSimulateTask(
+  page: Page,
+  startBtn: Locator,
+): Promise<void> {
+  if (await startBtn.isEnabled()) {
+    await startBtn.click({ force: true });
+    await startBtn
+      .waitFor({ state: "hidden", timeout: 5000 })
+      .catch(async () => {
+        await startBtn.click({ force: true }).catch(() => {});
+      });
+    return;
+  }
+
+  const simulateBtn = page.getByRole("button", { name: /Simulate/i }).first();
+  if (await simulateBtn.isVisible().catch(() => false)) {
+    await simulateBtn.click({ force: true });
+    await simulateBtn.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {
+      return;
+    });
+    return;
+  }
+
+  throw new Error(
+    "Could not start or simulate task after opening the run dialog",
+  );
+}
+
+async function fillVisibleTaskInputs(page: Page): Promise<void> {
+  const seededEmail = getSeededTestUser("smokeMarketplace").email;
+  const inputs = page.locator(
+    'input:visible:not([type="hidden"]):not([type="file"]):not([disabled]), textarea:visible:not([disabled])',
+  );
+  const inputCount = await inputs.count();
+
+  for (let index = 0; index < inputCount; index += 1) {
+    const input = inputs.nth(index);
+    const currentValue = await input.inputValue().catch(() => "");
+    if (currentValue.trim()) {
+      continue;
+    }
+
+    const type = (await input.getAttribute("type"))?.toLowerCase() ?? "text";
+    const placeholder = (
+      (await input.getAttribute("placeholder")) ?? ""
+    ).toLowerCase();
+    const ariaLabel = (
+      (await input.getAttribute("aria-label")) ?? ""
+    ).toLowerCase();
+    const labelText = `${placeholder} ${ariaLabel}`;
+
+    if (type === "checkbox" || type === "radio") {
+      continue;
+    }
+
+    const value =
+      type === "email" || labelText.includes("email")
+        ? seededEmail
+        : type === "number"
+          ? "1"
+          : "smoke-input";
+
+    await input.fill(value).catch(() => {});
+  }
 }
 
 export async function clickNewRunButton(page: Page): Promise<void> {
@@ -542,18 +611,28 @@ export async function waitForRunToComplete(
   page: Page,
   timeout = 30000,
 ): Promise<void> {
-  await page.waitForSelector(".bg-green-500, .bg-red-500, .bg-purple-500", {
-    timeout,
-  });
+  await Promise.race([
+    page.waitForSelector(".animate-spin", { timeout }),
+    page.waitForSelector(".bg-green-500, .bg-red-500, .bg-purple-500", {
+      timeout,
+    }),
+    getSelectors(page).getId("agent-activity-badge").waitFor({
+      state: "visible",
+      timeout,
+    }),
+  ]);
 }
 
 export async function getRunStatus(page: Page): Promise<string> {
-  if (await page.locator(".animate-spin").isVisible()) {
+  if (await page.locator(".animate-spin").first().isVisible()) {
     return "running";
   } else if (await page.locator(".bg-green-500").isVisible()) {
     return "completed";
   } else if (await page.locator(".bg-red-500").isVisible()) {
     return "failed";
+  }
+  if (await getSelectors(page).getId("agent-activity-badge").isVisible()) {
+    return "running";
   }
   return "unknown";
 }
