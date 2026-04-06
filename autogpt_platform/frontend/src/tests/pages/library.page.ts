@@ -1,4 +1,4 @@
-import { Locator, Page } from "@playwright/test";
+import { expect, Locator, Page } from "@playwright/test";
 import { getSeededTestUser } from "../credentials/accounts";
 import { getSelectors } from "../utils/selectors";
 import { BasePage } from "./base.page";
@@ -611,28 +611,45 @@ export async function waitForRunToComplete(
   page: Page,
   timeout = 30000,
 ): Promise<void> {
-  await Promise.race([
-    page.waitForSelector(".animate-spin", { timeout }),
-    page.waitForSelector(".bg-green-500, .bg-red-500, .bg-purple-500", {
-      timeout,
-    }),
-    getSelectors(page).getId("agent-activity-badge").waitFor({
-      state: "visible",
-      timeout,
-    }),
-  ]);
+  await expect.poll(() => getRunStatus(page), { timeout }).not.toBe("unknown");
 }
 
 export async function getRunStatus(page: Page): Promise<string> {
-  if (await page.locator(".animate-spin").first().isVisible()) {
+  if (
+    await page
+      .locator(".animate-spin")
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
     return "running";
-  } else if (await page.locator(".bg-green-500").isVisible()) {
-    return "completed";
-  } else if (await page.locator(".bg-red-500").isVisible()) {
-    return "failed";
   }
-  if (await getSelectors(page).getId("agent-activity-badge").isVisible()) {
+
+  if (
+    await getSelectors(page)
+      .getId("agent-activity-badge")
+      .isVisible()
+      .catch(() => false)
+  ) {
     return "running";
   }
+
+  const statusTexts = [
+    { text: "completed", status: "completed" },
+    { text: "failed", status: "failed" },
+    { text: "running", status: "running" },
+    { text: "queued", status: "queued" },
+    { text: "review", status: "review" },
+    { text: "terminated", status: "terminated" },
+    { text: "incomplete", status: "incomplete" },
+  ] as const;
+
+  for (const { text, status } of statusTexts) {
+    const locator = page.getByText(new RegExp(`^${text}$`, "i")).first();
+    if (await locator.isVisible().catch(() => false)) {
+      return status;
+    }
+  }
+
   return "unknown";
 }

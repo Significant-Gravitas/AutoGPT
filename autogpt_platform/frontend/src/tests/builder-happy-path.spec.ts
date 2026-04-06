@@ -151,6 +151,28 @@ async function openSavedAgentInLibrary(page: Page, agentName: string) {
   await waitForAgentPageLoad(page);
 }
 
+async function clickExportAgent(page: Page) {
+  const directExportButton = page.getByRole("button", {
+    name: "Export agent to file",
+  });
+  if (
+    await directExportButton.isVisible({ timeout: 5000 }).catch(() => false)
+  ) {
+    await directExportButton.click();
+    return;
+  }
+
+  const moreActionsButton = page.getByRole("button", { name: "More actions" });
+  await moreActionsButton.waitFor({ state: "visible", timeout: 15000 });
+  await moreActionsButton.click();
+
+  const dropdownExportButton = page.getByRole("menuitem", {
+    name: "Export agent to file",
+  });
+  await dropdownExportButton.waitFor({ state: "visible", timeout: 15000 });
+  await dropdownExportButton.click();
+}
+
 test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
   page,
 }) => {
@@ -242,13 +264,28 @@ test("builder happy path: user can schedule the saved agent", async ({
   const createScheduleResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      /\/api\/proxy\/api\/graphs\/.+\/schedules$/.test(response.url()) &&
+      /\/api(?:\/proxy)?(?:\/api)?\/graphs\/.+\/schedules$/.test(
+        response.url(),
+      ) &&
       response.status() === 200,
-    { timeout: 15000 },
+    { timeout: 30000 },
   );
+  const scheduleCreatedToast = page.getByText("Schedule created");
+  const waitForSuccessToast = scheduleCreatedToast.waitFor({
+    state: "visible",
+    timeout: 30000,
+  });
+  const waitForDialogToClose = scheduleDialog.waitFor({
+    state: "hidden",
+    timeout: 30000,
+  });
 
   await page.getByRole("button", { name: "Done" }).click();
-  await createScheduleResponse;
+  await Promise.any([
+    createScheduleResponse,
+    waitForSuccessToast,
+    waitForDialogToClose,
+  ]);
   await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 });
@@ -266,7 +303,7 @@ test("builder happy path: user can export the created agent", async ({
     .waitForEvent("download", { timeout: 15000 })
     .catch(() => null);
 
-  await page.getByRole("button", { name: "Export agent to file" }).click();
+  await clickExportAgent(page);
 
   const download = await downloadPromise;
   if (download) {

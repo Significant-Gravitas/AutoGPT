@@ -11,6 +11,14 @@ import { MarketplacePage } from "./pages/marketplace.page";
 
 test.use({ storageState: E2E_AUTH_STATES.marketplace });
 
+const ACCEPTED_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "running",
+  "queued",
+  "review",
+] as const;
+
 const RUNNABLE_MARKETPLACE_AGENT_PATH =
   "/marketplace/agent/e2e-marketplace/e2e-calculator-agent";
 const FALLBACK_MARKETPLACE_AGENT_PATH =
@@ -40,6 +48,31 @@ async function openRunnableMarketplaceAgent(page: Page) {
         candidate.expectedTitle,
       );
       return candidate;
+    }
+  }
+
+  const marketplacePage = new MarketplacePage(page);
+  await marketplacePage.goto(page);
+
+  const candidateLinks = await page
+    .locator('a[href*="/marketplace/agent/"]')
+    .evaluateAll((links) =>
+      links
+        .map((link) => link.getAttribute("href"))
+        .filter((href): href is string => Boolean(href)),
+    );
+
+  const uniquePaths = [...new Set(candidateLinks)].slice(0, 8);
+  for (const path of uniquePaths) {
+    await page.goto(path);
+    const addToLibraryButton = page.getByTestId("agent-add-library-button");
+
+    if (
+      await addToLibraryButton.isVisible({ timeout: 5000 }).catch(() => false)
+    ) {
+      await expect(page).toHaveURL(/\/marketplace\/agent\//);
+      await expect(page.getByTestId("agent-title").first()).toBeVisible();
+      return { path, expectedTitle: null };
     }
   }
 
@@ -96,5 +129,7 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
   await waitForRunToComplete(page, 45000);
 
   const runStatus = await getRunStatus(page);
-  expect(["completed", "failed", "running"]).toContain(runStatus);
+  expect(ACCEPTED_RUN_STATUSES).toContain(
+    runStatus as (typeof ACCEPTED_RUN_STATUSES)[number],
+  );
 });

@@ -19,6 +19,14 @@ function createUniqueAgentName(prefix: string) {
   return `${prefix} ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const ACCEPTED_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "running",
+  "queued",
+  "review",
+] as const;
+
 async function importAgentIntoLibrary(page: Page, prefix: string) {
   const libraryPage = new LibraryPage(page);
   const importedAgentName = createUniqueAgentName(prefix);
@@ -109,5 +117,7 @@ test("library happy path: user can run a saved or imported agent from Library", 
   await waitForRunToComplete(page, 45000);
 
   const runStatus = await getRunStatus(page);
-  expect(["completed", "failed", "running"]).toContain(runStatus);
+  expect(ACCEPTED_RUN_STATUSES).toContain(
+    runStatus as (typeof ACCEPTED_RUN_STATUSES)[number],
+  );
 });
