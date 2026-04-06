@@ -1,50 +1,41 @@
 import { FullConfig } from "@playwright/test";
-import { createTestUsers, saveUserPool, loadUserPool } from "./utils/auth";
+import { ensureSeededAuthStates, hasSeededAuthStates } from "./utils/auth";
+
+function resolveBaseURL(config: FullConfig) {
+  const configuredBaseURL =
+    config.projects[0]?.use?.baseURL ?? "http://localhost:3000";
+
+  if (typeof configuredBaseURL !== "string") {
+    throw new Error(
+      `Playwright baseURL must be a string during global setup. Received ${String(
+        configuredBaseURL,
+      )}.`,
+    );
+  }
+
+  return configuredBaseURL;
+}
 
 async function globalSetup(config: FullConfig) {
   console.log("🚀 Starting global test setup...");
 
   try {
-    const existingUserPool = await loadUserPool();
+    const baseURL = resolveBaseURL(config);
 
-    if (existingUserPool && existingUserPool.users.length > 0) {
-      console.log(
-        `♻️ Found existing user pool with ${existingUserPool.users.length} users`,
-      );
-      console.log("✅ Using existing user pool");
+    if (hasSeededAuthStates()) {
+      console.log("♻️ Reusing stored seeded auth states");
       return;
     }
 
-    // Create test users using signup page
-    const numberOfUsers = (config.workers || 1) + 8; // workers + buffer
-    console.log(`👥 Creating ${numberOfUsers} test users via signup...`);
-    console.log("⏳ Note: This may take a few minutes in CI environments");
-
-    const users = await createTestUsers(numberOfUsers);
-
-    if (users.length === 0) {
-      throw new Error("Failed to create any test users");
-    }
-
-    // Require at least a minimum number of users for tests to work
-    const minUsers = Math.max(config.workers || 1, 2);
-    if (users.length < minUsers) {
-      throw new Error(
-        `Only created ${users.length} users but need at least ${minUsers} for tests to run properly`,
-      );
-    }
-
-    // Save user pool
-    await saveUserPool(users);
+    console.log("🔐 Creating reusable seeded auth states...");
+    await ensureSeededAuthStates(baseURL);
 
     console.log("✅ Global setup completed successfully!");
-    console.log(`📊 Created ${users.length} test users via signup page`);
   } catch (error) {
     console.error("❌ Global setup failed:", error);
-    console.error("💡 This is likely due to:");
-    console.error("   1. Backend services not fully ready");
-    console.error("   2. Network timeouts in CI environment");
-    console.error("   3. Database or authentication issues");
+    console.error(
+      "💡 Run backend/test/e2e_test_data.py to seed the deterministic Playwright accounts before retrying.",
+    );
     throw error;
   }
 }

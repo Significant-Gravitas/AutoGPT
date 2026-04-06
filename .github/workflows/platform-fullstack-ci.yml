@@ -299,18 +299,102 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
+      - name: Select Playwright suite
+        id: playwright-suite
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "merge_group" ]]; then
+            echo "command=pnpm test:smoke:no-build" >> "$GITHUB_OUTPUT"
+            echo "mode=smoke" >> "$GITHUB_OUTPUT"
+          else
+            echo "command=pnpm test:no-build" >> "$GITHUB_OUTPUT"
+            echo "mode=full" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Playwright tests
-        run: pnpm test:no-build
+        run: ${{ steps.playwright-suite.outputs.command }}
         continue-on-error: false
 
       - name: Upload E2E coverage to Codecov
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.playwright-suite.outputs.mode == 'full' }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: platform-frontend-e2e
           files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
           disable_search: true
+
+      - name: Build Playwright smoke summary
+        if: always() && steps.playwright-suite.outputs.mode == 'smoke'
+        run: |
+          if [[ -f test-results/smoke-report.json ]]; then
+            pnpm test:smoke:summary
+          else
+            echo "Smoke report not found; skipping smoke summary generation."
+          fi
+
+      - name: Upload Playwright smoke summary
+        if: always() && steps.playwright-suite.outputs.mode == 'smoke'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-smoke-summary
+          path: |
+            autogpt_platform/frontend/test-results/smoke-summary.json
+            autogpt_platform/frontend/test-results/smoke-summary.md
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Comment Playwright smoke summary on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("fs");
+            const path = require("path");
+
+            const summaryPath = path.join(
+              process.cwd(),
+              "autogpt_platform/frontend/test-results/smoke-summary.md",
+            );
+
+            if (!fs.existsSync(summaryPath)) {
+              core.info("No smoke summary found; skipping PR comment.");
+              return;
+            }
+
+            const marker = "<!-- playwright-pr-smoke -->";
+            const body = `${marker}\n${fs.readFileSync(summaryPath, "utf8")}`;
+            const issue_number = context.issue.number;
+            const { owner, repo } = context.repo;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+            });
+
+            const existingComment = comments.find(
+              (comment) =>
+                comment.user?.type === "Bot" &&
+                comment.body?.includes(marker),
+            );
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existingComment.id,
+                body,
+              });
+              core.info(`Updated Playwright smoke summary comment ${existingComment.id}.`);
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info("Created Playwright smoke summary comment.");
+            }
 
       - name: Upload Playwright report
         if: always()

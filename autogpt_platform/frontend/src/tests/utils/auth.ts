@@ -1,7 +1,16 @@
 import fs from "fs";
 import path from "path";
+import { LoginPage } from "../pages/login.page";
+import {
+  SEEDED_AUTH_STATE_ACCOUNT_KEYS,
+  SEEDED_TEST_ACCOUNTS,
+  SEEDED_TEST_USERS,
+  getAuthStatePath,
+} from "../credentials/accounts";
+import { buildCookieConsentStorageState } from "../credentials/storage-state";
 import { signupTestUser } from "./signup";
 import { getBrowser } from "./get-browser";
+import { skipOnboardingIfPresent } from "./onboarding";
 
 export interface TestUser {
   email: string;
@@ -15,6 +24,8 @@ export interface UserPool {
   createdAt: string;
   version: string;
 }
+
+const AUTH_STATE_KEYS = [...SEEDED_AUTH_STATE_ACCOUNT_KEYS];
 
 export async function createTestUser(
   email?: string,
@@ -101,75 +112,75 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
   return users;
 }
 
-export async function saveUserPool(
-  users: TestUser[],
-  filePath?: string,
-): Promise<void> {
-  const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
-  const finalPath = filePath || defaultPath;
-
-  // Ensure .auth directory exists
-  const dirPath = path.dirname(finalPath);
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+export async function getTestUser(): Promise<TestUser> {
+  if (SEEDED_TEST_USERS.length === 0) {
+    throw new Error("No seeded E2E users are configured");
   }
 
-  const userPool: UserPool = {
-    users,
-    createdAt: new Date().toISOString(),
-    version: "1.0.0",
-  };
+  const randomIndex = Math.floor(Math.random() * SEEDED_TEST_USERS.length);
+  const { email, password } = SEEDED_TEST_USERS[randomIndex];
+  return { email, password };
+}
+
+function hasStoredAuthState(accountKey: (typeof AUTH_STATE_KEYS)[number]) {
+  return fs.existsSync(getAuthStatePath(accountKey));
+}
+
+export function hasSeededAuthStates(): boolean {
+  return AUTH_STATE_KEYS.every((accountKey) => hasStoredAuthState(accountKey));
+}
+
+async function createAuthStateForUser(
+  baseURL: string,
+  accountKey: (typeof AUTH_STATE_KEYS)[number],
+): Promise<void> {
+  const browser = await getBrowser();
 
   try {
-    fs.writeFileSync(finalPath, JSON.stringify(userPool, null, 2));
-    console.log(`✅ Successfully saved user pool to: ${finalPath}`);
+    const { email, password } = SEEDED_TEST_ACCOUNTS[accountKey];
+    const origin = new URL(baseURL).origin;
+    const context = await browser.newContext({
+      baseURL,
+      storageState: buildCookieConsentStorageState(origin),
+    });
+    const page = await context.newPage();
+    const loginPage = new LoginPage(page);
+
+    await page.goto("/login");
+    await loginPage.login(email, password);
+    await page.waitForURL(
+      (url: URL) =>
+        /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+      { timeout: 20000 },
+    );
+    await skipOnboardingIfPresent(page, "/marketplace");
+    await page.getByTestId("profile-popout-menu-trigger").waitFor({
+      state: "visible",
+      timeout: 10000,
+    });
+
+    const statePath = getAuthStatePath(accountKey);
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    await context.storageState({ path: statePath });
+    await context.close();
   } catch (error) {
-    console.error(`❌ Failed to save user pool to ${finalPath}:`, error);
-    throw error;
+    const { email } = SEEDED_TEST_ACCOUNTS[accountKey];
+    throw new Error(
+      `Failed to create auth state for ${email}. Seed the backend test data with backend/test/e2e_test_data.py before running Playwright. ${String(
+        error,
+      )}`,
+    );
+  } finally {
+    await browser.close();
   }
 }
 
-export async function loadUserPool(
-  filePath?: string,
-): Promise<UserPool | null> {
-  const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
-  const finalPath = filePath || defaultPath;
-
-  console.log(`📖 Loading user pool from: ${finalPath}`);
-
-  try {
-    if (!fs.existsSync(finalPath)) {
-      console.log(`⚠️ User pool file not found: ${finalPath}`);
-      return null;
+export async function ensureSeededAuthStates(baseURL: string): Promise<void> {
+  for (const accountKey of AUTH_STATE_KEYS) {
+    if (hasStoredAuthState(accountKey)) {
+      continue;
     }
 
-    const fileContent = fs.readFileSync(finalPath, "utf-8");
-    const userPool: UserPool = JSON.parse(fileContent);
-
-    console.log(
-      `✅ Successfully loaded ${userPool.users.length} users from: ${finalPath}`,
-    );
-    console.log(`📅 User pool created at: ${userPool.createdAt}`);
-    console.log(`🔖 User pool version: ${userPool.version}`);
-
-    return userPool;
-  } catch (error) {
-    console.error(`❌ Failed to load user pool from ${finalPath}:`, error);
-    return null;
+    await createAuthStateForUser(baseURL, accountKey);
   }
-}
-
-export async function getTestUser(): Promise<TestUser> {
-  const userPool = await loadUserPool();
-  if (!userPool) {
-    throw new Error("User pool not found");
-  }
-
-  if (userPool.users.length === 0) {
-    throw new Error("No users available in the pool");
-  }
-
-  // Return a random user from the pool
-  const randomIndex = Math.floor(Math.random() * userPool.users.length);
-  return userPool.users[randomIndex];
 }
