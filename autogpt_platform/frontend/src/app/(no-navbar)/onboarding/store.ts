@@ -40,6 +40,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     togglePainPoint(painPoint) {
       set((state) => {
         const exists = state.painPoints.includes(painPoint);
+        if (!exists && state.painPoints.length >= 3) return state;
         return {
           painPoints: exists
             ? state.painPoints.filter((p) => p !== painPoint)

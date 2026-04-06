@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { useOnboardingWizardStore } from "../store";
+
+const MAX_SELECTIONS = 3;
 
 const ROLE_TOP_PICKS: Record<string, string[]> = {
   "Founder/CEO": [
@@ -23,17 +26,29 @@ export function usePainPointsStep() {
   const role = useOnboardingWizardStore((s) => s.role);
   const painPoints = useOnboardingWizardStore((s) => s.painPoints);
   const otherPainPoint = useOnboardingWizardStore((s) => s.otherPainPoint);
-  const togglePainPoint = useOnboardingWizardStore((s) => s.togglePainPoint);
+  const storeToggle = useOnboardingWizardStore((s) => s.togglePainPoint);
   const setOtherPainPoint = useOnboardingWizardStore(
     (s) => s.setOtherPainPoint,
   );
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
+  const [shaking, setShaking] = useState(false);
 
   const topIDs = getTopPickIDs(role);
   const hasSomethingElse = painPoints.includes("Something else");
+  const atLimit = painPoints.length >= MAX_SELECTIONS;
   const canContinue =
     painPoints.length > 0 &&
     (!hasSomethingElse || Boolean(otherPainPoint.trim()));
+
+  function togglePainPoint(id: string) {
+    const alreadySelected = painPoints.includes(id);
+    if (!alreadySelected && atLimit) {
+      setShaking(true);
+      setTimeout(() => setShaking(false), 600);
+      return;
+    }
+    storeToggle(id);
+  }
 
   function handleLaunch() {
     if (canContinue) {
@@ -48,6 +63,8 @@ export function usePainPointsStep() {
     togglePainPoint,
     setOtherPainPoint,
     hasSomethingElse,
+    atLimit,
+    shaking,
     canContinue,
     handleLaunch,
   };
