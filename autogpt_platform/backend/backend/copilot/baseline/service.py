@@ -335,6 +335,7 @@ class _BaselineStreamState:
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
+    session_messages: list[ChatMessage] = field(default_factory=list)
 
 
 async def _baseline_llm_caller(
@@ -644,11 +645,13 @@ def _baseline_conversation_updater(
     *,
     transcript_builder: TranscriptBuilder,
     model: str = "",
+    state: _BaselineStreamState | None = None,
 ) -> None:
     """Update OpenAI message list with assistant response + tool results.
 
-    Thin composition of :func:`_mutate_openai_messages` and
-    :func:`_record_turn_to_transcript`.
+    Also records structured ChatMessage entries in ``state.session_messages``
+    so the full tool-call history is persisted to the session (not just the
+    concatenated assistant text).
     """
     _mutate_openai_messages(messages, response, tool_results)
     _record_turn_to_transcript(
@@ -657,6 +660,30 @@ def _baseline_conversation_updater(
         transcript_builder=transcript_builder,
         model=model,
     )
+    # Record structured messages for session persistence so tool calls
+    # and tool results survive across turns and mode switches.
+    if state is not None and tool_results:
+        assistant_msg = ChatMessage(
+            role="assistant",
+            content=response.response_text or "",
+            tool_calls=[
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": tc.arguments},
+                }
+                for tc in response.tool_calls
+            ],
+        )
+        state.session_messages.append(assistant_msg)
+        for tr in tool_results:
+            state.session_messages.append(
+                ChatMessage(
+                    role="tool",
+                    content=tr.content,
+                    tool_call_id=tr.tool_call_id,
+                )
+            )
 
 
 async def _update_title_async(
@@ -1077,6 +1104,7 @@ async def stream_chat_completion_baseline(
         _baseline_conversation_updater,
         transcript_builder=transcript_builder,
         model=active_model,
+        state=state,
     )
 
     try:
@@ -1179,11 +1207,24 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
         )
 
-        # Persist assistant response
-        if state.assistant_text:
-            session.messages.append(
-                ChatMessage(role="assistant", content=state.assistant_text)
+        # Persist structured tool-call history (assistant + tool messages)
+        # collected by the conversation updater, then the final text response.
+        for msg in state.session_messages:
+            session.messages.append(msg)
+        # Append the final assistant text (from the last LLM call that had
+        # no tool calls, i.e. the natural finish).  Only add it if the
+        # conversation updater didn't already record it as part of a
+        # tool-call round (which would have empty response_text).
+        final_text = state.assistant_text
+        if state.session_messages:
+            # Strip text already captured in tool-call round messages
+            recorded = "".join(
+                m.content or "" for m in state.session_messages if m.role == "assistant"
             )
+            if final_text.startswith(recorded):
+                final_text = final_text[len(recorded) :]
+        if final_text.strip():
+            session.messages.append(ChatMessage(role="assistant", content=final_text))
         try:
             await upsert_chat_session(session)
         except Exception as persist_err:
