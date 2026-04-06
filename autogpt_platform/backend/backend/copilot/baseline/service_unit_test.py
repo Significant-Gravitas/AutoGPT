@@ -424,3 +424,206 @@ def test_thinking_stripper_empty_block() -> None:
     """Empty reasoning blocks are handled gracefully."""
     s = _ThinkingStripper()
     assert s.process("Before<thinking></thinking>After") == "BeforeAfter"
+
+
+# ---- _filter_tools_by_permissions tests ---- #
+
+
+def _make_tool(name: str) -> dict:
+    """Build a minimal OpenAI ChatCompletionToolParam dict."""
+    return {"type": "function", "function": {"name": name, "parameters": {}}}
+
+
+class TestFilterToolsByPermissions:
+    """Tests for _filter_tools_by_permissions."""
+
+    @patch(
+        "backend.copilot.baseline.service.all_known_tool_names",
+        return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
+    )
+    def test_empty_permissions_returns_all(self, _mock_names):
+        """Empty permissions (no filtering) returns every tool unchanged."""
+        from backend.copilot.baseline.service import _filter_tools_by_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        tools = [_make_tool("run_block"), _make_tool("web_fetch")]
+        perms = CopilotPermissions()
+        result = _filter_tools_by_permissions(tools, perms)
+        assert result == tools
+
+    @patch(
+        "backend.copilot.baseline.service.all_known_tool_names",
+        return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
+    )
+    def test_allowlist_keeps_only_matching(self, _mock_names):
+        """Explicit allowlist (tools_exclude=False) keeps only listed tools."""
+        from backend.copilot.baseline.service import _filter_tools_by_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        tools = [
+            _make_tool("run_block"),
+            _make_tool("web_fetch"),
+            _make_tool("bash_exec"),
+        ]
+        perms = CopilotPermissions(tools=["web_fetch"], tools_exclude=False)
+        result = _filter_tools_by_permissions(tools, perms)
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == "web_fetch"
+
+    @patch(
+        "backend.copilot.baseline.service.all_known_tool_names",
+        return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
+    )
+    def test_blacklist_excludes_listed(self, _mock_names):
+        """Blacklist (tools_exclude=True) removes only the listed tools."""
+        from backend.copilot.baseline.service import _filter_tools_by_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        tools = [
+            _make_tool("run_block"),
+            _make_tool("web_fetch"),
+            _make_tool("bash_exec"),
+        ]
+        perms = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
+        result = _filter_tools_by_permissions(tools, perms)
+        names = [t["function"]["name"] for t in result]
+        assert "bash_exec" not in names
+        assert "run_block" in names
+        assert "web_fetch" in names
+        assert len(result) == 2
+
+    @patch(
+        "backend.copilot.baseline.service.all_known_tool_names",
+        return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
+    )
+    def test_unknown_tool_name_filtered_out(self, _mock_names):
+        """A tool whose name is not in all_known_tool_names is dropped."""
+        from backend.copilot.baseline.service import _filter_tools_by_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        tools = [_make_tool("run_block"), _make_tool("unknown_tool")]
+        perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
+        result = _filter_tools_by_permissions(tools, perms)
+        names = [t["function"]["name"] for t in result]
+        assert "unknown_tool" not in names
+        assert names == ["run_block"]
+
+
+# ---- _prepare_baseline_attachments tests ---- #
+
+
+class TestPrepareBaselineAttachments:
+    """Tests for _prepare_baseline_attachments."""
+
+    @pytest.mark.asyncio
+    async def test_empty_file_ids(self):
+        """Empty file_ids returns empty hint and blocks."""
+        from backend.copilot.baseline.service import _prepare_baseline_attachments
+
+        hint, blocks = await _prepare_baseline_attachments([], "user1", "sess1", "/tmp")
+        assert hint == ""
+        assert blocks == []
+
+    @pytest.mark.asyncio
+    async def test_empty_user_id(self):
+        """Empty user_id returns empty hint and blocks."""
+        from backend.copilot.baseline.service import _prepare_baseline_attachments
+
+        hint, blocks = await _prepare_baseline_attachments(
+            ["file1"], "", "sess1", "/tmp"
+        )
+        assert hint == ""
+        assert blocks == []
+
+    @pytest.mark.asyncio
+    async def test_image_file_returns_vision_blocks(self):
+        """A PNG image within size limits is returned as a base64 vision block."""
+        from backend.copilot.baseline.service import _prepare_baseline_attachments
+
+        fake_info = AsyncMock()
+        fake_info.name = "photo.png"
+        fake_info.mime_type = "image/png"
+        fake_info.size_bytes = 1024
+
+        fake_manager = AsyncMock()
+        fake_manager.get_file_info = AsyncMock(return_value=fake_info)
+        fake_manager.read_file_by_id = AsyncMock(return_value=b"\x89PNG_FAKE_DATA")
+
+        with patch(
+            "backend.copilot.baseline.service.get_workspace_manager",
+            new=AsyncMock(return_value=fake_manager),
+        ):
+            hint, blocks = await _prepare_baseline_attachments(
+                ["fid1"], "user1", "sess1", "/tmp/workdir"
+            )
+
+        assert len(blocks) == 1
+        assert blocks[0]["type"] == "image"
+        assert blocks[0]["source"]["media_type"] == "image/png"
+        assert blocks[0]["source"]["type"] == "base64"
+        assert "photo.png" in hint
+        assert "embedded as image" in hint
+
+    @pytest.mark.asyncio
+    async def test_non_image_file_saved_to_working_dir(self, tmp_path):
+        """A non-image file is written to working_dir."""
+        from backend.copilot.baseline.service import _prepare_baseline_attachments
+
+        fake_info = AsyncMock()
+        fake_info.name = "data.csv"
+        fake_info.mime_type = "text/csv"
+        fake_info.size_bytes = 42
+
+        fake_manager = AsyncMock()
+        fake_manager.get_file_info = AsyncMock(return_value=fake_info)
+        fake_manager.read_file_by_id = AsyncMock(return_value=b"col1,col2\na,b")
+
+        with patch(
+            "backend.copilot.baseline.service.get_workspace_manager",
+            new=AsyncMock(return_value=fake_manager),
+        ):
+            hint, blocks = await _prepare_baseline_attachments(
+                ["fid1"], "user1", "sess1", str(tmp_path)
+            )
+
+        assert blocks == []
+        assert "data.csv" in hint
+        assert "saved to" in hint
+        saved = tmp_path / "data.csv"
+        assert saved.exists()
+        assert saved.read_bytes() == b"col1,col2\na,b"
+
+    @pytest.mark.asyncio
+    async def test_file_not_found_skipped(self):
+        """When get_file_info returns None the file is silently skipped."""
+        from backend.copilot.baseline.service import _prepare_baseline_attachments
+
+        fake_manager = AsyncMock()
+        fake_manager.get_file_info = AsyncMock(return_value=None)
+
+        with patch(
+            "backend.copilot.baseline.service.get_workspace_manager",
+            new=AsyncMock(return_value=fake_manager),
+        ):
+            hint, blocks = await _prepare_baseline_attachments(
+                ["missing_id"], "user1", "sess1", "/tmp"
+            )
+
+        assert hint == ""
+        assert blocks == []
+
+    @pytest.mark.asyncio
+    async def test_workspace_manager_error(self):
+        """When get_workspace_manager raises, returns empty results."""
+        from backend.copilot.baseline.service import _prepare_baseline_attachments
+
+        with patch(
+            "backend.copilot.baseline.service.get_workspace_manager",
+            new=AsyncMock(side_effect=RuntimeError("connection failed")),
+        ):
+            hint, blocks = await _prepare_baseline_attachments(
+                ["fid1"], "user1", "sess1", "/tmp"
+            )
+
+        assert hint == ""
+        assert blocks == []

@@ -43,7 +43,9 @@ type FlagValues = typeof defaultFlags;
  * Note: ``NEXT_PUBLIC_*`` env vars are baked into the bundle at build
  * time, so the frontend image must be rebuilt after changing them.
  */
-function envFlagOverride<T extends Flag>(flag: T): FlagValues[T] | undefined {
+export function envFlagOverride<T extends Flag>(
+  flag: T,
+): FlagValues[T] | undefined {
   const envName =
     "NEXT_PUBLIC_FORCE_FLAG_" + flag.toUpperCase().replace(/-/g, "_");
   const raw = process.env[envName];
