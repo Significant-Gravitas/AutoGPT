@@ -30,7 +30,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
-5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `frontend/TESTING.md`
+5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
 
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
