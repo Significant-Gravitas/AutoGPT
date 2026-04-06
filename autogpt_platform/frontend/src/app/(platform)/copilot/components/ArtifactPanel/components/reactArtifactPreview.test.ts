@@ -37,11 +37,9 @@ describe("escapeHtml", () => {
 describe("buildReactArtifactSrcDoc", () => {
   const STYLES = collectPreviewStyles();
 
-  it("contains a CSP meta tag in <head>", () => {
+  it("does not contain a CSP meta tag (see iframe-sandbox-csp.ts)", () => {
     const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
-    expect(doc).toMatch(
-      /<meta http-equiv="Content-Security-Policy"[^>]*connect-src 'none'/,
-    );
+    expect(doc).not.toContain("Content-Security-Policy");
   });
 
   it("includes SRI-pinned React and ReactDOM bundles", () => {

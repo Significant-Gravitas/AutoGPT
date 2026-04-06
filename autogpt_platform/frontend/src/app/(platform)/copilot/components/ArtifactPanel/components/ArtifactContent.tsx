@@ -7,10 +7,7 @@ import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
-import {
-  ARTIFACT_IFRAME_CSP,
-  TAILWIND_CDN_URL,
-} from "./artifactPreviewConstants";
+import { TAILWIND_CDN_URL } from "./artifactPreviewConstants";
 import { wrapWithHeadInjection } from "@/lib/iframe-sandbox-csp";
 import { useArtifactContent } from "./useArtifactContent";
 
@@ -112,12 +109,9 @@ function ArtifactRenderer({
   }
 
   if (classification.type === "html") {
-    const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${ARTIFACT_IFRAME_CSP}">`;
+    // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const wrapped = wrapWithHeadInjection(
-      content,
-      `${cspMeta}${tailwindScript}`,
-    );
+    const wrapped = wrapWithHeadInjection(content, tailwindScript);
     return (
       <iframe
         sandbox="allow-scripts"

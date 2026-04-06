@@ -13,16 +13,13 @@
  *   - Inline script execution (needed to render React components)
  *   - `new Function()` is used to evaluate the compiled code (eval-equivalent)
  *   - Full DOM access within the iframe
- *   - Outbound fetch/XHR is BLOCKED by the injected CSP (`connect-src 'none'`)
- *     so AI-generated code cannot exfiltrate its own content over the network
+ *   - Network requests via fetch/XHR (allowed — only artifact content is
+ *     visible inside the sandbox, no secret data to exfiltrate)
  *
  * React is loaded from unpkg with pinned version and SRI integrity hashes.
  */
 
-import {
-  ARTIFACT_IFRAME_CSP,
-  TAILWIND_CDN_URL,
-} from "./artifactPreviewConstants";
+import { TAILWIND_CDN_URL } from "./artifactPreviewConstants";
 
 export { transpileReactArtifactSource } from "./transpileReactArtifact";
 
@@ -62,7 +59,6 @@ export function buildReactArtifactSrcDoc(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta http-equiv="Content-Security-Policy" content="${ARTIFACT_IFRAME_CSP}">
     <title>${safeTitle}</title>
     ${stylesMarkup}
     <style>

@@ -1,5 +1,8 @@
 import React from "react";
-import { cspMetaTag, wrapWithHeadInjection } from "@/lib/iframe-sandbox-csp";
+import {
+  TAILWIND_CDN_URL,
+  wrapWithHeadInjection,
+} from "@/lib/iframe-sandbox-csp";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -8,10 +11,9 @@ import {
 } from "../types";
 
 function HTMLPreview({ value }: { value: string }) {
-  // Inject CSP meta so AI-generated HTML running in this sandboxed iframe
-  // can't fetch/XHR out. Wrap headless fragments in a full document so the
-  // meta lands inside <head> where browsers honor it.
-  const srcDoc = wrapWithHeadInjection(value, cspMetaTag());
+  // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
+  const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
+  const srcDoc = wrapWithHeadInjection(value, tailwindScript);
   return (
     <iframe
       sandbox="allow-scripts"
