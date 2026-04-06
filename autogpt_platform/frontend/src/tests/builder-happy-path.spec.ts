@@ -1,4 +1,4 @@
-import { Page } from "@playwright/test";
+import { Locator, Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
@@ -151,26 +151,125 @@ async function openSavedAgentInLibrary(page: Page, agentName: string) {
   await waitForAgentPageLoad(page);
 }
 
-async function clickExportAgent(page: Page) {
+async function getVisibleExportControl(page: Page) {
   const directExportButton = page.getByRole("button", {
     name: "Export agent to file",
   });
-  if (
-    await directExportButton.isVisible({ timeout: 5000 }).catch(() => false)
-  ) {
-    await directExportButton.click();
+  if (await directExportButton.isVisible().catch(() => false)) {
+    return "direct";
+  }
+
+  const moreActionsButtons = page.getByRole("button", { name: "More actions" });
+  const moreActionsCount = await moreActionsButtons.count();
+  for (let index = 0; index < moreActionsCount; index++) {
+    if (await moreActionsButtons.nth(index).isVisible().catch(() => false)) {
+      return `menu:${index}`;
+    }
+  }
+
+  return "pending";
+}
+
+async function waitForExportControl(page: Page) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let exportControl = "pending";
+
+    await expect
+      .poll(
+        async () => {
+          exportControl = await getVisibleExportControl(page);
+          return exportControl;
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe("pending")
+      .catch(() => {
+        exportControl = "pending";
+      });
+
+    if (exportControl !== "pending") {
+      return exportControl;
+    }
+
+    await page.reload();
+    await waitForAgentPageLoad(page);
+  }
+
+  throw new Error("Export controls did not appear on the agent page");
+}
+
+async function clickExportAgent(page: Page) {
+  const exportControl = await waitForExportControl(page);
+  if (exportControl === "direct") {
+    await page
+      .getByRole("button", { name: "Export agent to file" })
+      .click({ timeout: 15000 });
     return;
   }
 
-  const moreActionsButton = page.getByRole("button", { name: "More actions" });
-  await moreActionsButton.waitFor({ state: "visible", timeout: 15000 });
-  await moreActionsButton.click();
+  const moreActionsIndex = Number(exportControl.replace("menu:", ""));
+  await page
+    .getByRole("button", { name: "More actions" })
+    .nth(moreActionsIndex)
+    .click();
 
   const dropdownExportButton = page.getByRole("menuitem", {
     name: "Export agent to file",
   });
   await dropdownExportButton.waitFor({ state: "visible", timeout: 15000 });
   await dropdownExportButton.click();
+}
+
+async function configureSchedule(page: Page) {
+  const hourSelect = page.locator("#time-hour");
+  await expect(hourSelect).toBeVisible({ timeout: 15000 });
+
+  const currentHourText = (await hourSelect.textContent()) ?? "";
+  const currentHourMatch = currentHourText.match(/\b(1[0-2]|[1-9])\b/);
+  const currentHour = currentHourMatch?.[0] ?? "9";
+  const nextHour = currentHour === "10" ? "11" : "10";
+
+  await hourSelect.click();
+
+  const nextHourOption = page.getByRole("option", {
+    name: nextHour,
+    exact: true,
+  });
+  await nextHourOption.waitFor({ state: "visible", timeout: 15000 });
+  await nextHourOption.click();
+
+  await expect(hourSelect).toContainText(nextHour);
+}
+
+async function waitForScheduleCreation(page: Page, scheduleDialog: Locator) {
+  const successToast = page.getByText("Schedule created");
+  const invalidScheduleToast = page.getByText("Invalid schedule");
+  const failedScheduleToast = page.getByText("Failed to create schedule");
+
+  await expect
+    .poll(
+      async () => {
+        if (await successToast.isVisible().catch(() => false)) {
+          return "success";
+        }
+
+        if (!(await scheduleDialog.isVisible().catch(() => false))) {
+          return "success";
+        }
+
+        if (await invalidScheduleToast.isVisible().catch(() => false)) {
+          return "invalid";
+        }
+
+        if (await failedScheduleToast.isVisible().catch(() => false)) {
+          return "failed";
+        }
+
+        return "pending";
+      },
+      { timeout: 30000 },
+    )
+    .toBe("success");
 }
 
 test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
@@ -260,32 +359,10 @@ test("builder happy path: user can schedule the saved agent", async ({
 
   await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
   await page.locator("#schedule-name").fill(`Daily ${agentName}`);
-
-  const createScheduleResponse = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      /\/api(?:\/proxy)?(?:\/api)?\/graphs\/.+\/schedules$/.test(
-        response.url(),
-      ) &&
-      response.status() === 200,
-    { timeout: 30000 },
-  );
-  const scheduleCreatedToast = page.getByText("Schedule created");
-  const waitForSuccessToast = scheduleCreatedToast.waitFor({
-    state: "visible",
-    timeout: 30000,
-  });
-  const waitForDialogToClose = scheduleDialog.waitFor({
-    state: "hidden",
-    timeout: 30000,
-  });
+  await configureSchedule(page);
 
   await page.getByRole("button", { name: "Done" }).click();
-  await Promise.any([
-    createScheduleResponse,
-    waitForSuccessToast,
-    waitForDialogToClose,
-  ]);
+  await waitForScheduleCreation(page, scheduleDialog);
   await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 });
