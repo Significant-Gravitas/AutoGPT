@@ -10,12 +10,15 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   deduplicateMessages,
+  extractSendMessageText,
   hasActiveBackendStream,
   resolveInProgressTools,
+  getSendSuppressionReason,
 } from "./helpers";
+import type { CopilotMode } from "./store";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -38,6 +41,8 @@ interface UseCopilotStreamArgs {
   hydratedMessages: UIMessage[] | undefined;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
+  /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
+  copilotMode: CopilotMode | undefined;
 }
 
 export function useCopilotStream({
@@ -45,10 +50,18 @@ export function useCopilotStream({
   hydratedMessages,
   hasActiveStream,
   refetchSession,
+  copilotMode,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
-  const dismissRateLimit = useCallback(() => setRateLimitMessage(null), []);
+  function dismissRateLimit() {
+    setRateLimitMessage(null);
+  }
+  // Use a ref for copilotMode so the transport closure always reads the
+  // latest value without recreating the DefaultChatTransport (which would
+  // reset useChat's internal Chat instance and break mid-session streaming).
+  const copilotModeRef = useRef(copilotMode);
+  copilotModeRef.current = copilotMode;
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -79,6 +92,7 @@ export function useCopilotStream({
                   is_user_message: last.role === "user",
                   context: null,
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+                  mode: copilotModeRef.current ?? null,
                 },
                 headers: await getAuthHeaders(),
               };
@@ -147,9 +161,14 @@ export function useCopilotStream({
     }, delay);
   }
 
+  // Tracks the ID of the last user message that was submitted via sendMessage.
+  // During a reconnect cycle, if the session already contains this message, we
+  // must not POST it again — only GET-resume is safe.
+  const lastSubmittedMsgRef = useRef<string | null>(null);
+
   const {
     messages: rawMessages,
-    sendMessage,
+    sendMessage: sdkSendMessage,
     stop: sdkStop,
     status,
     error,
@@ -235,6 +254,36 @@ export function useCopilotStream({
       }
     },
   });
+
+  // Wrap sdkSendMessage to guard against re-sending the user message during a
+  // reconnect cycle. If the session already has the message (i.e. we are in a
+  // reconnect/resume flow), only GET-resume is safe — never re-POST.
+  const sendMessage: typeof sdkSendMessage = async (...args) => {
+    const text = extractSendMessageText(args[0]);
+
+    const suppressReason = getSendSuppressionReason({
+      text,
+      isReconnectScheduled: isReconnectScheduledRef.current,
+      lastSubmittedText: lastSubmittedMsgRef.current,
+      messages: rawMessages,
+    });
+
+    if (suppressReason === "reconnecting") {
+      // The ref flips to ``true`` synchronously while the React state that
+      // drives the UI's disabled state only updates on the next render, so
+      // the user may have clicked send against a still-enabled input. Tell
+      // them their message wasn't dropped silently.
+      toast({
+        title: "Reconnecting",
+        description: "Wait for the connection to resume before sending.",
+      });
+      return;
+    }
+    if (suppressReason === "duplicate") return;
+
+    lastSubmittedMsgRef.current = text;
+    return sdkSendMessage(...args);
+  };
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
   const messages = useMemo(
@@ -381,6 +430,7 @@ export function useCopilotStream({
     setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
     isUserStoppingRef.current = false;
+    lastSubmittedMsgRef.current = null;
     setReconnectExhausted(false);
     setIsSyncing(false);
     hasResumedRef.current.clear();
@@ -409,6 +459,7 @@ export function useCopilotStream({
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;
         hasShownDisconnectToast.current = false;
+        lastSubmittedMsgRef.current = null;
         setReconnectExhausted(false);
       }
     }

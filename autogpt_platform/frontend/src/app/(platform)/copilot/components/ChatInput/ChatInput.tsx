@@ -5,17 +5,21 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { FileChips } from "./components/FileChips";
+import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { useCopilotUIStore } from "../../store";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
 
-export interface Props {
+interface Props {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -42,7 +46,25 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
 }: Props) {
+  const { copilotMode, setCopilotMode } = useCopilotUIStore();
+  const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const [files, setFiles] = useState<File[]>([]);
+
+  function handleToggleMode() {
+    const next =
+      copilotMode === "extended_thinking" ? "fast" : "extended_thinking";
+    setCopilotMode(next);
+    toast({
+      title:
+        next === "fast"
+          ? "Switched to Fast mode"
+          : "Switched to Extended Thinking mode",
+      description:
+        next === "fast"
+          ? "Optimized for speed — ideal for simpler tasks."
+          : "Responses may take longer.",
+    });
+  }
 
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
@@ -157,6 +179,13 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
+            {showModeToggle && (
+              <ModeToggleButton
+                mode={copilotMode}
+                isStreaming={isStreaming}
+                onToggle={handleToggleMode}
+              />
+            )}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">

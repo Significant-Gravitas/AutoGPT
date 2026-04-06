@@ -1,8 +1,12 @@
+import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import {
   ORIGINAL_TITLE,
+  extractSendMessageText,
   formatNotificationTitle,
+  getSendSuppressionReason,
   parseSessionIDs,
+  shouldSuppressDuplicateSend,
 } from "./helpers";
 
 describe("formatNotificationTitle", () => {
@@ -72,5 +76,218 @@ describe("parseSessionIDs", () => {
 
   it("deduplicates entries", () => {
     expect(parseSessionIDs('["a","a","b"]')).toEqual(new Set(["a", "b"]));
+  });
+});
+
+describe("extractSendMessageText", () => {
+  it("extracts text from a string argument", () => {
+    expect(extractSendMessageText("hello")).toBe("hello");
+  });
+
+  it("extracts text from an object with text property", () => {
+    expect(extractSendMessageText({ text: "world" })).toBe("world");
+  });
+
+  it("returns empty string for null", () => {
+    expect(extractSendMessageText(null)).toBe("");
+  });
+
+  it("returns empty string for undefined", () => {
+    expect(extractSendMessageText(undefined)).toBe("");
+  });
+
+  it("converts numbers to string", () => {
+    expect(extractSendMessageText(42)).toBe("42");
+  });
+});
+
+let msgCounter = 0;
+function makeMsg(role: "user" | "assistant", text: string): UIMessage {
+  return {
+    id: `msg-${msgCounter++}`,
+    role,
+    parts: [{ type: "text", text }],
+  };
+}
+
+describe("shouldSuppressDuplicateSend", () => {
+  it("suppresses when reconnect is scheduled", () => {
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "hello",
+        isReconnectScheduled: true,
+        lastSubmittedText: null,
+        messages: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("allows send when not reconnecting and no prior submission", () => {
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: null,
+        messages: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("suppresses when text matches last submitted AND last user message", () => {
+    const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe(true);
+  });
+
+  it("allows send when text matches last submitted but differs from last user message", () => {
+    const messages = [
+      makeMsg("user", "different"),
+      makeMsg("assistant", "reply"),
+    ];
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe(false);
+  });
+
+  it("allows send when text differs from last submitted", () => {
+    const messages = [makeMsg("user", "hello")];
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "new message",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe(false);
+  });
+
+  it("allows send when text is empty", () => {
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "",
+        isReconnectScheduled: false,
+        lastSubmittedText: "",
+        messages: [],
+      }),
+    ).toBe(false);
+  });
+
+  it("allows send with empty messages array even if text matches lastSubmitted", () => {
+    expect(
+      shouldSuppressDuplicateSend({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages: [],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("getSendSuppressionReason", () => {
+  it("returns 'reconnecting' when reconnect is scheduled", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: true,
+        lastSubmittedText: null,
+        messages: [],
+      }),
+    ).toBe("reconnecting");
+  });
+
+  it("returns 'reconnecting' even when text would otherwise be a duplicate", () => {
+    const messages = [makeMsg("user", "hello")];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: true,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe("reconnecting");
+  });
+
+  it("returns 'duplicate' when text matches last submitted AND last user message", () => {
+    const messages = [makeMsg("user", "hello"), makeMsg("assistant", "hi")];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBe("duplicate");
+  });
+
+  it("returns null when text matches last submitted but differs from last user message", () => {
+    const messages = [
+      makeMsg("user", "different"),
+      makeMsg("assistant", "reply"),
+    ];
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when text differs from last submitted", () => {
+    const messages = [makeMsg("user", "hello")];
+    expect(
+      getSendSuppressionReason({
+        text: "new message",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages,
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when not reconnecting and no prior submission", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: null,
+        messages: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when text is empty", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "",
+        isReconnectScheduled: false,
+        lastSubmittedText: "",
+        messages: [],
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when messages array is empty even if text matches lastSubmitted", () => {
+    expect(
+      getSendSuppressionReason({
+        text: "hello",
+        isReconnectScheduled: false,
+        lastSubmittedText: "hello",
+        messages: [],
+      }),
+    ).toBeNull();
   });
 });
