@@ -1,7 +1,5 @@
-import { useState } from "react";
-import { useOnboardingWizardStore } from "../store";
-
-const MAX_SELECTIONS = 3;
+import { useEffect, useRef, useState } from "react";
+import { MAX_PAIN_POINT_SELECTIONS, useOnboardingWizardStore } from "../store";
 
 const ROLE_TOP_PICKS: Record<string, string[]> = {
   "Founder/CEO": [
@@ -32,10 +30,17 @@ export function usePainPointsStep() {
   );
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const [shaking, setShaking] = useState(false);
+  const shakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shakeTimer.current) clearTimeout(shakeTimer.current);
+    };
+  }, []);
 
   const topIDs = getTopPickIDs(role);
   const hasSomethingElse = painPoints.includes("Something else");
-  const atLimit = painPoints.length >= MAX_SELECTIONS;
+  const atLimit = painPoints.length >= MAX_PAIN_POINT_SELECTIONS;
   const canContinue =
     painPoints.length > 0 &&
     (!hasSomethingElse || Boolean(otherPainPoint.trim()));
@@ -43,8 +48,9 @@ export function usePainPointsStep() {
   function togglePainPoint(id: string) {
     const alreadySelected = painPoints.includes(id);
     if (!alreadySelected && atLimit) {
+      if (shakeTimer.current) clearTimeout(shakeTimer.current);
       setShaking(true);
-      setTimeout(() => setShaking(false), 600);
+      shakeTimer.current = setTimeout(() => setShaking(false), 600);
       return;
     }
     storeToggle(id);

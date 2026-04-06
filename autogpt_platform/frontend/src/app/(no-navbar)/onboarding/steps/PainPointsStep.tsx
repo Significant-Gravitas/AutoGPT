@@ -110,22 +110,20 @@ export function PainPointsStep() {
               />
             ))}
           </div>
-          {!hasSomethingElse && (
-            <Text
-              variant="small"
-              className={cn(
-                "transition-colors",
-                atLimit ? "!text-green-600" : "!text-zinc-500",
-                shaking && "animate-shake",
-              )}
-            >
-              {shaking
-                ? "You've picked 3 — tap one to swap it out"
-                : atLimit
-                  ? "3 selected — you're all set!"
-                  : "Pick up to 3 to start — AutoPilot can help with anything else later"}
-            </Text>
-          )}
+          <Text
+            variant="small"
+            className={cn(
+              "transition-colors",
+              atLimit ? "!text-green-600" : "!text-zinc-500",
+              shaking && "animate-shake",
+            )}
+          >
+            {shaking
+              ? "You've picked 3 — tap one to swap it out"
+              : atLimit
+                ? "3 selected — you're all set!"
+                : "Pick up to 3 to start — AutoPilot can help with anything else later"}
+          </Text>
         </div>
 
         {hasSomethingElse && (
