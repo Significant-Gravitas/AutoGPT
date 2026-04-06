@@ -49,7 +49,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 - Backend: `poetry run test` (runs pytest with a docker based postgres + prisma).
 - Frontend integration tests: `pnpm test:unit` (Vitest + RTL + MSW, primary testing approach).
 - Frontend E2E tests: `pnpm test` or `pnpm test-ui` for Playwright tests.
-- See `frontend/TESTING.md` for the full testing strategy.
+- See `autogpt_platform/frontend/TESTING.md` for the full testing strategy.
 
 Always run the relevant linters and tests before committing.
 Use conventional commit messages for all commits (e.g. `feat(backend): add API`).
