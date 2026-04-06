@@ -562,7 +562,11 @@ class TestDataCreator:
                 continue
 
         deterministic_creator = next(
-            (user for user in self.users if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL),
+            (
+                user
+                for user in self.users
+                if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL
+            ),
             None,
         )
         if deterministic_creator:
@@ -592,7 +596,8 @@ class TestDataCreator:
                         for profile in profiles
                         if profile.get("id") != deterministic_profile.id
                     ]
-                    profiles.append(updated_profile.model_dump())
+                    if updated_profile is not None:
+                        profiles.append(updated_profile.model_dump())
                 except Exception as e:
                     print(f"Error updating deterministic E2E creator profile: {e}")
 
@@ -613,8 +618,12 @@ class TestDataCreator:
 
         # Create a deterministic calculator marketplace agent for PR E2E coverage
         test_user = next(
-            (user for user in self.users if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL),
-            None
+            (
+                user
+                for user in self.users
+                if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL
+            ),
+            None,
         )
         if test_user and self.agent_graphs:
             test_user_graphs = [
@@ -651,7 +660,9 @@ class TestDataCreator:
                 }
 
                 try:
-                    test_submission = await create_store_submission(**test_submission_data)
+                    test_submission = await create_store_submission(
+                        **test_submission_data
+                    )
                     submissions.append(test_submission.model_dump())
                     print(
                         f"✅ Created deterministic marketplace submission: {E2E_MARKETPLACE_AGENT_NAME}"

@@ -4,7 +4,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-import sqlparse
+import sqlparse  # pyright: ignore[reportMissingImports]
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine.url import URL
 
