@@ -60,6 +60,16 @@ MAX_REVIEWS_PER_VERSION = 5
 GUARANTEED_FEATURED_AGENTS = 8
 GUARANTEED_FEATURED_CREATORS = 5
 GUARANTEED_TOP_AGENTS = 10
+SEEDED_TEST_EMAILS = [
+    "test123@gmail.com",
+    "e2e.qa.auth@example.com",
+    "e2e.qa.builder@example.com",
+    "e2e.qa.library@example.com",
+    "e2e.qa.marketplace@example.com",
+    "e2e.qa.settings@example.com",
+    "e2e.qa.parallel.a@example.com",
+    "e2e.qa.parallel.b@example.com",
+]
 
 
 def get_image():
@@ -123,9 +133,9 @@ class TestDataCreator:
         for i in range(NUM_USERS):
             try:
                 # Generate test user data
-                if i == 0:
-                    # First user should have test123@gmail.com email for testing
-                    email = "test123@gmail.com"
+                if i < len(SEEDED_TEST_EMAILS):
+                    # Keep a deterministic pool for Playwright global setup and PR smoke flows
+                    email = SEEDED_TEST_EMAILS[i]
                 else:
                     email = faker.unique.email()
                 password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa

@@ -1,8 +1,7 @@
+import { getSeededTestUser } from "./accounts";
+
 // E2E Test Credentials and Constants
-export const TEST_CREDENTIALS = {
-  email: "test123@gmail.com",
-  password: "testpassword123",
-} as const;
+export const TEST_CREDENTIALS = getSeededTestUser("primary");
 
 export function getTestUserWithLibraryAgents() {
   return TEST_CREDENTIALS;

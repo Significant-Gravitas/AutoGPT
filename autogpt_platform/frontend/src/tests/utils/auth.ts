@@ -1,7 +1,18 @@
 import fs from "fs";
 import path from "path";
+import { LoginPage } from "../pages/login.page";
+import {
+  SEEDED_AUTH_STATE_ACCOUNT_KEYS,
+  SEEDED_TEST_ACCOUNTS,
+  SEEDED_TEST_USERS,
+  SEEDED_USER_POOL_VERSION,
+  USER_POOL_PATH,
+  getAuthStatePath,
+} from "../credentials/accounts";
+import { buildCookieConsentStorageState } from "../credentials/storage-state";
 import { signupTestUser } from "./signup";
 import { getBrowser } from "./get-browser";
+import { skipOnboardingIfPresent } from "./onboarding";
 
 export interface TestUser {
   email: string;
@@ -15,6 +26,8 @@ export interface UserPool {
   createdAt: string;
   version: string;
 }
+
+const AUTH_STATE_KEYS = [...SEEDED_AUTH_STATE_ACCOUNT_KEYS];
 
 export async function createTestUser(
   email?: string,
@@ -105,8 +118,7 @@ export async function saveUserPool(
   users: TestUser[],
   filePath?: string,
 ): Promise<void> {
-  const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
-  const finalPath = filePath || defaultPath;
+  const finalPath = filePath || USER_POOL_PATH;
 
   // Ensure .auth directory exists
   const dirPath = path.dirname(finalPath);
@@ -117,7 +129,7 @@ export async function saveUserPool(
   const userPool: UserPool = {
     users,
     createdAt: new Date().toISOString(),
-    version: "1.0.0",
+    version: SEEDED_USER_POOL_VERSION,
   };
 
   try {
@@ -132,8 +144,7 @@ export async function saveUserPool(
 export async function loadUserPool(
   filePath?: string,
 ): Promise<UserPool | null> {
-  const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
-  const finalPath = filePath || defaultPath;
+  const finalPath = filePath || USER_POOL_PATH;
 
   console.log(`📖 Loading user pool from: ${finalPath}`);
 
@@ -172,4 +183,85 @@ export async function getTestUser(): Promise<TestUser> {
   // Return a random user from the pool
   const randomIndex = Math.floor(Math.random() * userPool.users.length);
   return userPool.users[randomIndex];
+}
+
+export function getSeededUserPool(): TestUser[] {
+  return SEEDED_TEST_USERS.map(({ email, password }) => ({ email, password }));
+}
+
+export function isExpectedUserPool(userPool: UserPool | null): boolean {
+  if (!userPool) return false;
+  if (userPool.version !== SEEDED_USER_POOL_VERSION) return false;
+
+  const expectedEmails = SEEDED_TEST_USERS.map((user) => user.email).sort();
+  const currentEmails = userPool.users.map((user) => user.email).sort();
+
+  return JSON.stringify(currentEmails) === JSON.stringify(expectedEmails);
+}
+
+export async function saveSeededUserPool(): Promise<void> {
+  await saveUserPool(getSeededUserPool());
+}
+
+function hasStoredAuthState(accountKey: (typeof AUTH_STATE_KEYS)[number]) {
+  return fs.existsSync(getAuthStatePath(accountKey));
+}
+
+export function hasSeededAuthStates(): boolean {
+  return AUTH_STATE_KEYS.every((accountKey) => hasStoredAuthState(accountKey));
+}
+
+async function createAuthStateForUser(
+  baseURL: string,
+  accountKey: (typeof AUTH_STATE_KEYS)[number],
+): Promise<void> {
+  const browser = await getBrowser();
+
+  try {
+    const { email, password } = SEEDED_TEST_ACCOUNTS[accountKey];
+    const origin = new URL(baseURL).origin;
+    const context = await browser.newContext({
+      baseURL,
+      storageState: buildCookieConsentStorageState(origin),
+    });
+    const page = await context.newPage();
+    const loginPage = new LoginPage(page);
+
+    await page.goto("/login");
+    await loginPage.login(email, password);
+    await page.waitForURL(
+      (url: URL) =>
+        /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+      { timeout: 20000 },
+    );
+    await skipOnboardingIfPresent(page, "/marketplace");
+    await page.getByTestId("profile-popout-menu-trigger").waitFor({
+      state: "visible",
+      timeout: 10000,
+    });
+
+    const statePath = getAuthStatePath(accountKey);
+    fs.mkdirSync(path.dirname(statePath), { recursive: true });
+    await context.storageState({ path: statePath });
+    await context.close();
+  } catch (error) {
+    const { email } = SEEDED_TEST_ACCOUNTS[accountKey];
+    throw new Error(
+      `Failed to create auth state for ${email}. Seed the backend test data with backend/test/e2e_test_data.py before running Playwright. ${String(
+        error,
+      )}`,
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function ensureSeededAuthStates(baseURL: string): Promise<void> {
+  for (const accountKey of AUTH_STATE_KEYS) {
+    if (hasStoredAuthState(accountKey)) {
+      continue;
+    }
+
+    await createAuthStateForUser(baseURL, accountKey);
+  }
 }
