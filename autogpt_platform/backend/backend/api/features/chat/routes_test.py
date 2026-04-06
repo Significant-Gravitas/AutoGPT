@@ -541,3 +541,41 @@ def test_create_session_rejects_nested_metadata(
     )
 
     assert response.status_code == 422
+
+
+class TestStreamChatRequestModeValidation:
+    """Pydantic-level validation of the ``mode`` field on StreamChatRequest."""
+
+    def test_rejects_invalid_mode_value(self) -> None:
+        """Any string outside the Literal set must raise ValidationError."""
+        from pydantic import ValidationError
+
+        from backend.api.features.chat.routes import StreamChatRequest
+
+        with pytest.raises(ValidationError):
+            StreamChatRequest(message="hi", mode="turbo")  # type: ignore[arg-type]
+
+    def test_accepts_fast_mode(self) -> None:
+        from backend.api.features.chat.routes import StreamChatRequest
+
+        req = StreamChatRequest(message="hi", mode="fast")
+        assert req.mode == "fast"
+
+    def test_accepts_extended_thinking_mode(self) -> None:
+        from backend.api.features.chat.routes import StreamChatRequest
+
+        req = StreamChatRequest(message="hi", mode="extended_thinking")
+        assert req.mode == "extended_thinking"
+
+    def test_accepts_none_mode(self) -> None:
+        """``mode=None`` is valid (server decides via feature flags)."""
+        from backend.api.features.chat.routes import StreamChatRequest
+
+        req = StreamChatRequest(message="hi", mode=None)
+        assert req.mode is None
+
+    def test_mode_defaults_to_none_when_omitted(self) -> None:
+        from backend.api.features.chat.routes import StreamChatRequest
+
+        req = StreamChatRequest(message="hi")
+        assert req.mode is None

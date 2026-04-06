@@ -8,13 +8,26 @@ from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
+# Per-request routing mode for a single chat turn.
+# - 'fast': route to the baseline OpenAI-compatible path with the cheaper model.
+# - 'extended_thinking': route to the Claude Agent SDK path with the default
+#   (opus) model.
+# ``None`` means "no override"; the server falls back to the Claude Code
+# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
+CopilotMode = Literal["fast", "extended_thinking"]
+
 
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-opus-4.6", description="Default model to use"
+        default="anthropic/claude-opus-4.6",
+        description="Default model for extended thinking mode",
+    )
+    fast_model: str = Field(
+        default="anthropic/claude-sonnet-4",
+        description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",
