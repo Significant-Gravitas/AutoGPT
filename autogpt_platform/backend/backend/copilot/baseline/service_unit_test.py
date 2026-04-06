@@ -442,7 +442,7 @@ class TestFilterToolsByPermissions:
     """Tests for _filter_tools_by_permissions."""
 
     @patch(
-        "backend.copilot.baseline.service.all_known_tool_names",
+        "backend.copilot.permissions.all_known_tool_names",
         return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
     )
     def test_empty_permissions_returns_all(self, _mock_names):
@@ -456,7 +456,7 @@ class TestFilterToolsByPermissions:
         assert result == tools
 
     @patch(
-        "backend.copilot.baseline.service.all_known_tool_names",
+        "backend.copilot.permissions.all_known_tool_names",
         return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
     )
     def test_allowlist_keeps_only_matching(self, _mock_names):
@@ -475,7 +475,7 @@ class TestFilterToolsByPermissions:
         assert result[0]["function"]["name"] == "web_fetch"
 
     @patch(
-        "backend.copilot.baseline.service.all_known_tool_names",
+        "backend.copilot.permissions.all_known_tool_names",
         return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
     )
     def test_blacklist_excludes_listed(self, _mock_names):
@@ -497,7 +497,7 @@ class TestFilterToolsByPermissions:
         assert len(result) == 2
 
     @patch(
-        "backend.copilot.baseline.service.all_known_tool_names",
+        "backend.copilot.permissions.all_known_tool_names",
         return_value=frozenset({"run_block", "web_fetch", "bash_exec"}),
     )
     def test_unknown_tool_name_filtered_out(self, _mock_names):
