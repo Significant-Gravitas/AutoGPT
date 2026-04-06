@@ -7,6 +7,7 @@ without requiring API keys, database connections, or network access.
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
@@ -429,9 +430,12 @@ def test_thinking_stripper_empty_block() -> None:
 # ---- _filter_tools_by_permissions tests ---- #
 
 
-def _make_tool(name: str) -> dict:
-    """Build a minimal OpenAI ChatCompletionToolParam dict."""
-    return {"type": "function", "function": {"name": name, "parameters": {}}}
+def _make_tool(name: str) -> ChatCompletionToolParam:
+    """Build a minimal OpenAI ChatCompletionToolParam."""
+    return ChatCompletionToolParam(
+        type="function",
+        function={"name": name, "parameters": {}},
+    )
 
 
 class TestFilterToolsByPermissions:
