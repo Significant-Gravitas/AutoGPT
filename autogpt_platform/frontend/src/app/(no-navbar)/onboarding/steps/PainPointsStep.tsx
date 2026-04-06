@@ -114,15 +114,17 @@ export function PainPointsStep() {
             variant="small"
             className={cn(
               "transition-colors",
-              atLimit ? "!text-green-600" : "!text-zinc-500",
+              atLimit && canContinue ? "!text-green-600" : "!text-zinc-500",
               shaking && "animate-shake",
             )}
           >
             {shaking
               ? "You've picked 3 — tap one to swap it out"
-              : atLimit
+              : atLimit && canContinue
                 ? "3 selected — you're all set!"
-                : "Pick up to 3 to start — AutoPilot can help with anything else later"}
+                : atLimit && hasSomethingElse
+                  ? "Tell us what else takes up your time"
+                  : "Pick up to 3 to start — AutoPilot can help with anything else later"}
           </Text>
         </div>
 
