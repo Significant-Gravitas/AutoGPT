@@ -48,6 +48,9 @@ interface ArtifactPanelState {
 
 export const DEFAULT_PANEL_WIDTH = 600;
 
+/** Autopilot response mode. */
+export type CopilotMode = "extended_thinking" | "fast";
+
 const isClient = typeof window !== "undefined";
 
 function getPersistedWidth(): number {
@@ -123,6 +126,10 @@ interface CopilotUIState {
   setArtifactPanelWidth: (width: number) => void;
   goBackArtifact: () => void;
 
+  /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
+  copilotMode: CopilotMode;
+  setCopilotMode: (mode: CopilotMode) => void;
+
   clearCopilotLocalData: () => void;
 }
 
@@ -192,9 +199,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   openArtifact: (ref) =>
     set((state) => {
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
-      // If we're returning to the artifact at the top of history, pop it
-      // instead of pushing — so ping-ponging between two artifacts doesn't
-      // produce an ever-growing back-chain.
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
       const history = isReturningToTop
@@ -218,7 +222,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         ...state.artifactPanel,
         isOpen: false,
         isMinimized: false,
-        // Keep activeArtifact so exit animations can reference it
         history: [],
       },
     })),
@@ -243,8 +246,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       },
     })),
   setArtifactPanelWidth: (width) => {
-    // Debounced localStorage write — drag events fire 60×/s, but we only
-    // need the final value. A timer flushes 200ms after the last update.
     schedulePanelWidthPersist(width);
     set((state) => ({
       artifactPanel: {
@@ -268,12 +269,22 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       };
     }),
 
+  copilotMode:
+    isClient && storage.get(Key.COPILOT_MODE) === "fast"
+      ? "fast"
+      : "extended_thinking",
+  setCopilotMode: (mode) => {
+    storage.set(Key.COPILOT_MODE, mode);
+    set({ copilotMode: mode });
+  },
+
   clearCopilotLocalData: () => {
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
+    storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     set({
       completedSessionIDs: new Set<string>(),
@@ -287,6 +298,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         activeArtifact: null,
         history: [],
       },
+      copilotMode: "extended_thinking",
     });
     if (isClient) {
       document.title = ORIGINAL_TITLE;
