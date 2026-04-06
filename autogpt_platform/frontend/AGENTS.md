@@ -40,6 +40,8 @@ After making **any** code changes in the frontend, you MUST run the following co
 
 Do NOT skip these steps. If any command reports errors, fix them and re-run until clean. Only then may you consider the task complete. If typing keeps failing, stop and ask the user.
 
+4. `pnpm test:unit` — run integration tests; fix any failures
+
 ### Code Style
 
 - Fully capitalize acronyms in symbols, e.g. `graphID`, `useBackendAPI`
@@ -62,7 +64,7 @@ Do NOT skip these steps. If any command reports errors, fix them and re-run unti
 - **Icons**: Phosphor Icons only
 - **Feature Flags**: LaunchDarkly integration
 - **Error Handling**: ErrorCard for render errors, toast for mutations, Sentry for exceptions
-- **Testing**: Playwright for E2E, Storybook for component development
+- **Testing**: Vitest + React Testing Library + MSW for integration tests (primary), Playwright for E2E, Storybook for visual
 
 ## Environment Configuration
 
@@ -84,7 +86,12 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
-5. **Testing**: Add Storybook stories for new components, Playwright for E2E. When fixing a bug, write a failing Playwright test first (use `.fixme` annotation), implement the fix, then remove the annotation.
+5. **Testing**: Integration tests are the default (~90%). See `TESTING.md` for full details.
+   - **New pages/features**: Write integration tests in `__tests__/` next to `page.tsx` using Vitest + RTL + MSW
+   - **API mocking**: Use Orval-generated MSW handlers from `@/app/api/__generated__/endpoints/{tag}/{tag}.msw.ts`
+   - **Run**: `pnpm test:unit` (integration/unit), `pnpm test` (Playwright E2E)
+   - **Storybook**: For design system components in `src/components/`
+   - **TDD**: Write a failing test first, implement, then verify
 6. **Code conventions**:
    - Use function declarations (not arrow functions) for components/handlers
    - Do not use `useCallback` or `useMemo` unless asked to optimise a given function

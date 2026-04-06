@@ -80,6 +80,19 @@ When fixing a bug or adding a feature, follow a test-first approach:
 
 This ensures every change is covered by a test and that the test actually validates the intended behavior.
 
+### Frontend Testing Strategy
+
+Integration tests are the **primary** frontend testing approach (~90% of tests):
+
+- **Tool**: Vitest + React Testing Library + MSW
+- **Scope**: Render full pages, mock API with Orval-generated MSW handlers, assert with testing-library
+- **Location**: `__tests__/` folder next to `page.tsx` (e.g., `library/__tests__/main.test.tsx`)
+- **Run**: `pnpm test:unit`
+- **E2E (Playwright)**: Reserved for critical cross-page flows (auth, payments)
+- **Storybook**: For design system components in `src/components/`
+
+See `frontend/TESTING.md` for full details and examples.
+
 ### Reviewing/Revising Pull Requests
 
 Use `/pr-review` to review a PR or `/pr-address` to address comments.
