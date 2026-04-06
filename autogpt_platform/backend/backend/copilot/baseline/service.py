@@ -928,6 +928,23 @@ async def stream_chat_completion_baseline(
     # the cheaper/faster model; everything else keeps the default.
     active_model = _resolve_baseline_model(mode)
 
+    # --- E2B sandbox setup (feature parity with SDK path) ---
+    e2b_sandbox = None
+    e2b_api_key = config.active_e2b_api_key
+    if e2b_api_key:
+        try:
+            from backend.copilot.tools.e2b_sandbox import get_or_create_sandbox
+
+            e2b_sandbox = await get_or_create_sandbox(
+                session_id,
+                api_key=e2b_api_key,
+                template=config.e2b_sandbox_template,
+                timeout=config.e2b_sandbox_timeout,
+                on_timeout=config.e2b_sandbox_on_timeout,
+            )
+        except Exception:
+            logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()
     transcript_covers_prefix = True
@@ -1071,7 +1088,11 @@ async def stream_chat_completion_baseline(
 
     # Propagate execution context so tool handlers can read session-level flags.
     set_execution_context(
-        user_id, session, sdk_cwd=working_dir, permissions=permissions
+        user_id,
+        session,
+        sandbox=e2b_sandbox,
+        sdk_cwd=working_dir,
+        permissions=permissions,
     )
 
     yield StreamStart(messageId=message_id, sessionId=session_id)
