@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# verify-complete.sh — verify a PR task is truly done before the worktree is recycled
+# verify-complete.sh — verify a PR task is truly done before marking the agent done
 #
-# Reads the agent's pr_number + steps from the state file, then checks:
-#   1. All required steps are checkpointed
-#   2. No unresolved review threads on the PR
-#   3. No failing CI checks
-#
-# Repo is read from state file (.repo), falling back to the worktree's git remote.
+# Check order matters:
+#   1. Checkpoints — did the agent do all required steps?
+#   2. CI complete — no pending (bots post comments AFTER their check runs, must wait)
+#   3. CI passing — no failures (agent must fix before done)
+#   4. spawned_at — a new CI run was triggered after agent spawned (proves real work)
+#   5. Unresolved threads — checked AFTER CI so bot-posted comments are included
+#   6. CHANGES_REQUESTED — checked AFTER CI so bot reviews are included
 #
 # Usage: verify-complete.sh WINDOW
-# Exit 0 = verified complete; exit 1 = not complete (with reason on stderr)
+# Exit 0 = verified complete; exit 1 = not complete (stderr has reason)
 
 set -euo pipefail
 
 WINDOW="$1"
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
 
-# Read agent fields from state file
 PR_NUMBER=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .pr_number // ""' "$STATE_FILE" 2>/dev/null)
 STEPS=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .steps // [] | .[]' "$STATE_FILE" 2>/dev/null || true)
 CHECKPOINTS=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .checkpoints // [] | .[]' "$STATE_FILE" 2>/dev/null || true)
@@ -24,17 +24,10 @@ WORKTREE_PATH=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .wo
 BRANCH=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .branch // ""' "$STATE_FILE" 2>/dev/null)
 SPAWNED_AT=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .spawned_at // "0"' "$STATE_FILE" 2>/dev/null || echo "0")
 
-# No PR number = cannot verify — refuse to recycle (supervisor must handle)
+# No PR number = cannot verify
 if [ -z "$PR_NUMBER" ]; then
-  echo "NOT COMPLETE: no pr_number in state — cannot verify; set pr_number or mark done manually" >&2
+  echo "NOT COMPLETE: no pr_number in state — set pr_number or mark done manually" >&2
   exit 1
-fi
-
-# --- Resolve repo: state file .repo → worktree git remote → fail gracefully ---
-REPO=$(jq -r '.repo // ""' "$STATE_FILE" 2>/dev/null || echo "")
-if [ -z "$REPO" ] && [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
-  REPO=$(git -C "$WORKTREE_PATH" remote get-url origin 2>/dev/null \
-    | sed 's|.*github\.com[:/]||; s|\.git$||' || echo "")
 fi
 
 # --- Check 1: all required steps are checkpointed ---
@@ -51,74 +44,86 @@ if [ -n "$MISSING" ]; then
   exit 1
 fi
 
-# --- Check 2: unresolved review threads ---
-# Requires REPO to be resolved; skip gracefully if not
+# Resolve repo for all GitHub checks below
+REPO=$(jq -r '.repo // ""' "$STATE_FILE" 2>/dev/null || echo "")
+if [ -z "$REPO" ] && [ -n "$WORKTREE_PATH" ] && [ -d "$WORKTREE_PATH" ]; then
+  REPO=$(git -C "$WORKTREE_PATH" remote get-url origin 2>/dev/null \
+    | sed 's|.*github\.com[:/]||; s|\.git$||' || echo "")
+fi
+
 if [ -z "$REPO" ]; then
-  echo "Warning: cannot resolve repo — skipping thread + CI checks" >&2
-else
-  # Split REPO into owner/name for GraphQL
-  OWNER=$(echo "$REPO" | cut -d/ -f1)
-  REPONAME=$(echo "$REPO" | cut -d/ -f2)
+  echo "Warning: cannot resolve repo — skipping CI/thread checks" >&2
+  echo "VERIFIED: PR #$PR_NUMBER — checkpoints ✓ (CI/thread checks skipped — no repo)"
+  exit 0
+fi
 
-  UNRESOLVED=$(gh api graphql -f query="
-    { repository(owner: \"${OWNER}\", name: \"${REPONAME}\") {
-        pullRequest(number: ${PR_NUMBER}) {
-          reviewThreads(first: 50) { nodes { isResolved } }
-        }
-      }
-    }
-  " --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' 2>/dev/null || echo "0")
+CI_BUCKETS=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json bucket 2>/dev/null || echo "[]")
 
-  if [ "$UNRESOLVED" -gt 0 ]; then
-    echo "NOT COMPLETE: $UNRESOLVED unresolved review threads on PR #$PR_NUMBER" >&2
-    exit 1
-  fi
+# --- Check 2: CI fully complete — no pending checks ---
+# Pending checks MUST finish before we check threads/reviews:
+# bots (Seer, Check PR Status, etc.) post comments and CHANGES_REQUESTED AFTER their CI check runs.
+PENDING=$(echo "$CI_BUCKETS" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo "0")
+if [ "$PENDING" -gt 0 ]; then
+  PENDING_NAMES=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json bucket,name 2>/dev/null \
+    | jq -r '[.[] | select(.bucket == "pending") | .name] | join(", ")' 2>/dev/null || echo "unknown")
+  echo "NOT COMPLETE: $PENDING CI checks still pending on PR #$PR_NUMBER ($PENDING_NAMES)" >&2
+  exit 1
+fi
 
-  # --- Check 3: no CHANGES_REQUESTED reviews (from any reviewer, bot or human) ---
-  CHANGES_REQUESTED=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-    --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "0")
+# --- Check 3: CI passing — no failures ---
+FAILING=$(echo "$CI_BUCKETS" | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo "0")
+if [ "$FAILING" -gt 0 ]; then
+  FAILING_NAMES=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json bucket,name 2>/dev/null \
+    | jq -r '[.[] | select(.bucket == "fail") | .name] | join(", ")' 2>/dev/null || echo "unknown")
+  echo "NOT COMPLETE: $FAILING failing CI checks on PR #$PR_NUMBER ($FAILING_NAMES)" >&2
+  exit 1
+fi
 
-  if [ "$CHANGES_REQUESTED" -gt 0 ]; then
-    REQUESTERS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-      --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED") | .author.login] | join(", ")' 2>/dev/null || echo "unknown")
-    echo "NOT COMPLETE: CHANGES_REQUESTED from ${REQUESTERS} on PR #$PR_NUMBER" >&2
-    exit 1
-  fi
-
-  # --- Check 5: CI not failing ---
-  # gh pr checks --json may return an empty array if checks haven't started yet — that's fine.
-  # We only fail if bucket == "fail" is present.
-  FAILING=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json bucket 2>/dev/null \
-    | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo "0")
-
-  if [ "$FAILING" -gt 0 ]; then
-    echo "NOT COMPLETE: $FAILING failing CI checks on PR #$PR_NUMBER" >&2
-    exit 1
-  fi
-
-  # --- Check 6: a new CI run was triggered AFTER the agent spawned ---
-  # Guards against agents that output CHECKPOINT:* from the objective text itself
-  # (copied from spawn message) without actually doing work, while CI was already
-  # green from a previous run.
-  if [ -n "$BRANCH" ] && [ "${SPAWNED_AT:-0}" -gt 0 ]; then
-    LATEST_RUN_AT=$(gh run list --repo "$REPO" --branch "$BRANCH" \
-      --json createdAt --limit 1 2>/dev/null | jq -r '.[0].createdAt // ""')
-    if [ -n "$LATEST_RUN_AT" ]; then
-      # Convert ISO 8601 timestamp to epoch — handle both macOS (BSD date) and Linux (GNU date)
-      if date --version >/dev/null 2>&1; then
-        LATEST_RUN_EPOCH=$(date -d "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
-      else
-        # macOS BSD date: must set TZ=UTC so the GitHub ISO 8601 UTC timestamp
-        # is parsed as UTC, not local time (which would give a wrong epoch).
-        LATEST_RUN_EPOCH=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
-      fi
-      if [ "$LATEST_RUN_EPOCH" -le "$SPAWNED_AT" ]; then
-        echo "NOT COMPLETE: latest CI run on $BRANCH predates agent spawn — no new CI triggered yet" >&2
-        exit 1
-      fi
+# --- Check 4: a new CI run was triggered AFTER the agent spawned ---
+if [ -n "$BRANCH" ] && [ "${SPAWNED_AT:-0}" -gt 0 ]; then
+  LATEST_RUN_AT=$(gh run list --repo "$REPO" --branch "$BRANCH" \
+    --json createdAt --limit 1 2>/dev/null | jq -r '.[0].createdAt // ""')
+  if [ -n "$LATEST_RUN_AT" ]; then
+    if date --version >/dev/null 2>&1; then
+      LATEST_RUN_EPOCH=$(date -d "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
+    else
+      LATEST_RUN_EPOCH=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
+    fi
+    if [ "$LATEST_RUN_EPOCH" -le "$SPAWNED_AT" ]; then
+      echo "NOT COMPLETE: latest CI run on $BRANCH predates agent spawn — agent may not have pushed yet" >&2
+      exit 1
     fi
   fi
 fi
 
-echo "VERIFIED: PR #$PR_NUMBER — checkpoints ✓, 0 unresolved threads, CI green"
+OWNER=$(echo "$REPO" | cut -d/ -f1)
+REPONAME=$(echo "$REPO" | cut -d/ -f2)
+
+# --- Check 5: no unresolved review threads (checked AFTER CI — bots post after their check) ---
+UNRESOLVED=$(gh api graphql -f query="
+  { repository(owner: \"${OWNER}\", name: \"${REPONAME}\") {
+      pullRequest(number: ${PR_NUMBER}) {
+        reviewThreads(first: 50) { nodes { isResolved } }
+      }
+    }
+  }
+" --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length' 2>/dev/null || echo "0")
+
+if [ "$UNRESOLVED" -gt 0 ]; then
+  echo "NOT COMPLETE: $UNRESOLVED unresolved review threads on PR #$PR_NUMBER" >&2
+  exit 1
+fi
+
+# --- Check 6: no CHANGES_REQUESTED (checked AFTER CI — bots post reviews after their check) ---
+CHANGES_REQUESTED=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+  --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "0")
+
+if [ "$CHANGES_REQUESTED" -gt 0 ]; then
+  REQUESTERS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+    --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED") | .author.login] | join(", ")' 2>/dev/null || echo "unknown")
+  echo "NOT COMPLETE: CHANGES_REQUESTED from ${REQUESTERS} on PR #$PR_NUMBER" >&2
+  exit 1
+fi
+
+echo "VERIFIED: PR #$PR_NUMBER — checkpoints ✓, CI complete + green, 0 unresolved threads, no CHANGES_REQUESTED"
 exit 0
