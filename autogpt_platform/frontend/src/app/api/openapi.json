@@ -1134,7 +1134,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
+        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The authenticated user's ID.\n    limit: Maximum number of messages to return (1-200, default 50).\n    before_sequence: Return messages with sequence < this value (cursor).\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including\n        active_stream info and pagination metadata.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1143,6 +1143,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "integer", "minimum": 0 },
+                { "type": "null" }
+              ],
+              "title": "Before Sequence"
+            }
           }
         ],
         "responses": {
@@ -7041,12 +7065,76 @@
         }
       }
     },
+    "/api/workspace/files": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "List workspace files",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.",
+        "operationId": "listWorkspaceFiles",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListFilesResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
         "summary": "Upload file to workspace",
         "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
-        "operationId": "postWorkspaceUpload file to workspace",
+        "operationId": "uploadWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7074,7 +7162,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+                "$ref": "#/components/schemas/Body_uploadWorkspaceFile"
               }
             }
           }
@@ -7109,7 +7197,7 @@
         "tags": ["workspace"],
         "summary": "Delete a workspace file",
         "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
-        "operationId": "deleteWorkspaceDelete a workspace file",
+        "operationId": "deleteWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7147,7 +7235,7 @@
         "tags": ["workspace"],
         "summary": "Download file by ID",
         "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
-        "operationId": "getWorkspaceDownload file by id",
+        "operationId": "getWorkspaceDownloadFileById",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7181,7 +7269,7 @@
         "tags": ["workspace"],
         "summary": "Get workspace storage usage",
         "description": "Get storage usage information for the user's workspace.",
-        "operationId": "getWorkspaceGet workspace storage usage",
+        "operationId": "getWorkspaceStorageUsage",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8499,13 +8587,13 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
-      "Body_postWorkspaceUpload_file_to_workspace": {
+      "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
         },
         "type": "object",
         "required": ["file"],
-        "title": "Body_postWorkspaceUpload file to workspace"
+        "title": "Body_uploadWorkspaceFile"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -10692,6 +10780,24 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "ListFilesResponse": {
+        "properties": {
+          "files": {
+            "items": { "$ref": "#/components/schemas/WorkspaceFileItem" },
+            "type": "array",
+            "title": "Files"
+          },
+          "offset": { "type": "integer", "title": "Offset", "default": 0 },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["files"],
+        "title": "ListFilesResponse"
+      },
       "ListSessionsResponse": {
         "properties": {
           "sessions": {
@@ -12361,6 +12467,15 @@
               { "$ref": "#/components/schemas/ActiveStreamInfo" },
               { "type": "null" }
             ]
+          },
+          "has_more_messages": {
+            "type": "boolean",
+            "title": "Has More Messages",
+            "default": false
+          },
+          "oldest_sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Oldest Sequence"
           },
           "total_prompt_tokens": {
             "type": "integer",
@@ -15218,6 +15333,31 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkspaceFileItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": { "type": "string", "title": "Created At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "mime_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "title": "WorkspaceFileItem"
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {

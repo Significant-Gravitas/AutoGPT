@@ -64,6 +64,7 @@ class ChatMessage(BaseModel):
     refusal: str | None = None
     tool_calls: list[dict] | None = None
     function_call: dict | None = None
+    sequence: int | None = None
     duration_ms: int | None = None
 
     @staticmethod
@@ -77,6 +78,7 @@ class ChatMessage(BaseModel):
             refusal=prisma_message.refusal,
             tool_calls=_parse_json_field(prisma_message.toolCalls),
             function_call=_parse_json_field(prisma_message.functionCall),
+            sequence=prisma_message.sequence,
             duration_ms=prisma_message.durationMs,
         )
 
