@@ -100,8 +100,9 @@ while IFS= read -r agent; do
   # Classify pane.
   # classify-pane.sh always emits JSON before exit (even on error), so using
   # "|| echo '...'" would concatenate two JSON objects when it exits non-zero.
-  # Capture output directly; fall back only if output is unexpectedly empty.
-  CLASSIFICATION=$("$CLASSIFY" "$WINDOW" 2>/dev/null)
+  # Use "|| true" inside the substitution so set -euo pipefail does not abort
+  # the poll cycle when classify exits with a non-zero status code.
+  CLASSIFICATION=$("$CLASSIFY" "$WINDOW" 2>/dev/null || true)
   [ -z "$CLASSIFICATION" ] && CLASSIFICATION='{"state":"error","reason":"classify failed","pane_cmd":"unknown"}'
 
   PANE_STATE=$(echo "$CLASSIFICATION" | jq -r '.state')
@@ -172,9 +173,13 @@ while IFS= read -r agent; do
           fi
         fi
       else
-        # Output changed — reset idle timer
-        NEW_STATE="running"
-        NEW_IDLE_SINCE=0
+        # Only reset the idle timer when we have a valid hash comparison (pane
+        # capture succeeded). If CURRENT_HASH is empty (tmux capture-pane failed),
+        # preserve existing timers so stuck detection is not inadvertently reset.
+        if [ -n "$CURRENT_HASH" ]; then
+          NEW_STATE="running"
+          NEW_IDLE_SINCE=0
+        fi
       fi
       ;;
     error)
