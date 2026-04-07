@@ -32,7 +32,7 @@ test("onboarding wizard step navigation works", async ({ page }) => {
 
   // Step 1: Welcome
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
-  await page.getByLabel("Your first name").fill("Bob");
+  await page.getByLabel("What should I call you?").fill("Bob");
   await page.getByRole("button", { name: "Continue" }).click();
 
   // Step 2: Role — verify we're here, then go back
@@ -41,7 +41,7 @@ test("onboarding wizard step navigation works", async ({ page }) => {
 
   // Should be back on step 1 with name preserved
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
-  await expect(page.getByLabel("Your first name")).toHaveValue("Bob");
+  await expect(page.getByLabel("What should I call you?")).toHaveValue("Bob");
 });
 
 test("onboarding wizard validates required fields", async ({ page }) => {
@@ -53,18 +53,13 @@ test("onboarding wizard validates required fields", async ({ page }) => {
   await expect(continueButton).toBeDisabled();
 
   // Fill name — continue should become enabled
-  await page.getByLabel("Your first name").fill("Charlie");
+  await page.getByLabel("What should I call you?").fill("Charlie");
   await expect(continueButton).toBeEnabled();
   await continueButton.click();
 
-  // Step 2: Continue should be disabled without a role
-  const step2Continue = page.getByRole("button", { name: "Continue" });
-  await expect(step2Continue).toBeDisabled();
-
-  // Select role — continue should become enabled
+  // Step 2: Role — selecting auto-advances to step 3
+  await expect(page.getByText("What best describes you")).toBeVisible();
   await page.getByText("Engineering").click();
-  await expect(step2Continue).toBeEnabled();
-  await step2Continue.click();
 
   // Step 3: Launch Autopilot should be disabled without any pain points
   const launchButton = page.getByRole("button", { name: "Launch Autopilot" });
@@ -95,7 +90,7 @@ test("onboarding URL params sync with steps", async ({ page }) => {
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
 
   // Fill name and go to step 2
-  await page.getByLabel("Your first name").fill("Test");
+  await page.getByLabel("What should I call you?").fill("Test");
   await page.getByRole("button", { name: "Continue" }).click();
 
   // URL should show step=2
@@ -106,12 +101,11 @@ test("role-based pain point ordering works", async ({ page }) => {
   await signupTestUser(page, undefined, undefined, false);
 
   // Complete step 1
-  await page.getByLabel("Your first name").fill("Test");
+  await page.getByLabel("What should I call you?").fill("Test");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Select Sales/BD role
+  // Select Sales/BD role (auto-advances to step 3)
   await page.getByText("Sales / BD").click();
-  await page.getByRole("button", { name: "Continue" }).click();
 
   // On pain points step, "Finding leads" should be visible (top pick for Sales)
   await expect(page.getByText("What's eating your time?")).toBeVisible();
