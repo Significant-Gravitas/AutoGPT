@@ -536,9 +536,7 @@ declare -A SCREENSHOT_EXPLANATIONS=(
   #   3. EVIDENCE: What does this screenshot prove (pass/fail/data)?
   #
   # Good example:
-  #   ["03-cost-log-after-run.png"]="Scenario: LLM block cost tracking.
-  #     Steps: Logged in as tester@gmail.com → ran 'Cost Test Agent' → waited for COMPLETED status.
-  #     Evidence: PlatformCostLog table shows 1 new row with cost_microdollars=1234 and correct user_id."
+  #   ["03-cost-log-after-run.png"]="Scenario: LLM block cost tracking. Steps: Logged in as tester@gmail.com → ran 'Cost Test Agent' → waited for COMPLETED status. Evidence: PlatformCostLog table shows 1 new row with cost_microdollars=1234 and correct user_id."
   #
   # Bad example (too vague — never do this):
   #   ["03-cost-log.png"]="Shows the cost log table."
@@ -671,7 +669,7 @@ ${IMAGE_MARKDOWN}
 ${FAILED_SECTION}
 INNEREOF
 
-gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
+POSTED_BODY=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE" --jq '.body')
 rm -f "$COMMENT_FILE"
 ```
 
@@ -685,10 +683,8 @@ This approach uses the GitHub Git API to create blobs, trees, commits, and refs 
 **Verify inline rendering after posting — this is required, not optional:**
 
 ```bash
-# Fetch the comment just posted and confirm it has inline image tags
-LAST_BODY=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-  --paginate --jq '.[-1].body' 2>/dev/null)
-if echo "$LAST_BODY" | grep -q '!\['; then
+# Confirm the posted comment body (captured directly from the POST response) has inline image tags
+if echo "$POSTED_BODY" | grep -q '!\['; then
   echo "✅ Inline images confirmed in PR comment"
 else
   echo "❌ FAIL: No inline images found in posted comment."
