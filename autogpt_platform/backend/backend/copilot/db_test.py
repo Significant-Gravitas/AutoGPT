@@ -15,12 +15,8 @@ from backend.copilot.db import (
     get_chat_messages_paginated,
     set_turn_duration,
 )
-from backend.copilot.model import (
-    ChatMessage as CopilotChatMessage,
-    ChatSession,
-    get_chat_session,
-    upsert_chat_session,
-)
+from backend.copilot.model import ChatMessage as CopilotChatMessage
+from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
 
 
 def _make_msg(
