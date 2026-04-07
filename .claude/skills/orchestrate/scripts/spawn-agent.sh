@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # spawn-agent.sh — create tmux window, checkout branch, launch claude, send task
 #
-# Usage: spawn-agent.sh SESSION WORKTREE_PATH SPARE_BRANCH NEW_BRANCH OBJECTIVE
+# Usage: spawn-agent.sh SESSION WORKTREE_PATH SPARE_BRANCH NEW_BRANCH OBJECTIVE [PR_NUMBER] [STEPS...]
 #   SESSION       — tmux session name, e.g. autogpt1
 #   WORKTREE_PATH — absolute path to the git worktree
 #   SPARE_BRANCH  — spare branch being replaced, e.g. spare/6 (saved for recycle)
 #   NEW_BRANCH    — task branch to create, e.g. feat/my-feature
 #   OBJECTIVE     — task description sent to the agent
+#   PR_NUMBER     — (optional) GitHub PR number for completion verification
+#   STEPS...      — (optional) required checkpoint names, e.g. pr-address pr-test
 #
 # Stdout: SESSION:WINDOW_INDEX (nothing else — callers rely on this)
 # Exit non-zero on failure.
@@ -14,7 +16,7 @@
 set -euo pipefail
 
 if [ $# -lt 5 ]; then
-  echo "Usage: spawn-agent.sh SESSION WORKTREE_PATH SPARE_BRANCH NEW_BRANCH OBJECTIVE" >&2
+  echo "Usage: spawn-agent.sh SESSION WORKTREE_PATH SPARE_BRANCH NEW_BRANCH OBJECTIVE [PR_NUMBER] [STEPS...]" >&2
   exit 1
 fi
 
@@ -23,7 +25,10 @@ WORKTREE_PATH="$2"
 SPARE_BRANCH="$3"
 NEW_BRANCH="$4"
 OBJECTIVE="$5"
+PR_NUMBER="${6:-}"
+STEPS=("${@:7}")
 WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
 
 # Create (or switch to) the task branch
 git -C "$WORKTREE_PATH" checkout -b "$NEW_BRANCH" 2>/dev/null \
@@ -33,31 +38,41 @@ git -C "$WORKTREE_PATH" checkout -b "$NEW_BRANCH" 2>/dev/null \
 WIN_IDX=$(tmux new-window -t "$SESSION" -n "$WORKTREE_NAME" -P -F '#{window_index}')
 WINDOW="${SESSION}:${WIN_IDX}"
 
+# Store pr_number + steps in state file if provided (enables verify-complete.sh)
+if [ -n "$PR_NUMBER" ] && [ -f "$STATE_FILE" ]; then
+  STEPS_JSON=$(printf '%s\n' "${STEPS[@]}" | jq -R . | jq -s .)
+  jq --arg w "$WINDOW" --arg pr "$PR_NUMBER" --argjson steps "$STEPS_JSON" \
+    '.agents |= map(if .window == $w then . + {pr_number: $pr, steps: $steps, checkpoints: []} else . end)' \
+    "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+fi
+
+# Build recovery instruction — agent reads state file + gh pr view to reorient after compaction
+RECOVERY=""
+if [ -n "$PR_NUMBER" ]; then
+  RECOVERY=" If your context compacts and you lose track of what to do, run: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"$WINDOW\")' and gh pr view $PR_NUMBER --json title,body,headRefName to reorient. Output each completed step as a checkpoint: CHECKPOINT:<step-name> on its own line."
+fi
+
 # Launch claude — single-quote path so spaces and special chars are safe
 tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions" Enter
 
 # Wait up to 60s for claude to be fully interactive:
 # both pane_current_command == 'node' AND the '❯' prompt is visible.
-# Checking the prompt avoids sending the objective to the shell before
-# claude finishes initializing (which silently drops the message).
 for i in $(seq 1 60); do
   CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
   PANE=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null || echo "")
-  # Auto-dismiss settings error dialog if present
   if echo "$PANE" | grep -q "Enter to confirm"; then
     tmux send-keys -t "$WINDOW" Down Enter
     sleep 2
     continue
   fi
-  # Ready when node is running AND the interactive prompt is visible
   if [[ "$CMD" == "node" ]] && echo "$PANE" | grep -q "❯"; then
     break
   fi
   sleep 1
 done
 
-# Send the task — agent must output ORCHESTRATOR:DONE when finished
-tmux send-keys -t "$WINDOW" "${OBJECTIVE}. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter
+# Send the task with checkpoint protocol and recovery instructions
+tmux send-keys -t "$WINDOW" "${OBJECTIVE}${RECOVERY} When ALL steps are done, output ORCHESTRATOR:DONE on its own line." Enter
 
 # Only output the window address — nothing else (callers parse this)
 echo "$WINDOW"

@@ -95,15 +95,29 @@ handle_approve() {
 }
 
 # ---------------------------------------------------------------------------
-# handle_complete WINDOW
+# handle_complete WINDOW — verify before recycling
 # ---------------------------------------------------------------------------
 handle_complete() {
   local window="$1"
-  local worktree_path spare_branch
+  local worktree_path spare_branch objective
   worktree_path=$(agent_field "$window" "worktree_path")
   spare_branch=$(agent_field "$window" "spare_branch")
+  objective=$(agent_field "$window" "objective")
 
-  echo "[$(date +%H:%M:%S)] COMPLETE       $window — recycling to $spare_branch"
+  # Verify completion: check unresolved threads, CI, checkpoints
+  local verify_msg
+  if ! verify_msg=$(bash "$SCRIPTS_DIR/verify-complete.sh" "$window" 2>&1); then
+    echo "[$(date +%H:%M:%S)] NOT DONE       $window — $verify_msg"
+    echo "[$(date +%H:%M:%S)] RE-BRIEFING    $window — sending task context from state file"
+    local pr_number
+    pr_number=$(agent_field "$window" "pr_number")
+    tmux send-keys -t "$window" "You output ORCHESTRATOR:DONE but work is not complete: $verify_msg. Re-read your task: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"$window\")' and gh pr view $pr_number --json title,body to reorient. Fix what is missing, then output ORCHESTRATOR:DONE again." Enter
+    update_state "$window" "state" "running"
+    return
+  fi
+
+  echo "[$(date +%H:%M:%S)] COMPLETE ✓     $window — $verify_msg"
+  echo "[$(date +%H:%M:%S)] RECYCLING      $window → $spare_branch"
   bash "$SCRIPTS_DIR/recycle-agent.sh" "$window" "$worktree_path" "$spare_branch"
   update_state "$window" "state" "done"
 }
