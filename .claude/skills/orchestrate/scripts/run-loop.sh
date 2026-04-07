@@ -86,11 +86,11 @@ handle_approve() {
   fi
 
   # Numbered-option dialog (e.g. "Do you want to make this edit?" / "1. Yes / 2. Yes, and... / 3. No")
-  # These appear when claude edits files in .claude/ or needs session-level permission.
-  # Always pick option 1 (Yes) for safe operations.
-  if echo "$pane_tail" | grep -qE "^\s*[❯>]\s*1\." || echo "$pane_tail" | grep -q "Esc to cancel"; then
-    echo "[$(date +%H:%M:%S)] APPROVE numbered $window — sending 1 (Yes)"
-    tmux send-keys -t "$window" "1" Enter
+  # The ❯ cursor is already on option 1 (Yes) — pressing Enter alone confirms it.
+  # Sending "1" or "2" types the digit into the input rather than selecting the option.
+  if echo "$pane_tail" | grep -qE "❯\s*1\." || echo "$pane_tail" | grep -q "Esc to cancel"; then
+    echo "[$(date +%H:%M:%S)] APPROVE numbered $window — pressing Enter (Yes)"
+    tmux send-keys -t "$window" "" Enter
     return
   fi
 
