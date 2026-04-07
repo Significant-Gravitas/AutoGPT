@@ -1,5 +1,6 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
+import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
 import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
@@ -201,10 +202,11 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
+      const MAX_HISTORY = 25;
       const history = isReturningToTop
         ? prevHistory.slice(0, -1)
         : activeArtifact && activeArtifact.id !== ref.id
-          ? [...prevHistory, activeArtifact]
+          ? [...prevHistory, activeArtifact].slice(-MAX_HISTORY)
           : prevHistory;
       return {
         artifactPanel: {
@@ -279,6 +281,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   },
 
   clearCopilotLocalData: () => {
+    clearContentCache();
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
     storage.clean(Key.COPILOT_SOUND_ENABLED);
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);

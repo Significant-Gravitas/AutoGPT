@@ -17,6 +17,10 @@ export function getCachedArtifactContent(id: string): string | undefined {
   return contentCache.get(id);
 }
 
+export function clearContentCache() {
+  contentCache.clear();
+}
+
 export function useArtifactContent(
   artifact: ArtifactRef,
   classification: ArtifactClassification,

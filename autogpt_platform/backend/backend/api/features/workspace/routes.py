@@ -150,6 +150,7 @@ class ListFilesResponse(BaseModel):
 @router.get(
     "/files/{file_id}/download",
     summary="Download file by ID",
+    operation_id="getWorkspaceDownloadFileById",
 )
 async def download_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -174,6 +175,7 @@ async def download_file(
 @router.delete(
     "/files/{file_id}",
     summary="Delete a workspace file",
+    operation_id="deleteWorkspaceFile",
 )
 async def delete_workspace_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -199,6 +201,7 @@ async def delete_workspace_file(
 @router.post(
     "/files/upload",
     summary="Upload file to workspace",
+    operation_id="uploadWorkspaceFile",
 )
 async def upload_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -311,6 +314,7 @@ async def upload_file(
 @router.get(
     "/storage/usage",
     summary="Get workspace storage usage",
+    operation_id="getWorkspaceStorageUsage",
 )
 async def get_storage_usage(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -336,6 +340,7 @@ async def get_storage_usage(
 @router.get(
     "/files",
     summary="List workspace files",
+    operation_id="listWorkspaceFiles",
 )
 async def list_workspace_files(
     user_id: Annotated[str, fastapi.Security(get_user_id)],

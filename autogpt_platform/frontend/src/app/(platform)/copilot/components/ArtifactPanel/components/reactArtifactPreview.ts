@@ -19,7 +19,7 @@
  * React is loaded from unpkg with pinned version and SRI integrity hashes.
  */
 
-import { TAILWIND_CDN_URL } from "./artifactPreviewConstants";
+import { TAILWIND_CDN_URL } from "@/lib/iframe-sandbox-csp";
 
 export { transpileReactArtifactSource } from "./transpileReactArtifact";
 

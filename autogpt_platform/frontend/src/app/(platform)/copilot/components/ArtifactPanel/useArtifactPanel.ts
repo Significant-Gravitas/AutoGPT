@@ -48,6 +48,8 @@ export function useArtifactPanel() {
 
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
+        if (document.querySelector('[role="dialog"], [data-state="open"]'))
+          return;
         closeArtifactPanel();
       }
     }

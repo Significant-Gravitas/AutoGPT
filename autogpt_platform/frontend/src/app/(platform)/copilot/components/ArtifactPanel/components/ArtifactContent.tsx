@@ -7,8 +7,10 @@ import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
-import { TAILWIND_CDN_URL } from "./artifactPreviewConstants";
-import { wrapWithHeadInjection } from "@/lib/iframe-sandbox-csp";
+import {
+  TAILWIND_CDN_URL,
+  wrapWithHeadInjection,
+} from "@/lib/iframe-sandbox-csp";
 import { useArtifactContent } from "./useArtifactContent";
 
 interface Props {

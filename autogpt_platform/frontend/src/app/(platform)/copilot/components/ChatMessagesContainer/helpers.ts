@@ -268,7 +268,7 @@ export function extractWorkspaceArtifacts(text: string): ArtifactRef[] {
     // Skip URIs inside image markdown (`![alt](workspace://...)`). Images are
     // rendered inline via resolveWorkspaceUrls — surfacing them as cards too
     // would double-render the same asset.
-    const escapedUri = fullUri.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const escapedUri = escapeRegExp(fullUri);
     const imagePattern = new RegExp(`!\\[[^\\]]*\\]\\(${escapedUri}\\)`);
     if (imagePattern.test(text)) continue;
 

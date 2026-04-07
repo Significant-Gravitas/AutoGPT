@@ -7046,7 +7046,7 @@
         "tags": ["workspace"],
         "summary": "List workspace files",
         "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.",
-        "operationId": "getWorkspaceList workspace files",
+        "operationId": "listWorkspaceFiles",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7110,7 +7110,7 @@
         "tags": ["workspace"],
         "summary": "Upload file to workspace",
         "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
-        "operationId": "postWorkspaceUpload file to workspace",
+        "operationId": "uploadWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7138,7 +7138,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+                "$ref": "#/components/schemas/Body_uploadWorkspaceFile"
               }
             }
           }
@@ -7173,7 +7173,7 @@
         "tags": ["workspace"],
         "summary": "Delete a workspace file",
         "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
-        "operationId": "deleteWorkspaceDelete a workspace file",
+        "operationId": "deleteWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7211,7 +7211,7 @@
         "tags": ["workspace"],
         "summary": "Download file by ID",
         "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
-        "operationId": "getWorkspaceDownload file by id",
+        "operationId": "getWorkspaceDownloadFileById",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7245,7 +7245,7 @@
         "tags": ["workspace"],
         "summary": "Get workspace storage usage",
         "description": "Get storage usage information for the user's workspace.",
-        "operationId": "getWorkspaceGet workspace storage usage",
+        "operationId": "getWorkspaceStorageUsage",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8563,13 +8563,13 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
-      "Body_postWorkspaceUpload_file_to_workspace": {
+      "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
         },
         "type": "object",
         "required": ["file"],
-        "title": "Body_postWorkspaceUpload file to workspace"
+        "title": "Body_uploadWorkspaceFile"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
