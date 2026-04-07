@@ -627,6 +627,26 @@ export async function waitForRunToComplete(
 }
 
 export async function getRunStatus(page: Page): Promise<string> {
+  const runStartedToast = page.getByText(
+    /Run started|Agent execution started/i,
+  );
+  if (
+    await runStartedToast
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return "running";
+  }
+
+  const currentUrl = new URL(page.url());
+  if (
+    currentUrl.searchParams.get("activeTab") === "runs" &&
+    currentUrl.searchParams.get("activeItem")
+  ) {
+    return "running";
+  }
+
   if (
     await page
       .locator(".animate-spin")

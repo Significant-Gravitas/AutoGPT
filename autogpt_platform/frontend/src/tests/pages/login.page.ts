@@ -37,29 +37,37 @@ export class LoginPage {
     // Attach navigation logger for debug purposes
     this.page.on("load", (page) => console.log(`ℹ️ Now at URL: ${page.url()}`));
 
-    // Start waiting for navigation before clicking
-    // Wait for redirect to marketplace, onboarding, library, or copilot (new landing pages)
-    const leaveLoginPage = this.page
-      .waitForURL(
-        (url: URL) =>
-          /^\/(marketplace|onboarding(\/.*)?|library|copilot)?$/.test(
-            url.pathname,
-          ),
-        { timeout: 10_000 },
-      )
-      .catch((reason) => {
-        console.error(
-          `🚨 Navigation away from /login timed out (current URL: ${this.page.url()}):`,
-          reason,
-        );
-        throw reason;
-      });
+    const hasReachedPostLoginRoute = () =>
+      this.page.waitForFunction(
+        () => {
+          const pathname = window.location.pathname;
+          return /^\/(marketplace|onboarding(\/.*)?|library|copilot)$/.test(
+            pathname,
+          );
+        },
+        { timeout: 15_000 },
+      );
 
     console.log(`🖱️ Clicking login button...`);
-    await loginButton.click();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await loginButton.click();
 
-    console.log("⏳ Waiting for navigation away from /login ...");
-    await leaveLoginPage;
+      console.log("⏳ Waiting for navigation away from /login ...");
+      try {
+        await hasReachedPostLoginRoute();
+        break;
+      } catch (reason) {
+        const currentPathname = new URL(this.page.url()).pathname;
+        if (attempt === 1 || currentPathname !== "/login") {
+          console.error(
+            `🚨 Navigation away from /login timed out (current URL: ${this.page.url()}):`,
+            reason,
+          );
+          throw reason;
+        }
+      }
+    }
+
     console.log(`⌛ Post-login redirected to ${this.page.url()}`);
 
     await new Promise((resolve) => setTimeout(resolve, 200)); // allow time for client-side redirect

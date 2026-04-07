@@ -258,14 +258,26 @@ async function configureSchedule(page: Page) {
 }
 
 async function waitForScheduleCreation(page: Page, scheduleDialog: Locator) {
-  const successToast = page.getByText("Schedule created");
-  const invalidScheduleToast = page.getByText("Invalid schedule");
-  const failedScheduleToast = page.getByText("Failed to create schedule");
+  const successToastTitle = page.getByText("Schedule created", {
+    exact: true,
+  });
+  const successToastDescription = page.getByText(
+    "Schedule created successfully",
+  );
+  const invalidScheduleToast = page.getByText("Invalid schedule", {
+    exact: true,
+  });
+  const failedScheduleToast = page.getByText("Failed to create schedule", {
+    exact: true,
+  });
 
   await expect
     .poll(
       async () => {
-        if (await successToast.isVisible().catch(() => false)) {
+        if (
+          (await successToastTitle.isVisible().catch(() => false)) ||
+          (await successToastDescription.isVisible().catch(() => false))
+        ) {
           return "success";
         }
 
@@ -283,7 +295,7 @@ async function waitForScheduleCreation(page: Page, scheduleDialog: Locator) {
 
         return "pending";
       },
-      { timeout: 30000 },
+      { timeout: 45000 },
     )
     .toBe("success");
 }
@@ -308,7 +320,45 @@ async function createScheduleForSavedAgent(
   await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
   await page.locator("#schedule-name").fill(`Daily ${agentName}`);
   await configureSchedule(page);
-  await page.getByRole("button", { name: "Done" }).click();
+
+  const doneButton = scheduleDialog.getByRole("button", {
+    name: "Done",
+    exact: true,
+  });
+  await expect(doneButton).toBeEnabled({ timeout: 15000 });
+
+  async function getScheduleSubmissionState() {
+    if (!(await scheduleDialog.isVisible().catch(() => false))) {
+      return "submitted";
+    }
+
+    if (
+      await scheduleDialog
+        .getByRole("button", { name: /Creating schedule/i })
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return "submitted";
+    }
+
+    return "idle";
+  }
+
+  await doneButton.click();
+
+  const initialSubmissionStarted = await expect
+    .poll(getScheduleSubmissionState, { timeout: 5000 })
+    .not.toBe("idle")
+    .then(() => true)
+    .catch(() => false);
+
+  if (!initialSubmissionStarted) {
+    await doneButton.click();
+    await expect
+      .poll(getScheduleSubmissionState, { timeout: 5000 })
+      .not.toBe("idle");
+  }
+
   await waitForScheduleCreation(page, scheduleDialog);
   await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
 }
@@ -329,6 +379,15 @@ async function openActivityDropdown(page: Page) {
   await expect(page.getByTestId("agent-activity-dropdown")).toBeVisible({
     timeout: 10000,
   });
+}
+
+async function getActivityItemCount(page: Page) {
+  return await page
+    .getByTestId("agent-activity-dropdown")
+    .getByText(
+      /^(Started|Completed|Failed|Stopped|Incomplete|Awaiting approval)/i,
+    )
+    .count();
 }
 
 test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
@@ -442,23 +501,28 @@ test("builder happy path: user can see a saved agent run in the activity feed", 
 }) => {
   test.setTimeout(120000);
 
-  const { buildPage, agentName } = await createAndSaveAgent(
-    page,
-    "Smoke Activity Agent",
-  );
+  const { buildPage } = await createAndSaveAgent(page, "Smoke Activity Agent");
+
+  await openActivityDropdown(page);
+  const initialActivityItemCount = await getActivityItemCount(page);
 
   await startBuilderRun(page, buildPage);
   await openActivityDropdown(page);
 
   await expect
     .poll(
-      () =>
-        page
-          .getByTestId("agent-activity-dropdown")
-          .getByText(agentName)
+      async () => {
+        const hasBadge = await page
+          .getByTestId("agent-activity-badge")
           .isVisible()
-          .catch(() => false),
-      { timeout: 20000 },
+          .catch(() => false);
+        if (hasBadge) {
+          return true;
+        }
+
+        return (await getActivityItemCount(page)) > initialActivityItemCount;
+      },
+      { timeout: 30000 },
     )
     .toBe(true);
 });

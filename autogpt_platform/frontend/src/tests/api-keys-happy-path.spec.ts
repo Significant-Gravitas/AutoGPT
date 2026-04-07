@@ -42,7 +42,9 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
   expect(createdSecret.length).toBeGreaterThan(0);
 
   await secretDialog.getByRole("button").first().click();
-  await expect(page.getByText("Copied")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText("Copied", { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
   await expect
     .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
       timeout: 10000,
