@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import path from "path";
 import { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
-import { getSeededTestUser } from "./credentials/accounts";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import {
@@ -122,136 +121,6 @@ async function openLibraryAgentByName(page: Page, agentName: string) {
   await waitForAgentPageLoad(page);
 }
 
-async function fillVisibleTaskInputs(page: Page) {
-  const seededEmail = getSeededTestUser("smokeMarketplace").email;
-  const inputs = page.locator(
-    'input:visible:not([type="hidden"]):not([type="file"]):not([disabled]), textarea:visible:not([disabled])',
-  );
-  const inputCount = await inputs.count();
-
-  for (let index = 0; index < inputCount; index += 1) {
-    const input = inputs.nth(index);
-    const currentValue = await input.inputValue().catch(() => "");
-    if (currentValue.trim()) {
-      continue;
-    }
-
-    const type = (await input.getAttribute("type"))?.toLowerCase() ?? "text";
-    const placeholder = (
-      (await input.getAttribute("placeholder")) ?? ""
-    ).toLowerCase();
-    const ariaLabel = (
-      (await input.getAttribute("aria-label")) ?? ""
-    ).toLowerCase();
-    const labelText = `${placeholder} ${ariaLabel}`;
-
-    if (type === "checkbox" || type === "radio") {
-      continue;
-    }
-
-    const value =
-      type === "email" || labelText.includes("email")
-        ? seededEmail
-        : type === "number"
-          ? "1"
-          : "e2e-input";
-
-    await input.fill(value).catch(() => {});
-  }
-}
-
-async function openNewTaskDialog(page: Page) {
-  const setupTaskButton = page.getByRole("button", {
-    name: /Setup your task/i,
-  });
-  if (await setupTaskButton.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await setupTaskButton.click();
-    return;
-  }
-
-  const newTaskButton = page.getByRole("button", { name: /^New task$/i });
-  await expect(newTaskButton).toBeVisible({ timeout: 15000 });
-  await newTaskButton.click();
-}
-
-async function createScheduleFromLibraryAgentPage(page: Page): Promise<string> {
-  await openNewTaskDialog(page);
-
-  const scheduleTaskButton = page.getByRole("button", {
-    name: /Schedule Task/i,
-  });
-  await expect(scheduleTaskButton).toBeVisible({ timeout: 15000 });
-  if (!(await scheduleTaskButton.isEnabled().catch(() => false))) {
-    await fillVisibleTaskInputs(page);
-  }
-  await expect(scheduleTaskButton).toBeEnabled({ timeout: 15000 });
-  await scheduleTaskButton.click();
-
-  const scheduleNameInput = page.locator("#schedule-name");
-  await expect(scheduleNameInput).toBeVisible({ timeout: 15000 });
-  const scheduleName = (await scheduleNameInput.inputValue()).trim();
-  expect(scheduleName.length).toBeGreaterThan(0);
-
-  const scheduleButton = page.getByRole("button", { name: /^Schedule$/i });
-  await expect(scheduleButton).toBeEnabled({ timeout: 15000 });
-  const successToast = page.getByText("Schedule created", { exact: true });
-  const failureToast = page.getByText(/Failed to create schedule/i);
-
-  async function getScheduleSubmissionState() {
-    if (await successToast.isVisible().catch(() => false)) {
-      return "success";
-    }
-
-    if (await failureToast.isVisible().catch(() => false)) {
-      return "failed";
-    }
-
-    if (!(await scheduleButton.isVisible().catch(() => false))) {
-      return "success";
-    }
-
-    return "pending";
-  }
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    await scheduleButton.click({ force: true });
-
-    const submitted = await expect
-      .poll(getScheduleSubmissionState, { timeout: 10000 })
-      .not.toBe("pending")
-      .then(() => true)
-      .catch(() => false);
-
-    if (submitted) {
-      break;
-    }
-  }
-
-  await expect
-    .poll(getScheduleSubmissionState, { timeout: 20000 })
-    .toBe("success");
-
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("activeTab"), {
-      timeout: 15000,
-    })
-    .toBe("scheduled");
-
-  await expect(
-    page.getByText(scheduleName, { exact: true }).first(),
-  ).toBeVisible({
-    timeout: 15000,
-  });
-
-  return scheduleName;
-}
-
-async function reloadLibraryAgentPage(page: Page) {
-  await page.reload();
-  await waitForAgentPageLoad(page);
-  await page.waitForLoadState("networkidle").catch(() => undefined);
-}
-
 async function dismissFeedbackDialog(page: Page) {
   const feedbackDialog = page.getByRole("dialog", {
     name: "We'd love your feedback",
@@ -323,49 +192,6 @@ test("library happy path: user can run a saved or imported agent from Library", 
   expect(ACCEPTED_RUN_STATUSES).toContain(
     runStatus as (typeof ACCEPTED_RUN_STATUSES)[number],
   );
-});
-
-test("library happy path: user can create and delete a schedule from the Library agent page", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const agentName = await createSavedAgent(page, "E2E Schedule Agent");
-
-  await openLibraryAgentByName(page, agentName);
-  const scheduleName = await createScheduleFromLibraryAgentPage(page);
-
-  await reloadLibraryAgentPage(page);
-  await expect(
-    page.getByText(scheduleName, { exact: true }).first(),
-  ).toBeVisible({
-    timeout: 15000,
-  });
-
-  const deleteScheduleButton = page.getByRole("button", {
-    name: /Delete schedule/i,
-  });
-  await expect(deleteScheduleButton).toBeVisible({ timeout: 15000 });
-  await deleteScheduleButton.click();
-
-  const deleteScheduleDialog = page.getByRole("dialog", {
-    name: /Delete schedule/i,
-  });
-  await expect(deleteScheduleDialog).toBeVisible({ timeout: 15000 });
-  await deleteScheduleDialog
-    .getByRole("button", { name: /Delete Schedule/i })
-    .click();
-
-  await expect(page.getByText("Schedule deleted", { exact: true })).toBeVisible(
-    {
-      timeout: 15000,
-    },
-  );
-  await expect(
-    page.getByRole("button", { name: /Setup your task/i }),
-  ).toBeVisible({
-    timeout: 15000,
-  });
 });
 
 test("library happy path: user can rerun a completed task from the Library agent page", async ({

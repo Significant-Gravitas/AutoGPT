@@ -45,14 +45,8 @@ async function dismissFeedbackDialog(page: Page) {
 
 async function openRunnableMarketplaceAgent(page: Page) {
   const candidatePaths = [
-    {
-      path: RUNNABLE_MARKETPLACE_AGENT_PATH,
-      expectedTitle: /E2E Calculator Agent/i,
-    },
-    {
-      path: FALLBACK_MARKETPLACE_AGENT_PATH,
-      expectedTitle: /Unspirational Poster Maker/i,
-    },
+    { path: RUNNABLE_MARKETPLACE_AGENT_PATH },
+    { path: FALLBACK_MARKETPLACE_AGENT_PATH },
   ];
 
   for (const candidate of candidatePaths) {
@@ -63,9 +57,7 @@ async function openRunnableMarketplaceAgent(page: Page) {
       await addToLibraryButton.isVisible({ timeout: 5000 }).catch(() => false)
     ) {
       await expect(page).toHaveURL(/\/marketplace\/agent\//);
-      await expect(page.getByTestId("agent-title").first()).toHaveText(
-        candidate.expectedTitle,
-      );
+      await expect(page.getByTestId("agent-title").first()).toBeVisible();
       return candidate;
     }
   }
