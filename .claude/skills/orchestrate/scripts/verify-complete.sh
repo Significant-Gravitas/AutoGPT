@@ -120,8 +120,11 @@ fi
 LATEST_COMMIT_DATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
   --json commits --jq '.commits[-1].committedDate // ""' 2>/dev/null || echo "")
 
+
+# Use latestReviews (not reviews) so each reviewer's latest state is used — superseded
+# CHANGES_REQUESTED entries are automatically excluded when the reviewer later approved.
 CHANGES_REQUESTED_REVIEWS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-  --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")]' 2>/dev/null || echo "[]")
+  --json latestReviews --jq '[.latestReviews[] | select(.state == "CHANGES_REQUESTED")]' 2>/dev/null || echo "[]")
 
 BLOCKING_CHANGES_REQUESTED=0
 BLOCKING_REQUESTERS=""
@@ -137,7 +140,11 @@ if [ -n "$LATEST_COMMIT_DATE" ] && [ "$(echo "$CHANGES_REQUESTED_REVIEWS" | jq l
     [ -z "$review" ] && continue
     REVIEW_DATE=$(echo "$review" | jq -r '.submittedAt // ""')
     REVIEWER=$(echo "$review" | jq -r '.author.login // "unknown"')
-    if [ -n "$REVIEW_DATE" ]; then
+    if [ -z "$REVIEW_DATE" ]; then
+      # No submission date — treat as fresh (conservative: blocks verification)
+      BLOCKING_CHANGES_REQUESTED=$(( BLOCKING_CHANGES_REQUESTED + 1 ))
+      BLOCKING_REQUESTERS="${BLOCKING_REQUESTERS:+$BLOCKING_REQUESTERS, }${REVIEWER}"
+    else
       if date --version >/dev/null 2>&1; then
         REVIEW_EPOCH=$(date -d "$REVIEW_DATE" "+%s" 2>/dev/null || echo "0")
       else

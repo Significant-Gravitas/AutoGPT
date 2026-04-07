@@ -414,6 +414,38 @@ Please verify: <specific behaviors to check>.
 
 Only one `/pr-test` at a time — they share ports and DB.
 
+### /pr-test result evaluation
+
+**PARTIAL on any headline feature scenario is an immediate blocker.** Do not approve, do not mark done, do not let the agent output `ORCHESTRATOR:DONE`.
+
+| `/pr-test` result | Action |
+|---|---|
+| All headline scenarios **PASS** | Proceed to evaluation step 2 |
+| Any headline scenario **PARTIAL** | Re-brief the agent immediately — see below |
+| Any headline scenario **FAIL** | Re-brief the agent immediately |
+
+**What PARTIAL means**: the feature is only partly working. Example: the Apply button never appeared, or the AI returned no action blocks. The agent addressed part of the objective but not all of it.
+
+**When any headline scenario is PARTIAL or FAIL:**
+
+1. Do NOT mark the agent done or accept `ORCHESTRATOR:DONE`
+2. Re-brief the agent with the specific scenario that failed and what was missing:
+   ```bash
+   tmux send-keys -t SESSION:WIN "PARTIAL result on /pr-test — S5 (Apply button) never appeared. The AI must output JSON action blocks for the Apply button to render. Fix this before re-running /pr-test."
+   sleep 0.3
+   tmux send-keys -t SESSION:WIN Enter
+   ```
+3. Set state back to `running`:
+   ```bash
+   jq --arg w "SESSION:WIN" '(.agents[] | select(.window == $w)).state = "running"' \
+     ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+   ```
+4. Wait for new `ORCHESTRATOR:DONE`, then re-run `/pr-test` from scratch
+
+**Rule: only ALL-PASS qualifies for approval.** A mix of PASS + PARTIAL is a failure.
+
+> **Why this matters**: PR #12699 was wrongly approved with S5 PARTIAL — the AI never output JSON action blocks so the Apply button never appeared. The fix was already in the agent's reach but slipped through because PARTIAL was not treated as blocking.
+
 ### 2. Do your own evaluation
 
 1. **Read the PR diff and objective** — does the code actually implement what was asked? Is anything obviously missing or half-done?
@@ -423,8 +455,9 @@ Only one `/pr-test` at a time — they share ports and DB.
 
 ### 3. Decide
 
-- `/pr-test` passes + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
-- `/pr-test` fails or evaluation finds gaps → re-brief the agent with specific failures, set state back to `running`
+- `/pr-test` all scenarios PASS + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
+- `/pr-test` any scenario PARTIAL or FAIL → re-brief the agent with the specific failing scenario, set state back to `running` (see `/pr-test result evaluation` above)
+- Evaluation finds gaps even with all PASS → re-brief the agent with specific gaps, set state back to `running`
 
 **Never mark done based purely on script output.** You hold the full objective context; the script does not.
 
