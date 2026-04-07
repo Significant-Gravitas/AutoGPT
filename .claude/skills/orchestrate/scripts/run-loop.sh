@@ -78,10 +78,19 @@ handle_approve() {
   local pane_tail
   pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -10 || echo "")
 
-  # Settings error dialog
+  # Settings error dialog (startup)
   if echo "$pane_tail" | grep -q "Enter to confirm"; then
     echo "[$(date +%H:%M:%S)] APPROVE dialog $window — dismissing settings error"
     tmux send-keys -t "$window" Down Enter
+    return
+  fi
+
+  # Numbered-option dialog (e.g. "Do you want to make this edit?" / "1. Yes / 2. Yes, and... / 3. No")
+  # These appear when claude edits files in .claude/ or needs session-level permission.
+  # Always pick option 1 (Yes) for safe operations.
+  if echo "$pane_tail" | grep -qE "^\s*[❯>]\s*1\." || echo "$pane_tail" | grep -q "Esc to cancel"; then
+    echo "[$(date +%H:%M:%S)] APPROVE numbered $window — sending 1 (Yes)"
+    tmux send-keys -t "$window" "1" Enter
     return
   fi
 
@@ -94,7 +103,7 @@ handle_approve() {
     return
   fi
 
-  # Safe patterns — auto-approve
+  # Safe patterns — auto-approve with y
   if echo "$pane_tail" | grep -qiE "$SAFE_PATTERNS"; then
     echo "[$(date +%H:%M:%S)] APPROVE auto   $window"
     tmux send-keys -t "$window" "y" Enter

@@ -48,6 +48,7 @@ fi
 LAST_40=$(echo "$CLEAN" | tail -40)
 APPROVAL_PATTERNS=(
   "Do you want to proceed"
+  "Do you want to make this"
   "\\[y/n\\]"
   "\\[Y/n\\]"
   "\\[n/Y\\]"
@@ -57,6 +58,7 @@ APPROVAL_PATTERNS=(
   "Allow bash"
   "Would you like"
   "Press enter to continue"
+  "Esc to cancel"
 )
 for pattern in "${APPROVAL_PATTERNS[@]}"; do
   if echo "$LAST_40" | grep -qiE "$pattern"; then
