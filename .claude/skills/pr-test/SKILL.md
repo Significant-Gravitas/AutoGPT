@@ -536,12 +536,12 @@ declare -A SCREENSHOT_EXPLANATIONS=(
   #   3. EVIDENCE: What does this screenshot prove (pass/fail/data)?
   #
   # Good example:
-  #   ["03-cost-log-after-run.png"]="Scenario: LLM block cost tracking. Steps: Logged in as tester@gmail.com → ran 'Cost Test Agent' → waited for COMPLETED status. Evidence: PlatformCostLog table shows 1 new row with cost_microdollars=1234 and correct user_id."
+  #   ["03-cost-log-after-run.png"]="Flow: LLM block cost tracking. Steps: Logged in as tester@gmail.com → ran 'Cost Test Agent' → waited for COMPLETED status. Evidence: PlatformCostLog table shows 1 new row with cost_microdollars=1234 and correct user_id."
   #
   # Bad example (too vague — never do this):
   #   ["03-cost-log.png"]="Shows the cost log table."
-  ["01-login-page.png"]="Scenario: Login flow. Steps: Opened /login. Evidence: Login page renders with email/password fields and SSO options visible."
-  ["02-builder-with-block.png"]="Scenario: Block execution. Steps: Logged in → /build → added LLM block. Evidence: Builder canvas shows block connected to trigger, ready to run."
+  ["01-login-page.png"]="Flow: Login flow. Steps: Opened /login. Evidence: Login page renders with email/password fields and SSO options visible."
+  ["02-builder-with-block.png"]="Flow: Block execution. Steps: Logged in → /build → added LLM block. Evidence: Builder canvas shows block connected to trigger, ready to run."
   # ... one entry per screenshot using the flow/steps/evidence format above
 )
 
