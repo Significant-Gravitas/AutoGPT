@@ -77,8 +77,12 @@ if ! $PROMPT_FOUND; then
   echo "[spawn-agent] WARNING: timed out waiting for ❯ prompt on $WINDOW — sending objective anyway" >&2
 fi
 
-# Send the task with checkpoint protocol and recovery instructions
-tmux send-keys -t "$WINDOW" "${OBJECTIVE}${RECOVERY} When ALL steps are done, output ORCHESTRATOR:DONE on its own line." Enter
+# Send the task with checkpoint protocol and recovery instructions.
+# Split text and Enter into separate calls — if sent together, Enter can fire before
+# the full string is buffered into Claude's input, leaving the message stuck unsent.
+tmux send-keys -t "$WINDOW" "${OBJECTIVE}${RECOVERY} When ALL steps are done, output ORCHESTRATOR:DONE on its own line."
+sleep 0.3
+tmux send-keys -t "$WINDOW" Enter
 
 # Only output the window address — nothing else (callers parse this)
 echo "$WINDOW"

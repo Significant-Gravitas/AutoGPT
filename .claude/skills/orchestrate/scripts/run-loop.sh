@@ -82,7 +82,9 @@ handle_kick() {
     echo "[$(date +%H:%M:%S)] KICK WARNING  $window — timed out waiting for ❯, sending objective anyway"
   fi
 
-  tmux send-keys -t "$window" "${objective}. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter
+  tmux send-keys -t "$window" "${objective}. When all work is done, output the exact string: ORCHESTRATOR:DONE"
+  sleep 0.3
+  tmux send-keys -t "$window" Enter
 }
 
 # ---------------------------------------------------------------------------
@@ -150,7 +152,9 @@ handle_complete() {
     echo "[$(date +%H:%M:%S)] RE-BRIEFING    $window — sending task context from state file"
     local pr_number
     pr_number=$(agent_field "$window" "pr_number")
-    tmux send-keys -t "$window" "You output ORCHESTRATOR:DONE but work is not complete: $verify_msg. Re-read your task: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"$window\")' and gh pr view $pr_number --json title,body to reorient. Fix what is missing, then output ORCHESTRATOR:DONE again." Enter
+    tmux send-keys -t "$window" "You output ORCHESTRATOR:DONE but work is not complete: $verify_msg. Re-read your task: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"$window\")' and gh pr view $pr_number --json title,body to reorient. Fix what is missing, then output ORCHESTRATOR:DONE again."
+    sleep 0.3
+    tmux send-keys -t "$window" Enter
     update_state "$window" "state" "running"
     update_state_int "$window" "last_rebriefed_at" "$(date +%s)"
     return
@@ -196,7 +200,9 @@ check_supervisor() {
 
       # Send recovery prompt — reads full state from file so no hardcoded context needed
       local state_file_path="$STATE_FILE"
-      tmux send-keys -t "$sup_win" "You are the fleet supervisor. Your prior context was lost. Start by reading: cat ${state_file_path} | jq — then capture each running agent's pane (tmux capture-pane -t WINDOW -p -S -200 | tail -80) and resume active supervision: nudge stalled agents, fix CI failures, answer questions. Loop every 2-3 minutes until all agents are done." Enter
+      tmux send-keys -t "$sup_win" "You are the fleet supervisor. Your prior context was lost. Start by reading: cat ${state_file_path} | jq — then capture each running agent's pane (tmux capture-pane -t WINDOW -p -S -200 | tail -80) and resume active supervision: nudge stalled agents, fix CI failures, answer questions. Loop every 2-3 minutes until all agents are done."
+      sleep 0.3
+      tmux send-keys -t "$sup_win" Enter
       ;;
   esac
 }
