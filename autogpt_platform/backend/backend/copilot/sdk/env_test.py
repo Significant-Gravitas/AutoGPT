@@ -41,11 +41,9 @@ class TestBuildSdkEnvSubscription:
 
             result = build_sdk_env()
 
-        assert result == {
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        }
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert result["ANTHROPIC_BASE_URL"] == ""
         mock_validate.assert_called_once()
 
     @patch(
@@ -68,18 +66,20 @@ class TestBuildSdkEnvSubscription:
 
 
 class TestBuildSdkEnvDirectAnthropic:
-    """When OpenRouter is inactive, return empty dict (inherit parent env)."""
+    """When OpenRouter is inactive, no ANTHROPIC_* overrides (inherit parent env)."""
 
-    def test_returns_empty_dict_when_openrouter_inactive(self):
+    def test_no_anthropic_key_overrides_when_openrouter_inactive(self):
         cfg = _make_config(use_openrouter=False)
         with patch("backend.copilot.sdk.env.config", cfg):
             from backend.copilot.sdk.env import build_sdk_env
 
             result = build_sdk_env()
 
-        assert result == {}
+        assert "ANTHROPIC_API_KEY" not in result
+        assert "ANTHROPIC_AUTH_TOKEN" not in result
+        assert "ANTHROPIC_BASE_URL" not in result
 
-    def test_returns_empty_dict_when_openrouter_flag_true_but_no_key(self):
+    def test_no_anthropic_key_overrides_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
         cfg = _make_config(use_openrouter=True, base_url="https://openrouter.ai/api/v1")
         # Force api_key to None after construction (field_validator may pick up env vars)
@@ -90,7 +90,9 @@ class TestBuildSdkEnvDirectAnthropic:
 
             result = build_sdk_env()
 
-        assert result == {}
+        assert "ANTHROPIC_API_KEY" not in result
+        assert "ANTHROPIC_AUTH_TOKEN" not in result
+        assert "ANTHROPIC_BASE_URL" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -234,12 +236,12 @@ class TestBuildSdkEnvModePriority:
 
             result = build_sdk_env()
 
-        # Should get subscription result, not OpenRouter
-        assert result == {
-            "ANTHROPIC_API_KEY": "",
-            "ANTHROPIC_AUTH_TOKEN": "",
-            "ANTHROPIC_BASE_URL": "",
-        }
+        # Should get subscription result (blanked keys), not OpenRouter proxy
+        assert result["ANTHROPIC_API_KEY"] == ""
+        assert result["ANTHROPIC_AUTH_TOKEN"] == ""
+        assert result["ANTHROPIC_BASE_URL"] == ""
+        # OpenRouter-specific key must NOT be present
+        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
 
 
 # ---------------------------------------------------------------------------

@@ -26,6 +26,7 @@ def _make_config(**overrides) -> ChatConfig:
 # ---------------------------------------------------------------------------
 
 _SVC = "backend.copilot.sdk.service"
+_ENV = "backend.copilot.sdk.env"
 
 
 class TestResolveFallbackModel:
@@ -101,44 +102,91 @@ class TestResolveFallbackModel:
 # ---------------------------------------------------------------------------
 
 
-class TestSecurityEnvVars:
-    """Verify the env-var contract in the env module.
+_SECURITY_VARS = (
+    "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
+    "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+)
 
-    The production code sets CLAUDE_CODE_TMPDIR and security env vars
-    inside ``build_sdk_env()`` in ``env.py``.  We grep for these string
-    literals to ensure they aren't accidentally removed.
+
+class TestSecurityEnvVars:
+    """Verify security env vars are set in the returned dict for every auth mode.
+
+    Tests call ``build_sdk_env()`` directly and assert the vars are present
+    in the returned dict — not just present somewhere in the source file.
     """
 
-    _ENV_PATH = "autogpt_platform/backend/backend/copilot/sdk/env.py"
+    def test_security_vars_set_in_openrouter_mode(self):
+        """Mode 3 (OpenRouter): security vars must be in the returned env."""
+        cfg = _make_config(
+            use_claude_code_subscription=False,
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
 
-    @staticmethod
-    def _read_env_source() -> str:
-        import pathlib
+            env = build_sdk_env(session_id="s1", user_id="u1")
 
-        # Walk up from this test file to the repo root
-        repo = pathlib.Path(__file__).resolve().parents[5]
-        return (repo / TestSecurityEnvVars._ENV_PATH).read_text()
+        for var in _SECURITY_VARS:
+            assert env.get(var) == "1", f"{var} not set in OpenRouter mode"
 
-    def test_tmpdir_env_var_present_in_source(self):
-        """CLAUDE_CODE_TMPDIR must be set when sdk_cwd is provided."""
-        src = self._read_env_source()
-        assert 'env["CLAUDE_CODE_TMPDIR"]' in src
+    def test_security_vars_set_in_direct_anthropic_mode(self):
+        """Mode 2 (direct Anthropic): security vars must be in the returned env."""
+        cfg = _make_config(use_claude_code_subscription=False, use_openrouter=False)
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
 
-    def test_home_not_overridden_in_source(self):
-        """HOME must NOT be overridden — would break git/ssh/npm."""
-        src = self._read_env_source()
-        assert 'env["HOME"]' not in src
+            env = build_sdk_env()
 
-    def test_security_env_vars_present_in_source(self):
-        """All four security env vars must be set in the env module."""
-        src = self._read_env_source()
-        for var in (
-            "CLAUDE_CODE_DISABLE_CLAUDE_MDS",
-            "CLAUDE_CODE_SKIP_PROMPT_HISTORY",
-            "CLAUDE_CODE_DISABLE_AUTO_MEMORY",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+        for var in _SECURITY_VARS:
+            assert env.get(var) == "1", f"{var} not set in direct Anthropic mode"
+
+    def test_security_vars_set_in_subscription_mode(self):
+        """Mode 1 (subscription): security vars must be in the returned env."""
+        cfg = _make_config(use_claude_code_subscription=True)
+        with (
+            patch(f"{_ENV}.config", cfg),
+            patch(f"{_ENV}.validate_subscription"),
         ):
-            assert var in src, f"{var} not found in env.py"
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env(session_id="s1", user_id="u1")
+
+        for var in _SECURITY_VARS:
+            assert env.get(var) == "1", f"{var} not set in subscription mode"
+
+    def test_tmpdir_set_when_sdk_cwd_provided(self):
+        """CLAUDE_CODE_TMPDIR must be set when sdk_cwd is provided."""
+        cfg = _make_config(use_openrouter=False)
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env(sdk_cwd="/workspace/session-1")
+
+        assert env.get("CLAUDE_CODE_TMPDIR") == "/workspace/session-1"
+
+    def test_tmpdir_absent_when_sdk_cwd_not_provided(self):
+        """CLAUDE_CODE_TMPDIR must NOT be set when sdk_cwd is None."""
+        cfg = _make_config(use_openrouter=False)
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert "CLAUDE_CODE_TMPDIR" not in env
+
+    def test_home_not_overridden(self):
+        """HOME must NOT be overridden — would break git/ssh/npm in subprocesses."""
+        cfg = _make_config(use_openrouter=False)
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert "HOME" not in env
 
 
 # ---------------------------------------------------------------------------
@@ -171,8 +219,6 @@ class TestConfigDefaults:
 # build_sdk_env — all 3 auth modes
 # ---------------------------------------------------------------------------
 
-_ENV = "backend.copilot.sdk.env"
-
 
 class TestBuildSdkEnv:
     """Verify build_sdk_env returns correct dicts for each auth mode."""
@@ -192,8 +238,8 @@ class TestBuildSdkEnv:
         assert env["ANTHROPIC_AUTH_TOKEN"] == ""
         assert env["ANTHROPIC_BASE_URL"] == ""
 
-    def test_direct_anthropic_returns_empty_dict(self):
-        """Mode 2: direct Anthropic returns {} (inherits from parent env)."""
+    def test_direct_anthropic_inherits_api_key(self):
+        """Mode 2: direct Anthropic doesn't set ANTHROPIC_* keys (inherits from parent)."""
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=False,
@@ -203,7 +249,9 @@ class TestBuildSdkEnv:
 
             env = build_sdk_env()
 
-        assert env == {}
+        assert "ANTHROPIC_API_KEY" not in env
+        assert "ANTHROPIC_AUTH_TOKEN" not in env
+        assert "ANTHROPIC_BASE_URL" not in env
 
     def test_openrouter_sets_base_url_and_auth(self):
         """Mode 3: OpenRouter sets base URL, auth token, and clears API key."""
@@ -240,8 +288,7 @@ class TestBuildSdkEnv:
         assert "ANTHROPIC_CUSTOM_HEADERS" not in env
 
     def test_all_modes_return_mutable_dict(self):
-        """build_sdk_env must return a mutable dict (not None) so callers
-        can add security env vars like CLAUDE_CODE_TMPDIR."""
+        """build_sdk_env must return a mutable dict (not None) in every mode."""
         for cfg in (
             _make_config(use_claude_code_subscription=True),
             _make_config(use_openrouter=False),
@@ -299,11 +346,7 @@ class TestIsTransientApiError:
     @pytest.mark.parametrize(
         "error_text",
         [
-            "API is overloaded",
-            "Internal Server Error",
-            "Bad Gateway",
-            "Service Unavailable",
-            "Gateway Timeout",
+            # Status-code-specific patterns (preferred — no false-positive risk)
             "status code 529",
             "status code 500",
             "status code 502",
@@ -322,6 +365,14 @@ class TestIsTransientApiError:
             "prompt is too long",
             "model not found",
             "",
+            # Natural-language phrases intentionally NOT matched — they are too
+            # broad and could appear in application-level SDK messages unrelated
+            # to Anthropic API transient conditions.
+            "API is overloaded",
+            "Internal Server Error",
+            "Bad Gateway",
+            "Service Unavailable",
+            "Gateway Timeout",
         ],
     )
     def test_non_transient_errors(self, error_text: str):

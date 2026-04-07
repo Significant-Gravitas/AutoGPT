@@ -26,14 +26,14 @@ def build_sdk_env(
 
     Three modes (checked in order):
     1. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    2. **Direct Anthropic** — returns ``{}``; subprocess inherits
-       ``ANTHROPIC_API_KEY`` from the parent environment.
+    2. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
+       from the parent environment (no overrides needed).
     3. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
 
-    When *sdk_cwd* is provided, ``CLAUDE_CODE_TMPDIR`` is set so that
-    the CLI writes temp/sub-agent output inside the per-session workspace
-    directory rather than an inaccessible system temp path.
+    All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
+    security hardening env vars to prevent .claude.md loading, prompt
+    history persistence, auto-memory writes, and non-essential traffic.
     """
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
@@ -43,44 +43,43 @@ def build_sdk_env(
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
         }
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        return env
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    if not config.openrouter_active:
+    elif not config.openrouter_active:
         env = {}
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        return env
 
     # --- Mode 3: OpenRouter proxy ---
-    base = (config.base_url or "").rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-    env = {
-        "ANTHROPIC_BASE_URL": base,
-        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
-        "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-    }
+    else:
+        base = (config.base_url or "").rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        env = {
+            "ANTHROPIC_BASE_URL": base,
+            "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
+            "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+        }
 
-    # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-    def _safe(v: str) -> str:
-        return v.replace("\r", "").replace("\n", "").strip()[:128]
+        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        def _safe(v: str) -> str:
+            return v.replace("\r", "").replace("\n", "").strip()[:128]
 
-    parts = []
-    if session_id:
-        parts.append(f"x-session-id: {_safe(session_id)}")
-    if user_id:
-        parts.append(f"x-user-id: {_safe(user_id)}")
-    if parts:
-        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+        parts = []
+        if session_id:
+            parts.append(f"x-session-id: {_safe(session_id)}")
+        if user_id:
+            parts.append(f"x-user-id: {_safe(user_id)}")
+        if parts:
+            env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
 
+    # --- Common: workspace isolation + security hardening (all modes) ---
+    # Route subagent temp files into the per-session workspace so output
+    # files are accessible (fixes /tmp/claude-0/ permission errors in E2B).
     if sdk_cwd:
         env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
 
-    # Prevent loading untrusted workspace .claude.md files, persisting
-    # prompt history, writing auto-memory, and non-essential traffic.
+    # Harden multi-tenant deployment: prevent loading untrusted workspace
+    # .claude.md files, persisting prompt history, writing auto-memory,
+    # and sending non-essential telemetry traffic.
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"

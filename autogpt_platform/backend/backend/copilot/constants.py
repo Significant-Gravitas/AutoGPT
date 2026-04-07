@@ -47,7 +47,11 @@ def parse_node_id_from_exec_id(node_exec_id: str) -> str:
 # which is retryable.  Covers:
 #   - Connection-level: ECONNRESET, dropped TCP connections
 #   - HTTP 429: rate-limit / too-many-requests
-#   - HTTP 5xx: server errors, overloaded
+#   - HTTP 5xx: server errors
+#
+# Prefer specific status-code patterns over natural-language phrases
+# (e.g. "overloaded", "bad gateway") — those phrases can appear in
+# application-level SDK messages and would trigger spurious retries.
 _TRANSIENT_ERROR_PATTERNS = (
     # Connection-level
     "socket connection was closed unexpectedly",
@@ -59,12 +63,7 @@ _TRANSIENT_ERROR_PATTERNS = (
     "rate_limit",
     "too many requests",
     "status code 429",
-    # 5xx server error patterns
-    "overloaded",
-    "internal server error",
-    "bad gateway",
-    "service unavailable",
-    "gateway timeout",
+    # 5xx server error patterns (status-code-specific to avoid false positives)
     "status code 529",
     "status code 500",
     "status code 502",

@@ -2269,9 +2269,9 @@ async def stream_chat_completion_sdk(
                 state.transcript_builder._entries = pre_transcript_entries
                 state.transcript_builder._last_uuid = pre_transcript_uuid
                 # Check if this is a transient error we can retry with backoff.
-                if exc.code == "transient_api_error" or is_transient_api_error(
-                    str(exc)
-                ):
+                # exc.code is the only reliable signal — str(exc) is always the
+                # static "Stream error handled — StreamError already yielded" message.
+                if exc.code == "transient_api_error":
                     backoff = _next_transient_backoff()
                     if backoff is not None:
                         logger.warning(
