@@ -141,6 +141,47 @@ Agent states: `running` | `idle` | `stuck` | `waiting_approval` | `complete` | `
 
 `done` means verified complete — window is still open, session still alive, worktree still on task branch. Not recycled yet.
 
+## Serial /pr-test rule
+
+`/pr-test` and `/pr-test --fix` run local Docker + integration tests that use shared ports, a shared database, and shared build caches. **Running two `/pr-test` jobs simultaneously will cause port conflicts and database corruption.**
+
+**Rule: only one `/pr-test` runs at a time. The orchestrator serializes them.**
+
+You (the orchestrating Claude) own the test queue:
+1. Agents do `pr-review` and `pr-address` in parallel — that's safe (they only push code and reply to GitHub).
+2. When a PR needs local testing, add it to your mental queue — don't give agents a `pr-test` step.
+3. Run `/pr-test https://github.com/OWNER/REPO/pull/PR_NUMBER --fix` yourself, sequentially.
+4. Feed results back to the relevant agent via `tmux send-keys`:
+   ```bash
+   tmux send-keys -t SESSION:WIN "Local tests for PR #N: <paste failure output or 'all passed'>. Fix any failures and push, then output ORCHESTRATOR:DONE."
+   sleep 0.3
+   tmux send-keys -t SESSION:WIN Enter
+   ```
+5. Wait for CI to confirm green before marking the agent done.
+
+If multiple PRs need testing at the same time, pick the one furthest along (fewest pending CI checks) and test it first. Only start the next test after the previous one completes.
+
+## Session restore (tested and confirmed)
+
+Agent sessions are saved to disk. To restore a closed or crashed session:
+
+```bash
+# If session_id is in state (preferred):
+NEW_WIN=$(tmux new-window -t SESSION -n WORKTREE_NAME -P -F '#{window_index}')
+tmux send-keys -t "SESSION:${NEW_WIN}" "cd /path/to/worktree && claude --resume SESSION_ID --permission-mode bypassPermissions" Enter
+
+# If no session_id (use --continue for most recent session in that directory):
+tmux send-keys -t "SESSION:${NEW_WIN}" "cd /path/to/worktree && claude --continue --permission-mode bypassPermissions" Enter
+```
+
+`--continue` restores the full conversation history including all tool calls, file edits, and context. The agent resumes exactly where it left off. After restoring, update the window address in the state file:
+
+```bash
+jq --arg old "SESSION:OLD_WIN" --arg new "SESSION:NEW_WIN" \
+  '(.agents[] | select(.window == $old)).window = $new' \
+  ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+```
+
 ## Intent → action mapping
 
 Match the user's message to one of these intents:
