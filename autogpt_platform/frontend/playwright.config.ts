@@ -17,7 +17,7 @@ const jsonReporterOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
 const configuredWorkers = process.env.PLAYWRIGHT_WORKERS
   ? Number(process.env.PLAYWRIGHT_WORKERS)
   : process.env.CI
-    ? 4
+    ? 6
     : undefined;
 
 // Directory where CI copies .next/static from the Docker container
