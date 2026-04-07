@@ -10,6 +10,7 @@ import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { useCopilotUIStore } from "./store";
@@ -34,8 +35,15 @@ export function useCopilotPage() {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { sessionToDelete, setSessionToDelete, isDrawerOpen, setDrawerOpen } =
-    useCopilotUIStore();
+  const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+
+  const {
+    sessionToDelete,
+    setSessionToDelete,
+    isDrawerOpen,
+    setDrawerOpen,
+    copilotMode,
+  } = useCopilotUIStore();
 
   const {
     sessionId,
@@ -69,6 +77,7 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     refetchSession,
+    copilotMode: isModeToggleEnabled ? copilotMode : undefined,
   });
 
   const { olderMessages, hasMore, isLoadingMore, loadMore } =

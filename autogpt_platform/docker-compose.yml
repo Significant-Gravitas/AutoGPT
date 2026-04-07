@@ -98,6 +98,7 @@ services:
       - CLAMD_CONF_MaxScanSize=100M
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
+      - CLAMD_CONF_TCPAddr=0.0.0.0
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --version || exit 1"]
       interval: 30s
