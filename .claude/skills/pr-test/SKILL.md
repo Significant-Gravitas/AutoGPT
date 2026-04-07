@@ -584,15 +584,27 @@ TREE_JSON+=']'
 
 # Step 2: Create tree, commit, and branch ref
 TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
-COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
-  -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
-  -f tree="$TREE_SHA" \
-  --jq '.sha')
+
+# Resolve parent commit so screenshots are chained, not orphan root commits
+PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || echo "")
+if [ -n "$PARENT_SHA" ]; then
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    -f "parents[]=$PARENT_SHA" \
+    --jq '.sha')
+else
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    --jq '.sha')
+fi
+
 gh api "repos/${REPO}/git/refs" \
   -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
   -f sha="$COMMIT_SHA" 2>/dev/null \
   || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
-    -X PATCH -f sha="$COMMIT_SHA" -f force=true
+    -X PATCH -f sha="$COMMIT_SHA" -F force=true
 ```
 
 Then post the comment with **inline images AND explanations for each screenshot**:

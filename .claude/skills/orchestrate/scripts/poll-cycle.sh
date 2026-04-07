@@ -142,6 +142,11 @@ while IFS= read -r agent; do
       fi
       ;;
     running)
+      # Clear idle_since carried over from a previous idle/stuck state so the
+      # stuck-detection timer starts fresh after a kick-and-restart cycle.
+      if [[ "$STATE" == "idle" || "$STATE" == "stuck" ]]; then
+        NEW_IDLE_SINCE=0
+      fi
       # Check if hash has been stable (agent may be stuck mid-task)
       if [ -n "$CURRENT_HASH" ] && [ "$CURRENT_HASH" = "$LAST_HASH" ] && [ "$LAST_HASH" != "" ]; then
         if [ "$IDLE_SINCE" = "0" ] || [ "$IDLE_SINCE" = "null" ]; then
