@@ -221,7 +221,22 @@ Find the next spare worktree, then spawn and append to state — same as steps 2
 
 You are the supervisor. Run this poll loop directly in your Claude session — not in a separate window.
 
-### Poll loop (repeat every 2-3 min until all agents done)
+### Poll loop mechanism
+
+You are reactive — you only act when a tool completes or the user sends a message. To create a self-sustaining poll loop without user involvement:
+
+1. Start each poll with `run_in_background: true` + a sleep before the work:
+   ```bash
+   sleep 120 && tmux capture-pane -t autogpt1:0 -p -S -200 | tail -40
+   # + similar for each active window
+   ```
+2. When the background job notifies you, read the pane output and take action.
+3. Immediately schedule the next background poll — this keeps the loop alive.
+4. Stop scheduling when all agents are done/escalated.
+
+**Never tell the user "I'll poll every 2-3 minutes"** — that does nothing without a trigger. Start the background job instead.
+
+### Each poll: what to check
 
 ```bash
 # 1. Read state
