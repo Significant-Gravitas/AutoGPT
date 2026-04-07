@@ -595,12 +595,25 @@ for img in "${SCREENSHOT_FILES[@]}"; do
 done
 TREE_JSON+=']'
 
-# Step 2: Create tree, commit, and branch ref
+# Step 2: Create tree, commit (with parent), and branch ref
 TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
-COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
-  -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
-  -f tree="$TREE_SHA" \
-  --jq '.sha')
+
+# Resolve existing branch tip as parent (avoids orphan commits on repeat runs)
+PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || true)
+if [ -n "$PARENT_SHA" ]; then
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    -f "parents[]=$PARENT_SHA" \
+    --jq '.sha')
+else
+  # First commit on this branch — no parent
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    --jq '.sha')
+fi
+
 gh api "repos/${REPO}/git/refs" \
   -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
   -f sha="$COMMIT_SHA" 2>/dev/null \
@@ -683,14 +696,26 @@ This approach uses the GitHub Git API to create blobs, trees, commits, and refs 
 **Verify inline rendering after posting — this is required, not optional:**
 
 ```bash
-# Confirm the posted comment body (captured directly from the POST response) has inline image tags
-if echo "$POSTED_BODY" | grep -q '!\['; then
-  echo "✅ Inline images confirmed in PR comment"
-else
-  echo "❌ FAIL: No inline images found in posted comment."
-  echo "   Re-check IMAGE_MARKDOWN construction and re-post."
-  echo "   NEVER leave the PR comment as a bare directory link."
+# 1. Confirm the posted comment body contains inline image markdown syntax
+if ! echo "$POSTED_BODY" | grep -q '!\['; then
+  echo "❌ FAIL: No inline image tags in posted comment body. Re-check IMAGE_MARKDOWN and re-post."
   exit 1
+fi
+
+# 2. Verify at least one raw URL actually resolves (catches wrong branch name, wrong path, etc.)
+FIRST_IMG_URL=$(echo "$POSTED_BODY" | grep -o 'https://raw.githubusercontent.com[^)]*' | head -1)
+if [ -n "$FIRST_IMG_URL" ]; then
+  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$FIRST_IMG_URL")
+  if [ "$HTTP_STATUS" = "200" ]; then
+    echo "✅ Inline images confirmed and raw URL resolves (HTTP 200)"
+  else
+    echo "❌ FAIL: Raw image URL returned HTTP $HTTP_STATUS — images will not render inline."
+    echo "   URL: $FIRST_IMG_URL"
+    echo "   Check branch name, path, and that the push succeeded."
+    exit 1
+  fi
+else
+  echo "⚠️  Could not extract a raw URL from the comment — verify manually."
 fi
 ```
 
@@ -700,7 +725,9 @@ After posting the PR comment, evaluate whether the test run actually covered eve
 
 ### 8a. Evaluate against the test plan
 
-Re-read `$RESULTS_DIR/test-plan.md` and `$RESULTS_DIR/test-report.md`. For each scenario in the plan, answer:
+Re-read `$RESULTS_DIR/test-plan.md` (written in Step 2) and `$RESULTS_DIR/test-report.md` (written in Step 5). For each scenario in the plan, answer:
+
+> **Note:** `test-report.md` is written in Step 5. If it doesn't exist, write it before proceeding here — see the Step 5 template. Do not skip evaluation because the file is missing; create it from your notes instead.
 
 | Question | Pass criteria |
 |----------|--------------|
@@ -717,12 +744,7 @@ Build a verdict:
 ### 8b. Post the GitHub review
 
 ```bash
-# Build the evaluation body
 EVAL_FILE=$(mktemp)
-
-# Determine verdict: APPROVE or REQUEST_CHANGES
-# Set VERDICT based on your evaluation above
-VERDICT="REQUEST_CHANGES"  # or "APPROVE"
 
 cat > "$EVAL_FILE" << 'ENDEVAL'
 ## 🧪 Test Evaluation
@@ -731,24 +753,31 @@ cat > "$EVAL_FILE" << 'ENDEVAL'
 ENDEVAL
 
 # Append one line per scenario: ✅ or ❌ + reason
-# e.g.:
+# Format: "- ✅ **Scenario N – name**: <what was done and verified>"
+#      or "- ❌ **Scenario N – name**: <what is missing or broken>"
+# Example:
 #   echo "- ✅ **Scenario 1 – Login flow**: tested, screenshot evidence present, auth token verified via API" >> "$EVAL_FILE"
 #   echo "- ❌ **Scenario 3 – Cost logging**: NOT verified in DB — UI showed entry but raw SQL query was skipped" >> "$EVAL_FILE"
 
-cat >> "$EVAL_FILE" << 'ENDEVAL'
+# Derive verdict from the checklist — do NOT hardcode it
+FAIL_COUNT=$(grep -c "^- ❌" "$EVAL_FILE" || true)
+if [ "$FAIL_COUNT" -eq 0 ]; then
+  VERDICT="APPROVE"
+else
+  VERDICT="REQUEST_CHANGES"
+fi
+
+cat >> "$EVAL_FILE" << ENDVERDICT
 
 ### Verdict
-ENDEVAL
+ENDVERDICT
 
 if [ "$VERDICT" = "APPROVE" ]; then
   echo "✅ All scenarios covered with evidence. No blocking issues found." >> "$EVAL_FILE"
 else
-  echo "❌ Test run incomplete or bugs found. See items above." >> "$EVAL_FILE"
+  echo "❌ $FAIL_COUNT scenario(s) incomplete or have confirmed bugs. See ❌ items above." >> "$EVAL_FILE"
   echo "" >> "$EVAL_FILE"
-  echo "**Required before merge:**" >> "$EVAL_FILE"
-  # List specific gaps, e.g.:
-  #   echo "- Re-run scenario 3 and verify PlatformCostLog row in DB (not just UI)" >> "$EVAL_FILE"
-  #   echo "- Add negative test: block run with no system credentials should NOT create a cost log" >> "$EVAL_FILE"
+  echo "**Required before merge:** address each ❌ item above." >> "$EVAL_FILE"
 fi
 
 # Post the review
