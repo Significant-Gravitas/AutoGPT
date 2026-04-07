@@ -746,20 +746,23 @@ Build a verdict:
 ```bash
 EVAL_FILE=$(mktemp)
 
+# === STEP A: Write header ===
 cat > "$EVAL_FILE" << 'ENDEVAL'
 ## 🧪 Test Evaluation
 
 ### Coverage checklist
 ENDEVAL
 
-# Append one line per scenario: ✅ or ❌ + reason
+# === STEP B: Append ONE line per scenario — do this BEFORE calculating verdict ===
 # Format: "- ✅ **Scenario N – name**: <what was done and verified>"
 #      or "- ❌ **Scenario N – name**: <what is missing or broken>"
-# Example:
+# Examples:
 #   echo "- ✅ **Scenario 1 – Login flow**: tested, screenshot evidence present, auth token verified via API" >> "$EVAL_FILE"
 #   echo "- ❌ **Scenario 3 – Cost logging**: NOT verified in DB — UI showed entry but raw SQL query was skipped" >> "$EVAL_FILE"
+#
+# !!! IMPORTANT: append ALL scenario lines here before proceeding to STEP C !!!
 
-# Derive verdict from the checklist — do NOT hardcode it
+# === STEP C: Derive verdict from the checklist — runs AFTER all lines are appended ===
 FAIL_COUNT=$(grep -c "^- ❌" "$EVAL_FILE" || true)
 if [ "$FAIL_COUNT" -eq 0 ]; then
   VERDICT="APPROVE"
@@ -767,6 +770,7 @@ else
   VERDICT="REQUEST_CHANGES"
 fi
 
+# === STEP D: Append verdict section ===
 cat >> "$EVAL_FILE" << ENDVERDICT
 
 ### Verdict
@@ -780,7 +784,7 @@ else
   echo "**Required before merge:** address each ❌ item above." >> "$EVAL_FILE"
 fi
 
-# Post the review
+# === STEP E: Post the review ===
 gh api "repos/${REPO}/pulls/$PR_NUMBER/reviews" \
   --method POST \
   -f body="$(cat "$EVAL_FILE")" \
