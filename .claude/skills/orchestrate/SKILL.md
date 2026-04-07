@@ -279,16 +279,31 @@ Find the next spare worktree, then spawn and append to state — same as steps 2
 
 1. Read `~/.claude/orchestrator-state.json` to get agent windows and objectives
 2. For each agent in `running`/`idle`/`stuck` state, capture pane output
-3. **Check for stalling**: no new output in last 5+ min → send specific re-orientation message
-4. **Check for deviation**: agent doing something unrelated → correct it
-5. **Check for PR issues**: unresolved threads, CI failures → inform agent with specifics
-6. **Verify claims of completion**: run `verify-complete.sh` when agent says ORCHESTRATOR:DONE (run-loop.sh also does this, but you catch it faster)
-7. **Re-brief after context compaction**: if agent asks "what should I do?" or appears lost, run:
+3. **Check for stalling**: no new output in last 5+ min → send specific re-orientation message referencing the objective from state
+4. **Check for deviation**: agent doing something unrelated to its objective → correct immediately with a specific redirect
+5. **Check for PR issues**: unresolved threads, CI failures → tell the agent exactly what's failing and how to fix it
+6. **Strict ORCHESTRATOR:DONE gate** — when agent outputs ORCHESTRATOR:DONE, run ALL three checks before allowing recycling:
+   ```bash
+   # 1. Checkpoints + 0 threads + CI green
+   bash SKILLS_DIR/verify-complete.sh SESSION:WIN
+
+   # 2. CI ran AFTER agent spawned (proves agent actually pushed something new)
+   SPAWNED_AT=$(jq -r --arg w SESSION:WIN '.agents[] | select(.window==$w) | .spawned_at // 0' ~/.claude/orchestrator-state.json)
+   LATEST_RUN=$(gh run list --repo REPO --branch BRANCH --limit 1 --json createdAt --jq '.[0].createdAt')
+   # LATEST_RUN must be after SPAWNED_AT
+
+   # 3. No CHANGES_REQUESTED review decision
+   gh pr view PR_NUMBER --json reviewDecision --jq '.reviewDecision'
+   ```
+   If any check fails, tell the agent specifically what's missing and mark state back to `running`. Do not allow recycling until all three pass.
+7. **Re-brief after context compaction**: if agent asks "what should I do?" or appears lost:
    ```bash
    cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window=="SESSION:WIN")'
    gh pr view PR_NUMBER --json title,body,headRefName
    ```
-   Then send the agent its objective + PR context via tmux
+   Send objective + PR context via tmux (remember: split send-keys, sleep 0.3 between text and Enter).
+   If `image_path` is set on the agent, include: "Re-read context at IMAGE_PATH with the Read tool."
+8. **send-keys rule**: never combine long text and Enter in one call — always `send-keys "text"` then `sleep 0.3` then `send-keys Enter`
 
 ## Self-recovery protocol (agents)
 
