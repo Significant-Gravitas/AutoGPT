@@ -18,8 +18,8 @@ Before registering an agent with the orchestrator, launch it in a tmux window wi
 
 ```bash
 # In your tmux session (e.g., session named "work"):
-# window 0: cd /Users/majdyz/Code/AutoGPT6 && claude --permission-mode bypassPermissions
-# window 1: cd /Users/majdyz/Code/AutoGPT9 && claude --permission-mode bypassPermissions
+# window 0: cd /path/to/worktree-1 && claude --permission-mode bypassPermissions
+# window 1: cd /path/to/worktree-2 && claude --permission-mode bypassPermissions
 ```
 
 Also add this to the end of each agent's initial prompt so the orchestrator knows when it's done:

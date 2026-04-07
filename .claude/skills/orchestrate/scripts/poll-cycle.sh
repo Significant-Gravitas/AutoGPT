@@ -11,18 +11,18 @@
 #
 # The state file is updated in-place (atomic write via .tmp).
 
-set -uo pipefail
+set -euo pipefail
 
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLASSIFY="$SCRIPTS_DIR/classify-pane.sh"
 
-# Cross-platform md5
+# Cross-platform md5: always outputs just the hex digest
 md5_hash() {
   if command -v md5sum &>/dev/null; then
     md5sum | awk '{print $1}'
   else
-    md5
+    md5 | awk '{print $NF}'
   fi
 }
 
@@ -44,7 +44,11 @@ ACTIONS="[]"
 UPDATED_AGENTS="[]"
 
 # Read agents as newline-delimited JSON objects
-AGENTS_JSON=$(jq -c '.agents[]' "$STATE_FILE" 2>/dev/null || echo "")
+if ! AGENTS_JSON=$(jq -c '.agents[]' "$STATE_FILE" 2>/dev/null); then
+  echo "State file parse error — check $STATE_FILE" >&2
+  echo "[]"
+  exit 0
+fi
 
 if [ -z "$AGENTS_JSON" ]; then
   echo "[]"
@@ -60,6 +64,14 @@ while IFS= read -r agent; do
   STATE=$(echo "$agent"    | jq -r '.state // "running"')
   LAST_HASH=$(echo "$agent"| jq -r '.last_output_hash // ""')
   IDLE_SINCE=$(echo "$agent"| jq -r '.idle_since // 0')
+  REVISION_COUNT=$(echo "$agent"| jq -r '.revision_count // 0')
+
+  # Validate window format to prevent tmux target injection
+  if ! [[ "$WINDOW" =~ ^[a-zA-Z0-9_.-]+:[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "Skipping agent with invalid window value: $WINDOW" >&2
+    UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$agent" '. + [$a]')
+    continue
+  fi
 
   # Pass-through done/escalated agents
   if [[ "$STATE" == "done" || "$STATE" == "escalated" ]]; then
@@ -68,7 +80,7 @@ while IFS= read -r agent; do
   fi
 
   # Classify pane
-  CLASSIFICATION=$("$CLASSIFY" "$WINDOW" "$IDLE_THRESHOLD" 2>/dev/null || \
+  CLASSIFICATION=$("$CLASSIFY" "$WINDOW" 2>/dev/null || \
     echo '{"state":"error","reason":"classify failed","pane_cmd":"unknown"}')
 
   PANE_STATE=$(echo "$CLASSIFICATION" | jq -r '.state')
@@ -78,11 +90,14 @@ while IFS= read -r agent; do
   CURRENT_HASH=""
   if [[ "$PANE_STATE" == "running" ]]; then
     RAW=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null || echo "")
-    CURRENT_HASH=$(echo "$RAW" | tail -20 | md5_hash)
+    if [ -n "$RAW" ]; then
+      CURRENT_HASH=$(echo "$RAW" | tail -20 | md5_hash)
+    fi
   fi
 
   NEW_STATE="$STATE"
   NEW_IDLE_SINCE="$IDLE_SINCE"
+  NEW_REVISION_COUNT="$REVISION_COUNT"
   ACTION="none"
   REASON="$PANE_REASON"
 
@@ -100,6 +115,13 @@ while IFS= read -r agent; do
       NEW_STATE="idle"
       ACTION="kick"
       REASON="agent exited (shell is foreground)"
+      NEW_REVISION_COUNT=$(( REVISION_COUNT + 1 ))
+      NEW_IDLE_SINCE=$NOW
+      if [ "$NEW_REVISION_COUNT" -ge 3 ]; then
+        NEW_STATE="escalated"
+        ACTION="none"
+        REASON="escalated after ${NEW_REVISION_COUNT} kicks — needs human attention"
+      fi
       ;;
     running)
       # Check if hash has been stable (agent may be stuck mid-task)
@@ -109,9 +131,17 @@ while IFS= read -r agent; do
         else
           STUCK_DURATION=$(( NOW - IDLE_SINCE ))
           if [ "$STUCK_DURATION" -gt "$IDLE_THRESHOLD" ]; then
-            NEW_STATE="stuck"
-            ACTION="kick"
-            REASON="output unchanged for ${STUCK_DURATION}s (threshold: ${IDLE_THRESHOLD}s)"
+            NEW_REVISION_COUNT=$(( REVISION_COUNT + 1 ))
+            NEW_IDLE_SINCE=$NOW
+            if [ "$NEW_REVISION_COUNT" -ge 3 ]; then
+              NEW_STATE="escalated"
+              ACTION="none"
+              REASON="escalated after ${NEW_REVISION_COUNT} kicks — needs human attention"
+            else
+              NEW_STATE="stuck"
+              ACTION="kick"
+              REASON="output unchanged for ${STUCK_DURATION}s (threshold: ${IDLE_THRESHOLD}s)"
+            fi
           fi
         fi
       else
@@ -125,16 +155,18 @@ while IFS= read -r agent; do
       ;;
   esac
 
-  # Build updated agent record
+  # Build updated agent record (ensure idle_since and revision_count are numeric)
   UPDATED_AGENT=$(echo "$agent" | jq \
     --arg state "$NEW_STATE" \
     --arg hash "$CURRENT_HASH" \
     --argjson now "$NOW" \
-    --argjson idle_since "$NEW_IDLE_SINCE" \
+    --arg idle_since "$NEW_IDLE_SINCE" \
+    --arg revision_count "$NEW_REVISION_COUNT" \
     '.state = $state
      | .last_output_hash = (if $hash == "" then .last_output_hash else $hash end)
      | .last_seen_at = $now
-     | .idle_since = $idle_since')
+     | .idle_since = ($idle_since | tonumber)
+     | .revision_count = ($revision_count | tonumber)')
 
   UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$UPDATED_AGENT" '. + [$a]')
 

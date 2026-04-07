@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
 # classify-pane.sh — Classify the current state of a tmux pane
 #
-# Usage: classify-pane.sh <tmux-target> [idle-threshold-seconds]
+# Usage: classify-pane.sh <tmux-target>
 #   tmux-target: e.g. "work:0", "work:1.0"
-#   idle-threshold-seconds: seconds before hash-stable output is declared idle (default: 300)
 #
 # Output (stdout): JSON object:
 #   { "state": "running|idle|waiting_approval|complete", "reason": "...", "pane_cmd": "..." }
 #
-# Exit codes: 0=ok, 1=tmux window not found
+# Exit codes: 0=ok, 1=error (invalid target or tmux window not found)
 
 set -euo pipefail
 
 TARGET="${1:-}"
-IDLE_THRESHOLD="${2:-300}"
 
 if [ -z "$TARGET" ]; then
-  echo '{"state":"error","reason":"no target provided","pane_cmd":""}' >&2
+  echo '{"state":"error","reason":"no target provided","pane_cmd":""}'
   exit 1
 fi
 
-# Check window exists
-if ! tmux list-windows -t "${TARGET%%.*}" &>/dev/null 2>&1; then
+# Validate tmux target format: session:window or session:window.pane
+if ! [[ "$TARGET" =~ ^[a-zA-Z0-9_.-]+:[0-9]+(\.[0-9]+)?$ ]]; then
+  echo '{"state":"error","reason":"invalid tmux target format","pane_cmd":""}'
+  exit 1
+fi
+
+# Check session exists (use %%:* to extract session name from session:window)
+if ! tmux list-windows -t "${TARGET%%:*}" &>/dev/null 2>&1; then
   echo '{"state":"error","reason":"tmux target not found","pane_cmd":""}'
   exit 1
 fi
@@ -29,18 +33,14 @@ fi
 # Get the current foreground command in the pane
 PANE_CMD=$(tmux display-message -t "$TARGET" -p '#{pane_current_command}' 2>/dev/null || echo "unknown")
 
-# Capture and strip ANSI codes
+# Capture and strip ANSI codes (use perl for cross-platform compatibility — BSD sed lacks \x1b support)
 RAW=$(tmux capture-pane -t "$TARGET" -p 2>/dev/null || echo "")
-CLEAN=$(echo "$RAW" | sed \
-  -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' \
-  -e 's/\x1b(B//g' \
-  -e 's/\x1b\[[?][0-9]*[hl]//g' \
-  -e 's/\r//g' \
+CLEAN=$(echo "$RAW" | perl -pe 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\(B//g; s/\x1b\[\?[0-9]*[hl]//g; s/\r//g' \
   | grep -v '^[[:space:]]*$' || true)
 
 # --- Check: explicit completion marker ---
 if echo "$CLEAN" | grep -q "ORCHESTRATOR:DONE"; then
-  printf '{"state":"complete","reason":"ORCHESTRATOR:DONE marker found","pane_cmd":"%s"}' "$PANE_CMD"
+  jq -n --arg cmd "$PANE_CMD" '{"state":"complete","reason":"ORCHESTRATOR:DONE marker found","pane_cmd":$cmd}'
   exit 0
 fi
 
@@ -60,8 +60,8 @@ APPROVAL_PATTERNS=(
 )
 for pattern in "${APPROVAL_PATTERNS[@]}"; do
   if echo "$LAST_40" | grep -qiE "$pattern"; then
-    printf '{"state":"waiting_approval","reason":"approval pattern: %s","pane_cmd":"%s"}' \
-      "$(echo "$pattern" | sed 's/"/\\"/g')" "$PANE_CMD"
+    jq -n --arg pattern "$pattern" --arg cmd "$PANE_CMD" \
+      '{"state":"waiting_approval","reason":"approval pattern: \($pattern)","pane_cmd":$cmd}'
     exit 0
   fi
 done
@@ -70,13 +70,13 @@ done
 # If the foreground process is a shell (not claude/node), the agent has exited
 case "$PANE_CMD" in
   zsh|bash|fish|sh|dash|tcsh|ksh)
-    printf '{"state":"idle","reason":"agent exited — shell prompt active (cmd: %s)","pane_cmd":"%s"}' \
-      "$PANE_CMD" "$PANE_CMD"
+    jq -n --arg cmd "$PANE_CMD" \
+      '{"state":"idle","reason":"agent exited — shell prompt active","pane_cmd":$cmd}'
     exit 0
     ;;
 esac
 
 # Agent is still running (claude/node/python is the foreground process)
-printf '{"state":"running","reason":"foreground process: %s","pane_cmd":"%s"}' \
-  "$PANE_CMD" "$PANE_CMD"
+jq -n --arg cmd "$PANE_CMD" \
+  '{"state":"running","reason":"foreground process: \($cmd)","pane_cmd":$cmd}'
 exit 0
