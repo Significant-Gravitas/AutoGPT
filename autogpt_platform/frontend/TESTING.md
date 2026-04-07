@@ -124,7 +124,7 @@ Only when the component has complex internal logic that is hard to exercise thro
 pnpm test                   # build + run the Playwright E2E suite used in CI
 pnpm test-ui                # run the same E2E suite with Playwright UI
 pnpm test:no-build          # run the same E2E suite against a running dev server
-pnpm exec playwright test   # run the same six-spec Playwright suite directly
+pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 ```
 
 ### Setup
@@ -151,6 +151,8 @@ pnpm exec playwright test   # run the same six-spec Playwright suite directly
 The CI suite is intentionally limited to the cross-page journeys we still require a real browser for:
 
 - `src/tests/auth-happy-path.spec.ts`
+- `src/tests/settings-happy-path.spec.ts`
+- `src/tests/api-keys-happy-path.spec.ts`
 - `src/tests/builder-happy-path.spec.ts`
 - `src/tests/library-happy-path.spec.ts`
 - `src/tests/marketplace-happy-path.spec.ts`

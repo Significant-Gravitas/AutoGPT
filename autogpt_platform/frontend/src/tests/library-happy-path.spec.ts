@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import path from "path";
 import { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
@@ -16,7 +17,7 @@ test.use({ storageState: E2E_AUTH_STATES.library });
 const TEST_AGENT_PATH = path.resolve(__dirname, "assets", "testing_agent.json");
 
 function createUniqueAgentName(prefix: string) {
-  return `${prefix} ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
 
 const ACCEPTED_RUN_STATUSES = [

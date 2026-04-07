@@ -1,17 +1,28 @@
+import { randomUUID } from "crypto";
 import { Locator, Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import {
+  getRunStatus,
   navigateToAgentByName,
   waitForAgentPageLoad,
+  waitForRunToComplete,
 } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
 
 function createUniqueAgentName(prefix: string) {
-  return `${prefix} ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
+
+const ACCEPTED_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "running",
+  "queued",
+  "review",
+] as const;
 
 async function openBuilder(page: Page) {
   const buildPage = new BuildPage(page);
@@ -277,6 +288,49 @@ async function waitForScheduleCreation(page: Page, scheduleDialog: Locator) {
     .toBe("success");
 }
 
+async function createScheduleForSavedAgent(
+  page: Page,
+  buildPage: BuildPage,
+  agentName: string,
+) {
+  const { runDialog, scheduleDialog } = await openScheduleDialog(
+    page,
+    buildPage,
+  );
+
+  if (
+    (await runDialog.isVisible({ timeout: 1000 }).catch(() => false)) &&
+    !(await scheduleDialog.isVisible({ timeout: 1000 }).catch(() => false))
+  ) {
+    await page.locator('[data-id="run-input-schedule-button"]').click();
+  }
+
+  await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
+  await page.locator("#schedule-name").fill(`Daily ${agentName}`);
+  await configureSchedule(page);
+  await page.getByRole("button", { name: "Done" }).click();
+  await waitForScheduleCreation(page, scheduleDialog);
+  await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
+}
+
+async function openActivityDropdown(page: Page) {
+  const activityButton = page.getByTestId("agent-activity-button");
+  await expect(activityButton).toBeVisible({ timeout: 15000 });
+
+  if (
+    !(await page
+      .getByTestId("agent-activity-dropdown")
+      .isVisible()
+      .catch(() => false))
+  ) {
+    await activityButton.click();
+  }
+
+  await expect(page.getByTestId("agent-activity-dropdown")).toBeVisible({
+    timeout: 10000,
+  });
+}
+
 test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
   page,
 }) => {
@@ -350,26 +404,63 @@ test("builder happy path: user can schedule the saved agent", async ({
     "Smoke Schedule Agent",
   );
 
-  const { runDialog, scheduleDialog } = await openScheduleDialog(
+  await createScheduleForSavedAgent(page, buildPage, agentName);
+  expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
+});
+
+test("builder happy path: user can run a created schedule from Library", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+
+  const { buildPage, agentName } = await createAndSaveAgent(
     page,
-    buildPage,
+    "Smoke Run Now Agent",
   );
 
-  if (
-    (await runDialog.isVisible({ timeout: 1000 }).catch(() => false)) &&
-    !(await scheduleDialog.isVisible({ timeout: 1000 }).catch(() => false))
-  ) {
-    await page.locator('[data-id="run-input-schedule-button"]').click();
-  }
+  await createScheduleForSavedAgent(page, buildPage, agentName);
+  await openSavedAgentInLibrary(page, agentName);
 
-  await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
-  await page.locator("#schedule-name").fill(`Daily ${agentName}`);
-  await configureSchedule(page);
+  const scheduledTab = page.getByRole("tab", { name: /Scheduled/i });
+  await expect(scheduledTab).toBeVisible({ timeout: 15000 });
+  await scheduledTab.click();
 
-  await page.getByRole("button", { name: "Done" }).click();
-  await waitForScheduleCreation(page, scheduleDialog);
-  await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
-  expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
+  const runNowButton = page.getByRole("button", { name: /Run now/i }).first();
+  await expect(runNowButton).toBeVisible({ timeout: 15000 });
+  await runNowButton.click();
+
+  await waitForRunToComplete(page, 45000);
+
+  const runStatus = await getRunStatus(page);
+  expect(ACCEPTED_RUN_STATUSES).toContain(
+    runStatus as (typeof ACCEPTED_RUN_STATUSES)[number],
+  );
+});
+
+test("builder happy path: user can see a saved agent run in the activity feed", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+
+  const { buildPage, agentName } = await createAndSaveAgent(
+    page,
+    "Smoke Activity Agent",
+  );
+
+  await startBuilderRun(page, buildPage);
+  await openActivityDropdown(page);
+
+  await expect
+    .poll(
+      () =>
+        page
+          .getByTestId("agent-activity-dropdown")
+          .getByText(agentName)
+          .isVisible()
+          .catch(() => false),
+      { timeout: 20000 },
+    )
+    .toBe(true);
 });
 
 test("builder happy path: user can export the created agent", async ({

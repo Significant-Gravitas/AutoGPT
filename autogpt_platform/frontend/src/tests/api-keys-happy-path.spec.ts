@@ -1,0 +1,69 @@
+import { randomUUID } from "crypto";
+import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
+
+test.use({ storageState: E2E_AUTH_STATES.settings });
+
+function createApiKeyName() {
+  return `E2E CLI Key ${randomUUID().slice(0, 8)}`;
+}
+
+test("api keys happy path: user can create, copy, and revoke an API key", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(120000);
+
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  const keyName = createApiKeyName();
+
+  await page.goto("/profile/api-keys");
+  await expect(page).toHaveURL(/\/profile\/api-keys/);
+  await expect(
+    page.getByText(
+      "Manage your AutoGPT Platform API keys for programmatic access",
+    ),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Create Key" }).click();
+  await page.getByLabel("Name").fill(keyName);
+  await page.getByRole("checkbox").first().click();
+  await page.getByRole("button", { name: "Create" }).click();
+
+  const secretDialog = page.getByRole("dialog", {
+    name: "AutoGPT Platform API Key Created",
+  });
+  await expect(secretDialog).toBeVisible();
+
+  const createdSecret = (
+    (await secretDialog.locator("code").textContent()) ?? ""
+  ).trim();
+  expect(createdSecret.length).toBeGreaterThan(0);
+
+  await secretDialog.getByRole("button").first().click();
+  await expect(page.getByText("Copied")).toBeVisible({ timeout: 15000 });
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()), {
+      timeout: 10000,
+    })
+    .toBe(createdSecret);
+
+  await secretDialog.getByRole("button", { name: "Close" }).click();
+
+  const createdKeyRow = page
+    .getByTestId("api-key-row")
+    .filter({ hasText: keyName })
+    .first();
+  await expect(createdKeyRow).toBeVisible({ timeout: 15000 });
+
+  await createdKeyRow.getByTestId("api-key-actions").click();
+  await page.getByRole("menuitem", { name: "Revoke" }).click();
+
+  await expect(
+    page.getByText("AutoGPT Platform API key revoked successfully"),
+  ).toBeVisible({ timeout: 15000 });
+  await expect(
+    page.getByTestId("api-key-row").filter({ hasText: keyName }),
+  ).toHaveCount(0);
+});
