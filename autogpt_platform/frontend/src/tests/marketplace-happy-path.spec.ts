@@ -133,3 +133,16 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
     runStatus as (typeof ACCEPTED_RUN_STATUSES)[number],
   );
 });
+
+test("marketplace happy path: user can download an agent from the Marketplace", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+
+  await openMarketplaceAgent(page);
+
+  await page.getByTestId("agent-download-button").click();
+  await expect(
+    page.getByText("Your agent has been successfully downloaded."),
+  ).toBeVisible();
+});

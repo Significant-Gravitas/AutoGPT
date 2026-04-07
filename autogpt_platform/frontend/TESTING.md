@@ -121,9 +121,10 @@ Only when the component has complex internal logic that is hard to exercise thro
 ### Running
 
 ```bash
-pnpm test                   # build + run all Playwright tests
-pnpm test-ui                # run with Playwright UI
-pnpm test:no-build          # run against a running dev server
+pnpm test                   # build + run the Playwright E2E suite used in CI
+pnpm test-ui                # run the same E2E suite with Playwright UI
+pnpm test:no-build          # run the same E2E suite against a running dev server
+pnpm exec playwright test   # run the same six-spec Playwright suite directly
 ```
 
 ### Setup
@@ -136,14 +137,25 @@ pnpm test:no-build          # run against a running dev server
 ### How Playwright setup works
 
 - Playwright runs from `frontend/playwright.config.ts` with a global setup step
-- Global setup creates a user pool via the real signup UI, stored in `frontend/.auth/user-pool.json`
-- `getTestUser()` (from `src/tests/utils/auth.ts`) pulls a random user from the pool
+- Global setup creates reusable auth states for deterministic seeded accounts in `frontend/.auth/states/`
+- `getTestUser()` (from `src/tests/utils/auth.ts`) picks one seeded account for general auth coverage
 - `getTestUserWithLibraryAgents()` uses the rich user created by the data script
 
 ### Test users
 
-- **User pool (basic users)** — created automatically by Playwright global setup. Used by `getTestUser()`
+- **Seeded E2E accounts** — created by backend fixtures and logged in during Playwright global setup. Used by `getTestUser()` and `E2E_AUTH_STATES`
 - **Rich user with library agents** — created by `backend/test/e2e_test_data.py`. Used by `getTestUserWithLibraryAgents()`
+
+### Current Playwright E2E suite
+
+The CI suite is intentionally limited to the cross-page journeys we still require a real browser for:
+
+- `src/tests/auth-happy-path.spec.ts`
+- `src/tests/builder-happy-path.spec.ts`
+- `src/tests/library-happy-path.spec.ts`
+- `src/tests/marketplace-happy-path.spec.ts`
+- `src/tests/publish-happy-path.spec.ts`
+- `src/tests/copilot-happy-path.spec.ts`
 
 ### Resetting the DB
 

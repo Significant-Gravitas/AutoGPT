@@ -307,18 +307,12 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Run Playwright smoke suite
-        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-        run: pnpm test:pr-e2e:no-build
-        continue-on-error: false
-
-      - name: Run full Playwright suite
-        if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
-        run: pnpm test:no-build
+      - name: Run Playwright E2E suite
+        run: pnpm test:e2e:no-build
         continue-on-error: false
 
       - name: Upload E2E coverage to Codecov
-        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
