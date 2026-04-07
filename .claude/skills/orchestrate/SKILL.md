@@ -57,6 +57,8 @@ Lives at `~/.claude/orchestrator-state.json` (outside repo, never committed):
 
 Agent states: `running` | `idle` | `stuck` | `waiting_approval` | `complete` | `done` | `escalated`
 
+> **State transitions:** `complete` = set by poll-cycle.sh when ORCHESTRATOR:DONE is detected on screen; `done` = set by Claude after recycling the worktree.
+
 ## Scripts
 
 ```bash
@@ -352,7 +354,7 @@ echo "Added: $WINDOW ($WORKTREE_NAME on $NEW_BRANCH)"
 jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
   && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 
-# Show current state
+# Show state (after marking inactive)
 jq '.agents[] | {window, state, worktree, branch}' ~/.claude/orchestrator-state.json
 
 # Cancel cron
