@@ -117,14 +117,21 @@ fi
 # --- Check 6: no CHANGES_REQUESTED (checked AFTER CI — bots post reviews after their check) ---
 # A CHANGES_REQUESTED review is stale if the latest commit was pushed AFTER the review was submitted.
 # Stale reviews (pre-dating the fixing commits) should not block verification.
-LATEST_COMMIT_DATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-  --json commits --jq '.commits[-1].committedDate // ""' 2>/dev/null || echo "")
-
-
+#
+# Fetch commits and latestReviews in a single call and fail closed — if gh fails,
+# treat that as NOT COMPLETE rather than silently passing.
 # Use latestReviews (not reviews) so each reviewer's latest state is used — superseded
 # CHANGES_REQUESTED entries are automatically excluded when the reviewer later approved.
-CHANGES_REQUESTED_REVIEWS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-  --json latestReviews --jq '[.latestReviews[] | select(.state == "CHANGES_REQUESTED")]' 2>/dev/null || echo "[]")
+# Note: we intentionally use committedDate (not PR updatedAt) because updatedAt changes on any
+# PR activity (bot comments, label changes) which would create false negatives.
+PR_REVIEW_METADATA=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+  --json commits,latestReviews 2>/dev/null) || {
+  echo "NOT COMPLETE: unable to fetch PR review metadata for PR #$PR_NUMBER" >&2
+  exit 1
+}
+
+LATEST_COMMIT_DATE=$(jq -r '.commits[-1].committedDate // ""' <<< "$PR_REVIEW_METADATA")
+CHANGES_REQUESTED_REVIEWS=$(jq '[.latestReviews[]? | select(.state == "CHANGES_REQUESTED")]' <<< "$PR_REVIEW_METADATA")
 
 BLOCKING_CHANGES_REQUESTED=0
 BLOCKING_REQUESTERS=""
