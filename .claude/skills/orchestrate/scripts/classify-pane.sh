@@ -40,7 +40,7 @@ CLEAN=$(echo "$RAW" | perl -pe 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\(B//g; s/\x1b
 
 # --- Check: explicit completion marker ---
 # Must be on its own line (not buried in the objective text sent at spawn time).
-if echo "$CLEAN" | grep -qE "^ORCHESTRATOR:DONE$"; then
+if echo "$CLEAN" | grep -qE "^[[:space:]]*ORCHESTRATOR:DONE[[:space:]]*$"; then
   jq -n --arg cmd "$PANE_CMD" '{"state":"complete","reason":"ORCHESTRATOR:DONE marker found","pane_cmd":$cmd}'
   exit 0
 fi
