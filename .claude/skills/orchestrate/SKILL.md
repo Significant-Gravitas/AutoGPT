@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "any free text — e.g. 'start 3 agents on X Y Z', 'show status', 'add task: implement feature A', 'stop', 'how many are free?'"
 metadata:
   author: autogpt-team
-  version: "5.0.0"
+  version: "6.0.0"
 ---
 
 # Orchestrate — Agent Fleet Supervisor
@@ -97,6 +97,7 @@ Never committed to git. You maintain this file directly using `jq` + atomic writ
       "state": "running",
       "last_output_hash": "",
       "last_seen_at": 0,
+      "spawned_at": 0,
       "idle_since": 0,
       "revision_count": 0,
       "last_rebriefed_at": 0
@@ -298,19 +299,88 @@ spawn-agent.sh automatically includes this instruction in every objective:
 > and `gh pr view PR_NUMBER --json title,body,headRefName` to reorient.
 > Output each completed step as `CHECKPOINT:<step-name>` on its own line.
 
-## Stopping
+## Passing images and screenshots to agents
+
+`tmux send-keys` is text-only — you cannot paste a raw image into a pane. To give an agent visual context (screenshots, diagrams, mockups):
+
+1. **Save the image to a temp file** with a stable path:
+   ```bash
+   # If the user drags in a screenshot or you receive a file path:
+   IMAGE_PATH="/tmp/orchestrator-context-$(date +%s).png"
+   cp "$USER_PROVIDED_PATH" "$IMAGE_PATH"
+   ```
+
+2. **Reference the path in the objective string**:
+   ```bash
+   OBJECTIVE="Implement the layout shown in /tmp/orchestrator-context-1234567890.png. Read that image first with the Read tool to understand the design."
+   ```
+
+3. The agent uses its `Read` tool to view the image at startup — Claude Code agents are multimodal and can read image files directly.
+
+**Rule**: always use `/tmp/orchestrator-context-<timestamp>.png` as the naming convention so the supervisor knows what to look for if it needs to re-brief an agent with the same image.
+
+---
+
+## When to stop the fleet
+
+Stop the fleet (`active = false`) when **all** of the following are true:
+
+| Check | How to verify |
+|---|---|
+| All agents are `done` or `escalated` | `jq '[.agents[] | select(.state | test("running\|stuck\|idle\|waiting_approval"))] | length' ~/.claude/orchestrator-state.json` == 0 |
+| All PRs have 0 unresolved review threads | GraphQL `isResolved` check per PR |
+| All PRs have green CI **on a run triggered after the agent's last push** | `gh run list --branch BRANCH --limit 1` timestamp > `spawned_at` in state |
+| No agents are `escalated` without human review | If any are escalated, surface to user first |
+
+**Do NOT stop just because agents output `ORCHESTRATOR:DONE`.** That is a signal to verify, not a signal to stop.
+
+**Do stop** if the user explicitly says "stop", "shut down", or "kill everything", even with agents still running.
 
 ```bash
-# Mark inactive — run-loop.sh checks this and exits cleanly
+# Graceful stop
 jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
   && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 
-# Kill the orchestrator window
 LOOP_WINDOW=$(jq -r '.loop_window // ""' ~/.claude/orchestrator-state.json)
 [ -n "$LOOP_WINDOW" ] && tmux kill-window -t "$LOOP_WINDOW" 2>/dev/null || true
+
+SUP_WINDOW=$(jq -r '.supervisor_window // ""' ~/.claude/orchestrator-state.json)
+[ -n "$SUP_WINDOW" ] && tmux kill-window -t "$SUP_WINDOW" 2>/dev/null || true
 ```
 
 Does **not** recycle running worktrees — agents may still be mid-task. Run `capacity.sh` to see what's still in progress.
+
+## tmux send-keys pattern
+
+**Always split long messages into text + Enter as two separate calls with a sleep between them.** If sent as one call (`"text" Enter`), Enter can fire before the full string is buffered into Claude's input — leaving the message stuck as `[Pasted text +N lines]` unsent.
+
+```bash
+# CORRECT — text then Enter separately
+tmux send-keys -t "$WINDOW" "your long message here"
+sleep 0.3
+tmux send-keys -t "$WINDOW" Enter
+
+# WRONG — Enter may fire before text is buffered
+tmux send-keys -t "$WINDOW" "your long message here" Enter
+```
+
+Short single-character sends (`y`, `Down`, empty Enter for dialog approval) are safe to combine since they have no buffering lag.
+
+---
+
+## Protected worktrees
+
+Some worktrees must **never** be used as spare worktrees for agent tasks because they host files critical to the orchestrator itself:
+
+| Worktree | Protected branch | Why |
+|---|---|---|
+| `AutoGPT1` | `dx/orchestrate-skill` | Hosts the orchestrate skill scripts. `recycle-agent.sh` would check out `spare/1`, wiping `.claude/skills/` and breaking all subsequent `spawn-agent.sh` calls. |
+
+**Rule**: when selecting spare worktrees via `find-spare.sh`, skip any worktree whose CURRENT branch matches a protected branch. If you accidentally spawn an agent in a protected worktree, do not let `recycle-agent.sh` run on it — manually restore the branch after the agent finishes.
+
+When `dx/orchestrate-skill` is merged into `dev`, `AutoGPT1` becomes a normal spare again.
+
+---
 
 ## Key rules
 
@@ -325,3 +395,7 @@ Does **not** recycle running worktrees — agents may still be mid-task. Run `ca
 9. **Never recycle without verification** — `verify-complete.sh` must pass before recycling
 10. **No TASK.md files** — commit risk; use state file + `gh pr view` for agent context persistence
 11. **Re-brief stalled agents** — read objective from state file + `gh pr view`, send via tmux
+12. **ORCHESTRATOR:DONE is a signal to verify, not to accept** — always run `verify-complete.sh` and check CI run timestamp before recycling
+13. **Protected worktrees** — never use the worktree hosting the skill scripts as a spare
+14. **Images via file path** — save screenshots to `/tmp/orchestrator-context-<ts>.png`, pass path in objective; agents read with the `Read` tool
+15. **Split send-keys** — always separate text and Enter with `sleep 0.3` between calls for long strings

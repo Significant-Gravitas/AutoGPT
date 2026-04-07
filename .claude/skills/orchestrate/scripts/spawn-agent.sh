@@ -60,6 +60,7 @@ if [ -f "$STATE_FILE" ]; then
        "checkpoints": [],
        "last_output_hash": "",
        "last_seen_at": $now,
+       "spawned_at": $now,
        "idle_since": 0,
        "revision_count": 0,
        "last_rebriefed_at": 0
@@ -69,7 +70,11 @@ fi
 # Store pr_number + steps in state file if provided (enables verify-complete.sh).
 # The agent record was appended above so the jq select now finds it.
 if [ -n "$PR_NUMBER" ] && [ -f "$STATE_FILE" ]; then
-  STEPS_JSON=$(printf '%s\n' "${STEPS[@]}" | jq -R . | jq -s .)
+  if [ "${#STEPS[@]}" -gt 0 ]; then
+    STEPS_JSON=$(printf '%s\n' "${STEPS[@]}" | jq -R . | jq -s .)
+  else
+    STEPS_JSON='[]'
+  fi
   jq --arg w "$WINDOW" --arg pr "$PR_NUMBER" --argjson steps "$STEPS_JSON" \
     '.agents |= map(if .window == $w then . + {pr_number: $pr, steps: $steps, checkpoints: []} else . end)' \
     "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"

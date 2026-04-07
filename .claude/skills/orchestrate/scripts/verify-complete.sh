@@ -21,6 +21,8 @@ PR_NUMBER=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .pr_num
 STEPS=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .steps // [] | .[]' "$STATE_FILE" 2>/dev/null || true)
 CHECKPOINTS=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .checkpoints // [] | .[]' "$STATE_FILE" 2>/dev/null || true)
 WORKTREE_PATH=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .worktree_path // ""' "$STATE_FILE" 2>/dev/null)
+BRANCH=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .branch // ""' "$STATE_FILE" 2>/dev/null)
+SPAWNED_AT=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .spawned_at // "0"' "$STATE_FILE" 2>/dev/null || echo "0")
 
 # No PR number = no verification possible, assume done
 if [ -z "$PR_NUMBER" ]; then
@@ -39,7 +41,7 @@ fi
 MISSING=""
 while IFS= read -r step; do
   [ -z "$step" ] && continue
-  if ! echo "$CHECKPOINTS" | grep -qF "$step"; then
+  if ! echo "$CHECKPOINTS" | grep -qFx "$step"; then
     MISSING="$MISSING $step"
   fi
 done <<< "$STEPS"
@@ -81,6 +83,27 @@ else
   if [ "$FAILING" -gt 0 ]; then
     echo "NOT COMPLETE: $FAILING failing CI checks on PR #$PR_NUMBER" >&2
     exit 1
+  fi
+
+  # --- Check 4: a new CI run was triggered AFTER the agent spawned ---
+  # Guards against agents that output CHECKPOINT:* from the objective text itself
+  # (copied from spawn message) without actually doing work, while CI was already
+  # green from a previous run.
+  if [ -n "$BRANCH" ] && [ "${SPAWNED_AT:-0}" -gt 0 ]; then
+    LATEST_RUN_AT=$(gh run list --repo "$REPO" --branch "$BRANCH" \
+      --json createdAt --limit 1 2>/dev/null | jq -r '.[0].createdAt // ""')
+    if [ -n "$LATEST_RUN_AT" ]; then
+      # Convert ISO 8601 timestamp to epoch — handle both macOS (BSD date) and Linux (GNU date)
+      if date --version >/dev/null 2>&1; then
+        LATEST_RUN_EPOCH=$(date -d "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
+      else
+        LATEST_RUN_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
+      fi
+      if [ "$LATEST_RUN_EPOCH" -le "$SPAWNED_AT" ]; then
+        echo "NOT COMPLETE: latest CI run on $BRANCH predates agent spawn — no new CI triggered yet" >&2
+        exit 1
+      fi
+    fi
   fi
 fi
 

@@ -18,7 +18,17 @@
 
 set -euo pipefail
 
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Copy scripts to a stable location outside the repo so they survive branch
+# checkouts (e.g. recycle-agent.sh switching spare/N back into this worktree
+# would wipe .claude/skills/orchestrate/scripts if the skill only exists on the
+# current branch).
+_ORIGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STABLE_SCRIPTS_DIR="$HOME/.claude/orchestrator/scripts"
+mkdir -p "$STABLE_SCRIPTS_DIR"
+cp "$_ORIGIN_DIR"/*.sh "$STABLE_SCRIPTS_DIR/"
+chmod +x "$STABLE_SCRIPTS_DIR"/*.sh
+SCRIPTS_DIR="$STABLE_SCRIPTS_DIR"
+
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
 REBRIEFED_COOLDOWN=300  # 5 minutes between re-briefs for the same agent
