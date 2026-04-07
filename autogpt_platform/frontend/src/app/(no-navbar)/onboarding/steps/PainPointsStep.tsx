@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
@@ -73,6 +74,8 @@ export function PainPointsStep() {
     togglePainPoint,
     setOtherPainPoint,
     hasSomethingElse,
+    atLimit,
+    shaking,
     canContinue,
     handleLaunch,
   } = usePainPointsStep();
@@ -90,7 +93,7 @@ export function PainPointsStep() {
             What&apos;s eating your time?
           </Text>
           <Text variant="lead" className="!text-zinc-500">
-            Pick the tasks you&apos;d love to hand off to Autopilot
+            Pick the tasks you&apos;d love to hand off to AutoPilot
           </Text>
         </div>
 
@@ -107,11 +110,22 @@ export function PainPointsStep() {
               />
             ))}
           </div>
-          {!hasSomethingElse ? (
-            <Text variant="small" className="!text-zinc-500">
-              Pick as many as you want — you can always change later
-            </Text>
-          ) : null}
+          <Text
+            variant="small"
+            className={cn(
+              "transition-colors",
+              atLimit && canContinue ? "!text-green-600" : "!text-zinc-500",
+              shaking && "animate-shake",
+            )}
+          >
+            {shaking
+              ? "You've picked 3 — tap one to swap it out"
+              : atLimit && canContinue
+                ? "3 selected — you're all set!"
+                : atLimit && hasSomethingElse
+                  ? "Tell us what else takes up your time"
+                  : "Pick up to 3 to start — AutoPilot can help with anything else later"}
+          </Text>
         </div>
 
         {hasSomethingElse && (
@@ -133,7 +147,7 @@ export function PainPointsStep() {
           disabled={!canContinue}
           className="w-full max-w-xs"
         >
-          Launch Autopilot
+          Launch AutoPilot
         </Button>
       </div>
     </FadeIn>

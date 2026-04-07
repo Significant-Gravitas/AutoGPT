@@ -66,6 +66,29 @@ describe("useOnboardingWizardStore", () => {
         "no tests",
       ]);
     });
+
+    it("ignores new selections when at the max limit", () => {
+      useOnboardingWizardStore.getState().togglePainPoint("a");
+      useOnboardingWizardStore.getState().togglePainPoint("b");
+      useOnboardingWizardStore.getState().togglePainPoint("c");
+      useOnboardingWizardStore.getState().togglePainPoint("d");
+      expect(useOnboardingWizardStore.getState().painPoints).toEqual([
+        "a",
+        "b",
+        "c",
+      ]);
+    });
+
+    it("still allows deselecting when at the max limit", () => {
+      useOnboardingWizardStore.getState().togglePainPoint("a");
+      useOnboardingWizardStore.getState().togglePainPoint("b");
+      useOnboardingWizardStore.getState().togglePainPoint("c");
+      useOnboardingWizardStore.getState().togglePainPoint("b");
+      expect(useOnboardingWizardStore.getState().painPoints).toEqual([
+        "a",
+        "c",
+      ]);
+    });
   });
 
   describe("setOtherPainPoint", () => {
