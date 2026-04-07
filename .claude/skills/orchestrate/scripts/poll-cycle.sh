@@ -97,9 +97,12 @@ while IFS= read -r agent; do
     continue
   fi
 
-  # Classify pane
-  CLASSIFICATION=$("$CLASSIFY" "$WINDOW" 2>/dev/null || \
-    echo '{"state":"error","reason":"classify failed","pane_cmd":"unknown"}')
+  # Classify pane.
+  # classify-pane.sh always emits JSON before exit (even on error), so using
+  # "|| echo '...'" would concatenate two JSON objects when it exits non-zero.
+  # Capture output directly; fall back only if output is unexpectedly empty.
+  CLASSIFICATION=$("$CLASSIFY" "$WINDOW" 2>/dev/null)
+  [ -z "$CLASSIFICATION" ] && CLASSIFICATION='{"state":"error","reason":"classify failed","pane_cmd":"unknown"}'
 
   PANE_STATE=$(echo "$CLASSIFICATION" | jq -r '.state')
   PANE_REASON=$(echo "$CLASSIFICATION" | jq -r '.reason')
@@ -142,9 +145,10 @@ while IFS= read -r agent; do
       fi
       ;;
     running)
-      # Clear idle_since carried over from a previous idle/stuck state so the
-      # stuck-detection timer starts fresh after a kick-and-restart cycle.
-      if [[ "$STATE" == "idle" || "$STATE" == "stuck" ]]; then
+      # Clear idle_since only when transitioning from idle (agent was kicked and
+      # restarted). Do NOT reset for stuck — idle_since must persist across polls
+      # so STUCK_DURATION can accumulate and trigger escalation.
+      if [[ "$STATE" == "idle" ]]; then
         NEW_IDLE_SINCE=0
       fi
       # Check if hash has been stable (agent may be stuck mid-task)
