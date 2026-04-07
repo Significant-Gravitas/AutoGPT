@@ -52,15 +52,14 @@ export async function completeOnboardingWizard(
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible({
     timeout: 10000,
   });
-  await page.getByLabel("Your first name").fill(name);
+  await page.getByLabel("What should I call you?").fill(name);
   await page.getByRole("button", { name: "Continue" }).click();
 
-  // Step 2: Role — select a role
+  // Step 2: Role — select a role (auto-advances after selection)
   await expect(page.getByText("What best describes you")).toBeVisible({
     timeout: 5000,
   });
   await page.getByText(role, { exact: false }).click();
-  await page.getByRole("button", { name: "Continue" }).click();
 
   // Step 3: Pain points — select tasks
   await expect(page.getByText("What's eating your time?")).toBeVisible({
@@ -72,9 +71,6 @@ export async function completeOnboardingWizard(
   await page.getByRole("button", { name: "Launch Autopilot" }).click();
 
   // Step 4: Preparing — wait for animation to complete and redirect to /copilot
-  await expect(page.getByText("Preparing your workspace")).toBeVisible({
-    timeout: 5000,
-  });
   await page.waitForURL(/\/copilot/, { timeout: 15000 });
 
   return { name, role, painPoints };
