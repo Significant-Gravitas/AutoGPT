@@ -559,6 +559,9 @@ Upload screenshots to the PR using the GitHub Git API (no local git operations �
 
 **This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
+> **CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.**
+> Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
+
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
 REPO="Significant-Gravitas/AutoGPT"
@@ -678,6 +681,22 @@ rm -f "$COMMENT_FILE"
 3. A structured explanation below each screenshot covering: **Flow** (which scenario), **Steps** (exact actions taken to reach this state), **Evidence** (what this proves — pass/fail/data values). A bare "shows the page" caption is not acceptable.
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
+
+**Verify inline rendering after posting — this is required, not optional:**
+
+```bash
+# Fetch the comment just posted and confirm it has inline image tags
+LAST_BODY=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+  --paginate --jq '.[-1].body' 2>/dev/null)
+if echo "$LAST_BODY" | grep -q '!\['; then
+  echo "✅ Inline images confirmed in PR comment"
+else
+  echo "❌ FAIL: No inline images found in posted comment."
+  echo "   Re-check IMAGE_MARKDOWN construction and re-post."
+  echo "   NEVER leave the PR comment as a bare directory link."
+  exit 1
+fi
+```
 
 ## Fix mode (--fix flag)
 
