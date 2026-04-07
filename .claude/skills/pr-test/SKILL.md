@@ -694,6 +694,78 @@ else
 fi
 ```
 
+## Step 8: Evaluate test completeness and post a GitHub review
+
+After posting the PR comment, evaluate whether the test run actually covered everything it needed to. This is NOT a rubber-stamp — be critical. Then post a formal GitHub review so the PR author and reviewers can see the verdict.
+
+### 8a. Evaluate against the test plan
+
+Re-read `$RESULTS_DIR/test-plan.md` and `$RESULTS_DIR/test-report.md`. For each scenario in the plan, answer:
+
+| Question | Pass criteria |
+|----------|--------------|
+| Was it tested? | Explicit steps were executed, not just described |
+| Is there screenshot evidence? | At least one before/after screenshot per scenario |
+| Did the core feature work correctly? | Expected state matches actual state |
+| Were negative cases tested? | At least one failure/rejection case per feature |
+| Was DB/API state verified (not just UI)? | Raw API response or DB query confirms state change |
+
+Build a verdict:
+- **APPROVE** — every scenario tested, evidence present, no bugs found or all bugs are minor/known
+- **REQUEST_CHANGES** — one or more: untested scenarios, missing evidence, bugs found, data not verified
+
+### 8b. Post the GitHub review
+
+```bash
+# Build the evaluation body
+EVAL_FILE=$(mktemp)
+
+# Determine verdict: APPROVE or REQUEST_CHANGES
+# Set VERDICT based on your evaluation above
+VERDICT="REQUEST_CHANGES"  # or "APPROVE"
+
+cat > "$EVAL_FILE" << 'ENDEVAL'
+## 🧪 Test Evaluation
+
+### Coverage checklist
+ENDEVAL
+
+# Append one line per scenario: ✅ or ❌ + reason
+# e.g.:
+#   echo "- ✅ **Scenario 1 – Login flow**: tested, screenshot evidence present, auth token verified via API" >> "$EVAL_FILE"
+#   echo "- ❌ **Scenario 3 – Cost logging**: NOT verified in DB — UI showed entry but raw SQL query was skipped" >> "$EVAL_FILE"
+
+cat >> "$EVAL_FILE" << 'ENDEVAL'
+
+### Verdict
+ENDEVAL
+
+if [ "$VERDICT" = "APPROVE" ]; then
+  echo "✅ All scenarios covered with evidence. No blocking issues found." >> "$EVAL_FILE"
+else
+  echo "❌ Test run incomplete or bugs found. See items above." >> "$EVAL_FILE"
+  echo "" >> "$EVAL_FILE"
+  echo "**Required before merge:**" >> "$EVAL_FILE"
+  # List specific gaps, e.g.:
+  #   echo "- Re-run scenario 3 and verify PlatformCostLog row in DB (not just UI)" >> "$EVAL_FILE"
+  #   echo "- Add negative test: block run with no system credentials should NOT create a cost log" >> "$EVAL_FILE"
+fi
+
+# Post the review
+gh api repos/Significant-Gravitas/AutoGPT/pulls/$PR_NUMBER/reviews \
+  --method POST \
+  -f body="$(cat "$EVAL_FILE")" \
+  -f event="$VERDICT"
+
+rm -f "$EVAL_FILE"
+```
+
+**Rules:**
+- Never auto-approve without checking every scenario in the test plan
+- `REQUEST_CHANGES` if ANY scenario is untested, lacks DB/API evidence, or has a confirmed bug
+- The evaluation body must list every scenario explicitly (✅ or ❌) — not just the failures
+- If you find new bugs during evaluation, add them to the request-changes body and (if `--fix` flag is set) fix them before posting
+
 ## Fix mode (--fix flag)
 
 When `--fix` is present, the standard is HIGHER. Do not just note issues — FIX them immediately.
