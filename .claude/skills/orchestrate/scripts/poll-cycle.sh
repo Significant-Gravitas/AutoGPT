@@ -108,13 +108,31 @@ while IFS= read -r agent; do
   PANE_STATE=$(echo "$CLASSIFICATION" | jq -r '.state')
   PANE_REASON=$(echo "$CLASSIFICATION" | jq -r '.reason')
 
+  # Capture full pane output once — used for hash (stuck detection) and checkpoint parsing.
+  # Use -S -500 to get the last ~500 lines of scrollback so checkpoints aren't missed.
+  RAW=$(tmux capture-pane -t "$WINDOW" -p -S -500 2>/dev/null || echo "")
+
+  # --- Checkpoint tracking ---
+  # Parse any "CHECKPOINT:<step>" lines the agent has output and merge into state file.
+  # The agent writes these as it completes each required step so verify-complete.sh can gate recycling.
+  EXISTING_CPS=$(echo "$agent" | jq -c '.checkpoints // []')
+  NEW_CHECKPOINTS_JSON="$EXISTING_CPS"
+  if [ -n "$RAW" ]; then
+    FOUND_CPS=$(echo "$RAW" \
+      | grep -oE "CHECKPOINT:[a-zA-Z0-9_-]+" \
+      | sed 's/CHECKPOINT://' \
+      | sort -u \
+      | jq -R . | jq -s . 2>/dev/null || echo "[]")
+    NEW_CHECKPOINTS_JSON=$(jq -n \
+      --argjson existing "$EXISTING_CPS" \
+      --argjson found "$FOUND_CPS" \
+      '($existing + $found) | unique' 2>/dev/null || echo "$EXISTING_CPS")
+  fi
+
   # Compute content hash for stuck-detection (only for running agents)
   CURRENT_HASH=""
-  if [[ "$PANE_STATE" == "running" ]]; then
-    RAW=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null || echo "")
-    if [ -n "$RAW" ]; then
-      CURRENT_HASH=$(echo "$RAW" | tail -20 | md5_hash)
-    fi
+  if [[ "$PANE_STATE" == "running" ]] && [ -n "$RAW" ]; then
+    CURRENT_HASH=$(echo "$RAW" | tail -20 | md5_hash)
   fi
 
   NEW_STATE="$STATE"
@@ -199,11 +217,13 @@ while IFS= read -r agent; do
     --argjson now "$NOW" \
     --arg idle_since "$NEW_IDLE_SINCE" \
     --arg revision_count "$NEW_REVISION_COUNT" \
+    --argjson checkpoints "$NEW_CHECKPOINTS_JSON" \
     '.state = $state
      | .last_output_hash = (if $hash == "" then .last_output_hash else $hash end)
      | .last_seen_at = $now
      | .idle_since = ($idle_since | tonumber)
-     | .revision_count = ($revision_count | tonumber)' 2>/dev/null) || {
+     | .revision_count = ($revision_count | tonumber)
+     | .checkpoints = $checkpoints' 2>/dev/null) || {
     echo "Warning: failed to build updated agent for window $WINDOW — keeping original" >&2
     UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$agent" '. + [$a]')
     continue

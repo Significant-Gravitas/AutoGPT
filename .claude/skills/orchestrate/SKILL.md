@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "any free text — e.g. 'start 3 agents on X Y Z', 'show status', 'add task: implement feature A', 'stop', 'how many are free?'"
 metadata:
   author: autogpt-team
-  version: "4.0.0"
+  version: "5.0.0"
 ---
 
 # Orchestrate — Agent Fleet Supervisor
@@ -24,11 +24,12 @@ STATE_FILE=~/.claude/orchestrator-state.json
 | `find-spare.sh [REPO_ROOT]` | List free worktrees — one `PATH BRANCH` per line |
 | `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE [PR_NUMBER] [STEPS...]` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** |
 | `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch |
-| `run-loop.sh` | **Mechanical babysitter** — idle restart + dialog approval + recycle on ORCHESTRATOR:DONE |
-| `verify-complete.sh WINDOW` | Verify PR is done: checkpoints ✓ + 0 unresolved threads + CI green |
+| `run-loop.sh` | **Mechanical babysitter** — idle restart + dialog approval + recycle on ORCHESTRATOR:DONE + supervisor health check + all-done notification |
+| `verify-complete.sh WINDOW` | Verify PR is done: checkpoints ✓ + 0 unresolved threads + CI green. Repo auto-derived from state file `.repo` or git remote. |
+| `notify.sh MESSAGE` | Send notification via Discord webhook (env `DISCORD_WEBHOOK_URL` or state `.discord_webhook`), macOS notification center, and stdout |
 | `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees |
 | `status.sh` | Print fleet status + live pane commands |
-| `poll-cycle.sh` | One monitoring cycle — returns JSON action array |
+| `poll-cycle.sh` | One monitoring cycle — classifies panes, tracks checkpoints, returns JSON action array |
 | `classify-pane.sh WINDOW` | Classify one pane state |
 
 ## Two-layer supervision model
@@ -78,6 +79,9 @@ Never committed to git. You maintain this file directly using `jq` + atomic writ
   "tmux_session": "autogpt1",
   "idle_threshold_seconds": 300,
   "loop_window": "autogpt1:5",
+  "supervisor_window": "autogpt1:6",
+  "repo": "Significant-Gravitas/AutoGPT",
+  "discord_webhook": "https://discord.com/api/webhooks/...",
   "last_poll_at": 0,
   "agents": [
     {
@@ -94,11 +98,20 @@ Never committed to git. You maintain this file directly using `jq` + atomic writ
       "last_output_hash": "",
       "last_seen_at": 0,
       "idle_since": 0,
-      "revision_count": 0
+      "revision_count": 0,
+      "last_rebriefed_at": 0
     }
   ]
 }
 ```
+
+Top-level optional fields:
+- `repo` — GitHub `owner/repo` for CI/thread checks. Auto-derived from git remote if omitted.
+- `discord_webhook` — Discord webhook URL for completion notifications. Also reads `DISCORD_WEBHOOK_URL` env var.
+- `supervisor_window` — tmux window running the supervisor Claude; `run-loop.sh` restarts it if it exits.
+
+Per-agent optional fields:
+- `last_rebriefed_at` — Unix timestamp of last re-brief; enforces 5-min cooldown to prevent spam.
 
 Agent states: `running` | `idle` | `stuck` | `waiting_approval` | `complete` | `done` | `escalated`
 
@@ -166,12 +179,22 @@ WINDOW=$(bash $SKILLS_DIR/spawn-agent.sh "$SESSION" "$WORKTREE_PATH" "$SPARE_BRA
 Build an agent record and append it to the state file. If the state file doesn't exist yet, initialize it:
 
 ```bash
+# Derive repo from git remote (used by verify-complete.sh + supervisor)
+REPO=$(git remote get-url origin 2>/dev/null | sed 's|.*github\.com[:/]||; s|\.git$||' || echo "")
+
 jq -n \
   --arg session "$SESSION" \
+  --arg repo "$REPO" \
   --argjson threshold 300 \
   '{active:true, tmux_session:$session, idle_threshold_seconds:$threshold,
-    loop_window:null, last_poll_at:0, agents:[]}' \
+    repo:$repo, loop_window:null, supervisor_window:null, last_poll_at:0, agents:[]}' \
   > ~/.claude/orchestrator-state.json
+```
+
+Optionally add a Discord webhook for completion notifications:
+```bash
+jq --arg hook "$DISCORD_WEBHOOK_URL" '.discord_webhook = $hook' ~/.claude/orchestrator-state.json \
+  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
 Append each new agent:
@@ -213,6 +236,10 @@ You are the intelligent supervisor for a Claude agent fleet.
 
 Your job: every 2-3 minutes, check all running agents and intervene when needed.
 
+SELF-RECOVERY: If your own context compacts and you lose track of what you were doing,
+re-read the state file: cat ~/.claude/orchestrator-state.json | jq
+That gives you the full picture. Resume supervision immediately.
+
 State file: cat ~/.claude/orchestrator-state.json | jq
 
 SKILLS_DIR: <SKILLS_DIR_ABS>
@@ -226,7 +253,7 @@ For each agent decide:
     tmux send-keys -t SESSION:WIN "Your objective: <restate from state file>. Continue from where you left off." Enter
 - Stuck in loop / repeating error → send targeted fix guidance
 - Waiting for input / asking a question → answer and unblock
-- CI red → run: gh pr checks PR_NUMBER --repo Significant-Gravitas/AutoGPT
+- CI red → run: gh pr checks PR_NUMBER --repo $(jq -r '.repo // "Significant-Gravitas/AutoGPT"' ~/.claude/orchestrator-state.json)
     then tell the agent exactly what's failing and how to fix it
 - Context compacted, agent appears lost → send recovery command:
     tmux send-keys -t SESSION:WIN "Run: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"SESSION:WIN\")' and gh pr view PR_NUMBER --json title,body,headRefName to reorient, then continue your task." Enter
