@@ -19,7 +19,7 @@ if [ -z "$TARGET" ]; then
 fi
 
 # Validate tmux target format: session:window or session:window.pane
-if ! [[ "$TARGET" =~ ^[a-zA-Z0-9_.-]+:[0-9]+(\.[0-9]+)?$ ]]; then
+if ! [[ "$TARGET" =~ ^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+(\.[0-9]+)?$ ]]; then
   echo '{"state":"error","reason":"invalid tmux target format","pane_cmd":""}'
   exit 1
 fi

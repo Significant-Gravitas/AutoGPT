@@ -39,9 +39,9 @@ All state lives at `~/.claude/orchestrator-state.json`. It is NOT in the repo. S
   "agents": [
     {
       "window": "work:0",
-      "worktree": "AutoGPT6",
-      "worktree_path": "/Users/majdyz/Code/AutoGPT6",
-      "branch": "feat/my-feature",
+      "worktree": "my-worktree",
+      "worktree_path": "/path/to/worktree",
+      "branch": "feat/your-feature",
       "objective": "Implement X and open a PR",
       "state": "running",
       "last_output_hash": "abc123",
@@ -54,6 +54,8 @@ All state lives at `~/.claude/orchestrator-state.json`. It is NOT in the repo. S
 ```
 
 Agent states: `running` | `idle` | `stuck` | `waiting_approval` | `complete` | `done` | `escalated`
+
+*State transitions: `complete` = script detected ORCHESTRATOR:DONE (pending Claude acknowledgment); `done` = Claude confirmed and marked finished*
 
 ## Scripts
 

@@ -43,9 +43,15 @@ IDLE_THRESHOLD=$(jq -r '.idle_threshold_seconds // 300' "$STATE_FILE")
 ACTIONS="[]"
 UPDATED_AGENTS="[]"
 
-# Read agents as newline-delimited JSON objects
-if ! AGENTS_JSON=$(jq -c '.agents[]' "$STATE_FILE" 2>/dev/null); then
-  echo "State file parse error — check $STATE_FILE" >&2
+# Read agents as newline-delimited JSON objects.
+# jq exits non-zero (5) when .agents[] has no matches on an empty array, which is valid.
+# Pipe stderr separately and only treat real parse errors as failures.
+if ! AGENTS_JSON=$(jq -e -c '.agents // empty | .[]' "$STATE_FILE" 2>/dev/null); then
+  # jq -e exits 1 when result is false/null; exits other codes for real errors
+  # If we reach here, either agents is missing/null (treat as empty) or file is unparseable.
+  if ! jq -e '.' "$STATE_FILE" > /dev/null 2>&1; then
+    echo "State file parse error — check $STATE_FILE" >&2
+  fi
   echo "[]"
   exit 0
 fi
@@ -66,15 +72,16 @@ while IFS= read -r agent; do
   IDLE_SINCE=$(echo "$agent"| jq -r '.idle_since // 0')
   REVISION_COUNT=$(echo "$agent"| jq -r '.revision_count // 0')
 
-  # Validate window format to prevent tmux target injection
-  if ! [[ "$WINDOW" =~ ^[a-zA-Z0-9_.-]+:[0-9]+(\.[0-9]+)?$ ]]; then
+  # Validate window format to prevent tmux target injection.
+  # Allow session:window (numeric or named) and session:window.pane
+  if ! [[ "$WINDOW" =~ ^[a-zA-Z0-9_.-]+:[a-zA-Z0-9_.-]+(\.[0-9]+)?$ ]]; then
     echo "Skipping agent with invalid window value: $WINDOW" >&2
     UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$agent" '. + [$a]')
     continue
   fi
 
-  # Pass-through done/escalated agents
-  if [[ "$STATE" == "done" || "$STATE" == "escalated" ]]; then
+  # Pass-through terminal-state agents
+  if [[ "$STATE" == "done" || "$STATE" == "escalated" || "$STATE" == "complete" ]]; then
     UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$agent" '. + [$a]')
     continue
   fi
