@@ -36,22 +36,25 @@ WINDOW="${SESSION}:${WIN_IDX}"
 # Launch claude — single-quote path so spaces and special chars are safe
 tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions" Enter
 
-# Wait up to 30s for the foreground process to become 'node'
-for i in $(seq 1 30); do
+# Wait up to 60s for claude to be fully interactive:
+# both pane_current_command == 'node' AND the '❯' prompt is visible.
+# Checking the prompt avoids sending the objective to the shell before
+# claude finishes initializing (which silently drops the message).
+for i in $(seq 1 60); do
   CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
-  [[ "$CMD" == "node" ]] && break
-  sleep 1
-done
-
-# Auto-dismiss settings error dialog ("Enter to confirm") if claude didn't start cleanly
-CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
-if [[ "$CMD" != "node" ]]; then
   PANE=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null || echo "")
+  # Auto-dismiss settings error dialog if present
   if echo "$PANE" | grep -q "Enter to confirm"; then
     tmux send-keys -t "$WINDOW" Down Enter
     sleep 2
+    continue
   fi
-fi
+  # Ready when node is running AND the interactive prompt is visible
+  if [[ "$CMD" == "node" ]] && echo "$PANE" | grep -q "❯"; then
+    break
+  fi
+  sleep 1
+done
 
 # Send the task — agent must output ORCHESTRATOR:DONE when finished
 tmux send-keys -t "$WINDOW" "${OBJECTIVE}. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter

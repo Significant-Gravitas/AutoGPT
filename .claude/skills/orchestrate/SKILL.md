@@ -95,11 +95,7 @@ When the intent is ambiguous, show capacity first and ask what tasks to run.
 tmux list-sessions -F "#{session_name}: #{session_windows} windows" 2>/dev/null
 ```
 
-Use the existing session. If none exist, create one:
-```bash
-tmux new-session -d -s autogpt1
-SESSION="autogpt1"
-```
+Use an existing session. **Never create a tmux session from within Claude** — it becomes a child of Claude's process and dies when the session ends. If no session exists, tell the user to run `tmux new-session -d -s autogpt1` in their terminal first, then re-invoke `/orchestrate`.
 
 ### 2. Show available capacity
 
