@@ -19,16 +19,29 @@ SKILLS_DIR=$(git rev-parse --show-toplevel)/.claude/skills/orchestrate/scripts
 STATE_FILE=~/.claude/orchestrator-state.json
 ```
 
-| Script | Purpose | Key args |
-|---|---|---|
-| `find-spare.sh [REPO_ROOT]` | List free worktrees — one `PATH BRANCH` per line | |
-| `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** | |
-| `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch | |
-| `run-loop.sh` | Polling loop — runs in its own tmux window, zero token cost | |
-| `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees | |
-| `status.sh` | Print fleet status + live pane commands | |
-| `poll-cycle.sh` | One monitoring cycle — returns JSON action array | |
-| `classify-pane.sh WINDOW` | Classify one pane state | |
+| Script | Purpose |
+|---|---|
+| `find-spare.sh [REPO_ROOT]` | List free worktrees — one `PATH BRANCH` per line |
+| `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** |
+| `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch |
+| `run-loop.sh` | **Mechanical babysitter** — idle restart + dialog approval + recycle. No intelligence. |
+| `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees |
+| `status.sh` | Print fleet status + live pane commands |
+| `poll-cycle.sh` | One monitoring cycle — returns JSON action array |
+| `classify-pane.sh WINDOW` | Classify one pane state |
+
+## Two-layer supervision model
+
+```
+CronCreate (this session, every 3 min)
+  └── Reads pane output, checks CI, intervenes with targeted guidance
+        run-loop.sh (tmux window, every 30s)
+          └── Mechanical only: idle restart, dialog approval, recycle on ORCHESTRATOR:DONE
+```
+
+**CronCreate** is the intelligence layer — it runs in the main Claude session so it has full context and can make real decisions. It reads each agent's pane, checks PR CI status, and sends specific guidance when agents stall or deviate.
+
+**run-loop.sh** is the mechanical layer — zero tokens, handles things that need no judgment: restart crashed agents, press Enter on dialogs, recycle completed worktrees.
 
 ## Worktree lifecycle
 
@@ -143,21 +156,40 @@ jq --argjson a "$NEW_AGENT" '.agents += [$a]' ~/.claude/orchestrator-state.json 
   > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-### 5. Start the polling loop
+### 5. Start both supervision layers
 
-Open a dedicated `orchestrator` window in the same tmux session and run `run-loop.sh` there. It polls every 30s, handles all actions in bash, and costs zero Claude tokens.
-
+**Layer 1 — mechanical babysitter** (tmux window, zero tokens):
 ```bash
 LOOP_WIN=$(tmux new-window -t "$SESSION" -n "orchestrator" -P -F '#{window_index}')
 LOOP_WINDOW="${SESSION}:${LOOP_WIN}"
 tmux send-keys -t "$LOOP_WINDOW" "bash $SKILLS_DIR/run-loop.sh" Enter
 
-# Store loop_window so we know how to stop it later
 jq --arg w "$LOOP_WINDOW" '.loop_window = $w' ~/.claude/orchestrator-state.json \
   > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-The loop window prints a timestamped summary line after every poll. Attach with `tmux attach -t "$SESSION"` and switch to the `orchestrator` window to watch it live.
+**Layer 2 — intelligent supervisor** (CronCreate in this session, every 3 min):
+
+Use CronCreate with this prompt (fill in the real window IDs and agent context):
+
+```text
+You are supervising Claude agents working on PRs. Check each agent now.
+
+Read their pane output:
+  tmux capture-pane -t SESSION:WIN -p -S -40 | tail -40
+  (repeat for each agent window)
+
+For each agent decide:
+- Actively working (spinner/tools running) → do nothing
+- Idle at ❯ prompt without ORCHESTRATOR:DONE → stalled, send specific nudge based on last seen action
+- Stuck in loop / repeating error → intervene with targeted fix guidance
+- Waiting for input / asking a question → answer and unblock
+- CI red → check gh pr checks N, tell the agent what's failing and how to fix
+
+Only surface to the user if a strategic decision is needed.
+```
+
+Store the cron job ID in the state file: `.supervisor_cron_id`.
 
 ## Adding an agent
 
