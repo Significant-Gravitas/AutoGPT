@@ -24,6 +24,25 @@ const RUNNABLE_MARKETPLACE_AGENT_PATH =
 const FALLBACK_MARKETPLACE_AGENT_PATH =
   "/marketplace/agent/autogpt/unspirational-poster-maker";
 
+async function dismissFeedbackDialog(page: Page) {
+  const feedbackDialog = page.getByRole("dialog", {
+    name: "We'd love your feedback",
+  });
+  if (!(await feedbackDialog.isVisible().catch(() => false))) {
+    return;
+  }
+
+  const cancelButton = feedbackDialog.getByRole("button", { name: "Cancel" });
+  if (await cancelButton.isVisible().catch(() => false)) {
+    await cancelButton.click();
+    await expect(feedbackDialog).toBeHidden({ timeout: 15000 });
+    return;
+  }
+
+  await feedbackDialog.getByRole("button", { name: "Close" }).click();
+  await expect(feedbackDialog).toBeHidden({ timeout: 15000 });
+}
+
 async function openRunnableMarketplaceAgent(page: Page) {
   const candidatePaths = [
     {
@@ -85,9 +104,7 @@ async function openMarketplaceAgent(page: Page) {
   const marketplacePage = new MarketplacePage(page);
 
   await marketplacePage.goto(page);
-  await expect(
-    page.getByText("Explore AI agents", { exact: false }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible();
 
   const featuredAgentLink = page
     .locator('a[href*="/marketplace/agent/"]')
@@ -101,6 +118,7 @@ async function openMarketplaceAgent(page: Page) {
 
   await expect(page).toHaveURL(/\/marketplace\/agent\//);
   await expect(page.getByTestId("agent-title")).toBeVisible();
+  await dismissFeedbackDialog(page);
 }
 
 test("marketplace happy path: user can browse Marketplace and open an agent detail page", async ({

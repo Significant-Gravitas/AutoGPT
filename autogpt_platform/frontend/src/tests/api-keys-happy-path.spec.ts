@@ -1,8 +1,7 @@
 import { randomUUID } from "crypto";
 import { expect, test } from "./coverage-fixture";
-import { E2E_AUTH_STATES } from "./credentials/accounts";
-
-test.use({ storageState: E2E_AUTH_STATES.settings });
+import { getSeededTestUser } from "./credentials/accounts";
+import { LoginPage } from "./pages/login.page";
 
 function createApiKeyName() {
   return `E2E CLI Key ${randomUUID().slice(0, 8)}`;
@@ -16,7 +15,12 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
+  const loginPage = new LoginPage(page);
+  const apiKeysUser = getSeededTestUser("parallelB");
   const keyName = createApiKeyName();
+
+  await page.goto("/login");
+  await loginPage.login(apiKeysUser.email, apiKeysUser.password);
 
   await page.goto("/profile/api-keys");
   await expect(page).toHaveURL(/\/profile\/api-keys/);
@@ -51,10 +55,7 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
     })
     .toBe(createdSecret);
 
-  await secretDialog
-    .locator("button")
-    .filter({ hasText: /^Close$/ })
-    .click();
+  await secretDialog.getByRole("button", { name: "Close" }).first().click();
 
   const createdKeyRow = page
     .getByTestId("api-key-row")

@@ -534,23 +534,72 @@ async function clickStartOrSimulateTask(
   page: Page,
   startBtn: Locator,
 ): Promise<void> {
+  async function getRunStartState() {
+    const currentUrl = new URL(page.url());
+    if (
+      currentUrl.searchParams.get("activeTab") === "runs" &&
+      currentUrl.searchParams.get("activeItem")
+    ) {
+      return "started";
+    }
+
+    if (
+      await page
+        .getByText(/Run started|Agent execution started/i)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return "started";
+    }
+
+    if (
+      await getSelectors(page)
+        .getId("agent-activity-badge")
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return "started";
+    }
+
+    if (!(await startBtn.isVisible().catch(() => false))) {
+      return "started";
+    }
+
+    return "pending";
+  }
+
   if (await startBtn.isEnabled()) {
-    await startBtn.click({ force: true });
-    await startBtn
-      .waitFor({ state: "hidden", timeout: 5000 })
-      .catch(async () => {
-        await startBtn.click({ force: true }).catch(() => {});
-      });
-    return;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await startBtn.click({ force: true });
+
+      const started = await expect
+        .poll(getRunStartState, { timeout: 10000 })
+        .toBe("started")
+        .then(() => true)
+        .catch(() => false);
+
+      if (started) {
+        return;
+      }
+    }
   }
 
   const simulateBtn = page.getByRole("button", { name: /Simulate/i }).first();
   if (await simulateBtn.isVisible().catch(() => false)) {
-    await simulateBtn.click({ force: true });
-    await simulateBtn.waitFor({ state: "hidden", timeout: 5000 }).catch(() => {
-      return;
-    });
-    return;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await simulateBtn.click({ force: true });
+
+      const started = await expect
+        .poll(getRunStartState, { timeout: 10000 })
+        .toBe("started")
+        .then(() => true)
+        .catch(() => false);
+
+      if (started) {
+        return;
+      }
+    }
   }
 
   throw new Error(

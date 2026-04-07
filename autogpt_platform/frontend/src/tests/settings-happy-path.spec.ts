@@ -1,9 +1,7 @@
 import { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
-import { E2E_AUTH_STATES, getSeededTestUser } from "./credentials/accounts";
+import { getSeededTestUser } from "./credentials/accounts";
 import { LoginPage } from "./pages/login.page";
-
-test.use({ storageState: E2E_AUTH_STATES.settings });
 
 function getAgentRunNotificationsSwitch(page: Page) {
   return page.getByRole("switch").nth(0);
@@ -25,6 +23,8 @@ test("settings happy path: user can save notification preferences and keep them 
   const settingsUser = getSeededTestUser("smokeSettings");
   const loginPage = new LoginPage(page);
 
+  await page.goto("/login");
+  await loginPage.login(settingsUser.email, settingsUser.password);
   await openSettings(page);
 
   const agentRunSwitch = getAgentRunNotificationsSwitch(page);

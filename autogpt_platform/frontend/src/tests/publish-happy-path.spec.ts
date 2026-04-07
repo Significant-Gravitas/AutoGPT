@@ -1,19 +1,77 @@
 import { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
-import { getTestUserWithLibraryAgents } from "./credentials";
+import { getSeededTestUser } from "./credentials/accounts";
+import { BuildPage } from "./pages/build.page";
+import { LibraryPage } from "./pages/library.page";
 import { LoginPage } from "./pages/login.page";
 
-async function logInRichUser(page: Page) {
+function createUniqueAgentName(prefix: string) {
+  return `${prefix} ${Date.now().toString().slice(-6)}`;
+}
+
+async function logInPublishUser(page: Page) {
   const loginPage = new LoginPage(page);
-  const richUser = getTestUserWithLibraryAgents();
+  const publishUser = getSeededTestUser("parallelA");
 
   await page.goto("/login");
-  await loginPage.login(richUser.email, richUser.password);
+  await loginPage.login(publishUser.email, publishUser.password);
   await expect(page).toHaveURL(/\/marketplace/);
 }
 
+async function addSimpleAgentBlocks(buildPage: BuildPage) {
+  await buildPage.addBlockByClick("Store Value");
+  await buildPage.waitForNodeOnCanvas(1);
+  await buildPage.fillBlockInputByPlaceholder(
+    "Enter string value...",
+    "publish-value",
+    0,
+  );
+
+  await buildPage.addBlockByClick("Add to Dictionary");
+  await buildPage.waitForNodeOnCanvas(2);
+
+  const dictionaryInputs = buildPage
+    .getNodeLocator(1)
+    .locator('input[placeholder="Enter string value..."]');
+  await dictionaryInputs.nth(0).fill("publish-key");
+  await dictionaryInputs.nth(1).fill("publish-value");
+}
+
+async function createPublishableAgent(page: Page) {
+  const buildPage = new BuildPage(page);
+  const libraryPage = new LibraryPage(page);
+  const agentName = createUniqueAgentName("Publish Flow Agent");
+
+  await page.goto("/build");
+  await page.waitForLoadState("domcontentloaded");
+  await buildPage.closeTutorial();
+  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 15000 });
+  await expect(page.getByTestId("blocks-control-blocks-button")).toBeVisible({
+    timeout: 15000,
+  });
+
+  await addSimpleAgentBlocks(buildPage);
+  await buildPage.saveAgent(agentName, "PR E2E publish coverage");
+  await buildPage.waitForSaveComplete();
+  await buildPage.waitForSaveButton();
+
+  await page.goto("/library");
+  await libraryPage.waitForAgentsToLoad();
+  await libraryPage.searchAgents(agentName);
+  await libraryPage.waitForAgentsToLoad();
+
+  const createdAgent = page
+    .getByTestId("library-agent-card")
+    .filter({ hasText: agentName })
+    .first();
+  await expect(createdAgent).toBeVisible({ timeout: 15000 });
+
+  return agentName;
+}
+
 async function submitAgentForReview(page: Page) {
-  await logInRichUser(page);
+  await logInPublishUser(page);
+  const publishableAgentName = await createPublishableAgent(page);
 
   await page.goto("/marketplace");
   await page.getByRole("button", { name: "Become a Creator" }).click();
@@ -26,7 +84,12 @@ async function submitAgentForReview(page: Page) {
     ),
   ).toBeVisible();
 
-  await publishAgentModal.getByTestId("agent-card").first().click();
+  const publishableAgentCard = publishAgentModal
+    .getByTestId("agent-card")
+    .filter({ hasText: publishableAgentName })
+    .first();
+  await expect(publishableAgentCard).toBeVisible({ timeout: 15000 });
+  await publishableAgentCard.click();
   await publishAgentModal
     .getByRole("button", { name: "Next", exact: true })
     .click();

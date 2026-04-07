@@ -14,6 +14,11 @@ dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
 const frontendRoot = __dirname.replaceAll("\\", "/");
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const jsonReporterOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
+const configuredWorkers = process.env.PLAYWRIGHT_WORKERS
+  ? Number(process.env.PLAYWRIGHT_WORKERS)
+  : process.env.CI
+    ? 4
+    : undefined;
 
 // Directory where CI copies .next/static from the Docker container
 const staticCoverageDir = path.resolve(__dirname, ".next-static-coverage");
@@ -69,8 +74,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? Number(process.env.PLAYWRIGHT_RETRIES ?? 2) : 0,
-  /* use more workers on CI. */
-  workers: process.env.CI ? 8 : undefined,
+  /* Keep CI worker count conservative for browser-context stability. */
+  workers: configuredWorkers,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
     ["list"],

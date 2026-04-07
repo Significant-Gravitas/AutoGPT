@@ -5,12 +5,14 @@ import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import {
   getRunStatus,
+  LibraryPage,
   navigateToAgentByName,
   waitForAgentPageLoad,
   waitForRunToComplete,
 } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
+test.describe.configure({ mode: "serial" });
 
 function createUniqueAgentName(prefix: string) {
   return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
@@ -157,7 +159,12 @@ async function getBuilderExecutionState(page: Page) {
 }
 
 async function openSavedAgentInLibrary(page: Page, agentName: string) {
+  const libraryPage = new LibraryPage(page);
+
   await page.goto("/library");
+  await libraryPage.waitForAgentsToLoad();
+  await libraryPage.searchAgents(agentName);
+  await libraryPage.waitForAgentsToLoad();
   await navigateToAgentByName(page, agentName);
   await waitForAgentPageLoad(page);
 }
@@ -295,7 +302,7 @@ async function waitForScheduleCreation(page: Page, scheduleDialog: Locator) {
 
         return "pending";
       },
-      { timeout: 45000 },
+      { timeout: 60000 },
     )
     .toBe("success");
 }

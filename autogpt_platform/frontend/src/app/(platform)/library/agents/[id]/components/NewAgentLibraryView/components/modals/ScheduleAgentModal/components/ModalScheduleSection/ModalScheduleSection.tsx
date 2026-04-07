@@ -1,7 +1,7 @@
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 import { useCallback, useState } from "react";
-import { validateSchedule } from "./helpers";
+import { parseCronToForm, validateSchedule } from "./helpers";
 import { TimezoneNotice } from "../TimezoneNotice/TimezoneNotice";
 import { CronScheduler } from "../CronScheduler/CronScheduler";
 
@@ -31,13 +31,26 @@ export function ModalScheduleSection({
   }>({});
 
   const validateNow = useCallback(
-    (partial: { scheduleName?: string }) => {
-      const fieldErrors = validateSchedule({ scheduleName, ...partial });
+    (partial: { scheduleName?: string; cronExpression?: string }) => {
+      const cronExpression =
+        partial.cronExpression ||
+        _cronExpression ||
+        recommendedScheduleCron ||
+        "";
+      const fieldErrors = validateSchedule({
+        scheduleName: partial.scheduleName ?? scheduleName,
+        time: parseCronToForm(cronExpression)?.time ?? "",
+      });
       setErrors(fieldErrors);
       if (onValidityChange)
         onValidityChange(Object.keys(fieldErrors).length === 0);
     },
-    [scheduleName, onValidityChange],
+    [
+      _cronExpression,
+      onValidityChange,
+      recommendedScheduleCron,
+      scheduleName,
+    ],
   );
 
   return (
@@ -67,7 +80,10 @@ export function ModalScheduleSection({
 
       <div className="mt-1">
         <CronScheduler
-          onCronExpressionChange={onCronExpressionChange}
+          onCronExpressionChange={(expression) => {
+            onCronExpressionChange(expression);
+            validateNow({ cronExpression: expression });
+          }}
           initialCronExpression={
             _cronExpression || recommendedScheduleCron || undefined
           }
