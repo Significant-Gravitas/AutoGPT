@@ -38,7 +38,36 @@ git -C "$WORKTREE_PATH" checkout -b "$NEW_BRANCH" 2>/dev/null \
 WIN_IDX=$(tmux new-window -t "$SESSION" -n "$WORKTREE_NAME" -P -F '#{window_index}')
 WINDOW="${SESSION}:${WIN_IDX}"
 
-# Store pr_number + steps in state file if provided (enables verify-complete.sh)
+# Append the initial agent record to the state file so subsequent jq updates find it.
+# This must happen before the pr_number/steps update below.
+if [ -f "$STATE_FILE" ]; then
+  NOW=$(date +%s)
+  jq --arg window "$WINDOW" \
+     --arg worktree "$WORKTREE_NAME" \
+     --arg worktree_path "$WORKTREE_PATH" \
+     --arg spare_branch "$SPARE_BRANCH" \
+     --arg branch "$NEW_BRANCH" \
+     --arg objective "$OBJECTIVE" \
+     --argjson now "$NOW" \
+     '.agents += [{
+       "window": $window,
+       "worktree": $worktree,
+       "worktree_path": $worktree_path,
+       "spare_branch": $spare_branch,
+       "branch": $branch,
+       "objective": $objective,
+       "state": "running",
+       "checkpoints": [],
+       "last_output_hash": "",
+       "last_seen_at": $now,
+       "idle_since": 0,
+       "revision_count": 0,
+       "last_rebriefed_at": 0
+     }]' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+fi
+
+# Store pr_number + steps in state file if provided (enables verify-complete.sh).
+# The agent record was appended above so the jq select now finds it.
 if [ -n "$PR_NUMBER" ] && [ -f "$STATE_FILE" ]; then
   STEPS_JSON=$(printf '%s\n' "${STEPS[@]}" | jq -R . | jq -s .)
   jq --arg w "$WINDOW" --arg pr "$PR_NUMBER" --argjson steps "$STEPS_JSON" \

@@ -197,11 +197,7 @@ jq --arg hook "$DISCORD_WEBHOOK_URL" '.discord_webhook = $hook' ~/.claude/orches
   > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-Append each new agent:
-```bash
-jq --argjson a "$NEW_AGENT" '.agents += [$a]' ~/.claude/orchestrator-state.json \
-  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-```
+`spawn-agent.sh` writes the initial agent record (window, worktree_path, branch, objective, state, etc.) to the state file automatically — **do not append the record again after calling it.** The record already exists and `pr_number`/`steps` are patched in by the script itself.
 
 ### 5. Start both supervision layers
 

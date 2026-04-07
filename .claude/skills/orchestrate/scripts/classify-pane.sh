@@ -34,7 +34,7 @@ fi
 PANE_CMD=$(tmux display-message -t "$TARGET" -p '#{pane_current_command}' 2>/dev/null || echo "unknown")
 
 # Capture and strip ANSI codes (use perl for cross-platform compatibility — BSD sed lacks \x1b support)
-RAW=$(tmux capture-pane -t "$TARGET" -p 2>/dev/null || echo "")
+RAW=$(tmux capture-pane -t "$TARGET" -p -S -50 2>/dev/null || echo "")
 CLEAN=$(echo "$RAW" | perl -pe 's/\x1b\[[0-9;]*[a-zA-Z]//g; s/\x1b\(B//g; s/\x1b\[\?[0-9]*[hl]//g; s/\r//g' \
   | grep -v '^[[:space:]]*$' || true)
 

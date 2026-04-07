@@ -188,14 +188,27 @@ check_supervisor() {
       [[ -z "$work_dir" ]] && work_dir="$HOME"
 
       tmux send-keys -t "$sup_win" "cd '${work_dir}' && claude --permission-mode bypassPermissions" Enter
-      sleep 5
 
-      # Auto-dismiss settings dialog if it appears
-      local pane
-      pane=$(tmux capture-pane -t "$sup_win" -p 2>/dev/null || echo "")
-      if echo "$pane" | grep -q "Enter to confirm"; then
-        tmux send-keys -t "$sup_win" Down Enter
-        sleep 2
+      # Wait up to 60s for claude to be fully interactive: node + ❯ prompt visible
+      local sup_prompt_found=false
+      for i in $(seq 1 60); do
+        local sup_cmd sup_pane
+        sup_cmd=$(tmux display-message -t "$sup_win" -p '#{pane_current_command}' 2>/dev/null || echo "")
+        sup_pane=$(tmux capture-pane -t "$sup_win" -p 2>/dev/null || echo "")
+        if echo "$sup_pane" | grep -q "Enter to confirm"; then
+          tmux send-keys -t "$sup_win" Down Enter
+          sleep 2
+          continue
+        fi
+        if [[ "$sup_cmd" == "node" ]] && echo "$sup_pane" | grep -q "❯"; then
+          sup_prompt_found=true
+          break
+        fi
+        sleep 1
+      done
+
+      if ! $sup_prompt_found; then
+        echo "[$(date +%H:%M:%S)] SUPERVISOR WARNING — timed out waiting for ❯, sending recovery prompt anyway"
       fi
 
       # Send recovery prompt — reads full state from file so no hardcoded context needed
