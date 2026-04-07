@@ -108,7 +108,9 @@ else
       if date --version >/dev/null 2>&1; then
         LATEST_RUN_EPOCH=$(date -d "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
       else
-        LATEST_RUN_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
+        # macOS BSD date: must set TZ=UTC so the GitHub ISO 8601 UTC timestamp
+        # is parsed as UTC, not local time (which would give a wrong epoch).
+        LATEST_RUN_EPOCH=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST_RUN_AT" "+%s" 2>/dev/null || echo "0")
       fi
       if [ "$LATEST_RUN_EPOCH" -le "$SPAWNED_AT" ]; then
         echo "NOT COMPLETE: latest CI run on $BRANCH predates agent spawn — no new CI triggered yet" >&2
