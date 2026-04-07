@@ -51,7 +51,10 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
     })
     .toBe(createdSecret);
 
-  await secretDialog.getByRole("button", { name: "Close" }).click();
+  await secretDialog
+    .locator("button")
+    .filter({ hasText: /^Close$/ })
+    .click();
 
   const createdKeyRow = page
     .getByTestId("api-key-row")

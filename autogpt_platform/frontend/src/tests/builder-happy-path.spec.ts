@@ -503,6 +503,12 @@ test("builder happy path: user can see a saved agent run in the activity feed", 
 
   const { buildPage } = await createAndSaveAgent(page, "Smoke Activity Agent");
 
+  await page.reload();
+  await page.waitForLoadState("domcontentloaded");
+  await buildPage.closeTutorial();
+  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 15000 });
+  await dismissSaveToast(page);
+
   await openActivityDropdown(page);
   const initialActivityItemCount = await getActivityItemCount(page);
 
