@@ -92,7 +92,7 @@ while IFS= read -r agent; do
   fi
 
   # Pass-through terminal-state agents
-  if [[ "$STATE" == "done" || "$STATE" == "escalated" || "$STATE" == "complete" ]]; then
+  if [[ "$STATE" == "done" || "$STATE" == "escalated" || "$STATE" == "complete" || "$STATE" == "pending_evaluation" ]]; then
     UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$agent" '. + [$a]')
     continue
   fi
@@ -143,8 +143,10 @@ while IFS= read -r agent; do
 
   case "$PANE_STATE" in
     complete)
-      NEW_STATE="complete"
-      ACTION="complete"
+      # Agent output ORCHESTRATOR:DONE — mark pending_evaluation so orchestrator handles it.
+      # run-loop does NOT verify or notify; orchestrator's background poll picks this up.
+      NEW_STATE="pending_evaluation"
+      ACTION="complete"  # run-loop logs it but takes no action
       ;;
     waiting_approval)
       NEW_STATE="waiting_approval"

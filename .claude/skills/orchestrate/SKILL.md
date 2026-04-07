@@ -381,6 +381,57 @@ spawn-agent.sh automatically includes this instruction in every objective:
 
 ---
 
+## Orchestrator final evaluation (YOU decide, not the script)
+
+`verify-complete.sh` is a gate — it blocks premature marking. But it cannot tell you if the work is actually good. That is YOUR job.
+
+When run-loop marks an agent `pending_evaluation` and you're notified, do all of these before marking done:
+
+### 1. Run /pr-test (required, serialized, use TodoWrite to queue)
+
+`/pr-test` is the only reliable confirmation that the objective is actually met. Run it yourself, not the agent.
+
+**When multiple PRs reach `pending_evaluation` at the same time, use TodoWrite to queue them:**
+```
+- [ ] /pr-test PR #12636 — fix copilot retry logic
+- [ ] /pr-test PR #12699 — builder chat panel
+```
+Run one at a time. Check off as you go.
+
+```
+/pr-test https://github.com/Significant-Gravitas/AutoGPT/pull/PR_NUMBER
+```
+
+**/pr-test can be lazy** — if it gives vague output, re-run with full context:
+
+```
+/pr-test https://github.com/OWNER/REPO/pull/PR_NUMBER
+Context: This PR implements <objective from state file>. Key files: <list>.
+Please verify: <specific behaviors to check>.
+```
+
+Only one `/pr-test` at a time — they share ports and DB.
+
+### 2. Do your own evaluation
+
+1. **Read the PR diff and objective** — does the code actually implement what was asked? Is anything obviously missing or half-done?
+2. **Read the resolved threads** — were comments addressed with real fixes, or just dismissed/resolved without changes?
+3. **Check CI run names** — any suspicious retries that shouldn't have passed?
+4. **Check the PR description** — title, summary, test plan complete?
+
+### 3. Decide
+
+- `/pr-test` passes + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
+- `/pr-test` fails or evaluation finds gaps → re-brief the agent with specific failures, set state back to `running`
+
+**Never mark done based purely on script output.** You hold the full objective context; the script does not.
+
+```bash
+# Mark done after your positive evaluation:
+jq --arg w "SESSION:WIN" '(.agents[] | select(.window == $w)).state = "done"' \
+  ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+```
+
 ## When to stop the fleet
 
 Stop the fleet (`active = false`) when **all** of the following are true:
