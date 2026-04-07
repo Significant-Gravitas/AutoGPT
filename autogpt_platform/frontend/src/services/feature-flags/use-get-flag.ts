@@ -13,6 +13,7 @@ export enum Flag {
   AGENT_FAVORITING = "agent-favoriting",
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
   ENABLE_PLATFORM_PAYMENT = "enable-platform-payment",
+  ARTIFACTS = "artifacts",
   CHAT_MODE_OPTION = "chat-mode-option",
 }
 
@@ -27,6 +28,7 @@ const defaultFlags = {
   [Flag.AGENT_FAVORITING]: false,
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
   [Flag.ENABLE_PLATFORM_PAYMENT]: false,
+  [Flag.ARTIFACTS]: false,
   [Flag.CHAT_MODE_OPTION]: false,
 };
 
