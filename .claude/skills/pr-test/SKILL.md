@@ -530,9 +530,21 @@ After showing all screenshots, output a **detailed** summary table:
 # but Homebrew bash is 5.x; Linux typically has bash 5.x). If running on Bash <4, use a
 # plain variable with a lookup function instead.
 declare -A SCREENSHOT_EXPLANATIONS=(
-  ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
-  ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
-  # ... one entry per screenshot, using the same explanations you showed the user above
+  # Each explanation MUST answer three things:
+  #   1. FLOW: Which test scenario / user journey is this part of?
+  #   2. STEPS: What exact actions were taken to reach this state?
+  #   3. EVIDENCE: What does this screenshot prove (pass/fail/data)?
+  #
+  # Good example:
+  #   ["03-cost-log-after-run.png"]="Scenario: LLM block cost tracking.
+  #     Steps: Logged in as tester@gmail.com → ran 'Cost Test Agent' → waited for COMPLETED status.
+  #     Evidence: PlatformCostLog table shows 1 new row with cost_microdollars=1234 and correct user_id."
+  #
+  # Bad example (too vague — never do this):
+  #   ["03-cost-log.png"]="Shows the cost log table."
+  ["01-login-page.png"]="Scenario: Login flow. Steps: Opened /login. Evidence: Login page renders with email/password fields and SSO options visible."
+  ["02-builder-with-block.png"]="Scenario: Block execution. Steps: Logged in → /build → added LLM block. Evidence: Builder canvas shows block connected to trigger, ready to run."
+  # ... one entry per screenshot using the flow/steps/evidence format above
 )
 
 TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-login-after.png |
@@ -546,9 +558,6 @@ TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-logi
 Upload screenshots to the PR using the GitHub Git API (no local git operations — safe for worktrees), then post a comment with inline images and per-screenshot explanations.
 
 **This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
-
-> **CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.**
-> Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, verify the comment contains `![` tags (see verification step below). If it doesn't, fix and re-post.
 
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
@@ -666,24 +675,9 @@ rm -f "$COMMENT_FILE"
 **The PR comment MUST include:**
 1. A summary table of all scenarios with PASS/FAIL and before/after API evidence
 2. Every successfully uploaded screenshot rendered inline; any failed uploads listed with manual attachment instructions
-3. A 1-2 sentence explanation below each screenshot describing what it proves
+3. A structured explanation below each screenshot covering: **Flow** (which scenario), **Steps** (exact actions taken to reach this state), **Evidence** (what this proves — pass/fail/data values). A bare "shows the page" caption is not acceptable.
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
-
-**Verify inline rendering after posting:**
-
-```bash
-# Fetch the comment just posted and confirm it has inline image tags
-LAST_BODY=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-  --paginate --jq '.[-1].body' 2>/dev/null)
-if echo "$LAST_BODY" | grep -q '!\['; then
-  echo "✅ Inline images confirmed in PR comment"
-else
-  echo "❌ FAIL: No inline images found — comment only has links or plain text"
-  echo "Re-build IMAGE_MARKDOWN and re-post. NEVER leave a comment with just a directory link."
-  exit 1
-fi
-```
 
 ## Fix mode (--fix flag)
 
