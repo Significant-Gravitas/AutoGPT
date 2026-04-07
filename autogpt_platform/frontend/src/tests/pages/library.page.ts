@@ -477,7 +477,9 @@ export async function clickRunButton(page: Page): Promise<void> {
   while (Date.now() < timeoutAt) {
     if (await setupTaskButton.isVisible().catch(() => false)) {
       await setupTaskButton.click();
-      const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+      const startBtn = page
+        .getByRole("button", { name: /Start Task/i })
+        .first();
       await startBtn.waitFor({ state: "visible", timeout: 15000 });
       await fillVisibleTaskInputs(page);
       await clickStartOrSimulateTask(page, startBtn);
@@ -486,7 +488,9 @@ export async function clickRunButton(page: Page): Promise<void> {
 
     if (await newTaskButton.isVisible().catch(() => false)) {
       await newTaskButton.click();
-      const startBtn = page.getByRole("button", { name: /Start Task/i }).first();
+      const startBtn = page
+        .getByRole("button", { name: /Start Task/i })
+        .first();
       await startBtn.waitFor({ state: "visible", timeout: 15000 });
       await fillVisibleTaskInputs(page);
       await clickStartOrSimulateTask(page, startBtn);
