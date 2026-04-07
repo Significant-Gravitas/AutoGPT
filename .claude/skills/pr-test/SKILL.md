@@ -781,7 +781,7 @@ else
 fi
 
 # Post the review
-gh api repos/Significant-Gravitas/AutoGPT/pulls/$PR_NUMBER/reviews \
+gh api "repos/${REPO}/pulls/$PR_NUMBER/reviews" \
   --method POST \
   -f body="$(cat "$EVAL_FILE")" \
   -f event="$VERDICT"
