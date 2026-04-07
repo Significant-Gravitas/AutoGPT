@@ -58,15 +58,38 @@ Required steps are passed as args to `spawn-agent.sh` (e.g. `pr-address pr-test`
 ## Worktree lifecycle
 
 ```text
-spare/N branch  →  spawn-agent.sh  →  window + feat/branch + claude running
-                                                ↓
-                                  CHECKPOINT:<step> (as steps complete)
-                                                ↓
-                                         ORCHESTRATOR:DONE
-                                                ↓
-                          verify-complete.sh: checkpoints ✓ + 0 threads + CI green
-                                                ↓
-                               recycle-agent.sh → spare/N (free again)
+spare/N branch  →  spawn-agent.sh (--session-id UUID)  →  window + feat/branch + claude running
+                                                                 ↓
+                                               CHECKPOINT:<step> (as steps complete)
+                                                                 ↓
+                                                        ORCHESTRATOR:DONE
+                                                                 ↓
+                                    verify-complete.sh: checkpoints ✓ + 0 threads + CI green
+                                                                 ↓
+                                              state → "done", notify, window KEPT OPEN
+                                                                 ↓
+                              user/orchestrator explicitly requests recycle
+                                                                 ↓
+                                         recycle-agent.sh → spare/N (free again)
+```
+
+**Windows are never auto-killed.** The worktree stays on its branch, the session stays alive. The agent is done working but the window, git state, and Claude session are all preserved until you choose to recycle.
+
+**To resume a done or crashed session:**
+```bash
+# Resume by stored session ID (preferred — exact session, full context)
+claude --resume SESSION_ID --permission-mode bypassPermissions
+
+# Or resume most recent session in that worktree directory
+cd /path/to/worktree && claude --continue --permission-mode bypassPermissions
+```
+
+**To manually recycle when ready:**
+```bash
+bash ~/.claude/orchestrator/scripts/recycle-agent.sh SESSION:WIN WORKTREE_PATH spare/N
+# Then update state:
+jq --arg w "SESSION:WIN" '.agents |= map(if .window == $w then .state = "recycled" else . end)' \
+  ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
 ## State file (`~/.claude/orchestrator-state.json`)
@@ -91,6 +114,7 @@ Never committed to git. You maintain this file directly using `jq` + atomic writ
       "branch": "feat/my-feature",
       "objective": "Implement X and open a PR",
       "pr_number": "12345",
+      "session_id": "550e8400-e29b-41d4-a716-446655440000",
       "steps": ["pr-address", "pr-test"],
       "checkpoints": ["pr-address"],
       "state": "running",
@@ -109,10 +133,13 @@ Top-level optional fields:
 - `repo` — GitHub `owner/repo` for CI/thread checks. Auto-derived from git remote if omitted.
 - `discord_webhook` — Discord webhook URL for completion notifications. Also reads `DISCORD_WEBHOOK_URL` env var.
 
-Per-agent optional fields:
+Per-agent fields:
+- `session_id` — UUID passed to `claude --session-id` at spawn; use with `claude --resume UUID` to restore exact session context after a crash or window close.
 - `last_rebriefed_at` — Unix timestamp of last re-brief; enforces 5-min cooldown to prevent spam.
 
 Agent states: `running` | `idle` | `stuck` | `waiting_approval` | `complete` | `done` | `escalated`
+
+`done` means verified complete — window is still open, session still alive, worktree still on task branch. Not recycled yet.
 
 ## Intent → action mapping
 

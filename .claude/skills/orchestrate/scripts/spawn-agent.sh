@@ -30,6 +30,10 @@ STEPS=("${@:7}")
 WORKTREE_NAME=$(basename "$WORKTREE_PATH")
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
 
+# Generate a stable session ID so this agent's Claude session can always be resumed:
+#   claude --resume $SESSION_ID --permission-mode bypassPermissions
+SESSION_ID=$(uuidgen 2>/dev/null || python3 -c "import uuid; print(uuid.uuid4())")
+
 # Create (or switch to) the task branch
 git -C "$WORKTREE_PATH" checkout -b "$NEW_BRANCH" 2>/dev/null \
   || git -C "$WORKTREE_PATH" checkout "$NEW_BRANCH"
@@ -48,6 +52,7 @@ if [ -f "$STATE_FILE" ]; then
      --arg spare_branch "$SPARE_BRANCH" \
      --arg branch "$NEW_BRANCH" \
      --arg objective "$OBJECTIVE" \
+     --arg session_id "$SESSION_ID" \
      --argjson now "$NOW" \
      '.agents += [{
        "window": $window,
@@ -56,6 +61,7 @@ if [ -f "$STATE_FILE" ]; then
        "spare_branch": $spare_branch,
        "branch": $branch,
        "objective": $objective,
+       "session_id": $session_id,
        "state": "running",
        "checkpoints": [],
        "last_output_hash": "",
@@ -80,14 +86,9 @@ if [ -n "$PR_NUMBER" ] && [ -f "$STATE_FILE" ]; then
     "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
 fi
 
-# Build recovery instruction — agent reads state file + gh pr view to reorient after compaction
-RECOVERY=""
-if [ -n "$PR_NUMBER" ]; then
-  RECOVERY=" If your context compacts and you lose track of what to do, run: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"$WINDOW\")' and gh pr view $PR_NUMBER --json title,body,headRefName to reorient. Output each completed step as a checkpoint: CHECKPOINT:<step-name> on its own line."
-fi
-
-# Launch claude — single-quote path so spaces and special chars are safe
-tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions" Enter
+# Launch claude with a stable session ID so it can always be resumed after a crash:
+#   claude --resume SESSION_ID --permission-mode bypassPermissions
+tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions --session-id '${SESSION_ID}'" Enter
 
 # Wait up to 60s for claude to be fully interactive:
 # both pane_current_command == 'node' AND the '❯' prompt is visible.
@@ -111,10 +112,9 @@ if ! $PROMPT_FOUND; then
   echo "[spawn-agent] WARNING: timed out waiting for ❯ prompt on $WINDOW — sending objective anyway" >&2
 fi
 
-# Send the task with checkpoint protocol and recovery instructions.
-# Split text and Enter into separate calls — if sent together, Enter can fire before
-# the full string is buffered into Claude's input, leaving the message stuck unsent.
-tmux send-keys -t "$WINDOW" "${OBJECTIVE}${RECOVERY} When ALL steps are done, output ORCHESTRATOR:DONE on its own line."
+# Send the task. Split text and Enter — if combined, Enter can fire before the string
+# is fully buffered, leaving the message stuck as "[Pasted text +N lines]" unsent.
+tmux send-keys -t "$WINDOW" "${OBJECTIVE} Output each completed step as CHECKPOINT:<step-name>. When ALL steps are done, output ORCHESTRATOR:DONE on its own line."
 sleep 0.3
 tmux send-keys -t "$WINDOW" Enter
 

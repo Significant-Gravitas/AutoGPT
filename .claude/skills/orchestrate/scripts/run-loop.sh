@@ -4,14 +4,11 @@
 # Handles ONLY things that need no intelligence:
 #   idle    → restart claude (agent process crashed/exited)
 #   approve → auto-approve safe dialogs, press Enter on numbered-option dialogs
-#   complete → recycle worktree via recycle-agent.sh (after verify-complete.sh passes)
+#   complete → verify + mark done + notify (NO auto-recycle — user must explicitly recycle)
 #
-# Also monitors:
-#   supervisor → restart supervisor Claude window if it exits
-#   all-done   → call notify.sh when every agent reaches done/escalated
-#
-# Stuck agents and task deviation are handled by the supervisor (dedicated Claude
-# window) which has real context and can give targeted guidance.
+# Worktrees are NEVER recycled automatically. Recycling requires explicit user consent.
+# To recycle a completed window: bash recycle-agent.sh WINDOW WORKTREE_PATH SPARE_BRANCH
+# Sessions can be resumed at any time: claude --resume SESSION_ID --permission-mode bypassPermissions
 #
 # Usage: run-loop.sh
 # Env:   POLL_INTERVAL (default: 30), ORCHESTRATOR_STATE_FILE
@@ -57,44 +54,44 @@ agent_field() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_prompt WINDOW — wait up to 60s for Claude's ❯ prompt
+# ---------------------------------------------------------------------------
+wait_for_prompt() {
+  local window="$1"
+  for i in $(seq 1 60); do
+    local cmd pane
+    cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
+    pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
+    if echo "$pane" | grep -q "Enter to confirm"; then
+      tmux send-keys -t "$window" Down Enter; sleep 2; continue
+    fi
+    [[ "$cmd" == "node" ]] && echo "$pane" | grep -q "❯" && return 0
+    sleep 1
+  done
+  return 1  # timed out
+}
+
+# ---------------------------------------------------------------------------
 # handle_kick WINDOW STATE — only for idle (crashed) agents, not stuck
 # ---------------------------------------------------------------------------
 handle_kick() {
   local window="$1" state="$2"
   [[ "$state" != "idle" ]] && return  # stuck agents handled by supervisor
 
-  local worktree_path objective
+  local worktree_path session_id
   worktree_path=$(agent_field "$window" "worktree_path")
-  objective=$(agent_field "$window" "objective")
+  session_id=$(agent_field "$window" "session_id")
 
-  echo "[$(date +%H:%M:%S)] KICK restart  $window — agent exited, restarting"
-  tmux send-keys -t "$window" "cd '${worktree_path}' && claude --permission-mode bypassPermissions" Enter
+  echo "[$(date +%H:%M:%S)] KICK restart  $window — agent exited, resuming session"
 
-  # Wait up to 60s for claude to be fully interactive: node + ❯ prompt visible
-  local kick_prompt_found=false
-  for i in $(seq 1 60); do
-    local kick_cmd kick_pane
-    kick_cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
-    kick_pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
-    if echo "$kick_pane" | grep -q "Enter to confirm"; then
-      tmux send-keys -t "$window" Down Enter
-      sleep 2
-      continue
-    fi
-    if [[ "$kick_cmd" == "node" ]] && echo "$kick_pane" | grep -q "❯"; then
-      kick_prompt_found=true
-      break
-    fi
-    sleep 1
-  done
-
-  if ! $kick_prompt_found; then
-    echo "[$(date +%H:%M:%S)] KICK WARNING  $window — timed out waiting for ❯, sending objective anyway"
+  # Resume the exact session so the agent retains full context — no need to re-send objective
+  if [ -n "$session_id" ]; then
+    tmux send-keys -t "$window" "cd '${worktree_path}' && claude --resume '${session_id}' --permission-mode bypassPermissions" Enter
+  else
+    tmux send-keys -t "$window" "cd '${worktree_path}' && claude --continue --permission-mode bypassPermissions" Enter
   fi
 
-  tmux send-keys -t "$window" "${objective}. When all work is done, output the exact string: ORCHESTRATOR:DONE"
-  sleep 0.3
-  tmux send-keys -t "$window" Enter
+  wait_for_prompt "$window" || echo "[$(date +%H:%M:%S)] KICK WARNING  $window — timed out waiting for ❯"
 }
 
 # ---------------------------------------------------------------------------
@@ -132,16 +129,14 @@ handle_approve() {
 }
 
 # ---------------------------------------------------------------------------
-# handle_complete WINDOW — verify before recycling; re-brief with cooldown if not done
+# handle_complete WINDOW — verify; re-brief if not done; mark done+notify (NO recycle)
 # ---------------------------------------------------------------------------
 handle_complete() {
   local window="$1"
-  local worktree_path spare_branch objective
-  worktree_path=$(agent_field "$window" "worktree_path")
-  spare_branch=$(agent_field "$window" "spare_branch")
+  local objective
   objective=$(agent_field "$window" "objective")
 
-  # Verify completion: check checkpoints, CI, unresolved threads
+  # Verify completion: checkpoints, CI, unresolved threads, CHANGES_REQUESTED
   local verify_msg
   if ! verify_msg=$(bash "$SCRIPTS_DIR/verify-complete.sh" "$window" 2>&1); then
     # Enforce re-brief cooldown — don't spam the agent every 30s
@@ -170,13 +165,22 @@ handle_complete() {
     return
   fi
 
+  # Verified complete — mark done and notify. DO NOT recycle the window.
+  # The worktree stays on its branch, the session stays alive, the window stays open.
+  # Recycling requires explicit user/orchestrator consent.
   echo "[$(date +%H:%M:%S)] COMPLETE ✓     $window — $verify_msg"
-  echo "[$(date +%H:%M:%S)] RECYCLING      $window → $spare_branch"
-  bash "$SCRIPTS_DIR/recycle-agent.sh" "$window" "$worktree_path" "$spare_branch"
+  echo "[$(date +%H:%M:%S)] MARKED DONE    $window — window kept open; recycle when ready"
   update_state "$window" "state" "done"
 
-  # Notify on every completion; all-done check runs in the main loop
-  bash "$SCRIPTS_DIR/notify.sh" "✓ Agent $window complete — recycled to $spare_branch" || true
+  local worktree spare_branch session_id
+  worktree=$(agent_field "$window" "worktree")
+  spare_branch=$(agent_field "$window" "spare_branch")
+  session_id=$(agent_field "$window" "session_id")
+
+  local resume_hint=""
+  [ -n "$session_id" ] && resume_hint=" Resume: claude --resume $session_id --permission-mode bypassPermissions"
+
+  bash "$SCRIPTS_DIR/notify.sh" "✓ $window ($worktree) done — window kept open.${resume_hint} To recycle: recycle-agent.sh $window WORKTREE_PATH $spare_branch" || true
 }
 
 # ---------------------------------------------------------------------------
