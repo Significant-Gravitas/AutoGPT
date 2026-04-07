@@ -149,7 +149,7 @@ export function getActionButtonText(
     if (supportsOAuth2) return "Connect another account";
     if (supportsApiKey) return "Use a new API key";
     if (supportsUserPassword) return "Add a new username and password";
-    if (supportsHostScoped) return "Add new headers";
+    if (supportsHostScoped) return "Update headers";
     return "Add new credentials";
   } else {
     if (supportsOAuth2) return "Add account";
@@ -196,4 +196,124 @@ export function getSystemCredentials<
   T extends { title?: string; is_system?: boolean },
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => isSystemCredential(cred));
+}
+
+export type DeleteResult =
+  | { deleted: true }
+  | { deleted: false; need_confirmation: true; message: string };
+
+export type DeleteState = {
+  warningMessage: string | null;
+  credentialToDelete: { id: string; title: string } | null;
+  shouldUnselectCurrent: boolean;
+};
+
+export async function processCredentialDeletion(
+  credentialToDelete: { id: string; title: string },
+  selectedCredentialId: string | undefined,
+  deleteCredentials: (id: string, force: boolean) => Promise<DeleteResult>,
+  force: boolean,
+): Promise<DeleteState> {
+  const result = await deleteCredentials(credentialToDelete.id, force);
+
+  if (result.deleted) {
+    return {
+      warningMessage: null,
+      credentialToDelete: null,
+      shouldUnselectCurrent: selectedCredentialId === credentialToDelete.id,
+    };
+  }
+
+  if ("need_confirmation" in result && result.need_confirmation) {
+    return {
+      warningMessage:
+        result.message || "This credential is in use. Force delete?",
+      credentialToDelete,
+      shouldUnselectCurrent: false,
+    };
+  }
+
+  return {
+    warningMessage: null,
+    credentialToDelete,
+    shouldUnselectCurrent: false,
+  };
+}
+
+export function findExistingHostCredentials<
+  T extends { type: string; id: string; host?: string },
+>(credentials: T[], host: string): T[] {
+  return credentials.filter(
+    (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+  );
+}
+
+export function hasExistingHostCredential<
+  T extends { type: string; host?: string },
+>(credentials: T[], host: string): boolean {
+  return credentials.some(
+    (c) => c.type === "host_scoped" && "host" in c && c.host === host,
+  );
+}
+
+export type ActionTarget =
+  | "type_selector"
+  | "oauth"
+  | "api_key"
+  | "user_password"
+  | "host_scoped"
+  | null;
+
+export function resolveActionTarget(
+  hasMultipleCredentialTypes: boolean,
+  supportsOAuth2: boolean,
+  supportsApiKey: boolean,
+  supportsUserPassword: boolean,
+  supportsHostScoped: boolean,
+): ActionTarget {
+  if (hasMultipleCredentialTypes) return "type_selector";
+  if (supportsOAuth2) return "oauth";
+  if (supportsApiKey) return "api_key";
+  if (supportsUserPassword) return "user_password";
+  if (supportsHostScoped) return "host_scoped";
+  return null;
+}
+
+export type HeaderPair = { key: string; value: string };
+
+export function headerPairsToRecord(
+  pairs: HeaderPair[],
+): Record<string, string> {
+  return pairs.reduce(
+    (acc, pair) => {
+      if (pair.key.trim() && pair.value.trim()) {
+        acc[pair.key.trim()] = pair.value.trim();
+      }
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+}
+
+export function addHeaderPairToList(pairs: HeaderPair[]): HeaderPair[] {
+  return [...pairs, { key: "", value: "" }];
+}
+
+export function removeHeaderPairFromList(
+  pairs: HeaderPair[],
+  index: number,
+): HeaderPair[] {
+  if (pairs.length <= 1) return pairs;
+  return pairs.filter((_, i) => i !== index);
+}
+
+export function updateHeaderPairInList(
+  pairs: HeaderPair[],
+  index: number,
+  field: "key" | "value",
+  value: string,
+): HeaderPair[] {
+  const newPairs = [...pairs];
+  newPairs[index] = { ...newPairs[index], [field]: value };
+  return newPairs;
 }

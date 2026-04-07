@@ -1,4 +1,4 @@
-import test, { expect } from "@playwright/test";
+import { test, expect } from "./coverage-fixture";
 import { signupTestUser } from "./utils/signup";
 import { completeOnboardingWizard } from "./utils/onboarding";
 import { getSelectors } from "./utils/selectors";

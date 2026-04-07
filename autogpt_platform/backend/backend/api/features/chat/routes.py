@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
-from backend.copilot.config import ChatConfig
+from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
     ChatMessage,
@@ -111,6 +111,11 @@ class StreamChatRequest(BaseModel):
     file_ids: list[str] | None = Field(
         default=None, max_length=20
     )  # Workspace file IDs attached to this message
+    mode: CopilotMode | None = Field(
+        default=None,
+        description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
+        "If None, uses the server default (extended_thinking).",
+    )
 
 
 class CreateSessionRequest(BaseModel):
@@ -456,8 +461,9 @@ async def get_copilot_usage(
 
     Returns current token usage vs limits for daily and weekly windows.
     Global defaults sourced from LaunchDarkly (falling back to config).
+    Includes the user's rate-limit tier.
     """
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
     return await get_usage_status(
@@ -465,6 +471,7 @@ async def get_copilot_usage(
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
+        tier=tier,
     )
 
 
@@ -516,7 +523,7 @@ async def reset_copilot_usage(
             detail="Rate limit reset is not available (credit system is disabled).",
         )
 
-    daily_limit, weekly_limit = await get_global_rate_limits(
+    daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id, config.daily_token_limit, config.weekly_token_limit
     )
 
@@ -556,6 +563,7 @@ async def reset_copilot_usage(
             user_id=user_id,
             daily_token_limit=daily_limit,
             weekly_token_limit=weekly_limit,
+            tier=tier,
         )
         if daily_limit > 0 and usage_status.daily.used < daily_limit:
             raise HTTPException(
@@ -631,6 +639,7 @@ async def reset_copilot_usage(
         daily_token_limit=daily_limit,
         weekly_token_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
+        tier=tier,
     )
 
     return RateLimitResetResponse(
@@ -741,7 +750,7 @@ async def stream_chat_post(
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
-            daily_limit, weekly_limit = await get_global_rate_limits(
+            daily_limit, weekly_limit, _ = await get_global_rate_limits(
                 user_id, config.daily_token_limit, config.weekly_token_limit
             )
             await check_rate_limit(
@@ -836,6 +845,7 @@ async def stream_chat_post(
         is_user_message=request.is_user_message,
         context=request.context,
         file_ids=sanitized_file_ids,
+        mode=request.mode,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000

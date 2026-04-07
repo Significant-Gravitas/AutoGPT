@@ -8,13 +8,26 @@ from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
+# Per-request routing mode for a single chat turn.
+# - 'fast': route to the baseline OpenAI-compatible path with the cheaper model.
+# - 'extended_thinking': route to the Claude Agent SDK path with the default
+#   (opus) model.
+# ``None`` means "no override"; the server falls back to the Claude Code
+# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
+CopilotMode = Literal["fast", "extended_thinking"]
+
 
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-opus-4.6", description="Default model to use"
+        default="anthropic/claude-opus-4.6",
+        description="Default model for extended thinking mode",
+    )
+    fast_model: str = Field(
+        default="anthropic/claude-sonnet-4",
+        description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",
@@ -81,11 +94,11 @@ class ChatConfig(BaseSettings):
     # allows ~70-100 turns/day.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # TODO: These are deploy-time constants applied identically to every user.
-    #  If per-user or per-plan limits are needed (e.g., free tier vs paid), these
-    #  must move to the database (e.g., a UserPlan table) and get_usage_status /
-    #  check_rate_limit would look up each user's specific limits instead of
-    #  reading config.daily_token_limit / config.weekly_token_limit.
+    # These are base limits for the FREE tier. Higher tiers (PRO, BUSINESS,
+    # ENTERPRISE) multiply these by their tier multiplier (see
+    # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
+    # User.subscriptionTier DB column and resolved inside
+    # get_global_rate_limits().
     daily_token_limit: int = Field(
         default=2_500_000,
         description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
