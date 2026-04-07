@@ -227,7 +227,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # Avian models
     AVIAN_DEEPSEEK_V3_2 = "deepseek/deepseek-v3.2"
     AVIAN_KIMI_K2_5 = "moonshotai/kimi-k2.5"
-    AVIAN_GLM_5 = "z-ai/glm-5"
+    AVIAN_GLM_5 = "avian/glm-5"
     AVIAN_MINIMAX_M2_5 = "minimax/minimax-m2.5"
     # v0 by Vercel models
     V0_1_5_MD = "v0-1.5-md"
@@ -1245,8 +1245,14 @@ async def llm_call(
             llm_model, parallel_tool_calls
         )
 
+        # Map enum values that differ from the Avian API model identifier
+        avian_model_map = {
+            LlmModel.AVIAN_GLM_5.value: "z-ai/glm-5",
+        }
+        api_model = avian_model_map.get(llm_model.value, llm_model.value)
+
         response = await client.chat.completions.create(
-            model=llm_model.value,
+            model=api_model,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_tokens=max_tokens,
