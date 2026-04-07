@@ -165,6 +165,8 @@ while IFS= read -r agent; do
   esac
 
   # Build updated agent record (ensure idle_since and revision_count are numeric)
+  # Use || true on each jq call so a malformed field skips this agent rather than
+  # aborting the entire poll cycle under set -e.
   UPDATED_AGENT=$(echo "$agent" | jq \
     --arg state "$NEW_STATE" \
     --arg hash "$CURRENT_HASH" \
@@ -175,7 +177,11 @@ while IFS= read -r agent; do
      | .last_output_hash = (if $hash == "" then .last_output_hash else $hash end)
      | .last_seen_at = $now
      | .idle_since = ($idle_since | tonumber)
-     | .revision_count = ($revision_count | tonumber)')
+     | .revision_count = ($revision_count | tonumber)' 2>/dev/null) || {
+    echo "Warning: failed to build updated agent for window $WINDOW — keeping original" >&2
+    UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$agent" '. + [$a]')
+    continue
+  }
 
   UPDATED_AGENTS=$(echo "$UPDATED_AGENTS" | jq --argjson a "$UPDATED_AGENT" '. + [$a]')
 

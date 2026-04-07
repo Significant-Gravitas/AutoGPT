@@ -41,7 +41,7 @@ Lives at `~/.claude/orchestrator-state.json` (outside repo, never committed):
     {
       "window": "autogpt1:3",
       "worktree": "AutoGPT6",
-      "worktree_path": "/Users/majdyz/Code/AutoGPT6",
+      "worktree_path": "/path/to/worktrees/AutoGPT6",
       "spare_branch": "spare/6",
       "branch": "feat/my-feature",
       "objective": "Implement X and open a PR",
@@ -79,8 +79,8 @@ git worktree list --porcelain | awk '
 
 Example output:
 ```
-/Users/majdyz/Code/AutoGPT3 spare/3
-/Users/majdyz/Code/AutoGPT7 spare/7
+/path/to/worktrees/AutoGPT3 spare/3
+/path/to/worktrees/AutoGPT7 spare/7
 ```
 
 ## spawn_agent — create window, launch agent, send task
@@ -105,7 +105,8 @@ WIN_IDX=$(tmux new-window -t "$SESSION" -n "$WORKTREE_NAME" -P -F '#{window_inde
 WINDOW="${SESSION}:${WIN_IDX}"
 
 # Launch claude with bypass permissions
-tmux send-keys -t "$WINDOW" "cd $WORKTREE_PATH && claude --permission-mode bypassPermissions" Enter
+# Single-quote WORKTREE_PATH so the pane shell handles spaces and special chars correctly
+tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions" Enter
 
 # Wait up to 30s for claude to start (foreground becomes 'node')
 for i in $(seq 1 30); do
@@ -141,8 +142,9 @@ SPARE_BRANCH="$3"
 # Kill the tmux window
 tmux kill-window -t "$WINDOW" 2>/dev/null
 
-# Restore to spare branch (clean working tree first)
+# Restore to spare branch (clean tracked files and remove untracked files/dirs)
 git -C "$WORKTREE_PATH" reset --hard HEAD 2>/dev/null
+git -C "$WORKTREE_PATH" clean -fd 2>/dev/null
 git -C "$WORKTREE_PATH" checkout "$SPARE_BRANCH"
 
 echo "Recycled: $WORKTREE_PATH → $SPARE_BRANCH (window $WINDOW closed)"
@@ -217,10 +219,18 @@ SPARE_LIST=$(git worktree list --porcelain | awk '
 ' | grep -E " refs/heads/spare/[0-9]+$" | sed 's|refs/heads/||')
 
 AGENTS_JSON="[]"
-while IFS= read -r spare_line && [[ -n "$TASK" ]]; do
+# TASKS is an array of "NEW_BRANCH|OBJECTIVE" strings populated in Step 3
+# TASK_IDX tracks which task to assign to each spare worktree
+TASK_IDX=0
+while IFS= read -r spare_line; do
+  [ -z "$spare_line" ] && continue
+  [ "$TASK_IDX" -ge "${#TASKS[@]}" ] && break
+
   WORKTREE_PATH=$(echo "$spare_line" | awk '{print $1}')
   SPARE_BRANCH=$(echo "$spare_line" | awk '{print $2}')
   WORKTREE_NAME=$(basename "$WORKTREE_PATH")
+  NEW_BRANCH=$(echo "${TASKS[$TASK_IDX]}" | cut -d'|' -f1)
+  OBJECTIVE=$(echo "${TASKS[$TASK_IDX]}" | cut -d'|' -f2-)
 
   WINDOW=$(spawn_agent "$SESSION" "$WORKTREE_PATH" "$SPARE_BRANCH" "$NEW_BRANCH" "$OBJECTIVE")
 
@@ -237,6 +247,7 @@ while IFS= read -r spare_line && [[ -n "$TASK" ]]; do
 
   AGENTS_JSON=$(echo "$AGENTS_JSON" | jq --argjson a "$AGENT" '. + [$a]')
   echo "Spawned: $WINDOW ($WORKTREE_NAME on $NEW_BRANCH)"
+  TASK_IDX=$(( TASK_IDX + 1 ))
 done <<< "$SPARE_LIST"
 ```
 
@@ -282,6 +293,7 @@ Read the JSON output. For each action:
 - "complete": mark done, then recycle — kill the window and restore spare branch:
   tmux kill-window -t <window>
   git -C <worktree_path> reset --hard HEAD
+  git -C <worktree_path> clean -fd
   git -C <worktree_path> checkout <spare_branch>
   Update state: .state = "done"
   Output: "AGENT DONE + RECYCLED: <window> (<worktree>) → <spare_branch>"
@@ -336,12 +348,12 @@ echo "Added: $WINDOW ($WORKTREE_NAME on $NEW_BRANCH)"
 ## Subcommand: stop
 
 ```bash
-# Show state
-jq '.agents[] | {window, state, worktree, branch}' ~/.claude/orchestrator-state.json
-
-# Mark inactive
+# Mark inactive first (so cron stops acting on new polls)
 jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
   && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+
+# Show current state
+jq '.agents[] | {window, state, worktree, branch}' ~/.claude/orchestrator-state.json
 
 # Cancel cron
 CRON_ID=$(jq -r '.cron_job_id // ""' ~/.claude/orchestrator-state.json)
