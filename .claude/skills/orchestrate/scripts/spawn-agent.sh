@@ -57,6 +57,7 @@ tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode b
 
 # Wait up to 60s for claude to be fully interactive:
 # both pane_current_command == 'node' AND the '❯' prompt is visible.
+PROMPT_FOUND=false
 for i in $(seq 1 60); do
   CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
   PANE=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null || echo "")
@@ -66,10 +67,15 @@ for i in $(seq 1 60); do
     continue
   fi
   if [[ "$CMD" == "node" ]] && echo "$PANE" | grep -q "❯"; then
+    PROMPT_FOUND=true
     break
   fi
   sleep 1
 done
+
+if ! $PROMPT_FOUND; then
+  echo "[spawn-agent] WARNING: timed out waiting for ❯ prompt on $WINDOW — sending objective anyway" >&2
+fi
 
 # Send the task with checkpoint protocol and recovery instructions
 tmux send-keys -t "$WINDOW" "${OBJECTIVE}${RECOVERY} When ALL steps are done, output ORCHESTRATOR:DONE on its own line." Enter

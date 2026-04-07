@@ -59,14 +59,27 @@ handle_kick() {
 
   echo "[$(date +%H:%M:%S)] KICK restart  $window — agent exited, restarting"
   tmux send-keys -t "$window" "cd '${worktree_path}' && claude --permission-mode bypassPermissions" Enter
-  sleep 3
 
-  # Auto-dismiss settings error dialog
-  local pane
-  pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
-  if echo "$pane" | grep -q "Enter to confirm"; then
-    tmux send-keys -t "$window" Down Enter
-    sleep 2
+  # Wait up to 60s for claude to be fully interactive: node + ❯ prompt visible
+  local kick_prompt_found=false
+  for i in $(seq 1 60); do
+    local kick_cmd kick_pane
+    kick_cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
+    kick_pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
+    if echo "$kick_pane" | grep -q "Enter to confirm"; then
+      tmux send-keys -t "$window" Down Enter
+      sleep 2
+      continue
+    fi
+    if [[ "$kick_cmd" == "node" ]] && echo "$kick_pane" | grep -q "❯"; then
+      kick_prompt_found=true
+      break
+    fi
+    sleep 1
+  done
+
+  if ! $kick_prompt_found; then
+    echo "[$(date +%H:%M:%S)] KICK WARNING  $window — timed out waiting for ❯, sending objective anyway"
   fi
 
   tmux send-keys -t "$window" "${objective}. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter
@@ -78,7 +91,7 @@ handle_kick() {
 handle_approve() {
   local window="$1"
   local pane_tail
-  pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -10 || echo "")
+  pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -3 || echo "")
 
   # Settings error dialog at startup
   if echo "$pane_tail" | grep -q "Enter to confirm"; then

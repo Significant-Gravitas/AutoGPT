@@ -20,5 +20,5 @@ git -C "$REPO_ROOT" worktree list --porcelain \
       /^worktree / { path = substr($0, 10) }
       /^branch /   { branch = substr($0, 8); print path " " branch }
     ' \
-  | grep -E " refs/heads/spare/[0-9]+$" \
+  | { grep -E " refs/heads/spare/[0-9]+$" || true; } \
   | sed 's|refs/heads/||'

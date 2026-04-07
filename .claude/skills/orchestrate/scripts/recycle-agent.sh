@@ -22,7 +22,9 @@ SPARE_BRANCH="$3"
 # Kill the tmux window (ignore error — may already be gone)
 tmux kill-window -t "$WINDOW" 2>/dev/null || true
 
-# Restore to spare branch: clean tracked then untracked files
+# Restore to spare branch: abort any in-progress operation, then clean
+git -C "$WORKTREE_PATH" rebase --abort 2>/dev/null || true
+git -C "$WORKTREE_PATH" merge --abort 2>/dev/null || true
 git -C "$WORKTREE_PATH" reset --hard HEAD 2>/dev/null
 git -C "$WORKTREE_PATH" clean -fd 2>/dev/null
 git -C "$WORKTREE_PATH" checkout "$SPARE_BRANCH"
