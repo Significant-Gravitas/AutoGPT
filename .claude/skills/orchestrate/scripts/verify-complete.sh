@@ -24,10 +24,10 @@ WORKTREE_PATH=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .wo
 BRANCH=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .branch // ""' "$STATE_FILE" 2>/dev/null)
 SPAWNED_AT=$(jq -r --arg w "$WINDOW" '.agents[] | select(.window == $w) | .spawned_at // "0"' "$STATE_FILE" 2>/dev/null || echo "0")
 
-# No PR number = no verification possible, assume done
+# No PR number = cannot verify — refuse to recycle (supervisor must handle)
 if [ -z "$PR_NUMBER" ]; then
-  echo "No pr_number in state — skipping verification"
-  exit 0
+  echo "NOT COMPLETE: no pr_number in state — cannot verify; set pr_number or mark done manually" >&2
+  exit 1
 fi
 
 # --- Resolve repo: state file .repo → worktree git remote → fail gracefully ---
@@ -74,7 +74,18 @@ else
     exit 1
   fi
 
-  # --- Check 3: CI not failing ---
+  # --- Check 3: no CHANGES_REQUESTED reviews (from any reviewer, bot or human) ---
+  CHANGES_REQUESTED=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+    --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "0")
+
+  if [ "$CHANGES_REQUESTED" -gt 0 ]; then
+    REQUESTERS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+      --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED") | .author.login] | join(", ")' 2>/dev/null || echo "unknown")
+    echo "NOT COMPLETE: CHANGES_REQUESTED from ${REQUESTERS} on PR #$PR_NUMBER" >&2
+    exit 1
+  fi
+
+  # --- Check 5: CI not failing ---
   # gh pr checks --json may return an empty array if checks haven't started yet — that's fine.
   # We only fail if bucket == "fail" is present.
   FAILING=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json bucket 2>/dev/null \
@@ -85,7 +96,7 @@ else
     exit 1
   fi
 
-  # --- Check 4: a new CI run was triggered AFTER the agent spawned ---
+  # --- Check 6: a new CI run was triggered AFTER the agent spawned ---
   # Guards against agents that output CHECKPOINT:* from the objective text itself
   # (copied from spawn message) without actually doing work, while CI was already
   # green from a previous run.
