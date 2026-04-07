@@ -77,8 +77,7 @@ class ChatMessage(BaseModel):
             refusal=prisma_message.refusal,
             tool_calls=_parse_json_field(prisma_message.toolCalls),
             function_call=_parse_json_field(prisma_message.functionCall),
-            # Prisma model stubs can lag schema fields in generated types.
-            duration_ms=cast(int | None, getattr(prisma_message, "durationMs", None)),
+            duration_ms=prisma_message.durationMs,
         )
 
 
@@ -164,11 +163,7 @@ class ChatSessionInfo(BaseModel):
         )
 
         # Parse typed metadata from the JSON column.
-        # Prisma model stubs can lag schema fields in generated types.
-        raw_metadata = _parse_json_field(
-            getattr(prisma_session, "metadata", None),
-            default={},
-        )
+        raw_metadata = _parse_json_field(prisma_session.metadata, default={})
         metadata = ChatSessionMetadata.model_validate(raw_metadata)
 
         # Calculate usage from token counts.
