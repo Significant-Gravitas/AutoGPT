@@ -115,13 +115,50 @@ if [ "$UNRESOLVED" -gt 0 ]; then
 fi
 
 # --- Check 6: no CHANGES_REQUESTED (checked AFTER CI — bots post reviews after their check) ---
-CHANGES_REQUESTED=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-  --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")] | length' 2>/dev/null || echo "0")
+# A CHANGES_REQUESTED review is stale if the latest commit was pushed AFTER the review was submitted.
+# Stale reviews (pre-dating the fixing commits) should not block verification.
+LATEST_COMMIT_DATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+  --json commits --jq '.commits[-1].committedDate // ""' 2>/dev/null || echo "")
 
-if [ "$CHANGES_REQUESTED" -gt 0 ]; then
-  REQUESTERS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
-    --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED") | .author.login] | join(", ")' 2>/dev/null || echo "unknown")
-  echo "NOT COMPLETE: CHANGES_REQUESTED from ${REQUESTERS} on PR #$PR_NUMBER" >&2
+CHANGES_REQUESTED_REVIEWS=$(gh pr view "$PR_NUMBER" --repo "$REPO" \
+  --json reviews --jq '[.reviews[] | select(.state == "CHANGES_REQUESTED")]' 2>/dev/null || echo "[]")
+
+BLOCKING_CHANGES_REQUESTED=0
+BLOCKING_REQUESTERS=""
+
+if [ -n "$LATEST_COMMIT_DATE" ] && [ "$(echo "$CHANGES_REQUESTED_REVIEWS" | jq length)" -gt 0 ]; then
+  if date --version >/dev/null 2>&1; then
+    LATEST_COMMIT_EPOCH=$(date -d "$LATEST_COMMIT_DATE" "+%s" 2>/dev/null || echo "0")
+  else
+    LATEST_COMMIT_EPOCH=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LATEST_COMMIT_DATE" "+%s" 2>/dev/null || echo "0")
+  fi
+
+  while IFS= read -r review; do
+    [ -z "$review" ] && continue
+    REVIEW_DATE=$(echo "$review" | jq -r '.submittedAt // ""')
+    REVIEWER=$(echo "$review" | jq -r '.author.login // "unknown"')
+    if [ -n "$REVIEW_DATE" ]; then
+      if date --version >/dev/null 2>&1; then
+        REVIEW_EPOCH=$(date -d "$REVIEW_DATE" "+%s" 2>/dev/null || echo "0")
+      else
+        REVIEW_EPOCH=$(TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$REVIEW_DATE" "+%s" 2>/dev/null || echo "0")
+      fi
+      if [ "$REVIEW_EPOCH" -gt "$LATEST_COMMIT_EPOCH" ]; then
+        # Review was submitted AFTER latest commit — still fresh, blocks verification
+        BLOCKING_CHANGES_REQUESTED=$(( BLOCKING_CHANGES_REQUESTED + 1 ))
+        BLOCKING_REQUESTERS="${BLOCKING_REQUESTERS:+$BLOCKING_REQUESTERS, }${REVIEWER}"
+      fi
+      # Review submitted BEFORE latest commit — stale, skip
+    fi
+  done <<< "$(echo "$CHANGES_REQUESTED_REVIEWS" | jq -c '.[]')"
+else
+  # No commit date or no changes_requested — check raw count as fallback
+  BLOCKING_CHANGES_REQUESTED=$(echo "$CHANGES_REQUESTED_REVIEWS" | jq length 2>/dev/null || echo "0")
+  BLOCKING_REQUESTERS=$(echo "$CHANGES_REQUESTED_REVIEWS" | jq -r '[.[].author.login] | join(", ")' 2>/dev/null || echo "unknown")
+fi
+
+if [ "$BLOCKING_CHANGES_REQUESTED" -gt 0 ]; then
+  echo "NOT COMPLETE: CHANGES_REQUESTED (after latest commit) from ${BLOCKING_REQUESTERS} on PR #$PR_NUMBER" >&2
   exit 1
 fi
 
