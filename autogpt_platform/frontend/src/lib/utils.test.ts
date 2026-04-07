@@ -92,6 +92,6 @@ describe("setNestedProperty", () => {
       setNestedProperty(obj, "__proto__.polluted", true);
     }).toThrow("Invalid property name: __proto__");
 
-    expect({}.polluted).toBeUndefined();
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
   });
 });

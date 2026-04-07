@@ -66,13 +66,7 @@ describe("SettingsPage", () => {
         last_reset_date: new Date("2026-01-01T00:00:00.000Z"),
       }),
       getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
-      getPostV1UpdateUserEmailMockHandler(async ({ request }) => {
-        const payload = (await request.json()) as string | { email?: string };
-        updatedEmails.push(
-          typeof payload === "string" ? payload : (payload.email ?? ""),
-        );
-        return {};
-      }),
+      getPostV1UpdateUserEmailMockHandler({}),
       getPostV1UpdateNotificationPreferencesMockHandler({
         user_id: "user-1",
         email: "user@example.com",

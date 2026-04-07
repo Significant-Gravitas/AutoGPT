@@ -17,7 +17,7 @@ function makeExecution(
     id: "exec-1",
     graph_id: "graph-1",
     status: AgentExecutionStatus.RUNNING,
-    started_at: new Date().toISOString(),
+    started_at: new Date(),
     ended_at: null,
     user_id: "user-1",
     graph_version: 1,
