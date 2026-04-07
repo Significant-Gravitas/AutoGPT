@@ -33,12 +33,24 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
+from backend.copilot.rate_limit import get_user_tier
+from backend.copilot.transcript import (
+    _run_compression,
+    cleanup_stale_project_dirs,
+    compact_transcript,
+    download_transcript,
+    read_compacted_entries,
+    upload_transcript,
+    validate_transcript,
+    write_transcript_to_tempfile,
+)
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig
+from ..config import ChatConfig, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -51,6 +63,7 @@ from ..model import (
     ChatMessage,
     ChatSession,
     get_chat_session,
+    maybe_append_user_message,
     update_session_title,
     upsert_chat_session,
 )
@@ -92,17 +105,6 @@ from .tool_adapter import (
     set_execution_context,
     wait_for_stash,
 )
-from .transcript import (
-    _run_compression,
-    cleanup_stale_project_dirs,
-    compact_transcript,
-    download_transcript,
-    read_compacted_entries,
-    upload_transcript,
-    validate_transcript,
-    write_transcript_to_tempfile,
-)
-from .transcript_builder import TranscriptBuilder
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -128,6 +130,11 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
     "too large to fit in a single tool call. "
     "Try breaking your request into smaller parts."
 )
+
+# Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
+# arrives for this many seconds. This catches hung tool calls (e.g. WebSearch
+# hanging on a search provider that never responds).
+_IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
 
 # Patterns that indicate the prompt/request exceeds the model's context limit.
 # Matched case-insensitively against the full exception chain.
@@ -1291,6 +1298,8 @@ async def _run_stream_attempt(
             await client.query(state.query_message, session_id=ctx.session_id)
             state.transcript_builder.append_user(content=ctx.current_message)
 
+        _last_real_msg_time = time.monotonic()
+
         async for sdk_msg in _iter_sdk_messages(client):
             # Heartbeat sentinel — refresh lock and keep SSE alive
             if sdk_msg is None:
@@ -1298,7 +1307,33 @@ async def _run_stream_attempt(
                 for ev in ctx.compaction.emit_start_if_ready():
                     yield ev
                 yield StreamHeartbeat()
+
+                # Idle timeout: if no real SDK message for too long, a tool
+                # call is likely hung (e.g. WebSearch provider not responding).
+                idle_seconds = time.monotonic() - _last_real_msg_time
+                if idle_seconds >= _IDLE_TIMEOUT_SECONDS:
+                    logger.error(
+                        "%s Idle timeout after %.0fs with no SDK message — "
+                        "aborting stream (likely hung tool call)",
+                        ctx.log_prefix,
+                        idle_seconds,
+                    )
+                    stream_error_msg = (
+                        "A tool call appears to be stuck "
+                        "(no response for 10 minutes). "
+                        "Please try again."
+                    )
+                    stream_error_code = "idle_timeout"
+                    _append_error_marker(ctx.session, stream_error_msg, retryable=True)
+                    yield StreamError(
+                        errorText=stream_error_msg,
+                        code=stream_error_code,
+                    )
+                    ended_with_stream_error = True
+                    break
                 continue
+
+            _last_real_msg_time = time.monotonic()
 
             logger.info(
                 "%s Received: %s %s (unresolved=%d, current=%d, resolved=%d)",
@@ -1548,9 +1583,21 @@ async def _run_stream_attempt(
             # --- Intermediate persistence ---
             # Flush session messages to DB periodically so page reloads
             # show progress during long-running turns.
+            #
+            # IMPORTANT: Skip the flush while tool calls are pending
+            # (tool_calls set on assistant but results not yet received).
+            # The DB save is append-only (uses start_sequence), so if we
+            # flush the assistant message before tool_calls are set on it
+            # (text and tool_use arrive as separate SDK events), the
+            # tool_calls update is lost — the next flush starts past it.
             _msgs_since_flush += 1
             now = time.monotonic()
-            if (
+            has_pending_tools = (
+                acc.has_appended_assistant
+                and acc.accumulated_tool_calls
+                and not acc.has_tool_results
+            )
+            if not has_pending_tools and (
                 _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
                 or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
             ):
@@ -1650,6 +1697,7 @@ async def stream_chat_completion_sdk(
     session: ChatSession | None = None,
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
+    mode: CopilotMode | None = None,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -1658,7 +1706,10 @@ async def stream_chat_completion_sdk(
         file_ids: Optional workspace file IDs attached to the user's message.
             Images are embedded as vision content blocks; other files are
             saved to the SDK working directory for the Read tool.
+        mode: Accepted for signature compatibility with the baseline path.
+            The SDK path does not currently branch on this value.
     """
+    _ = mode  # SDK path ignores the requested mode.
 
     if session is None:
         session = await get_chat_session(session_id, user_id)
@@ -1689,19 +1740,12 @@ async def stream_chat_completion_sdk(
         )
         session.messages.pop()
 
-    # Append the new message to the session if it's not already there
-    new_message_role = "user" if is_user_message else "assistant"
-    if message and (
-        len(session.messages) == 0
-        or not (
-            session.messages[-1].role == new_message_role
-            and session.messages[-1].content == message
-        )
-    ):
-        session.messages.append(ChatMessage(role=new_message_role, content=message))
+    if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
-                user_id=user_id, session_id=session_id, message_length=len(message)
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(message or ""),
             )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
@@ -1994,15 +2038,20 @@ async def stream_chat_completion_sdk(
         # langsmith tracing integration attaches them to every span.  This
         # is what Langfuse (or any OTEL backend) maps to its native
         # user/session fields.
+        _user_tier = await get_user_tier(user_id) if user_id else None
+        _otel_metadata: dict[str, str] = {
+            "resume": str(use_resume),
+            "conversation_turn": str(turn),
+        }
+        if _user_tier:
+            _otel_metadata["subscription_tier"] = _user_tier.value
+
         _otel_ctx = propagate_attributes(
             user_id=user_id,
             session_id=session_id,
             trace_name="copilot-sdk",
             tags=["sdk"],
-            metadata={
-                "resume": str(use_resume),
-                "conversation_turn": str(turn),
-            },
+            metadata=_otel_metadata,
         )
         _otel_ctx.__enter__()
 

@@ -31,7 +31,6 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 import inspect
 import json
 import logging
-import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -44,39 +43,18 @@ logger = logging.getLogger(__name__)
 
 
 # Default simulator model — Gemini 2.5 Flash via OpenRouter (fast, cheap, good at
-# JSON generation).  Configurable via SIMULATION_MODEL env var or
-# ChatConfig.simulation_model.
+# JSON generation).  Configurable via ChatConfig.simulation_model
+# (CHAT_SIMULATION_MODEL env var).
 _DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash"
 
 
 def _simulator_model() -> str:
-    # 1. Environment variable override (highest priority).
-    env_model = os.environ.get("SIMULATION_MODEL")
-    if env_model:
-        model = env_model
-    else:
-        # 2. ChatConfig.simulation_model (falls back to default).
-        try:
-            from backend.copilot.config import ChatConfig  # noqa: PLC0415
-
-            model = ChatConfig().simulation_model or _DEFAULT_SIMULATOR_MODEL
-        except Exception:
-            model = _DEFAULT_SIMULATOR_MODEL
-
-    # get_openai_client() may return a direct OpenAI client (not OpenRouter).
-    # Direct OpenAI expects bare model names ("gpt-4o-mini"), not the
-    # OpenRouter-prefixed form ("openai/gpt-4o-mini").  Strip the prefix when
-    # the internal OpenAI key is configured (i.e. not going through OpenRouter).
     try:
-        from backend.util.settings import Settings  # noqa: PLC0415
+        from backend.copilot.config import ChatConfig  # noqa: PLC0415
 
-        secrets = Settings().secrets
-        if secrets.openai_internal_api_key and "/" in model:
-            model = model.split("/", 1)[1]
+        return ChatConfig().simulation_model or _DEFAULT_SIMULATOR_MODEL
     except Exception:
-        pass
-
-    return model
+        return _DEFAULT_SIMULATOR_MODEL
 
 
 _TEMPERATURE = 0.2
@@ -136,7 +114,7 @@ async def _call_llm_for_simulation(
         RuntimeError: If no LLM client is available.
         ValueError: If all retry attempts are exhausted.
     """
-    client = get_openai_client()
+    client = get_openai_client(prefer_openrouter=True)
     if client is None:
         raise RuntimeError(
             "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available "

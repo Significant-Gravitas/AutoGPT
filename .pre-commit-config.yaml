@@ -23,9 +23,15 @@ repos:
       - id: detect-secrets
         name: Detect secrets
         description: Detects high entropy strings that are likely to be passwords.
+        args: ["--baseline", ".secrets.baseline"]
         files: ^autogpt_platform/
-        exclude: pnpm-lock\.yaml$
-        stages: [pre-push]
+        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template))$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
 
   - repo: local
     # For proper type checking, all dependencies need to be up-to-date.

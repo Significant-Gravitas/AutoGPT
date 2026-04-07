@@ -155,6 +155,7 @@ class WorkspaceManager:
         path: Optional[str] = None,
         mime_type: Optional[str] = None,
         overwrite: bool = False,
+        metadata: Optional[dict] = None,
     ) -> WorkspaceFile:
         """
         Write file to workspace.
@@ -168,6 +169,7 @@ class WorkspaceManager:
             path: Virtual path (defaults to "/{filename}", session-scoped if session_id set)
             mime_type: MIME type (auto-detected if not provided)
             overwrite: Whether to overwrite existing file at path
+            metadata: Optional metadata dict (e.g., origin tracking)
 
         Returns:
             Created WorkspaceFile instance
@@ -246,6 +248,7 @@ class WorkspaceManager:
                     mime_type=mime_type,
                     size_bytes=len(content),
                     checksum=checksum,
+                    metadata=metadata,
                 )
             except UniqueViolationError:
                 if retries > 0:

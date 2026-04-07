@@ -90,11 +90,12 @@ async def test_simulate_block_basic():
 
     with patch(
         "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
+    ) as mock_get_client:
         outputs = []
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
 
+    mock_get_client.assert_called_once_with(prefer_openrouter=True)
     assert ("result", "simulated output") in outputs
     # Empty error pin should NOT be yielded — the simulator omits empty values
     assert ("error", "") not in outputs

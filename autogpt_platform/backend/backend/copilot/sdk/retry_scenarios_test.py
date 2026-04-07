@@ -26,18 +26,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.util import json
-
-from .conftest import build_test_transcript as _build_transcript
-from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
-from .transcript import (
+from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
-    compact_transcript,
-    validate_transcript,
 )
+from backend.util import json
+
+from .conftest import build_test_transcript as _build_transcript
+from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
+from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
 
 # ---------------------------------------------------------------------------
@@ -113,7 +112,7 @@ class TestScenarioCompactAndRetry:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -170,7 +169,7 @@ class TestScenarioCompactFailsFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("LLM unavailable"),
             ),
@@ -261,7 +260,7 @@ class TestScenarioDoubleFailDBFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -337,7 +336,7 @@ class TestScenarioCompactionIdentical:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -730,7 +729,7 @@ class TestRetryEdgeCases:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -841,7 +840,7 @@ class TestRetryStateReset:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ),
@@ -1405,9 +1404,9 @@ class TestStreamChatCompletionRetryIntegration:
                 events.append(event)
 
         # Should NOT retry — only 1 attempt for auth errors
-        assert attempt_count[0] == 1, (
-            f"Expected 1 attempt (no retry for auth error), " f"got {attempt_count[0]}"
-        )
+        assert (
+            attempt_count[0] == 1
+        ), f"Expected 1 attempt (no retry for auth error), got {attempt_count[0]}"
         errors = [e for e in events if isinstance(e, StreamError)]
         assert errors, "Expected StreamError"
         assert errors[0].code == "sdk_stream_error"

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+export const MAX_PAIN_POINT_SELECTIONS = 3;
 export type Step = 1 | 2 | 3 | 4;
 
 interface OnboardingWizardState {
@@ -40,6 +41,8 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     togglePainPoint(painPoint) {
       set((state) => {
         const exists = state.painPoints.includes(painPoint);
+        if (!exists && state.painPoints.length >= MAX_PAIN_POINT_SELECTIONS)
+          return state;
         return {
           painPoints: exists
             ? state.painPoints.filter((p) => p !== painPoint)

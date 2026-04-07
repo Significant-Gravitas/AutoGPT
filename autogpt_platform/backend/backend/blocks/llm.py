@@ -205,6 +205,19 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
+    # Z.ai (Zhipu) models
+    ZAI_GLM_4_32B = "z-ai/glm-4-32b"
+    ZAI_GLM_4_5 = "z-ai/glm-4.5"
+    ZAI_GLM_4_5_AIR = "z-ai/glm-4.5-air"
+    ZAI_GLM_4_5_AIR_FREE = "z-ai/glm-4.5-air:free"
+    ZAI_GLM_4_5V = "z-ai/glm-4.5v"
+    ZAI_GLM_4_6 = "z-ai/glm-4.6"
+    ZAI_GLM_4_6V = "z-ai/glm-4.6v"
+    ZAI_GLM_4_7 = "z-ai/glm-4.7"
+    ZAI_GLM_4_7_FLASH = "z-ai/glm-4.7-flash"
+    ZAI_GLM_5 = "z-ai/glm-5"
+    ZAI_GLM_5_TURBO = "z-ai/glm-5-turbo"
+    ZAI_GLM_5V_TURBO = "z-ai/glm-5v-turbo"
     # Llama API models
     LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
     LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
@@ -629,6 +642,43 @@ MODEL_METADATA = {
     ),
     LlmModel.QWEN3_CODER: ModelMetadata(
         "open_router", 262144, 262144, "Qwen 3 Coder", "OpenRouter", "Qwen", 3
+    ),
+    # https://openrouter.ai/models?q=z-ai
+    LlmModel.ZAI_GLM_4_32B: ModelMetadata(
+        "open_router", 128000, 128000, "GLM 4 32B", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_5: ModelMetadata(
+        "open_router", 131072, 98304, "GLM 4.5", "OpenRouter", "Z.ai", 2
+    ),
+    LlmModel.ZAI_GLM_4_5_AIR: ModelMetadata(
+        "open_router", 131072, 98304, "GLM 4.5 Air", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_5_AIR_FREE: ModelMetadata(
+        "open_router", 131072, 96000, "GLM 4.5 Air (Free)", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_5V: ModelMetadata(
+        "open_router", 65536, 16384, "GLM 4.5V", "OpenRouter", "Z.ai", 2
+    ),
+    LlmModel.ZAI_GLM_4_6: ModelMetadata(
+        "open_router", 204800, 204800, "GLM 4.6", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_6V: ModelMetadata(
+        "open_router", 131072, 131072, "GLM 4.6V", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_7: ModelMetadata(
+        "open_router", 202752, 65535, "GLM 4.7", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_4_7_FLASH: ModelMetadata(
+        "open_router", 202752, 202752, "GLM 4.7 Flash", "OpenRouter", "Z.ai", 1
+    ),
+    LlmModel.ZAI_GLM_5: ModelMetadata(
+        "open_router", 80000, 80000, "GLM 5", "OpenRouter", "Z.ai", 2
+    ),
+    LlmModel.ZAI_GLM_5_TURBO: ModelMetadata(
+        "open_router", 202752, 131072, "GLM 5 Turbo", "OpenRouter", "Z.ai", 3
+    ),
+    LlmModel.ZAI_GLM_5V_TURBO: ModelMetadata(
+        "open_router", 202752, 131072, "GLM 5V Turbo", "OpenRouter", "Z.ai", 3
     ),
     # Llama API models
     LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata(
