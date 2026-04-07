@@ -547,6 +547,8 @@ Upload screenshots to the PR using the GitHub Git API (no local git operations �
 
 **This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
+**CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
+
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
 REPO="Significant-Gravitas/AutoGPT"
@@ -670,6 +672,14 @@ INNEREOF
 
 gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
 rm -f "$COMMENT_FILE"
+
+# Verify the posted comment contains inline images — exit 1 if none found
+LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate --jq '.[-1].body' 2>/dev/null)
+if ! echo "$LAST_COMMENT" | grep -q '!\['; then
+  echo "ERROR: Posted comment contains no inline images (![). Bare directory links are not acceptable." >&2
+  exit 1
+fi
+echo "✓ Inline images verified in posted comment"
 ```
 
 **The PR comment MUST include:**
