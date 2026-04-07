@@ -34,6 +34,15 @@ if [ ! -f "$STATE_FILE" ]; then
   echo '{"active":false,"agents":[]}' > "$STATE_FILE"
 fi
 
+# Validate JSON upfront before any jq reads that run under set -e.
+# A truncated/corrupt file (e.g. from a SIGKILL mid-write) would otherwise
+# abort the script at the ACTIVE read below without emitting any JSON output.
+if ! jq -e '.' "$STATE_FILE" >/dev/null 2>&1; then
+  echo "State file parse error — check $STATE_FILE" >&2
+  echo "[]"
+  exit 0
+fi
+
 ACTIVE=$(jq -r '.active // false' "$STATE_FILE")
 if [ "$ACTIVE" != "true" ]; then
   echo "[]"
