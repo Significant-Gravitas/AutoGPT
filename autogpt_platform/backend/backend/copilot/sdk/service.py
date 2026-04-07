@@ -2370,6 +2370,16 @@ async def stream_chat_completion_sdk(
                         )
                         state.usage.reset()
                         continue  # retry same context-level attempt
+                    # Retries exhausted — persist retryable marker so the
+                    # frontend shows "Try again" after refresh.
+                    # Mirrors the _HandledStreamError exhausted-retry path
+                    # at line ~2310.
+                    skip_transcript_upload = True
+                    _append_error_marker(
+                        session, FRIENDLY_TRANSIENT_MSG, retryable=True
+                    )
+                    ended_with_stream_error = True
+                    break
 
                 if not is_context_error:
                     # Non-context, non-transient errors (auth, fatal)
