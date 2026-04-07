@@ -307,23 +307,18 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Select Playwright suite
-        id: playwright-suite
-        run: |
-          if [[ "${{ github.event_name }}" == "pull_request" || "${{ github.event_name }}" == "merge_group" ]]; then
-            echo "command=pnpm test:pr-e2e:no-build" >> "$GITHUB_OUTPUT"
-            echo "mode=pr-e2e" >> "$GITHUB_OUTPUT"
-          else
-            echo "command=pnpm test:no-build" >> "$GITHUB_OUTPUT"
-            echo "mode=full" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Run Playwright smoke suite
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        run: pnpm test:pr-e2e:no-build
+        continue-on-error: false
 
-      - name: Run Playwright tests
-        run: ${{ steps.playwright-suite.outputs.command }}
+      - name: Run full Playwright suite
+        if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+        run: pnpm test:no-build
         continue-on-error: false
 
       - name: Upload E2E coverage to Codecov
-        if: ${{ !cancelled() && steps.playwright-suite.outputs.mode == 'full' }}
+        if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

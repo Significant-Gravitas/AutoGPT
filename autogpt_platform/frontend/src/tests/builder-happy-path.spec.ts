@@ -162,7 +162,12 @@ async function getVisibleExportControl(page: Page) {
   const moreActionsButtons = page.getByRole("button", { name: "More actions" });
   const moreActionsCount = await moreActionsButtons.count();
   for (let index = 0; index < moreActionsCount; index++) {
-    if (await moreActionsButtons.nth(index).isVisible().catch(() => false)) {
+    if (
+      await moreActionsButtons
+        .nth(index)
+        .isVisible()
+        .catch(() => false)
+    ) {
       return `menu:${index}`;
     }
   }

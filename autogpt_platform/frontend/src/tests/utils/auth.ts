@@ -1,3 +1,4 @@
+import { randomInt } from "crypto";
 import fs from "fs";
 import path from "path";
 import { LoginPage } from "../pages/login.page";
@@ -117,7 +118,7 @@ export async function getTestUser(): Promise<TestUser> {
     throw new Error("No seeded E2E users are configured");
   }
 
-  const randomIndex = Math.floor(Math.random() * SEEDED_TEST_USERS.length);
+  const randomIndex = randomInt(SEEDED_TEST_USERS.length);
   const { email, password } = SEEDED_TEST_USERS[randomIndex];
   return { email, password };
 }

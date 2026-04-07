@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { AgentImageItem } from "../AgentImageItem/AgentImageItem";
 import { getYouTubeVideoId, isValidVideoUrl } from "../AgentImageItem/helpers";
@@ -42,7 +43,7 @@ export function AgentImages({ images }: AgentImagesProps) {
 
             return (
               <button
-                key={index}
+                key={image}
                 type="button"
                 onClick={() => setSelectedIndex(index)}
                 className={cn(
@@ -56,10 +57,11 @@ export function AgentImages({ images }: AgentImagesProps) {
                   <Skeleton className="absolute inset-0 rounded-lg" />
                 )}
                 {youtubeId ? (
-                  <img
+                  <Image
                     src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
                     alt={`Thumbnail ${index + 1}`}
-                    loading="lazy"
+                    fill
+                    sizes="(max-width: 640px) 96px, 128px"
                     className="absolute inset-0 h-full w-full object-cover"
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
@@ -70,10 +72,11 @@ export function AgentImages({ images }: AgentImagesProps) {
                     Video
                   </div>
                 ) : (
-                  <img
+                  <Image
                     src={image}
                     alt={`Thumbnail ${index + 1}`}
-                    loading="lazy"
+                    fill
+                    sizes="(max-width: 640px) 96px, 128px"
                     className="absolute inset-0 h-full w-full object-cover"
                     onLoad={() =>
                       setLoadedThumbs((prev) => new Set(prev).add(index))
