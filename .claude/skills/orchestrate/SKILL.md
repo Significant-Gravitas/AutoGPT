@@ -32,16 +32,16 @@ STATE_FILE=~/.claude/orchestrator-state.json
 | `poll-cycle.sh` | One monitoring cycle — classifies panes, tracks checkpoints, returns JSON action array |
 | `classify-pane.sh WINDOW` | Classify one pane state |
 
-## Two-layer supervision model
+## Supervision model
 
 ```
-Supervisor window (dedicated Claude Code in tmux, runs continuously)
+Orchestrating Claude (this Claude session — IS the supervisor)
   └── Reads pane output, checks CI, intervenes with targeted guidance
         run-loop.sh (separate tmux window, every 30s)
           └── Mechanical only: idle restart, dialog approval, recycle on ORCHESTRATOR:DONE
 ```
 
-**Supervisor window** is the intelligence layer — a dedicated Claude Code instance running in its own tmux window. It reads each agent's pane, checks PR CI/threads, and sends specific guidance when agents stall, deviate, or claim completion without meeting all criteria. Running in its own window means it doesn't pollute the user's main Claude session context, and survives context compression.
+**You (the orchestrating Claude)** are the supervisor. After spawning agents, stay in this conversation and actively monitor: poll each agent's pane every 2-3 minutes, check CI, nudge stalled agents, and verify completions. Do not spawn a separate supervisor Claude window — it loses context, is hard to observe, and compounds context compression problems.
 
 **run-loop.sh** is the mechanical layer — zero tokens, handles things that need no judgment: restart crashed agents, press Enter on dialogs, recycle completed worktrees (only after `verify-complete.sh` passes).
 
@@ -79,7 +79,6 @@ Never committed to git. You maintain this file directly using `jq` + atomic writ
   "tmux_session": "autogpt1",
   "idle_threshold_seconds": 300,
   "loop_window": "autogpt1:5",
-  "supervisor_window": "autogpt1:6",
   "repo": "Significant-Gravitas/AutoGPT",
   "discord_webhook": "https://discord.com/api/webhooks/...",
   "last_poll_at": 0,
@@ -109,7 +108,6 @@ Never committed to git. You maintain this file directly using `jq` + atomic writ
 Top-level optional fields:
 - `repo` — GitHub `owner/repo` for CI/thread checks. Auto-derived from git remote if omitted.
 - `discord_webhook` — Discord webhook URL for completion notifications. Also reads `DISCORD_WEBHOOK_URL` env var.
-- `supervisor_window` — tmux window running the supervisor Claude; `run-loop.sh` restarts it if it exits.
 
 Per-agent optional fields:
 - `last_rebriefed_at` — Unix timestamp of last re-brief; enforces 5-min cooldown to prevent spam.
@@ -200,9 +198,8 @@ jq --arg hook "$DISCORD_WEBHOOK_URL" '.discord_webhook = $hook' ~/.claude/orches
 
 `spawn-agent.sh` writes the initial agent record (window, worktree_path, branch, objective, state, etc.) to the state file automatically — **do not append the record again after calling it.** The record already exists and `pr_number`/`steps` are patched in by the script itself.
 
-### 5. Start both supervision layers
+### 5. Start the mechanical babysitter
 
-**Layer 1 — mechanical babysitter** (tmux window, zero tokens):
 ```bash
 LOOP_WIN=$(tmux new-window -t "$SESSION" -n "orchestrator" -P -F '#{window_index}')
 LOOP_WINDOW="${SESSION}:${LOOP_WIN}"
@@ -212,98 +209,63 @@ jq --arg w "$LOOP_WINDOW" '.loop_window = $w' ~/.claude/orchestrator-state.json 
   > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-**Layer 2 — intelligent supervisor** (dedicated Claude Code window):
+### 6. Begin supervising directly in this conversation
 
-Open a new tmux window in the SAME session and launch Claude there:
-
-```bash
-SUP_WIN=$(tmux new-window -t "$SESSION" -n "supervisor" -P -F '#{window_index}')
-SUP_WINDOW="${SESSION}:${SUP_WIN}"
-SKILLS_DIR_ABS="$(git -C "$(git rev-parse --show-toplevel)" rev-parse --show-toplevel)/.claude/skills/orchestrate/scripts"
-
-tmux send-keys -t "$SUP_WINDOW" "cd '$(git rev-parse --show-toplevel)' && claude --permission-mode bypassPermissions" Enter
-# Wait for claude to be ready (same pattern as spawn-agent.sh)
-# Then send the supervisor prompt:
-```
-
-Send this prompt to the supervisor window (fill in real session, window IDs, and skills dir):
-
-```text
-You are the intelligent supervisor for a Claude agent fleet.
-
-Your job: every 2-3 minutes, check all running agents and intervene when needed.
-
-SELF-RECOVERY: If your own context compacts and you lose track of what you were doing,
-re-read the state file: cat ~/.claude/orchestrator-state.json | jq
-That gives you the full picture. Resume supervision immediately.
-
-State file: cat ~/.claude/orchestrator-state.json | jq
-
-SKILLS_DIR: <SKILLS_DIR_ABS>
-
-For each running agent, read their pane:
-  tmux capture-pane -t SESSION:WIN -p -S -200 | tail -80
-
-For each agent decide:
-- Actively working (spinner/tools running) → do nothing
-- Idle at ❯ prompt without ORCHESTRATOR:DONE → stalled; send specific nudge:
-    tmux send-keys -t SESSION:WIN "Your objective: <restate from state file>. Continue from where you left off." Enter
-- Stuck in loop / repeating error → send targeted fix guidance
-- Waiting for input / asking a question → answer and unblock
-- CI red → run: gh pr checks PR_NUMBER --repo $(jq -r '.repo // "Significant-Gravitas/AutoGPT"' ~/.claude/orchestrator-state.json)
-    then tell the agent exactly what's failing and how to fix it
-- Context compacted, agent appears lost → send recovery command:
-    tmux send-keys -t SESSION:WIN "Run: cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window==\"SESSION:WIN\")' and gh pr view PR_NUMBER --json title,body,headRefName to reorient, then continue your task." Enter
-- Claims ORCHESTRATOR:DONE → run verify-complete.sh:
-    bash SKILLS_DIR/verify-complete.sh SESSION:WIN
-    If it fails, re-brief the agent with the specific failure reason.
-
-Only surface to the user if a strategic decision is needed.
-When all agents reach state "done" or "escalated", your job is complete.
-
-Begin your first check now, then loop every 2-3 minutes.
-```
-
-Store the supervisor window in the state file:
-
-```bash
-jq --arg w "$SUP_WINDOW" '.supervisor_window = $w' ~/.claude/orchestrator-state.json \
-  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-```
+You are the supervisor. After spawning, immediately start your first poll loop (see **Supervisor duties** below) and continue every 2-3 minutes. Do NOT spawn a separate supervisor Claude window.
 
 ## Adding an agent
 
 Find the next spare worktree, then spawn and append to state — same as steps 2–4 above but for a single task. If no spare worktrees are available, tell the user.
 
-## Supervisor duties (what the supervisor window does every 2-3 min)
+## Supervisor duties (YOUR job, every 2-3 min in this conversation)
 
-1. Read `~/.claude/orchestrator-state.json` to get agent windows and objectives
-2. For each agent in `running`/`idle`/`stuck` state, capture pane output
-3. **Check for stalling**: no new output in last 5+ min → send specific re-orientation message referencing the objective from state
-4. **Check for deviation**: agent doing something unrelated to its objective → correct immediately with a specific redirect
-5. **Check for PR issues**: unresolved threads, CI failures → tell the agent exactly what's failing and how to fix it
-6. **Strict ORCHESTRATOR:DONE gate** — when agent outputs ORCHESTRATOR:DONE, run ALL three checks before allowing recycling:
-   ```bash
-   # 1. Checkpoints + 0 threads + CI green
-   bash SKILLS_DIR/verify-complete.sh SESSION:WIN
+You are the supervisor. Run this poll loop directly in your Claude session — not in a separate window.
 
-   # 2. CI ran AFTER agent spawned (proves agent actually pushed something new)
-   SPAWNED_AT=$(jq -r --arg w SESSION:WIN '.agents[] | select(.window==$w) | .spawned_at // 0' ~/.claude/orchestrator-state.json)
-   LATEST_RUN=$(gh run list --repo REPO --branch BRANCH --limit 1 --json createdAt --jq '.[0].createdAt')
-   # LATEST_RUN must be after SPAWNED_AT
+### Poll loop (repeat every 2-3 min until all agents done)
 
-   # 3. No CHANGES_REQUESTED review decision
-   gh pr view PR_NUMBER --json reviewDecision --jq '.reviewDecision'
-   ```
-   If any check fails, tell the agent specifically what's missing and mark state back to `running`. Do not allow recycling until all three pass.
-7. **Re-brief after context compaction**: if agent asks "what should I do?" or appears lost:
-   ```bash
-   cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window=="SESSION:WIN")'
-   gh pr view PR_NUMBER --json title,body,headRefName
-   ```
-   Send objective + PR context via tmux (remember: split send-keys, sleep 0.3 between text and Enter).
-   If `image_path` is set on the agent, include: "Re-read context at IMAGE_PATH with the Read tool."
-8. **send-keys rule**: never combine long text and Enter in one call — always `send-keys "text"` then `sleep 0.3` then `send-keys Enter`
+```bash
+# 1. Read state
+cat ~/.claude/orchestrator-state.json | jq '.agents[] | {window, worktree, branch, state, pr_number, checkpoints}'
+
+# 2. For each running/stuck/idle agent, capture pane
+tmux capture-pane -t SESSION:WIN -p -S -200 | tail -60
+```
+
+For each agent, decide:
+
+| What you see | Action |
+|---|---|
+| Spinner / tools running | Do nothing — agent is working |
+| Idle `❯` prompt, no `ORCHESTRATOR:DONE` | Stalled — send specific nudge with objective from state |
+| Stuck in error loop | Send targeted fix with exact error + solution |
+| Waiting for input / question | Answer and unblock via `tmux send-keys` |
+| CI red | `gh pr checks PR_NUMBER --repo REPO` → tell agent exactly what's failing |
+| Context compacted / agent lost | Send recovery: `cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window=="WIN")'` + `gh pr view PR_NUMBER --json title,body` |
+| `ORCHESTRATOR:DONE` in output | Run `verify-complete.sh` — if it fails, re-brief with specific reason |
+
+### Strict ORCHESTRATOR:DONE gate
+
+`verify-complete.sh` handles the main checks automatically (checkpoints, threads, CHANGES_REQUESTED, CI green, spawned_at). Run it:
+
+```bash
+SKILLS_DIR=~/.claude/orchestrator/scripts
+bash $SKILLS_DIR/verify-complete.sh SESSION:WIN
+```
+
+If it passes → run-loop.sh will recycle the window automatically. No manual action needed.
+If it fails → re-brief the agent with the failure reason. Never manually mark state `done` to bypass this.
+
+### Re-brief a stalled agent
+
+```bash
+OBJ=$(jq -r --arg w SESSION:WIN '.agents[] | select(.window==$w) | .objective' ~/.claude/orchestrator-state.json)
+PR=$(jq -r --arg w SESSION:WIN '.agents[] | select(.window==$w) | .pr_number' ~/.claude/orchestrator-state.json)
+tmux send-keys -t SESSION:WIN "You appear stalled. Your objective: $OBJ. Check: gh pr view $PR --json title,body,headRefName to reorient."
+sleep 0.3
+tmux send-keys -t SESSION:WIN Enter
+```
+
+If `image_path` is set on the agent record, include: "Re-read context at IMAGE_PATH with the Read tool."
 
 ## Self-recovery protocol (agents)
 
@@ -358,9 +320,6 @@ jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
 
 LOOP_WINDOW=$(jq -r '.loop_window // ""' ~/.claude/orchestrator-state.json)
 [ -n "$LOOP_WINDOW" ] && tmux kill-window -t "$LOOP_WINDOW" 2>/dev/null || true
-
-SUP_WINDOW=$(jq -r '.supervisor_window // ""' ~/.claude/orchestrator-state.json)
-[ -n "$SUP_WINDOW" ] && tmux kill-window -t "$SUP_WINDOW" 2>/dev/null || true
 ```
 
 Does **not** recycle running worktrees — agents may still be mid-task. Run `capacity.sh` to see what's still in progress.

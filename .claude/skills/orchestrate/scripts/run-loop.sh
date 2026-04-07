@@ -180,57 +180,6 @@ handle_complete() {
 }
 
 # ---------------------------------------------------------------------------
-# check_supervisor — restart supervisor Claude window if its process has exited
-# ---------------------------------------------------------------------------
-check_supervisor() {
-  local sup_win
-  sup_win=$(jq -r '.supervisor_window // ""' "$STATE_FILE" 2>/dev/null || echo "")
-  [[ -z "$sup_win" || "$sup_win" == "null" ]] && return
-
-  local cmd
-  cmd=$(tmux display-message -t "$sup_win" -p '#{pane_current_command}' 2>/dev/null || echo "unknown")
-  case "$cmd" in
-    zsh|bash|fish|sh|dash|tcsh|ksh)
-      echo "[$(date +%H:%M:%S)] SUPERVISOR DEAD — restarting $sup_win"
-      # Use first agent's worktree_path as working directory (any valid git root works)
-      local work_dir
-      work_dir=$(jq -r '(.agents // []) | map(select(.worktree_path != "")) | .[0].worktree_path // ""' "$STATE_FILE" 2>/dev/null || echo "")
-      [[ -z "$work_dir" ]] && work_dir="$HOME"
-
-      tmux send-keys -t "$sup_win" "cd '${work_dir}' && claude --permission-mode bypassPermissions" Enter
-
-      # Wait up to 60s for claude to be fully interactive: node + ❯ prompt visible
-      local sup_prompt_found=false
-      for i in $(seq 1 60); do
-        local sup_cmd sup_pane
-        sup_cmd=$(tmux display-message -t "$sup_win" -p '#{pane_current_command}' 2>/dev/null || echo "")
-        sup_pane=$(tmux capture-pane -t "$sup_win" -p 2>/dev/null || echo "")
-        if echo "$sup_pane" | grep -q "Enter to confirm"; then
-          tmux send-keys -t "$sup_win" Down Enter
-          sleep 2
-          continue
-        fi
-        if [[ "$sup_cmd" == "node" ]] && echo "$sup_pane" | grep -q "❯"; then
-          sup_prompt_found=true
-          break
-        fi
-        sleep 1
-      done
-
-      if ! $sup_prompt_found; then
-        echo "[$(date +%H:%M:%S)] SUPERVISOR WARNING — timed out waiting for ❯, sending recovery prompt anyway"
-      fi
-
-      # Send recovery prompt — reads full state from file so no hardcoded context needed
-      local state_file_path="$STATE_FILE"
-      tmux send-keys -t "$sup_win" "You are the fleet supervisor. Your prior context was lost. Start by reading: cat ${state_file_path} | jq — then capture each running agent's pane (tmux capture-pane -t WINDOW -p -S -200 | tail -80) and resume active supervision: nudge stalled agents, fix CI failures, answer questions. Loop every 2-3 minutes until all agents are done."
-      sleep 0.3
-      tmux send-keys -t "$sup_win" Enter
-      ;;
-  esac
-}
-
-# ---------------------------------------------------------------------------
 # check_all_done — notify and optionally stop when every agent is terminal
 # ---------------------------------------------------------------------------
 NOTIFIED_DONE=false
@@ -259,7 +208,7 @@ check_all_done() {
 # Main loop
 # ---------------------------------------------------------------------------
 echo "[$(date +%H:%M:%S)] run-loop started (mechanical only, poll every ${POLL_INTERVAL}s)"
-echo "[$(date +%H:%M:%S)] Supervisor: dedicated window (see .supervisor_window in state file)"
+echo "[$(date +%H:%M:%S)] Supervisor: orchestrating Claude session (not a separate window)"
 echo "---"
 
 while true; do
@@ -283,9 +232,6 @@ while true; do
       complete) handle_complete "$WINDOW" || true; DONE=$(( DONE + 1 )) ;;
     esac
   done < <(echo "$ACTIONS" | jq -c '.[]' 2>/dev/null || true)
-
-  # Monitor supervisor health — restart if Claude has exited
-  check_supervisor || true
 
   # Check if fleet is fully complete
   check_all_done || true
