@@ -890,6 +890,12 @@ class AgentFixer:
             )
 
             if is_ai_block:
+                # Skip AI blocks that don't expose a "model" input property
+                # (some AI-category blocks have no model selector at all).
+                input_properties = block.get("inputSchema", {}).get("properties", {})
+                if "model" not in input_properties:
+                    continue
+
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
                 current_model = input_default.get("model")
@@ -898,9 +904,7 @@ class AgentFixer:
                 # Blocks with a block-specific enum on the model field (e.g.
                 # PerplexityBlock) use their own enum values; others use the
                 # generic set.
-                model_schema = (
-                    block.get("inputSchema", {}).get("properties", {}).get("model", {})
-                )
+                model_schema = input_properties.get("model", {})
                 block_model_enum = model_schema.get("enum")
 
                 if block_model_enum:
