@@ -7041,12 +7041,76 @@
         }
       }
     },
+    "/api/workspace/files": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "List workspace files",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.",
+        "operationId": "listWorkspaceFiles",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListFilesResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
         "summary": "Upload file to workspace",
         "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
-        "operationId": "postWorkspaceUpload file to workspace",
+        "operationId": "uploadWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7074,7 +7138,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+                "$ref": "#/components/schemas/Body_uploadWorkspaceFile"
               }
             }
           }
@@ -7109,7 +7173,7 @@
         "tags": ["workspace"],
         "summary": "Delete a workspace file",
         "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
-        "operationId": "deleteWorkspaceDelete a workspace file",
+        "operationId": "deleteWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7147,7 +7211,7 @@
         "tags": ["workspace"],
         "summary": "Download file by ID",
         "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
-        "operationId": "getWorkspaceDownload file by id",
+        "operationId": "getWorkspaceDownloadFileById",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7181,7 +7245,7 @@
         "tags": ["workspace"],
         "summary": "Get workspace storage usage",
         "description": "Get storage usage information for the user's workspace.",
-        "operationId": "getWorkspaceGet workspace storage usage",
+        "operationId": "getWorkspaceStorageUsage",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -8499,13 +8563,13 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
-      "Body_postWorkspaceUpload_file_to_workspace": {
+      "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
         },
         "type": "object",
         "required": ["file"],
-        "title": "Body_postWorkspaceUpload file to workspace"
+        "title": "Body_uploadWorkspaceFile"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -10691,6 +10755,24 @@
         "type": "object",
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
+      },
+      "ListFilesResponse": {
+        "properties": {
+          "files": {
+            "items": { "$ref": "#/components/schemas/WorkspaceFileItem" },
+            "type": "array",
+            "title": "Files"
+          },
+          "offset": { "type": "integer", "title": "Offset", "default": 0 },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["files"],
+        "title": "ListFilesResponse"
       },
       "ListSessionsResponse": {
         "properties": {
@@ -15218,6 +15300,31 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkspaceFileItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": { "type": "string", "title": "Created At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "mime_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "title": "WorkspaceFileItem"
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {
