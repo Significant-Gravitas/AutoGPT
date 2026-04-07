@@ -2,7 +2,9 @@ import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
 import { LoginPage } from "./pages/login.page";
 
-async function dismissCopilotNotificationPrompt(page: import("@playwright/test").Page) {
+async function dismissCopilotNotificationPrompt(
+  page: import("@playwright/test").Page,
+) {
   const notNowButton = page.getByRole("button", { name: "Not now" });
   if (await notNowButton.isVisible({ timeout: 3000 }).catch(() => false)) {
     await notNowButton.click();

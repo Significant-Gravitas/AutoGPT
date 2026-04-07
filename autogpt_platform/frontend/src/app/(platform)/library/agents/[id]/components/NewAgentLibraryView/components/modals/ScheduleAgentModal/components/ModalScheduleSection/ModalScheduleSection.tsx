@@ -45,12 +45,7 @@ export function ModalScheduleSection({
       if (onValidityChange)
         onValidityChange(Object.keys(fieldErrors).length === 0);
     },
-    [
-      _cronExpression,
-      onValidityChange,
-      recommendedScheduleCron,
-      scheduleName,
-    ],
+    [_cronExpression, onValidityChange, recommendedScheduleCron, scheduleName],
   );
 
   return (

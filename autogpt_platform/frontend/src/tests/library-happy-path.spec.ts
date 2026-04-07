@@ -174,9 +174,7 @@ async function openNewTaskDialog(page: Page) {
   await newTaskButton.click();
 }
 
-async function createScheduleFromLibraryAgentPage(
-  page: Page,
-): Promise<string> {
+async function createScheduleFromLibraryAgentPage(page: Page): Promise<string> {
   await openNewTaskDialog(page);
 
   const scheduleTaskButton = page.getByRole("button", {
