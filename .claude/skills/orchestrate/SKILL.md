@@ -1,34 +1,47 @@
 ---
 name: orchestrate
-description: "Meta-agent supervisor that manages a fleet of Claude Code agents running in tmux windows. Auto-discovers spare worktrees (spare/N branches), spawns agents into new windows, monitors state, kicks idle agents, auto-approves safe confirmations, and recycles worktrees when done. TRIGGER when user asks to supervise agents, manage a fleet, monitor tmux agents, or orchestrate parallel worktrees."
+description: "Meta-agent supervisor that manages a fleet of Claude Code agents running in tmux windows. Auto-discovers spare worktrees, spawns agents, monitors state, kicks idle agents, approves safe confirmations, and recycles worktrees when done. TRIGGER when user asks to supervise agents, run parallel tasks, manage worktrees, check agent status, or orchestrate parallel work."
 user-invocable: true
-argument-hint: "[start|stop|status|add|poll|capacity] — start spawns agents into spare worktrees, add assigns one more task, capacity shows available worktrees, poll runs one check cycle"
+argument-hint: "any free text — e.g. 'start 3 agents on X Y Z', 'show status', 'add task: implement feature A', 'stop', 'how many are free?'"
 metadata:
   author: autogpt-team
-  version: "2.0.0"
+  version: "3.0.0"
 ---
 
 # Orchestrate — Agent Fleet Supervisor
 
-One tmux session, N windows — each window is one agent in one worktree. The orchestrator auto-discovers spare worktrees, spawns agents, monitors them, and recycles worktrees when work is done. No manual window setup required.
+One tmux session, N windows — each window is one agent working in its own worktree. Speak naturally; Claude maps your intent to the right scripts.
+
+## Scripts
+
+```bash
+SKILLS_DIR=$(git rev-parse --show-toplevel)/.claude/skills/orchestrate/scripts
+STATE_FILE=~/.claude/orchestrator-state.json
+```
+
+| Script | Purpose | Key args |
+|---|---|---|
+| `find-spare.sh [REPO_ROOT]` | List free worktrees — one `PATH BRANCH` per line | |
+| `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** | |
+| `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch | |
+| `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees | |
+| `status.sh` | Print fleet status + live pane commands | |
+| `poll-cycle.sh` | One monitoring cycle — returns JSON action array | |
+| `classify-pane.sh WINDOW` | Classify one pane state | |
 
 ## Worktree lifecycle
 
 ```text
-spare/N branch   →   orchestrate add   →   new window + feat/branch + claude running
-                                                        ↓
-                                               ORCHESTRATOR:DONE
-                                                        ↓
-                                        kill window + git checkout spare/N
-                                                        ↓
-                                               spare/N (free again)
+spare/N branch  →  spawn-agent.sh  →  window + feat/branch + claude running
+                                                ↓
+                                         ORCHESTRATOR:DONE
+                                                ↓
+                               recycle-agent.sh → spare/N (free again)
 ```
 
-Windows are always capped by worktree count — no creep. Auto-close on completion is how the orchestrator signals a worktree is free for the next task.
+## State file (`~/.claude/orchestrator-state.json`)
 
-## State file
-
-Lives at `~/.claude/orchestrator-state.json` (outside repo, never committed):
+Never committed to git. Claude maintains this file directly using `jq` + atomic writes (`.tmp` → `mv`).
 
 ```json
 {
@@ -36,12 +49,12 @@ Lives at `~/.claude/orchestrator-state.json` (outside repo, never committed):
   "tmux_session": "autogpt1",
   "idle_threshold_seconds": 300,
   "cron_job_id": "...",
-  "last_poll_at": 1712345678,
+  "last_poll_at": 0,
   "agents": [
     {
       "window": "autogpt1:3",
       "worktree": "AutoGPT6",
-      "worktree_path": "/path/to/worktrees/AutoGPT6",
+      "worktree_path": "/path/to/AutoGPT6",
       "spare_branch": "spare/6",
       "branch": "feat/my-feature",
       "objective": "Implement X and open a PR",
@@ -57,357 +70,150 @@ Lives at `~/.claude/orchestrator-state.json` (outside repo, never committed):
 
 Agent states: `running` | `idle` | `stuck` | `waiting_approval` | `complete` | `done` | `escalated`
 
-> **State transitions:** `complete` = set by poll-cycle.sh when ORCHESTRATOR:DONE is detected on screen; `done` = set by Claude after recycling the worktree.
+## Intent → action mapping
 
-## Scripts
+Match the user's message to one of these intents:
 
-```bash
-SKILLS_DIR=$(git rev-parse --show-toplevel)/.claude/skills/orchestrate
-POLL_SCRIPT=$SKILLS_DIR/scripts/poll-cycle.sh
-CLASSIFY_SCRIPT=$SKILLS_DIR/scripts/classify-pane.sh
-STATE_FILE=~/.claude/orchestrator-state.json
-```
+| The user says something like… | What to do |
+|---|---|
+| "status", "what's running", "show agents" | Run `status.sh` + `capacity.sh`, show output |
+| "how many free", "capacity", "available worktrees" | Run `capacity.sh`, show output |
+| "start N agents on X, Y, Z" or "run these tasks: …" | See **Spawning agents** below |
+| "add task: …", "add one more agent for …" | See **Adding an agent** below |
+| "stop", "shut down", "pause the fleet" | See **Stopping** below |
+| "poll", "check now", "run a cycle" | Run `poll-cycle.sh`, process actions |
+| "recycle window X", "free up autogpt3" | Run `recycle-agent.sh` directly |
 
-## find_spare_worktrees — discover available capacity
+When the intent is ambiguous, show capacity first and ask what tasks to run.
 
-```bash
-# List all worktrees on spare/N branches (these are free to use)
-# Output: one line per available worktree: "PATH SPARE_BRANCH"
-git worktree list --porcelain | awk '
-  /^worktree / { path = substr($0, 10) }
-  /^branch /   { branch = substr($0, 8); print path " " branch }
-' | grep -E " refs/heads/spare/[0-9]+$" | sed 's|refs/heads/||'
-```
+## Spawning agents
 
-Example output:
-```text
-/path/to/worktrees/AutoGPT3 spare/3
-/path/to/worktrees/AutoGPT7 spare/7
-```
-
-## spawn_agent — create window, launch agent, send task
-
-```bash
-# Usage: spawn_agent SESSION WORKTREE_PATH SPARE_BRANCH NEW_BRANCH OBJECTIVE
-# Returns: "SESSION:WINDOW_IDX" on stdout
-
-SESSION="$1"
-WORKTREE_PATH="$2"
-SPARE_BRANCH="$3"       # e.g. spare/6  — to restore on completion
-NEW_BRANCH="$4"         # e.g. feat/my-feature  — branch to create for this task
-OBJECTIVE="$5"
-WORKTREE_NAME=$(basename "$WORKTREE_PATH")
-
-# Create the task branch
-git -C "$WORKTREE_PATH" checkout -b "$NEW_BRANCH" 2>/dev/null \
-  || git -C "$WORKTREE_PATH" checkout "$NEW_BRANCH"
-
-# Create a new named window, capture its numeric index
-WIN_IDX=$(tmux new-window -t "$SESSION" -n "$WORKTREE_NAME" -P -F '#{window_index}')
-WINDOW="${SESSION}:${WIN_IDX}"
-
-# Launch claude with bypass permissions
-# Single-quote WORKTREE_PATH so the pane shell handles spaces and special chars correctly
-tmux send-keys -t "$WINDOW" "cd '${WORKTREE_PATH}' && claude --permission-mode bypassPermissions" Enter
-
-# Wait up to 30s for claude to start (foreground becomes 'node')
-for i in $(seq 1 30); do
-  CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
-  [[ "$CMD" == "node" ]] && break
-  sleep 1
-done
-
-# Auto-dismiss Claude settings error dialog if present
-CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "")
-if [[ "$CMD" != "node" ]]; then
-  PANE=$(tmux capture-pane -t "$WINDOW" -p 2>/dev/null | tail -5)
-  if echo "$PANE" | grep -q "Enter to confirm"; then
-    tmux send-keys -t "$WINDOW" Down Enter
-    sleep 2
-  fi
-fi
-
-# Send the task
-tmux send-keys -t "$WINDOW" "${OBJECTIVE}. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter
-
-echo "$WINDOW"
-```
-
-## recycle_worktree — restore worktree to spare after completion
-
-```bash
-# Usage: recycle_worktree WINDOW WORKTREE_PATH SPARE_BRANCH
-WINDOW="$1"
-WORKTREE_PATH="$2"
-SPARE_BRANCH="$3"
-
-# Kill the tmux window
-tmux kill-window -t "$WINDOW" 2>/dev/null
-
-# Restore to spare branch (clean tracked files and remove untracked files/dirs)
-git -C "$WORKTREE_PATH" reset --hard HEAD 2>/dev/null
-git -C "$WORKTREE_PATH" clean -fd 2>/dev/null
-git -C "$WORKTREE_PATH" checkout "$SPARE_BRANCH"
-
-echo "Recycled: $WORKTREE_PATH → $SPARE_BRANCH (window $WINDOW closed)"
-```
-
-## Subcommand: capacity
-
-Show available worktrees before starting. Run this to understand the fleet size.
-
-```bash
-echo "=== Available (spare) worktrees ==="
-git worktree list --porcelain | awk '
-  /^worktree / { path = substr($0, 10) }
-  /^branch /   { branch = substr($0, 8); print path " " branch }
-' | grep -E " refs/heads/spare/[0-9]+$" | sed 's|refs/heads/||' \
-  | while read path branch; do
-      echo "  ✓ $path ($branch)"
-    done
-
-echo ""
-echo "=== In-use worktrees ==="
-jq -r '.agents[] | select(.state != "done") | "  [\(.state)] \(.worktree_path) → \(.branch)"' \
-  ~/.claude/orchestrator-state.json 2>/dev/null || echo "  (no active state file)"
-```
-
-## Subcommand: start
-
-Gather task list, auto-assign spare worktrees, spawn agents, start polling.
-
-### Step 1 — Resolve tmux session
-
-If `$ARGUMENTS` provides a session name, use it. Otherwise:
+### 1. Resolve tmux session
 
 ```bash
 tmux list-sessions -F "#{session_name}: #{session_windows} windows" 2>/dev/null
 ```
 
-If no sessions exist, create one:
+Use the existing session. If none exist, create one:
 ```bash
 tmux new-session -d -s autogpt1
+SESSION="autogpt1"
 ```
 
-### Step 2 — Show available capacity
+### 2. Show available capacity
 
 ```bash
-git worktree list --porcelain | awk '
-  /^worktree / { path = substr($0, 10) }
-  /^branch /   { branch = substr($0, 8); print path " " branch }
-' | grep -E " refs/heads/spare/[0-9]+$" | sed 's|refs/heads/||'
+bash $SKILLS_DIR/capacity.sh $(git rev-parse --show-toplevel)
 ```
 
-Show the user how many spare worktrees are available.
+### 3. Collect tasks from the user
 
-### Step 3 — Gather tasks
+For each task, gather:
+- **objective** — what to do (e.g. "implement feature X and open a PR")
+- **branch name** — e.g. `feat/my-feature` (derive from objective if not given)
 
-For each task the user wants to run, collect:
-- **objective**: what the agent should do
-- **branch name**: e.g. `feat/my-feature` (derived from objective if not given)
+Ask for `idle_threshold_seconds` only if the user mentions it (default: 300).
 
-The worktree is auto-assigned from the spare list — the user does not need to specify it.
+Never ask the user to specify a worktree — auto-assign from `find-spare.sh`.
 
-Also ask: **idle_threshold_seconds** (default: 300).
-
-### Step 4 — Spawn agents
-
-For each task, pick the next available spare worktree and spawn:
+### 4. Spawn one agent per task
 
 ```bash
-SPARE_LIST=$(git worktree list --porcelain | awk '
-  /^worktree / { path = substr($0, 10) }
-  /^branch /   { branch = substr($0, 8); print path " " branch }
-' | grep -E " refs/heads/spare/[0-9]+$" | sed 's|refs/heads/||')
+# Get ordered list of spare worktrees
+SPARE_LIST=$(bash $SKILLS_DIR/find-spare.sh $(git rev-parse --show-toplevel))
 
-AGENTS_JSON="[]"
-# TASKS is an array of "NEW_BRANCH|OBJECTIVE" strings populated in Step 3
-# TASK_IDX tracks which task to assign to each spare worktree
-TASK_IDX=0
-while IFS= read -r spare_line; do
-  [ -z "$spare_line" ] && continue
-  [ "$TASK_IDX" -ge "${#TASKS[@]}" ] && break
+# For each task, take the next spare line:
+WORKTREE_PATH=$(echo "$SPARE_LINE" | awk '{print $1}')
+SPARE_BRANCH=$(echo "$SPARE_LINE" | awk '{print $2}')
 
-  WORKTREE_PATH=$(echo "$spare_line" | awk '{print $1}')
-  SPARE_BRANCH=$(echo "$spare_line" | awk '{print $2}')
-  WORKTREE_NAME=$(basename "$WORKTREE_PATH")
-  NEW_BRANCH=$(echo "${TASKS[$TASK_IDX]}" | cut -d'|' -f1)
-  OBJECTIVE=$(echo "${TASKS[$TASK_IDX]}" | cut -d'|' -f2-)
-
-  WINDOW=$(spawn_agent "$SESSION" "$WORKTREE_PATH" "$SPARE_BRANCH" "$NEW_BRANCH" "$OBJECTIVE")
-
-  AGENT=$(jq -n \
-    --arg window "$WINDOW" \
-    --arg worktree "$WORKTREE_NAME" \
-    --arg path "$WORKTREE_PATH" \
-    --arg spare "$SPARE_BRANCH" \
-    --arg branch "$NEW_BRANCH" \
-    --arg obj "$OBJECTIVE" \
-    '{window:$window, worktree:$worktree, worktree_path:$path, spare_branch:$spare,
-      branch:$branch, objective:$obj, state:"running", last_output_hash:"",
-      last_seen_at:0, idle_since:0, revision_count:0}')
-
-  AGENTS_JSON=$(echo "$AGENTS_JSON" | jq --argjson a "$AGENT" '. + [$a]')
-  echo "Spawned: $WINDOW ($WORKTREE_NAME on $NEW_BRANCH)"
-  TASK_IDX=$(( TASK_IDX + 1 ))
-done <<< "$SPARE_LIST"
+WINDOW=$(bash $SKILLS_DIR/spawn-agent.sh "$SESSION" "$WORKTREE_PATH" "$SPARE_BRANCH" "$NEW_BRANCH" "$OBJECTIVE")
 ```
 
-### Step 5 — Write state file
+Build an agent record and append it to the state file. If the state file doesn't exist yet, initialize it:
 
 ```bash
 jq -n \
   --arg session "$SESSION" \
-  --argjson threshold "$THRESHOLD" \
-  --argjson agents "$AGENTS_JSON" \
+  --argjson threshold 300 \
   '{active:true, tmux_session:$session, idle_threshold_seconds:$threshold,
-    cron_job_id:null, last_poll_at:0, agents:$agents}' \
+    cron_job_id:null, last_poll_at:0, agents:[]}' \
   > ~/.claude/orchestrator-state.json
 ```
 
-### Step 6 — Run first poll, then start CronCreate
-
+Append each new agent:
 ```bash
-SKILLS_DIR=$(git rev-parse --show-toplevel)/.claude/skills/orchestrate
-bash $SKILLS_DIR/scripts/poll-cycle.sh | jq .
+jq --argjson a "$NEW_AGENT" '.agents += [$a]' ~/.claude/orchestrator-state.json \
+  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-CronCreate prompt (fill in SKILLS_DIR with absolute path):
+### 5. Run first poll, then start the cron
+
+```bash
+bash $SKILLS_DIR/poll-cycle.sh | jq .
+```
+
+Then start CronCreate with this prompt (substitute the real absolute path for `SKILLS_DIR`):
+
 ```text
 Orchestrator poll cycle.
 
-Run: bash SKILLS_DIR/scripts/poll-cycle.sh
+Run: bash SKILLS_DIR/poll-cycle.sh
 
-Read the JSON output. For each action:
+Read the JSON output array. For each action object:
 
-- "kick" (idle — shell foreground): get worktree_path + spare_branch from state file.
-  Run: tmux send-keys -t <window> "cd <worktree_path> && claude --permission-mode bypassPermissions" Enter
-  Wait 3s. If pane shows "Enter to confirm", send Down+Enter first.
-  Then send: "<objective>. When done output ORCHESTRATOR:DONE" Enter
+- action=="kick" AND state=="idle" (agent exited — shell is foreground):
+  Restart the agent:
+    tmux send-keys -t <window> "cd '<worktree_path>' && claude --permission-mode bypassPermissions" Enter
+  Wait 3s. Capture pane: if "Enter to confirm" visible, send Down+Enter first.
+  Then send: "<objective>. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter
 
-- "kick" (stuck — claude still running): send nudge only, do NOT restart:
-  tmux send-keys -t <window> "Continue with your task. Review errors. When done output ORCHESTRATOR:DONE" Enter
+- action=="kick" AND state=="stuck" (claude still running but frozen):
+  Nudge only — do NOT restart:
+    tmux send-keys -t <window> "Continue with your task. Review any errors and proceed. When done output ORCHESTRATOR:DONE" Enter
 
-- "approve": inspect pane tail. Send "y" Enter if safe (git/install/test/docker/localhost curl).
-  Escalate (mark state=escalated) for: rm -rf outside worktree, force push, sudo, secrets.
+- action=="approve":
+  Capture pane: tmux capture-pane -t <window> -p | tail -5
+  SAFE to approve: git operations, install/build, tests, docker, curl to localhost
+  ESCALATE (set state=escalated, do not send keys) for: rm -rf outside worktree, force push to main/master, sudo, writing secrets to files
   Settings dialog "Enter to confirm": send Down+Enter
 
-- "complete": mark done, then recycle — kill the window and restore spare branch:
-  tmux kill-window -t <window>
-  git -C <worktree_path> reset --hard HEAD
-  git -C <worktree_path> clean -fd
-  git -C <worktree_path> checkout <spare_branch>
-  Update state: .state = "done"
-  Output: "AGENT DONE + RECYCLED: <window> (<worktree>) → <spare_branch>"
+- action=="complete":
+  Recycle the worktree:
+    bash SKILLS_DIR/recycle-agent.sh <window> <worktree_path> <spare_branch>
+  Update state file: set agent .state = "done"
+    jq --arg w "<window>" '.agents |= map(if .window == $w then .state = "done" else . end)' \
+      ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+  Print: "AGENT DONE + RECYCLED: <window> (<worktree>) → <spare_branch>"
 
-After all actions: "Poll [HH:MM] — N agents: X running, Y kicked, Z done+recycled, V escalated"
+After processing all actions, print one summary line:
+"Poll [HH:MM] — N agents: X running, Y kicked, Z done+recycled, V escalated"
 ```
 
-Store cron job ID in state file after CronCreate returns.
+Store the returned cron job ID: update `.cron_job_id` in the state file.
 
-## Subcommand: add
+## Adding an agent
 
-Assign one new task to the next available spare worktree.
+Find the next spare worktree, then spawn and append to state — same as steps 2–4 above but for a single task. If no spare worktrees are available, tell the user.
 
-First, gather from the user:
-- **objective**: what the agent should do
-- **branch name**: e.g. `feat/my-feature` (derived from objective if not given)
-
-Then run:
+## Stopping
 
 ```bash
-# NEW_BRANCH and OBJECTIVE must be set before this block (gathered from user above)
-SESSION=$(jq -r '.tmux_session' ~/.claude/orchestrator-state.json)
-
-# Find first spare worktree
-SPARE_LINE=$(git worktree list --porcelain | awk '
-  /^worktree / { path = substr($0, 10) }
-  /^branch /   { branch = substr($0, 8); print path " " branch }
-' | grep -E " refs/heads/spare/[0-9]+$" | sed 's|refs/heads/||' | head -1)
-
-if [ -z "$SPARE_LINE" ]; then
-  echo "No spare worktrees available. All worktrees are in use."
-  echo "Wait for a task to complete, or check /orchestrate capacity."
-  exit 1
-fi
-
-WORKTREE_PATH=$(echo "$SPARE_LINE" | awk '{print $1}')
-SPARE_BRANCH=$(echo "$SPARE_LINE" | awk '{print $2}')
-WORKTREE_NAME=$(basename "$WORKTREE_PATH")
-
-WINDOW=$(spawn_agent "$SESSION" "$WORKTREE_PATH" "$SPARE_BRANCH" "$NEW_BRANCH" "$OBJECTIVE")
-
-NEW_AGENT=$(jq -n \
-  --arg window "$WINDOW" \
-  --arg worktree "$WORKTREE_NAME" \
-  --arg path "$WORKTREE_PATH" \
-  --arg spare "$SPARE_BRANCH" \
-  --arg branch "$NEW_BRANCH" \
-  --arg obj "$OBJECTIVE" \
-  '{window:$window, worktree:$worktree, worktree_path:$path, spare_branch:$spare,
-    branch:$branch, objective:$obj, state:"running", last_output_hash:"",
-    last_seen_at:0, idle_since:0, revision_count:0}')
-
-jq --argjson a "$NEW_AGENT" '.agents += [$a]' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
-  && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-
-echo "Added: $WINDOW ($WORKTREE_NAME on $NEW_BRANCH)"
-```
-
-## Subcommand: stop
-
-```bash
-# Mark inactive first (so cron stops acting on new polls)
+# Mark inactive so poll-cycle.sh exits early (active==false)
 jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
   && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-
-# Show state (after marking inactive)
-jq '.agents[] | {window, state, worktree, branch}' ~/.claude/orchestrator-state.json
-
-# Cancel cron
-CRON_ID=$(jq -r '.cron_job_id // ""' ~/.claude/orchestrator-state.json)
-# Use CronDelete with CRON_ID (skip if empty)
 ```
 
-Does NOT recycle worktrees — agents may still be mid-task. Use `/orchestrate capacity` to see what's still running.
+Cancel the cron job using CronDelete with `.cron_job_id` from the state file.
 
-## Subcommand: status
-
-```bash
-jq -r '
-  "=== Orchestrator [\(if .active then "RUNNING" else "STOPPED" end)] ===",
-  "Session: \(.tmux_session)  |  Idle threshold: \(.idle_threshold_seconds)s",
-  "Last poll: \(if .last_poll_at == 0 then "never" else (.last_poll_at | strftime("%H:%M:%S")) end)",
-  "",
-  (.agents[] | "  [\(.state | ascii_upcase)] \(.window)  \(.worktree)/\(.branch)\n    \(.objective | .[0:70])")
-' ~/.claude/orchestrator-state.json
-
-for WINDOW in $(jq -r '.agents[] | select(.state != "done") | .window' ~/.claude/orchestrator-state.json); do
-  CMD=$(tmux display-message -t "$WINDOW" -p '#{pane_current_command}' 2>/dev/null || echo "unreachable")
-  echo "  $WINDOW live: $CMD"
-done
-```
-
-## Subcommand: poll
-
-Manual poll cycle (same logic as the CronCreate loop).
-
-```bash
-SKILLS_DIR=$(git rev-parse --show-toplevel)/.claude/skills/orchestrate
-ACTIONS=$(bash $SKILLS_DIR/scripts/poll-cycle.sh)
-echo "$ACTIONS" | jq .
-```
-
-Process each action per the rules in the CronCreate prompt above.
+Does **not** recycle running worktrees — agents may still be mid-task. Run `capacity.sh` to see what's still in progress.
 
 ## Key rules
 
-1. **Auto-assign spare worktrees** — never ask the user to pick a worktree path manually
-2. **Auto-close + recycle on done** — kill window, restore `spare/N` branch; this is how capacity frees up
-3. **Never restart a running agent** — only restart when foreground process is a shell
-4. **Handle settings errors automatically** — if "Enter to confirm" appears, send Down+Enter
-5. **Always use `--permission-mode bypassPermissions`** on every spawn
-6. **Escalate after 3 kicks** — mark as `escalated`, alert user
-7. **Atomic state writes** — `.tmp` + `mv` always
-8. **Never approve destructive commands** — when in doubt, escalate
-9. **Loop is session-scoped** — stops when this Claude session closes
+1. **Scripts do all the heavy lifting** — don't reimplement their logic inline in this file
+2. **Never ask the user to pick a worktree** — auto-assign from `find-spare.sh` output
+3. **Never restart a running agent** — only restart on `idle` kicks (foreground is a shell)
+4. **Auto-dismiss settings dialogs** — if "Enter to confirm" appears, send Down+Enter
+5. **Always `--permission-mode bypassPermissions`** on every spawn
+6. **Escalate after 3 kicks** — mark `escalated`, surface to user
+7. **Atomic state writes** — always write to `.tmp` then `mv`
+8. **Never approve destructive commands** outside the worktree scope — when in doubt, escalate
