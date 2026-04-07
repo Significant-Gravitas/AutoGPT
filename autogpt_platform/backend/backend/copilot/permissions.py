@@ -66,6 +66,7 @@ from pydantic import BaseModel, PrivateAttr
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
+    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",
@@ -102,6 +103,7 @@ ToolName = Literal[
     "web_fetch",
     "write_workspace_file",
     # SDK built-ins
+    "Agent",
     "Edit",
     "Glob",
     "Grep",

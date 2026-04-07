@@ -95,6 +95,28 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 | Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in <commit-sha>: <description>"` |
 | Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in <commit-sha>: <description>"` |
 
+## Codecov coverage
+
+Codecov patch target is **80%** on changed lines. Checks are **informational** (not blocking) but should be green.
+
+### Running coverage locally
+
+**Backend** (from `autogpt_platform/backend/`):
+```bash
+poetry run pytest -s -vv --cov=backend --cov-branch --cov-report term-missing
+```
+
+**Frontend** (from `autogpt_platform/frontend/`):
+```bash
+pnpm vitest run --coverage
+```
+
+### When codecov/patch fails
+
+1. Find uncovered files: `git diff --name-only $(gh pr view --json baseRefName --jq '.baseRefName')...HEAD`
+2. For each uncovered file — extract inline logic to `helpers.ts`/`helpers.py` and test those (highest ROI). Colocate tests as `*_test.py` (backend) or `__tests__/*.test.ts` (frontend).
+3. Run coverage locally to verify, commit, push.
+
 ## Format and commit
 
 After fixing, format the changed code:

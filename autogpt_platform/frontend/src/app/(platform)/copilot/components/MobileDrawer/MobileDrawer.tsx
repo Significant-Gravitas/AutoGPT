@@ -5,6 +5,7 @@ import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle,
+  CircleNotch,
   PlusIcon,
   SpeakerHigh,
   SpeakerSlash,
@@ -13,7 +14,6 @@ import {
 } from "@phosphor-icons/react";
 import { Drawer } from "vaul";
 import { useCopilotUIStore } from "../../store";
-import { PulseLoader } from "../PulseLoader/PulseLoader";
 
 interface Props {
   isOpen: boolean;
@@ -165,7 +165,10 @@ export function MobileDrawer({
                       {session.is_processing &&
                         !completedSessionIDs.has(session.id) &&
                         session.id !== currentSessionId && (
-                          <PulseLoader size={8} className="shrink-0" />
+                          <CircleNotch
+                            className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
+                            weight="bold"
+                          />
                         )}
                       {completedSessionIDs.has(session.id) &&
                         session.id !== currentSessionId && (

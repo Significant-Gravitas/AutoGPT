@@ -254,7 +254,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1012, "y": 674}},
                     )
@@ -274,7 +273,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1117, "y": 78}},
                     )

@@ -140,7 +140,9 @@ class TestFixOrchestratorBlocks:
         assert defaults["conversation_compaction"] is True
         assert defaults["retry"] == 3
         assert defaults["multiple_tool_calls"] is False
-        assert len(fixer.fixes_applied) == 4
+        assert defaults["execution_mode"] == "extended_thinking"
+        assert defaults["model"] == "claude-opus-4-6"
+        assert len(fixer.fixes_applied) == 6
 
     def test_preserves_existing_values(self):
         """Existing user-set values are never overwritten."""
@@ -153,6 +155,8 @@ class TestFixOrchestratorBlocks:
                         "conversation_compaction": False,
                         "retry": 1,
                         "multiple_tool_calls": True,
+                        "execution_mode": "built_in",
+                        "model": "gpt-4o",
                     }
                 )
             ],
@@ -166,6 +170,8 @@ class TestFixOrchestratorBlocks:
         assert defaults["conversation_compaction"] is False
         assert defaults["retry"] == 1
         assert defaults["multiple_tool_calls"] is True
+        assert defaults["execution_mode"] == "built_in"
+        assert defaults["model"] == "gpt-4o"
         assert len(fixer.fixes_applied) == 0
 
     def test_partial_defaults(self):
@@ -189,7 +195,9 @@ class TestFixOrchestratorBlocks:
         assert defaults["conversation_compaction"] is True  # filled
         assert defaults["retry"] == 3  # filled
         assert defaults["multiple_tool_calls"] is False  # filled
-        assert len(fixer.fixes_applied) == 3
+        assert defaults["execution_mode"] == "extended_thinking"  # filled
+        assert defaults["model"] == "claude-opus-4-6"  # filled
+        assert len(fixer.fixes_applied) == 5
 
     def test_skips_non_sdm_nodes(self):
         """Non-Orchestrator nodes are untouched."""
@@ -258,11 +266,13 @@ class TestFixOrchestratorBlocks:
         result = fixer.fix_orchestrator_blocks(agent)
 
         defaults = result["nodes"][0]["input_default"]
-        assert defaults["agent_mode_max_iterations"] == 10  # None → default
-        assert defaults["conversation_compaction"] is True  # None → default
+        assert defaults["agent_mode_max_iterations"] == 10  # None -> default
+        assert defaults["conversation_compaction"] is True  # None -> default
         assert defaults["retry"] == 3  # kept
         assert defaults["multiple_tool_calls"] is False  # kept
-        assert len(fixer.fixes_applied) == 2
+        assert defaults["execution_mode"] == "extended_thinking"  # filled
+        assert defaults["model"] == "claude-opus-4-6"  # filled
+        assert len(fixer.fixes_applied) == 4
 
     def test_multiple_sdm_nodes(self):
         """Multiple SDM nodes are all fixed independently."""
@@ -277,11 +287,11 @@ class TestFixOrchestratorBlocks:
 
         result = fixer.fix_orchestrator_blocks(agent)
 
-        # First node: 3 defaults filled (agent_mode was already set)
+        # First node: 5 defaults filled (agent_mode was already set)
         assert result["nodes"][0]["input_default"]["agent_mode_max_iterations"] == 3
-        # Second node: all 4 defaults filled
+        # Second node: all 6 defaults filled
         assert result["nodes"][1]["input_default"]["agent_mode_max_iterations"] == 10
-        assert len(fixer.fixes_applied) == 7  # 3 + 4
+        assert len(fixer.fixes_applied) == 11  # 5 + 6
 
     def test_registered_in_apply_all_fixes(self):
         """fix_orchestrator_blocks runs as part of apply_all_fixes."""
@@ -526,7 +536,12 @@ class TestValidateOrchestratorBlocks:
                 "id": AGENT_INPUT_BLOCK_ID,
                 "name": "AgentInputBlock",
                 "inputSchema": {
-                    "properties": {"name": {"type": "string"}},
+                    "properties": {
+                        "name": {"type": "string"},
+                        "title": {"type": "string"},
+                        "value": {},
+                        "description": {"type": "string"},
+                    },
                     "required": ["name"],
                 },
                 "outputSchema": {"properties": {"result": {}}},
@@ -537,6 +552,7 @@ class TestValidateOrchestratorBlocks:
                 "inputSchema": {
                     "properties": {
                         "name": {"type": "string"},
+                        "title": {"type": "string"},
                         "value": {},
                     },
                     "required": ["name"],
@@ -649,6 +665,7 @@ class TestOrchestratorE2EPipeline:
                         "conversation_compaction": {"type": "boolean"},
                         "retry": {"type": "integer"},
                         "multiple_tool_calls": {"type": "boolean"},
+                        "execution_mode": {"type": "string"},
                     },
                     "required": ["prompt"],
                 },
@@ -683,7 +700,12 @@ class TestOrchestratorE2EPipeline:
                 "id": AGENT_INPUT_BLOCK_ID,
                 "name": "AgentInputBlock",
                 "inputSchema": {
-                    "properties": {"name": {"type": "string"}},
+                    "properties": {
+                        "name": {"type": "string"},
+                        "title": {"type": "string"},
+                        "value": {},
+                        "description": {"type": "string"},
+                    },
                     "required": ["name"],
                 },
                 "outputSchema": {"properties": {"result": {}}},
@@ -694,6 +716,7 @@ class TestOrchestratorE2EPipeline:
                 "inputSchema": {
                     "properties": {
                         "name": {"type": "string"},
+                        "title": {"type": "string"},
                         "value": {},
                     },
                     "required": ["name"],

@@ -1,4 +1,5 @@
 import { Page } from "@playwright/test";
+import { skipOnboardingIfPresent } from "../utils/onboarding";
 
 export class LoginPage {
   constructor(private page: Page) {}
@@ -63,6 +64,9 @@ export class LoginPage {
 
     await new Promise((resolve) => setTimeout(resolve, 200)); // allow time for client-side redirect
     await this.page.waitForLoadState("load", { timeout: 10_000 });
+
+    // If redirected to onboarding, complete it via API so tests can proceed
+    await skipOnboardingIfPresent(this.page, "/marketplace");
 
     console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 20_000 });

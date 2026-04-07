@@ -2,7 +2,7 @@
 ARG BUILD_TYPE=dev
 
 # Use an official Python base image from the Docker Hub
-FROM python:3.10-slim AS autogpt-base
+FROM python:3.12-slim AS autogpt-base
 
 # Install browsers
 RUN apt-get update && apt-get install -y \
@@ -28,14 +28,13 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="$POETRY_HOME/bin:$PATH"
 RUN poetry config installer.max-workers 10
 
-WORKDIR /app/autogpt
-COPY original_autogpt/pyproject.toml original_autogpt/poetry.lock ./
+WORKDIR /app
+COPY pyproject.toml poetry.lock README.md ./
 
-# Include forge so it can be used as a path dependency
-COPY forge/ ../forge
-
-# Include frontend
-COPY frontend/ ../frontend
+# Include all package directories so poetry install can resolve path dependencies
+COPY forge/ ./forge/
+COPY original_autogpt/ ./original_autogpt/
+COPY direct_benchmark/ ./direct_benchmark/
 
 # Set the entrypoint
 ENTRYPOINT ["poetry", "run", "autogpt"]
@@ -45,15 +44,12 @@ CMD []
 FROM autogpt-base AS autogpt-dev
 RUN poetry install --no-cache --no-root \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY original_autogpt/ ./
 ONBUILD RUN mkdir -p ./data
 
 # release build -> include bare minimum
 FROM autogpt-base AS autogpt-release
 RUN poetry install --no-cache --no-root --without dev \
     && rm -rf $(poetry env info --path)/src
-ONBUILD COPY original_autogpt/ ./autogpt
-ONBUILD COPY original_autogpt/README.md ./README.md
 ONBUILD RUN mkdir -p ./data
 
 FROM autogpt-${BUILD_TYPE} AS autogpt

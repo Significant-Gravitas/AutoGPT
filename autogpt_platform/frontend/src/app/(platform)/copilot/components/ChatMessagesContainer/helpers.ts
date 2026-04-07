@@ -13,6 +13,7 @@ export type RenderSegment =
   | { kind: "collapsed-group"; parts: ToolUIPart[] };
 
 const CUSTOM_TOOL_TYPES = new Set([
+  "tool-ask_question",
   "tool-find_block",
   "tool-find_agent",
   "tool-find_library_agent",

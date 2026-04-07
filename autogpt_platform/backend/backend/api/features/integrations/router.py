@@ -40,11 +40,15 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -110,6 +114,7 @@ class CredentialsMetaResponse(BaseModel):
         default=None,
         description="Host pattern for host-scoped or MCP server URL for MCP credentials",
     )
+    is_managed: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -148,6 +153,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
         username=cred.username if isinstance(cred, OAuth2Credentials) else None,
         host=CredentialsMetaResponse.get_host(cred),
+        is_managed=cred.is_managed,
     )
 
 
@@ -224,6 +230,9 @@ async def callback(
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    # Fire-and-forget: provision missing managed credentials in the background.
+    # The credential appears on the next page load; listing is never blocked.
+    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -238,6 +247,7 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
@@ -332,6 +342,11 @@ async def delete_credentials(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
+    if is_system_credential(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System-managed credentials cannot be deleted",
+        )
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(
@@ -341,6 +356,11 @@ async def delete_credentials(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Credentials not found",
+        )
+    if creds.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="AutoGPT-managed credentials cannot be deleted",
         )
 
     try:

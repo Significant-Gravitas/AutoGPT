@@ -13,6 +13,7 @@ from .transcript import (
     delete_transcript,
     read_compacted_entries,
     strip_progress_entries,
+    strip_stale_thinking_blocks,
     validate_transcript,
     write_transcript_to_tempfile,
 )
@@ -302,7 +303,7 @@ class TestDeleteTranscript:
         mock_storage.delete = AsyncMock()
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -322,7 +323,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -340,7 +341,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -849,7 +850,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_no_client_uses_truncation(self):
         """Path (a): ``get_openai_client()`` returns None → truncation only."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated"}]
@@ -857,11 +858,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=None,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=truncation_result,
             ) as mock_compress,
@@ -884,7 +885,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_success_returns_llm_result(self):
         """Path (b): ``get_openai_client()`` returns a client → LLM compresses."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         llm_result = self._make_compress_result(
             True, [{"role": "user", "content": "LLM summary"}]
@@ -893,11 +894,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=mock_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=llm_result,
             ) as mock_compress,
@@ -915,7 +916,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_failure_falls_back_to_truncation(self):
         """Path (c): LLM call raises → truncation fallback used instead."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated fallback"}]
@@ -931,11 +932,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=mock_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_compress_side_effect,
             ),
         ):
@@ -952,7 +953,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_timeout_falls_back_to_truncation(self):
         """Path (d): LLM call exceeds timeout → truncation fallback used."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated after timeout"}]
@@ -969,19 +970,19 @@ class TestRunCompression:
         fake_client = MagicMock()
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=fake_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_compress_side_effect,
             ),
             patch(
-                "backend.copilot.sdk.transcript._COMPACTION_TIMEOUT_SECONDS",
+                "backend.copilot.transcript._COMPACTION_TIMEOUT_SECONDS",
                 0.05,
             ),
             patch(
-                "backend.copilot.sdk.transcript._TRUNCATION_TIMEOUT_SECONDS",
+                "backend.copilot.transcript._TRUNCATION_TIMEOUT_SECONDS",
                 5,
             ),
         ):
@@ -1006,7 +1007,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories matching copilot pattern older than threshold are removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1014,7 +1015,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1038,12 +1039,12 @@ class TestCleanupStaleProjectDirs:
 
     def test_ignores_non_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories not matching copilot pattern are left alone."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1061,7 +1062,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_ttl_boundary_not_removed(self, tmp_path, monkeypatch):
         """A directory exactly at the TTL boundary should NOT be removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1069,7 +1070,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1087,7 +1088,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_skips_non_directory_entries(self, tmp_path, monkeypatch):
         """Regular files matching the copilot pattern are not removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1095,7 +1096,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1113,11 +1114,11 @@ class TestCleanupStaleProjectDirs:
 
     def test_missing_base_dir_returns_zero(self, tmp_path, monkeypatch):
         """If the projects base directory doesn't exist, return 0 gracefully."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         nonexistent = str(tmp_path / "does-not-exist" / "projects")
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: nonexistent,
         )
 
@@ -1128,7 +1129,7 @@ class TestCleanupStaleProjectDirs:
         """When encoded_cwd is supplied only that directory is swept."""
         import time
 
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1136,7 +1137,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1159,12 +1160,12 @@ class TestCleanupStaleProjectDirs:
 
     def test_scoped_fresh_dir_not_removed(self, tmp_path, monkeypatch):
         """Scoped sweep leaves a fresh directory alone."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1180,7 +1181,7 @@ class TestCleanupStaleProjectDirs:
         """Scoped sweep refuses to remove a non-copilot directory."""
         import time
 
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1188,7 +1189,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript._projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1200,3 +1201,170 @@ class TestCleanupStaleProjectDirs:
         removed = cleanup_stale_project_dirs(encoded_cwd="some-other-project")
         assert removed == 0
         assert non_copilot.exists()
+
+
+# ---------------------------------------------------------------------------
+# strip_stale_thinking_blocks
+# ---------------------------------------------------------------------------
+
+
+class TestStripStaleThinkingBlocks:
+    """Tests for strip_stale_thinking_blocks — removes thinking/redacted_thinking
+    blocks from non-last assistant entries to reduce transcript bloat."""
+
+    def _asst_entry(
+        self, msg_id: str, content: list, uuid: str = "u1", parent: str = ""
+    ) -> dict:
+        return {
+            "type": "assistant",
+            "uuid": uuid,
+            "parentUuid": parent,
+            "message": {
+                "role": "assistant",
+                "id": msg_id,
+                "type": "message",
+                "content": content,
+            },
+        }
+
+    def _user_entry(self, text: str, uuid: str = "u0", parent: str = "") -> dict:
+        return {
+            "type": "user",
+            "uuid": uuid,
+            "parentUuid": parent,
+            "message": {"role": "user", "content": text},
+        }
+
+    def test_strips_thinking_from_older_assistant(self) -> None:
+        """Thinking blocks in non-last assistant entries should be removed."""
+        old_asst = self._asst_entry(
+            "msg_old",
+            [
+                {"type": "thinking", "thinking": "deep thoughts..."},
+                {"type": "text", "text": "hello"},
+                {"type": "redacted_thinking", "data": "secret"},
+            ],
+            uuid="a1",
+        )
+        new_asst = self._asst_entry(
+            "msg_new",
+            [
+                {"type": "thinking", "thinking": "latest thoughts"},
+                {"type": "text", "text": "world"},
+            ],
+            uuid="a2",
+            parent="a1",
+        )
+        content = _make_jsonl(old_asst, new_asst)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+
+        # Old assistant should have thinking blocks stripped
+        old_content = lines[0]["message"]["content"]
+        assert len(old_content) == 1
+        assert old_content[0]["type"] == "text"
+
+        # New (last) assistant should be untouched
+        new_content = lines[1]["message"]["content"]
+        assert len(new_content) == 2
+        assert new_content[0]["type"] == "thinking"
+        assert new_content[1]["type"] == "text"
+
+    def test_preserves_last_assistant_thinking(self) -> None:
+        """The last assistant entry's thinking blocks must be preserved."""
+        entry = self._asst_entry(
+            "msg_only",
+            [
+                {"type": "thinking", "thinking": "must keep"},
+                {"type": "text", "text": "response"},
+            ],
+        )
+        content = _make_jsonl(entry)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+        assert len(lines[0]["message"]["content"]) == 2
+
+    def test_no_assistant_entries_returns_unchanged(self) -> None:
+        """Transcripts with only user entries should pass through unchanged."""
+        user = self._user_entry("hello")
+        content = _make_jsonl(user)
+        assert strip_stale_thinking_blocks(content) == content
+
+    def test_empty_content_returns_unchanged(self) -> None:
+        assert strip_stale_thinking_blocks("") == ""
+
+    def test_multiple_turns_strips_all_but_last(self) -> None:
+        """With 3 assistant turns, only the last keeps thinking blocks."""
+        entries = [
+            self._asst_entry(
+                "msg_1",
+                [
+                    {"type": "thinking", "thinking": "t1"},
+                    {"type": "text", "text": "a1"},
+                ],
+                uuid="a1",
+            ),
+            self._user_entry("q2", uuid="u2", parent="a1"),
+            self._asst_entry(
+                "msg_2",
+                [
+                    {"type": "thinking", "thinking": "t2"},
+                    {"type": "text", "text": "a2"},
+                ],
+                uuid="a2",
+                parent="u2",
+            ),
+            self._user_entry("q3", uuid="u3", parent="a2"),
+            self._asst_entry(
+                "msg_3",
+                [
+                    {"type": "thinking", "thinking": "t3"},
+                    {"type": "text", "text": "a3"},
+                ],
+                uuid="a3",
+                parent="u3",
+            ),
+        ]
+        content = _make_jsonl(*entries)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+
+        # msg_1: thinking stripped
+        assert len(lines[0]["message"]["content"]) == 1
+        assert lines[0]["message"]["content"][0]["type"] == "text"
+        # msg_2: thinking stripped
+        assert len(lines[2]["message"]["content"]) == 1
+        # msg_3 (last): thinking preserved
+        assert len(lines[4]["message"]["content"]) == 2
+        assert lines[4]["message"]["content"][0]["type"] == "thinking"
+
+    def test_same_msg_id_multi_entry_turn(self) -> None:
+        """Multiple entries sharing the same message.id (same turn) are preserved."""
+        entries = [
+            self._asst_entry(
+                "msg_old",
+                [{"type": "thinking", "thinking": "old"}],
+                uuid="a1",
+            ),
+            self._asst_entry(
+                "msg_last",
+                [{"type": "thinking", "thinking": "t_part1"}],
+                uuid="a2",
+                parent="a1",
+            ),
+            self._asst_entry(
+                "msg_last",
+                [{"type": "text", "text": "response"}],
+                uuid="a3",
+                parent="a2",
+            ),
+        ]
+        content = _make_jsonl(*entries)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+
+        # Old entry stripped
+        assert lines[0]["message"]["content"] == []
+        # Both entries of last turn (msg_last) preserved
+        assert lines[1]["message"]["content"][0]["type"] == "thinking"
+        assert lines[2]["message"]["content"][0]["type"] == "text"

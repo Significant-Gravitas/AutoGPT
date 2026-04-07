@@ -31,7 +31,10 @@ from backend.data.model import (
     UserPasswordCredentials,
     is_sdk_default,
 )
-from backend.integrations.credentials_store import provider_matches
+from backend.integrations.credentials_store import (
+    is_system_credential,
+    provider_matches,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -617,6 +620,11 @@ async def delete_credential(
     if is_sdk_default(cred_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if is_system_credential(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System-managed credentials cannot be deleted",
         )
     creds = await creds_manager.store.get_creds_by_id(auth.user_id, cred_id)
     if not creds:

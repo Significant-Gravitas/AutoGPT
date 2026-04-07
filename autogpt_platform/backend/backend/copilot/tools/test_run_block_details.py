@@ -76,6 +76,7 @@ async def test_run_block_returns_details_when_no_input_provided():
                 session=session,
                 block_id="http-block-id",
                 input_data={},  # Empty input data
+                dry_run=False,
             )
 
     # Should return BlockDetailsResponse showing the schema
@@ -143,6 +144,7 @@ async def test_run_block_returns_details_when_only_credentials_provided():
                 session=session,
                 block_id="api-block-id",
                 input_data={"credentials": {"some": "cred"}},  # Only credential
+                dry_run=False,
             )
 
     # Should return details because no non-credential inputs provided

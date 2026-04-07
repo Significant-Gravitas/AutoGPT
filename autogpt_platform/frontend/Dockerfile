@@ -12,6 +12,10 @@ COPY autogpt_platform/frontend/ .
 # Allow CI to opt-in to Playwright test build-time flags
 ARG NEXT_PUBLIC_PW_TEST="false"
 ENV NEXT_PUBLIC_PW_TEST=$NEXT_PUBLIC_PW_TEST
+# Allow CI to opt-in to browser sourcemaps for coverage path resolution.
+# Keep Docker builds defaulting to false to avoid the memory hit.
+ARG NEXT_PUBLIC_SOURCEMAPS="false"
+ENV NEXT_PUBLIC_SOURCEMAPS=$NEXT_PUBLIC_SOURCEMAPS
 ENV NODE_ENV="production"
 # Merge env files appropriately based on environment
 RUN if [ -f .env.production ]; then \
@@ -25,10 +29,6 @@ RUN if [ -f .env.production ]; then \
       cp .env.default .env; \
     fi
 RUN pnpm run generate:api
-# Disable source-map generation in Docker builds to halve webpack memory usage.
-# Source maps are only useful when SENTRY_AUTH_TOKEN is set (Vercel deploys);
-# the Docker image never uploads them, so generating them just wastes RAM.
-ENV NEXT_PUBLIC_SOURCEMAPS="false"
 # In CI, we want NEXT_PUBLIC_PW_TEST=true during build so Next.js inlines it
 RUN if [ "$NEXT_PUBLIC_PW_TEST" = "true" ]; then NEXT_PUBLIC_PW_TEST=true NODE_OPTIONS="--max-old-space-size=8192" pnpm build; else NODE_OPTIONS="--max-old-space-size=8192" pnpm build; fi
 

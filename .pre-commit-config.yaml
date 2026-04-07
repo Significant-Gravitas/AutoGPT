@@ -23,9 +23,15 @@ repos:
       - id: detect-secrets
         name: Detect secrets
         description: Detects high entropy strings that are likely to be passwords.
+        args: ["--baseline", ".secrets.baseline"]
         files: ^autogpt_platform/
-        exclude: pnpm-lock\.yaml$
-        stages: [pre-push]
+        exclude: (pnpm-lock\.yaml|\.env\.(default|example|template))$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
 
   - repo: local
     # For proper type checking, all dependencies need to be up-to-date.
@@ -84,51 +90,16 @@ repos:
         stages: [pre-commit, post-checkout]
 
       - id: poetry-install
-        name: Check & Install dependencies - Classic - AutoGPT
-        alias: poetry-install-classic-autogpt
+        name: Check & Install dependencies - Classic
+        alias: poetry-install-classic
         entry: >
           bash -c '
           if [ -n "$PRE_COMMIT_FROM_REF" ]; then
             git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
           else
             git diff --cached --name-only
-          fi | grep -qE "^classic/(original_autogpt|forge)/poetry\.lock$" || exit 0;
-          poetry -C classic/original_autogpt install
-          '
-        # include forge source (since it's a path dependency)
-        always_run: true
-        language: system
-        pass_filenames: false
-        stages: [pre-commit, post-checkout]
-
-      - id: poetry-install
-        name: Check & Install dependencies - Classic - Forge
-        alias: poetry-install-classic-forge
-        entry: >
-          bash -c '
-          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
-            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
-          else
-            git diff --cached --name-only
-          fi | grep -qE "^classic/forge/poetry\.lock$" || exit 0;
-          poetry -C classic/forge install
-          '
-        always_run: true
-        language: system
-        pass_filenames: false
-        stages: [pre-commit, post-checkout]
-
-      - id: poetry-install
-        name: Check & Install dependencies - Classic - Benchmark
-        alias: poetry-install-classic-benchmark
-        entry: >
-          bash -c '
-          if [ -n "$PRE_COMMIT_FROM_REF" ]; then
-            git diff --name-only "$PRE_COMMIT_FROM_REF" "$PRE_COMMIT_TO_REF"
-          else
-            git diff --cached --name-only
-          fi | grep -qE "^classic/benchmark/poetry\.lock$" || exit 0;
-          poetry -C classic/benchmark install
+          fi | grep -qE "^classic/poetry\.lock$" || exit 0;
+          poetry -C classic install
           '
         always_run: true
         language: system
@@ -223,26 +194,10 @@ repos:
         language: system
 
       - id: isort
-        name: Lint (isort) - Classic - AutoGPT
-        alias: isort-classic-autogpt
-        entry: poetry -P classic/original_autogpt run isort -p autogpt
-        files: ^classic/original_autogpt/
-        types: [file, python]
-        language: system
-
-      - id: isort
-        name: Lint (isort) - Classic - Forge
-        alias: isort-classic-forge
-        entry: poetry -P classic/forge run isort -p forge
-        files: ^classic/forge/
-        types: [file, python]
-        language: system
-
-      - id: isort
-        name: Lint (isort) - Classic - Benchmark
-        alias: isort-classic-benchmark
-        entry: poetry -P classic/benchmark run isort -p agbenchmark
-        files: ^classic/benchmark/
+        name: Lint (isort) - Classic
+        alias: isort-classic
+        entry: bash -c 'cd classic && poetry run isort $(echo "$@" | sed "s|classic/||g")' --
+        files: ^classic/(original_autogpt|forge|direct_benchmark)/
         types: [file, python]
         language: system
 
@@ -256,26 +211,13 @@ repos:
 
   - repo: https://github.com/PyCQA/flake8
     rev: 7.0.0
-    # To have flake8 load the config of the individual subprojects, we have to call
-    # them separately.
+    # Use consolidated flake8 config at classic/.flake8
     hooks:
       - id: flake8
-        name: Lint (Flake8) - Classic - AutoGPT
-        alias: flake8-classic-autogpt
-        files: ^classic/original_autogpt/(autogpt|scripts|tests)/
-        args: [--config=classic/original_autogpt/.flake8]
-
-      - id: flake8
-        name: Lint (Flake8) - Classic - Forge
-        alias: flake8-classic-forge
-        files: ^classic/forge/(forge|tests)/
-        args: [--config=classic/forge/.flake8]
-
-      - id: flake8
-        name: Lint (Flake8) - Classic - Benchmark
-        alias: flake8-classic-benchmark
-        files: ^classic/benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
-        args: [--config=classic/benchmark/.flake8]
+        name: Lint (Flake8) - Classic
+        alias: flake8-classic
+        files: ^classic/(original_autogpt|forge|direct_benchmark)/
+        args: [--config=classic/.flake8]
 
   - repo: local
     hooks:
@@ -311,29 +253,10 @@ repos:
         pass_filenames: false
 
       - id: pyright
-        name: Typecheck - Classic - AutoGPT
-        alias: pyright-classic-autogpt
-        entry: poetry -C classic/original_autogpt run pyright
-        # include forge source (since it's a path dependency) but exclude *_test.py files:
-        files: ^(classic/original_autogpt/((autogpt|scripts|tests)/|poetry\.lock$)|classic/forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
-        types: [file]
-        language: system
-        pass_filenames: false
-
-      - id: pyright
-        name: Typecheck - Classic - Forge
-        alias: pyright-classic-forge
-        entry: poetry -C classic/forge run pyright
-        files: ^classic/forge/(forge/|poetry\.lock$)
-        types: [file]
-        language: system
-        pass_filenames: false
-
-      - id: pyright
-        name: Typecheck - Classic - Benchmark
-        alias: pyright-classic-benchmark
-        entry: poetry -C classic/benchmark run pyright
-        files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
+        name: Typecheck - Classic
+        alias: pyright-classic
+        entry: poetry -C classic run pyright
+        files: ^classic/(original_autogpt|forge|direct_benchmark)/.*\.py$|^classic/poetry\.lock$
         types: [file]
         language: system
         pass_filenames: false
@@ -360,26 +283,9 @@ repos:
   #       pass_filenames: false
 
   #     - id: pytest
-  #       name: Run tests - Classic - AutoGPT (excl. slow tests)
-  #       alias: pytest-classic-autogpt
-  #       entry: bash -c 'cd classic/original_autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
-  #       # include forge source (since it's a path dependency) but exclude *_test.py files:
-  #       files: ^(classic/original_autogpt/((autogpt|tests)/|poetry\.lock$)|classic/forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
-  #       language: system
-  #       pass_filenames: false
-
-  #     - id: pytest
-  #       name: Run tests - Classic - Forge (excl. slow tests)
-  #       alias: pytest-classic-forge
-  #       entry: bash -c 'cd classic/forge && poetry run pytest --cov=forge -m "not slow"'
-  #       files: ^classic/forge/(forge/|tests/|poetry\.lock$)
-  #       language: system
-  #       pass_filenames: false
-
-  #     - id: pytest
-  #       name: Run tests - Classic - Benchmark
-  #       alias: pytest-classic-benchmark
-  #       entry: bash -c 'cd classic/benchmark && poetry run pytest --cov=benchmark'
-  #       files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
+  #       name: Run tests - Classic (excl. slow tests)
+  #       alias: pytest-classic
+  #       entry: bash -c 'cd classic && poetry run pytest -m "not slow"'
+  #       files: ^classic/(original_autogpt|forge|direct_benchmark)/
   #       language: system
   #       pass_filenames: false

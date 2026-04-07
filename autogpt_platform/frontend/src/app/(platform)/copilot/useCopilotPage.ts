@@ -10,6 +10,7 @@ import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
@@ -32,13 +33,21 @@ export function useCopilotPage() {
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const { sessionToDelete, setSessionToDelete, isDrawerOpen, setDrawerOpen } =
-    useCopilotUIStore();
+  const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
+
+  const {
+    sessionToDelete,
+    setSessionToDelete,
+    isDrawerOpen,
+    setDrawerOpen,
+    copilotMode,
+  } = useCopilotUIStore();
 
   const {
     sessionId,
     setSessionId,
     hydratedMessages,
+    historicalDurations,
     hasActiveStream,
     isLoadingSession,
     isSessionError,
@@ -54,12 +63,16 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isSyncing,
     isUserStoppingRef,
+    rateLimitMessage,
+    dismissRateLimit,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
     hasActiveStream,
     refetchSession,
+    copilotMode: isModeToggleEnabled ? copilotMode : undefined,
   });
 
   useCopilotNotifications(sessionId);
@@ -349,6 +362,7 @@ export function useCopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
@@ -373,5 +387,10 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
   };
 }
