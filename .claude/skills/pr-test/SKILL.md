@@ -674,7 +674,8 @@ gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
 rm -f "$COMMENT_FILE"
 
 # Verify the posted comment contains inline images — exit 1 if none found
-LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate --jq '.[-1].body' 2>/dev/null)
+# Use separate --paginate + jq pipe: --jq applies per-page, not to the full list
+LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | jq -r '.[-1].body // ""')
 if ! echo "$LAST_COMMENT" | grep -q '!\['; then
   echo "ERROR: Posted comment contains no inline images (![). Bare directory links are not acceptable." >&2
   exit 1

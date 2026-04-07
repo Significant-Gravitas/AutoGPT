@@ -309,7 +309,14 @@ Store cron job ID in state file after CronCreate returns.
 
 Assign one new task to the next available spare worktree.
 
+First, gather from the user:
+- **objective**: what the agent should do
+- **branch name**: e.g. `feat/my-feature` (derived from objective if not given)
+
+Then run:
+
 ```bash
+# NEW_BRANCH and OBJECTIVE must be set before this block (gathered from user above)
 SESSION=$(jq -r '.tmux_session' ~/.claude/orchestrator-state.json)
 
 # Find first spare worktree

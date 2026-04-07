@@ -149,8 +149,11 @@ while IFS= read -r agent; do
       # Clear idle_since only when transitioning from idle (agent was kicked and
       # restarted). Do NOT reset for stuck — idle_since must persist across polls
       # so STUCK_DURATION can accumulate and trigger escalation.
+      # Also update the local IDLE_SINCE so the hash-stability check below uses
+      # the reset value on this same poll, not the stale kick timestamp.
       if [[ "$STATE" == "idle" ]]; then
         NEW_IDLE_SINCE=0
+        IDLE_SINCE=0
       fi
       # Check if hash has been stable (agent may be stuck mid-task)
       if [ -n "$CURRENT_HASH" ] && [ "$CURRENT_HASH" = "$LAST_HASH" ] && [ "$LAST_HASH" != "" ]; then
