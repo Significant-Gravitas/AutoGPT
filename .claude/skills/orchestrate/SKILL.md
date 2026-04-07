@@ -144,12 +144,12 @@ Tell the user:
 ## Subcommand: stop
 
 ```bash
+# Show current agent state before marking inactive
+jq '.agents[] | {window, state, worktree}' ~/.claude/orchestrator-state.json
+
 # Mark inactive
 jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
   && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-
-# Show current state before stopping
-jq '.agents[] | {window, state, worktree}' ~/.claude/orchestrator-state.json
 ```
 
 Then use CronDelete with the stored job ID to cancel the loop:

@@ -26,6 +26,9 @@ md5_hash() {
   fi
 }
 
+# Clean up temp file on any exit (avoids stale .tmp if jq write fails)
+trap 'rm -f "${STATE_FILE}.tmp"' EXIT
+
 # Ensure state file exists
 if [ ! -f "$STATE_FILE" ]; then
   echo '{"active":false,"agents":[]}' > "$STATE_FILE"
@@ -44,11 +47,9 @@ ACTIONS="[]"
 UPDATED_AGENTS="[]"
 
 # Read agents as newline-delimited JSON objects.
-# jq exits non-zero (5) when .agents[] has no matches on an empty array, which is valid.
-# Pipe stderr separately and only treat real parse errors as failures.
+# jq exits non-zero when .agents[] has no matches on an empty array, which is valid —
+# so we suppress that exit code and separately validate the file is well-formed JSON.
 if ! AGENTS_JSON=$(jq -e -c '.agents // empty | .[]' "$STATE_FILE" 2>/dev/null); then
-  # jq -e exits 1 when result is false/null; exits other codes for real errors
-  # If we reach here, either agents is missing/null (treat as empty) or file is unparseable.
   if ! jq -e '.' "$STATE_FILE" > /dev/null 2>&1; then
     echo "State file parse error — check $STATE_FILE" >&2
   fi
@@ -64,9 +65,10 @@ fi
 while IFS= read -r agent; do
   [ -z "$agent" ] && continue
 
-  WINDOW=$(echo "$agent"   | jq -r '.window')
-  WORKTREE=$(echo "$agent" | jq -r '.worktree')
-  OBJECTIVE=$(echo "$agent"| jq -r '.objective')
+  # Use // "" defaults so a single malformed field doesn't abort the whole cycle
+  WINDOW=$(echo "$agent"   | jq -r '.window // ""')
+  WORKTREE=$(echo "$agent" | jq -r '.worktree // ""')
+  OBJECTIVE=$(echo "$agent"| jq -r '.objective // ""')
   STATE=$(echo "$agent"    | jq -r '.state // "running"')
   LAST_HASH=$(echo "$agent"| jq -r '.last_output_hash // ""')
   IDLE_SINCE=$(echo "$agent"| jq -r '.idle_since // 0')
