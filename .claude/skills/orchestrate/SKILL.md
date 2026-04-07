@@ -24,6 +24,7 @@ STATE_FILE=~/.claude/orchestrator-state.json
 | `find-spare.sh [REPO_ROOT]` | List free worktrees — one `PATH BRANCH` per line | |
 | `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** | |
 | `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch | |
+| `run-loop.sh` | Polling loop — runs in its own tmux window, zero token cost | |
 | `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees | |
 | `status.sh` | Print fleet status + live pane commands | |
 | `poll-cycle.sh` | One monitoring cycle — returns JSON action array | |
@@ -48,7 +49,7 @@ Never committed to git. Claude maintains this file directly using `jq` + atomic 
   "active": true,
   "tmux_session": "autogpt1",
   "idle_threshold_seconds": 300,
-  "cron_job_id": "...",
+  "loop_window": "autogpt1:0",
   "last_poll_at": 0,
   "agents": [
     {
@@ -136,7 +137,7 @@ jq -n \
   --arg session "$SESSION" \
   --argjson threshold 300 \
   '{active:true, tmux_session:$session, idle_threshold_seconds:$threshold,
-    cron_job_id:null, last_poll_at:0, agents:[]}' \
+    loop_window:null, last_poll_at:0, agents:[]}' \
   > ~/.claude/orchestrator-state.json
 ```
 
@@ -146,50 +147,21 @@ jq --argjson a "$NEW_AGENT" '.agents += [$a]' ~/.claude/orchestrator-state.json 
   > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-### 5. Run first poll, then start the cron
+### 5. Start the polling loop
+
+Open a dedicated `orchestrator` window in the same tmux session and run `run-loop.sh` there. It polls every 30s, handles all actions in bash, and costs zero Claude tokens.
 
 ```bash
-bash $SKILLS_DIR/poll-cycle.sh | jq .
+LOOP_WIN=$(tmux new-window -t "$SESSION" -n "orchestrator" -P -F '#{window_index}')
+LOOP_WINDOW="${SESSION}:${LOOP_WIN}"
+tmux send-keys -t "$LOOP_WINDOW" "bash $SKILLS_DIR/run-loop.sh" Enter
+
+# Store loop_window so we know how to stop it later
+jq --arg w "$LOOP_WINDOW" '.loop_window = $w' ~/.claude/orchestrator-state.json \
+  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
 ```
 
-Then start CronCreate with this prompt (substitute the real absolute path for `SKILLS_DIR`):
-
-```text
-Orchestrator poll cycle.
-
-Run: bash SKILLS_DIR/poll-cycle.sh
-
-Read the JSON output array. For each action object:
-
-- action=="kick" AND state=="idle" (agent exited — shell is foreground):
-  Restart the agent:
-    tmux send-keys -t <window> "cd '<worktree_path>' && claude --permission-mode bypassPermissions" Enter
-  Wait 3s. Capture pane: if "Enter to confirm" visible, send Down+Enter first.
-  Then send: "<objective>. When all work is done, output the exact string: ORCHESTRATOR:DONE" Enter
-
-- action=="kick" AND state=="stuck" (claude still running but frozen):
-  Nudge only — do NOT restart:
-    tmux send-keys -t <window> "Continue with your task. Review any errors and proceed. When done output ORCHESTRATOR:DONE" Enter
-
-- action=="approve":
-  Capture pane: tmux capture-pane -t <window> -p | tail -5
-  SAFE to approve: git operations, install/build, tests, docker, curl to localhost
-  ESCALATE (set state=escalated, do not send keys) for: rm -rf outside worktree, force push to main/master, sudo, writing secrets to files
-  Settings dialog "Enter to confirm": send Down+Enter
-
-- action=="complete":
-  Recycle the worktree:
-    bash SKILLS_DIR/recycle-agent.sh <window> <worktree_path> <spare_branch>
-  Update state file: set agent .state = "done"
-    jq --arg w "<window>" '.agents |= map(if .window == $w then .state = "done" else . end)' \
-      ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-  Print: "AGENT DONE + RECYCLED: <window> (<worktree>) → <spare_branch>"
-
-After processing all actions, print one summary line:
-"Poll [HH:MM] — N agents: X running, Y kicked, Z done+recycled, V escalated"
-```
-
-Store the returned cron job ID: update `.cron_job_id` in the state file.
+The loop window prints a timestamped summary line after every poll. Attach with `tmux attach -t "$SESSION"` and switch to the `orchestrator` window to watch it live.
 
 ## Adding an agent
 
@@ -198,12 +170,14 @@ Find the next spare worktree, then spawn and append to state — same as steps 2
 ## Stopping
 
 ```bash
-# Mark inactive so poll-cycle.sh exits early (active==false)
+# Mark inactive — run-loop.sh checks this and exits cleanly
 jq '.active = false' ~/.claude/orchestrator-state.json > /tmp/orch.tmp \
   && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
-```
 
-Cancel the cron job using CronDelete with `.cron_job_id` from the state file.
+# Kill the orchestrator window
+LOOP_WINDOW=$(jq -r '.loop_window // ""' ~/.claude/orchestrator-state.json)
+[ -n "$LOOP_WINDOW" ] && tmux kill-window -t "$LOOP_WINDOW" 2>/dev/null || true
+```
 
 Does **not** recycle running worktrees — agents may still be mid-task. Run `capacity.sh` to see what's still in progress.
 
