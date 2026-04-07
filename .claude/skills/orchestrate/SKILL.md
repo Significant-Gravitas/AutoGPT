@@ -14,7 +14,7 @@ One tmux session, N windows — each window is one agent in one worktree. The or
 
 ## Worktree lifecycle
 
-```
+```text
 spare/N branch   →   orchestrate add   →   new window + feat/branch + claude running
                                                         ↓
                                                ORCHESTRATOR:DONE
@@ -80,7 +80,7 @@ git worktree list --porcelain | awk '
 ```
 
 Example output:
-```
+```text
 /path/to/worktrees/AutoGPT3 spare/3
 /path/to/worktrees/AutoGPT7 spare/7
 ```
@@ -273,7 +273,7 @@ bash $SKILLS_DIR/scripts/poll-cycle.sh | jq .
 ```
 
 CronCreate prompt (fill in SKILLS_DIR with absolute path):
-```
+```text
 Orchestrator poll cycle.
 
 Run: bash SKILLS_DIR/scripts/poll-cycle.sh
