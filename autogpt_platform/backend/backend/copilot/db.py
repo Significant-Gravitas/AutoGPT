@@ -8,6 +8,7 @@ from typing import Any
 from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
+from prisma.models import MemoryEpisodeLog
 from prisma.types import (
     ChatMessageCreateInput,
     ChatSessionCreateInput,
@@ -406,3 +407,26 @@ async def set_turn_duration(session_id: str, duration_ms: int) -> None:
                     msg.duration_ms = duration_ms
                     break
             await cache_chat_session(session)
+
+
+async def create_memory_episode_log(
+    user_id: str,
+    session_id: str | None,
+    group_id: str,
+    episode_name: str,
+    episode_body: str,
+    source: str,
+    source_description: str | None,
+) -> None:
+    """Append-only write to the MemoryEpisodeLog replay log."""
+    await MemoryEpisodeLog.prisma().create(
+        data={
+            "userId": user_id,
+            "sessionId": session_id,
+            "groupId": group_id,
+            "episodeName": episode_name,
+            "episodeBody": episode_body,
+            "source": source,
+            "sourceDescription": source_description,
+        }
+    )

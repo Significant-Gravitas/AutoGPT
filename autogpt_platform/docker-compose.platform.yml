@@ -17,6 +17,8 @@ x-backend-env: &backend-env # Docker internal service hostnames (override localh
   DB_HOST: db
   REDIS_HOST: redis
   RABBITMQ_HOST: rabbitmq
+  GRAPHITI_FALKORDB_HOST: falkordb
+  GRAPHITI_FALKORDB_PORT: "6379"
   # Override Supabase URL for Docker network
   SUPABASE_URL: http://kong:8000
   # Database connection string for Docker network
@@ -74,6 +76,19 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6380:6379"   # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
+      - "3001:3000"   # FalkorDB web UI
+    volumes:
+      - falkordb_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:4.1.4
     container_name: rabbitmq

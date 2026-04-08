@@ -12126,7 +12126,10 @@
           "bash_exec",
           "web_fetch",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "graphiti_store",
+          "graphiti_search",
+          "graphiti_delete"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

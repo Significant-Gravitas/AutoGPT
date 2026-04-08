@@ -26,6 +26,9 @@ from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
+from .graphiti_delete import GraphitiDeleteTool
+from .graphiti_search import GraphitiSearchTool
+from .graphiti_store import GraphitiStoreTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -63,6 +66,10 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Graphiti memory tools
+    "graphiti_delete_user_data": GraphitiDeleteTool(),
+    "graphiti_search": GraphitiSearchTool(),
+    "graphiti_store": GraphitiStoreTool(),
     # Folder management tools
     "create_folder": CreateFolderTool(),
     "list_folders": ListFoldersTool(),

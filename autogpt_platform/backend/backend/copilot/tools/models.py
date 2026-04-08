@@ -81,6 +81,11 @@ class ResponseType(str, Enum):
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
 
+    # Graphiti memory
+    GRAPHITI_STORE = "graphiti_store"
+    GRAPHITI_SEARCH = "graphiti_search"
+    GRAPHITI_DELETE = "graphiti_delete"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -688,3 +693,27 @@ class AgentsMovedToFolderResponse(ToolResponseBase):
     agent_names: list[str] = []
     folder_id: str | None = None
     count: int = 0
+
+
+# --- Graphiti memory responses ---
+
+
+class GraphitiStoreResponse(ToolResponseBase):
+    """Response when a memory is stored."""
+
+    type: ResponseType = ResponseType.GRAPHITI_STORE
+    memory_name: str
+
+
+class GraphitiSearchResponse(ToolResponseBase):
+    """Response when memories are searched."""
+
+    type: ResponseType = ResponseType.GRAPHITI_SEARCH
+    facts: list[str] = Field(default_factory=list)
+    recent_episodes: list[str] = Field(default_factory=list)
+
+
+class GraphitiDeleteResponse(ToolResponseBase):
+    """Response when all memories are deleted."""
+
+    type: ResponseType = ResponseType.GRAPHITI_DELETE

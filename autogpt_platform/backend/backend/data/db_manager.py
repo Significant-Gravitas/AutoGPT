@@ -346,6 +346,9 @@ class DatabaseManager(AppService):
     update_chat_session_title = _(chat_db.update_chat_session_title)
     set_turn_duration = _(chat_db.set_turn_duration)
 
+    # ============ Graphiti Memory Replay Log ============ #
+    create_memory_episode_log = _(chat_db.create_memory_episode_log)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -542,3 +545,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_tool_message_content = d.update_tool_message_content
     update_chat_session_title = d.update_chat_session_title
     set_turn_duration = d.set_turn_duration
+
+    # ============ Graphiti Memory Replay Log ============ #
+    create_memory_episode_log = d.create_memory_episode_log

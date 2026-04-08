@@ -74,6 +74,7 @@ model User {
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
+  MemoryEpisodeLogs     MemoryEpisodeLog[]
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
@@ -153,6 +154,27 @@ model CoPilotUnderstanding {
   data Json?
 
   @@index([userId])
+}
+
+// Append-only replay log for Graphiti memory episodes.
+// Captures every episode sent to the knowledge graph so we can replay
+// into a different service if we migrate away from Graphiti.
+model MemoryEpisodeLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId    String
+  User      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sessionId   String?
+  groupId     String
+  episodeName String
+  episodeBody String
+  source      String   // e.g. "message", "json"
+  sourceDescription String?
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 ////////////////////////////////////////////////////////////
