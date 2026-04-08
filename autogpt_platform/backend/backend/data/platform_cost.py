@@ -52,32 +52,31 @@ class PlatformCostEntry(BaseModel):
 
 
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
-    await PrismaLog.prisma().create(
-        data={
-            "userId": entry.user_id,
-            "graphExecId": entry.graph_exec_id,
-            "nodeExecId": entry.node_exec_id,
-            "graphId": entry.graph_id,
-            "nodeId": entry.node_id,
-            "blockId": entry.block_id,
-            "blockName": entry.block_name,
-            # Normalize to lowercase so the (provider, createdAt) index is always
-            # used without LOWER() on the read side.
-            "provider": entry.provider.lower(),
-            "credentialId": entry.credential_id,
-            "costMicrodollars": entry.cost_microdollars,
-            "inputTokens": entry.input_tokens,
-            "outputTokens": entry.output_tokens,
-            "dataSize": entry.data_size,
-            "duration": entry.duration,
-            "model": entry.model,
-            "trackingType": entry.tracking_type,
-            "trackingAmount": entry.tracking_amount,
-            "metadata": (
-                SafeJson(entry.metadata) if entry.metadata is not None else None
-            ),
-        }
-    )
+    data: dict[str, Any] = {
+        "userId": entry.user_id,
+        "graphExecId": entry.graph_exec_id,
+        "nodeExecId": entry.node_exec_id,
+        "graphId": entry.graph_id,
+        "nodeId": entry.node_id,
+        "blockId": entry.block_id,
+        "blockName": entry.block_name,
+        # Normalize to lowercase so the (provider, createdAt) index is always
+        # used without LOWER() on the read side.
+        "provider": entry.provider.lower(),
+        "credentialId": entry.credential_id,
+        "costMicrodollars": entry.cost_microdollars,
+        "inputTokens": entry.input_tokens,
+        "outputTokens": entry.output_tokens,
+        "dataSize": entry.data_size,
+        "duration": entry.duration,
+        "model": entry.model,
+        "trackingType": entry.tracking_type,
+        "trackingAmount": entry.tracking_amount,
+    }
+    # Prisma's Json? field rejects Python None directly; omit the key to store NULL.
+    if entry.metadata is not None:
+        data["metadata"] = SafeJson(entry.metadata)
+    await PrismaLog.prisma().create(data=data)
 
 
 # Bound the number of concurrent cost-log DB inserts to prevent unbounded

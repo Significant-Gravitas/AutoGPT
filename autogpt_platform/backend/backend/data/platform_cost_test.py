@@ -136,7 +136,8 @@ class TestLogPlatformCost:
             entry = _make_entry(metadata=None)
             await log_platform_cost(entry)
         data = mock_create.call_args[1]["data"]
-        assert data["metadata"] is None
+        # When metadata is None the key is omitted so Prisma stores NULL
+        assert "metadata" not in data
 
 
 class TestLogPlatformCostSafe:
