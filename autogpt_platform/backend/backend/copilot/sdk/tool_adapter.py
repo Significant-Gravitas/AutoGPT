@@ -60,6 +60,7 @@ MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 # so StreamToolOutputAvailable still receives the full output including these fields.
 _STRIP_FROM_LLM: frozenset[str] = frozenset(["is_dry_run"])
 
+
 # Stash for MCP tool outputs before the SDK potentially truncates them.
 # Keyed by tool_name → full output string. Consumed (popped) by the
 # response adapter when it builds StreamToolOutputAvailable.
