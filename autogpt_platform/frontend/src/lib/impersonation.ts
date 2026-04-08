@@ -3,10 +3,13 @@
  * Handles reading, writing, and managing impersonation state across tabs and server/client contexts
  */
 
-import { IMPERSONATION_STORAGE_KEY } from "./constants";
+import {
+  IMPERSONATION_COOKIE_NAME,
+  IMPERSONATION_STORAGE_KEY,
+} from "./constants";
 import { environment } from "@/services/environment";
 
-const COOKIE_NAME = "admin-impersonate-user-id";
+const COOKIE_NAME = IMPERSONATION_COOKIE_NAME;
 
 /**
  * Cookie utility functions

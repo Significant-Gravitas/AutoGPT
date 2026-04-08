@@ -214,7 +214,7 @@ export function useCopilotStream({
         return;
       }
 
-      // Detect authentication failures (from getAuthHeaders or 401 responses)
+      // Detect authentication failures (from getCopilotAuthHeaders or 401 responses)
       const isAuthError =
         errorDetail.includes("Authentication failed") ||
         errorDetail.includes("Unauthorized") ||
