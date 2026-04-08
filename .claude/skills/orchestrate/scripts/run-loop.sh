@@ -30,7 +30,7 @@ STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
 # Adaptive polling: starts at base interval, backs off up to POLL_IDLE_MAX when
 # no agents need attention, resets on any activity or waiting_approval state.
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
-POLL_IDLE_MAX=300
+POLL_IDLE_MAX=${POLL_IDLE_MAX:-300}
 POLL_CURRENT=$POLL_INTERVAL
 
 # ---------------------------------------------------------------------------
@@ -163,8 +163,6 @@ while true; do
   RUNNING=$(jq '[.agents[] | select(.state | test("running|stuck|waiting_approval|idle"))] | length' \
     "$STATE_FILE" 2>/dev/null || echo 0)
 
-  echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled  (next in ${POLL_CURRENT}s)"
-
   # Adaptive backoff: reset to base on activity or waiting_approval agents; back off when truly idle
   WAITING=$(jq '[.agents[] | select(.state == "waiting_approval")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
   if (( KICKED > 0 || DONE > 0 || WAITING > 0 )); then
@@ -174,5 +172,6 @@ while true; do
     (( POLL_CURRENT > POLL_IDLE_MAX )) && POLL_CURRENT=$POLL_IDLE_MAX
   fi
 
+  echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled  (next in ${POLL_CURRENT}s)"
   sleep "$POLL_CURRENT"
 done
