@@ -2085,20 +2085,17 @@ async def stream_chat_completion_sdk(
             allowed = get_copilot_tool_names(use_e2b=use_e2b)
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
-        # Flag set by _on_stderr when the SDK logs that it switched to the
-        # fallback model (e.g. on a 529 overloaded error).  Checked once per
-        # heartbeat cycle and emitted as a StreamStatus notification.
-        fallback_model_activated = False
-
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
-            nonlocal fallback_model_activated
+            nonlocal fallback_model_activated_per_attempt
             sid = session_id[:12] if session_id else "?"
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
             # Detect SDK fallback-model activation via the module-level pure
             # helper so the detection logic can be unit-tested independently.
-            if not fallback_model_activated and _is_fallback_stderr(line):
-                fallback_model_activated = True
+            # Sets the per-attempt flag which is preserved across transient
+            # retries so the user notification is never lost.
+            if not fallback_model_activated_per_attempt and _is_fallback_stderr(line):
+                fallback_model_activated_per_attempt = True
                 logger.warning(
                     "[SDK] [%s] Fallback model activated — primary model "
                     "overloaded, switching to fallback",
@@ -2212,6 +2209,11 @@ async def stream_chat_completion_sdk(
 
         transient_retries = 0
         max_transient_retries = config.claude_agent_max_transient_retries
+        # Preserved across transient retries so the fallback-model notification
+        # is not lost when a retry resets local per-attempt variables.  Reset
+        # only on context-level attempt changes (same guard as transient_retries).
+        fallback_model_activated_per_attempt = False
+        fallback_notified_per_attempt = False
 
         state = _RetryState(
             options=options,
@@ -2237,6 +2239,8 @@ async def stream_chat_completion_sdk(
             # create an infinite retry loop.
             if attempt != _last_reset_attempt:
                 transient_retries = 0
+                fallback_model_activated_per_attempt = False
+                fallback_notified_per_attempt = False
                 _last_reset_attempt = attempt
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
@@ -2298,17 +2302,22 @@ async def stream_chat_completion_sdk(
             # from the failed attempt in the uploaded transcript.
             transcript_snap = state.transcript_builder.snapshot()
             events_yielded = 0
-            fallback_model_activated = False
-            fallback_notified = False
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
                     if not isinstance(event, _EPHEMERAL_EVENT_TYPES):
                         events_yielded += 1
                     # Emit a one-time StreamStatus when the SDK switches
-                    # to the fallback model (detected via stderr).
-                    if fallback_model_activated and not fallback_notified:
-                        fallback_notified = True
+                    # to the fallback model (detected via stderr).  The flag
+                    # is preserved across transient retries (reset only on
+                    # context-level attempt change) so the notification is
+                    # not lost if the activation occurs during a failed sub-
+                    # attempt that later retries successfully.
+                    if (
+                        fallback_model_activated_per_attempt
+                        and not fallback_notified_per_attempt
+                    ):
+                        fallback_notified_per_attempt = True
                         yield StreamStatus(
                             message="Primary model overloaded — "
                             "using fallback model for this request"
