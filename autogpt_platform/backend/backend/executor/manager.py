@@ -312,7 +312,7 @@ async def execute_node(
         # doesn't fail on the required field.  If no metadata is present,
         # synthesize a minimal placeholder from the platform credentials.
         if _dry_run_creds is not None:
-            if not input_data.get(field_name):
+            if input_data.get(field_name) is None:
                 input_data[field_name] = {
                     "id": _dry_run_creds.id,
                     "provider": _dry_run_creds.provider,

@@ -261,10 +261,12 @@ class TestGetDryRunCredentials:
     def test_credentials_have_metadata_fields_for_placeholder(self) -> None:
         """The returned credentials must have id, provider, type, and title so
         manager.py can synthesise a valid CredentialsMetaInput placeholder."""
+        from backend.integrations.providers import ProviderName
+
         creds = get_dry_run_credentials({"_dry_run_api_key": "sk-or-test"})
         assert creds is not None
         assert creds.id == "dry-run-platform"
-        assert str(creds.provider) in ("open_router", "ProviderName.OPEN_ROUTER")
+        assert creds.provider == ProviderName.OPEN_ROUTER
         assert creds.type == "api_key"
         assert creds.title is not None
 
