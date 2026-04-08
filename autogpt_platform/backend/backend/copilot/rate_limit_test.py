@@ -548,20 +548,19 @@ class TestSetUserTier:
     @pytest.mark.asyncio
     async def test_cache_invalidated_after_set(self):
         """After set_user_tier, get_user_tier should query DB again (not cache)."""
-        # First, populate the cache with BUSINESS
+        # First, populate the cache with BUSINESS via user_db() mock
+        mock_db_biz = AsyncMock()
         mock_user_biz = MagicMock()
-        mock_user_biz.subscriptionTier = "BUSINESS"
-        mock_prisma_get = AsyncMock()
-        mock_prisma_get.find_unique = AsyncMock(return_value=mock_user_biz)
+        mock_user_biz.subscription_tier = "BUSINESS"
+        mock_db_biz.get_user_by_id = AsyncMock(return_value=mock_user_biz)
 
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma_get,
-        ):
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db_biz):
             tier_before = await get_user_tier(_USER)
         assert tier_before == SubscriptionTier.BUSINESS
 
-        # Now set tier to ENTERPRISE (this should invalidate the cache)
+        # Now set tier to ENTERPRISE via PrismaUser.prisma (set_user_tier still
+        # uses Prisma directly since it's only called from admin API where Prisma
+        # is connected).
         mock_prisma_set = AsyncMock()
         mock_prisma_set.update = AsyncMock(return_value=None)
 
@@ -572,15 +571,12 @@ class TestSetUserTier:
             await set_user_tier(_USER, SubscriptionTier.ENTERPRISE)
 
         # Now get_user_tier should hit DB again (cache was invalidated)
+        mock_db_ent = AsyncMock()
         mock_user_ent = MagicMock()
-        mock_user_ent.subscriptionTier = "ENTERPRISE"
-        mock_prisma_get2 = AsyncMock()
-        mock_prisma_get2.find_unique = AsyncMock(return_value=mock_user_ent)
+        mock_user_ent.subscription_tier = "ENTERPRISE"
+        mock_db_ent.get_user_by_id = AsyncMock(return_value=mock_user_ent)
 
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma_get2,
-        ):
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db_ent):
             tier_after = await get_user_tier(_USER)
 
         assert tier_after == SubscriptionTier.ENTERPRISE
