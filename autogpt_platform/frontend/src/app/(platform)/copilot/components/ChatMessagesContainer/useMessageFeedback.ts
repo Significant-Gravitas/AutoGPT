@@ -1,6 +1,6 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { environment } from "@/services/environment";
-import { getCopilotAuthHeaders } from "../../helpers";
+import { getCopilotAuthHeaders } from "@/app/(platform)/copilot/helpers";
 import { useState } from "react";
 
 interface Args {
