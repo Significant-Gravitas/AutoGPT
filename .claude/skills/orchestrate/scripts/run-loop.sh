@@ -163,8 +163,9 @@ while true; do
 
   echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled  (next in ${POLL_CURRENT}s)"
 
-  # Adaptive backoff: reset to base on activity, back off toward max when idle
-  if (( KICKED > 0 || DONE > 0 )); then
+  # Adaptive backoff: reset to base on activity or waiting_approval agents; back off when truly idle
+  WAITING=$(jq '[.agents[] | select(.state == "waiting_approval")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+  if (( KICKED > 0 || DONE > 0 || WAITING > 0 )); then
     POLL_CURRENT=$POLL_INTERVAL
   else
     POLL_CURRENT=$(( POLL_CURRENT * 3 / 2 ))
