@@ -20,7 +20,7 @@ interface Props {
   };
 }
 
-function PlatformCostContent({ searchParams }: Props) {
+export function PlatformCostContent({ searchParams }: Props) {
   const {
     dashboard,
     logs,
@@ -232,5 +232,3 @@ function PlatformCostContent({ searchParams }: Props) {
     </div>
   );
 }
-
-export { PlatformCostContent };

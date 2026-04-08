@@ -797,3 +797,34 @@ class TestBaselineCostExtraction:
             )
 
         assert state.cost_usd == pytest.approx(0.005)
+
+    @pytest.mark.asyncio
+    async def test_no_cost_when_api_call_raises_before_stream(self):
+        """finally block is safe when response is None (API call failed before yielding)."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=RuntimeError("connection refused")
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_openai_client",
+                return_value=mock_client,
+            ),
+            pytest.raises(RuntimeError, match="connection refused"),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        # response was never assigned so cost extraction must not raise
+        assert state.cost_usd is None
