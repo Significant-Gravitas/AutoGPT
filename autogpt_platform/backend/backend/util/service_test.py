@@ -705,13 +705,19 @@ class TestGetReturn:
         return get_service_client(ServiceTestClient)
 
     def test_valid_dict_is_deserialized_to_user_model(self):
-        """TypeAdapter(User) + valid dict → User model returned with .timezone accessible."""
+        """TypeAdapter(User) + valid dict → User model returned with .timezone accessible.
+
+        User.model_config uses extra='ignore' so unknown fields (e.g. new columns added
+        in a newer database-manager deploy) are silently dropped instead of raising
+        ValidationError — making the RPC layer forward-compatible during rolling deploys.
+        """
         now = datetime.now(timezone.utc).isoformat()
         valid_dict = {
             "id": "user-id",
             "email": "test@example.com",
             "created_at": now,
             "updated_at": now,
+            "unknown_future_field": "some_value",  # simulates a new DB field during deploy
         }
         client = self._make_client()
         adapter = TypeAdapter(User)
