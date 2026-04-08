@@ -9,6 +9,7 @@ shared tool registry as the SDK path.
 import asyncio
 import base64
 import logging
+import math
 import os
 import re
 import shutil
@@ -22,6 +23,7 @@ from typing import TYPE_CHECKING, Any, cast
 import orjson
 from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from opentelemetry import trace as otel_trace
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
@@ -30,7 +32,6 @@ from backend.copilot.model import (
     ChatSession,
     get_chat_session,
     maybe_append_user_message,
-    update_session_title,
     upsert_chat_session,
 )
 from backend.copilot.prompting import get_baseline_supplement
@@ -51,8 +52,8 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import (
     _build_system_prompt,
-    _generate_session_title,
     _get_openai_client,
+    _update_title_async,
     config,
 )
 from backend.copilot.token_tracking import persist_and_record_usage
@@ -334,6 +335,7 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
 
@@ -354,6 +356,7 @@ async def _baseline_llm_caller(
     state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
+    response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
         typed_messages = cast(list[ChatCompletionMessageParam], messages)
@@ -430,6 +433,20 @@ async def _baseline_llm_caller(
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
     finally:
+        # Extract OpenRouter cost from response headers (in finally so we
+        # capture cost even when the stream errors mid-way — we already paid).
+        # Accumulate across multi-round tool-calling turns.
+        try:
+            # Access undocumented _response attribute — same pattern as
+            # extract_openrouter_cost() in blocks/llm.py.
+            cost_header = response._response.headers.get("x-total-cost")  # type: ignore[attr-defined]
+            if cost_header:
+                cost = float(cost_header)
+                if math.isfinite(cost) and cost >= 0:
+                    state.cost_usd = (state.cost_usd or 0.0) + cost
+        except (AttributeError, ValueError):
+            pass
+
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -684,18 +701,6 @@ def _baseline_conversation_updater(
                     tool_call_id=tr.tool_call_id,
                 )
             )
-
-
-async def _update_title_async(
-    session_id: str, message: str, user_id: str | None
-) -> None:
-    """Generate and persist a session title in the background."""
-    try:
-        title = await _generate_session_title(message, user_id, session_id)
-        if title and user_id:
-            await update_session_title(session_id, user_id, title, only_if_empty=True)
-    except Exception as e:
-        logger.warning("[Baseline] Failed to update session title: %s", e)
 
 
 async def _compress_session_messages(
@@ -1183,8 +1188,22 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
-        # Close Langfuse trace context
+        # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
+            try:
+                span = otel_trace.get_current_span()
+                if span and span.is_recording():
+                    span.set_attribute(
+                        "gen_ai.usage.prompt_tokens", state.turn_prompt_tokens
+                    )
+                    span.set_attribute(
+                        "gen_ai.usage.completion_tokens",
+                        state.turn_completion_tokens,
+                    )
+                    if state.cost_usd is not None:
+                        span.set_attribute("gen_ai.usage.cost_usd", state.cost_usd)
+            except Exception:
+                logger.debug("[Baseline] Failed to set OTEL cost attributes")
             try:
                 _trace_ctx.__exit__(None, None, None)
             except Exception:
@@ -1226,6 +1245,8 @@ async def stream_chat_completion_baseline(
             prompt_tokens=state.turn_prompt_tokens,
             completion_tokens=state.turn_completion_tokens,
             log_prefix="[Baseline]",
+            cost_usd=state.cost_usd,
+            model=active_model,
         )
 
         # Persist structured tool-call history (assistant + tool messages)

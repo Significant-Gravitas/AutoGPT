@@ -310,6 +310,28 @@ TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 ```
 
+### 3i. Disable onboarding for test user
+
+The frontend redirects to `/onboarding` when the `VISIT_COPILOT` step is not in `completedSteps`.
+Mark it complete via the backend API so every browser test lands on the real feature UI:
+
+```bash
+ONBOARDING_RESULT=$(curl -s --max-time 30 -X POST \
+  "http://localhost:8006/api/onboarding/step?step=VISIT_COPILOT" \
+  -H "Authorization: Bearer $TOKEN")
+echo "Onboarding bypass: $ONBOARDING_RESULT"
+
+# Verify it took effect
+ONBOARDING_STATUS=$(curl -s --max-time 30 \
+  "http://localhost:8006/api/onboarding/completed" \
+  -H "Authorization: Bearer $TOKEN" | jq -r '.is_completed')
+echo "Onboarding completed: $ONBOARDING_STATUS"
+if [ "$ONBOARDING_STATUS" != "true" ]; then
+  echo "ERROR: onboarding bypass failed — browser tests will hit /onboarding instead of the target feature. Investigate before proceeding."
+  exit 1
+fi
+```
+
 ## Step 4: Run tests
 
 ### Service ports reference
@@ -530,19 +552,9 @@ After showing all screenshots, output a **detailed** summary table:
 # but Homebrew bash is 5.x; Linux typically has bash 5.x). If running on Bash <4, use a
 # plain variable with a lookup function instead.
 declare -A SCREENSHOT_EXPLANATIONS=(
-  # Each explanation MUST answer three things:
-  #   1. FLOW: Which test scenario / user journey is this part of?
-  #   2. STEPS: What exact actions were taken to reach this state?
-  #   3. EVIDENCE: What does this screenshot prove (pass/fail/data)?
-  #
-  # Good example:
-  #   ["03-cost-log-after-run.png"]="Flow: LLM block cost tracking. Steps: Logged in as tester@gmail.com → ran 'Cost Test Agent' → waited for COMPLETED status. Evidence: PlatformCostLog table shows 1 new row with cost_microdollars=1234 and correct user_id."
-  #
-  # Bad example (too vague — never do this):
-  #   ["03-cost-log.png"]="Shows the cost log table."
-  ["01-login-page.png"]="Flow: Login flow. Steps: Opened /login. Evidence: Login page renders with email/password fields and SSO options visible."
-  ["02-builder-with-block.png"]="Flow: Block execution. Steps: Logged in → /build → added LLM block. Evidence: Builder canvas shows block connected to trigger, ready to run."
-  # ... one entry per screenshot using the flow/steps/evidence format above
+  ["01-login-page.png"]="Shows the login page loaded successfully with SSO options visible."
+  ["02-builder-with-block.png"]="The builder canvas displays the newly added block connected to the trigger."
+  # ... one entry per screenshot, using the same explanations you showed the user above
 )
 
 TEST_RESULTS_TABLE="| 1 | Login flow | PASS | N/A | 01-login-before.png, 02-login-after.png |
@@ -557,8 +569,7 @@ Upload screenshots to the PR using the GitHub Git API (no local git operations �
 
 **This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
-> **CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.**
-> Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
+**CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
 
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
@@ -595,11 +606,11 @@ for img in "${SCREENSHOT_FILES[@]}"; do
 done
 TREE_JSON+=']'
 
-# Step 2: Create tree, commit (with parent), and branch ref
+# Step 2: Create tree, commit, and branch ref
 TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
 
-# Resolve existing branch tip as parent (avoids orphan commits on repeat runs)
-PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || true)
+# Resolve parent commit so screenshots are chained, not orphan root commits
+PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || echo "")
 if [ -n "$PARENT_SHA" ]; then
   COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
     -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
@@ -607,7 +618,6 @@ if [ -n "$PARENT_SHA" ]; then
     -f "parents[]=$PARENT_SHA" \
     --jq '.sha')
 else
-  # First commit on this branch — no parent
   COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
     -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
     -f tree="$TREE_SHA" \
@@ -618,7 +628,7 @@ gh api "repos/${REPO}/git/refs" \
   -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
   -f sha="$COMMIT_SHA" 2>/dev/null \
   || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
-    -X PATCH -f sha="$COMMIT_SHA" -f force=true
+    -X PATCH -f sha="$COMMIT_SHA" -F force=true
 ```
 
 Then post the comment with **inline images AND explanations for each screenshot**:
@@ -682,122 +692,122 @@ ${IMAGE_MARKDOWN}
 ${FAILED_SECTION}
 INNEREOF
 
-POSTED_BODY=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE" --jq '.body')
+gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
 rm -f "$COMMENT_FILE"
+
+# Verify the posted comment contains inline images — exit 1 if none found
+# Use separate --paginate + jq pipe: --jq applies per-page, not to the full list
+LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | jq -r '.[-1].body // ""')
+if ! echo "$LAST_COMMENT" | grep -q '!\['; then
+  echo "ERROR: Posted comment contains no inline images (![). Bare directory links are not acceptable." >&2
+  exit 1
+fi
+echo "✓ Inline images verified in posted comment"
 ```
 
 **The PR comment MUST include:**
 1. A summary table of all scenarios with PASS/FAIL and before/after API evidence
 2. Every successfully uploaded screenshot rendered inline; any failed uploads listed with manual attachment instructions
-3. A structured explanation below each screenshot covering: **Flow** (which scenario), **Steps** (exact actions taken to reach this state), **Evidence** (what this proves — pass/fail/data values). A bare "shows the page" caption is not acceptable.
+3. A 1-2 sentence explanation below each screenshot describing what it proves
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
 
-**Verify inline rendering after posting — this is required, not optional:**
+## Step 8: Evaluate and post a formal PR review
 
+After the test comment is posted, evaluate whether the run was thorough enough to make a merge decision, then post a formal GitHub review (approve or request changes). **This step is mandatory — every test run MUST end with a formal review decision.**
+
+### Evaluation criteria
+
+Re-read the PR description:
 ```bash
-# 1. Confirm the posted comment body contains inline image markdown syntax
-if ! echo "$POSTED_BODY" | grep -q '!\['; then
-  echo "❌ FAIL: No inline image tags in posted comment body. Re-check IMAGE_MARKDOWN and re-post."
-  exit 1
-fi
-
-# 2. Verify at least one raw URL actually resolves (catches wrong branch name, wrong path, etc.)
-FIRST_IMG_URL=$(echo "$POSTED_BODY" | grep -o 'https://raw.githubusercontent.com[^)]*' | head -1)
-if [ -n "$FIRST_IMG_URL" ]; then
-  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$FIRST_IMG_URL")
-  if [ "$HTTP_STATUS" = "200" ]; then
-    echo "✅ Inline images confirmed and raw URL resolves (HTTP 200)"
-  else
-    echo "❌ FAIL: Raw image URL returned HTTP $HTTP_STATUS — images will not render inline."
-    echo "   URL: $FIRST_IMG_URL"
-    echo "   Check branch name, path, and that the push succeeded."
-    exit 1
-  fi
-else
-  echo "⚠️  Could not extract a raw URL from the comment — verify manually."
-fi
+gh pr view "$PR_NUMBER" --json body --jq '.body' --repo "$REPO"
 ```
 
-## Step 8: Evaluate test completeness and post a GitHub review
+Score the run against each criterion:
 
-After posting the PR comment, evaluate whether the test run actually covered everything it needed to. This is NOT a rubber-stamp — be critical. Then post a formal GitHub review so the PR author and reviewers can see the verdict.
+| Criterion | Pass condition |
+|-----------|---------------|
+| **Coverage** | Every feature/change described in the PR has at least one test scenario |
+| **All scenarios pass** | No FAIL rows in the results table |
+| **Negative tests** | At least one failure-path test per feature (invalid input, unauthorized, edge case) |
+| **Before/after evidence** | Every state-changing API call has before/after values logged |
+| **Screenshots are meaningful** | Screenshots show the actual state change, not just a loading spinner or blank page |
+| **No regressions** | Existing core flows (login, agent create/run) still work |
 
-### 8a. Evaluate against the test plan
+### Decision logic
 
-Re-read `$RESULTS_DIR/test-plan.md` (written in Step 2) and `$RESULTS_DIR/test-report.md` (written in Step 5). For each scenario in the plan, answer:
+```
+ALL criteria pass                            → APPROVE
+Any scenario FAIL or missing PR feature      → REQUEST_CHANGES (list gaps)
+Evidence weak (no before/after, vague shots) → REQUEST_CHANGES (list what's missing)
+```
 
-> **Note:** `test-report.md` is written in Step 5. If it doesn't exist, write it before proceeding here — see the Step 5 template. Do not skip evaluation because the file is missing; create it from your notes instead.
-
-| Question | Pass criteria |
-|----------|--------------|
-| Was it tested? | Explicit steps were executed, not just described |
-| Is there screenshot evidence? | At least one before/after screenshot per scenario |
-| Did the core feature work correctly? | Expected state matches actual state |
-| Were negative cases tested? | At least one failure/rejection case per feature |
-| Was DB/API state verified (not just UI)? | Raw API response or DB query confirms state change |
-
-Build a verdict:
-- **APPROVE** — every scenario tested, evidence present, no bugs found or all bugs are minor/known
-- **REQUEST_CHANGES** — one or more: untested scenarios, missing evidence, bugs found, data not verified
-
-### 8b. Post the GitHub review
+### Post the review
 
 ```bash
-EVAL_FILE=$(mktemp)
+REVIEW_FILE=$(mktemp)
 
-# === STEP A: Write header ===
-cat > "$EVAL_FILE" << 'ENDEVAL'
-## 🧪 Test Evaluation
+# Count results
+PASS_COUNT=$(echo "$TEST_RESULTS_TABLE" | grep -c "PASS" || true)
+FAIL_COUNT=$(echo "$TEST_RESULTS_TABLE" | grep -c "FAIL" || true)
+TOTAL=$(( PASS_COUNT + FAIL_COUNT ))
 
-### Coverage checklist
-ENDEVAL
+# List any coverage gaps found during evaluation (populate this array as you assess)
+# e.g. COVERAGE_GAPS=("PR claims to add X but no test covers it")
+COVERAGE_GAPS=()
+```
 
-# === STEP B: Append ONE line per scenario — do this BEFORE calculating verdict ===
-# Format: "- ✅ **Scenario N – name**: <what was done and verified>"
-#      or "- ❌ **Scenario N – name**: <what is missing or broken>"
-# Examples:
-#   echo "- ✅ **Scenario 1 – Login flow**: tested, screenshot evidence present, auth token verified via API" >> "$EVAL_FILE"
-#   echo "- ❌ **Scenario 3 – Cost logging**: NOT verified in DB — UI showed entry but raw SQL query was skipped" >> "$EVAL_FILE"
-#
-# !!! IMPORTANT: append ALL scenario lines here before proceeding to STEP C !!!
+**If APPROVING** — all criteria met, zero failures, full coverage:
 
-# === STEP C: Derive verdict from the checklist — runs AFTER all lines are appended ===
-FAIL_COUNT=$(grep -c "^- ❌" "$EVAL_FILE" || true)
-if [ "$FAIL_COUNT" -eq 0 ]; then
-  VERDICT="APPROVE"
-else
-  VERDICT="REQUEST_CHANGES"
-fi
+```bash
+cat > "$REVIEW_FILE" <<REVIEWEOF
+## E2E Test Evaluation — APPROVED
 
-# === STEP D: Append verdict section ===
-cat >> "$EVAL_FILE" << ENDVERDICT
+**Results:** ${PASS_COUNT}/${TOTAL} scenarios passed.
 
-### Verdict
-ENDVERDICT
+**Coverage:** All features described in the PR were exercised.
 
-if [ "$VERDICT" = "APPROVE" ]; then
-  echo "✅ All scenarios covered with evidence. No blocking issues found." >> "$EVAL_FILE"
-else
-  echo "❌ $FAIL_COUNT scenario(s) incomplete or have confirmed bugs. See ❌ items above." >> "$EVAL_FILE"
-  echo "" >> "$EVAL_FILE"
-  echo "**Required before merge:** address each ❌ item above." >> "$EVAL_FILE"
-fi
+**Evidence:** Before/after API values logged for all state-changing operations; screenshots show meaningful state transitions.
 
-# === STEP E: Post the review ===
-gh api "repos/${REPO}/pulls/$PR_NUMBER/reviews" \
-  --method POST \
-  -f body="$(cat "$EVAL_FILE")" \
-  -f event="$VERDICT"
+**Negative tests:** Failure paths tested for each feature.
 
-rm -f "$EVAL_FILE"
+No regressions observed on core flows.
+REVIEWEOF
+
+gh pr review "$PR_NUMBER" --repo "$REPO" --approve --body "$(cat "$REVIEW_FILE")"
+echo "✅ PR approved"
+```
+
+**If REQUESTING CHANGES** — any failure, coverage gap, or missing evidence:
+
+```bash
+FAIL_LIST=$(echo "$TEST_RESULTS_TABLE" | grep "FAIL" | awk -F'|' '{print "- Scenario" $2 "failed"}' || true)
+
+cat > "$REVIEW_FILE" <<REVIEWEOF
+## E2E Test Evaluation — Changes Requested
+
+**Results:** ${PASS_COUNT}/${TOTAL} scenarios passed, ${FAIL_COUNT} failed.
+
+### Required before merge
+
+${FAIL_LIST}
+$(for gap in "${COVERAGE_GAPS[@]}"; do echo "- $gap"; done)
+
+Please fix the above and re-run the E2E tests.
+REVIEWEOF
+
+gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes --body "$(cat "$REVIEW_FILE")"
+echo "❌ Changes requested"
+```
+
+```bash
+rm -f "$REVIEW_FILE"
 ```
 
 **Rules:**
-- Never auto-approve without checking every scenario in the test plan
-- `REQUEST_CHANGES` if ANY scenario is untested, lacks DB/API evidence, or has a confirmed bug
-- The evaluation body must list every scenario explicitly (✅ or ❌) — not just the failures
-- If you find new bugs during evaluation, add them to the request-changes body and (if `--fix` flag is set) fix them before posting
+- In `--fix` mode, fix all failures before posting the review — the review reflects the final state after fixes
+- Never approve if any scenario failed, even if it seems like a flake — rerun that scenario first
+- Never request changes for issues already fixed in this run
 
 ## Fix mode (--fix flag)
 

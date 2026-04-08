@@ -22,7 +22,12 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
-from .model import ChatSessionInfo, get_chat_session, upsert_chat_session
+from .model import (
+    ChatSessionInfo,
+    get_chat_session,
+    update_session_title,
+    upsert_chat_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +205,22 @@ async def _generate_session_title(
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")
         return None
+
+
+async def _update_title_async(
+    session_id: str, message: str, user_id: str | None = None
+) -> None:
+    """Generate and persist a session title in the background.
+
+    Shared by both the SDK and baseline execution paths.
+    """
+    try:
+        title = await _generate_session_title(message, user_id, session_id)
+        if title and user_id:
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
+            logger.debug("Generated title for session %s", session_id)
+    except Exception as e:
+        logger.warning("Failed to update session title for %s: %s", session_id, e)
 
 
 async def assign_user_to_session(

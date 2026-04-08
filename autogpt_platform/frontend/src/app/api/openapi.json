@@ -7,6 +7,179 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/platform-costs/dashboard": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Dashboard",
+        "operationId": "getV2Get platform cost dashboard",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostDashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Logs",
+        "operationId": "getV2Get platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostLogsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -8733,6 +8906,61 @@
         ],
         "title": "ContentType"
       },
+      "CostLogRow": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
+          "node_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Exec Id"
+          },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "cost_microdollars": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cost Microdollars"
+          },
+          "input_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Output Tokens"
+          },
+          "duration": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Duration"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "block_name", "provider"],
+        "title": "CostLogRow"
+      },
       "CountResponse": {
         "properties": {
           "all_blocks": { "type": "integer", "title": "All Blocks" },
@@ -11664,6 +11892,48 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PlatformCostDashboard": {
+        "properties": {
+          "by_provider": {
+            "items": { "$ref": "#/components/schemas/ProviderCostSummary" },
+            "type": "array",
+            "title": "By Provider"
+          },
+          "by_user": {
+            "items": { "$ref": "#/components/schemas/UserCostSummary" },
+            "type": "array",
+            "title": "By User"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_requests": { "type": "integer", "title": "Total Requests" },
+          "total_users": { "type": "integer", "title": "Total Users" }
+        },
+        "type": "object",
+        "required": [
+          "by_provider",
+          "by_user",
+          "total_cost_microdollars",
+          "total_requests",
+          "total_users"
+        ],
+        "title": "PlatformCostDashboard"
+      },
+      "PlatformCostLogsResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["logs", "pagination"],
+        "title": "PlatformCostLogsResponse"
+      },
       "PostmarkBounceEnum": {
         "type": "integer",
         "enum": [
@@ -12057,6 +12327,47 @@
         "type": "object",
         "title": "ProviderConstants",
         "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
+      },
+      "ProviderCostSummary": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0.0
+          },
+          "total_tracking_amount": {
+            "type": "number",
+            "title": "Total Tracking Amount",
+            "default": 0.0
+          },
+          "request_count": { "type": "integer", "title": "Request Count" }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "ProviderCostSummary"
       },
       "ProviderEnumResponse": {
         "properties": {
@@ -14937,6 +15248,39 @@
         "required": ["used", "limit", "resets_at"],
         "title": "UsageWindow",
         "description": "Usage within a single time window."
+      },
+      "UserCostSummary": {
+        "properties": {
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "request_count": { "type": "integer", "title": "Request Count" }
+        },
+        "type": "object",
+        "required": [
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "UserCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {
