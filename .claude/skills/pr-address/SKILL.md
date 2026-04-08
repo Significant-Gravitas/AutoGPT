@@ -318,6 +318,47 @@ Two distinct rate limits exist — they have different causes and recovery times
 
 Never batch all replies in a tight loop — always space them out.
 
+## Parallel thread resolution
+
+When a PR has more than 10 unresolved threads, addressing one commit per thread is slow. Use this strategy instead:
+
+### Group by file, batch per commit
+
+1. Sort `ALL_THREADS` by `path` — threads in the same file can share a single commit.
+2. Fix all threads in one file → `git commit` → `git push` → reply to **all** those threads with the same SHA → resolve them all.
+3. Move to the next file group and repeat.
+
+This reduces N commits to (number of files touched), which is usually 3–5 instead of 15–30.
+
+### Posting replies concurrently (for large batches)
+
+For truly independent thread groups (different files, no shared logic), you can post replies in parallel using background subshells — but always space out API writes:
+
+```bash
+# Post replies to a batch of threads concurrently, 3s apart
+(
+  sleep 3
+  gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID1}/replies \
+    -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): ..."
+) &
+(
+  sleep 6
+  gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID2}/replies \
+    -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): ..."
+) &
+wait  # wait for all background replies before resolving
+```
+
+Then resolve sequentially (GraphQL mutations):
+```bash
+for THREAD_ID in "$THREAD1" "$THREAD2" "$THREAD3"; do
+  gh api graphql -f query="mutation { resolveReviewThread(input: {threadId: \"${THREAD_ID}\"}) { thread { isResolved } } }"
+  sleep 3
+done
+```
+
+**Always sleep 3s between individual API writes** — GitHub's secondary rate limit (403) triggers on bursts of >20 writes. Increase to `sleep 5` when posting more than 20 replies in a batch.
+
 ## Resolving threads via GraphQL
 
 Use `resolveReviewThread` **only after** the commit is pushed and the reply is posted:
@@ -330,32 +371,40 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREA
 
 ### Verify actual count before outputting ORCHESTRATOR:DONE
 
-Before claiming "0 unresolved threads", always query GitHub directly — don't rely on your own bookkeeping:
+Before claiming "0 unresolved threads", always query GitHub directly — don't rely on your own bookkeeping. Paginate all pages — a single `first: 100` query misses threads beyond page 1:
 
 ```bash
+# Step 1: get total thread count
 gh api graphql -f query='
 {
   repository(owner: "Significant-Gravitas", name: "AutoGPT") {
     pullRequest(number: {N}) {
-      reviewThreads(first: 1) {
-        totalCount
-      }
+      reviewThreads { totalCount }
     }
   }
-}' | jq '.data.repository.pullRequest.reviewThreads'
-# Then fetch unresolved count:
-gh api graphql -f query='
-{
-  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
-    pullRequest(number: {N}) {
-      reviewThreads(first: 100) {
-        nodes { isResolved }
+}' | jq '.data.repository.pullRequest.reviewThreads.totalCount'
+
+# Step 2: paginate all pages, count truly unresolved
+CURSOR=""; UNRESOLVED=0
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="
+  {
+    repository(owner: \"Significant-Gravitas\", name: \"AutoGPT\") {
+      pullRequest(number: {N}) {
+        reviewThreads(first: 100${AFTER}) {
+          pageInfo { hasNextPage endCursor }
+          nodes { isResolved }
+        }
       }
     }
-  }
-}' | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'
+  }")
+  UNRESOLVED=$(( UNRESOLVED + $(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length') ))
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+echo "Unresolved threads: $UNRESOLVED"
 ```
 
-If `totalCount > 100`, paginate with `after:` cursor until `hasNextPage` is false.
-
-Only output `ORCHESTRATOR:DONE` after this query returns 0.
+Only output `ORCHESTRATOR:DONE` after this loop reports 0.
