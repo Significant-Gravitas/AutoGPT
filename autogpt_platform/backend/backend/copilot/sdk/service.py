@@ -1991,12 +1991,12 @@ async def stream_chat_completion_sdk(
             sid = session_id[:12] if session_id else "?"
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
             # Detect SDK fallback-model activation.  The CLI logs a
-            # message containing "fallback" when it switches models
-            # after a 529/overloaded error.  Only match "fallback" —
-            # "overloaded" alone indicates a transient error, not that
-            # the SDK actually switched to the fallback model.
+            # message containing "fallback model" when it switches models
+            # after a 529/overloaded error.  Match "fallback model" rather
+            # than just "fallback" to avoid false positives from unrelated
+            # stderr lines (e.g. tool-level retries, cached result fallbacks).
             lower = line.lower()
-            if not fallback_model_activated and "fallback" in lower:
+            if not fallback_model_activated and "fallback model" in lower:
                 fallback_model_activated = True
                 logger.warning(
                     "[SDK] [%s] Fallback model activated — primary model "

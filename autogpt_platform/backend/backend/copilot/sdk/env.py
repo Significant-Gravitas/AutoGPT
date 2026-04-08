@@ -8,6 +8,8 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import re
+
 from backend.copilot.config import ChatConfig
 from backend.copilot.sdk.subscription import validate_subscription
 
@@ -61,7 +63,10 @@ def build_sdk_env(
 
         # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
         def _safe(v: str) -> str:
-            return v.replace("\r", "").replace("\n", "").strip()[:128]
+            # Keep only printable ASCII (0x20–0x7e); strip control chars,
+            # null bytes, and non-ASCII to produce a valid HTTP header value
+            # (RFC 7230 §3.2.6).
+            return re.sub(r"[^\x20-\x7e]", "", v).strip()[:128]
 
         parts = []
         if session_id:
