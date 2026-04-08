@@ -4,10 +4,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from prisma.models import PlatformCostLog as PrismaLog
+from prisma.types import PlatformCostLogCreateInput
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
 from backend.util.cache import cached
+from backend.util.json import SafeJson
 
 logger = logging.getLogger(__name__)
 
@@ -52,28 +54,28 @@ class PlatformCostEntry(BaseModel):
 
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
     await PrismaLog.prisma().create(
-        data={
-            "userId": entry.user_id,
-            "graphExecId": entry.graph_exec_id,
-            "nodeExecId": entry.node_exec_id,
-            "graphId": entry.graph_id,
-            "nodeId": entry.node_id,
-            "blockId": entry.block_id,
-            "blockName": entry.block_name,
+        data=PlatformCostLogCreateInput(
+            userId=entry.user_id,
+            graphExecId=entry.graph_exec_id,
+            nodeExecId=entry.node_exec_id,
+            graphId=entry.graph_id,
+            nodeId=entry.node_id,
+            blockId=entry.block_id,
+            blockName=entry.block_name,
             # Normalize to lowercase so the (provider, createdAt) index is always
             # used without LOWER() on the read side.
-            "provider": entry.provider.lower(),
-            "credentialId": entry.credential_id,
-            "costMicrodollars": entry.cost_microdollars,
-            "inputTokens": entry.input_tokens,
-            "outputTokens": entry.output_tokens,
-            "dataSize": entry.data_size,
-            "duration": entry.duration,
-            "model": entry.model,
-            "trackingType": entry.tracking_type,
-            "trackingAmount": entry.tracking_amount,
-            "metadata": entry.metadata,
-        }
+            provider=entry.provider.lower(),
+            credentialId=entry.credential_id,
+            costMicrodollars=entry.cost_microdollars,
+            inputTokens=entry.input_tokens,
+            outputTokens=entry.output_tokens,
+            dataSize=entry.data_size,
+            duration=entry.duration,
+            model=entry.model,
+            trackingType=entry.tracking_type,
+            trackingAmount=entry.tracking_amount,
+            metadata=SafeJson(entry.metadata or {}),
+        )
     )
 
 
