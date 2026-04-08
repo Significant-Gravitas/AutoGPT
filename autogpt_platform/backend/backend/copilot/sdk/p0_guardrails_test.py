@@ -526,66 +526,33 @@ class TestEventsYieldedExclusions:
     _next_transient_backoff() permits a retry.  StreamError and StreamStatus
     must NOT be counted so that a transient notification can be followed by a
     retry without producing duplicate content for the client.
+
+    These tests use the production _EPHEMERAL_EVENT_TYPES constant directly so
+    that any drift between the constant and these assertions is caught immediately.
     """
 
     def test_stream_error_is_ephemeral_type(self):
-        """StreamError must be an instance of the excluded-from-count tuple.
+        """StreamError must be an instance of the production _EPHEMERAL_EVENT_TYPES tuple.
 
-        The production isinstance guard uses the same tuple — this test pins
-        that StreamError stays in the ephemeral set even after refactors.
+        Uses the production constant rather than reconstructing the tuple locally
+        so that any refactor that removes StreamError from the set will fail this test.
         """
-        from backend.copilot.response_model import (
-            StreamError,
-            StreamFinishStep,
-            StreamHeartbeat,
-            StreamStartStep,
-            StreamStatus,
-            StreamToolInputAvailable,
-            StreamToolInputStart,
-            StreamToolOutputAvailable,
-        )
+        from backend.copilot.response_model import StreamError
+        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
 
-        _ephemeral = (
-            StreamHeartbeat,
-            StreamStartStep,
-            StreamFinishStep,
-            StreamToolInputStart,
-            StreamToolInputAvailable,
-            StreamToolOutputAvailable,
-            StreamError,
-            StreamStatus,
-        )
         err = StreamError(errorText="transient", code="transient_api_error")
-        assert isinstance(err, _ephemeral), (
+        assert isinstance(err, _EPHEMERAL_EVENT_TYPES), (
             "StreamError must be excluded from events_yielded — "
             "if counted, transient retries would be blocked after the first notification"
         )
 
     def test_stream_status_is_ephemeral_type(self):
-        """StreamStatus must be excluded from the events_yielded counter."""
-        from backend.copilot.response_model import (
-            StreamError,
-            StreamFinishStep,
-            StreamHeartbeat,
-            StreamStartStep,
-            StreamStatus,
-            StreamToolInputAvailable,
-            StreamToolInputStart,
-            StreamToolOutputAvailable,
-        )
+        """StreamStatus must be excluded from the production _EPHEMERAL_EVENT_TYPES tuple."""
+        from backend.copilot.response_model import StreamStatus
+        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
 
-        _ephemeral = (
-            StreamHeartbeat,
-            StreamStartStep,
-            StreamFinishStep,
-            StreamToolInputStart,
-            StreamToolInputAvailable,
-            StreamToolOutputAvailable,
-            StreamError,
-            StreamStatus,
-        )
         status = StreamStatus(message="Connection interrupted, retrying in 2s…")
-        assert isinstance(status, _ephemeral), (
+        assert isinstance(status, _EPHEMERAL_EVENT_TYPES), (
             "StreamStatus must be excluded from events_yielded — "
             "retrying after emitting a status notification must still be permitted"
         )
