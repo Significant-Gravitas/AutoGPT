@@ -94,12 +94,33 @@ Address comments **one at a time**: fix → commit → push → inline reply →
 2. Commit and push the fix
 3. Reply **inline** (not as a new top-level comment) referencing the fixing commit — this is what resolves the conversation for bot reviewers (coderabbitai, sentry):
 
-Use a **markdown commit link** so GitHub renders it as a clickable reference. Get the full SHA with `git rev-parse HEAD` after committing:
+Use a **markdown commit link** so GitHub renders it as a clickable reference. Always get the full SHA with `git rev-parse HEAD` **after** committing — never copy a SHA from a previous commit or hardcode one:
+
+```bash
+FULL_SHA=$(git rev-parse HEAD)
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies \
+  -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): <description>"
+```
 
 | Comment type | How to reply |
 |---|---|
 | Inline review (`pulls/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies -f body="🤖 Fixed in [abc1234](https://github.com/Significant-Gravitas/AutoGPT/commit/FULL_SHA): <description>"` |
 | Conversation (`issues/{N}/comments`) | `gh api repos/Significant-Gravitas/AutoGPT/issues/{N}/comments -f body="🤖 Fixed in [abc1234](https://github.com/Significant-Gravitas/AutoGPT/commit/FULL_SHA): <description>"` |
+
+### What counts as a valid resolution
+
+Only two situations justify calling `resolveReviewThread`:
+
+1. **Real code fix**: you changed the code, committed + pushed, and replied with the SHA. The commit diff must actually address the concern — not just touch the same file.
+2. **Genuine false positive**: the reviewer's concern does not apply to this code, and you can give a specific technical reason (e.g. "Not applicable — `sdk_cwd` is pre-validated by `_make_sdk_cwd()` which applies normpath + prefix assertion before reaching this point").
+
+**Anti-patterns that look resolved but aren't — never do these:**
+- `"Accepted, tracked as follow-up"` — a deferral, not a fix. The concern is still open. Do not resolve.
+- `"Acknowledged"` or `"Same as above"` — these are acknowledgements, not fixes. Do not resolve.
+- `"Fixed in abc1234"` where `abc1234` is a commit that doesn't actually change the flagged line/logic — dishonest. Verify `git show abc1234 -- path/to/file` changes the right thing before posting.
+- Resolving without replying — the reviewer never sees what happened.
+
+When in doubt: if a code change is needed, make it. A deferred issue means the thread stays open until the follow-up PR is merged.
 
 ## Codecov coverage
 
@@ -239,12 +260,20 @@ git push
 
 ## GitHub abuse rate limits
 
-When posting many thread replies in quick succession, GitHub returns `{"code":"abuse"}` errors. This is throttling, not a permissions problem.
+Two distinct rate limits exist — they have different causes and recovery times:
 
-**Fix:** Add `sleep 3` between individual thread reply API calls. If you hit an abuse error:
-1. Stop posting immediately
-2. Wait 60 seconds
+| Error | HTTP code | Cause | Recovery |
+|---|---|---|---|
+| `{"code":"abuse"}` | 403 | Secondary rate limit — too many write operations (comments, mutations) in a short window | Wait **2–3 minutes**. 60s is often not enough. |
+| `{"message":"API rate limit exceeded"}` | 429 | Primary rate limit — too many API calls per hour | Wait until `X-RateLimit-Reset` header timestamp |
+
+**Prevention:** Add `sleep 3` between individual thread reply API calls. When posting >20 replies, increase to `sleep 5`.
+
+**Recovery from secondary rate limit (403):**
+1. Stop all API writes immediately
+2. Wait **2 minutes minimum** (not 60s — secondary limits are stricter)
 3. Resume with `sleep 3` between each call
+4. If 403 persists after 2 min, wait another 2 min before retrying
 
 Never batch all replies in a tight loop — always space them out.
 
@@ -257,3 +286,35 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREA
 ```
 
 **Never call this mutation before committing the fix.** The orchestrator will verify actual unresolved counts via GraphQL after you output `ORCHESTRATOR:DONE` — false resolutions will be caught and you will be re-briefed.
+
+### Verify actual count before outputting ORCHESTRATOR:DONE
+
+Before claiming "0 unresolved threads", always query GitHub directly — don't rely on your own bookkeeping:
+
+```bash
+gh api graphql -f query='
+{
+  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
+    pullRequest(number: {N}) {
+      reviewThreads(first: 1) {
+        totalCount
+      }
+    }
+  }
+}' | jq '.data.repository.pullRequest.reviewThreads'
+# Then fetch unresolved count:
+gh api graphql -f query='
+{
+  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
+    pullRequest(number: {N}) {
+      reviewThreads(first: 100) {
+        nodes { isResolved }
+      }
+    }
+  }
+}' | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length'
+```
+
+If `totalCount > 100`, paginate with `after:` cursor until `hasNextPage` is false.
+
+Only output `ORCHESTRATOR:DONE` after this query returns 0.

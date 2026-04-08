@@ -333,6 +333,54 @@ jq -r '.agents[] | select(.state | test("running|idle|stuck|waiting_approval|pen
 ```
 and capture every window listed. If you manually added a window outside spawn-agent.sh, ensure it's in the state file first.
 
+### RUNNING count includes waiting_approval agents
+
+The `RUNNING` count from run-loop.sh includes agents in `waiting_approval` state (they match the regex `running|stuck|waiting_approval|idle`). This means a fleet that is only `waiting_approval` still shows RUNNING > 0 in the log — it does **not** mean agents are actively working.
+
+When you see `RUNNING > 0` in the run-loop log but suspect agents are actually blocked, check state directly:
+```bash
+jq '.agents[] | {window, state, worktree}' ~/.claude/orchestrator-state.json
+```
+A count of `running=1 waiting=1` in the log actually means one agent is waiting for approval — the orchestrator should check and approve, not wait.
+
+### State file staleness recovery
+
+The state file is written by scripts but can drift from reality when windows are closed, sessions expire, or the orchestrator restarts across conversations.
+
+**Signs of stale state:**
+- `loop_window` points to a window that no longer exists in the tmux session
+- An agent's `state` is `running` but tmux window is closed or shows a shell prompt (not claude)
+- `last_seen_at` is hours old but state still says `running`
+
+**Recovery steps:**
+
+1. **Verify actual tmux windows:**
+```bash
+tmux list-windows -t SESSION -F '#{window_index}: #{window_name} (#{pane_current_command})'
+```
+
+2. **Cross-reference with state file:**
+```bash
+jq -r '.agents[] | "\(.window) \(.state) \(.worktree)"' ~/.claude/orchestrator-state.json
+```
+
+3. **Fix stale entries:**
+```bash
+# Agent window closed — mark idle so run-loop.sh will restart it
+jq --arg w "SESSION:WIN" '(.agents[] | select(.window==$w)).state = "idle"' \
+  ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+
+# loop_window gone — kill the stale reference, then restart run-loop.sh
+jq '.loop_window = null' ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+LOOP_WIN=$(tmux new-window -t "$SESSION" -n "orchestrator" -P -F '#{window_index}')
+LOOP_WINDOW="${SESSION}:${LOOP_WIN}"
+tmux send-keys -t "$LOOP_WINDOW" "bash $SKILLS_DIR/run-loop.sh" Enter
+jq --arg w "$LOOP_WINDOW" '.loop_window = $w' ~/.claude/orchestrator-state.json \
+  > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+```
+
+4. **After any state repair, re-run `status.sh` to confirm coherence before resuming supervision.**
+
 ### Strict ORCHESTRATOR:DONE gate
 
 `verify-complete.sh` handles the main checks automatically (checkpoints, threads, CI green, spawned_at, and CHANGES_REQUESTED). Run it:
@@ -348,6 +396,14 @@ If it passes → run-loop.sh will recycle the window automatically. No manual ac
 If it fails → re-brief the agent with the failure reason. Never manually mark state `done` to bypass this.
 
 ### Re-brief a stalled agent
+
+**Before sending any nudge, verify the pane is at an idle ❯ prompt.** Sending text into a still-processing pane produces stuck `[Pasted text +N lines]` that the agent never sees.
+
+Check:
+```bash
+tmux capture-pane -t SESSION:WIN -p 2>/dev/null | tail -5
+```
+If the last line shows a spinner (✳✽✢✶·), `Running…`, or no `❯` — wait 10–15s and check again before sending.
 
 ```bash
 OBJ=$(jq -r --arg w SESSION:WIN '.agents[] | select(.window==$w) | .objective' ~/.claude/orchestrator-state.json)
@@ -556,18 +612,49 @@ gh api graphql -f query='{ repository(owner: "OWNER", name: "REPO") { pullReques
 If unresolved > 0, the agent is NOT done — re-brief with the actual count and the rule.
 
 **Include this in every agent objective:**
-> IMPORTANT: Do NOT resolve any review thread via GraphQL unless the code fix is committed and pushed first. Fix the code → commit → push → reply with SHA → then resolve. Never resolve without a real commit.
+> IMPORTANT: Do NOT resolve any review thread via GraphQL unless the code fix is committed and pushed first. Fix the code → commit → push → reply with SHA → then resolve. Never resolve without a real commit. "Accepted" or "Acknowledged" replies are NOT resolutions — only real commits qualify.
+
+### Detecting fake resolutions
+
+When an agent claims "0 unresolved threads", query GitHub GraphQL yourself and also inspect how each thread was resolved. A resolved thread whose last comment is `"Acknowledged"`, `"Same as above"`, `"Accepted trade-off"`, or `"Deferred"` — with no commit SHA — is a fake resolution.
+
+To spot these, fetch all resolved threads and look for missing SHA links:
+```bash
+gh api graphql -f query='
+{
+  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
+    pullRequest(number: PR_NUMBER) {
+      reviewThreads(first: 100) {
+        nodes {
+          isResolved
+          comments(last: 1) {
+            nodes { body author { login } }
+          }
+        }
+      }
+    }
+  }
+}' | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == true) | {body: .comments.nodes[0].body[:120], author: .comments.nodes[0].author.login}] | map(select(.body | test("Fixed in|Removed in|Addressed in") | not))'
+```
+Any resolved thread whose last comment does NOT contain `"Fixed in"`, `"Removed in"`, or `"Addressed in"` (with a commit link) should be investigated — either the agent falsely resolved it, or it was a genuine false positive that needs explanation.
 
 ## GitHub abuse rate limits
 
-When agents post many review thread replies in quick succession, GitHub returns `{"code":"abuse"}` errors. This is expected. The fix:
+Two distinct rate limits exist with different recovery times:
 
-- Add `sleep 3` between individual thread replies
-- If rate limited, wait 60 seconds before resuming
-- Never batch all replies in a single script loop without delays
+| Error | HTTP status | Cause | Recovery |
+|---|---|---|---|
+| `{"code":"abuse"}` in body | 403 | Secondary rate limit — too many write operations (comments, mutations) in a short window | Wait **2–3 minutes**. 60s is often not enough. |
+| `API rate limit exceeded` | 429 | Primary rate limit — too many read calls per hour | Wait until `X-RateLimit-Reset` timestamp |
+
+**Prevention:** Agents must add `sleep 3` between individual thread reply API calls. For >20 unresolved threads, increase to `sleep 5`.
+
+If you see a 403 `abuse` error from an agent's pane:
+1. Nudge the agent: `"You hit a GitHub secondary rate limit (403). Stop all API writes. Wait 2 minutes, then resume with sleep 3 between each thread reply."`
+2. Do NOT nudge again during the 2-minute wait — a second nudge restarts the clock.
 
 Add this to agent briefings when there are >20 unresolved threads:
-> Post replies in batches with `sleep 3` between each reply. If you hit a GitHub abuse error, wait 60 seconds then continue.
+> Post replies with `sleep 3` between each reply. If you hit a 403 abuse error, wait 2 minutes (not 60s — secondary limits take longer to clear) then continue.
 
 ## Key rules
 
