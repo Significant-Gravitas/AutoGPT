@@ -84,11 +84,12 @@ wait_for_claude_idle() {
   local timeout="${2:-30}"
   local elapsed=0
   while (( elapsed < timeout )); do
-    local cmd pane_tail
+    local cmd pane pane_tail
     cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
-    pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -3 || echo "")
-    # Handle settings error dialog before checking for idle prompt
-    if echo "$pane_tail" | grep -q "Enter to confirm"; then
+    pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
+    pane_tail=$(echo "$pane" | tail -3)
+    # Check full pane (not just tail) — 'Enter to confirm' dialog can scroll above last 3 lines
+    if echo "$pane" | grep -q "Enter to confirm"; then
       tmux send-keys -t "$window" Down Enter
       elapsed=0; sleep 2; continue
     fi
