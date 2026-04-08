@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from prisma import Json
 
+from backend.util.json import SafeJson
+
 from .platform_cost import (
     PlatformCostEntry,
     _build_where,
@@ -138,7 +140,7 @@ class TestLogPlatformCost:
         data = mock_create.call_args[1]["data"]
         # None falls back to SafeJson({}) so Prisma always gets a valid Json value
         assert isinstance(data["metadata"], Json)
-        assert data["metadata"] == {}
+        assert data["metadata"] == SafeJson({})
 
 
 class TestLogPlatformCostSafe:
