@@ -54,7 +54,6 @@ class User(BaseModel):
     """Application-layer User model with snake_case convention."""
 
     model_config = ConfigDict(
-        extra="forbid",
         str_strip_whitespace=True,
     )
 

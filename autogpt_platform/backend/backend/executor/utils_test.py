@@ -1,10 +1,13 @@
+from datetime import datetime, timezone
 from typing import cast
 
 import pytest
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.model import User
+from backend.executor.utils import add_graph_execution
 from backend.util.mock import MockObject
 
 
@@ -471,6 +474,104 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Both executions should succeed (though they create different objects)
     assert result1 == mock_graph_exec
     assert result2 == mock_graph_exec_2
+
+
+# ============================================================================
+# Regression test: RPC layer returns typed User model, not raw dict
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_via_rpc_returns_typed_user(
+    mocker: MockerFixture,
+):
+    """
+    Regression test: `add_graph_execution` accesses `user.timezone` on the User
+    returned by `get_user_by_id`. This test verifies the downstream code path
+    completes without AttributeError when `get_user_by_id` returns a proper typed
+    User model. Note: the mock returns a User directly — _get_return deserialization
+    is not exercised here; see TestGetReturn in util/service_test.py for that.
+    """
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "exec-id-rpc"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mock_queue = mocker.AsyncMock()
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_validate.return_value = (mock_graph, [], {}, set())
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = (
+        False  # prisma not connected: uses RPC path instead
+    )
+
+    # The RPC layer (_get_return) deserializes JSON dicts into typed Pydantic models.
+    # The mock simulates what add_graph_execution receives after that deserialization:
+    # a proper User model, not a raw dict.
+    mock_user = User(
+        id=user_id,
+        email="test@example.com",
+        name=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        stripe_customer_id=None,
+        top_up_config=None,
+        timezone="UTC",
+    )
+
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_db_client.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+    )
+    mock_db_client.create_graph_execution = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "ws-id"
+    mock_db_client.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mock_workspace
+    )
+    mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue", return_value=mock_queue
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mock_event_bus,
+    )
+
+    # Must not raise AttributeError: 'dict' object has no attribute 'timezone'
+    result = await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+    )
+    assert result == mock_graph_exec
 
 
 # ============================================================================

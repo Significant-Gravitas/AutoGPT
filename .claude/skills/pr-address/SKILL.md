@@ -209,6 +209,22 @@ Then commit and **push immediately** — never batch commits without pushing. Ea
 
 For backend commits in worktrees: `poetry run git commit` (pre-commit hooks).
 
+## Coverage
+
+Codecov enforces patch coverage on new/changed lines — new code you write must be tested. Before pushing, verify you haven't left new lines uncovered:
+
+```bash
+cd autogpt_platform/backend
+poetry run pytest --cov=. --cov-report=term-missing {path/to/changed/module}
+```
+
+Look for lines marked `miss` — those are uncovered. Add tests for any new code you wrote as part of addressing comments.
+
+**Rules:**
+- New code you add should have tests
+- Don't remove existing tests when fixing comments
+- If a reviewer asks you to delete code, also delete its tests, but verify coverage hasn't dropped on remaining lines
+
 ## The loop
 
 ```text

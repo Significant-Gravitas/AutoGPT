@@ -26,6 +26,7 @@ from typing import (
 )
 
 import httpx
+import sentry_sdk
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
@@ -711,16 +712,16 @@ def get_service_client(
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
             """Validate and coerce the RPC result to the expected return type.
 
-            Falls back to the raw result with a warning if validation fails.
+            Falls back to the raw result with a warning and Sentry capture if validation fails.
             """
             if expected_return:
                 try:
                     return expected_return.validate_python(result)
                 except Exception as e:
                     logger.warning(
-                        "RPC return type validation failed, using raw result: %s",
-                        type(e).__name__,
+                        f"RPC return type validation failed for {type(e).__name__}: {e}"
                     )
+                    sentry_sdk.capture_exception(e)
                     return result
             return result
 

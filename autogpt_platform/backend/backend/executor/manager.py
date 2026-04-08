@@ -307,9 +307,18 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
-        # Dry-run platform credentials bypass the credential store
+        # Dry-run platform credentials bypass the credential store.
+        # Keep the existing credential metadata so _execute's input_schema(**...)
+        # doesn't fail on the required field.  If no metadata is present,
+        # synthesize a minimal placeholder from the platform credentials.
         if _dry_run_creds is not None:
-            input_data[field_name] = None
+            if input_data.get(field_name) is None:
+                input_data[field_name] = {
+                    "id": _dry_run_creds.id,
+                    "provider": _dry_run_creds.provider,
+                    "type": _dry_run_creds.type,
+                    "title": _dry_run_creds.title,
+                }
             extra_exec_kwargs[field_name] = _dry_run_creds
             continue
 
