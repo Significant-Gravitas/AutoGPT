@@ -632,23 +632,38 @@ If unresolved > 0, the agent is NOT done — re-brief with the actual count and 
 
 When an agent claims "0 unresolved threads", query GitHub GraphQL yourself and also inspect how each thread was resolved. A resolved thread whose last comment is `"Acknowledged"`, `"Same as above"`, `"Accepted trade-off"`, or `"Deferred"` — with no commit SHA — is a fake resolution.
 
-To spot these, fetch all resolved threads and look for missing SHA links:
+To spot these, paginate all pages and collect resolved threads with missing SHA links:
 ```bash
-gh api graphql -f query='
-{
-  repository(owner: "Significant-Gravitas", name: "AutoGPT") {
-    pullRequest(number: PR_NUMBER) {
-      reviewThreads(first: 100) {
-        nodes {
-          isResolved
-          comments(last: 1) {
-            nodes { body author { login } }
+# Paginate all pages — first:100 misses threads beyond page 1 on large PRs
+CURSOR=""; FAKE_RESOLUTIONS="[]"
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="
+  {
+    repository(owner: \"Significant-Gravitas\", name: \"AutoGPT\") {
+      pullRequest(number: PR_NUMBER) {
+        reviewThreads(first: 100${AFTER}) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            isResolved
+            comments(last: 1) {
+              nodes { body author { login } }
+            }
           }
         }
       }
     }
-  }
-}' | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == true) | {body: .comments.nodes[0].body[:120], author: .comments.nodes[0].author.login}] | map(select(.body | test("Fixed in|Removed in|Addressed in") | not))'
+  }")
+  PAGE_FAKES=$(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[]
+    | select(.isResolved == true)
+    | {body: .comments.nodes[0].body[:120], author: .comments.nodes[0].author.login}
+    | select(.body | test("Fixed in|Removed in|Addressed in") | not)]')
+  FAKE_RESOLUTIONS=$(echo "$FAKE_RESOLUTIONS $PAGE_FAKES" | jq -s 'add')
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+echo "$FAKE_RESOLUTIONS"
 ```
 Any resolved thread whose last comment does NOT contain `"Fixed in"`, `"Removed in"`, or `"Addressed in"` (with a commit link) should be investigated — either the agent falsely resolved it, or it was a genuine false positive that needs explanation.
 
