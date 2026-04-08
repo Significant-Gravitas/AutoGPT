@@ -31,26 +31,32 @@ gh pr view {N} --json body --jq '.body'
 
 > ⚠️ **WARNING — PAGINATE ALL PAGES BEFORE ADDRESSING ANYTHING**
 >
-> `reviewThreads(first: 100)` returns at most 100 threads per page. A PR with many review cycles can have 140+ threads across 2+ pages. **If you start addressing threads after fetching only page 1, you will miss all threads on subsequent pages and silently leave them unresolved.**
+> `reviewThreads(first: 100)` returns at most 100 threads per page AND returns threads **oldest-first**. On a PR with many review cycles (e.g. 373 threads), the oldest 100–200 threads are from past cycles and are **all already resolved**. Filtering client-side with `select(.isResolved == false)` on page 1 therefore yields **0 results** — even though pages 2–4 contain many unresolved threads from recent review cycles.
 >
-> PR #12636 had 142 total threads: page 1 returned 69 unresolved, page 2 had 42 more (111 total unresolved). An agent that stopped after page 1 addressed only 69 and falsely reported "done".
+> **This is the most common failure mode:** agent fetches page 1, sees 0 unresolved after filtering, stops pagination, reports "done" — while hundreds of unresolved threads sit on later pages.
 >
-> **The rule: collect ALL thread IDs from ALL pages into a single list, then address them.**
+> PR #12636 had 142 total threads: page 1 returned 0 unresolved (all old/resolved), pages 2–3 had 111 unresolved. PR #12699 had 373 threads across 4 pages; page 1 was entirely resolved.
+>
+> **The rule: ALWAYS paginate to `hasNextPage == false` regardless of the per-page unresolved count. Never stop early because a page returns 0 unresolved.**
 
-**Step 1 — Fetch total count first:**
+**Step 1 — Fetch total count and sanity-check the newest threads:**
 
 ```bash
+# Get total count and the newest 100 threads (last: 100 returns newest-first)
 gh api graphql -f query='
 {
   repository(owner: "Significant-Gravitas", name: "AutoGPT") {
     pullRequest(number: {N}) {
       reviewThreads { totalCount }
+      newest: reviewThreads(last: 100) {
+        nodes { isResolved }
+      }
     }
   }
-}' | jq '.data.repository.pullRequest.reviewThreads.totalCount'
+}' | jq '{ total: .data.repository.pullRequest.reviewThreads.totalCount, newest_unresolved: [.data.repository.pullRequest.newest.nodes[] | select(.isResolved == false)] | length }'
 ```
 
-If `totalCount > 100`, you have multiple pages. Fetch them all before doing anything else.
+If `total > 100`, you have multiple pages — you **must** paginate all of them regardless of what `newest_unresolved` shows. The `last: 100` check is a sanity signal only; the full loop below is mandatory.
 
 **Step 2 — Collect all unresolved thread IDs across all pages:**
 
