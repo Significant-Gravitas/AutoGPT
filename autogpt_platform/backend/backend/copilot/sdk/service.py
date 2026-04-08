@@ -65,7 +65,6 @@ from ..model import (
     ChatSession,
     get_chat_session,
     maybe_append_user_message,
-    update_session_title,
     upsert_chat_session,
 )
 from ..prompting import get_sdk_supplement
@@ -84,11 +83,7 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from ..service import (
-    _build_system_prompt,
-    _generate_session_title,
-    _is_langfuse_configured,
-)
+from ..service import _build_system_prompt, _is_langfuse_configured, _update_title_async
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
@@ -2516,18 +2511,3 @@ async def stream_chat_completion_sdk(
         finally:
             # Release stream lock to allow new streams for this session
             await lock.release()
-
-
-async def _update_title_async(
-    session_id: str, message: str, user_id: str | None = None
-) -> None:
-    """Background task to update session title."""
-    try:
-        title = await _generate_session_title(
-            message, user_id=user_id, session_id=session_id
-        )
-        if title and user_id:
-            await update_session_title(session_id, user_id, title, only_if_empty=True)
-            logger.debug("[SDK] Generated title for %s: %s", session_id, title)
-    except Exception as e:
-        logger.warning("[SDK] Failed to update session title: %s", e)

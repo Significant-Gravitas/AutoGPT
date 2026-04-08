@@ -32,7 +32,6 @@ from backend.copilot.model import (
     ChatSession,
     get_chat_session,
     maybe_append_user_message,
-    update_session_title,
     upsert_chat_session,
 )
 from backend.copilot.prompting import get_baseline_supplement
@@ -53,8 +52,8 @@ from backend.copilot.response_model import (
 )
 from backend.copilot.service import (
     _build_system_prompt,
-    _generate_session_title,
     _get_openai_client,
+    _update_title_async,
     config,
 )
 from backend.copilot.token_tracking import persist_and_record_usage
@@ -700,18 +699,6 @@ def _baseline_conversation_updater(
                     tool_call_id=tr.tool_call_id,
                 )
             )
-
-
-async def _update_title_async(
-    session_id: str, message: str, user_id: str | None
-) -> None:
-    """Generate and persist a session title in the background."""
-    try:
-        title = await _generate_session_title(message, user_id, session_id)
-        if title and user_id:
-            await update_session_title(session_id, user_id, title, only_if_empty=True)
-    except Exception as e:
-        logger.warning("[Baseline] Failed to update session title: %s", e)
 
 
 async def _compress_session_messages(
