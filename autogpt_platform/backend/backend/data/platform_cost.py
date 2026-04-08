@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +208,7 @@ def _build_where(
     return (" AND ".join(clauses) if clauses else "TRUE", params)
 
 
+@cached(ttl_seconds=30)
 async def get_platform_cost_dashboard(
     start: datetime | None = None,
     end: datetime | None = None,

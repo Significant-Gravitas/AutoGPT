@@ -8,7 +8,6 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.data.platform_cost import PlatformCostDashboard
 
-from . import platform_cost_routes
 from .platform_cost_routes import router as platform_cost_router
 
 app = fastapi.FastAPI()
@@ -21,8 +20,6 @@ client = fastapi.testclient.TestClient(app)
 def setup_app_admin_auth(mock_jwt_admin):
     """Setup admin auth overrides for all tests in this module"""
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
-    # Clear TTL cache so each test starts cold.
-    platform_cost_routes._dashboard_cache.clear()
     yield
     app.dependency_overrides.clear()
 
@@ -170,10 +167,10 @@ def test_get_dashboard_invalid_date_format() -> None:
     assert response.status_code == 422
 
 
-def test_get_dashboard_cache_hit(
+def test_get_dashboard_repeated_requests(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Second identical request returns cached result without calling the DB again."""
+    """Repeated requests to the dashboard route both return 200."""
     real_dashboard = PlatformCostDashboard(
         by_provider=[],
         by_user=[],
@@ -181,12 +178,15 @@ def test_get_dashboard_cache_hit(
         total_requests=1,
         total_users=1,
     )
-    mock_fn = mocker.patch(
+    mocker.patch(
         "backend.api.features.admin.platform_cost_routes.get_platform_cost_dashboard",
         AsyncMock(return_value=real_dashboard),
     )
 
-    client.get("/platform-costs/dashboard")
-    client.get("/platform-costs/dashboard")
+    r1 = client.get("/platform-costs/dashboard")
+    r2 = client.get("/platform-costs/dashboard")
 
-    mock_fn.assert_awaited_once()  # second request hit the cache
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r1.json()["total_cost_microdollars"] == 42
+    assert r2.json()["total_cost_microdollars"] == 42

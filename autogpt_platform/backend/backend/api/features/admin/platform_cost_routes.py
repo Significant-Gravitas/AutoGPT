@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
-from cachetools import TTLCache
 from fastapi import APIRouter, Query, Security
 from pydantic import BaseModel
 
@@ -15,13 +14,6 @@ from backend.data.platform_cost import (
 from backend.util.models import Pagination
 
 logger = logging.getLogger(__name__)
-
-# Cache dashboard results for 30 seconds per unique filter combination.
-# The table is append-only so stale reads are acceptable for analytics.
-_DASHBOARD_CACHE_TTL = 30
-_dashboard_cache: TTLCache[tuple, PlatformCostDashboard] = TTLCache(
-    maxsize=256, ttl=_DASHBOARD_CACHE_TTL
-)
 
 
 router = APIRouter(
@@ -49,18 +41,12 @@ async def get_cost_dashboard(
     user_id: str | None = Query(None),
 ):
     logger.info("Admin %s fetching platform cost dashboard", admin_user_id)
-    cache_key = (start, end, provider, user_id)
-    cached = _dashboard_cache.get(cache_key)
-    if cached is not None:
-        return cached
-    result = await get_platform_cost_dashboard(
+    return await get_platform_cost_dashboard(
         start=start,
         end=end,
         provider=provider,
         user_id=user_id,
     )
-    _dashboard_cache[cache_key] = result
-    return result
 
 
 @router.get(
