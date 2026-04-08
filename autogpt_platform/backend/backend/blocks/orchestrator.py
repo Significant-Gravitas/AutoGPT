@@ -251,8 +251,13 @@ def _convert_raw_response_to_dict(
         # Already a dict (from tests or some providers)
         return raw_response
     elif _is_responses_api_object(raw_response):
-        # OpenAI Responses API: extract individual output items
-        items = [json.to_dict(item) for item in raw_response.output]
+        # OpenAI Responses API: extract individual output items.
+        # Strip 'status' — it's a response-only field that OpenAI rejects
+        # when the item is sent back as input on the next API call.
+        items = [
+            {k: v for k, v in json.to_dict(item).items() if k != "status"}
+            for item in raw_response.output
+        ]
         return items if items else [{"role": "assistant", "content": ""}]
     else:
         # Chat Completions / Anthropic return message objects
