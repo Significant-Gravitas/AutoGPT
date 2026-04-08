@@ -412,18 +412,24 @@ class TestHandledStreamErrorAlreadyYielded:
         assert exc.already_yielded is False
 
     def test_backoff_capped_at_30s(self):
-        """Exponential backoff must be capped at 30 seconds.
+        """_compute_transient_backoff must be capped at _MAX_TRANSIENT_BACKOFF_SECONDS.
 
         With max_transient_retries=10, uncapped 2^9=512s would stall users
-        for 8+ minutes.  min(30, 2**(n-1)) keeps the ceiling at 30s.
+        for 8+ minutes.  _compute_transient_backoff caps at 30s.
         """
-        # Check that 2^(10-1)=512 would exceed 30 but min() caps it.
-        assert min(30, 2 ** (10 - 1)) == 30
-        # Verify the formula is monotonically non-decreasing and capped.
-        backoffs = [min(30, 2 ** (n - 1)) for n in range(1, 11)]
-        assert all(b <= 30 for b in backoffs)
-        assert backoffs[-1] == 30  # last retry is capped
-        assert backoffs[0] == 1  # first retry starts at 1s
+        from backend.copilot.sdk.service import (
+            _MAX_TRANSIENT_BACKOFF_SECONDS,
+            _compute_transient_backoff,
+        )
+
+        assert _compute_transient_backoff(1) == 1  # 2^0 = 1s
+        assert _compute_transient_backoff(2) == 2  # 2^1 = 2s
+        assert _compute_transient_backoff(3) == 4  # 2^2 = 4s
+        assert _compute_transient_backoff(4) == 8
+        assert _compute_transient_backoff(5) == 16
+        # Cap kicks in: 2^5=32 > 30, so result is capped.
+        assert _compute_transient_backoff(6) == _MAX_TRANSIENT_BACKOFF_SECONDS
+        assert _compute_transient_backoff(10) == _MAX_TRANSIENT_BACKOFF_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -483,53 +489,3 @@ class TestConfigValidators:
         assert cfg_low.claude_agent_max_transient_retries == 0
         cfg_high = _make_config(claude_agent_max_transient_retries=10)
         assert cfg_high.claude_agent_max_transient_retries == 10
-
-
-# ---------------------------------------------------------------------------
-# transient_exhausted SSE code contract
-# ---------------------------------------------------------------------------
-
-
-class TestTransientExhaustedErrorCode:
-    """Verify transient-exhausted path emits the correct SSE error code."""
-
-    def test_transient_exhausted_uses_transient_api_error_code(self):
-        """When except-Exception transient retries are exhausted, the SSE
-        StreamError must use code='transient_api_error', not 'sdk_stream_error'.
-
-        This ensures the frontend shows the same 'Try again' affordance as
-        the _HandledStreamError path.
-        """
-        from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG
-
-        # Simulate the post-loop branching logic extracted from service.py
-        attempts_exhausted = False
-        transient_exhausted = True
-        stream_err: Exception | None = ConnectionResetError("ECONNRESET")
-
-        if attempts_exhausted:
-            error_code = "all_attempts_exhausted"
-            error_text = "conversation too long"
-        elif transient_exhausted:
-            error_code = "transient_api_error"
-            error_text = FRIENDLY_TRANSIENT_MSG
-        else:
-            error_code = "sdk_stream_error"
-            error_text = f"SDK stream error: {stream_err}"
-
-        assert error_code == "transient_api_error"
-        assert error_text == FRIENDLY_TRANSIENT_MSG
-
-    def test_non_transient_exhausted_uses_sdk_stream_error_code(self):
-        """Non-transient fatal errors (auth, network) keep 'sdk_stream_error'."""
-        attempts_exhausted = False
-        transient_exhausted = False
-
-        if attempts_exhausted:
-            error_code = "all_attempts_exhausted"
-        elif transient_exhausted:
-            error_code = "transient_api_error"
-        else:
-            error_code = "sdk_stream_error"
-
-        assert error_code == "sdk_stream_error"

@@ -596,6 +596,21 @@ def _resolve_fallback_model() -> str | None:
     return _normalize_model_name(raw)
 
 
+_MAX_TRANSIENT_BACKOFF_SECONDS = 30
+
+
+def _compute_transient_backoff(attempt: int) -> int:
+    """Return the exponential backoff delay (seconds) for a transient retry.
+
+    ``attempt`` is 1-based: first retry → 1 s, second → 2 s, third → 4 s, …,
+    capped at :data:`_MAX_TRANSIENT_BACKOFF_SECONDS`.
+
+    Extracted as a module-level pure function so it can be unit-tested
+    independently of the closure that wraps it inside the retry loop.
+    """
+    return min(_MAX_TRANSIENT_BACKOFF_SECONDS, 2 ** (attempt - 1))
+
+
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
 
@@ -2136,7 +2151,7 @@ async def stream_chat_completion_sdk(
             transient_retries += 1
             if transient_retries > max_transient_retries:
                 return None
-            return min(30, 2 ** (transient_retries - 1))  # 1s, 2s, 4s, …, cap 30s
+            return _compute_transient_backoff(transient_retries)
 
         state = _RetryState(
             options=options,
