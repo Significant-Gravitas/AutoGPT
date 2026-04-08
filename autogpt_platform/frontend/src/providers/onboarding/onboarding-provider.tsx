@@ -166,6 +166,7 @@ export default function OnboardingProvider({
         }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
+          hasInitialized.current = false;
           return;
         }
 
