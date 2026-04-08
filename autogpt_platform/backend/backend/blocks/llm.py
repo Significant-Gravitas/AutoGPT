@@ -796,7 +796,7 @@ def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
         if not cost_header:
             return None
         cost = float(cost_header)
-        if not math.isfinite(cost):
+        if not math.isfinite(cost) or cost < 0:
             return None
         return cost
     except (ValueError, TypeError, AttributeError):

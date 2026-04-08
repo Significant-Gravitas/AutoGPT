@@ -1107,3 +1107,7 @@ class TestExtractOpenRouterCost:
     def test_returns_none_for_nan(self):
         response = self._mk_response({"x-total-cost": "nan"})
         assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_for_negative_cost(self):
+        response = self._mk_response({"x-total-cost": "-0.005"})
+        assert llm.extract_openrouter_cost(response) is None
