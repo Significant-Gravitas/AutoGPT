@@ -1,12 +1,12 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from prisma.models import PlatformCostLog as PrismaLog
 from pydantic import BaseModel
 
-from backend.data.db import query_raw_with_schema
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
@@ -51,29 +51,42 @@ class PlatformCostEntry(BaseModel):
 
 
 async def log_platform_cost(entry: PlatformCostEntry) -> None:
-    await PrismaLog.prisma().create(
-        data={
-            "userId": entry.user_id,
-            "graphExecId": entry.graph_exec_id,
-            "nodeExecId": entry.node_exec_id,
-            "graphId": entry.graph_id,
-            "nodeId": entry.node_id,
-            "blockId": entry.block_id,
-            "blockName": entry.block_name,
-            # Normalize to lowercase so the (provider, createdAt) index is always
-            # used without LOWER() on the read side.
-            "provider": entry.provider.lower(),
-            "credentialId": entry.credential_id,
-            "costMicrodollars": entry.cost_microdollars,
-            "inputTokens": entry.input_tokens,
-            "outputTokens": entry.output_tokens,
-            "dataSize": entry.data_size,
-            "duration": entry.duration,
-            "model": entry.model,
-            "trackingType": entry.tracking_type,
-            "trackingAmount": entry.tracking_amount,
-            "metadata": entry.metadata,
-        }
+    await execute_raw_with_schema(
+        """
+        INSERT INTO {schema_prefix}"PlatformCostLog" (
+            "id", "userId", "graphExecId", "nodeExecId", "graphId", "nodeId",
+            "blockId", "blockName", "provider", "credentialId",
+            "costMicrodollars", "inputTokens", "outputTokens",
+            "dataSize", "duration", "model",
+            "trackingType", "trackingAmount", "metadata"
+        ) VALUES (
+            gen_random_uuid(), $1, $2, $3, $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12,
+            $13, $14, $15,
+            $16, $17, $18
+        )
+        """,
+        entry.user_id,
+        entry.graph_exec_id,
+        entry.node_exec_id,
+        entry.graph_id,
+        entry.node_id,
+        entry.block_id,
+        entry.block_name,
+        # Normalize to lowercase so the (provider, createdAt) index is always
+        # used without LOWER() on the read side.
+        entry.provider.lower(),
+        entry.credential_id,
+        entry.cost_microdollars,
+        entry.input_tokens,
+        entry.output_tokens,
+        entry.data_size,
+        entry.duration,
+        entry.model,
+        entry.tracking_type,
+        entry.tracking_amount,
+        json.dumps(entry.metadata) if entry.metadata is not None else None,
     )
 
 
