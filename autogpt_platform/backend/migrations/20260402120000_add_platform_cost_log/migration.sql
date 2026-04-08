@@ -7,10 +7,10 @@ CREATE TABLE "PlatformCostLog" (
     "nodeExecId" TEXT,
     "graphId" TEXT,
     "nodeId" TEXT,
-    "blockId" TEXT NOT NULL,
-    "blockName" TEXT NOT NULL,
+    "blockId" TEXT,
+    "blockName" TEXT,
     "provider" TEXT NOT NULL,
-    "credentialId" TEXT NOT NULL,
+    "credentialId" TEXT,
     "costMicrodollars" BIGINT,
     "inputTokens" INTEGER,
     "outputTokens" INTEGER,
@@ -18,6 +18,7 @@ CREATE TABLE "PlatformCostLog" (
     "duration" DOUBLE PRECISION,
     "model" TEXT,
     "trackingType" TEXT,
+    "trackingAmount" DOUBLE PRECISION,
     "metadata" JSONB,
 
     CONSTRAINT "PlatformCostLog_pkey" PRIMARY KEY ("id")

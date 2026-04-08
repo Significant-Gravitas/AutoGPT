@@ -21,7 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, OnboardingStep
+from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -105,9 +105,7 @@ class User(BaseModel):
     )
 
     # Subscription / rate-limit tier
-    subscription_tier: str | None = Field(
-        default=None, description="Subscription tier (FREE, PRO, BUSINESS, ENTERPRISE)"
-    )
+    subscription_tier: SubscriptionTier | None = Field(default=None)
 
     @classmethod
     def from_db(cls, prisma_user: "PrismaUser") -> "User":

@@ -832,10 +832,10 @@ model PlatformCostLog {
   nodeExecId   String?
   graphId      String?
   nodeId       String?
-  blockId      String
-  blockName    String
+  blockId      String?
+  blockName    String?
   provider     String
-  credentialId String
+  credentialId String?
 
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
   costMicrodollars BigInt?

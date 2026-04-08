@@ -8,7 +8,6 @@ import pytest
 from .platform_cost import (
     PlatformCostEntry,
     _build_where,
-    _json_or_none,
     _mask_email,
     get_platform_cost_dashboard,
     get_platform_cost_logs,
@@ -35,20 +34,6 @@ class TestMaskEmail:
 
     def test_two_char_local(self):
         assert _mask_email("ab@domain.org") == "ab***@domain.org"
-
-
-class TestJsonOrNone:
-    def test_returns_none_for_none(self):
-        assert _json_or_none(None) is None
-
-    def test_returns_json_string_for_dict(self):
-        result = _json_or_none({"key": "value", "num": 42})
-        assert result is not None
-        assert '"key"' in result
-        assert '"value"' in result
-
-    def test_returns_json_for_empty_dict(self):
-        assert _json_or_none({}) == "{}"
 
 
 class TestBuildWhere:
@@ -122,9 +107,10 @@ def _make_entry(**overrides: object) -> PlatformCostEntry:
 
 class TestLogPlatformCost:
     @pytest.mark.asyncio
-    async def test_calls_execute_raw_with_schema(self):
-        mock_exec = AsyncMock()
-        with patch("backend.data.platform_cost.execute_raw_with_schema", new=mock_exec):
+    async def test_creates_prisma_record(self):
+        mock_create = AsyncMock()
+        with patch("backend.data.platform_cost.PrismaLog.prisma") as mock_prisma:
+            mock_prisma.return_value.create = mock_create
             entry = _make_entry(
                 input_tokens=100,
                 output_tokens=50,
@@ -133,39 +119,42 @@ class TestLogPlatformCost:
                 metadata={"key": "val"},
             )
             await log_platform_cost(entry)
-        mock_exec.assert_awaited_once()
-        args = mock_exec.call_args
-        assert args[0][1] == "user-1"  # user_id is first param
-        assert args[0][6] == "block-1"  # block_id
-        assert args[0][7] == "TestBlock"  # block_name
+        mock_create.assert_awaited_once()
+        data = mock_create.call_args[1]["data"]
+        assert data["userId"] == "user-1"
+        assert data["blockId"] == "block-1"
+        assert data["blockName"] == "TestBlock"
+        assert data["metadata"] == {"key": "val"}
 
     @pytest.mark.asyncio
     async def test_metadata_none_passes_none(self):
-        mock_exec = AsyncMock()
-        with patch("backend.data.platform_cost.execute_raw_with_schema", new=mock_exec):
+        mock_create = AsyncMock()
+        with patch("backend.data.platform_cost.PrismaLog.prisma") as mock_prisma:
+            mock_prisma.return_value.create = mock_create
             entry = _make_entry(metadata=None)
             await log_platform_cost(entry)
-        args = mock_exec.call_args
-        assert args[0][-1] is None  # last arg is metadata json
+        data = mock_create.call_args[1]["data"]
+        assert data["metadata"] is None
 
 
 class TestLogPlatformCostSafe:
     @pytest.mark.asyncio
     async def test_does_not_raise_on_error(self):
-        with patch(
-            "backend.data.platform_cost.execute_raw_with_schema",
-            new=AsyncMock(side_effect=RuntimeError("DB down")),
-        ):
+        with patch("backend.data.platform_cost.PrismaLog.prisma") as mock_prisma:
+            mock_prisma.return_value.create = AsyncMock(
+                side_effect=RuntimeError("DB down")
+            )
             entry = _make_entry()
             await log_platform_cost_safe(entry)
 
     @pytest.mark.asyncio
     async def test_succeeds_when_no_error(self):
-        mock_exec = AsyncMock()
-        with patch("backend.data.platform_cost.execute_raw_with_schema", new=mock_exec):
+        mock_create = AsyncMock()
+        with patch("backend.data.platform_cost.PrismaLog.prisma") as mock_prisma:
+            mock_prisma.return_value.create = mock_create
             entry = _make_entry()
             await log_platform_cost_safe(entry)
-        mock_exec.assert_awaited_once()
+        mock_create.assert_awaited_once()
 
 
 class TestGetPlatformCostDashboard:
