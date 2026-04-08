@@ -214,6 +214,33 @@ class TestBuildSdkEnvOpenRouter:
         value = header_line.split(": ", 1)[1]
         assert len(value) == 128
 
+    @pytest.mark.parametrize(
+        ("bad_input", "expected_ascii"),
+        [
+            ("user\x00id", "userid"),  # null byte
+            ("user\x7fid", "userid"),  # DEL
+            ("user\x80id", "userid"),  # first C1 control char
+            ("user\x9fid", "userid"),  # last C1 control char
+            ("user\U0001f600id", "userid"),  # emoji (non-ASCII Unicode)
+            ("user\u202eid", "userid"),  # RTL override (security-relevant)
+        ],
+    )
+    def test_header_sanitizer_strips_non_printable_ascii(
+        self, bad_input: str, expected_ascii: str
+    ):
+        """_safe() strips everything outside printable ASCII 0x20–0x7e."""
+        cfg = self._openrouter_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(session_id=bad_input)
+
+        value = result["ANTHROPIC_CUSTOM_HEADERS"].split(": ", 1)[1]
+        assert expected_ascii in value
+        for char in bad_input:
+            if ord(char) < 0x20 or ord(char) > 0x7E:
+                assert char not in value
+
 
 # ---------------------------------------------------------------------------
 # Mode priority

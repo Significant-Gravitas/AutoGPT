@@ -489,3 +489,80 @@ class TestConfigValidators:
         assert cfg_low.claude_agent_max_transient_retries == 0
         cfg_high = _make_config(claude_agent_max_transient_retries=10)
         assert cfg_high.claude_agent_max_transient_retries == 10
+
+
+# ---------------------------------------------------------------------------
+# events_yielded counter exclusions
+# ---------------------------------------------------------------------------
+
+
+class TestEventsYieldedExclusions:
+    """Verify that ephemeral event types don't increment events_yielded.
+
+    The events_yielded counter in stream_chat_completion_sdk controls whether
+    _next_transient_backoff() permits a retry.  StreamError and StreamStatus
+    must NOT be counted so that a transient notification can be followed by a
+    retry without producing duplicate content for the client.
+    """
+
+    def test_stream_error_is_ephemeral_type(self):
+        """StreamError must be an instance of the excluded-from-count tuple.
+
+        The production isinstance guard uses the same tuple — this test pins
+        that StreamError stays in the ephemeral set even after refactors.
+        """
+        from backend.copilot.response_model import (
+            StreamError,
+            StreamFinishStep,
+            StreamHeartbeat,
+            StreamStartStep,
+            StreamStatus,
+            StreamToolInputAvailable,
+            StreamToolInputStart,
+            StreamToolOutputAvailable,
+        )
+
+        _ephemeral = (
+            StreamHeartbeat,
+            StreamStartStep,
+            StreamFinishStep,
+            StreamToolInputStart,
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+            StreamError,
+            StreamStatus,
+        )
+        err = StreamError(errorText="transient", code="transient_api_error")
+        assert isinstance(err, _ephemeral), (
+            "StreamError must be excluded from events_yielded — "
+            "if counted, transient retries would be blocked after the first notification"
+        )
+
+    def test_stream_status_is_ephemeral_type(self):
+        """StreamStatus must be excluded from the events_yielded counter."""
+        from backend.copilot.response_model import (
+            StreamError,
+            StreamFinishStep,
+            StreamHeartbeat,
+            StreamStartStep,
+            StreamStatus,
+            StreamToolInputAvailable,
+            StreamToolInputStart,
+            StreamToolOutputAvailable,
+        )
+
+        _ephemeral = (
+            StreamHeartbeat,
+            StreamStartStep,
+            StreamFinishStep,
+            StreamToolInputStart,
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+            StreamError,
+            StreamStatus,
+        )
+        status = StreamStatus(message="Connection interrupted, retrying in 2s…")
+        assert isinstance(status, _ephemeral), (
+            "StreamStatus must be excluded from events_yielded — "
+            "retrying after emitting a status notification must still be permitted"
+        )
