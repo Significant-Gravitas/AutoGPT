@@ -25,7 +25,7 @@ STATE_FILE=~/.claude/orchestrator-state.json
 | `spawn-agent.sh SESSION PATH SPARE NEW_BRANCH OBJECTIVE [PR_NUMBER] [STEPS...]` | Create window + checkout branch + launch claude + send task. **Stdout: `SESSION:WIN` only** |
 | `recycle-agent.sh WINDOW PATH SPARE_BRANCH` | Kill window + restore spare branch |
 | `run-loop.sh` | **Mechanical babysitter** — idle restart + dialog approval + recycle on ORCHESTRATOR:DONE + supervisor health check + all-done notification |
-| `verify-complete.sh WINDOW` | Verify PR is done: checkpoints ✓ + 0 unresolved threads + CI green. Repo auto-derived from state file `.repo` or git remote. |
+| `verify-complete.sh WINDOW` | Verify PR is done: checkpoints ✓ + 0 unresolved threads + CI green + no fresh CHANGES_REQUESTED. Repo auto-derived from state file `.repo` or git remote. |
 | `notify.sh MESSAGE` | Send notification via Discord webhook (env `DISCORD_WEBHOOK_URL` or state `.discord_webhook`), macOS notification center, and stdout |
 | `capacity.sh [REPO_ROOT]` | Print available + in-use worktrees |
 | `status.sh` | Print fleet status + live pane commands |
@@ -64,7 +64,7 @@ spare/N branch  →  spawn-agent.sh (--session-id UUID)  →  window + feat/bran
                                                                  ↓
                                                         ORCHESTRATOR:DONE
                                                                  ↓
-                                    verify-complete.sh: checkpoints ✓ + 0 threads + CI green
+                                    verify-complete.sh: checkpoints ✓ + 0 threads + CI green + no fresh CHANGES_REQUESTED
                                                                  ↓
                                               state → "done", notify, window KEPT OPEN
                                                                  ↓
@@ -328,7 +328,9 @@ For each agent, decide:
 
 ### Strict ORCHESTRATOR:DONE gate
 
-`verify-complete.sh` handles the main checks automatically (checkpoints, threads, CHANGES_REQUESTED, CI green, spawned_at). Run it:
+`verify-complete.sh` handles the main checks automatically (checkpoints, threads, CI green, spawned_at, and CHANGES_REQUESTED). Run it:
+
+**CHANGES_REQUESTED staleness rule**: a `CHANGES_REQUESTED` review only blocks if it was submitted *after* the latest commit. If the latest commit postdates the review, the review is considered stale (feedback already addressed) and does not block. This avoids false negatives when a bot reviewer hasn't re-reviewed after the agent's fixing commits.
 
 ```bash
 SKILLS_DIR=~/.claude/orchestrator/scripts
@@ -412,6 +414,38 @@ Please verify: <specific behaviors to check>.
 
 Only one `/pr-test` at a time — they share ports and DB.
 
+### /pr-test result evaluation
+
+**PARTIAL on any headline feature scenario is an immediate blocker.** Do not approve, do not mark done, do not let the agent output `ORCHESTRATOR:DONE`.
+
+| `/pr-test` result | Action |
+|---|---|
+| All headline scenarios **PASS** | Proceed to evaluation step 2 |
+| Any headline scenario **PARTIAL** | Re-brief the agent immediately — see below |
+| Any headline scenario **FAIL** | Re-brief the agent immediately |
+
+**What PARTIAL means**: the feature is only partly working. Example: the Apply button never appeared, or the AI returned no action blocks. The agent addressed part of the objective but not all of it.
+
+**When any headline scenario is PARTIAL or FAIL:**
+
+1. Do NOT mark the agent done or accept `ORCHESTRATOR:DONE`
+2. Re-brief the agent with the specific scenario that failed and what was missing:
+   ```bash
+   tmux send-keys -t SESSION:WIN "PARTIAL result on /pr-test — S5 (Apply button) never appeared. The AI must output JSON action blocks for the Apply button to render. Fix this before re-running /pr-test."
+   sleep 0.3
+   tmux send-keys -t SESSION:WIN Enter
+   ```
+3. Set state back to `running`:
+   ```bash
+   jq --arg w "SESSION:WIN" '(.agents[] | select(.window == $w)).state = "running"' \
+     ~/.claude/orchestrator-state.json > /tmp/orch.tmp && mv /tmp/orch.tmp ~/.claude/orchestrator-state.json
+   ```
+4. Wait for new `ORCHESTRATOR:DONE`, then re-run `/pr-test` from scratch
+
+**Rule: only ALL-PASS qualifies for approval.** A mix of PASS + PARTIAL is a failure.
+
+> **Why this matters**: PR #12699 was wrongly approved with S5 PARTIAL — the AI never output JSON action blocks so the Apply button never appeared. The fix was already in the agent's reach but slipped through because PARTIAL was not treated as blocking.
+
 ### 2. Do your own evaluation
 
 1. **Read the PR diff and objective** — does the code actually implement what was asked? Is anything obviously missing or half-done?
@@ -421,8 +455,9 @@ Only one `/pr-test` at a time — they share ports and DB.
 
 ### 3. Decide
 
-- `/pr-test` passes + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
-- `/pr-test` fails or evaluation finds gaps → re-brief the agent with specific failures, set state back to `running`
+- `/pr-test` all scenarios PASS + evaluation looks good → mark `done` in state, tell the user the PR is ready, ask if window should be closed
+- `/pr-test` any scenario PARTIAL or FAIL → re-brief the agent with the specific failing scenario, set state back to `running` (see `/pr-test result evaluation` above)
+- Evaluation finds gaps even with all PASS → re-brief the agent with specific gaps, set state back to `running`
 
 **Never mark done based purely on script output.** You hold the full objective context; the script does not.
 
@@ -441,6 +476,7 @@ Stop the fleet (`active = false`) when **all** of the following are true:
 | All agents are `done` or `escalated` | `jq '[.agents[] | select(.state | test("running\|stuck\|idle\|waiting_approval"))] | length' ~/.claude/orchestrator-state.json` == 0 |
 | All PRs have 0 unresolved review threads | GraphQL `isResolved` check per PR |
 | All PRs have green CI **on a run triggered after the agent's last push** | `gh run list --branch BRANCH --limit 1` timestamp > `spawned_at` in state |
+| No fresh CHANGES_REQUESTED (after latest commit) | `verify-complete.sh` checks this — stale pre-commit reviews are ignored |
 | No agents are `escalated` without human review | If any are escalated, surface to user first |
 
 **Do NOT stop just because agents output `ORCHESTRATOR:DONE`.** That is a signal to verify, not a signal to stop.
