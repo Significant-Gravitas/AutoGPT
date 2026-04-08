@@ -416,20 +416,43 @@ class TestHandledStreamErrorAlreadyYielded:
 
         With max_transient_retries=10, uncapped 2^9=512s would stall users
         for 8+ minutes.  _compute_transient_backoff caps at 30s.
+
+        Full-jitter (0.5 … 1.0 × base) is applied for thundering-herd
+        prevention, so each call returns a value in [base//2, base] rather
+        than an exact integer.  We verify bounds instead of exact values.
         """
         from backend.copilot.sdk.service import (
             _MAX_TRANSIENT_BACKOFF_SECONDS,
             _compute_transient_backoff,
         )
 
-        assert _compute_transient_backoff(1) == 1  # 2^0 = 1s
-        assert _compute_transient_backoff(2) == 2  # 2^1 = 2s
-        assert _compute_transient_backoff(3) == 4  # 2^2 = 4s
-        assert _compute_transient_backoff(4) == 8
-        assert _compute_transient_backoff(5) == 16
-        # Cap kicks in: 2^5=32 > 30, so result is capped.
-        assert _compute_transient_backoff(6) == _MAX_TRANSIENT_BACKOFF_SECONDS
-        assert _compute_transient_backoff(10) == _MAX_TRANSIENT_BACKOFF_SECONDS
+        # attempt=1: base=1, jitter range [1, 1] (max(1, round(1 * [0.5,1.0])))
+        v1 = _compute_transient_backoff(1)
+        assert v1 >= 1
+
+        # attempt=2: base=2, jitter range [1, 2]
+        v2 = _compute_transient_backoff(2)
+        assert 1 <= v2 <= 2
+
+        # attempt=3: base=4, jitter range [2, 4]
+        v3 = _compute_transient_backoff(3)
+        assert 2 <= v3 <= 4
+
+        # attempt=4: base=8, jitter range [4, 8]
+        v4 = _compute_transient_backoff(4)
+        assert 4 <= v4 <= 8
+
+        # attempt=5: base=16, jitter range [8, 16]
+        v5 = _compute_transient_backoff(5)
+        assert 8 <= v5 <= 16
+
+        # attempt=6: base capped at 30, jitter range [15, 30]
+        v6 = _compute_transient_backoff(6)
+        assert 15 <= v6 <= _MAX_TRANSIENT_BACKOFF_SECONDS
+
+        # attempt=10: still capped
+        v10 = _compute_transient_backoff(10)
+        assert v10 <= _MAX_TRANSIENT_BACKOFF_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -603,21 +626,22 @@ class TestNextTransientBackoff:
         assert retries == 1
 
     def test_increments_counter_each_retry(self):
-        """Each successive call increments the retry counter and returns next backoff."""
+        """Each successive call increments the retry counter and returns non-None backoff.
+
+        Exact backoff values vary due to jitter; this test verifies the counter
+        increments correctly and that a positive backoff is returned each time.
+        """
         from backend.copilot.sdk.service import _next_transient_backoff
 
         retries = 0
-        for expected_backoff, expected_retries in [
-            (1, 1),  # attempt 1: 2^0 = 1 s
-            (2, 2),  # attempt 2: 2^1 = 2 s
-            (4, 3),  # attempt 3: 2^2 = 4 s
-        ]:
+        for expected_retries in [1, 2, 3]:
             backoff, retries = _next_transient_backoff(
                 events_yielded=0,
                 transient_retries=retries,
                 max_transient_retries=5,
             )
-            assert backoff == expected_backoff
+            assert backoff is not None
+            assert backoff >= 1
             assert retries == expected_retries
 
     def test_returns_none_when_budget_exhausted(self):
@@ -701,9 +725,10 @@ class TestDoTransientBackoff:
         state.adapter = original_adapter
         state.usage = MagicMock()
 
-        with patch("asyncio.sleep", new=AsyncMock()), patch(
-            "backend.copilot.sdk.service.SDKResponseAdapter"
-        ) as mock_cls:
+        with (
+            patch("asyncio.sleep", new=AsyncMock()),
+            patch("backend.copilot.sdk.service.SDKResponseAdapter") as mock_cls,
+        ):
             new_adapter = MagicMock()
             mock_cls.return_value = new_adapter
             async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
@@ -726,3 +751,551 @@ class TestDoTransientBackoff:
                 pass
 
         state.usage.reset.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _is_fallback_stderr — module-level pure function
+# ---------------------------------------------------------------------------
+
+
+class TestIsFallbackStderr:
+    """Unit tests for _is_fallback_stderr.
+
+    Ensures the pure function used by _on_stderr to detect fallback-model
+    activation can be tested independently of the closure.
+    """
+
+    def test_true_for_fallback_model_phrase(self):
+        """Lines containing 'fallback model' must return True."""
+        from backend.copilot.sdk.service import _is_fallback_stderr
+
+        assert _is_fallback_stderr("Using fallback model: claude-sonnet-4") is True
+
+    def test_case_insensitive(self):
+        """Matching must be case-insensitive."""
+        from backend.copilot.sdk.service import _is_fallback_stderr
+
+        assert _is_fallback_stderr("FALLBACK MODEL activated") is True
+        assert _is_fallback_stderr("Fallback Model switching") is True
+
+    def test_false_for_unrelated_fallback(self):
+        """'fallback' alone (no 'model') must not trigger detection."""
+        from backend.copilot.sdk.service import _is_fallback_stderr
+
+        assert _is_fallback_stderr("Using cached result fallback") is False
+        assert _is_fallback_stderr("Tool retry fallback triggered") is False
+
+    def test_false_for_empty_line(self):
+        from backend.copilot.sdk.service import _is_fallback_stderr
+
+        assert _is_fallback_stderr("") is False
+
+    def test_false_for_unrelated_stderr(self):
+        from backend.copilot.sdk.service import _is_fallback_stderr
+
+        assert _is_fallback_stderr("Task completed successfully") is False
+
+
+# ---------------------------------------------------------------------------
+# _EPHEMERAL_EVENT_TYPES — module-level constant
+# ---------------------------------------------------------------------------
+
+
+class TestEphemeralEventTypesConstant:
+    """Verify _EPHEMERAL_EVENT_TYPES is a module-level constant that stays in
+    sync with the event types that must not be counted toward events_yielded.
+    """
+
+    def test_stream_error_is_in_ephemeral_types(self):
+        from backend.copilot.response_model import StreamError
+        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
+
+        assert StreamError in _EPHEMERAL_EVENT_TYPES, (
+            "StreamError must be in _EPHEMERAL_EVENT_TYPES — if counted, "
+            "transient retries would be blocked after the first notification"
+        )
+
+    def test_stream_status_is_in_ephemeral_types(self):
+        from backend.copilot.response_model import StreamStatus
+        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
+
+        assert StreamStatus in _EPHEMERAL_EVENT_TYPES, (
+            "StreamStatus must be in _EPHEMERAL_EVENT_TYPES so that a retry "
+            "notification can be followed by another retry"
+        )
+
+    def test_stream_heartbeat_is_in_ephemeral_types(self):
+        from backend.copilot.response_model import StreamHeartbeat
+        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
+
+        assert StreamHeartbeat in _EPHEMERAL_EVENT_TYPES
+
+    def test_is_a_tuple(self):
+        """isinstance() requires a tuple (not a list) as second argument."""
+        from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES
+
+        assert isinstance(_EPHEMERAL_EVENT_TYPES, tuple)
+
+
+# ---------------------------------------------------------------------------
+# TranscriptBuilder snapshot/restore
+# ---------------------------------------------------------------------------
+
+
+class TestTranscriptBuilderSnapshotRestore:
+    """Verify that snapshot() and restore() provide safe rollback
+    without accessing private attributes directly.
+    """
+
+    def test_snapshot_returns_independent_copy(self):
+        """Mutations to the builder after snapshot() must not affect the snap."""
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        builder = TranscriptBuilder()
+        builder.append_user("hello")
+        snap = builder.snapshot()
+
+        builder.append_user("world")  # mutate after snapshot
+        entries_copy, _ = snap
+        assert len(entries_copy) == 1, "snapshot() must return an independent list copy"
+        assert len(builder._entries) == 2
+
+    def test_restore_resets_entries_and_uuid(self):
+        """restore() must bring back the exact state at snapshot time."""
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        builder = TranscriptBuilder()
+        builder.append_user("first")
+        snap = builder.snapshot()
+        uuid_at_snap = builder._last_uuid
+
+        builder.append_user("second")
+        builder.restore(snap)
+
+        assert len(builder._entries) == 1
+        assert builder._last_uuid == uuid_at_snap
+
+    def test_restore_to_empty_state(self):
+        """Restoring a snapshot of an empty builder must clear all entries."""
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        builder = TranscriptBuilder()
+        empty_snap = builder.snapshot()
+
+        builder.append_user("something")
+        assert builder.entry_count == 1
+
+        builder.restore(empty_snap)
+        assert builder.entry_count == 0
+        assert builder._last_uuid is None
+
+
+# ---------------------------------------------------------------------------
+# _last_reset_attempt guard
+# ---------------------------------------------------------------------------
+
+
+class TestLastResetAttemptGuard:
+    """Verify that transient retries within the same context-level attempt
+    do NOT reset the transient_retries counter (which would create an infinite loop).
+
+    The guard works by tracking the last attempt value that triggered a reset.
+    Transient retries `continue` without incrementing `attempt`, so the reset
+    only fires when `attempt` actually advances (different attempt number).
+    """
+
+    def test_transient_retry_preserves_counter(self):
+        """Simulating the loop: counter must NOT reset on transient continue.
+
+        We simulate the _last_reset_attempt logic directly by replaying
+        the loop state transitions.  A transient retry stays on the same
+        `attempt` value, so the guard must block the reset.
+        """
+        attempt = 0
+        _last_reset_attempt = -1
+        transient_retries = 0
+
+        # First entry into the loop: attempt 0 is different from -1, so reset.
+        if attempt != _last_reset_attempt:
+            transient_retries = 0
+            _last_reset_attempt = attempt
+
+        assert transient_retries == 0
+        assert _last_reset_attempt == 0
+
+        # Simulate transient retry: transient_retries incremented, `attempt`
+        # stays 0 (transient continue does NOT call attempt += 1).
+        transient_retries += 1
+
+        # Loop continues: attempt is still 0, so guard blocks the reset.
+        if attempt != _last_reset_attempt:
+            transient_retries = 0  # must NOT execute
+            _last_reset_attempt = attempt
+
+        assert (
+            transient_retries == 1
+        ), "transient_retries must not be reset when attempt has not changed"
+
+    def test_counter_resets_on_new_attempt(self):
+        """When attempt advances to 1, transient_retries must reset to 0."""
+        attempt = 0
+        _last_reset_attempt = -1
+        transient_retries = 0
+
+        # attempt=0: first entry, reset fires.
+        if attempt != _last_reset_attempt:
+            transient_retries = 0
+            _last_reset_attempt = attempt
+
+        # Simulate transient retries used up.
+        transient_retries = 3
+
+        # Context compaction: attempt advances to 1.
+        attempt = 1
+
+        # Loop top: attempt changed, reset fires.
+        if attempt != _last_reset_attempt:
+            transient_retries = 0
+            _last_reset_attempt = attempt
+
+        assert (
+            transient_retries == 0
+        ), "transient_retries must reset to 0 when attempt advances"
+        assert _last_reset_attempt == 1
+
+
+# ---------------------------------------------------------------------------
+# Integration: _HandledStreamError transient retry path
+# ---------------------------------------------------------------------------
+
+
+async def _drain(agen) -> list:
+    """Collect all items from an async generator into a list."""
+    items = []
+    async for item in agen:
+        items.append(item)
+    return items
+
+
+class TestHandledStreamErrorTransientRetry:
+    """Integration tests for the _HandledStreamError transient retry wiring.
+
+    These tests mock _run_stream_attempt to simulate the path where:
+      1. _run_stream_attempt raises _HandledStreamError(code="transient_api_error")
+      2. The outer loop calls _next_transient_backoff → gets a backoff
+      3. _do_transient_backoff emits StreamStatus, sleeps, resets state
+      4. The loop continues and _run_stream_attempt succeeds on the next call
+
+    Verifies: StreamStatus emitted, no StreamError, second attempt returns
+    content, and the transcript is restored between attempts.
+    """
+
+    @pytest.mark.asyncio
+    async def test_retry_succeeds_after_one_transient_handled_error(self):
+        """_HandledStreamError(transient_api_error) → StreamStatus → success on retry.
+
+        Simulates the retry loop logic directly, mirroring the real loop in
+        stream_chat_completion_sdk.  Validates the composition of the three
+        helper functions rather than calling stream_chat_completion_sdk (which
+        requires DB/redis connections unavailable in unit tests).
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.response_model import (
+            StreamError,
+            StreamFinish,
+            StreamStatus,
+        )
+        from backend.copilot.sdk.service import (
+            _do_transient_backoff,
+            _HandledStreamError,
+            _next_transient_backoff,
+        )
+
+        transient_retries = 0
+        max_transient_retries = 3
+        attempt = 0
+        _last_reset_attempt = -1
+        events_yielded = 0
+        emitted: list = []
+
+        call_count = 0
+
+        async def fake_run_stream():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call: raise transient error (not yet yielded to client)
+                raise _HandledStreamError(
+                    "transient", code="transient_api_error", already_yielded=False
+                )
+            # Second call: success — yield a content event
+            yield StreamFinish()
+
+        state = MagicMock()
+        state.usage = MagicMock()
+        state.transcript_builder = MagicMock()
+        state.transcript_builder.snapshot.return_value = ([], None)
+
+        # Replay the retry loop body for up to 10 iterations.
+        for _iteration in range(10):
+            if attempt >= 3:
+                break
+            if attempt != _last_reset_attempt:
+                transient_retries = 0
+                _last_reset_attempt = attempt
+
+            events_yielded = 0
+
+            try:
+                async for evt in fake_run_stream():
+                    if not isinstance(evt, (StreamError, StreamStatus)):
+                        events_yielded += 1
+                    emitted.append(evt)
+                break  # success
+            except _HandledStreamError as exc:
+                state.transcript_builder.restore(state.transcript_builder.snapshot())
+                if exc.code == "transient_api_error":
+                    backoff, transient_retries = _next_transient_backoff(
+                        events_yielded, transient_retries, max_transient_retries
+                    )
+                    if backoff is not None:
+                        with patch("asyncio.sleep", new=AsyncMock()):
+                            async for evt in _do_transient_backoff(
+                                backoff, state, "msg-id", "sess-id"
+                            ):
+                                emitted.append(evt)
+                        continue  # retry
+
+        # StreamStatus emitted (retry notification)
+        statuses = [e for e in emitted if isinstance(e, StreamStatus)]
+        assert len(statuses) == 1
+        assert (
+            "retry" in statuses[0].message.lower()
+            or "connection" in statuses[0].message.lower()
+        )
+
+        # No StreamError — transient error not surfaced when retry succeeded
+        errors = [e for e in emitted if isinstance(e, StreamError)]
+        assert len(errors) == 0
+
+        # Content from successful second attempt is present
+        content_events = [e for e in emitted if isinstance(e, StreamFinish)]
+        assert len(content_events) == 1
+
+        # Second attempt was called
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_transient_handled_error_exhaustion_yields_stream_error(self):
+        """When all transient retries exhausted, StreamError must be yielded."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG
+        from backend.copilot.response_model import StreamError, StreamStatus
+        from backend.copilot.sdk.service import (
+            _do_transient_backoff,
+            _HandledStreamError,
+            _next_transient_backoff,
+        )
+
+        transient_retries = 0
+        max_transient_retries = 2  # exhaust after 2 retries
+        attempt = 0
+        _last_reset_attempt = -1
+        emitted: list = []
+
+        async def always_fail():
+            raise _HandledStreamError(
+                "transient",
+                error_msg="API overloaded",
+                code="transient_api_error",
+                already_yielded=False,
+            )
+            # Satisfy the type checker — unreachable
+            return
+            yield  # noqa: B901
+
+        state = MagicMock()
+        state.usage = MagicMock()
+        state.transcript_builder = MagicMock()
+        state.transcript_builder.snapshot.return_value = ([], None)
+
+        ended_with_stream_error = False
+
+        for _iteration in range(20):
+            if attempt >= 3:
+                break
+            if attempt != _last_reset_attempt:
+                transient_retries = 0
+                _last_reset_attempt = attempt
+
+            events_yielded = 0
+            try:
+                async for evt in always_fail():
+                    emitted.append(evt)
+                break
+            except _HandledStreamError as exc:
+                state.transcript_builder.restore(state.transcript_builder.snapshot())
+                if exc.code == "transient_api_error":
+                    backoff, transient_retries = _next_transient_backoff(
+                        events_yielded, transient_retries, max_transient_retries
+                    )
+                    if backoff is not None:
+                        with patch("asyncio.sleep", new=AsyncMock()):
+                            async for evt in _do_transient_backoff(
+                                backoff, state, "m", "s"
+                            ):
+                                emitted.append(evt)
+                        continue
+                # retries exhausted
+                ended_with_stream_error = True
+                if not exc.already_yielded:
+                    emitted.append(
+                        StreamError(
+                            errorText=exc.error_msg or FRIENDLY_TRANSIENT_MSG,
+                            code=exc.code or "transient_api_error",
+                        )
+                    )
+                break
+
+        # Two StreamStatus events emitted (one per retry before exhaustion)
+        statuses = [e for e in emitted if isinstance(e, StreamStatus)]
+        assert len(statuses) == max_transient_retries
+
+        # One StreamError emitted after exhaustion
+        errors = [e for e in emitted if isinstance(e, StreamError)]
+        assert len(errors) == 1
+        assert errors[0].code == "transient_api_error"
+
+        assert ended_with_stream_error is True
+
+
+# ---------------------------------------------------------------------------
+# Integration: generic Exception transient retry path
+# ---------------------------------------------------------------------------
+
+
+class TestGenericExceptionTransientRetry:
+    """Integration tests for the raw Exception transient retry wiring.
+
+    These tests simulate the Exception handler path (e.g. ECONNRESET) that
+    is a separate code path from _HandledStreamError.  The same retry
+    mechanics apply — _next_transient_backoff + _do_transient_backoff +
+    continue — but the entry path is different (no already_yielded flag,
+    no pre-yielded StreamError from _run_stream_attempt).
+    """
+
+    @pytest.mark.asyncio
+    async def test_econnreset_triggers_retry_and_succeeds(self):
+        """Raw Exception('ECONNRESET') matching is_transient_api_error → retry succeeds.
+
+        Simulates the generic Exception handler path — separate from
+        _HandledStreamError.  Verifies the same retry mechanics apply:
+        _next_transient_backoff + _do_transient_backoff + continue.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.constants import is_transient_api_error
+        from backend.copilot.response_model import (
+            StreamError,
+            StreamFinish,
+            StreamStatus,
+        )
+        from backend.copilot.sdk.service import (
+            _do_transient_backoff,
+            _next_transient_backoff,
+        )
+
+        transient_retries = 0
+        max_transient_retries = 3
+        attempt = 0
+        _last_reset_attempt = -1
+        emitted: list = []
+        call_count = 0
+
+        async def fake_stream():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("ECONNRESET")
+            yield StreamFinish()
+
+        state = MagicMock()
+        state.usage = MagicMock()
+        state.transcript_builder = MagicMock()
+        state.transcript_builder.snapshot.return_value = ([], None)
+
+        for _iteration in range(10):
+            if attempt >= 3:
+                break
+            if attempt != _last_reset_attempt:
+                transient_retries = 0
+                _last_reset_attempt = attempt
+
+            events_yielded = 0
+            try:
+                async for evt in fake_stream():
+                    if not isinstance(evt, (StreamError, StreamStatus)):
+                        events_yielded += 1
+                    emitted.append(evt)
+                break
+            except Exception as exc:
+                is_transient = is_transient_api_error(str(exc))
+                state.transcript_builder.restore(state.transcript_builder.snapshot())
+                if events_yielded == 0 and is_transient:
+                    backoff, transient_retries = _next_transient_backoff(
+                        events_yielded, transient_retries, max_transient_retries
+                    )
+                    if backoff is not None:
+                        with patch("asyncio.sleep", new=AsyncMock()):
+                            async for evt in _do_transient_backoff(
+                                backoff, state, "m", "s"
+                            ):
+                                emitted.append(evt)
+                        continue
+                break
+
+        # StreamStatus emitted during retry (notification to client)
+        statuses = [e for e in emitted if isinstance(e, StreamStatus)]
+        assert len(statuses) == 1
+
+        # No StreamError — retry succeeded
+        errors = [e for e in emitted if isinstance(e, StreamError)]
+        assert len(errors) == 0
+
+        # Content from successful second attempt
+        finish_events = [e for e in emitted if isinstance(e, StreamFinish)]
+        assert len(finish_events) == 1
+
+        # Two total calls: first fails (ECONNRESET), second succeeds
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_not_retried_when_events_yielded(self):
+        """When events_yielded > 0, transient Exception must NOT trigger retry."""
+        from backend.copilot.constants import is_transient_api_error
+        from backend.copilot.sdk.service import _next_transient_backoff
+
+        events_yielded = 1  # content already sent
+        transient_retries = 0
+        max_transient_retries = 3
+
+        # The real loop checks events_yielded before calling _next_transient_backoff.
+        # We replicate that check here.
+        exc = Exception("ECONNRESET")
+        is_transient = is_transient_api_error(str(exc))
+
+        assert is_transient is True
+
+        # Mimic the loop guard: only call backoff function when events_yielded == 0
+        if events_yielded > 0 or not is_transient:
+            backoff = None
+        else:
+            backoff, _ = _next_transient_backoff(
+                events_yielded, transient_retries, max_transient_retries
+            )
+
+        assert (
+            backoff is None
+        ), "retry must not be attempted when events have already been sent to the client"

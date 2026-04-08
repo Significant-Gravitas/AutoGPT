@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import random
 import re
 import shutil
 import sys
@@ -131,6 +132,27 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # arrives for this many seconds. This catches hung tool calls (e.g. WebSearch
 # hanging on a search provider that never responds).
 _IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
+
+# Event types that are ephemeral / cosmetic and must NOT be counted toward
+# ``events_yielded`` in the transient-retry loop.  Counting them would prevent
+# the backoff retry from firing because ``_next_transient_backoff`` returns
+# ``None`` when ``events_yielded > 0``.
+_EPHEMERAL_EVENT_TYPES = (
+    StreamHeartbeat,
+    # Compaction UI events are cosmetic and must not block retry — they're
+    # emitted before the SDK query on compacted attempts.
+    StreamStartStep,
+    StreamFinishStep,
+    StreamToolInputStart,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+    # Transient StreamError and StreamStatus are ephemeral notifications,
+    # not content.  Counting them would prevent the backoff retry from
+    # firing because _next_transient_backoff() returns None when
+    # events_yielded > 0.
+    StreamError,
+    StreamStatus,
+)
 
 # Patterns that indicate the prompt/request exceeds the model's context limit.
 # Matched case-insensitively against the full exception chain.
@@ -598,13 +620,19 @@ _MAX_TRANSIENT_BACKOFF_SECONDS = 30
 def _compute_transient_backoff(attempt: int) -> int:
     """Return the exponential backoff delay (seconds) for a transient retry.
 
-    ``attempt`` is 1-based: first retry → 1 s, second → 2 s, third → 4 s, …,
-    capped at :data:`_MAX_TRANSIENT_BACKOFF_SECONDS`.
+    ``attempt`` is 1-based: first retry → ~1 s, second → ~2 s, third → ~4 s,
+    …, capped at :data:`_MAX_TRANSIENT_BACKOFF_SECONDS`.
+
+    Full-jitter (``0.5 … 1.0 × base``) is applied to spread retries from
+    multiple tenants hitting the same 429/529 simultaneously (thundering herd).
+    The result is rounded to the nearest integer so the ``StreamStatus``
+    message is human-readable.
 
     Extracted as a module-level pure function so it can be unit-tested
     independently of the closure that wraps it inside the retry loop.
     """
-    return min(_MAX_TRANSIENT_BACKOFF_SECONDS, 2 ** (attempt - 1))
+    base = min(_MAX_TRANSIENT_BACKOFF_SECONDS, 2 ** (attempt - 1))
+    return max(1, round(base * (0.5 + random.random() * 0.5)))
 
 
 def _next_transient_backoff(
@@ -649,6 +677,19 @@ async def _do_transient_backoff(
     await asyncio.sleep(backoff)
     state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
     state.usage.reset()
+
+
+def _is_fallback_stderr(line: str) -> bool:
+    """Return True if a CLI stderr line signals fallback-model activation.
+
+    Matches ``"fallback model"`` case-insensitively.  Uses the specific
+    two-word phrase rather than just ``"fallback"`` to avoid false positives
+    from unrelated CLI stderr lines (tool retries, cached-result fallbacks).
+
+    Extracted as a module-level pure function so it can be unit-tested
+    without wiring up the full ``_on_stderr`` closure.
+    """
+    return "fallback model" in line.lower()
 
 
 def _make_sdk_cwd(session_id: str) -> str:
@@ -2054,13 +2095,9 @@ async def stream_chat_completion_sdk(
             nonlocal fallback_model_activated
             sid = session_id[:12] if session_id else "?"
             logger.info("[SDK] [%s] CLI stderr: %s", sid, line.rstrip())
-            # Detect SDK fallback-model activation.  The CLI logs a
-            # message containing "fallback model" when it switches models
-            # after a 529/overloaded error.  Match "fallback model" rather
-            # than just "fallback" to avoid false positives from unrelated
-            # stderr lines (e.g. tool-level retries, cached result fallbacks).
-            lower = line.lower()
-            if not fallback_model_activated and "fallback model" in lower:
+            # Detect SDK fallback-model activation via the module-level pure
+            # helper so the detection logic can be unit-tested independently.
+            if not fallback_model_activated and _is_fallback_stderr(line):
                 fallback_model_activated = True
                 logger.warning(
                     "[SDK] [%s] Fallback model activated — primary model "
@@ -2259,35 +2296,14 @@ async def stream_chat_completion_sdk(
             # independent _entries list from session.messages, so rolling
             # back session.messages alone would leave duplicate entries
             # from the failed attempt in the uploaded transcript.
-            pre_transcript_entries = list(state.transcript_builder._entries)
-            pre_transcript_uuid = state.transcript_builder._last_uuid
+            transcript_snap = state.transcript_builder.snapshot()
             events_yielded = 0
             fallback_model_activated = False
             fallback_notified = False
 
             try:
                 async for event in _run_stream_attempt(stream_ctx, state):
-                    if not isinstance(
-                        event,
-                        (
-                            StreamHeartbeat,
-                            # Compaction UI events are cosmetic and must not
-                            # block retry — they're emitted before the SDK
-                            # query on compacted attempts.
-                            StreamStartStep,
-                            StreamFinishStep,
-                            StreamToolInputStart,
-                            StreamToolInputAvailable,
-                            StreamToolOutputAvailable,
-                            # Transient StreamError and StreamStatus are
-                            # ephemeral notifications, not content.  Counting
-                            # them would prevent the backoff retry from firing
-                            # because _next_transient_backoff() returns None
-                            # when events_yielded > 0.
-                            StreamError,
-                            StreamStatus,
-                        ),
-                    ):
+                    if not isinstance(event, _EPHEMERAL_EVENT_TYPES):
                         events_yielded += 1
                     # Emit a one-time StreamStatus when the SDK switches
                     # to the fallback model (detected via stderr).
@@ -2314,8 +2330,7 @@ async def stream_chat_completion_sdk(
                 # stream_err so the post-loop code won't emit a
                 # duplicate StreamError.
                 session.messages = session.messages[:pre_attempt_msg_count]
-                state.transcript_builder._entries = pre_transcript_entries
-                state.transcript_builder._last_uuid = pre_transcript_uuid
+                state.transcript_builder.restore(transcript_snap)
                 # Check if this is a transient error we can retry with backoff.
                 # exc.code is the only reliable signal — str(exc) is always the
                 # static "Stream error handled — StreamError already yielded" message.
@@ -2388,8 +2403,7 @@ async def stream_chat_completion_sdk(
                     exc_info=True,
                 )
                 session.messages = session.messages[:pre_attempt_msg_count]
-                state.transcript_builder._entries = pre_transcript_entries
-                state.transcript_builder._last_uuid = pre_transcript_uuid
+                state.transcript_builder.restore(transcript_snap)
                 if events_yielded > 0:
                     # Events were already sent to the frontend and cannot be
                     # unsent.  Retrying would produce duplicate/inconsistent
