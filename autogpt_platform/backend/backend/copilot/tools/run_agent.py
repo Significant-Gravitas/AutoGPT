@@ -255,7 +255,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 params=params,
                 session_id=session_id,
-                dry_run=session.dry_run,
+                dry_run=params.dry_run,
             )
             if prereq_error:
                 return prereq_error
@@ -280,7 +280,7 @@ class RunAgentTool(BaseTool):
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
-                    dry_run=session.dry_run,
+                    dry_run=params.dry_run,
                 )
 
         except NotFoundError as e:

@@ -616,3 +616,114 @@ async def test_simulate_agent_output_block_no_name():
         outputs.append((name, data))
 
     assert outputs == [("output", 42)]
+
+
+# ---------------------------------------------------------------------------
+# RunAgentTool session-level dry_run override tests
+# ---------------------------------------------------------------------------
+
+
+def _make_dry_run_session(dry_run: bool = True) -> MagicMock:
+    """Return a minimal ChatSession mock with dry_run set."""
+    session = MagicMock()
+    session.dry_run = dry_run
+    session.session_id = "test-session-id"
+    session.successful_agent_runs = {}
+    return session
+
+
+def _make_graph_mock(graph_id: str = "g1") -> MagicMock:
+    """Return a minimal GraphModel mock."""
+    graph = MagicMock()
+    graph.id = graph_id
+    graph.name = "Test Agent"
+    graph.version = 1
+    graph.description = "A test agent"
+    graph.input_schema = {"type": "object", "properties": {}, "required": []}
+    graph.credentials_input_schema = {"type": "object", "properties": {}}
+    graph.trigger_setup_info = None
+    return graph
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_dry_run_overrides_kwargs():
+    """session.dry_run=True must override any dry_run=False from LLM kwargs.
+
+    The LLM cannot set dry_run — it's stripped from the schema.  But even if
+    somehow a caller passes dry_run=False, the session-level flag wins.
+    This test verifies that the dry-run+schedule block fires (proving
+    params.dry_run is True) when session.dry_run=True, regardless of kwargs.
+    """
+    from backend.copilot.tools.run_agent import RunAgentTool
+
+    tool = RunAgentTool()
+    session = _make_dry_run_session(dry_run=True)
+    graph = _make_graph_mock()
+
+    with patch("backend.copilot.tools.run_agent.graph_db") as mock_graph_db, patch(
+        "backend.copilot.tools.run_agent.library_db"
+    ) as mock_library_db:
+        mock_graph_db.return_value.get_graph = AsyncMock(return_value=graph)
+        mock_library_db.return_value.get_library_agent = AsyncMock(return_value=None)
+
+        # Pass dry_run=False in kwargs — session.dry_run=True should win.
+        # Use schedule_name+cron to trigger the dry-run+schedule error path,
+        # which only fires when params.dry_run is True.
+        response = await tool._execute(
+            user_id="user-1",
+            session=session,
+            username_agent_slug="user/agent",
+            dry_run=False,  # LLM would pass this; session should override it
+            schedule_name="daily",
+            cron="0 9 * * *",
+        )
+
+    # dry-run blocks scheduling — this error only fires when params.dry_run is True
+    import json
+
+    result = json.loads(response.model_dump_json())
+    assert result["type"] == "error"
+    assert (
+        "dry-run" in result["message"].lower() or "dry_run" in result["message"].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_dry_run_false_allows_scheduling():
+    """session.dry_run=False must not block scheduling.
+
+    Verifies that the dry-run guard only fires when session.dry_run=True,
+    so a normal (non-dry-run) session can still attempt scheduling.
+    """
+    from backend.copilot.tools.run_agent import RunAgentTool
+
+    tool = RunAgentTool()
+    session = _make_dry_run_session(dry_run=False)
+    graph = _make_graph_mock()
+
+    with patch("backend.copilot.tools.run_agent.graph_db") as mock_graph_db, patch(
+        "backend.copilot.tools.run_agent.library_db"
+    ) as mock_library_db:
+        mock_graph_db.return_value.get_graph = AsyncMock(return_value=graph)
+        mock_library_db.return_value.get_library_agent = AsyncMock(return_value=None)
+
+        response = await tool._execute(
+            user_id="user-1",
+            session=session,
+            username_agent_slug="user/agent",
+            schedule_name="daily",
+            cron="0 9 * * *",
+        )
+
+    # Should NOT hit the dry-run schedule block — the response will be something
+    # else (likely a credentials or _check_prerequisites result), NOT the dry-run error.
+    import json
+
+    result = json.loads(response.model_dump_json())
+    assert not (
+        result["type"] == "error"
+        and (
+            "dry-run" in result["message"].lower()
+            or "dry_run" in result["message"].lower()
+        )
+    )
