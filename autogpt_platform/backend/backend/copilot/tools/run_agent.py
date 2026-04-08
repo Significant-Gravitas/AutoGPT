@@ -71,6 +71,7 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
+    dry_run: bool = False
 
     @field_validator(
         "username_agent_slug",
@@ -165,8 +166,15 @@ class RunAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the tool with automatic state detection."""
+        """Execute the tool with automatic state detection.
+
+        Note: This tool accepts **kwargs and delegates to RunAgentInput for
+        validation because the parameter set is complex with cross-field
+        validators defined in the Pydantic model.
+        """
         params = RunAgentInput(**kwargs)
+        # Session-level flag drives dry-run mode — not exposed to the LLM.
+        params.dry_run = session.dry_run
         session_id = session.session_id
 
         # Validate at least one identifier is provided
@@ -191,6 +199,18 @@ class RunAgentTool(BaseTool):
 
         # Determine if this is a schedule request
         is_schedule = bool(params.schedule_name or params.cron)
+
+        # Session-level dry-run blocks scheduling — schedules create real
+        # side effects that cannot be simulated.
+        if params.dry_run and is_schedule:
+            return ErrorResponse(
+                message=(
+                    "Scheduling is disabled in dry-run mode because it creates "
+                    "real side effects. Remove cron/schedule_name to simulate "
+                    "a run, or disable dry-run to create a real schedule."
+                ),
+                session_id=session_id,
+            )
 
         try:
             # Step 1: Fetch agent details
@@ -451,8 +471,8 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
+        dry_run: bool,
         wait_for_result: int = 0,
-        dry_run: bool = False,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id

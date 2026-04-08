@@ -1,5 +1,33 @@
 import type { UIMessage } from "ai";
 
+export const ORIGINAL_TITLE = "AutoGPT";
+
+/**
+ * Build the document title showing how many sessions are ready.
+ * Returns the base title when count is 0.
+ */
+export function formatNotificationTitle(count: number): string {
+  return count > 0
+    ? `(${count}) AutoPilot is ready - ${ORIGINAL_TITLE}`
+    : ORIGINAL_TITLE;
+}
+
+/**
+ * Safely parse a JSON string (from localStorage) into a `Set<string>` of
+ * session IDs. Returns an empty set for `null`, malformed, or non-array values.
+ */
+export function parseSessionIDs(raw: string | null | undefined): Set<string> {
+  if (!raw) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? new Set<string>(parsed.filter((v) => typeof v === "string"))
+      : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * Check whether a refetchSession result indicates the backend still has an
  * active SSE stream for this session.
@@ -35,6 +63,72 @@ export function resolveInProgressTools(
         : part,
     ),
   }));
+}
+
+/**
+ * Extract the user-visible text from the arguments passed to `sendMessage`.
+ * Handles both `sendMessage("hello")` and `sendMessage({ text: "hello" })`.
+ */
+export function extractSendMessageText(firstArg: unknown): string {
+  if (firstArg && typeof firstArg === "object" && "text" in firstArg)
+    return (firstArg as { text: string }).text;
+  return String(firstArg ?? "");
+}
+
+interface SuppressDuplicateArgs {
+  text: string;
+  isReconnectScheduled: boolean;
+  lastSubmittedText: string | null;
+  messages: UIMessage[];
+}
+
+/**
+ * Reason a sendMessage was suppressed, or ``null`` to pass through.
+ *
+ * - ``"reconnecting"``: the stream is reconnecting; the caller should
+ *   notify the user (the UI may not yet reflect the disabled state).
+ * - ``"duplicate"``: the same text was just submitted and echoed back
+ *   by the session — safe to silently drop (user double-clicked).
+ */
+export type SuppressReason = "reconnecting" | "duplicate" | null;
+
+/**
+ * Determine whether a sendMessage call should be suppressed to prevent
+ * duplicate POSTs during reconnect cycles or re-submits of the same text.
+ *
+ * Returns the reason so callers can surface user-visible feedback when
+ * the suppression isn't just a silent duplicate.
+ */
+export function getSendSuppressionReason({
+  text,
+  isReconnectScheduled,
+  lastSubmittedText,
+  messages,
+}: SuppressDuplicateArgs): SuppressReason {
+  if (isReconnectScheduled) return "reconnecting";
+
+  if (text && lastSubmittedText === text) {
+    const lastUserMsg = messages.filter((m) => m.role === "user").pop();
+    const lastUserText = lastUserMsg?.parts
+      ?.map((p) => ("text" in p ? p.text : ""))
+      .join("")
+      .trim();
+    if (lastUserText === text) return "duplicate";
+  }
+
+  return null;
+}
+
+/**
+ * Backwards-compatible boolean wrapper for ``getSendSuppressionReason``.
+ *
+ * @deprecated Call ``getSendSuppressionReason`` directly so callers can
+ * distinguish between reconnect and duplicate suppression.
+ */
+export function shouldSuppressDuplicateSend(
+  args: SuppressDuplicateArgs,
+): boolean {
+  return getSendSuppressionReason(args) !== null;
 }
 
 /**

@@ -7,7 +7,7 @@ import pytest
 from .model import create_chat_session, get_chat_session, upsert_chat_session
 from .response_model import StreamError, StreamTextDelta
 from .sdk import service as sdk_service
-from .sdk.transcript import download_transcript
+from .transcript import download_transcript
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ async def test_sdk_resume_multi_turn(setup_test_user, test_user_id):
     if not cfg.claude_agent_use_resume:
         return pytest.skip("CLAUDE_AGENT_USE_RESUME is not enabled, skipping test")
 
-    session = await create_chat_session(test_user_id)
+    session = await create_chat_session(test_user_id, dry_run=False)
     session = await upsert_chat_session(session)
 
     # --- Turn 1: send a message with a unique keyword ---

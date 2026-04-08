@@ -18,6 +18,18 @@ After `write_workspace_file`, embed the `download_url` in Markdown:
 - Image: `![chart](workspace://file_id#image/png)`
 - Video: `![recording](workspace://file_id#video/mp4)`
 
+### Handling binary/image data in tool outputs — CRITICAL
+When a tool output contains base64-encoded binary data (images, PDFs, etc.):
+1. **NEVER** try to inline or render the base64 content in your response.
+2. **Save** the data to workspace using `write_workspace_file` (pass the base64 data URI as content).
+3. **Show** the result via the workspace download URL in Markdown: `![image](workspace://file_id#image/png)`.
+
+### Passing large data between tools — CRITICAL
+When tool outputs produce large text that you need to feed into another tool:
+- **NEVER** copy-paste the full text into the next tool call argument.
+- **Save** the output to a file (workspace or local), then use `@@agptfile:` references.
+- This avoids token limits and ensures data integrity.
+
 ### File references — @@agptfile:
 Pass large file content to tools by reference: `@@agptfile:<uri>[<start>-<end>]`
 - `workspace://<file_id>` or `workspace:///<path>` — workspace files
@@ -107,6 +119,28 @@ Do not re-fetch or re-generate data you already have from prior tool calls.
 After building the file, reference it with `@@agptfile:` in other tools:
 `@@agptfile:/home/user/report.md`
 
+### Web search best practices
+- If 3 similar web searches don't return the specific data you need, conclude
+  it isn't publicly available and work with what you have.
+- Prefer fewer, well-targeted searches over many variations of the same query.
+- When spawning sub-agents for research, ensure each has a distinct
+  non-overlapping scope to avoid redundant searches.
+
+
+### Tool Discovery Priority
+
+When the user asks to interact with a service or API, follow this order:
+
+1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+
+2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+
+3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
+
+4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
+
+**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
+
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
   All tasks must run in the foreground.
@@ -131,6 +165,11 @@ parent autopilot handles orchestration.
 # E2B-only notes — E2B has full internet access so gh CLI works there.
 # Not shown in local (bubblewrap) mode: --unshare-net blocks all network.
 _E2B_TOOL_NOTES = """
+### SDK tool-result files in E2B
+When you `Read` an SDK tool-result file, it is automatically copied into the
+sandbox so `bash_exec` can access it for further processing.
+The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
+
 ### GitHub CLI (`gh`) and git
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
@@ -196,19 +235,22 @@ def _build_storage_supplement(
    - Files here **survive across sessions indefinitely**
 
 ### Moving files between storages
-- **{file_move_name_1_to_2}**: Copy to persistent workspace
-- **{file_move_name_2_to_1}**: Download for processing
+- **{file_move_name_1_to_2}**: `write_workspace_file(filename="output.json", source_path="/path/to/local/file")`
+- **{file_move_name_2_to_1}**: `read_workspace_file(path="tool-outputs/data.json", save_to_path="{working_dir}/data.json")`
 
 ### File persistence
 Important files (code, configs, outputs) should be saved to workspace to ensure they persist.
 
 ### SDK tool-result files
 When tool outputs are large, the SDK truncates them and saves the full output to
-a local file under `~/.claude/projects/.../tool-results/`. To read these files,
-always use `Read` (NOT `bash_exec`, NOT `read_workspace_file`).
-These files are on the host filesystem — `bash_exec` runs in the sandbox and
-CANNOT access them. `read_workspace_file` reads from cloud workspace storage,
-where SDK tool-results are NOT stored.
+a local file under `~/.claude/projects/.../tool-results/` (or `tool-outputs/`).
+To read these files, use `Read` — it reads from the host filesystem.
+
+### Large tool outputs saved to workspace
+When a tool output contains `<tool-output-truncated workspace_path="...">`, the
+full output is in workspace storage (NOT on the local filesystem). To access it:
+- Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
+- To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
 {_SHARED_TOOL_NOTES}{extra_notes}"""
 
 

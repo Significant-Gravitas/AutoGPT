@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -11,8 +11,11 @@ import {
 } from "@/components/ai-elements/message";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
+import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
 import {
   buildRenderSegments,
@@ -36,7 +39,11 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   sessionID?: string | null;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   onRetry?: () => void;
+  historicalDurations?: Map<string, number>;
 }
 
 function renderSegments(
@@ -104,14 +111,120 @@ function extractGraphExecId(
   return null;
 }
 
+/**
+ * Triggers `onLoadMore` when scrolled near the top, and preserves the
+ * user's scroll position after older messages are prepended to the DOM.
+ *
+ * Scroll preservation works by:
+ * 1. Capturing `scrollHeight` / `scrollTop` in the observer callback
+ *    (synchronous, before React re-renders).
+ * 2. Restoring `scrollTop` in a `useLayoutEffect` keyed on
+ *    `messageCount` so it only fires when messages actually change
+ *    (not on intermediate renders like the loading-spinner toggle).
+ */
+function LoadMoreSentinel({
+  hasMore,
+  isLoading,
+  messageCount,
+  onLoadMore,
+}: {
+  hasMore: boolean;
+  isLoading: boolean;
+  messageCount: number;
+  onLoadMore: () => void;
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  // Pre-mutation scroll snapshot, written synchronously before onLoadMore
+  const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
+  const { scrollRef } = useStickToBottomContext();
+
+  // IntersectionObserver to trigger load when sentinel is near viewport.
+  // Only fires when the container is actually scrollable to prevent
+  // exhausting all pages when content fits without scrolling.
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore || isLoading) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        const scrollParent =
+          sentinelRef.current?.closest('[role="log"]') ??
+          sentinelRef.current?.parentElement;
+        if (
+          scrollParent &&
+          scrollParent.scrollHeight <= scrollParent.clientHeight
+        )
+          return;
+        // Capture scroll metrics *before* the state update
+        const el = scrollRef.current;
+        if (el) {
+          scrollSnapshotRef.current = {
+            scrollHeight: el.scrollHeight,
+            scrollTop: el.scrollTop,
+          };
+        }
+        onLoadMoreRef.current();
+      },
+      { rootMargin: "200px 0px 0px 0px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, isLoading, scrollRef]);
+
+  // After React commits new DOM nodes (prepended messages), adjust
+  // scrollTop so the user stays at the same visual position.
+  // Keyed on messageCount so it only fires when messages actually
+  // change — NOT on intermediate renders (loading spinner, etc.)
+  // that would consume the snapshot too early.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const { scrollHeight: prevHeight, scrollTop: prevTop } =
+      scrollSnapshotRef.current;
+    if (!el || prevHeight === 0) return;
+    const delta = el.scrollHeight - prevHeight;
+    if (delta > 0) {
+      el.scrollTop = prevTop + delta;
+    }
+    scrollSnapshotRef.current = { scrollHeight: 0, scrollTop: 0 };
+  }, [messageCount, scrollRef]);
+
+  return (
+    <div ref={sentinelRef} className="flex justify-center py-1">
+      {isLoading && <LoadingSpinner className="h-5 w-5 text-neutral-400" />}
+    </div>
+  );
+}
+
 export function ChatMessagesContainer({
   messages,
   status,
   error,
   isLoading,
   sessionID,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
   onRetry,
+  historicalDurations,
 }: Props) {
+  // Hide the container for one frame when messages first load so
+  // StickToBottom can scroll to the bottom before the user sees it.
+  const [settled, setSettled] = useState(false);
+  const [prevSessionID, setPrevSessionID] = useState(sessionID);
+  if (sessionID !== prevSessionID) {
+    setPrevSessionID(sessionID);
+    if (settled) setSettled(false);
+  }
+  const messagesReady = messages.length > 0 || !isLoading;
+  useEffect(() => {
+    if (settled || !messagesReady) return;
+    const raf = requestAnimationFrame(() => setSettled(true));
+    return () => cancelAnimationFrame(raf);
+  }, [settled, messagesReady]);
+  // opacity-0 only during the single frame between messages arriving and scroll settling
+  const hideForScroll = messagesReady && !settled;
+
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
@@ -139,14 +252,47 @@ export function ChatMessagesContainer({
   const showThinking =
     status === "submitted" || (status === "streaming" && !hasInflight);
 
+  const isActivelyStreaming = status === "streaming" || status === "submitted";
+  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
+  // Reset when a new streaming turn begins.
+  const frozenElapsedRef = useRef(0);
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (isActivelyStreaming) {
+      if (!wasStreamingRef.current) {
+        frozenElapsedRef.current = 0;
+      }
+      if (elapsedSeconds > 0) {
+        frozenElapsedRef.current = elapsedSeconds;
+      }
+    }
+    wasStreamingRef.current = isActivelyStreaming;
+  });
+
   return (
-    <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+    <Conversation
+      key={sessionID ?? "new"}
+      resize={settled ? "smooth" : "instant"}
+      className={
+        "min-h-0 flex-1 " +
+        (hideForScroll
+          ? "opacity-0"
+          : "opacity-100 transition-opacity duration-100 ease-out")
+      }
+    >
+      <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
+        {hasMoreMessages && onLoadMore && (
+          <LoadMoreSentinel
+            hasMore={hasMoreMessages}
+            isLoading={!!isLoadingMore}
+            messageCount={messages.length}
+            onLoadMore={onLoadMore}
+          />
+        )}
         {isLoading && messages.length === 0 && (
-          <div
-            className="flex flex-1 items-center justify-center"
-            style={{ minHeight: "calc(100vh - 12rem)" }}
-          >
+          <div className="flex flex-1 items-center justify-center">
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}
@@ -239,10 +385,19 @@ export function ChatMessagesContainer({
                 {isLastInTurn && !isCurrentlyStreaming && (
                   <TurnStatsBar
                     turnMessages={getTurnMessages(messages, messageIndex)}
+                    elapsedSeconds={
+                      messageIndex === messages.length - 1
+                        ? frozenElapsedRef.current
+                        : undefined
+                    }
+                    durationMs={historicalDurations?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (
-                  <ThinkingIndicator active={showThinking} />
+                  <ThinkingIndicator
+                    active={showThinking}
+                    elapsedSeconds={elapsedSeconds}
+                  />
                 )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
@@ -268,7 +423,10 @@ export function ChatMessagesContainer({
         {showThinking && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
-              <ThinkingIndicator active={showThinking} />
+              <ThinkingIndicator
+                active={showThinking}
+                elapsedSeconds={elapsedSeconds}
+              />
             </MessageContent>
           </Message>
         )}

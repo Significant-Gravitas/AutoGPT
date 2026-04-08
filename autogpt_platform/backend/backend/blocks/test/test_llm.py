@@ -200,6 +200,66 @@ class TestLLMStatsTracking:
         assert block.execution_stats.llm_retry_count == 1
 
     @pytest.mark.asyncio
+    async def test_retry_cost_uses_last_attempt_only(self):
+        """provider_cost is only merged from the final successful attempt.
+
+        Intermediate retry costs are intentionally dropped to avoid
+        double-counting: the cost of failed attempts is captured in
+        last_attempt_cost only when the loop eventually succeeds.
+        """
+        import backend.blocks.llm as llm
+
+        block = llm.AIStructuredResponseGeneratorBlock()
+        call_count = 0
+
+        async def mock_llm_call(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First attempt: fails validation, returns cost $0.01
+                return llm.LLMResponse(
+                    raw_response="",
+                    prompt=[],
+                    response='<json_output id="test123456">{"wrong": "key"}</json_output>',
+                    tool_calls=None,
+                    prompt_tokens=10,
+                    completion_tokens=5,
+                    reasoning=None,
+                    provider_cost=0.01,
+                )
+            # Second attempt: succeeds, returns cost $0.02
+            return llm.LLMResponse(
+                raw_response="",
+                prompt=[],
+                response='<json_output id="test123456">{"key1": "value1", "key2": "value2"}</json_output>',
+                tool_calls=None,
+                prompt_tokens=20,
+                completion_tokens=10,
+                reasoning=None,
+                provider_cost=0.02,
+            )
+
+        block.llm_call = mock_llm_call  # type: ignore
+
+        input_data = llm.AIStructuredResponseGeneratorBlock.Input(
+            prompt="Test prompt",
+            expected_format={"key1": "desc1", "key2": "desc2"},
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=llm.TEST_CREDENTIALS_INPUT,  # type: ignore
+            retry=2,
+        )
+
+        with patch("secrets.token_hex", return_value="test123456"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+        # Only the final successful attempt's cost is merged
+        assert block.execution_stats.provider_cost == pytest.approx(0.02)
+        # Tokens from both attempts accumulate
+        assert block.execution_stats.input_token_count == 30
+        assert block.execution_stats.output_token_count == 15
+
+    @pytest.mark.asyncio
     async def test_ai_text_summarizer_multiple_chunks(self):
         """Test that AITextSummarizerBlock correctly accumulates stats across multiple chunks."""
         import backend.blocks.llm as llm
@@ -486,6 +546,154 @@ class TestLLMStatsTracking:
         # Check output
         assert "response" in outputs
         assert outputs["response"] == {"result": "test"}
+
+
+class TestAIConversationBlockValidation:
+    """Test that AIConversationBlock validates inputs before calling the LLM."""
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_and_empty_prompt_raises_error(self):
+        """Empty messages with no prompt should raise ValueError, not a cryptic API error."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_with_prompt_succeeds(self):
+        """Empty messages but a non-empty prompt should proceed without error."""
+        block = llm.AIConversationBlock()
+
+        async def mock_llm_call(input_data, credentials):
+            return {"response": "OK"}
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIConversationBlock.Input(
+                messages=[],
+                prompt="Hello, how are you?",
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
+
+            outputs = {}
+            async for name, data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[name] = data
+
+        assert outputs["response"] == "OK"
+
+    @pytest.mark.asyncio
+    async def test_nonempty_messages_with_empty_prompt_succeeds(self):
+        """Non-empty messages with no prompt should proceed without error."""
+        block = llm.AIConversationBlock()
+
+        async def mock_llm_call(input_data, credentials):
+            return {"response": "response from conversation"}
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIConversationBlock.Input(
+                messages=[{"role": "user", "content": "Hello"}],
+                prompt="",
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
+
+            outputs = {}
+            async for name, data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[name] = data
+
+        assert outputs["response"] == "response from conversation"
+
+    @pytest.mark.asyncio
+    async def test_messages_with_empty_content_raises_error(self):
+        """Messages with empty content strings should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": ""}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_whitespace_content_raises_error(self):
+        """Messages with whitespace-only content should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": "   "}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_none_entry_raises_error(self):
+        """Messages list containing None should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[None],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_empty_dict_raises_error(self):
+        """Messages list containing empty dict should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_none_content_raises_error(self):
+        """Messages with content=None should not crash with AttributeError."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": None}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
 
 
 class TestAITextSummarizerValidation:
@@ -809,3 +1017,97 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+
+class TestLlmModelMissing:
+    """Test that LlmModel handles provider-prefixed model names."""
+
+    def test_provider_prefixed_model_resolves(self):
+        """Provider-prefixed model string should resolve to the correct enum member."""
+        assert (
+            llm.LlmModel("anthropic/claude-sonnet-4-6")
+            == llm.LlmModel.CLAUDE_4_6_SONNET
+        )
+
+    def test_bare_model_still_works(self):
+        """Bare (non-prefixed) model string should still resolve correctly."""
+        assert llm.LlmModel("claude-sonnet-4-6") == llm.LlmModel.CLAUDE_4_6_SONNET
+
+    def test_invalid_prefixed_model_raises(self):
+        """Unknown provider-prefixed model string should raise ValueError."""
+        with pytest.raises(ValueError):
+            llm.LlmModel("invalid/nonexistent-model")
+
+    def test_slash_containing_value_direct_lookup(self):
+        """Enum values with '/' (e.g., OpenRouter models) should resolve via direct lookup, not _missing_."""
+        assert llm.LlmModel("google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+
+    def test_double_prefixed_slash_model(self):
+        """Double-prefixed value should still resolve by stripping first prefix."""
+        assert (
+            llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+        )
+
+
+class TestExtractOpenRouterCost:
+    """Tests for extract_openrouter_cost — the x-total-cost header parser."""
+
+    def _mk_response(self, headers: dict | None):
+        response = MagicMock()
+        if headers is None:
+            response._response = None
+        else:
+            raw = MagicMock()
+            raw.headers = headers
+            response._response = raw
+        return response
+
+    def test_extracts_numeric_cost(self):
+        response = self._mk_response({"x-total-cost": "0.0042"})
+        assert llm.extract_openrouter_cost(response) == 0.0042
+
+    def test_returns_none_when_header_missing(self):
+        response = self._mk_response({})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_header_empty_string(self):
+        response = self._mk_response({"x-total-cost": ""})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_header_non_numeric(self):
+        response = self._mk_response({"x-total-cost": "not-a-number"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_no_response_attr(self):
+        response = MagicMock(spec=[])  # no _response attr
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_raw_is_none(self):
+        response = self._mk_response(None)
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_when_raw_has_no_headers(self):
+        response = MagicMock()
+        response._response = MagicMock(spec=[])  # no headers attr
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_zero_for_zero_cost(self):
+        """Zero-cost is a valid value (free tier) and must not become None."""
+        response = self._mk_response({"x-total-cost": "0"})
+        assert llm.extract_openrouter_cost(response) == 0.0
+
+    def test_returns_none_for_inf(self):
+        response = self._mk_response({"x-total-cost": "inf"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_for_negative_inf(self):
+        response = self._mk_response({"x-total-cost": "-inf"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_for_nan(self):
+        response = self._mk_response({"x-total-cost": "nan"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_for_negative_cost(self):
+        response = self._mk_response({"x-total-cost": "-0.005"})
+        assert llm.extract_openrouter_cost(response) is None

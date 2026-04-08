@@ -1,73 +1,59 @@
 "use client";
-import { getV1OnboardingState } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
-import { getOnboardingStatus, resolveResponse } from "@/app/api/helpers";
-import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+
+import { CaretLeft } from "@phosphor-icons/react";
+import { ProgressBar } from "./components/ProgressBar";
+import { StepIndicator } from "./components/StepIndicator";
+import { PainPointsStep } from "./steps/PainPointsStep";
+import { PreparingStep } from "./steps/PreparingStep";
+import { RoleStep } from "./steps/RoleStep";
+import { WelcomeStep } from "./steps/WelcomeStep";
+import { useOnboardingWizardStore } from "./store";
+import { useOnboardingPage } from "./useOnboardingPage";
 
 export default function OnboardingPage() {
-  const router = useRouter();
+  const { currentStep, isLoading, handlePreparingComplete } =
+    useOnboardingPage();
+  const prevStep = useOnboardingWizardStore((s) => s.prevStep);
 
-  useEffect(() => {
-    async function redirectToStep() {
-      try {
-        // Check if onboarding is enabled (also gets chat flag for redirect)
-        const { shouldShowOnboarding } = await getOnboardingStatus();
+  if (isLoading) return null;
 
-        if (!shouldShowOnboarding) {
-          router.replace("/");
-          return;
-        }
+  const totalSteps = 4;
+  const showDots = currentStep <= 3;
+  const showBack = currentStep > 1 && currentStep <= 3;
 
-        const onboarding = await resolveResponse(getV1OnboardingState());
+  const showProgressBar = currentStep <= 3;
 
-        // Handle completed onboarding
-        if (onboarding.completedSteps.includes("GET_RESULTS")) {
-          router.replace("/");
-          return;
-        }
+  return (
+    <div className="flex min-h-screen w-full flex-col items-center">
+      {showProgressBar && (
+        <ProgressBar currentStep={currentStep} totalSteps={totalSteps} />
+      )}
 
-        // Redirect to appropriate step based on completed steps
-        if (onboarding.completedSteps.includes("AGENT_INPUT")) {
-          router.push("/onboarding/5-run");
-          return;
-        }
+      {showBack && (
+        <button
+          type="button"
+          onClick={prevStep}
+          className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+        >
+          <CaretLeft size={16} />
+          Back
+        </button>
+      )}
 
-        if (onboarding.completedSteps.includes("AGENT_NEW_RUN")) {
-          router.push("/onboarding/5-run");
-          return;
-        }
+      <div className="flex flex-1 items-center py-16">
+        {currentStep === 1 && <WelcomeStep />}
+        {currentStep === 2 && <RoleStep />}
+        {currentStep === 3 && <PainPointsStep />}
+        {currentStep === 4 && (
+          <PreparingStep onComplete={handlePreparingComplete} />
+        )}
+      </div>
 
-        if (onboarding.completedSteps.includes("AGENT_CHOICE")) {
-          router.push("/onboarding/5-run");
-          return;
-        }
-
-        if (onboarding.completedSteps.includes("INTEGRATIONS")) {
-          router.push("/onboarding/4-agent");
-          return;
-        }
-
-        if (onboarding.completedSteps.includes("USAGE_REASON")) {
-          router.push("/onboarding/3-services");
-          return;
-        }
-
-        if (onboarding.completedSteps.includes("WELCOME")) {
-          router.push("/onboarding/2-reason");
-          return;
-        }
-
-        // Default: redirect to first step
-        router.push("/onboarding/1-welcome");
-      } catch (error) {
-        console.error("Failed to determine onboarding step:", error);
-        router.replace("/");
-      }
-    }
-
-    redirectToStep();
-  }, [router]);
-
-  return <LoadingSpinner size="large" cover />;
+      {showDots && (
+        <div className="pb-8">
+          <StepIndicator totalSteps={3} currentStep={currentStep} />
+        </div>
+      )}
+    </div>
+  );
 }

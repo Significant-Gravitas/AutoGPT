@@ -56,7 +56,7 @@ class GetMCPGuideTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        **kwargs,  # no tool-specific params; accepts kwargs for forward-compat
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
         try:

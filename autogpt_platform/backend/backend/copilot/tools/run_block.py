@@ -61,6 +61,9 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        *,
+        block_id: str = "",
+        input_data: dict | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -76,8 +79,10 @@ class RunBlockTool(BaseTool):
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
+        block_id = block_id.strip()
+        if input_data is None:
+            input_data = {}
+        # Session-level flag drives dry-run mode — not exposed to the LLM.
         dry_run = session.dry_run
         session_id = session.session_id
 

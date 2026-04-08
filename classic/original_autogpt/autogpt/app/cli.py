@@ -1,9 +1,11 @@
 """Main script for the autogpt package."""
+
 from logging import _nameToLevel as logLevelMap
 from pathlib import Path
 from typing import Optional
 
 import click
+
 from forge.logging.config import LogFormatName
 
 from .telemetry import setup_telemetry
@@ -115,6 +117,16 @@ def cli(ctx: click.Context):
     help="Path to a json configuration file",
     type=click.Path(exists=True, dir_okay=False, resolve_path=True, path_type=Path),
 )
+@click.option(
+    "-w",
+    "--workspace",
+    help=(
+        "Workspace directory for AutoGPT to operate in. Defaults to current "
+        "directory. Agent data will be stored in .autogpt/ subdirectory."
+    ),
+    type=click.Path(file_okay=False, resolve_path=True, path_type=Path),
+    default=Path.cwd(),
+)
 def run(
     continuous: bool,
     continuous_limit: Optional[int],
@@ -133,6 +145,7 @@ def run(
     log_format: Optional[str],
     log_file_format: Optional[str],
     component_config_file: Optional[Path],
+    workspace: Path,
 ) -> None:
     """
     Sets up and runs an agent, based on the task specified by the user, or resumes an
@@ -159,6 +172,7 @@ def run(
         best_practices=list(best_practice),
         override_directives=override_directives,
         component_config_file=component_config_file,
+        workspace=workspace,
     )
 
 
@@ -189,12 +203,23 @@ def run(
     ),
     type=click.Choice([i.value for i in LogFormatName]),
 )
+@click.option(
+    "-w",
+    "--workspace",
+    help=(
+        "Workspace directory for AutoGPT to operate in. Defaults to current "
+        "directory. Agent data will be stored in .autogpt/ subdirectory."
+    ),
+    type=click.Path(file_okay=False, resolve_path=True, path_type=Path),
+    default=Path.cwd(),
+)
 def serve(
     install_plugin_deps: bool,
     debug: bool,
     log_level: Optional[str],
     log_format: Optional[str],
     log_file_format: Optional[str],
+    workspace: Path,
 ) -> None:
     """
     Starts an Agent Protocol compliant AutoGPT server, which creates a custom agent for
@@ -209,7 +234,31 @@ def serve(
         log_format=log_format,
         log_file_format=log_file_format,
         install_plugin_deps=install_plugin_deps,
+        workspace=workspace,
     )
+
+
+@cli.command()
+@click.option(
+    "-e",
+    "--env-file",
+    type=click.Path(dir_okay=False, resolve_path=True, path_type=Path),
+    default=None,
+    help="Path to .env file (default: ~/.autogpt/.env)",
+)
+def config(env_file: Optional[Path]) -> None:
+    """Interactive settings configuration browser.
+
+    Opens a tabbed UI to browse and edit AutoGPT settings. Settings are
+    saved to a .env file that AutoGPT reads on startup.
+
+    Use Tab or 1-9 to switch categories, arrow keys to navigate settings,
+    Enter to edit a setting, S to save, and Q to quit.
+    """
+    from autogpt.app.settings import SettingsUI
+
+    ui = SettingsUI()
+    ui.run(env_file)
 
 
 if __name__ == "__main__":

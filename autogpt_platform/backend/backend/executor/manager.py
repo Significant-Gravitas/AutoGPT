@@ -45,6 +45,10 @@ from backend.data.notifications import (
     ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.cost_tracking import (
+    drain_pending_cost_logs,
+    log_system_credential_cost,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.notifications.notifications import queue_notification
 from backend.util import json
@@ -81,7 +85,7 @@ from backend.util.settings import Settings
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
-from .simulator import simulate_block
+from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -279,6 +283,21 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
+    # For special blocks in dry-run, prepare_dry_run returns a (possibly
+    # modified) copy of input_data so the block executes for real.  For all
+    # other blocks it returns None -> use LLM simulator.
+    # OrchestratorBlock uses the platform's simulation model + OpenRouter key
+    # so no user credentials are needed.
+    _dry_run_input: dict[str, Any] | None = None
+    if execution_context.dry_run:
+        _dry_run_input = prepare_dry_run(node_block, input_data)
+    if _dry_run_input is not None:
+        input_data = _dry_run_input
+
+    # Check for dry-run platform credentials (OrchestratorBlock uses the
+    # platform's OpenRouter key instead of user credentials).
+    _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -288,6 +307,12 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
+        # Dry-run platform credentials bypass the credential store
+        if _dry_run_creds is not None:
+            input_data[field_name] = None
+            extra_exec_kwargs[field_name] = _dry_run_creds
+            continue
+
         field_value = input_data.get(field_name)
         if not field_value or (
             isinstance(field_value, dict) and not field_value.get("id")
@@ -375,7 +400,7 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        if execution_context.dry_run:
+        if execution_context.dry_run and _dry_run_input is None:
             block_iter = simulate_block(node_block, input_data)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
@@ -670,6 +695,15 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
+
+        # Log platform cost if system credentials were used (only on success)
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+                db_client=db_client,
+            )
 
         return execution_stats
 
@@ -2022,6 +2056,18 @@ class ExecutionManager(AppProcess):
             self.cancel_client,
             prefix + " [cancel-consumer]",
         )
+
+        # Drain any in-flight cost log tasks before exit so we don't silently
+        # drop INSERT operations during deployments.
+        loop = getattr(self, "node_execution_loop", None)
+        if loop is not None and loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    drain_pending_cost_logs(), loop
+                ).result(timeout=10)
+                logger.info(f"{prefix} ✅ Cost log tasks drained")
+            except Exception as e:
+                logger.warning(f"{prefix} ⚠️ Failed to drain cost log tasks: {e}")
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 

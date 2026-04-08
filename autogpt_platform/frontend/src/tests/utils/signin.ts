@@ -1,5 +1,6 @@
 import { Page } from "@playwright/test";
 import { LoginPage } from "../pages/login.page";
+import { skipOnboardingIfPresent } from "./onboarding";
 
 type TestUser = {
   email: string;
@@ -25,8 +26,15 @@ export class SigninUtils {
     await this.page.goto("/login");
     await this.loginPage.login(testUser.email, testUser.password);
 
-    // Verify we're on marketplace
-    await this.page.waitForURL("/marketplace");
+    // Wait for redirect — could land on /onboarding, /marketplace, or /copilot
+    await this.page.waitForURL(
+      (url: URL) =>
+        /\/(onboarding|marketplace|copilot|library)/.test(url.pathname),
+      { timeout: 15000 },
+    );
+
+    // Skip onboarding if present
+    await skipOnboardingIfPresent(this.page, "/marketplace");
 
     // Verify profile menu is visible (user is authenticated)
     await this.page.getByTestId("profile-popout-menu-trigger").waitFor({
