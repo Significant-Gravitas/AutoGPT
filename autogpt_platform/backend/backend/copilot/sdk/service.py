@@ -611,6 +611,50 @@ def _compute_transient_backoff(attempt: int) -> int:
     return min(_MAX_TRANSIENT_BACKOFF_SECONDS, 2 ** (attempt - 1))
 
 
+def _next_transient_backoff(
+    events_yielded: int,
+    transient_retries: int,
+    max_transient_retries: int,
+) -> tuple[int | None, int]:
+    """Decide whether to retry after a transient error.
+
+    Returns ``(backoff_seconds, updated_retries)``.  ``backoff_seconds`` is
+    ``None`` when no retry should be attempted — either content has already
+    been streamed to the frontend (``events_yielded > 0``, retrying would
+    produce duplicates) or the retry budget is exhausted.
+
+    Extracted as a module-level pure function so it can be unit-tested
+    independently of the retry loop.
+    """
+    if events_yielded > 0:
+        return None, transient_retries
+    new_retries = transient_retries + 1
+    if new_retries > max_transient_retries:
+        return None, new_retries
+    return _compute_transient_backoff(new_retries), new_retries
+
+
+async def _do_transient_backoff(
+    backoff: int,
+    state: _RetryState,
+    message_id: str,
+    session_id: str,
+) -> AsyncIterator[StreamStatus]:
+    """Emit a retry notification, sleep, and reset the SDK adapter.
+
+    Yields a single :class:`StreamStatus` so the caller can forward it to
+    the client, then sleeps for *backoff* seconds and resets ``state.adapter``
+    and ``state.usage`` so the next attempt starts clean.
+
+    Extracted from both exception handlers in the retry loop to remove
+    near-identical code duplication.
+    """
+    yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
+    await asyncio.sleep(backoff)
+    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.usage.reset()
+
+
 def _make_sdk_cwd(session_id: str) -> str:
     """Create a safe, session-specific working directory path.
 
@@ -2133,25 +2177,8 @@ async def stream_chat_completion_sdk(
         transient_exhausted = False
         stream_err: Exception | None = None
 
-        # Transient retry helper — deduplicates the logic shared between
-        # _HandledStreamError and the generic except-Exception handler.
         transient_retries = 0
         max_transient_retries = config.claude_agent_max_transient_retries
-
-        def _next_transient_backoff() -> int | None:
-            """Return the next backoff delay in seconds, or ``None`` to surface the error.
-
-            Returns the backoff seconds if a retry should be attempted,
-            or ``None`` if retries are exhausted or events were already
-            yielded.  Mutates outer ``transient_retries`` via nonlocal.
-            """
-            nonlocal transient_retries
-            if events_yielded > 0:
-                return None
-            transient_retries += 1
-            if transient_retries > max_transient_retries:
-                return None
-            return _compute_transient_backoff(transient_retries)
 
         state = _RetryState(
             options=options,
@@ -2297,7 +2324,9 @@ async def stream_chat_completion_sdk(
                 # exc.code is the only reliable signal — str(exc) is always the
                 # static "Stream error handled — StreamError already yielded" message.
                 if exc.code == "transient_api_error":
-                    backoff = _next_transient_backoff()
+                    backoff, transient_retries = _next_transient_backoff(
+                        events_yielded, transient_retries, max_transient_retries
+                    )
                     if backoff is not None:
                         logger.warning(
                             "%s Transient error — retrying in %ds (%d/%d)",
@@ -2306,14 +2335,10 @@ async def stream_chat_completion_sdk(
                             transient_retries,
                             max_transient_retries,
                         )
-                        yield StreamStatus(
-                            message=f"Connection interrupted, retrying in {backoff}s…"
-                        )
-                        await asyncio.sleep(backoff)
-                        state.adapter = SDKResponseAdapter(
-                            message_id=message_id, session_id=session_id
-                        )
-                        state.usage.reset()
+                        async for evt in _do_transient_backoff(
+                            backoff, state, message_id, session_id
+                        ):
+                            yield evt
                         continue  # retry the same context-level attempt
                 logger.warning(
                     "%s Stream error handled in attempt "
@@ -2384,7 +2409,9 @@ async def stream_chat_completion_sdk(
                 # Transient API errors (ECONNRESET, 429, 5xx) — retry
                 # with exponential backoff via the shared helper.
                 if is_transient:
-                    backoff = _next_transient_backoff()
+                    backoff, transient_retries = _next_transient_backoff(
+                        events_yielded, transient_retries, max_transient_retries
+                    )
                     if backoff is not None:
                         logger.warning(
                             "%s Transient exception — retrying in %ds (%d/%d)",
@@ -2393,14 +2420,10 @@ async def stream_chat_completion_sdk(
                             transient_retries,
                             max_transient_retries,
                         )
-                        yield StreamStatus(
-                            message=f"Connection interrupted, retrying in {backoff}s…"
-                        )
-                        await asyncio.sleep(backoff)
-                        state.adapter = SDKResponseAdapter(
-                            message_id=message_id, session_id=session_id
-                        )
-                        state.usage.reset()
+                        async for evt in _do_transient_backoff(
+                            backoff, state, message_id, session_id
+                        ):
+                            yield evt
                         continue  # retry same context-level attempt
                     # Retries exhausted — persist retryable marker so the
                     # frontend shows "Try again" after refresh.

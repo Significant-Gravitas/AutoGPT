@@ -566,3 +566,163 @@ class TestEventsYieldedExclusions:
             "StreamStatus must be excluded from events_yielded — "
             "retrying after emitting a status notification must still be permitted"
         )
+
+
+# ---------------------------------------------------------------------------
+# _next_transient_backoff — module-level pure function
+# ---------------------------------------------------------------------------
+
+
+class TestNextTransientBackoff:
+    """Unit tests for _next_transient_backoff.
+
+    This is the core safety mechanism that prevents:
+      * duplicate content (events_yielded > 0 guard)
+      * infinite transient retry loops (max_transient_retries cap)
+    """
+
+    def test_events_yielded_prevents_retry(self):
+        """When events_yielded > 0, return (None, unchanged_retries) — no retry."""
+        from backend.copilot.sdk.service import _next_transient_backoff
+
+        backoff, retries = _next_transient_backoff(
+            events_yielded=1, transient_retries=0, max_transient_retries=3
+        )
+        assert backoff is None
+        # Counter NOT incremented — events already sent, not a retry budget question.
+        assert retries == 0
+
+    def test_returns_backoff_on_first_retry(self):
+        """First transient retry with no prior events gets a 1 s backoff (2^0)."""
+        from backend.copilot.sdk.service import _next_transient_backoff
+
+        backoff, retries = _next_transient_backoff(
+            events_yielded=0, transient_retries=0, max_transient_retries=3
+        )
+        assert backoff == 1  # 2^(1-1) = 1 s
+        assert retries == 1
+
+    def test_increments_counter_each_retry(self):
+        """Each successive call increments the retry counter and returns next backoff."""
+        from backend.copilot.sdk.service import _next_transient_backoff
+
+        retries = 0
+        for expected_backoff, expected_retries in [
+            (1, 1),  # attempt 1: 2^0 = 1 s
+            (2, 2),  # attempt 2: 2^1 = 2 s
+            (4, 3),  # attempt 3: 2^2 = 4 s
+        ]:
+            backoff, retries = _next_transient_backoff(
+                events_yielded=0,
+                transient_retries=retries,
+                max_transient_retries=5,
+            )
+            assert backoff == expected_backoff
+            assert retries == expected_retries
+
+    def test_returns_none_when_budget_exhausted(self):
+        """When transient_retries == max_transient_retries, next call returns None."""
+        from backend.copilot.sdk.service import _next_transient_backoff
+
+        backoff, retries = _next_transient_backoff(
+            events_yielded=0, transient_retries=3, max_transient_retries=3
+        )
+        assert backoff is None
+        # Counter is still incremented to reflect the attempt was made.
+        assert retries == 4
+
+    def test_events_yielded_takes_priority_over_exhaustion(self):
+        """events_yielded guard fires even when retries are also exhausted."""
+        from backend.copilot.sdk.service import _next_transient_backoff
+
+        backoff, retries = _next_transient_backoff(
+            events_yielded=5, transient_retries=3, max_transient_retries=3
+        )
+        assert backoff is None
+        # Counter stays the same — events_yielded path returns early.
+        assert retries == 3
+
+
+# ---------------------------------------------------------------------------
+# _do_transient_backoff — module-level async generator
+# ---------------------------------------------------------------------------
+
+
+class TestDoTransientBackoff:
+    """Unit tests for _do_transient_backoff.
+
+    The helper encapsulates the retry ceremony shared between both exception
+    handlers: emit StreamStatus, sleep, reset adapter, reset usage.
+    """
+
+    async def test_yields_stream_status_with_backoff_in_message(self):
+        """The helper yields exactly one StreamStatus containing the backoff duration."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.response_model import StreamStatus
+        from backend.copilot.sdk.service import _do_transient_backoff
+
+        state = MagicMock()
+        state.usage = MagicMock()
+
+        events = []
+        with patch("asyncio.sleep", new=AsyncMock()):
+            async for evt in _do_transient_backoff(5, state, "msg-id", "sess-id"):
+                events.append(evt)
+
+        assert len(events) == 1
+        assert isinstance(events[0], StreamStatus)
+        assert "5s" in events[0].message
+
+    async def test_sleeps_for_exactly_backoff_seconds(self):
+        """asyncio.sleep is called with the backoff value."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.sdk.service import _do_transient_backoff
+
+        state = MagicMock()
+        state.usage = MagicMock()
+
+        mock_sleep = AsyncMock()
+        with patch("asyncio.sleep", new=mock_sleep):
+            async for _ in _do_transient_backoff(7, state, "msg-id", "sess-id"):
+                pass
+
+        mock_sleep.assert_called_once_with(7)
+
+    async def test_replaces_adapter_with_new_instance(self):
+        """state.adapter is replaced with a new SDKResponseAdapter after yield."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.sdk.service import _do_transient_backoff
+
+        original_adapter = MagicMock()
+        state = MagicMock()
+        state.adapter = original_adapter
+        state.usage = MagicMock()
+
+        with patch("asyncio.sleep", new=AsyncMock()), patch(
+            "backend.copilot.sdk.service.SDKResponseAdapter"
+        ) as mock_cls:
+            new_adapter = MagicMock()
+            mock_cls.return_value = new_adapter
+            async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
+                pass
+
+        mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
+        assert state.adapter is new_adapter
+
+    async def test_resets_usage_after_yield(self):
+        """state.usage.reset() is called so the next attempt starts with clean counters."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.sdk.service import _do_transient_backoff
+
+        state = MagicMock()
+        state.usage = MagicMock()
+
+        with patch("asyncio.sleep", new=AsyncMock()):
+            async for _ in _do_transient_backoff(2, state, "msg-id", "sess-id"):
+                pass
+
+        state.usage.reset.assert_called_once()
