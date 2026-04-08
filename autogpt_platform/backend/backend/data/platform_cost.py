@@ -3,8 +3,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from pydantic import BaseModel
 from prisma.models import PlatformCostLog as PrismaLog
+from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
 from backend.util.cache import cached
@@ -73,7 +73,9 @@ async def log_platform_cost(entry: PlatformCostEntry) -> None:
             "model": entry.model,
             "trackingType": entry.tracking_type,
             "trackingAmount": entry.tracking_amount,
-            "metadata": SafeJson(entry.metadata) if entry.metadata is not None else None,
+            "metadata": (
+                SafeJson(entry.metadata) if entry.metadata is not None else None
+            ),
         }
     )
 
