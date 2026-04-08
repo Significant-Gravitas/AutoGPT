@@ -488,6 +488,154 @@ class TestLLMStatsTracking:
         assert outputs["response"] == {"result": "test"}
 
 
+class TestAIConversationBlockValidation:
+    """Test that AIConversationBlock validates inputs before calling the LLM."""
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_and_empty_prompt_raises_error(self):
+        """Empty messages with no prompt should raise ValueError, not a cryptic API error."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_empty_messages_with_prompt_succeeds(self):
+        """Empty messages but a non-empty prompt should proceed without error."""
+        block = llm.AIConversationBlock()
+
+        async def mock_llm_call(input_data, credentials):
+            return {"response": "OK"}
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIConversationBlock.Input(
+                messages=[],
+                prompt="Hello, how are you?",
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
+
+            outputs = {}
+            async for name, data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[name] = data
+
+        assert outputs["response"] == "OK"
+
+    @pytest.mark.asyncio
+    async def test_nonempty_messages_with_empty_prompt_succeeds(self):
+        """Non-empty messages with no prompt should proceed without error."""
+        block = llm.AIConversationBlock()
+
+        async def mock_llm_call(input_data, credentials):
+            return {"response": "response from conversation"}
+
+        with patch.object(block, "llm_call", new=AsyncMock(side_effect=mock_llm_call)):
+            input_data = llm.AIConversationBlock.Input(
+                messages=[{"role": "user", "content": "Hello"}],
+                prompt="",
+                model=llm.DEFAULT_LLM_MODEL,
+                credentials=_TEST_AI_CREDENTIALS,
+            )
+
+            outputs = {}
+            async for name, data in block.run(
+                input_data, credentials=llm.TEST_CREDENTIALS
+            ):
+                outputs[name] = data
+
+        assert outputs["response"] == "response from conversation"
+
+    @pytest.mark.asyncio
+    async def test_messages_with_empty_content_raises_error(self):
+        """Messages with empty content strings should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": ""}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_whitespace_content_raises_error(self):
+        """Messages with whitespace-only content should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": "   "}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_none_entry_raises_error(self):
+        """Messages list containing None should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[None],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_empty_dict_raises_error(self):
+        """Messages list containing empty dict should be treated as no messages."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+    @pytest.mark.asyncio
+    async def test_messages_with_none_content_raises_error(self):
+        """Messages with content=None should not crash with AttributeError."""
+        block = llm.AIConversationBlock()
+
+        input_data = llm.AIConversationBlock.Input(
+            messages=[{"role": "user", "content": None}],
+            prompt="",
+            model=llm.DEFAULT_LLM_MODEL,
+            credentials=_TEST_AI_CREDENTIALS,
+        )
+
+        with pytest.raises(ValueError, match="no messages and no prompt"):
+            async for _ in block.run(input_data, credentials=llm.TEST_CREDENTIALS):
+                pass
+
+
 class TestAITextSummarizerValidation:
     """Test that AITextSummarizerBlock validates LLM responses are strings."""
 
@@ -809,3 +957,33 @@ class TestUserErrorStatusCodeHandling:
 
         mock_warning.assert_called_once()
         mock_exception.assert_not_called()
+
+
+class TestLlmModelMissing:
+    """Test that LlmModel handles provider-prefixed model names."""
+
+    def test_provider_prefixed_model_resolves(self):
+        """Provider-prefixed model string should resolve to the correct enum member."""
+        assert (
+            llm.LlmModel("anthropic/claude-sonnet-4-6")
+            == llm.LlmModel.CLAUDE_4_6_SONNET
+        )
+
+    def test_bare_model_still_works(self):
+        """Bare (non-prefixed) model string should still resolve correctly."""
+        assert llm.LlmModel("claude-sonnet-4-6") == llm.LlmModel.CLAUDE_4_6_SONNET
+
+    def test_invalid_prefixed_model_raises(self):
+        """Unknown provider-prefixed model string should raise ValueError."""
+        with pytest.raises(ValueError):
+            llm.LlmModel("invalid/nonexistent-model")
+
+    def test_slash_containing_value_direct_lookup(self):
+        """Enum values with '/' (e.g., OpenRouter models) should resolve via direct lookup, not _missing_."""
+        assert llm.LlmModel("google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+
+    def test_double_prefixed_slash_model(self):
+        """Double-prefixed value should still resolve by stripping first prefix."""
+        assert (
+            llm.LlmModel("extra/google/gemini-2.5-pro") == llm.LlmModel.GEMINI_2_5_PRO
+        )

@@ -8,17 +8,34 @@ from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
 
+# Per-request routing mode for a single chat turn.
+# - 'fast': route to the baseline OpenAI-compatible path with the cheaper model.
+# - 'extended_thinking': route to the Claude Agent SDK path with the default
+#   (opus) model.
+# ``None`` means "no override"; the server falls back to the Claude Code
+# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
+CopilotMode = Literal["fast", "extended_thinking"]
+
 
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-opus-4.6", description="Default model to use"
+        default="anthropic/claude-opus-4.6",
+        description="Default model for extended thinking mode",
+    )
+    fast_model: str = Field(
+        default="anthropic/claude-sonnet-4",
+        description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",
         description="Model to use for generating session titles (should be fast/cheap)",
+    )
+    simulation_model: str = Field(
+        default="google/gemini-2.5-flash",
+        description="Model for dry-run block simulation (should be fast/cheap with good JSON output)",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -77,11 +94,11 @@ class ChatConfig(BaseSettings):
     # allows ~70-100 turns/day.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # TODO: These are deploy-time constants applied identically to every user.
-    #  If per-user or per-plan limits are needed (e.g., free tier vs paid), these
-    #  must move to the database (e.g., a UserPlan table) and get_usage_status /
-    #  check_rate_limit would look up each user's specific limits instead of
-    #  reading config.daily_token_limit / config.weekly_token_limit.
+    # These are base limits for the FREE tier. Higher tiers (PRO, BUSINESS,
+    # ENTERPRISE) multiply these by their tier multiplier (see
+    # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
+    # User.subscriptionTier DB column and resolved inside
+    # get_global_rate_limits().
     daily_token_limit: int = Field(
         default=2_500_000,
         description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
@@ -89,6 +106,20 @@ class ChatConfig(BaseSettings):
     weekly_token_limit: int = Field(
         default=12_500_000,
         description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
+    )
+
+    # Cost (in credits / cents) to reset the daily rate limit using credits.
+    # When a user hits their daily limit, they can spend this amount to reset
+    # the daily counter and keep working.  Set to 0 to disable the feature.
+    rate_limit_reset_cost: int = Field(
+        default=500,
+        ge=0,
+        description="Credit cost (in cents) for resetting the daily rate limit. 0 = disabled.",
+    )
+    max_daily_resets: int = Field(
+        default=5,
+        ge=0,
+        description="Maximum number of credit-based rate limit resets per user per day. 0 = unlimited.",
     )
 
     # Claude Agent SDK Configuration
@@ -164,7 +195,7 @@ class ChatConfig(BaseSettings):
 
         Single source of truth for "will the SDK route through OpenRouter?".
         Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
-        present — mirrors the fallback logic in ``_build_sdk_env``.
+        present — mirrors the fallback logic in ``build_sdk_env``.
         """
         if not self.use_openrouter:
             return False

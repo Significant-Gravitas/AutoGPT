@@ -2,6 +2,7 @@ import { TestUser } from "./auth";
 import { getSelectors } from "./selectors";
 import { isVisible } from "./assertion";
 import { BuildPage } from "../pages/build.page";
+import { skipOnboardingIfPresent } from "./onboarding";
 
 export async function signupTestUser(
   page: any,
@@ -58,18 +59,15 @@ export async function signupTestUser(
 
     // Handle onboarding redirect if needed
     if (currentUrl.includes("/onboarding") && ignoreOnboarding) {
-      await page.goto("http://localhost:3000/marketplace");
-      await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
+      await skipOnboardingIfPresent(page, "/marketplace");
     }
 
     // Verify we're on an expected final page and user is authenticated
     if (currentUrl.includes("/copilot") || currentUrl.includes("/library")) {
-      // For copilot/library landing pages, just verify user is authenticated
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });
     } else if (ignoreOnboarding || currentUrl.includes("/marketplace")) {
-      // Verify we're on marketplace
       await page
         .getByText(
           "Bringing you AI agents designed by thinkers from around the world",
@@ -77,7 +75,6 @@ export async function signupTestUser(
         .first()
         .waitFor({ state: "visible", timeout: 10000 });
 
-      // Verify user is authenticated (profile menu visible)
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });

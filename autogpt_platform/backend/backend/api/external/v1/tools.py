@@ -72,7 +72,7 @@ class RunAgentRequest(BaseModel):
 
 def _create_ephemeral_session(user_id: str) -> ChatSession:
     """Create an ephemeral session for stateless API requests."""
-    return ChatSession.new(user_id)
+    return ChatSession.new(user_id, dry_run=False)
 
 
 @tools_router.post(

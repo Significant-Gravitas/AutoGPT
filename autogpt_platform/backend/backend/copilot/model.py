@@ -46,6 +46,16 @@ def _get_session_cache_key(session_id: str) -> str:
 # ===================== Chat data models ===================== #
 
 
+class ChatSessionMetadata(BaseModel):
+    """Typed metadata stored in the ``metadata`` JSON column of ChatSession.
+
+    Add new session-level flags here instead of adding DB columns —
+    no migration required for new fields as long as a default is provided.
+    """
+
+    dry_run: bool = False
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str | None = None
@@ -54,6 +64,8 @@ class ChatMessage(BaseModel):
     refusal: str | None = None
     tool_calls: list[dict] | None = None
     function_call: dict | None = None
+    sequence: int | None = None
+    duration_ms: int | None = None
 
     @staticmethod
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
@@ -66,7 +78,52 @@ class ChatMessage(BaseModel):
             refusal=prisma_message.refusal,
             tool_calls=_parse_json_field(prisma_message.toolCalls),
             function_call=_parse_json_field(prisma_message.functionCall),
+            sequence=prisma_message.sequence,
+            duration_ms=prisma_message.durationMs,
         )
+
+
+def is_message_duplicate(
+    messages: list[ChatMessage],
+    role: str,
+    content: str,
+) -> bool:
+    """Check whether *content* is already present in the current pending turn.
+
+    Only inspects trailing messages that share the given *role* (i.e. the
+    current turn). This ensures legitimately repeated messages across different
+    turns are not suppressed, while same-turn duplicates from stale cache are
+    still caught.
+    """
+    for m in reversed(messages):
+        if m.role == role:
+            if m.content == content:
+                return True
+        else:
+            break
+    return False
+
+
+def maybe_append_user_message(
+    session: "ChatSession",
+    message: str | None,
+    is_user_message: bool,
+) -> bool:
+    """Append a user/assistant message to the session if not already present.
+
+    The route handler already persists the user message before enqueueing,
+    so we check trailing same-role messages to avoid re-appending when the
+    session cache is slightly stale.
+
+    Returns True if the message was appended, False if skipped.
+    """
+    if not message:
+        return False
+    role = "user" if is_user_message else "assistant"
+    if is_message_duplicate(session.messages, role, message):
+        return False
+    session.messages.append(ChatMessage(role=role, content=message))
+    return True
 
 
 class Usage(BaseModel):
@@ -88,6 +145,12 @@ class ChatSessionInfo(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
+    metadata: ChatSessionMetadata = ChatSessionMetadata()
+
+    @property
+    def dry_run(self) -> bool:
+        """Convenience accessor for ``metadata.dry_run``."""
+        return self.metadata.dry_run
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:
@@ -100,6 +163,10 @@ class ChatSessionInfo(BaseModel):
         successful_agent_schedules = _parse_json_field(
             prisma_session.successfulAgentSchedules, default={}
         )
+
+        # Parse typed metadata from the JSON column.
+        raw_metadata = _parse_json_field(prisma_session.metadata, default={})
+        metadata = ChatSessionMetadata.model_validate(raw_metadata)
 
         # Calculate usage from token counts.
         # NOTE: Per-turn cache_read_tokens / cache_creation_tokens breakdown
@@ -126,6 +193,7 @@ class ChatSessionInfo(BaseModel):
             updated_at=prisma_session.updatedAt,
             successful_agent_runs=successful_agent_runs,
             successful_agent_schedules=successful_agent_schedules,
+            metadata=metadata,
         )
 
 
@@ -133,7 +201,7 @@ class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
 
     @classmethod
-    def new(cls, user_id: str) -> Self:
+    def new(cls, user_id: str, *, dry_run: bool) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -143,6 +211,7 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
+            metadata=ChatSessionMetadata(dry_run=dry_run),
         )
 
     @classmethod
@@ -530,6 +599,7 @@ async def _save_session_to_db(
             await db.create_chat_session(
                 session_id=session.session_id,
                 user_id=session.user_id,
+                metadata=session.metadata,
             )
             existing_message_count = 0
 
@@ -607,21 +677,27 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
         return session
 
 
-async def create_chat_session(user_id: str) -> ChatSession:
+async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
     """Create a new chat session and persist it.
+
+    Args:
+        user_id: The authenticated user ID.
+        dry_run: When True, run_block and run_agent tool calls in this
+            session are forced to use dry-run simulation mode.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
-    session = ChatSession.new(user_id)
+    session = ChatSession.new(user_id, dry_run=dry_run)
 
     # Create in database first - fail fast if this fails
     try:
         await chat_db().create_chat_session(
             session_id=session.session_id,
             user_id=user_id,
+            metadata=session.metadata,
         )
     except Exception as e:
         logger.error(f"Failed to create session {session.session_id} in database: {e}")

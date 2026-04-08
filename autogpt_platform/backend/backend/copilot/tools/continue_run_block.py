@@ -53,11 +53,10 @@ class ContinueRunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        review_id: str = "",
         **kwargs,
     ) -> ToolResponseBase:
-        review_id = (
-            kwargs.get("review_id", "").strip() if kwargs.get("review_id") else ""
-        )
+        review_id = review_id.strip() if review_id else ""
         session_id = session.session_id
 
         if not review_id:

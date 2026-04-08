@@ -1,7 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,12 +21,10 @@ interface Props {
 
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
-  const isChatEnabled = useGetFlag(Flag.CHAT);
-  const expectedHomeRoute = isChatEnabled ? "/copilot" : "/library";
 
   const isActive =
-    href === expectedHomeRoute
-      ? pathname === "/" || pathname.startsWith(expectedHomeRoute)
+    href === "/copilot"
+      ? pathname === "/" || pathname.startsWith("/copilot")
       : pathname.includes(href);
 
   return (
@@ -77,24 +74,14 @@ export function NavbarLink({ name, href }: Props) {
             <HomepageIcon />
           </div>
         )}
-        {href === "/library" &&
-          (isChatEnabled ? (
-            <ListChecksIcon
-              className={cn(
-                "h-5 w-5 shrink-0",
-                isActive && "text-white dark:text-black",
-              )}
-            />
-          ) : (
-            <div
-              className={cn(
-                iconNudgedClass,
-                isActive && "text-white dark:text-black",
-              )}
-            >
-              <HomepageIcon />
-            </div>
-          ))}
+        {href === "/library" && (
+          <ListChecksIcon
+            className={cn(
+              "h-5 w-5 shrink-0",
+              isActive && "text-white dark:text-black",
+            )}
+          />
+        )}
         <Text
           variant="h5"
           className={cn(

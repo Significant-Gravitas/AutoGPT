@@ -121,10 +121,16 @@ def _make_hashable_key(
 
 
 def _make_redis_key(key: tuple[Any, ...], func_name: str) -> str:
-    """Convert a hashable key tuple to a Redis key string."""
-    # Ensure key is already hashable
-    hashable_key = key if isinstance(key, tuple) else (key,)
-    return f"cache:{func_name}:{hash(hashable_key)}"
+    """Convert a hashable key tuple to a Redis key string.
+
+    Uses SHA-256 instead of Python's built-in ``hash()`` because ``hash()``
+    is randomised per-process (``PYTHONHASHSEED``).  In a multi-pod
+    deployment every pod must derive the **same** Redis key for the same
+    arguments, otherwise cache lookups and invalidations silently miss.
+    """
+    key_bytes = repr(key).encode()
+    digest = hashlib.sha256(key_bytes).hexdigest()
+    return f"cache:{func_name}:{digest}"
 
 
 @runtime_checkable

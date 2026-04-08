@@ -84,6 +84,14 @@ def _before_send(event, hint):
         ):
             return None
 
+        # Prisma UniqueViolationError — always caught and handled in our codebase.
+        # These arise from concurrent create operations racing on unique constraints
+        # (workspace files, credits, library folders, store listings, chat messages).
+        # Every call site has an except handler; the global FastAPI handler also
+        # catches them and returns 400.  Safe to drop unconditionally.
+        if exc_type and exc_type.__name__ == "UniqueViolationError":
+            return None
+
         # Google metadata DNS errors — expected in non-GCP environments
         if (
             "metadata.google.internal" in exc_msg

@@ -120,14 +120,18 @@ class CreateFolderTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        name: str = "",
+        parent_id: str | None = None,
+        icon: str | None = None,
+        color: str | None = None,
+        **kwargs,
     ) -> ToolResponseBase:
         """Create a folder with the given name and optional parent/icon/color."""
         assert user_id is not None  # guaranteed by requires_auth
-        name = (kwargs.get("name") or "").strip()
-        parent_id = kwargs.get("parent_id")
-        icon = kwargs.get("icon")
-        color = kwargs.get("color")
+        name = (name or "").strip()
         session_id = session.session_id if session else None
 
         if not name:
@@ -196,12 +200,15 @@ class ListFoldersTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        parent_id: str | None = None,
+        include_agents: bool = False,
+        **kwargs,
     ) -> ToolResponseBase:
         """List folders as a flat list (by parent) or full tree."""
         assert user_id is not None  # guaranteed by requires_auth
-        parent_id = kwargs.get("parent_id")
-        include_agents = kwargs.get("include_agents", False)
         session_id = session.session_id if session else None
 
         try:
@@ -293,14 +300,18 @@ class UpdateFolderTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        folder_id: str = "",
+        name: str | None = None,
+        icon: str | None = None,
+        color: str | None = None,
+        **kwargs,
     ) -> ToolResponseBase:
         """Update a folder's name, icon, or color."""
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = (kwargs.get("folder_id") or "").strip()
-        name = kwargs.get("name")
-        icon = kwargs.get("icon")
-        color = kwargs.get("color")
+        folder_id = (folder_id or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:
@@ -365,12 +376,16 @@ class MoveFolderTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        folder_id: str = "",
+        target_parent_id: str | None = None,
+        **kwargs,
     ) -> ToolResponseBase:
         """Move a folder to a new parent or to root level."""
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = (kwargs.get("folder_id") or "").strip()
-        target_parent_id = kwargs.get("target_parent_id")
+        folder_id = (folder_id or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:
@@ -431,11 +446,15 @@ class DeleteFolderTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        folder_id: str = "",
+        **kwargs,
     ) -> ToolResponseBase:
         """Soft-delete a folder; agents inside are moved to root level."""
         assert user_id is not None  # guaranteed by requires_auth
-        folder_id = (kwargs.get("folder_id") or "").strip()
+        folder_id = (folder_id or "").strip()
         session_id = session.session_id if session else None
 
         if not folder_id:
@@ -499,12 +518,17 @@ class MoveAgentsToFolderTool(BaseTool):
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        agent_ids: list[str] | None = None,
+        folder_id: str | None = None,
+        **kwargs,
     ) -> ToolResponseBase:
         """Move one or more agents to a folder or to root level."""
         assert user_id is not None  # guaranteed by requires_auth
-        agent_ids = kwargs.get("agent_ids", [])
-        folder_id = kwargs.get("folder_id")
+        if agent_ids is None:
+            agent_ids = []
         session_id = session.session_id if session else None
 
         if not agent_ids:

@@ -26,18 +26,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.util import json
-
-from .conftest import build_test_transcript as _build_transcript
-from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
-from .transcript import (
+from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
-    compact_transcript,
-    validate_transcript,
 )
+from backend.util import json
+
+from .conftest import build_test_transcript as _build_transcript
+from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
+from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
 
 # ---------------------------------------------------------------------------
@@ -113,7 +112,7 @@ class TestScenarioCompactAndRetry:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -124,8 +123,11 @@ class TestScenarioCompactAndRetry:
         assert result != original  # Must be different
         assert validate_transcript(result)
         msgs = _transcript_to_messages(result)
-        assert len(msgs) == 2
+        # 3 messages: compressed prefix (2) + preserved last assistant (1)
+        assert len(msgs) == 3
         assert msgs[0]["content"] == "[summary of conversation]"
+        # Last assistant preserved verbatim
+        assert msgs[2]["content"] == "Long answer 2"
 
     def test_compacted_transcript_loads_into_builder(self):
         """TranscriptBuilder can load a compacted transcript and continue."""
@@ -167,7 +169,7 @@ class TestScenarioCompactFailsFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("LLM unavailable"),
             ),
@@ -258,7 +260,7 @@ class TestScenarioDoubleFailDBFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -334,7 +336,7 @@ class TestScenarioCompactionIdentical:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -727,7 +729,7 @@ class TestRetryEdgeCases:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -737,7 +739,10 @@ class TestRetryEdgeCases:
         assert result is not None
         assert result != transcript
         msgs = _transcript_to_messages(result)
-        assert len(msgs) == 2
+        # 3 messages: compressed prefix (2) + preserved last assistant (1)
+        assert len(msgs) == 3
+        # Last assistant preserved verbatim
+        assert msgs[2]["content"] == "Answer 19"
 
     def test_messages_to_transcript_roundtrip_preserves_content(self):
         """Verify messages → transcript → messages preserves all content."""
@@ -835,7 +840,7 @@ class TestRetryStateReset:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ),
@@ -898,14 +903,14 @@ class TestTranscriptEdgeCases:
         assert restored[1]["content"] == "Second"
 
     def test_flatten_assistant_with_only_tool_use(self):
-        """Assistant message with only tool_use blocks (no text)."""
+        """Assistant message with only tool_use blocks (no text) flattens to empty."""
         blocks = [
             {"type": "tool_use", "name": "bash", "input": {"cmd": "ls"}},
             {"type": "tool_use", "name": "read", "input": {"path": "/f"}},
         ]
         result = _flatten_assistant_content(blocks)
-        assert "[tool_use: bash]" in result
-        assert "[tool_use: read]" in result
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert result == ""
 
     def test_flatten_tool_result_nested_image(self):
         """Tool result containing image blocks uses placeholder."""
@@ -1004,7 +1009,7 @@ def _make_sdk_patches(
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
-        (f"{_SVC}._build_sdk_env", dict(return_value=None)),
+        (f"{_SVC}.build_sdk_env", dict(return_value={})),
         (f"{_SVC}._resolve_sdk_model", dict(return_value=None)),
         (f"{_SVC}.set_execution_context", {}),
         (
@@ -1399,12 +1404,270 @@ class TestStreamChatCompletionRetryIntegration:
                 events.append(event)
 
         # Should NOT retry — only 1 attempt for auth errors
-        assert attempt_count[0] == 1, (
-            f"Expected 1 attempt (no retry for auth error), " f"got {attempt_count[0]}"
-        )
+        assert (
+            attempt_count[0] == 1
+        ), f"Expected 1 attempt (no retry for auth error), got {attempt_count[0]}"
         errors = [e for e in events if isinstance(e, StreamError)]
         assert errors, "Expected StreamError"
         assert errors[0].code == "sdk_stream_error"
         # Verify user-friendly message (not raw SDK text)
         assert "Authentication" in errors[0].errorText
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_result_message_prompt_too_long_triggers_compaction(self):
+        """CLI returns ResultMessage(subtype="error") with "Prompt is too long".
+
+        When the Claude CLI rejects the prompt pre-API (model=<synthetic>,
+        duration_api_ms=0), it sends a ResultMessage with is_error=True
+        instead of raising a Python exception.  The retry loop must still
+        detect this as a context-length error and trigger compaction.
+        """
+        import contextlib
+
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamError, StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        success_result = self._make_result_message()
+        attempt_count = [0]
+
+        error_result = ResultMessage(
+            subtype="error",
+            result="Prompt is too long",
+            duration_ms=100,
+            duration_api_ms=0,
+            is_error=True,
+            num_turns=0,
+            session_id="test-session-id",
+        )
+
+        def _client_factory(*args, **kwargs):
+            attempt_count[0] += 1
+            if attempt_count[0] == 1:
+                # First attempt: CLI returns error ResultMessage
+                return self._make_client_mock(result_message=error_result)
+            # Second attempt (after compaction): succeeds
+            return self._make_client_mock(result_message=success_result)
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        compacted_transcript = _build_transcript(
+            [("user", "[summary]"), ("assistant", "summary reply")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=compacted_transcript,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert attempt_count[0] == 2, (
+            f"Expected 2 SDK attempts (CLI error ResultMessage "
+            f"should trigger compaction retry), got {attempt_count[0]}"
+        )
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert not errors, f"Unexpected StreamError: {errors}"
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_result_message_success_subtype_prompt_too_long_triggers_compaction(
+        self,
+    ):
+        """CLI returns ResultMessage(subtype="success") with result="Prompt is too long".
+
+        The SDK internally compacts but the transcript is still too long.  It
+        returns subtype="success" (process completed) with result="Prompt is
+        too long" (the actual rejection message).  The retry loop must detect
+        this as a context-length error and trigger compaction — the subtype
+        "success" must not fool it into treating this as a real response.
+        """
+        import contextlib
+
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamError, StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        success_result = self._make_result_message()
+        attempt_count = [0]
+
+        error_result = ResultMessage(
+            subtype="success",
+            result="Prompt is too long",
+            duration_ms=100,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
+            session_id="test-session-id",
+        )
+
+        def _client_factory(*args, **kwargs):
+            attempt_count[0] += 1
+
+            async def _receive_error():
+                yield error_result
+
+            async def _receive_success():
+                yield success_result
+
+            client = MagicMock()
+            client._transport = MagicMock()
+            client._transport.write = AsyncMock()
+            client.query = AsyncMock()
+            if attempt_count[0] == 1:
+                client.receive_response = _receive_error
+            else:
+                client.receive_response = _receive_success
+            cm = AsyncMock()
+            cm.__aenter__.return_value = client
+            cm.__aexit__.return_value = None
+            return cm
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        compacted_transcript = _build_transcript(
+            [("user", "[summary]"), ("assistant", "summary reply")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=compacted_transcript,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert attempt_count[0] == 2, (
+            f"Expected 2 SDK attempts (subtype='success' with 'Prompt is too long' "
+            f"result should trigger compaction retry), got {attempt_count[0]}"
+        )
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert not errors, f"Unexpected StreamError: {errors}"
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_assistant_message_error_content_prompt_too_long_triggers_compaction(
+        self,
+    ):
+        """AssistantMessage.error="invalid_request" with content "Prompt is too long".
+
+        The SDK returns error type "invalid_request" but puts the actual
+        rejection message ("Prompt is too long") in the content blocks.
+        The retry loop must detect this via content inspection (sdk_error
+        being set confirms it's an error message, not user content).
+        """
+        import contextlib
+
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from backend.copilot.response_model import StreamError, StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        success_result = self._make_result_message()
+        attempt_count = [0]
+
+        def _client_factory(*args, **kwargs):
+            attempt_count[0] += 1
+
+            async def _receive_error():
+                # SDK returns invalid_request with "Prompt is too long" in content.
+                # ResultMessage.result is a non-PTL value ("done") to isolate
+                # the AssistantMessage content detection path exclusively.
+                yield AssistantMessage(
+                    content=[TextBlock(text="Prompt is too long")],
+                    model="<synthetic>",
+                    error="invalid_request",
+                )
+                yield ResultMessage(
+                    subtype="success",
+                    result="done",
+                    duration_ms=100,
+                    duration_api_ms=0,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="test-session-id",
+                )
+
+            async def _receive_success():
+                yield success_result
+
+            client = MagicMock()
+            client._transport = MagicMock()
+            client._transport.write = AsyncMock()
+            client.query = AsyncMock()
+            if attempt_count[0] == 1:
+                client.receive_response = _receive_error
+            else:
+                client.receive_response = _receive_success
+            cm = AsyncMock()
+            cm.__aenter__.return_value = client
+            cm.__aexit__.return_value = None
+            return cm
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        compacted_transcript = _build_transcript(
+            [("user", "[summary]"), ("assistant", "summary reply")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=compacted_transcript,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        assert attempt_count[0] == 2, (
+            f"Expected 2 SDK attempts (AssistantMessage error content 'Prompt is "
+            f"too long' should trigger compaction retry), got {attempt_count[0]}"
+        )
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert not errors, f"Unexpected StreamError: {errors}"
         assert any(isinstance(e, StreamStart) for e in events)
