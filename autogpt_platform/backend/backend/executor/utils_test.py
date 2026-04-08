@@ -474,6 +474,109 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
 
 
 # ============================================================================
+# Regression test: RPC layer returns typed User model, not raw dict
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_via_rpc_returns_typed_user(
+    mocker: MockerFixture,
+):
+    """
+    Regression test: when prisma is NOT connected (executor/scheduler process),
+    udb is the DatabaseManagerAsyncClient whose get_user_by_id goes through the
+    RPC layer (_get_return in service.py). _get_return must deserialize the JSON
+    dict into a typed User model — not silently return a raw dict. Without the
+    fix, _get_return's silent fallback returned a raw dict and accessing
+    user.timezone raised AttributeError: 'dict' object has no attribute 'timezone'.
+    """
+    from datetime import datetime, timezone
+
+    from backend.data.execution import GraphExecutionWithNodes
+    from backend.data.model import User
+    from backend.executor.utils import add_graph_execution
+
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "exec-id-rpc"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mock_queue = mocker.AsyncMock()
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_validate.return_value = (mock_graph, [], {}, set())
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = False  # ← executor/scheduler path
+
+    # The RPC layer (_get_return) deserializes JSON dicts into typed Pydantic models.
+    # The mock simulates what add_graph_execution receives after that deserialization:
+    # a proper User model, not a raw dict.
+    mock_user = User(
+        id=user_id,
+        email="test@example.com",
+        name=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        stripe_customer_id=None,
+        top_up_config=None,
+        timezone="UTC",
+    )
+
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_db_client.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+    )
+    mock_db_client.create_graph_execution = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "ws-id"
+    mock_db_client.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mock_workspace
+    )
+    mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue", return_value=mock_queue
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mock_event_bus,
+    )
+
+    # Must not raise AttributeError: 'dict' object has no attribute 'timezone'
+    result = await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+    )
+    assert result == mock_graph_exec
+
+
+# ============================================================================
 # Tests for Optional Credentials Feature
 # ============================================================================
 
