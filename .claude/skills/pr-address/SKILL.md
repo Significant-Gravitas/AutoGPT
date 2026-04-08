@@ -87,6 +87,10 @@ while true; do
   [ "$HAS_NEXT" = "false" ] && break
 done
 
+# Reverse so newest threads (last pages) are addressed first — GitHub returns oldest-first
+# and the most recent review cycle's comments are the ones blocking approval.
+ALL_THREADS=$(echo "$ALL_THREADS" | jq 'reverse')
+
 echo "Total unresolved threads: $(echo "$ALL_THREADS" | jq 'length')"
 echo "$ALL_THREADS" | jq '[.[] | {id, path, line, body: .comments.nodes[0].body[:200]}]'
 ```
@@ -94,6 +98,8 @@ echo "$ALL_THREADS" | jq '[.[] | {id, path, line, body: .comments.nodes[0].body[
 **Step 3 — Address every thread in `ALL_THREADS`, then resolve.**
 
 Only after this loop completes (all pages fetched, count confirmed) should you begin making fixes.
+
+> **Why reverse?** GraphQL returns threads oldest-first and exposes no `orderBy` option. A PR with 373 threads has ~4 pages; threads from the latest review cycle land on the last pages. Processing in reverse ensures the newest, most blocking comments are addressed first — the earlier pages mostly contain outdated threads from prior cycles.
 
 **Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
 
