@@ -27,9 +27,11 @@ chmod +x "$STABLE_SCRIPTS_DIR"/*.sh
 SCRIPTS_DIR="$STABLE_SCRIPTS_DIR"
 
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
-POLL_INTERVAL="${POLL_INTERVAL:-30}"   # base interval: 30 seconds
-POLL_IDLE_MAX=300                       # back off up to 5 minutes when nothing is happening
-POLL_CURRENT=$POLL_INTERVAL             # adaptive: starts at base, increases when idle
+# Adaptive polling: starts at base interval, backs off up to POLL_IDLE_MAX when
+# no agents need attention, resets on any activity or waiting_approval state.
+POLL_INTERVAL="${POLL_INTERVAL:-30}"
+POLL_IDLE_MAX=300
+POLL_CURRENT=$POLL_INTERVAL
 
 # ---------------------------------------------------------------------------
 # update_state WINDOW FIELD VALUE

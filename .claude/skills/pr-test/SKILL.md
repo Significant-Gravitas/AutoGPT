@@ -326,7 +326,10 @@ ONBOARDING_STATUS=$(curl -s \
   "http://localhost:8006/api/onboarding/completed" \
   -H "Authorization: Bearer $TOKEN" | jq -r '.is_completed')
 echo "Onboarding completed: $ONBOARDING_STATUS"
-[ "$ONBOARDING_STATUS" = "true" ] || echo "WARNING: onboarding bypass may have failed — browser tests may hit the onboarding flow"
+if [ "$ONBOARDING_STATUS" != "true" ]; then
+  echo "ERROR: onboarding bypass failed — browser tests will hit /onboarding instead of the target feature. Investigate before proceeding."
+  exit 1
+fi
 ```
 
 ## Step 4: Run tests
