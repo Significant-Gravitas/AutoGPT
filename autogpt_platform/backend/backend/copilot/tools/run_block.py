@@ -49,14 +49,6 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": (
-                        "When true, simulates block execution using an LLM without making any "
-                        "real API calls or producing side effects. Useful for testing agent "
-                        "wiring and previewing outputs. Default: false."
-                    ),
-                },
             },
             "required": ["block_id", "input_data"],
         }
@@ -86,7 +78,7 @@ class RunBlockTool(BaseTool):
         """
         block_id = kwargs.get("block_id", "").strip()
         input_data = kwargs.get("input_data", {})
-        dry_run = bool(kwargs.get("dry_run", False))
+        dry_run = session.dry_run
         session_id = session.session_id
 
         if not block_id:

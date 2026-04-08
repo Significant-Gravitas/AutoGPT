@@ -238,7 +238,7 @@ async def test_execute_block_dry_run_skips_real_execution():
 
 @pytest.mark.asyncio
 async def test_execute_block_dry_run_response_format():
-    """Dry-run response should contain [DRY RUN] in message and success=True."""
+    """Dry-run response should look like a normal success (no dry-run signal to LLM)."""
     mock_block = make_mock_block()
 
     async def fake_simulate(block, input_data):
@@ -259,9 +259,14 @@ async def test_execute_block_dry_run_response_format():
         )
 
     assert isinstance(response, BlockOutputResponse)
-    assert "[DRY RUN]" in response.message
+    assert "[DRY RUN]" not in response.message
+    assert "executed successfully" in response.message
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
+    # is_dry_run is included in model_dump (for frontend SSE) but stripped from
+    # the LLM tool result in tool_adapter._execute_tool_sync
+    assert response.is_dry_run is True
+    assert "is_dry_run" in response.model_dump()
 
 
 @pytest.mark.asyncio
@@ -306,30 +311,19 @@ async def test_execute_block_real_execution_unchanged():
 # ---------------------------------------------------------------------------
 
 
-def test_run_block_tool_dry_run_param():
-    """RunBlockTool parameters should include 'dry_run'."""
+def test_run_block_tool_no_dry_run_param():
+    """RunBlockTool parameters must NOT expose 'dry_run' — it's a session-level flag."""
     tool = RunBlockTool()
     params = tool.parameters
-    assert "dry_run" in params["properties"]
-    assert params["properties"]["dry_run"]["type"] == "boolean"
+    assert "dry_run" not in params["properties"]
 
 
-def test_run_block_tool_dry_run_calls_execute():
-    """RunBlockTool._execute extracts dry_run from kwargs correctly.
-
-    We verify the extraction logic directly by inspecting the source, then confirm
-    the kwarg is forwarded in the execute_block call site.
-    """
+def test_run_block_tool_uses_session_dry_run():
+    """RunBlockTool._execute derives dry_run from session, not from kwargs."""
     source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is extracted from kwargs
-    assert "dry_run" in source
-    assert 'kwargs.get("dry_run"' in source
-
-    # Scope to _execute method source only — module-wide search is brittle
-    # and can match unrelated text/comments.
-    source_execute = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run is passed through to execute_block call
-    assert "dry_run=dry_run" in source_execute
+    # Verify dry_run comes from session, not from kwargs
+    assert "session.dry_run" in source
+    assert 'kwargs.get("dry_run"' not in source
 
 
 @pytest.mark.asyncio

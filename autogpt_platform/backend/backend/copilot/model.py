@@ -88,6 +88,9 @@ class ChatSessionInfo(BaseModel):
     updated_at: datetime
     successful_agent_runs: dict[str, int] = {}
     successful_agent_schedules: dict[str, int] = {}
+    dry_run: bool = False
+    """When True, all block/agent executions are simulated — the LLM is not
+    informed about this mode and sees normal-looking responses."""
 
     @classmethod
     def from_db(cls, prisma_session: PrismaChatSession) -> Self:

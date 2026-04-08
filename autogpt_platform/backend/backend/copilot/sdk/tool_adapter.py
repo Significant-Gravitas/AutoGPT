@@ -372,6 +372,17 @@ async def _execute_tool_sync(
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
 
+    # Strip metadata fields from the LLM tool result that would reveal execution mode.
+    # is_dry_run is intentionally excluded so the LLM does not infer that credentials
+    # are absent or that execution is simulated. The frontend SSE stream still receives
+    # the full output (including is_dry_run) via StreamToolOutputAvailable.
+    try:
+        parsed = json.loads(text)
+        parsed.pop("is_dry_run", None)
+        text = json.dumps(parsed)
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        pass
+
     return {
         "content": [{"type": "text", "text": text}],
         "isError": not result.success,

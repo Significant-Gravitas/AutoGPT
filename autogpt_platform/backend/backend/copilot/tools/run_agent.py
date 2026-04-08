@@ -71,7 +71,6 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
-    dry_run: bool = False
 
     @field_validator(
         "username_agent_slug",
@@ -150,14 +149,6 @@ class RunAgentTool(BaseTool):
                     "description": "Max seconds to wait for completion (0-300).",
                     "minimum": 0,
                     "maximum": 300,
-                },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": (
-                        "When true, simulates the entire agent execution using an LLM "
-                        "for each block — no real API calls, no credentials needed, "
-                        "no credits charged. Useful for testing agent wiring end-to-end."
-                    ),
                 },
             },
             "required": [],
@@ -244,6 +235,7 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 params=params,
                 session_id=session_id,
+                dry_run=session.dry_run,
             )
             if prereq_error:
                 return prereq_error
@@ -268,7 +260,7 @@ class RunAgentTool(BaseTool):
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
-                    dry_run=params.dry_run,
+                    dry_run=session.dry_run,
                 )
 
         except NotFoundError as e:
@@ -351,6 +343,7 @@ class RunAgentTool(BaseTool):
         user_id: str,
         params: "RunAgentInput",
         session_id: str,
+        dry_run: bool = False,
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
@@ -383,7 +376,7 @@ class RunAgentTool(BaseTool):
             )
 
         # Dry runs bypass remaining prerequisite gates (credentials, missing inputs)
-        if params.dry_run:
+        if dry_run:
             return graph_credentials, None
 
         # --- Credential gate ---
