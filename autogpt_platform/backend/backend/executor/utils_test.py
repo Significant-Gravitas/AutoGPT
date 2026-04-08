@@ -515,7 +515,9 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mock_validate.return_value = (mock_graph, [], {}, set())
 
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
-    mock_prisma.is_connected.return_value = False  # ← executor/scheduler path
+    mock_prisma.is_connected.return_value = (
+        False  # prisma not connected: uses RPC path instead
+    )
 
     # The RPC layer (_get_return) deserializes JSON dicts into typed Pydantic models.
     # The mock simulates what add_graph_execution receives after that deserialization:

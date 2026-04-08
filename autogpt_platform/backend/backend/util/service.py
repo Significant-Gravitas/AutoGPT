@@ -9,8 +9,6 @@ import sys
 import threading
 import time
 from abc import ABC, abstractmethod
-
-import sentry_sdk
 from contextlib import asynccontextmanager
 from functools import update_wrapper
 from typing import (
@@ -28,6 +26,7 @@ from typing import (
 )
 
 import httpx
+import sentry_sdk
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
