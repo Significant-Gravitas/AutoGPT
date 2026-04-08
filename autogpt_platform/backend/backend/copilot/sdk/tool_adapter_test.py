@@ -1,6 +1,7 @@
 """Tests for tool_adapter: truncation, stash, context vars, readOnlyHint annotations."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,7 +13,9 @@ from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
+    _STRIP_FROM_LLM,
     SDK_DISALLOWED_TOOLS,
+    _strip_llm_fields,
     _text_from_mcp_result,
     create_tool_handler,
     pop_pending_tool_output,
@@ -419,10 +422,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert len(call_log) == 1, (
-            f"Expected 1 execution but got {len(call_log)} — "
-            f"duplicate execution bug!"
-        )
+        assert (
+            len(call_log) == 1
+        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -711,3 +713,104 @@ class TestReadFileHandlerBridge:
         assert result["isError"] is False
         assert len(bridge_calls) == 0
         assert "Sandbox copy" not in result["content"][0]["text"]
+
+
+# ---------------------------------------------------------------------------
+# _STRIP_FROM_LLM / _strip_llm_fields — dry-run field stripping
+# ---------------------------------------------------------------------------
+
+
+class TestStripLlmFields:
+    """Regression tests for _strip_llm_fields — the guard that hides dry_run
+    execution mode from the LLM.
+
+    Strip-after-stash ordering is the core correctness guarantee: the frontend
+    SSE stream receives the full payload (including is_dry_run) while the LLM
+    sees a clean response without it.
+    """
+
+    def test_strip_from_llm_contains_is_dry_run(self):
+        """_STRIP_FROM_LLM must include is_dry_run so the guard is active."""
+        assert "is_dry_run" in _STRIP_FROM_LLM
+
+    def test_is_dry_run_removed_from_json_text_block(self):
+        """is_dry_run is stripped from a JSON text block before LLM sees it."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"message": "ok", "is_dry_run": true, "outputs": {}}',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" not in parsed
+        assert parsed["message"] == "ok"
+        assert parsed["outputs"] == {}
+
+    def test_other_fields_preserved_after_strip(self):
+        """Stripping is_dry_run does not affect unrelated fields."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"success": true, "is_dry_run": true, "block_id": "b1"}',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert parsed["success"] is True
+        assert parsed["block_id"] == "b1"
+        assert "is_dry_run" not in parsed
+
+    def test_error_result_not_modified(self):
+        """Error results pass through unchanged — stripping only applies on success."""
+        result = {
+            "content": [
+                {"type": "text", "text": '{"is_dry_run": true, "error": "boom"}'}
+            ],
+            "isError": True,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" in parsed
+
+    def test_non_json_text_block_unchanged(self):
+        """Plain-text blocks that are not valid JSON are left as-is."""
+        result = {
+            "content": [{"type": "text", "text": "plain text, not JSON"}],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        assert stripped["content"][0]["text"] == "plain text, not JSON"
+
+    def test_strip_after_stash_ordering(self):
+        """Stash receives full payload (with is_dry_run); LLM result does not."""
+        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+
+        full_text = '{"message": "ok", "is_dry_run": true}'
+        result = {
+            "content": [{"type": "text", "text": full_text}],
+            "isError": False,
+        }
+
+        # Simulate the stash-before-strip ordering in _truncating:
+        # 1. Stash the FULL output (before any stripping)
+        text = _text_from_mcp_result(result)
+        stash_pending_tool_output("tool_x", text)
+
+        # 2. Strip for the LLM
+        llm_result = _strip_llm_fields(result)
+
+        # Stash (frontend) still has is_dry_run
+        stashed = pop_pending_tool_output("tool_x")
+        assert stashed is not None
+        assert "is_dry_run" in json.loads(stashed)
+
+        # LLM result does NOT have is_dry_run
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" not in llm_parsed

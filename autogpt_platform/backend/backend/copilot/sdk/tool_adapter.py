@@ -455,6 +455,33 @@ def _text_from_mcp_result(result: dict[str, Any]) -> str:
 _PARALLEL_ANNOTATION = ToolAnnotations(readOnlyHint=True)
 
 
+def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
+    """Strip fields in *_STRIP_FROM_LLM* from every JSON text block in *result*.
+
+    Called by *_truncating* AFTER the output has been stashed for the frontend
+    SSE stream, so StreamToolOutputAvailable still receives the full payload
+    (including ``is_dry_run``).  The returned dict is what the LLM sees.
+
+    Non-JSON blocks and error results are returned unchanged.
+    """
+    if result.get("isError"):
+        return result
+    content = result.get("content", [])
+    new_content = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            raw = block.get("text", "")
+            try:
+                parsed = json.loads(raw)
+                for field in _STRIP_FROM_LLM:
+                    parsed.pop(field, None)
+                block = {**block, "text": json.dumps(parsed)}
+            except (json.JSONDecodeError, AttributeError, TypeError):
+                pass
+        new_content.append(block)
+    return {**result, "content": new_content}
+
+
 def create_copilot_mcp_server(*, use_e2b: bool = False):
     """Create an in-process MCP server configuration for CoPilot tools.
 
@@ -549,21 +576,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 
             # Strip metadata fields that would reveal execution mode to the LLM.
             # This must happen AFTER stashing so the frontend still receives them.
-            if not truncated.get("isError") and _STRIP_FROM_LLM:
-                content = truncated.get("content", [])
-                new_content = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        raw = block.get("text", "")
-                        try:
-                            parsed = json.loads(raw)
-                            for field in _STRIP_FROM_LLM:
-                                parsed.pop(field, None)
-                            block = {**block, "text": json.dumps(parsed)}
-                        except (json.JSONDecodeError, AttributeError, TypeError):
-                            pass
-                    new_content.append(block)
-                truncated = {**truncated, "content": new_content}
+            truncated = _strip_llm_fields(truncated)
 
             return truncated
 
