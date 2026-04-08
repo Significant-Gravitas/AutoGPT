@@ -8,6 +8,7 @@ import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { SelectableCard } from "../components/SelectableCard";
 import { useOnboardingWizardStore } from "../store";
 import { Emoji } from "@/components/atoms/Emoji/Emoji";
+import { useEffect, useRef } from "react";
 
 const IMG_SIZE = 42;
 
@@ -57,12 +58,26 @@ export function RoleStep() {
   const setRole = useOnboardingWizardStore((s) => s.setRole);
   const setOtherRole = useOnboardingWizardStore((s) => s.setOtherRole);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
+  const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOther = role === "Other";
-  const canContinue = role && (!isOther || otherRole.trim());
 
-  function handleContinue() {
-    if (canContinue) {
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+    };
+  }, []);
+
+  function handleRoleSelect(id: string) {
+    if (autoAdvanceTimer.current) clearTimeout(autoAdvanceTimer.current);
+    setRole(id);
+    if (id !== "Other") {
+      autoAdvanceTimer.current = setTimeout(nextStep, 350);
+    }
+  }
+
+  function handleOtherContinue() {
+    if (otherRole.trim()) {
       nextStep();
     }
   }
@@ -78,7 +93,7 @@ export function RoleStep() {
             What best describes you, {name}?
           </Text>
           <Text variant="lead" className="!text-zinc-500">
-            Autopilot will tailor automations to your world
+            So AutoPilot knows how to help you best
           </Text>
         </div>
 
@@ -89,33 +104,35 @@ export function RoleStep() {
               icon={r.icon}
               label={r.label}
               selected={role === r.id}
-              onClick={() => setRole(r.id)}
+              onClick={() => handleRoleSelect(r.id)}
               className="p-8"
             />
           ))}
         </div>
 
         {isOther && (
-          <div className="-mb-5 w-full px-8 md:px-0">
-            <Input
-              id="other-role"
-              label="Other role"
-              hideLabel
-              placeholder="Describe your role..."
-              value={otherRole}
-              onChange={(e) => setOtherRole(e.target.value)}
-              autoFocus
-            />
-          </div>
-        )}
+          <>
+            <div className="-mb-5 w-full px-8 md:px-0">
+              <Input
+                id="other-role"
+                label="Other role"
+                hideLabel
+                placeholder="Describe your role..."
+                value={otherRole}
+                onChange={(e) => setOtherRole(e.target.value)}
+                autoFocus
+              />
+            </div>
 
-        <Button
-          onClick={handleContinue}
-          disabled={!canContinue}
-          className="w-full max-w-xs"
-        >
-          Continue
-        </Button>
+            <Button
+              onClick={handleOtherContinue}
+              disabled={!otherRole.trim()}
+              className="w-full max-w-xs"
+            >
+              Continue
+            </Button>
+          </>
+        )}
       </div>
     </FadeIn>
   );

@@ -4,7 +4,7 @@ These tests cover ``_baseline_conversation_updater`` and ``_BaselineStreamState`
 without requiring API keys, database connections, or network access.
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from openai.types.chat import ChatCompletionToolParam
@@ -631,3 +631,200 @@ class TestPrepareBaselineAttachments:
 
         assert hint == ""
         assert blocks == []
+
+
+class TestBaselineCostExtraction:
+    """Tests for x-total-cost header extraction in _baseline_llm_caller."""
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_extracted_from_response_header(self):
+        """state.cost_usd is set from x-total-cost header when present."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+
+        # Build a mock raw httpx response with the cost header
+        mock_raw_response = MagicMock()
+        mock_raw_response.headers = {"x-total-cost": "0.0123"}
+
+        # Build a mock async streaming response that yields no chunks but has
+        # a _response attribute pointing to the mock httpx response
+        mock_stream_response = MagicMock()
+        mock_stream_response._response = mock_raw_response
+
+        async def empty_aiter():
+            return
+            yield  # make it an async generator
+
+        mock_stream_response.__aiter__ = lambda self: empty_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=mock_stream_response
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd == pytest.approx(0.0123)
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_accumulates_across_calls(self):
+        """cost_usd accumulates when _baseline_llm_caller is called multiple times."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+
+        def make_stream_mock(cost: str) -> MagicMock:
+            mock_raw = MagicMock()
+            mock_raw.headers = {"x-total-cost": cost}
+            mock_stream = MagicMock()
+            mock_stream._response = mock_raw
+
+            async def empty_aiter():
+                return
+                yield
+
+            mock_stream.__aiter__ = lambda self: empty_aiter()
+            return mock_stream
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[make_stream_mock("0.01"), make_stream_mock("0.02")]
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "first"}],
+                tools=[],
+                state=state,
+            )
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "second"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd == pytest.approx(0.03)
+
+    @pytest.mark.asyncio
+    async def test_no_cost_when_header_absent(self):
+        """state.cost_usd remains None when response has no x-total-cost header."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+
+        mock_raw = MagicMock()
+        mock_raw.headers = {}
+        mock_stream = MagicMock()
+        mock_stream._response = mock_raw
+
+        async def empty_aiter():
+            return
+            yield
+
+        mock_stream.__aiter__ = lambda self: empty_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_cost_extracted_even_when_stream_raises(self):
+        """cost_usd is captured in the finally block even when streaming fails."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+
+        mock_raw = MagicMock()
+        mock_raw.headers = {"x-total-cost": "0.005"}
+        mock_stream = MagicMock()
+        mock_stream._response = mock_raw
+
+        async def failing_aiter():
+            raise RuntimeError("stream error")
+            yield  # make it an async generator
+
+        mock_stream.__aiter__ = lambda self: failing_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_openai_client",
+                return_value=mock_client,
+            ),
+            pytest.raises(RuntimeError, match="stream error"),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd == pytest.approx(0.005)
+
+    @pytest.mark.asyncio
+    async def test_no_cost_when_api_call_raises_before_stream(self):
+        """finally block is safe when response is None (API call failed before yielding)."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=RuntimeError("connection refused")
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_openai_client",
+                return_value=mock_client,
+            ),
+            pytest.raises(RuntimeError, match="connection refused"),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        # response was never assigned so cost extraction must not raise
+        assert state.cost_usd is None

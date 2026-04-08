@@ -15,7 +15,7 @@ export function useChatSession() {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
 
-  const sessionQuery = useGetV2GetSession(sessionId ?? "", {
+  const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
     query: {
       enabled: !!sessionId,
       staleTime: Infinity, // Manual invalidation on session switch
@@ -56,6 +56,17 @@ export function useChatSession() {
     if (sessionQuery.data?.status !== 200) return false;
     return !!sessionQuery.data.data.active_stream;
   }, [sessionQuery.data, sessionQuery.isFetching, sessionId]);
+
+  // Pagination metadata from the initial page load
+  const hasMoreMessages = useMemo(() => {
+    if (sessionQuery.data?.status !== 200) return false;
+    return !!sessionQuery.data.data.has_more_messages;
+  }, [sessionQuery.data]);
+
+  const oldestSequence = useMemo(() => {
+    if (sessionQuery.data?.status !== 200) return null;
+    return sessionQuery.data.data.oldest_sequence ?? null;
+  }, [sessionQuery.data]);
 
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
@@ -127,12 +138,22 @@ export function useChatSession() {
     }
   }
 
+  // Raw messages from the initial page — exposed for cross-page
+  // tool output matching by useLoadMoreMessages.
+  const rawSessionMessages =
+    sessionQuery.data?.status === 200
+      ? ((sessionQuery.data.data.messages ?? []) as unknown[])
+      : [];
+
   return {
     sessionId,
     setSessionId,
     hydratedMessages,
+    rawSessionMessages,
     historicalDurations,
     hasActiveStream,
+    hasMoreMessages,
+    oldestSequence,
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
     createSession,
