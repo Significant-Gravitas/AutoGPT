@@ -8,7 +8,11 @@ import pytest
 
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
-from backend.executor.cost_tracking import log_system_credential_cost, resolve_tracking
+from backend.executor.cost_tracking import (
+    drain_pending_cost_logs,
+    log_system_credential_cost,
+    resolve_tracking,
+)
 
 # ---------------------------------------------------------------------------
 # resolve_tracking
@@ -565,3 +569,41 @@ class TestManagerCostTrackingIntegration:
             await log_system_credential_cost(node_exec, block, stats, db_client)
 
         db_client.log_platform_cost.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# drain_pending_cost_logs
+# ---------------------------------------------------------------------------
+
+
+class TestDrainPendingCostLogs:
+    @pytest.mark.asyncio
+    async def test_drain_empty_set_completes(self):
+        """drain_pending_cost_logs should succeed silently with no pending tasks."""
+        # Ensure both pending task sets are empty before calling drain
+        import backend.copilot.token_tracking as tt
+        import backend.executor.cost_tracking as ct
+
+        ct._pending_log_tasks.clear()
+        tt._pending_log_tasks.clear()
+        # Should not raise
+        await drain_pending_cost_logs(timeout=1.0)
+
+    @pytest.mark.asyncio
+    async def test_drain_awaits_in_flight_tasks(self):
+        """drain_pending_cost_logs waits for tasks on the current loop."""
+        import backend.executor.cost_tracking as ct
+
+        finished = []
+
+        async def _slow():
+            await asyncio.sleep(0)
+            finished.append(1)
+
+        task = asyncio.ensure_future(_slow())
+        with ct._pending_log_tasks_lock:
+            ct._pending_log_tasks.add(task)
+        task.add_done_callback(lambda t: ct._pending_log_tasks.discard(t))
+
+        await drain_pending_cost_logs(timeout=2.0)
+        assert finished == [1], "drain_pending_cost_logs should have awaited the task"

@@ -537,3 +537,33 @@ class TestPlatformCostLogging:
         assert entry.cost_microdollars == 5000
         assert entry.input_tokens == 0
         assert entry.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_negative_cost_usd_falls_back_to_tokens(self):
+        """Negative cost_usd must be rejected — val >= 0 guard in persist_and_record_usage."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-negative",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cost_usd=-0.01,
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        # Negative cost rejected — falls back to token-based tracking
+        assert entry.cost_microdollars is None
+        assert entry.metadata["tracking_type"] == "tokens"
