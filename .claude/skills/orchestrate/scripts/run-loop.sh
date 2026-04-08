@@ -27,7 +27,9 @@ chmod +x "$STABLE_SCRIPTS_DIR"/*.sh
 SCRIPTS_DIR="$STABLE_SCRIPTS_DIR"
 
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
-POLL_INTERVAL="${POLL_INTERVAL:-30}"
+POLL_INTERVAL="${POLL_INTERVAL:-30}"   # base interval: 30 seconds
+POLL_IDLE_MAX=300                       # back off up to 5 minutes when nothing is happening
+POLL_CURRENT=$POLL_INTERVAL             # adaptive: starts at base, increases when idle
 
 # ---------------------------------------------------------------------------
 # update_state WINDOW FIELD VALUE
@@ -130,7 +132,7 @@ handle_approve() {
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
-echo "[$(date +%H:%M:%S)] run-loop started (mechanical only, poll every ${POLL_INTERVAL}s)"
+echo "[$(date +%H:%M:%S)] run-loop started (mechanical only, poll ${POLL_INTERVAL}s→${POLL_IDLE_MAX}s adaptive)"
 echo "[$(date +%H:%M:%S)] Supervisor: orchestrating Claude session (not a separate window)"
 echo "---"
 
@@ -159,6 +161,15 @@ while true; do
   RUNNING=$(jq '[.agents[] | select(.state | test("running|stuck|waiting_approval|idle"))] | length' \
     "$STATE_FILE" 2>/dev/null || echo 0)
 
-  echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled"
-  sleep "$POLL_INTERVAL"
+  echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled  (next in ${POLL_CURRENT}s)"
+
+  # Adaptive backoff: reset to base on activity, back off toward max when idle
+  if (( KICKED > 0 || DONE > 0 )); then
+    POLL_CURRENT=$POLL_INTERVAL
+  else
+    POLL_CURRENT=$(( POLL_CURRENT * 3 / 2 ))
+    (( POLL_CURRENT > POLL_IDLE_MAX )) && POLL_CURRENT=$POLL_IDLE_MAX
+  fi
+
+  sleep "$POLL_CURRENT"
 done
