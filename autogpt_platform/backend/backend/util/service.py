@@ -9,6 +9,8 @@ import sys
 import threading
 import time
 from abc import ABC, abstractmethod
+
+import sentry_sdk
 from contextlib import asynccontextmanager
 from functools import update_wrapper
 from typing import (
@@ -711,7 +713,16 @@ def get_service_client(
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
             """Validate and coerce the RPC result to the expected return type."""
             if expected_return:
-                return expected_return.validate_python(result)
+                try:
+                    return expected_return.validate_python(result)
+                except Exception as e:
+                    logger.warning(
+                        "RPC return type validation failed for %s: %s",
+                        type(e).__name__,
+                        str(e),
+                    )
+                    sentry_sdk.capture_exception(e)
+                    return result
             return result
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
