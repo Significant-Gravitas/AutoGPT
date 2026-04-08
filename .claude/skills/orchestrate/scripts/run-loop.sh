@@ -88,10 +88,11 @@ wait_for_claude_idle() {
     cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
     pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
     pane_tail=$(echo "$pane" | tail -3)
-    # Check full pane (not just tail) — 'Enter to confirm' dialog can scroll above last 3 lines
+    # Check full pane (not just tail) — 'Enter to confirm' dialog can scroll above last 3 lines.
+    # Do NOT reset elapsed — resetting allows an infinite loop if the dialog never clears.
     if echo "$pane" | grep -q "Enter to confirm"; then
       tmux send-keys -t "$window" Down Enter
-      elapsed=0; sleep 2; continue
+      sleep 2; (( elapsed += 2 )); continue
     fi
     # Must be running under node (Claude is live)
     if [[ "$cmd" == "node" ]]; then
