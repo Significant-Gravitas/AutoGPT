@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 import { getCopilotAuthHeaders } from "../helpers";
 
 vi.mock("@/lib/supabase/actions", () => ({
@@ -45,7 +46,7 @@ describe("getCopilotAuthHeaders", () => {
 
     expect(headers).toEqual({
       Authorization: "Bearer test-jwt-token",
-      "X-Act-As-User-Id": "impersonated-user-123",
+      [IMPERSONATION_HEADER_NAME]: "impersonated-user-123",
     });
   });
 
