@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from prisma import Json
 
 from .platform_cost import (
     PlatformCostEntry,
@@ -122,9 +123,10 @@ class TestLogPlatformCost:
         mock_create.assert_awaited_once()
         data = mock_create.call_args[1]["data"]
         assert data["userId"] == "user-1"
-        assert data["blockId"] == "block-1"
         assert data["blockName"] == "TestBlock"
-        assert data["metadata"] == {"key": "val"}
+        assert data["provider"] == "openai"
+        # metadata must be wrapped in SafeJson (a prisma.Json subclass), not a plain dict
+        assert isinstance(data["metadata"], Json)
 
     @pytest.mark.asyncio
     async def test_metadata_none_passes_none(self):
