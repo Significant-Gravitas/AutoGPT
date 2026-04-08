@@ -316,13 +316,13 @@ The frontend redirects to `/onboarding` when the `VISIT_COPILOT` step is not in 
 Mark it complete via the backend API so every browser test lands on the real feature UI:
 
 ```bash
-ONBOARDING_RESULT=$(curl -s -X POST \
+ONBOARDING_RESULT=$(curl -s --max-time 30 -X POST \
   "http://localhost:8006/api/onboarding/step?step=VISIT_COPILOT" \
   -H "Authorization: Bearer $TOKEN")
 echo "Onboarding bypass: $ONBOARDING_RESULT"
 
 # Verify it took effect
-ONBOARDING_STATUS=$(curl -s \
+ONBOARDING_STATUS=$(curl -s --max-time 30 \
   "http://localhost:8006/api/onboarding/completed" \
   -H "Authorization: Bearer $TOKEN" | jq -r '.is_completed')
 echo "Onboarding completed: $ONBOARDING_STATUS"

@@ -170,7 +170,7 @@ while true; do
   if (( KICKED > 0 || DONE > 0 || WAITING > 0 )); then
     POLL_CURRENT=$POLL_INTERVAL
   else
-    POLL_CURRENT=$(( POLL_CURRENT * 3 / 2 ))
+    POLL_CURRENT=$(( POLL_CURRENT + POLL_CURRENT / 2 + 1 ))
     (( POLL_CURRENT > POLL_IDLE_MAX )) && POLL_CURRENT=$POLL_IDLE_MAX
   fi
 
