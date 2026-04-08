@@ -145,6 +145,20 @@ class TestResolveTracking:
         assert tt == "per_run"
         assert amt == 1.0
 
+    def test_negative_provider_cost_clamped_to_zero(self):
+        """Negative provider_cost values must be clamped to 0."""
+        stats = self._stats(provider_cost=-0.005)
+        tt, amt = resolve_tracking("openrouter", stats, {})
+        assert tt == "cost_usd"
+        assert amt == 0.0
+
+    def test_negative_block_declared_cost_clamped_to_zero(self):
+        """Negative block-declared cost must also be clamped to 0."""
+        stats = self._stats(provider_cost=-1.0, provider_cost_type="items")
+        tt, amt = resolve_tracking("google_maps", stats, {})
+        assert tt == "items"
+        assert amt == 0.0
+
     def test_provider_cost_takes_precedence_over_tokens(self):
         stats = self._stats(
             provider_cost=0.01, input_token_count=500, output_token_count=200

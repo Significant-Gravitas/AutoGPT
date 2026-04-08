@@ -156,11 +156,11 @@ def resolve_tracking(
     """
     # 1. Block explicitly declared its cost type (only when an amount is present)
     if stats.provider_cost_type and stats.provider_cost is not None:
-        return stats.provider_cost_type, stats.provider_cost
+        return stats.provider_cost_type, max(0.0, stats.provider_cost)
 
     # 2. Provider returned actual USD cost (OpenRouter, Exa)
     if stats.provider_cost is not None:
-        return "cost_usd", stats.provider_cost
+        return "cost_usd", max(0.0, stats.provider_cost)
 
     # 3. LLM providers: track by tokens
     if stats.input_token_count or stats.output_token_count:
