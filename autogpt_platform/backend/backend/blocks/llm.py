@@ -1,6 +1,7 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
 import logging
+import math
 import re
 import secrets
 from abc import ABC
@@ -794,7 +795,10 @@ def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
         cost_header = raw_resp.headers.get("x-total-cost")
         if not cost_header:
             return None
-        return float(cost_header)
+        cost = float(cost_header)
+        if not math.isfinite(cost):
+            return None
+        return cost
     except (ValueError, TypeError, AttributeError):
         return None
 

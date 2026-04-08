@@ -1095,3 +1095,15 @@ class TestExtractOpenRouterCost:
         """Zero-cost is a valid value (free tier) and must not become None."""
         response = self._mk_response({"x-total-cost": "0"})
         assert llm.extract_openrouter_cost(response) == 0.0
+
+    def test_returns_none_for_inf(self):
+        response = self._mk_response({"x-total-cost": "inf"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_for_negative_inf(self):
+        response = self._mk_response({"x-total-cost": "-inf"})
+        assert llm.extract_openrouter_cost(response) is None
+
+    def test_returns_none_for_nan(self):
+        response = self._mk_response({"x-total-cost": "nan"})
+        assert llm.extract_openrouter_cost(response) is None
