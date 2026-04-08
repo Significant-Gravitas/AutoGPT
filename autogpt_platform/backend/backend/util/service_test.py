@@ -1,13 +1,16 @@
 import asyncio
 import contextlib
 import time
+from datetime import datetime, timezone
 from functools import cached_property
 from unittest.mock import Mock
 
 import httpx
 import pytest
 from prisma.errors import DataError, UniqueViolationError
+from pydantic import TypeAdapter, ValidationError
 
+from backend.data.model import User
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -688,3 +691,40 @@ async def test_health_check_during_shutdown(test_service):
     except (httpx.ConnectError, httpx.ConnectTimeout):
         # Connection refused/timeout is also acceptable
         pass
+
+
+# ============================================================================
+# Unit tests for DynamicClient._get_return
+# ============================================================================
+
+
+class TestGetReturn:
+    """Direct unit tests for DynamicClient._get_return typed-return contract."""
+
+    def _make_client(self):
+        return get_service_client(ServiceTestClient)
+
+    def test_valid_dict_is_deserialized_to_user_model(self):
+        """TypeAdapter(User) + valid dict → User model returned with .timezone accessible."""
+        now = datetime.now(timezone.utc).isoformat()
+        valid_dict = {
+            "id": "user-id",
+            "email": "test@example.com",
+            "created_at": now,
+            "updated_at": now,
+        }
+        client = self._make_client()
+        adapter = TypeAdapter(User)
+        result = client._get_return(adapter, valid_dict)  # type: ignore[attr-defined]
+
+        assert isinstance(result, User)
+        assert result.timezone is not None
+
+    def test_invalid_dict_raises_validation_error(self):
+        """TypeAdapter(User) + invalid dict (missing required fields) → ValidationError raised."""
+        invalid_dict = {"id": "user-id"}  # missing email, created_at, updated_at
+        client = self._make_client()
+        adapter = TypeAdapter(User)
+
+        with pytest.raises(ValidationError):
+            client._get_return(adapter, invalid_dict)  # type: ignore[attr-defined]

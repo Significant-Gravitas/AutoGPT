@@ -1,10 +1,13 @@
+from datetime import datetime, timezone
 from typing import cast
 
 import pytest
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.model import User
+from backend.executor.utils import add_graph_execution
 from backend.util.mock import MockObject
 
 
@@ -483,19 +486,12 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
     mocker: MockerFixture,
 ):
     """
-    Regression test: when prisma is NOT connected (executor/scheduler process),
-    udb is the DatabaseManagerAsyncClient whose get_user_by_id goes through the
-    RPC layer (_get_return in service.py). _get_return must deserialize the JSON
-    dict into a typed User model — not silently return a raw dict. Without the
-    fix, _get_return's silent fallback returned a raw dict and accessing
-    user.timezone raised AttributeError: 'dict' object has no attribute 'timezone'.
+    Regression test: `add_graph_execution` accesses `user.timezone` on the User
+    returned by `get_user_by_id`. This test verifies the downstream code path
+    completes without AttributeError when `get_user_by_id` returns a proper typed
+    User model. Note: the mock returns a User directly — _get_return deserialization
+    is not exercised here; see TestGetReturn in util/service_test.py for that.
     """
-    from datetime import datetime, timezone
-
-    from backend.data.execution import GraphExecutionWithNodes
-    from backend.data.model import User
-    from backend.executor.utils import add_graph_execution
-
     graph_id = "test-graph-id"
     user_id = "test-user-id"
 
