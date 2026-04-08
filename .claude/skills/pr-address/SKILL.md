@@ -29,30 +29,71 @@ gh pr view {N} --json body --jq '.body'
 
 ### 1. Inline review threads — GraphQL (primary source of actionable items)
 
-Use GraphQL to fetch inline threads. It natively exposes `isResolved`, returns threads already grouped with all replies, and paginates via cursor — no manual thread reconstruction needed.
+> ⚠️ **WARNING — PAGINATE ALL PAGES BEFORE ADDRESSING ANYTHING**
+>
+> `reviewThreads(first: 100)` returns at most 100 threads per page. A PR with many review cycles can have 140+ threads across 2+ pages. **If you start addressing threads after fetching only page 1, you will miss all threads on subsequent pages and silently leave them unresolved.**
+>
+> PR #12636 had 142 total threads: page 1 returned 69 unresolved, page 2 had 42 more (111 total unresolved). An agent that stopped after page 1 addressed only 69 and falsely reported "done".
+>
+> **The rule: collect ALL thread IDs from ALL pages into a single list, then address them.**
+
+**Step 1 — Fetch total count first:**
 
 ```bash
 gh api graphql -f query='
 {
   repository(owner: "Significant-Gravitas", name: "AutoGPT") {
     pullRequest(number: {N}) {
-      reviewThreads(first: 100) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          path
-          comments(last: 1) {
-            nodes { databaseId body author { login } createdAt }
+      reviewThreads { totalCount }
+    }
+  }
+}' | jq '.data.repository.pullRequest.reviewThreads.totalCount'
+```
+
+If `totalCount > 100`, you have multiple pages. Fetch them all before doing anything else.
+
+**Step 2 — Collect all unresolved thread IDs across all pages:**
+
+```bash
+# Accumulate all unresolved threads — loop until hasNextPage == false
+CURSOR=""
+ALL_THREADS="[]"
+while true; do
+  AFTER=${CURSOR:+", after: \"$CURSOR\""}
+  PAGE=$(gh api graphql -f query="
+  {
+    repository(owner: \"Significant-Gravitas\", name: \"AutoGPT\") {
+      pullRequest(number: {N}) {
+        reviewThreads(first: 100${AFTER}) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            id
+            isResolved
+            path
+            line
+            comments(last: 1) {
+              nodes { databaseId body author { login } }
+            }
           }
         }
       }
     }
-  }
-}'
+  }")
+  # Append unresolved nodes from this page
+  PAGE_THREADS=$(echo "$PAGE" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)]')
+  ALL_THREADS=$(echo "$ALL_THREADS $PAGE_THREADS" | jq -s 'add')
+  HAS_NEXT=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+  CURSOR=$(echo "$PAGE" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+  [ "$HAS_NEXT" = "false" ] && break
+done
+
+echo "Total unresolved threads: $(echo "$ALL_THREADS" | jq 'length')"
+echo "$ALL_THREADS" | jq '[.[] | {id, path, line, body: .comments.nodes[0].body[:200]}]'
 ```
 
-If `pageInfo.hasNextPage` is true, fetch subsequent pages by adding `after: "<endCursor>"` to `reviewThreads(first: 100, after: "...")` and repeat until `hasNextPage` is false.
+**Step 3 — Address every thread in `ALL_THREADS`, then resolve.**
+
+Only after this loop completes (all pages fetched, count confirmed) should you begin making fixes.
 
 **Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
 
