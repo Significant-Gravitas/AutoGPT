@@ -97,8 +97,10 @@ _wait_idle() {
   while (( elapsed < timeout )); do
     local cmd pane_tail
     cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
-    pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -3 || echo "")
-    if echo "$pane_tail" | grep -q "Enter to confirm"; then
+    pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
+    pane_tail=$(echo "$pane" | tail -3)
+    # Check full pane (not just tail) — 'Enter to confirm' dialog can appear above the last 3 lines
+    if echo "$pane" | grep -q "Enter to confirm"; then
       tmux send-keys -t "$window" Down Enter
       sleep 2; (( elapsed += 2 )); continue
     fi
