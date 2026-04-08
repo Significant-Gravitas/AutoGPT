@@ -35,7 +35,7 @@ gh pr view {N} --json body --jq '.body'
 >
 > **This is the most common failure mode:** agent fetches page 1, sees 0 unresolved after filtering, stops pagination, reports "done" — while hundreds of unresolved threads sit on later pages.
 >
-> PR #12636 had 142 total threads: page 1 returned 0 unresolved (all old/resolved), pages 2–3 had 111 unresolved. PR #12699 had 373 threads across 4 pages; page 1 was entirely resolved.
+> One observed PR had 142 total threads: page 1 returned 0 unresolved (all old/resolved), while pages 2–3 had 111 unresolved. Another with 373 threads across 4 pages also had page 1 entirely resolved.
 >
 > **The rule: ALWAYS paginate to `hasNextPage == false` regardless of the per-page unresolved count. Never stop early because a page returns 0 unresolved.**
 
