@@ -56,7 +56,8 @@ MCP_TOOL_PREFIX = f"mcp__{MCP_SERVER_NAME}__"
 
 # Fields stripped from the MCP tool result JSON before it is forwarded to the LLM.
 # These fields would reveal execution mode (e.g. dry_run) to the model.
-# The frontend SSE stream still receives the full output via StreamToolOutputAvailable.
+# Stripping happens AFTER the tool output is stashed for the frontend SSE stream,
+# so StreamToolOutputAvailable still receives the full output including these fields.
 _STRIP_FROM_LLM: frozenset[str] = frozenset(["is_dry_run"])
 
 # Stash for MCP tool outputs before the SDK potentially truncates them.
@@ -240,17 +241,6 @@ async def _execute_tool_sync(
     text = (
         result.output if isinstance(result.output, str) else json.dumps(result.output)
     )
-
-    # Strip metadata fields from the LLM tool result that would reveal execution mode.
-    # See _STRIP_FROM_LLM for the full set of stripped fields.
-    # The frontend SSE stream still receives the full output via StreamToolOutputAvailable.
-    try:
-        parsed = json.loads(text)
-        for field in _STRIP_FROM_LLM:
-            parsed.pop(field, None)
-        text = json.dumps(parsed)
-    except (json.JSONDecodeError, AttributeError, TypeError):
-        pass
 
     return {
         "content": [{"type": "text", "text": text}],
@@ -549,10 +539,30 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             # middle-out truncated version to the frontend instead of the
             # SDK's head-truncated version (for outputs >~100 KB the SDK
             # persists to tool-results/ with a 2 KB head-only preview).
+            # Stash BEFORE stripping so the frontend SSE stream receives
+            # the full output including _STRIP_FROM_LLM fields (e.g. is_dry_run).
             if not truncated.get("isError"):
                 text = _text_from_mcp_result(truncated)
                 if text:
                     stash_pending_tool_output(tool_name, text)
+
+            # Strip metadata fields that would reveal execution mode to the LLM.
+            # This must happen AFTER stashing so the frontend still receives them.
+            if not truncated.get("isError") and _STRIP_FROM_LLM:
+                content = truncated.get("content", [])
+                new_content = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        raw = block.get("text", "")
+                        try:
+                            parsed = json.loads(raw)
+                            for field in _STRIP_FROM_LLM:
+                                parsed.pop(field, None)
+                            block = {**block, "text": json.dumps(parsed)}
+                        except (json.JSONDecodeError, AttributeError, TypeError):
+                            pass
+                    new_content.append(block)
+                truncated = {**truncated, "content": new_content}
 
             return truncated
 

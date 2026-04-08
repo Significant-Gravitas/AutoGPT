@@ -291,8 +291,9 @@ async def test_execute_block_dry_run_response_format():
     assert "executed successfully" in response.message
     assert response.success is True
     assert response.outputs == {"result": ["simulated"]}
-    # is_dry_run is included in model_dump (for frontend SSE) but stripped from
-    # the LLM tool result in tool_adapter._execute_tool_sync
+    # is_dry_run is present in model_dump (used by frontend SSE via StreamToolOutputAvailable).
+    # tool_adapter._truncating strips it from the LLM-facing result AFTER stashing,
+    # so the frontend receives it but the LLM does not.
     assert response.is_dry_run is True
     assert "is_dry_run" in response.model_dump()
 
