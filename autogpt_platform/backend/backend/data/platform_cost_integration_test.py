@@ -64,7 +64,7 @@ async def test_log_platform_cost_metadata_round_trip(cost_log_user):
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_log_platform_cost_metadata_none(cost_log_user):
-    """Verify that None metadata is stored as NULL (not a DataError)."""
+    """Verify that None metadata falls back to {} (not a DataError)."""
     user_id = cost_log_user
     entry = PlatformCostEntry(
         user_id=user_id,
@@ -76,4 +76,4 @@ async def test_log_platform_cost_metadata_none(cost_log_user):
 
     rows = await PrismaLog.prisma().find_many(where={"userId": user_id})
     assert len(rows) == 1
-    assert rows[0].metadata is None
+    assert rows[0].metadata == {}
