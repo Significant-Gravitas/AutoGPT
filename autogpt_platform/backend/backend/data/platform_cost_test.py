@@ -169,6 +169,10 @@ class TestLogPlatformCostSafe:
 
 
 class TestGetPlatformCostDashboard:
+    def setup_method(self):
+        # @cached stores results in-process; clear between tests to avoid bleed.
+        get_platform_cost_dashboard.cache_clear()
+
     @pytest.mark.asyncio
     async def test_returns_dashboard_with_data(self):
         provider_rows = [
