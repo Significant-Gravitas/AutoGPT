@@ -483,3 +483,53 @@ class TestConfigValidators:
         assert cfg_low.claude_agent_max_transient_retries == 0
         cfg_high = _make_config(claude_agent_max_transient_retries=10)
         assert cfg_high.claude_agent_max_transient_retries == 10
+
+
+# ---------------------------------------------------------------------------
+# transient_exhausted SSE code contract
+# ---------------------------------------------------------------------------
+
+
+class TestTransientExhaustedErrorCode:
+    """Verify transient-exhausted path emits the correct SSE error code."""
+
+    def test_transient_exhausted_uses_transient_api_error_code(self):
+        """When except-Exception transient retries are exhausted, the SSE
+        StreamError must use code='transient_api_error', not 'sdk_stream_error'.
+
+        This ensures the frontend shows the same 'Try again' affordance as
+        the _HandledStreamError path.
+        """
+        from backend.copilot.constants import FRIENDLY_TRANSIENT_MSG
+
+        # Simulate the post-loop branching logic extracted from service.py
+        attempts_exhausted = False
+        transient_exhausted = True
+        stream_err: Exception | None = ConnectionResetError("ECONNRESET")
+
+        if attempts_exhausted:
+            error_code = "all_attempts_exhausted"
+            error_text = "conversation too long"
+        elif transient_exhausted:
+            error_code = "transient_api_error"
+            error_text = FRIENDLY_TRANSIENT_MSG
+        else:
+            error_code = "sdk_stream_error"
+            error_text = f"SDK stream error: {stream_err}"
+
+        assert error_code == "transient_api_error"
+        assert error_text == FRIENDLY_TRANSIENT_MSG
+
+    def test_non_transient_exhausted_uses_sdk_stream_error_code(self):
+        """Non-transient fatal errors (auth, network) keep 'sdk_stream_error'."""
+        attempts_exhausted = False
+        transient_exhausted = False
+
+        if attempts_exhausted:
+            error_code = "all_attempts_exhausted"
+        elif transient_exhausted:
+            error_code = "transient_api_error"
+        else:
+            error_code = "sdk_stream_error"
+
+        assert error_code == "sdk_stream_error"

@@ -2115,6 +2115,7 @@ async def stream_chat_completion_sdk(
         # ---------------------------------------------------------------
         ended_with_stream_error = False
         attempts_exhausted = False
+        transient_exhausted = False
         stream_err: Exception | None = None
 
         # Transient retry helper — deduplicates the logic shared between
@@ -2378,8 +2379,7 @@ async def stream_chat_completion_sdk(
                             max_transient_retries,
                         )
                         yield StreamStatus(
-                            message=f"Connection interrupted, retrying "
-                            f"in {backoff}s…"
+                            message=f"Connection interrupted, retrying in {backoff}s…"
                         )
                         await asyncio.sleep(backoff)
                         state.adapter = SDKResponseAdapter(
@@ -2391,6 +2391,7 @@ async def stream_chat_completion_sdk(
                     # frontend shows "Try again" after refresh.
                     # Mirrors the _HandledStreamError exhausted-retry path
                     # at line ~2310.
+                    transient_exhausted = True
                     skip_transcript_upload = True
                     _append_error_marker(
                         session, FRIENDLY_TRANSIENT_MSG, retryable=True
@@ -2437,25 +2438,24 @@ async def stream_chat_completion_sdk(
                 yield response
 
         if ended_with_stream_error and stream_err is not None:
-            # Use distinct error codes: "all_attempts_exhausted" when all
-            # retries were consumed vs "sdk_stream_error" for non-context
-            # errors that broke the loop immediately (network, auth, etc.).
+            # Use distinct error codes depending on how the loop ended:
+            # • "all_attempts_exhausted" — context compaction ran out of room
+            # • "transient_api_error" — 429/5xx/ECONNRESET retries exhausted
+            # • "sdk_stream_error" — non-context, non-transient fatal error
             safe_err = str(stream_err).replace("\n", " ").replace("\r", "")[:500]
             if attempts_exhausted:
                 error_text = (
                     "Your conversation is too long. "
                     "Please start a new chat or clear some history."
                 )
+                error_code = "all_attempts_exhausted"
+            elif transient_exhausted:
+                error_text = FRIENDLY_TRANSIENT_MSG
+                error_code = "transient_api_error"
             else:
                 error_text = _friendly_error_text(safe_err)
-            yield StreamError(
-                errorText=error_text,
-                code=(
-                    "all_attempts_exhausted"
-                    if attempts_exhausted
-                    else "sdk_stream_error"
-                ),
-            )
+                error_code = "sdk_stream_error"
+            yield StreamError(errorText=error_text, code=error_code)
 
         # Copy token usage from retry state to outer-scope accumulators
         # so the finally block can persist them.
