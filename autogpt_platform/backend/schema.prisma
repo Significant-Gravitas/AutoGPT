@@ -1323,32 +1323,39 @@ enum PlatformType {
 // Maps a platform user identity to an AutoGPT account.
 // One AutoGPT user can have multiple platform links (e.g. Discord + Telegram).
 // Each platform identity can only link to one AutoGPT account.
+// Maps a platform server (Discord guild, Telegram group, Slack workspace, etc.)
+// to an AutoGPT user account. The user who first authenticates becomes the
+// "owner" — all usage from that server is attributed to their account.
 model PlatformLink {
-  id               String       @id @default(uuid())
-  userId           String
-  User             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  platform         PlatformType
-  platformUserId   String       // The user's ID on that platform
-  platformUsername String?      // Display name (best-effort, may go stale)
-  linkedAt         DateTime     @default(now())
+  id                  String       @id @default(uuid())
+  userId              String       // AutoGPT user ID of the owner
+  User                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform            PlatformType
+  platformServerId    String       // Server/guild/group ID on that platform
+  ownerPlatformUserId String       // Platform user ID of the person who set it up
+  serverName          String?      // Display name of the server (best-effort, may go stale)
+  linkedAt            DateTime     @default(now())
 
-  @@unique([platform, platformUserId])
+  @@unique([platform, platformServerId])
   @@index([userId])
 }
 
-// One-time tokens for the account linking flow.
-// Generated when an unlinked user messages the bot; consumed when they
-// complete the link on the AutoGPT web app.
+// One-time tokens for the server linking flow.
+// Generated when an unlinked server's user messages the bot; consumed when
+// they complete the link on the AutoGPT web app.
 model PlatformLinkToken {
   id               String       @id @default(uuid())
   token            String       @unique
   platform         PlatformType
-  platformUserId   String
-  platformUsername String?
-  channelId        String?      // So the bot can send a confirmation message
+  platformServerId String       // Server/guild/group ID being linked
+  platformUserId   String       // Platform user ID of the person claiming ownership
+  platformUsername String?      // Their display name
+  serverName       String?      // Server display name
+  channelId        String?      // Channel to send confirmation back to
   expiresAt        DateTime
   usedAt           DateTime?
   createdAt        DateTime     @default(now())
 
+  @@index([platform, platformServerId])
   @@index([expiresAt])
 }

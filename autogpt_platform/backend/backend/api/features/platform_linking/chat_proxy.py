@@ -1,8 +1,16 @@
 """
 Bot Chat Proxy endpoints.
 
-Allows the bot service to send messages to CoPilot on behalf of
-linked users, authenticated via bot API key.
+Allows the bot service to send messages to CoPilot on behalf of a linked
+server's users, authenticated via bot API key.
+
+The bot never handles AutoGPT user IDs — it passes platform_server_id and
+platform_user_id, and the backend resolves the owner internally. This
+prevents impersonation even if the bot API key is compromised.
+
+Each (platform_server_id, platform_user_id) pair gets its own CoPilot
+session, all owned by the server owner's AutoGPT account. The owner can see
+all conversations in their AutoGPT account.
 """
 
 import asyncio
@@ -31,70 +39,93 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def _resolve_owner(platform: str, platform_server_id: str) -> str:
+    """
+    Look up the AutoGPT owner user ID for a linked server.
+    Raises 404 if the server is not linked.
+    """
+    link = await PlatformLink.prisma().find_first(
+        where={"platform": platform, "platformServerId": platform_server_id}
+    )
+    if not link:
+        raise HTTPException(
+            status_code=404,
+            detail="This server is not linked to an AutoGPT account.",
+        )
+    return link.userId
+
+
 @router.post(
     "/chat/session",
     response_model=BotChatSessionResponse,
-    summary="Create a CoPilot session for a linked user (bot-facing)",
+    summary="Create a CoPilot session for a server user (bot-facing)",
 )
 async def bot_create_session(
     request: BotChatRequest,
     x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> BotChatSessionResponse:
-    """Creates a new CoPilot chat session on behalf of a linked user."""
+    """
+    Creates a new CoPilot session on behalf of a platform user in a linked server.
+    The session is owned by the server owner's AutoGPT account.
+    """
     check_bot_api_key(x_bot_api_key)
 
-    link = await PlatformLink.prisma().find_first(where={"userId": request.user_id})
-    if not link:
-        raise HTTPException(status_code=404, detail="User has no platform links.")
+    owner_user_id = await _resolve_owner(
+        request.platform.value, request.platform_server_id
+    )
+    session = await create_chat_session(owner_user_id)
 
-    session = await create_chat_session(request.user_id)
+    logger.info(
+        "Bot created session %s for %s user %s in server %s (owner ...%s)",
+        session.session_id,
+        request.platform.value,
+        request.platform_user_id,
+        request.platform_server_id,
+        owner_user_id[-8:],
+    )
 
     return BotChatSessionResponse(session_id=session.session_id)
 
 
 @router.post(
     "/chat/stream",
-    summary="Stream a CoPilot response for a linked user (bot-facing)",
+    summary="Stream a CoPilot response for a server user (bot-facing)",
 )
 async def bot_chat_stream(
     request: BotChatRequest,
     x_bot_api_key: str | None = Depends(get_bot_api_key),
 ):
     """
-    Send a message to CoPilot on behalf of a linked user and stream
-    the response back as Server-Sent Events.
+    Send a message to CoPilot on behalf of a platform user in a linked server,
+    streaming the response back as Server-Sent Events.
 
-    The bot authenticates with its API key — no user JWT needed.
+    The bot authenticates with its API key — no user JWT required.
+    The owner's AutoGPT account is resolved from the server link.
     """
     check_bot_api_key(x_bot_api_key)
 
-    user_id = request.user_id
-
-    # Verify user has a platform link
-    link = await PlatformLink.prisma().find_first(where={"userId": user_id})
-    if not link:
-        raise HTTPException(status_code=404, detail="User has no platform links.")
+    owner_user_id = await _resolve_owner(
+        request.platform.value, request.platform_server_id
+    )
 
     # Get or create session
     session_id = request.session_id
     if session_id:
-        session = await get_chat_session(session_id, user_id)
+        session = await get_chat_session(session_id, owner_user_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found.")
     else:
-        session = await create_chat_session(user_id)
+        session = await create_chat_session(owner_user_id)
         session_id = session.session_id
 
-    # Save user message
     message = ChatMessage(role="user", content=request.message)
     await append_and_save_message(session_id, message)
 
-    # Create a turn and enqueue
     turn_id = str(uuid4())
 
     await stream_registry.create_session(
         session_id=session_id,
-        user_id=user_id,
+        user_id=owner_user_id,
         tool_call_id="chat_stream",
         tool_name="chat",
         turn_id=turn_id,
@@ -104,17 +135,20 @@ async def bot_chat_stream(
 
     await enqueue_copilot_turn(
         session_id=session_id,
-        user_id=user_id,
+        user_id=owner_user_id,
         message=request.message,
         turn_id=turn_id,
         is_user_message=True,
     )
 
     logger.info(
-        "Bot chat: user ...%s, session %s, turn %s",
-        user_id[-8:],
+        "Bot chat: %s server %s, user %s, session %s, turn %s (owner ...%s)",
+        request.platform.value,
+        request.platform_server_id,
+        request.platform_user_id,
         session_id,
         turn_id,
+        owner_user_id[-8:],
     )
 
     async def event_generator():
@@ -122,7 +156,7 @@ async def bot_chat_stream(
         try:
             subscriber_queue = await stream_registry.subscribe_to_session(
                 session_id=session_id,
-                user_id=user_id,
+                user_id=owner_user_id,
                 last_message_id=subscribe_from_id,
             )
 
@@ -133,12 +167,11 @@ async def bot_chat_stream(
 
             while True:
                 try:
-                    chunk = await asyncio.wait_for(subscriber_queue.get(), timeout=30.0)
+                    chunk = await asyncio.wait_for(
+                        subscriber_queue.get(), timeout=30.0
+                    )
 
-                    if isinstance(chunk, str):
-                        yield chunk
-                    else:
-                        yield chunk.to_sse()
+                    yield chunk if isinstance(chunk, str) else chunk.to_sse()
 
                     if isinstance(chunk, StreamFinish) or (
                         isinstance(chunk, str) and "[DONE]" in chunk
@@ -149,7 +182,9 @@ async def bot_chat_stream(
                     yield ": keepalive\n\n"
 
         except Exception:
-            logger.exception("Bot chat stream error for session %s", session_id)
+            logger.exception(
+                "Bot chat stream error for session %s", session_id
+            )
             yield 'data: {"type": "error", "content": "Stream error"}\n\n'
             yield "data: [DONE]\n\n"
         finally:

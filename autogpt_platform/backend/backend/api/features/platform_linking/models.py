@@ -23,43 +23,78 @@ class Platform(str, Enum):
 
 
 class CreateLinkTokenRequest(BaseModel):
-    """Request from the bot service to create a linking token."""
+    """
+    Request from the bot service to create a linking token for a server.
+
+    Called when no PlatformLink exists for the given server. The bot sends
+    the resulting link URL to the user who triggered the interaction — they
+    become the server owner when they complete the link.
+    """
 
     platform: Platform = Field(description="Platform name")
+    platform_server_id: str = Field(
+        description="Server/guild/group ID on the platform",
+        min_length=1,
+        max_length=255,
+    )
     platform_user_id: str = Field(
-        description="The user's ID on the platform",
+        description="Platform user ID of the person claiming ownership",
         min_length=1,
         max_length=255,
     )
     platform_username: str | None = Field(
         default=None,
-        description="Display name (best effort)",
+        description="Display name of the person claiming ownership",
+        max_length=255,
+    )
+    server_name: str | None = Field(
+        default=None,
+        description="Display name of the server/group",
         max_length=255,
     )
     channel_id: str | None = Field(
         default=None,
-        description="Channel ID for sending confirmation back",
+        description="Channel ID so the bot can send a confirmation message",
         max_length=255,
     )
 
 
 class ResolveRequest(BaseModel):
-    """Resolve a platform identity to an AutoGPT user."""
+    """Check whether a platform server is linked to an AutoGPT owner account."""
 
     platform: Platform
-    platform_user_id: str = Field(min_length=1, max_length=255)
+    platform_server_id: str = Field(
+        description="Server/guild/group ID to look up",
+        min_length=1,
+        max_length=255,
+    )
 
 
 class BotChatRequest(BaseModel):
-    """Request from the bot to chat as a linked user."""
+    """
+    Request from the bot to send a message on behalf of a server user.
 
-    user_id: str = Field(description="The linked AutoGPT user ID")
+    The backend resolves the AutoGPT owner from platform_server_id internally —
+    the bot never handles AutoGPT user IDs directly.
+    """
+
+    platform: Platform
+    platform_server_id: str = Field(
+        description="Server/guild/group ID (used to resolve the owner)",
+        min_length=1,
+        max_length=255,
+    )
+    platform_user_id: str = Field(
+        description="Platform user ID of the person who sent the message (for per-user session keying)",
+        min_length=1,
+        max_length=255,
+    )
     message: str = Field(
         description="The user's message", min_length=1, max_length=32000
     )
     session_id: str | None = Field(
         default=None,
-        description="Existing chat session ID. If omitted, a new session is created.",
+        description="Existing CoPilot session ID. If omitted, a new session is created.",
     )
 
 
@@ -74,27 +109,26 @@ class LinkTokenResponse(BaseModel):
 
 class LinkTokenStatusResponse(BaseModel):
     status: Literal["pending", "linked", "expired"]
-    user_id: str | None = None
 
 
 class ResolveResponse(BaseModel):
     linked: bool
-    user_id: str | None = None
 
 
 class PlatformLinkInfo(BaseModel):
     id: str
     platform: str
-    platform_user_id: str
-    platform_username: str | None
+    platform_server_id: str
+    owner_platform_user_id: str
+    server_name: str | None
     linked_at: datetime
 
 
 class ConfirmLinkResponse(BaseModel):
     success: bool
     platform: str
-    platform_user_id: str
-    platform_username: str | None
+    platform_server_id: str
+    server_name: str | None
 
 
 class DeleteLinkResponse(BaseModel):

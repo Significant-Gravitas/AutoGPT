@@ -1,17 +1,19 @@
 """
 Platform Bot Linking API routes.
 
-Enables linking external chat platform identities (Discord, Telegram, Slack, etc.)
-to AutoGPT user accounts. Used by the multi-platform CoPilot bot.
+Enables linking external chat platform servers (Discord guilds, Telegram groups,
+Slack workspaces, etc.) to AutoGPT user accounts. The first user to authenticate
+a server becomes the "owner" — all usage from that server is attributed to their
+AutoGPT account, while each individual user gets their own CoPilot session.
 
 Flow:
-  1. Bot calls POST /api/platform-linking/tokens to create a link token
-     for an unlinked platform user.
-  2. Bot sends the user a link: {frontend}/link/{token}
-  3. User clicks the link, logs in to AutoGPT, and the frontend calls
-     POST /api/platform-linking/tokens/{token}/confirm to complete the link.
-  4. Bot can poll GET /api/platform-linking/tokens/{token}/status or just
-     check on next message via GET /api/platform-linking/resolve.
+  1. Bot receives a message in an unlinked server.
+  2. Bot calls POST /api/platform-linking/tokens to create a link token,
+     passing the server ID and the ID of the user who triggered it.
+  3. Bot DMs that user: "Set up CoPilot for this server: {frontend}/link/{token}"
+  4. User clicks the link, logs in to AutoGPT, confirms → server is linked.
+  5. On subsequent messages, bot calls POST /api/platform-linking/resolve.
+     If linked, it calls POST /api/platform-linking/chat/stream to get a response.
 """
 
 import logging
@@ -42,7 +44,6 @@ router = APIRouter()
 
 LINK_TOKEN_EXPIRY_MINUTES = 30
 
-# Path parameter with validation for link tokens
 TokenPath = Annotated[
     str,
     Path(max_length=64, pattern=r"^[A-Za-z0-9_-]+$"),
@@ -55,44 +56,43 @@ TokenPath = Annotated[
 @router.post(
     "/tokens",
     response_model=LinkTokenResponse,
-    summary="Create a link token for an unlinked platform user",
+    summary="Create a link token for an unlinked server",
 )
 async def create_link_token(
     request: CreateLinkTokenRequest,
     x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> LinkTokenResponse:
     """
-    Called by the bot service when it encounters an unlinked user.
-    Generates a one-time token the user can use to link their account.
+    Called by the bot when it receives a message from an unlinked server.
+    Generates a one-time token the triggering user can click to become the owner.
     """
     check_bot_api_key(x_bot_api_key)
 
     platform = request.platform.value
 
-    # Check if already linked
+    # Reject if server is already linked
     existing = await PlatformLink.prisma().find_first(
         where={
             "platform": platform,
-            "platformUserId": request.platform_user_id,
+            "platformServerId": request.platform_server_id,
         }
     )
     if existing:
         raise HTTPException(
             status_code=409,
-            detail="This platform account is already linked.",
+            detail="This server is already linked to an AutoGPT account.",
         )
 
-    # Invalidate any existing pending tokens for this user
+    # Invalidate any pending tokens for this server
     await PlatformLinkToken.prisma().update_many(
         where={
             "platform": platform,
-            "platformUserId": request.platform_user_id,
+            "platformServerId": request.platform_server_id,
             "usedAt": None,
         },
         data={"usedAt": datetime.now(timezone.utc)},
     )
 
-    # Generate token
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(
         minutes=LINK_TOKEN_EXPIRY_MINUTES
@@ -102,28 +102,30 @@ async def create_link_token(
         data={
             "token": token,
             "platform": platform,
+            "platformServerId": request.platform_server_id,
             "platformUserId": request.platform_user_id,
             "platformUsername": request.platform_username,
+            "serverName": request.server_name,
             "channelId": request.channel_id,
             "expiresAt": expires_at,
         }
     )
 
     logger.info(
-        "Created link token for %s (expires %s)",
+        "Created link token for %s server %s (expires %s)",
         platform,
+        request.platform_server_id,
         expires_at.isoformat(),
     )
 
     link_base_url = os.getenv(
         "PLATFORM_LINK_BASE_URL", "https://platform.agpt.co/link"
     )
-    link_url = f"{link_base_url}/{token}"
 
     return LinkTokenResponse(
         token=token,
         expires_at=expires_at,
-        link_url=link_url,
+        link_url=f"{link_base_url}/{token}",
     )
 
 
@@ -136,28 +138,16 @@ async def get_link_token_status(
     token: TokenPath,
     x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> LinkTokenStatusResponse:
-    """
-    Called by the bot service to check if a user has completed linking.
-    """
+    """Called by the bot to check if a user has completed server linking."""
     check_bot_api_key(x_bot_api_key)
 
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
     if not link_token:
-        raise HTTPException(status_code=404, detail="Token not found")
+        raise HTTPException(status_code=404, detail="Token not found.")
 
     if link_token.usedAt is not None:
-        # Token was used — find the linked account
-        link = await PlatformLink.prisma().find_first(
-            where={
-                "platform": link_token.platform,
-                "platformUserId": link_token.platformUserId,
-            }
-        )
-        return LinkTokenStatusResponse(
-            status="linked",
-            user_id=link.userId if link else None,
-        )
+        return LinkTokenStatusResponse(status="linked")
 
     if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         return LinkTokenStatusResponse(status="expired")
@@ -168,29 +158,26 @@ async def get_link_token_status(
 @router.post(
     "/resolve",
     response_model=ResolveResponse,
-    summary="Resolve a platform identity to an AutoGPT user",
+    summary="Check whether a platform server is linked",
 )
-async def resolve_platform_user(
+async def resolve_platform_server(
     request: ResolveRequest,
     x_bot_api_key: str | None = Depends(get_bot_api_key),
 ) -> ResolveResponse:
     """
-    Called by the bot service on every incoming message to check if
-    the platform user has a linked AutoGPT account.
+    Called by the bot on every incoming message to check whether the server
+    has a linked AutoGPT owner account.
     """
     check_bot_api_key(x_bot_api_key)
 
     link = await PlatformLink.prisma().find_first(
         where={
             "platform": request.platform.value,
-            "platformUserId": request.platform_user_id,
+            "platformServerId": request.platform_server_id,
         }
     )
 
-    if not link:
-        return ResolveResponse(linked=False)
-
-    return ResolveResponse(linked=True, user_id=link.userId)
+    return ResolveResponse(linked=link is not None)
 
 
 # ── User-facing endpoints (JWT auth) ──────────────────────────────────
@@ -208,8 +195,7 @@ async def confirm_link_token(
 ) -> ConfirmLinkResponse:
     """
     Called by the frontend when the user clicks the link and is logged in.
-    Consumes the token and creates the platform link.
-    Uses atomic update_many to prevent race conditions on double-click.
+    Atomically consumes the token and creates the server → owner link.
     """
     link_token = await PlatformLinkToken.prisma().find_unique(where={"token": token})
 
@@ -222,7 +208,7 @@ async def confirm_link_token(
     if link_token.expiresAt.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="This link has expired.")
 
-    # Atomically mark token as used (only if still unused)
+    # Atomically mark token as used (only if still unused — prevents double-click)
     updated = await PlatformLinkToken.prisma().update_many(
         where={"token": token, "usedAt": None},
         data={"usedAt": datetime.now(timezone.utc)},
@@ -231,51 +217,52 @@ async def confirm_link_token(
     if updated == 0:
         raise HTTPException(status_code=410, detail="This link has already been used.")
 
-    # Check if this platform identity is already linked
+    # Check if this server is already linked (race condition guard)
     existing = await PlatformLink.prisma().find_first(
         where={
             "platform": link_token.platform,
-            "platformUserId": link_token.platformUserId,
+            "platformServerId": link_token.platformServerId,
         }
     )
     if existing:
         detail = (
-            "This platform account is already linked to your account."
+            "This server is already linked to your account."
             if existing.userId == user_id
-            else "This platform account is already linked to another user."
+            else "This server is already linked to another AutoGPT account."
         )
         raise HTTPException(status_code=409, detail=detail)
 
-    # Create the link — catch unique constraint race condition
     try:
         await PlatformLink.prisma().create(
             data={
                 "userId": user_id,
                 "platform": link_token.platform,
-                "platformUserId": link_token.platformUserId,
-                "platformUsername": link_token.platformUsername,
+                "platformServerId": link_token.platformServerId,
+                "ownerPlatformUserId": link_token.platformUserId,
+                "serverName": link_token.serverName,
             }
         )
     except Exception as exc:
         if "unique" in str(exc).lower():
             raise HTTPException(
                 status_code=409,
-                detail="This platform account was just linked by another request.",
+                detail="This server was just linked by another request.",
             ) from exc
         raise
 
     logger.info(
-        "Linked %s:%s to user ...%s",
+        "Linked %s server %s to user ...%s (owner: %s)",
         link_token.platform,
-        link_token.platformUserId,
+        link_token.platformServerId,
         user_id[-8:],
+        link_token.platformUserId,
     )
 
     return ConfirmLinkResponse(
         success=True,
         platform=link_token.platform,
-        platform_user_id=link_token.platformUserId,
-        platform_username=link_token.platformUsername,
+        platform_server_id=link_token.platformServerId,
+        server_name=link_token.serverName,
     )
 
 
@@ -283,12 +270,12 @@ async def confirm_link_token(
     "/links",
     response_model=list[PlatformLinkInfo],
     dependencies=[Security(auth.requires_user)],
-    summary="List all platform links for the authenticated user",
+    summary="List all platform servers linked to the authenticated user",
 )
 async def list_my_links(
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> list[PlatformLinkInfo]:
-    """Returns all platform identities linked to the current user's account."""
+    """Returns all platform servers where the current user is the owner."""
     links = await PlatformLink.prisma().find_many(
         where={"userId": user_id},
         order={"linkedAt": "desc"},
@@ -298,8 +285,9 @@ async def list_my_links(
         PlatformLinkInfo(
             id=link.id,
             platform=link.platform,
-            platform_user_id=link.platformUserId,
-            platform_username=link.platformUsername,
+            platform_server_id=link.platformServerId,
+            owner_platform_user_id=link.ownerPlatformUserId,
+            server_name=link.serverName,
             linked_at=link.linkedAt,
         )
         for link in links
@@ -310,15 +298,15 @@ async def list_my_links(
     "/links/{link_id}",
     response_model=DeleteLinkResponse,
     dependencies=[Security(auth.requires_user)],
-    summary="Unlink a platform identity",
+    summary="Unlink a platform server",
 )
 async def delete_link(
     link_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> DeleteLinkResponse:
     """
-    Removes a platform link. The user will need to re-link if they
-    want to use the bot on that platform again.
+    Removes a platform server link. The bot will stop working in that server
+    until someone links it again.
     """
     link = await PlatformLink.prisma().find_unique(where={"id": link_id})
 
@@ -331,9 +319,9 @@ async def delete_link(
     await PlatformLink.prisma().delete(where={"id": link_id})
 
     logger.info(
-        "Unlinked %s:%s from user ...%s",
+        "Unlinked %s server %s from user ...%s",
         link.platform,
-        link.platformUserId,
+        link.platformServerId,
         user_id[-8:],
     )
 
