@@ -87,6 +87,11 @@ wait_for_claude_idle() {
     local cmd pane_tail
     cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
     pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -3 || echo "")
+    # Handle settings error dialog before checking for idle prompt
+    if echo "$pane_tail" | grep -q "Enter to confirm"; then
+      tmux send-keys -t "$window" Down Enter
+      elapsed=0; sleep 2; continue
+    fi
     # Must be running under node (Claude is live)
     if [[ "$cmd" == "node" ]]; then
       # Idle: ❯ prompt visible AND no spinner/busy text in last 3 lines
