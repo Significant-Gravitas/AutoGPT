@@ -437,11 +437,13 @@ async def _baseline_llm_caller(
         # capture cost even when the stream errors mid-way — we already paid).
         # Accumulate across multi-round tool-calling turns.
         try:
+            # Access undocumented _response attribute — same pattern as
+            # extract_openrouter_cost() in blocks/llm.py.
             cost_header = response._response.headers.get("x-total-cost")  # type: ignore[attr-defined]
             if cost_header:
                 cost = float(cost_header)
-                if math.isfinite(cost):
-                    state.cost_usd = (state.cost_usd or 0.0) + max(0.0, cost)
+                if math.isfinite(cost) and cost >= 0:
+                    state.cost_usd = (state.cost_usd or 0.0) + cost
         except (AttributeError, ValueError):
             pass
 

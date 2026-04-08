@@ -51,7 +51,7 @@ function LogsTable({ logs, pagination, onPageChange }: Props) {
                 Duration
               </th>
               <th scope="col" className="px-3 py-3">
-                Session
+                Execution
               </th>
             </tr>
           </thead>

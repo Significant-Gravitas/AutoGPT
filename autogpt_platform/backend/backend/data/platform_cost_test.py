@@ -9,11 +9,32 @@ from .platform_cost import (
     PlatformCostEntry,
     _build_where,
     _json_or_none,
+    _mask_email,
     get_platform_cost_dashboard,
     get_platform_cost_logs,
     log_platform_cost,
     log_platform_cost_safe,
 )
+
+
+class TestMaskEmail:
+    def test_typical_email(self):
+        assert _mask_email("user@example.com") == "us***@example.com"
+
+    def test_short_local_part(self):
+        assert _mask_email("a@b.com") == "a***@b.com"
+
+    def test_none_returns_none(self):
+        assert _mask_email(None) is None
+
+    def test_empty_string_returns_empty(self):
+        assert _mask_email("") == ""
+
+    def test_no_at_sign_returns_stars(self):
+        assert _mask_email("notanemail") == "***"
+
+    def test_two_char_local(self):
+        assert _mask_email("ab@domain.org") == "ab***@domain.org"
 
 
 class TestJsonOrNone:

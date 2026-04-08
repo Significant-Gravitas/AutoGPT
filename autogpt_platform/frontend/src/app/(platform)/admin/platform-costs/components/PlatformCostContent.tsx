@@ -48,7 +48,10 @@ function PlatformCostContent({ searchParams }: Props) {
       <div className="flex flex-wrap items-end gap-3 rounded-lg border p-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="start-date" className="text-sm text-muted-foreground">
-            Start Date <span className="text-xs">(local time)</span>
+            Start Date{" "}
+            <span className="text-xs">
+              (local time — defaults to last 30 days)
+            </span>
           </label>
           <input
             id="start-date"
