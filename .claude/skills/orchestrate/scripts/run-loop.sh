@@ -75,6 +75,33 @@ wait_for_prompt() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_claude_idle WINDOW — wait up to 30s for Claude to reach idle ❯ prompt
+# (no spinner or busy indicator visible in the last 3 lines of pane output)
+# Returns 0 when idle, 1 on timeout.
+# ---------------------------------------------------------------------------
+wait_for_claude_idle() {
+  local window="$1"
+  local timeout="${2:-30}"
+  local elapsed=0
+  while (( elapsed < timeout )); do
+    local cmd pane_tail
+    cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
+    pane_tail=$(tmux capture-pane -t "$window" -p 2>/dev/null | tail -3 || echo "")
+    # Must be running under node (Claude is live)
+    if [[ "$cmd" == "node" ]]; then
+      # Idle: ❯ prompt visible AND no spinner/busy text in last 3 lines
+      if echo "$pane_tail" | grep -q "❯" && \
+         ! echo "$pane_tail" | grep -qE '[✳✽✢✶·✻✼✿❋✤]|Running…|Compacting'; then
+        return 0
+      fi
+    fi
+    sleep 2
+    (( elapsed += 2 ))
+  done
+  return 1  # timed out
+}
+
+# ---------------------------------------------------------------------------
 # handle_kick WINDOW STATE — only for idle (crashed) agents, not stuck
 # ---------------------------------------------------------------------------
 handle_kick() {
@@ -86,6 +113,10 @@ handle_kick() {
   session_id=$(agent_field "$window" "session_id")
 
   echo "[$(date +%H:%M:%S)] KICK restart  $window — agent exited, resuming session"
+
+  # Wait for the shell prompt before typing — avoids sending into a still-draining pane
+  wait_for_claude_idle "$window" 30 \
+    || echo "[$(date +%H:%M:%S)] KICK WARNING  $window — pane still busy before resume, sending anyway"
 
   # Resume the exact session so the agent retains full context — no need to re-send objective
   if [ -n "$session_id" ]; then
