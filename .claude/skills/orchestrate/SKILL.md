@@ -323,8 +323,15 @@ For each agent, decide:
 | Stuck in error loop | Send targeted fix with exact error + solution |
 | Waiting for input / question | Answer and unblock via `tmux send-keys` |
 | CI red | `gh pr checks PR_NUMBER --repo REPO` → tell agent exactly what's failing |
+| GitHub abuse rate limit error | Nudge: "Wait 60 seconds then continue posting replies with sleep 3 between each" |
 | Context compacted / agent lost | Send recovery: `cat ~/.claude/orchestrator-state.json | jq '.agents[] | select(.window=="WIN")'` + `gh pr view PR_NUMBER --json title,body` |
-| `ORCHESTRATOR:DONE` in output | Run `verify-complete.sh` — if it fails, re-brief with specific reason |
+| `ORCHESTRATOR:DONE` in output | Query GraphQL for actual unresolved count. If >0, re-brief. If 0, run `verify-complete.sh` |
+
+**Poll all windows from state, not from memory.** Before each poll, run:
+```bash
+jq -r '.agents[] | select(.state | test("running|idle|stuck|waiting_approval|pending_evaluation")) | .window' ~/.claude/orchestrator-state.json
+```
+and capture every window listed. If you manually added a window outside spawn-agent.sh, ensure it's in the state file first.
 
 ### Strict ORCHESTRATOR:DONE gate
 
@@ -526,6 +533,42 @@ When `dx/orchestrate-skill` is merged into `dev`, `AutoGPT1` becomes a normal sp
 
 ---
 
+## Thread resolution integrity (critical)
+
+**Agents MUST NOT resolve review threads via GraphQL unless a real code fix has been committed and pushed first.**
+
+This is the most common failure mode: agents call `resolveReviewThread` to make unresolved counts drop without actually fixing anything. This produces a false "done" signal that gets past verify-complete.sh.
+
+**The only valid resolution sequence:**
+1. Read the thread and understand what it's asking
+2. Make the actual code change
+3. `git commit` and `git push`
+4. Reply to the thread with the commit SHA (e.g. "Fixed in `abc1234`")
+5. THEN call `resolveReviewThread`
+
+**The supervisor must verify actual thread counts via GraphQL** — never trust an agent's claim of "0 unresolved." After any agent's ORCHESTRATOR:DONE, always run:
+
+```bash
+gh api graphql -f query='{ repository(owner: "OWNER", name: "REPO") { pullRequest(number: PR) { reviewThreads(first: 1) { totalCount nodes { isResolved } } } } }' \
+  | jq '{total: .data.repository.pullRequest.reviewThreads.totalCount, unresolved: [.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length}'
+```
+
+If unresolved > 0, the agent is NOT done — re-brief with the actual count and the rule.
+
+**Include this in every agent objective:**
+> IMPORTANT: Do NOT resolve any review thread via GraphQL unless the code fix is committed and pushed first. Fix the code → commit → push → reply with SHA → then resolve. Never resolve without a real commit.
+
+## GitHub abuse rate limits
+
+When agents post many review thread replies in quick succession, GitHub returns `{"code":"abuse"}` errors. This is expected. The fix:
+
+- Add `sleep 3` between individual thread replies
+- If rate limited, wait 60 seconds before resuming
+- Never batch all replies in a single script loop without delays
+
+Add this to agent briefings when there are >20 unresolved threads:
+> Post replies in batches with `sleep 3` between each reply. If you hit a GitHub abuse error, wait 60 seconds then continue.
+
 ## Key rules
 
 1. **Scripts do all the heavy lifting** — don't reimplement their logic inline in this file
@@ -543,3 +586,8 @@ When `dx/orchestrate-skill` is merged into `dev`, `AutoGPT1` becomes a normal sp
 13. **Protected worktrees** — never use the worktree hosting the skill scripts as a spare
 14. **Images via file path** — save screenshots to `/tmp/orchestrator-context-<ts>.png`, pass path in objective; agents read with the `Read` tool
 15. **Split send-keys** — always separate text and Enter with `sleep 0.3` between calls for long strings
+16. **Poll ALL windows from state file** — never hardcode window count. Derive active windows dynamically: `jq -r '.agents[] | select(.state | test("running|idle|stuck")) | .window' ~/.claude/orchestrator-state.json`. If you added a window mid-session outside spawn-agent.sh, add it to the state file immediately.
+20. **Orchestrator handles its own approvals** — when spawning a subagent to make edits (SKILL.md, scripts, config), review the diff yourself and approve/reject without surfacing it to the user. The user should never have to open a file to check the orchestrator's work. Use the Agent tool with `subagent_type: general-purpose` for drafting, then verify the result yourself before considering the task done.
+17. **Update state file on re-task** — whenever an agent is re-tasked mid-session (objective changes, new PR assigned), update the state file record immediately so objectives stay accurate for re-briefing after compaction.
+18. **No GraphQL resolveReviewThread without a commit** — see Thread resolution integrity above. This is rule #1 for pr-address work.
+19. **Verify thread counts yourself** — after any agent claims "0 unresolved threads", query GitHub GraphQL directly before accepting. Never trust the agent's self-report.

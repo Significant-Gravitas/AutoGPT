@@ -84,7 +84,11 @@ Mostly contains: bot summaries (`coderabbitai[bot]`), CI/conflict detection (`gi
 
 ## For each unaddressed comment
 
-Address comments **one at a time**: fix → commit → push → inline reply → next.
+**CRITICAL: The only valid sequence is fix → commit → push → reply → resolve. Never resolve a thread without a real code commit.**
+
+Resolving a thread via `resolveReviewThread` without an actual fix is the most common failure mode — it makes unresolved counts drop without any real change, producing a false "done" signal. If the issue was genuinely a false positive (no code change needed), reply explaining why and then resolve. Otherwise:
+
+Address comments **one at a time**: fix → commit → push → inline reply → resolve.
 
 1. Read the referenced code, make the fix (or reply explaining why it's not needed)
 2. Commit and push the fix
@@ -232,3 +236,24 @@ git push
 ```
 
 5. Restart the polling loop from the top — new commits reset CI status.
+
+## GitHub abuse rate limits
+
+When posting many thread replies in quick succession, GitHub returns `{"code":"abuse"}` errors. This is throttling, not a permissions problem.
+
+**Fix:** Add `sleep 3` between individual thread reply API calls. If you hit an abuse error:
+1. Stop posting immediately
+2. Wait 60 seconds
+3. Resume with `sleep 3` between each call
+
+Never batch all replies in a tight loop — always space them out.
+
+## Resolving threads via GraphQL
+
+Use `resolveReviewThread` **only after** the commit is pushed and the reply is posted:
+
+```bash
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREAD_ID"}) { thread { isResolved } } }'
+```
+
+**Never call this mutation before committing the fix.** The orchestrator will verify actual unresolved counts via GraphQL after you output `ORCHESTRATOR:DONE` — false resolutions will be caught and you will be re-briefed.
