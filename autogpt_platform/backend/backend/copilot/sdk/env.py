@@ -18,6 +18,10 @@ from backend.copilot.sdk.subscription import validate_subscription
 # this module was created to avoid.
 config = ChatConfig()
 
+# RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
+_HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
+_MAX_HEADER_VALUE_LEN = 128
+
 
 def build_sdk_env(
     session_id: str | None = None,
@@ -63,10 +67,7 @@ def build_sdk_env(
 
         # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
         def _safe(v: str) -> str:
-            # Keep only printable ASCII (0x20–0x7e); strip control chars,
-            # null bytes, and non-ASCII to produce a valid HTTP header value
-            # (RFC 7230 §3.2.6).
-            return re.sub(r"[^\x20-\x7e]", "", v).strip()[:128]
+            return _HEADER_SAFE_RE.sub("", v).strip()[:_MAX_HEADER_VALUE_LEN]
 
         parts = []
         if session_id:

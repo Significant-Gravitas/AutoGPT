@@ -71,7 +71,9 @@ _TRANSIENT_ERROR_PATTERNS = (
     "status code 504",
 )
 
-FRIENDLY_TRANSIENT_MSG = "Anthropic connection interrupted — please retry"
+FRIENDLY_TRANSIENT_MSG = (
+    "Anthropic connection interrupted after repeated attempts — please try again later"
+)
 
 
 def is_transient_api_error(error_text: str) -> bool:
