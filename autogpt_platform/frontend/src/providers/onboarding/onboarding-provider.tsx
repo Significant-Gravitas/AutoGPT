@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import {
+  ApiError,
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
@@ -164,6 +165,10 @@ export default function OnboardingProvider({
           router.replace("/copilot");
         }
       } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          return;
+        }
+
         console.error("Failed to initialize onboarding:", error);
 
         toast({
