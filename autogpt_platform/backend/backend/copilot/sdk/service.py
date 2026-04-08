@@ -1083,17 +1083,25 @@ def _dispatch_response(
 
 
 class _HandledStreamError(Exception):
-    """Raised by `_run_stream_attempt` after it has already yielded a
-    `StreamError` to the client (e.g. transient API error, circuit breaker).
+    """Raised by `_run_stream_attempt` when an attempt fails and the outer
+    retry loop must roll back session state.
 
-    This signals the outer retry loop that the attempt failed so it can
-    perform session-message rollback and set the `ended_with_stream_error`
-    flag, **without** yielding a duplicate `StreamError` to the client.
+    Two sub-cases:
+
+    * ``already_yielded=True`` (default) — a ``StreamError`` was already sent
+      to the client inside ``_run_stream_attempt`` (circuit-breaker, idle
+      timeout, etc.).  The outer loop must **not** yield another one.
+    * ``already_yielded=False`` — the error is transient and the outer loop
+      will decide whether to retry or surface the error.  If retrying it
+      yields a ``StreamStatus("retrying…")``; if exhausted it yields the
+      ``StreamError`` itself so the client sees it only once.
 
     Attributes:
         error_msg: The user-facing error message to persist.
         code: Machine-readable error code (e.g. ``circuit_breaker_empty_tool_calls``).
         retryable: Whether the frontend should offer a retry button.
+        already_yielded: ``True`` when ``StreamError`` was already sent to the
+            client before this exception was raised.
     """
 
     def __init__(
@@ -1102,11 +1110,13 @@ class _HandledStreamError(Exception):
         error_msg: str | None = None,
         code: str | None = None,
         retryable: bool = True,
+        already_yielded: bool = True,
     ):
         super().__init__(message)
         self.error_msg = error_msg
         self.code = code
         self.retryable = retryable
+        self.already_yielded = already_yielded
 
 
 @dataclass
@@ -1397,15 +1407,12 @@ async def _run_stream_attempt(
                     )
                     stream_error_msg = FRIENDLY_TRANSIENT_MSG
                     stream_error_code = "transient_api_error"
-                    _append_error_marker(
-                        ctx.session,
-                        stream_error_msg,
-                        retryable=True,
-                    )
-                    yield StreamError(
-                        errorText=stream_error_msg,
-                        code=stream_error_code,
-                    )
+                    # Do NOT yield StreamError or append error marker here.
+                    # The outer retry loop decides: if a retry is available it
+                    # yields StreamStatus("retrying…"); if retries are exhausted
+                    # it appends the marker and yields StreamError exactly once.
+                    # Yielding StreamError before the retry decision causes the
+                    # client to display an error that is immediately superseded.
                     ended_with_stream_error = True
                     break
 
@@ -1678,14 +1685,16 @@ async def _run_stream_attempt(
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
 
-    # If the attempt ended with a transient error that was already surfaced
-    # to the client (StreamError yielded above), raise so the outer retry
-    # loop can rollback session messages and set its error flags properly.
+    # Raise so the outer retry loop can rollback session messages.
+    # already_yielded=False for transient_api_error: StreamError was NOT
+    # sent to the client yet (the outer loop does it when retries are
+    # exhausted, avoiding a premature error flash before the retry).
     if ended_with_stream_error:
         raise _HandledStreamError(
-            "Stream error handled — StreamError already yielded",
+            "Stream error handled",
             error_msg=stream_error_msg,
             code=stream_error_code,
+            already_yielded=(stream_error_code != "transient_api_error"),
         )
 
 
@@ -2126,7 +2135,7 @@ async def stream_chat_completion_sdk(
             transient_retries += 1
             if transient_retries > max_transient_retries:
                 return None
-            return 2 ** (transient_retries - 1)  # 1s, 2s, 4s, ...
+            return min(30, 2 ** (transient_retries - 1))  # 1s, 2s, 4s, …, cap 30s
 
         state = _RetryState(
             options=options,
@@ -2313,9 +2322,17 @@ async def stream_chat_completion_sdk(
                     retryable=True,
                 )
                 ended_with_stream_error = True
-                # _run_stream_attempt already yielded a StreamError to the
-                # client before raising _HandledStreamError — do NOT yield
-                # another one here or the client will see a duplicate.
+                # For transient errors the StreamError was deliberately NOT
+                # yielded inside _run_stream_attempt (already_yielded=False)
+                # so the client didn't see a premature error flash.  Yield it
+                # now that we know retries are exhausted.
+                # For non-transient errors (circuit breaker, idle timeout)
+                # already_yielded=True — do NOT yield again.
+                if not exc.already_yielded:
+                    yield StreamError(
+                        errorText=exc.error_msg or FRIENDLY_TRANSIENT_MSG,
+                        code=exc.code or "transient_api_error",
+                    )
                 break
             except Exception as e:
                 stream_err = e

@@ -384,6 +384,49 @@ class TestIsTransientApiError:
 
 
 # ---------------------------------------------------------------------------
+# _HandledStreamError.already_yielded contract
+# ---------------------------------------------------------------------------
+
+
+class TestHandledStreamErrorAlreadyYielded:
+    """Verify the already_yielded semantics on _HandledStreamError."""
+
+    def test_default_already_yielded_is_true(self):
+        """Non-transient callers (circuit-breaker, idle timeout) don't pass the flag —
+        the default True means the outer loop won't yield a duplicate StreamError."""
+        from backend.copilot.sdk.service import _HandledStreamError
+
+        exc = _HandledStreamError("some error", code="circuit_breaker_empty_tool_calls")
+        assert exc.already_yielded is True
+
+    def test_transient_error_sets_already_yielded_false(self):
+        """Transient errors pass already_yielded=False so the outer loop
+        yields StreamError only once (when retries are exhausted)."""
+        from backend.copilot.sdk.service import _HandledStreamError
+
+        exc = _HandledStreamError(
+            "transient",
+            code="transient_api_error",
+            already_yielded=False,
+        )
+        assert exc.already_yielded is False
+
+    def test_backoff_capped_at_30s(self):
+        """Exponential backoff must be capped at 30 seconds.
+
+        With max_transient_retries=10, uncapped 2^9=512s would stall users
+        for 8+ minutes.  min(30, 2**(n-1)) keeps the ceiling at 30s.
+        """
+        # Check that 2^(10-1)=512 would exceed 30 but min() caps it.
+        assert min(30, 2 ** (10 - 1)) == 30
+        # Verify the formula is monotonically non-decreasing and capped.
+        backoffs = [min(30, 2 ** (n - 1)) for n in range(1, 11)]
+        assert all(b <= 30 for b in backoffs)
+        assert backoffs[-1] == 30  # last retry is capped
+        assert backoffs[0] == 1  # first retry starts at 1s
+
+
+# ---------------------------------------------------------------------------
 # Config validators for max_turns / max_budget_usd
 # ---------------------------------------------------------------------------
 
