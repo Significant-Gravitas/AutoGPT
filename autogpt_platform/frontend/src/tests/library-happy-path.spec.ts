@@ -18,32 +18,49 @@ const TEST_AGENT_PATH = path.resolve(__dirname, "assets", "testing_agent.json");
 const CALCULATOR_BLOCK_ID = "b1ab9b19-67a6-406d-abf5-2dba76d00c79";
 const AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4";
 
+type UploadedGraphNode = {
+  id: string;
+  block_id: string;
+  input_default: Record<string, unknown>;
+  metadata: {
+    position: {
+      x: number;
+      y: number;
+    };
+  };
+  input_links: unknown[];
+  output_links: unknown[];
+};
+
 function createLongRunningCalculatorGraph(
   agentName: string,
   calculatorCount: number = 150,
 ) {
-  const nodes = Array.from({ length: calculatorCount }, (_, index) => ({
-    id: `calc-${index + 1}`,
-    block_id: CALCULATOR_BLOCK_ID,
-    input_default:
-      index === 0
-        ? {
-            operation: "Add",
-            a: 1,
-            b: 1,
-            round_result: false,
-          }
-        : {
-            operation: "Add",
-            b: 1,
-            round_result: false,
-          },
-    metadata: {
-      position: { x: 320 * index, y: 120 },
-    },
-    input_links: [],
-    output_links: [],
-  }));
+  const nodes: UploadedGraphNode[] = Array.from(
+    { length: calculatorCount },
+    (_, index) => ({
+      id: `calc-${index + 1}`,
+      block_id: CALCULATOR_BLOCK_ID,
+      input_default:
+        index === 0
+          ? {
+              operation: "Add",
+              a: 1,
+              b: 1,
+              round_result: false,
+            }
+          : {
+              operation: "Add",
+              b: 1,
+              round_result: false,
+            },
+      metadata: {
+        position: { x: 320 * index, y: 120 },
+      },
+      input_links: [],
+      output_links: [],
+    }),
+  );
 
   const links = Array.from({ length: calculatorCount - 1 }, (_, index) => ({
     source_id: `calc-${index + 1}`,
