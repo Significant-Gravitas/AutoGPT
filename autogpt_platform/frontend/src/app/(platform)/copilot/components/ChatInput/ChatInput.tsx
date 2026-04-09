@@ -203,10 +203,11 @@ export function ChatInput({
                 onToggle={handleToggleMode}
               />
             )}
-            {showDryRunToggle && !hasSession && (
+            {showDryRunToggle && (!hasSession || isDryRun) && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
                 isStreaming={isStreaming}
+                readOnly={hasSession}
                 onToggle={handleToggleDryRun}
               />
             )}
