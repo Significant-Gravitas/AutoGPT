@@ -87,7 +87,6 @@ ToolName = Literal[
     "get_agent_building_guide",
     "get_doc_page",
     "get_mcp_guide",
-    "memory_delete_user_data",
     "memory_search",
     "memory_store",
     "list_folders",

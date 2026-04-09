@@ -84,7 +84,6 @@ class ResponseType(str, Enum):
     # Graphiti memory
     MEMORY_STORE = "memory_store"
     MEMORY_SEARCH = "memory_search"
-    MEMORY_DELETE = "memory_delete"
 
 
 # Base response model
@@ -713,7 +712,3 @@ class MemorySearchResponse(ToolResponseBase):
     recent_episodes: list[str] = Field(default_factory=list)
 
 
-class MemoryDeleteResponse(ToolResponseBase):
-    """Response when all memories are deleted."""
-
-    type: ResponseType = ResponseType.MEMORY_DELETE

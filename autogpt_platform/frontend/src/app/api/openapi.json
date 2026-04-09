@@ -12545,8 +12545,7 @@
           "feature_request_search",
           "feature_request_created",
           "memory_store",
-          "memory_search",
-          "memory_delete"
+          "memory_search"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
