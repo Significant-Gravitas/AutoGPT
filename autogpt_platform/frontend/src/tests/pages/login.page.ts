@@ -45,7 +45,9 @@ export class LoginPage {
     await loginButton.waitFor({ state: "visible" });
 
     // Attach navigation logger for debug purposes
-    this.page.on("load", (page) => console.log(`ℹ️ Now at URL: ${page.url()}`));
+    this.page.once("load", (page) =>
+      console.log(`ℹ️ Now at URL: ${page.url()}`),
+    );
 
     const hasReachedPostLoginRoute = () =>
       this.page.waitForFunction(

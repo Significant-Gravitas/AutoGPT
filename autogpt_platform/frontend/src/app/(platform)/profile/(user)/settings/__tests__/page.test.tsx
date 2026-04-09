@@ -135,8 +135,9 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    const switches = await screen.findAllByRole("switch");
-    fireEvent.click(switches[0]);
+    fireEvent.click(
+      await screen.findByRole("switch", { name: "Agent Run Notifications" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save preferences" }));
 
     await waitFor(() => {

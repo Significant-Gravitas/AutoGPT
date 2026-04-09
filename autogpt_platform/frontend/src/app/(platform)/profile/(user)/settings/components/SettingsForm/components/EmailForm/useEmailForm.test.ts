@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import type { User } from "@supabase/supabase-js";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useEmailForm } from "./useEmailForm";
 
 const mockToast = vi.hoisted(() => vi.fn());
@@ -33,6 +33,10 @@ describe("useEmailForm", () => {
     mockMutateAsync.mockResolvedValue({});
   });
 
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   test("submits a changed email to both update endpoints", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -62,8 +66,6 @@ describe("useEmailForm", () => {
         title: "Successfully updated email",
       }),
     );
-
-    vi.unstubAllGlobals();
   });
 
   test("skips the update when the email has not changed", async () => {
@@ -80,7 +82,5 @@ describe("useEmailForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(mockMutateAsync).not.toHaveBeenCalled();
     expect(mockToast).not.toHaveBeenCalled();
-
-    vi.unstubAllGlobals();
   });
 });

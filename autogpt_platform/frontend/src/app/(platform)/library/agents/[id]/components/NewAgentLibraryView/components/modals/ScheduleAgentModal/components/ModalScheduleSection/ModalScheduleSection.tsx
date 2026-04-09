@@ -1,6 +1,6 @@
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { parseCronToForm, validateSchedule } from "./helpers";
 import { TimezoneNotice } from "../TimezoneNotice/TimezoneNotice";
 import { CronScheduler } from "../CronScheduler/CronScheduler";
@@ -30,23 +30,23 @@ export function ModalScheduleSection({
     scheduleName?: string;
   }>({});
 
-  const validateNow = useCallback(
-    (partial: { scheduleName?: string; cronExpression?: string }) => {
-      const cronExpression =
-        partial.cronExpression ||
-        _cronExpression ||
-        recommendedScheduleCron ||
-        "";
-      const fieldErrors = validateSchedule({
-        scheduleName: partial.scheduleName ?? scheduleName,
-        time: parseCronToForm(cronExpression)?.time ?? "",
-      });
-      setErrors(fieldErrors);
-      if (onValidityChange)
-        onValidityChange(Object.keys(fieldErrors).length === 0);
-    },
-    [_cronExpression, onValidityChange, recommendedScheduleCron, scheduleName],
-  );
+  function validateNow(partial: {
+    scheduleName?: string;
+    cronExpression?: string;
+  }) {
+    const cronExpression =
+      partial.cronExpression ??
+      _cronExpression ??
+      recommendedScheduleCron ??
+      "";
+    const fieldErrors = validateSchedule({
+      scheduleName: partial.scheduleName ?? scheduleName,
+      time: parseCronToForm(cronExpression)?.time ?? "",
+    });
+    setErrors(fieldErrors);
+    if (onValidityChange)
+      onValidityChange(Object.keys(fieldErrors).length === 0);
+  }
 
   return (
     <div className="mt-6">
@@ -80,7 +80,7 @@ export function ModalScheduleSection({
             validateNow({ cronExpression: expression });
           }}
           initialCronExpression={
-            _cronExpression || recommendedScheduleCron || undefined
+            _cronExpression ?? recommendedScheduleCron ?? undefined
           }
         />
       </div>

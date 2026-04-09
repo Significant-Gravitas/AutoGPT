@@ -119,8 +119,35 @@ function hasStoredAuthState(accountKey: (typeof AUTH_STATE_KEYS)[number]) {
   return fs.existsSync(getAuthStatePath(accountKey));
 }
 
-export function hasSeededAuthStates(): boolean {
-  return AUTH_STATE_KEYS.every((accountKey) => hasStoredAuthState(accountKey));
+function authStateMatchesOrigin(
+  accountKey: (typeof AUTH_STATE_KEYS)[number],
+  origin: string,
+): boolean {
+  const statePath = getAuthStatePath(accountKey);
+  if (!fs.existsSync(statePath)) {
+    return false;
+  }
+
+  try {
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8")) as {
+      origins?: Array<{ origin?: string }>;
+    };
+    return (
+      state.origins?.some((storedOrigin) => storedOrigin.origin === origin) ??
+      false
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function hasSeededAuthStates(baseURL: string): boolean {
+  const origin = new URL(baseURL).origin;
+  return AUTH_STATE_KEYS.every(
+    (accountKey) =>
+      hasStoredAuthState(accountKey) &&
+      authStateMatchesOrigin(accountKey, origin),
+  );
 }
 
 async function createAuthStateForUser(
@@ -169,8 +196,13 @@ async function createAuthStateForUser(
 }
 
 export async function ensureSeededAuthStates(baseURL: string): Promise<void> {
+  const origin = new URL(baseURL).origin;
+
   for (const accountKey of AUTH_STATE_KEYS) {
-    if (hasStoredAuthState(accountKey)) {
+    if (
+      hasStoredAuthState(accountKey) &&
+      authStateMatchesOrigin(accountKey, origin)
+    ) {
       continue;
     }
 

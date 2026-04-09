@@ -60,12 +60,12 @@ MAX_REVIEWS_PER_VERSION = 5
 GUARANTEED_FEATURED_AGENTS = 8
 GUARANTEED_FEATURED_CREATORS = 5
 GUARANTEED_TOP_AGENTS = 10
-E2E_MARKETPLACE_CREATOR_EMAIL = "test123@gmail.com"
+E2E_MARKETPLACE_CREATOR_EMAIL = "test123@example.com"
 E2E_MARKETPLACE_CREATOR_USERNAME = "e2e-marketplace"
 E2E_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent"
 E2E_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent"
 SEEDED_TEST_EMAILS = [
-    "test123@gmail.com",
+    "test123@example.com",
     "e2e.qa.auth@example.com",
     "e2e.qa.builder@example.com",
     "e2e.qa.library@example.com",

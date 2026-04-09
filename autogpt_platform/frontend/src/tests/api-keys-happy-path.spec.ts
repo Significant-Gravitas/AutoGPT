@@ -25,7 +25,7 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
 
   await page.getByRole("button", { name: "Create Key" }).click();
   await page.getByLabel("Name").fill(keyName);
-  await page.getByRole("checkbox").first().click();
+  await page.getByRole("checkbox", { name: /EXECUTE_GRAPH/i }).click();
   await page.getByRole("button", { name: "Create" }).click();
 
   const secretDialog = page.getByRole("dialog", {

@@ -6,7 +6,7 @@ export const SEEDED_USER_POOL_VERSION = "2.0.0";
 export const SEEDED_TEST_ACCOUNTS = {
   primary: {
     key: "primary",
-    email: "test123@gmail.com",
+    email: "test123@example.com",
     password: SEEDED_TEST_PASSWORD,
   },
   smokeAuth: {

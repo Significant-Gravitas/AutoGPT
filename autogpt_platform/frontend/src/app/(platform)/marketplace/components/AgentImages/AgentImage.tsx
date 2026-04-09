@@ -43,7 +43,7 @@ export function AgentImages({ images }: AgentImagesProps) {
 
             return (
               <button
-                key={image}
+                key={`${image}-${index}`}
                 type="button"
                 onClick={() => setSelectedIndex(index)}
                 className={cn(

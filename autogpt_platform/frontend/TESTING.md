@@ -131,7 +131,7 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 1. Start the backend + Supabase stack:
    - From `autogpt_platform`: `docker compose --profile local up deps_backend -d`
-2. Seed rich E2E data (creates `test123@gmail.com` with library agents):
+2. Seed rich E2E data (creates `test123@example.com` with library agents):
    - From `autogpt_platform/backend`: `poetry run python test/e2e_test_data.py`
 
 ### How Playwright setup works
@@ -163,7 +163,7 @@ The CI suite is intentionally limited to the cross-page journeys we still requir
 
 If you reset the Docker DB and logins start failing:
 
-1. Delete `frontend/.auth/user-pool.json`
+1. Delete `frontend/.auth/states/*` and `frontend/.auth/user-pool.json` if it exists
 2. Re-run `poetry run python test/e2e_test_data.py`
 
 ## Storybook

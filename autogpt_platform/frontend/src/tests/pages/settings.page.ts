@@ -15,7 +15,9 @@ export class SettingsPage extends BasePage {
   }
 
   getAgentRunNotificationsSwitch(): Locator {
-    return this.page.getByRole("switch").nth(0);
+    return this.page.getByRole("switch", {
+      name: "Agent Run Notifications",
+    });
   }
 
   async savePreferences(): Promise<void> {

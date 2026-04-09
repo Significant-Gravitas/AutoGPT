@@ -22,7 +22,7 @@ async function globalSetup(config: FullConfig) {
   try {
     const baseURL = resolveBaseURL(config);
 
-    if (hasSeededAuthStates()) {
+    if (hasSeededAuthStates(baseURL)) {
       console.log("♻️ Reusing stored seeded auth states");
       return;
     }

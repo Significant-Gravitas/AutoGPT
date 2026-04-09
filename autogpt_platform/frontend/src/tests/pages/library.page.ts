@@ -628,6 +628,10 @@ export async function waitForAgentPageLoad(page: Page): Promise<void> {
     }
     await page.waitForLoadState("domcontentloaded");
   }
+
+  throw new Error(
+    "Library agent page remained on the connection-failure screen after 3 retries",
+  );
 }
 
 export async function getAgentName(page: Page): Promise<string> {
@@ -638,11 +642,8 @@ export async function isLoaded(page: Page): Promise<boolean> {
   return await page.locator("h1").isVisible();
 }
 
-// Terminal states — once a run reaches one of these, polling stops.
-// "error" means the page itself crashed (React error boundary), which must
-// surface as a hard test failure rather than be confused with a normal status.
-const TERMINAL_RUN_STATUSES = new Set([
-  "completed",
+const SUCCESS_RUN_STATUS = "completed";
+const FAILURE_RUN_STATUSES = new Set([
   "failed",
   "terminated",
   "incomplete",
@@ -686,11 +687,16 @@ export async function waitForRunToComplete(
   let lastStatus = "unknown";
   while (Date.now() - start < timeout) {
     lastStatus = await getRunStatus(page);
-    if (TERMINAL_RUN_STATUSES.has(lastStatus)) return;
+    if (lastStatus === SUCCESS_RUN_STATUS) {
+      return;
+    }
+    if (FAILURE_RUN_STATUSES.has(lastStatus)) {
+      throw new Error(`Run reached terminal failure state "${lastStatus}"`);
+    }
     await page.waitForLoadState("domcontentloaded");
   }
   throw new Error(
-    `waitForRunToComplete timed out after ${timeout}ms — last status was "${lastStatus}" (expected one of: ${[...TERMINAL_RUN_STATUSES].join(", ")})`,
+    `waitForRunToComplete timed out after ${timeout}ms — last status was "${lastStatus}" (expected "${SUCCESS_RUN_STATUS}")`,
   );
 }
 

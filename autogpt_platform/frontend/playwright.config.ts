@@ -12,7 +12,11 @@ dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
 
 const frontendRoot = __dirname.replaceAll("\\", "/");
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const configuredBaseURL =
+  process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const parsedBaseURL = new URL(configuredBaseURL);
+const baseURL = parsedBaseURL.toString().replace(/\/$/, "");
+const baseOrigin = parsedBaseURL.origin;
 const jsonReporterOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
 const configuredWorkers = process.env.PLAYWRIGHT_WORKERS
   ? Number(process.env.PLAYWRIGHT_WORKERS)
@@ -107,7 +111,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: `${baseURL}/`,
+    baseURL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     screenshot: "only-on-failure",
@@ -118,7 +122,7 @@ export default defineConfig({
     video: "retain-on-failure",
 
     /* Auto-accept cookies in all tests to prevent banner interference */
-    storageState: buildCookieConsentStorageState(baseURL),
+    storageState: buildCookieConsentStorageState(baseOrigin),
   },
   /* Maximum time one test can run for */
   timeout: 25000,

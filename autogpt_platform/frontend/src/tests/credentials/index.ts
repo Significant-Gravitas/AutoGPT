@@ -10,7 +10,7 @@ export function getTestUserWithLibraryAgents() {
 // Dummy constant to help developers identify agents that don't need input
 export const DummyInput = "DummyInput";
 
-// This will be used for testing agent submission for test123@gmail.com
+// This will be used for testing agent submission for test123@example.com
 export const TEST_AGENT_DATA = {
   name: "E2E Calculator Agent",
   description:
