@@ -94,16 +94,28 @@ export class LoginPage {
     // If Wallet popover auto-opens, close it to avoid blocking account menu interactions.
     // The popover is genuinely optional — only appears on some accounts/environments.
     const walletPanel = this.page.getByText("Your credits").first();
-    if (await walletPanel.isVisible({ timeout: 2500 })) {
+    const walletPanelVisible = await walletPanel
+      .waitFor({ state: "visible", timeout: 2500 })
+      .then(() => true)
+      .catch(() => false);
+    if (walletPanelVisible) {
       const closeWalletButton = this.page.getByRole("button", {
         name: /Close wallet/i,
       });
-      if (await closeWalletButton.isVisible()) {
+      const closeWalletButtonVisible = await closeWalletButton
+        .waitFor({ state: "visible", timeout: 1000 })
+        .then(() => true)
+        .catch(() => false);
+      if (closeWalletButtonVisible) {
         await closeWalletButton.click();
       } else {
         await this.page.keyboard.press("Escape");
       }
-      if (await walletPanel.isVisible({ timeout: 3000 })) {
+      const walletStillVisible = await walletPanel
+        .waitFor({ state: "hidden", timeout: 3000 })
+        .then(() => false)
+        .catch(() => true);
+      if (walletStillVisible) {
         await this.page.mouse.click(5, 5);
       }
     }
