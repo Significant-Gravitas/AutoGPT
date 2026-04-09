@@ -12,9 +12,11 @@ import {
   ImpersonationCookie,
   ImpersonationSession,
   ImpersonationState,
+  getSystemHeaders,
 } from "../impersonation";
 import {
   IMPERSONATION_COOKIE_NAME,
+  IMPERSONATION_HEADER_NAME,
   IMPERSONATION_STORAGE_KEY,
 } from "../constants";
 
@@ -196,6 +198,11 @@ describe("ImpersonationState", () => {
         "new-user",
       );
     });
+
+    it("also writes the impersonation cookie", () => {
+      ImpersonationState.set("new-user");
+      expect(ImpersonationCookie.get()).toBe("new-user");
+    });
   });
 
   describe("clear()", () => {
@@ -204,5 +211,45 @@ describe("ImpersonationState", () => {
       ImpersonationState.clear();
       expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
     });
+
+    it("also clears the impersonation cookie", () => {
+      ImpersonationState.set("user-to-clear");
+      ImpersonationState.clear();
+      expect(ImpersonationCookie.get()).toBeNull();
+    });
+  });
+});
+
+// ---------- getSystemHeaders ----------
+
+describe("getSystemHeaders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(true);
+    sessionStorage.clear();
+    clearCookieRaw();
+  });
+
+  it("returns empty object when no impersonation is active", () => {
+    expect(getSystemHeaders()).toEqual({});
+  });
+
+  it("returns impersonation header when impersonation is active via sessionStorage", () => {
+    sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "user-abc");
+    expect(getSystemHeaders()).toEqual({
+      [IMPERSONATION_HEADER_NAME]: "user-abc",
+    });
+  });
+
+  it("returns impersonation header when impersonation is active via cookie (cross-tab)", () => {
+    setCookieRaw(IMPERSONATION_COOKIE_NAME, "cookie-user");
+    expect(getSystemHeaders()).toEqual({
+      [IMPERSONATION_HEADER_NAME]: "cookie-user",
+    });
+  });
+
+  it("returns empty object on server-side", () => {
+    mockIsClientSide.mockReturnValue(false);
+    expect(getSystemHeaders()).toEqual({});
   });
 });

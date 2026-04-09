@@ -33,8 +33,9 @@ async function submitFeedbackToBackend(args: {
         }),
       },
     );
-  } catch {
+  } catch (err) {
     // Feedback submission is best-effort; silently ignore failures
+    console.debug("[Copilot] Feedback submission failed:", err);
   }
 }
 

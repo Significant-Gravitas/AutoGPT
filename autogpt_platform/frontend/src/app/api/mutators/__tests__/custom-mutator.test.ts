@@ -71,4 +71,20 @@ describe("customMutator — impersonation header", () => {
     const headers = fetchCall[1]?.headers as Record<string, string>;
     expect(headers[IMPERSONATION_HEADER_NAME]).toBeUndefined();
   });
+
+  it("coexists with pre-existing caller-supplied headers without overwriting them", async () => {
+    mockGetSystemHeaders.mockReturnValue({
+      [IMPERSONATION_HEADER_NAME]: "impersonated-user-abc",
+    });
+
+    await customMutator("/test", {
+      method: "GET",
+      headers: { "X-Custom-Header": "custom-value" },
+    });
+
+    const fetchCall = vi.mocked(fetch).mock.calls[0];
+    const headers = fetchCall[1]?.headers as Record<string, string>;
+    expect(headers[IMPERSONATION_HEADER_NAME]).toBe("impersonated-user-abc");
+    expect(headers["X-Custom-Header"]).toBe("custom-value");
+  });
 });

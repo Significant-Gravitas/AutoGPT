@@ -174,6 +174,10 @@ export const ImpersonationState = {
  * Currently adds the impersonation header (X-Act-As-User-Id) when an admin
  * is impersonating a user. Extend this function to add other cross-cutting
  * request headers rather than scattering them across callers.
+ *
+ * @remarks Client-side only — returns `{}` in server components where
+ * `ImpersonationState.get()` has no access to sessionStorage or client cookies.
+ * For server-side impersonation, use `ImpersonationState.getServerSide()` instead.
  */
 export function getSystemHeaders(): Record<string, string> {
   const headers: Record<string, string> = {};
