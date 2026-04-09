@@ -50,7 +50,7 @@ export function ChatInput({
   const { copilotMode, setCopilotMode, isDryRun, setIsDryRun } =
     useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
-  const showDryRunToggle = useGetFlag(Flag.DRY_RUN_TOGGLE);
+  const showDryRunToggle = showModeToggle;
   const [files, setFiles] = useState<File[]>([]);
 
   function handleToggleMode() {
