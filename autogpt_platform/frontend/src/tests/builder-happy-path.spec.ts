@@ -2,29 +2,34 @@ import { readFile } from "fs/promises";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
-import {
-  assertRunProducedOutput,
-  clickExportAgent,
-  getRunStatus,
-  openSavedAgentInLibrary,
-  waitForRunToComplete,
-} from "./pages/library.page";
+import { LibraryPage } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
 test.describe.configure({ mode: "serial" });
 
-test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
+test("builder happy path: user can walk through the builder tutorial and cancel midway, persisting canceled state", async ({
   page,
 }) => {
-  test.setTimeout(90000);
+  test.setTimeout(180000);
 
   const buildPage = new BuildPage(page);
-  await buildPage.open();
+  await buildPage.startTutorial();
+  await buildPage.walkWelcomeToBlockMenu();
+  await buildPage.walkSearchAndAddCalculator();
+  await buildPage.cancelTutorial();
 
-  await expect(
-    page.getByRole("button", { name: "Skip Tutorial", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.locator(".react-flow")).toBeVisible();
+  expect(await buildPage.getTutorialStateFromStorage()).toBe("canceled");
+  expect(await buildPage.getNodeCount()).toBeGreaterThanOrEqual(1);
+});
+
+test("builder happy path: user can skip the builder tutorial from the welcome step", async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+
+  const buildPage = new BuildPage(page);
+  await buildPage.startTutorial();
+  await buildPage.skipTutorialFromWelcome();
 });
 
 test("builder happy path: user can create a simple agent in builder with core blocks", async ({
@@ -37,6 +42,16 @@ test("builder happy path: user can create a simple agent in builder with core bl
   await buildPage.addSimpleAgentBlocks();
 
   await expect(buildPage.getNodeLocator()).toHaveCount(2);
+  await expect(
+    buildPage
+      .getNodeLocator(0)
+      .locator('input[placeholder="Enter string value..."]'),
+  ).toHaveValue("smoke-value");
+  const dictionaryInputs = buildPage
+    .getNodeLocator(1)
+    .locator('input[placeholder="Enter string value..."]');
+  await expect(dictionaryInputs.nth(0)).toHaveValue("smoke-key");
+  await expect(dictionaryInputs.nth(1)).toHaveValue("smoke-value");
 });
 
 test("builder happy path: user can save the created agent", async ({
@@ -64,8 +79,6 @@ test("builder happy path: user can run the saved agent from builder and see exec
     page.locator('[data-id="stop-graph-button"], [data-id="run-graph-button"]'),
   ).toBeVisible({ timeout: 15000 });
 
-  // Builder should reflect a real execution state (running or idle), never
-  // "unknown" — that would mean the run UI didn't transition at all.
   await expect
     .poll(() => buildPage.getExecutionState(), { timeout: 15000 })
     .not.toBe("unknown");
@@ -84,7 +97,8 @@ test("builder happy path: user can schedule the saved agent and run it from Libr
   await buildPage.createScheduleForSavedAgent(agentName);
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 
-  await openSavedAgentInLibrary(page, agentName);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.openSavedAgent(agentName);
 
   const scheduledTab = page.getByRole("tab", { name: /Scheduled/i });
   await expect(scheduledTab).toBeVisible({ timeout: 15000 });
@@ -94,11 +108,12 @@ test("builder happy path: user can schedule the saved agent and run it from Libr
   await expect(runNowButton).toBeVisible({ timeout: 15000 });
   await runNowButton.click();
 
-  await waitForRunToComplete(page, 45000);
+  await libraryPage.waitForRunToComplete();
 
-  const runStatus = await getRunStatus(page);
+  // The simple agent (Store Value + Add to Dictionary) has no AgentOutputBlock,
+  // so "No output from this run." is expected — assert only the run status.
+  const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
-  await assertRunProducedOutput(page);
 });
 
 test("builder happy path: user can export the created agent", async ({
@@ -110,10 +125,11 @@ test("builder happy path: user can export the created agent", async ({
   const { agentName } =
     await buildPage.createAndSaveSimpleAgent("Smoke Export Agent");
 
-  await openSavedAgentInLibrary(page, agentName);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.openSavedAgent(agentName);
 
   const downloadPromise = page.waitForEvent("download", { timeout: 15000 });
-  await clickExportAgent(page);
+  await libraryPage.clickExportAgent();
   const download = await downloadPromise;
 
   expect(download.suggestedFilename()).toMatch(/\.json$/i);

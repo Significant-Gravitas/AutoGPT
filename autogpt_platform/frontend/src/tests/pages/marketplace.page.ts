@@ -298,7 +298,8 @@ export class MarketplacePage extends BasePage {
         .filter({ hasText: agentTitle })
         .first();
 
-      if (await submissionRow.isVisible().catch(() => false)) {
+      // Row may not appear immediately after redirect — check without throwing
+      if (await submissionRow.isVisible()) {
         return submissionRow;
       }
 

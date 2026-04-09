@@ -5,7 +5,7 @@ import { SettingsPage } from "./pages/settings.page";
 test("settings happy path: user can save notification preferences and keep them after reload and re-login", async ({
   page,
 }) => {
-  test.setTimeout(120000);
+  test.setTimeout(90000);
 
   const loginPage = new LoginPage(page);
   const settingsPage = new SettingsPage(page);
@@ -14,8 +14,13 @@ test("settings happy path: user can save notification preferences and keep them 
   await settingsPage.open();
 
   const agentRunSwitch = settingsPage.getAgentRunNotificationsSwitch();
-  const initialState =
-    (await agentRunSwitch.getAttribute("aria-checked")) ?? "false";
+  // Assert the attribute exists before reading it — defaulting to "false"
+  // would silently pass a regression that removes `aria-checked` entirely.
+  await expect(agentRunSwitch).toHaveAttribute(
+    "aria-checked",
+    /^(true|false)$/,
+  );
+  const initialState = await agentRunSwitch.getAttribute("aria-checked");
   const expectedState = initialState === "true" ? "false" : "true";
 
   await agentRunSwitch.click();

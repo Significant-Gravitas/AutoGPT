@@ -40,6 +40,26 @@ export class LibraryPage extends BasePage {
     await this.isLoaded();
   }
 
+  async openSavedAgent(agentName: string): Promise<void> {
+    await openSavedAgentInLibrary(this.page, agentName);
+  }
+
+  async waitForRunToComplete(timeout = 45000): Promise<void> {
+    await waitForRunToComplete(this.page, timeout);
+  }
+
+  async getRunStatus(): Promise<string> {
+    return getRunStatus(this.page);
+  }
+
+  async assertRunProducedOutput(timeout = 15000): Promise<void> {
+    await assertRunProducedOutput(this.page, timeout);
+  }
+
+  async clickExportAgent(): Promise<void> {
+    await clickExportAgent(this.page);
+  }
+
   async getAgentCount(): Promise<number> {
     const { getId } = getSelectors(this.page);
     const countText = await getId("agents-count").textContent();
@@ -58,30 +78,23 @@ export class LibraryPage extends BasePage {
     const { getRole } = getSelectors(this.page);
     const searchInput = getRole("textbox", "Search agents");
     await searchInput.fill(searchTerm);
-
-    await this.page.waitForTimeout(500);
+    await expect(searchInput).toHaveValue(searchTerm);
   }
 
   async clearSearch(): Promise<void> {
     console.log(`clearing search`);
-    try {
-      // Look for the clear button (X icon)
-      const clearButton = this.page.locator(".lucide.lucide-x");
-      if (await clearButton.isVisible()) {
-        await clearButton.click();
-      } else {
-        // If no clear button, clear the search input directly
-        const searchInput = this.page.getByRole("textbox", {
-          name: "Search agents",
-        });
-        await searchInput.fill("");
-      }
-
-      // Wait for results to update
-      await this.page.waitForTimeout(500);
-    } catch (error) {
-      console.error("Error clearing search:", error);
+    // Look for the clear button (X icon)
+    const clearButton = this.page.locator(".lucide.lucide-x");
+    const searchInput = this.page.getByRole("textbox", {
+      name: "Search agents",
+    });
+    if (await clearButton.isVisible()) {
+      await clearButton.click();
+    } else {
+      // If no clear button, clear the search input directly
+      await searchInput.fill("");
     }
+    await expect(searchInput).toHaveValue("");
   }
 
   async selectSortOption(
@@ -92,8 +105,6 @@ export class LibraryPage extends BasePage {
     await getRole("combobox").click();
 
     await getRole("option", sortOption).click();
-
-    await this.page.waitForTimeout(500);
   }
 
   async getCurrentSortOption(): Promise<string> {
@@ -278,39 +289,36 @@ export class LibraryPage extends BasePage {
   async scrollToBottom(): Promise<void> {
     console.log(`scrolling to bottom to trigger pagination`);
     await this.page.keyboard.press("End");
-    await this.page.waitForTimeout(1000);
   }
 
   async scrollDown(): Promise<void> {
     console.log(`scrolling down to trigger pagination`);
     await this.page.keyboard.press("PageDown");
-    await this.page.waitForTimeout(1000);
   }
 
-  async scrollToLoadMore(): Promise<void> {
-    console.log(`scrolling to load more agents`);
-
+  // Returns true if more agents loaded, false if we're on the last page.
+  // Callers must distinguish these cases so a broken pagination pipeline
+  // doesn't quietly look like "we reached the end".
+  async scrollToLoadMore(): Promise<boolean> {
     const initialCount = await this.getAgentCountByListLength();
     console.log(`Initial agent count (DOM cards): ${initialCount}`);
 
     await this.scrollToBottom();
 
-    await this.page
-      .waitForLoadState("networkidle", { timeout: 10000 })
-      .catch(() => console.log("Network idle timeout, continuing..."));
-
-    await this.page
-      .waitForFunction(
+    try {
+      await this.page.waitForFunction(
         (prevCount) =>
           document.querySelectorAll('[data-testid="library-agent-card"]')
             .length > prevCount,
         initialCount,
-        { timeout: 5000 },
-      )
-      .catch(() => {});
-
-    const newCount = await this.getAgentCountByListLength();
-    console.log(`New agent count after scroll (DOM cards): ${newCount}`);
+        { timeout: 10000 },
+      );
+      return true;
+    } catch {
+      // No new cards — caller should verify this is actually the last page
+      // (e.g., by comparing against `getAgentCount()`), not a broken fetch.
+      return false;
+    }
   }
 
   async testPagination(): Promise<{
@@ -360,34 +368,24 @@ export class LibraryPage extends BasePage {
   }
 
   async waitForPaginationLoad(): Promise<void> {
-    console.log(`waiting for pagination to load`);
-
-    // Wait for any loading states to complete
-    await this.page.waitForTimeout(1000);
-
-    // Wait for agent count to stabilize
-    let previousCount = 0;
-    let currentCount = 0;
+    // Wait until the agent count header stops changing. Poll every 500ms
+    // and declare stable after two consecutive equal reads, capped at 10s.
+    // The previous implementation had no delay between reads and so hit
+    // "stable" instantly — effectively a no-op.
+    const deadline = Date.now() + 10000;
+    let previousCount = -1;
     let stableChecks = 0;
-    const maxChecks = 5; // Reduced from 10 to prevent excessive waiting
 
-    while (stableChecks < 2 && stableChecks < maxChecks) {
-      currentCount = await this.getAgentCount();
-
+    while (Date.now() < deadline && stableChecks < 2) {
+      const currentCount = await this.getAgentCount();
       if (currentCount === previousCount) {
-        stableChecks++;
+        stableChecks += 1;
       } else {
         stableChecks = 0;
+        previousCount = currentCount;
       }
-
-      previousCount = currentCount;
-      if (stableChecks < 2) {
-        // Only wait if we haven't stabilized yet
-        await this.page.waitForTimeout(500);
-      }
+      await this.page.waitForTimeout(500);
     }
-
-    console.log(`Pagination load stabilized with ${currentCount} agents`);
   }
 
   async scrollAndWaitForNewAgents(): Promise<number> {
@@ -507,7 +505,8 @@ export async function clickRunButton(page: Page): Promise<void> {
       return;
     }
 
-    await page.waitForTimeout(250);
+    // Brief yield so the DOM can settle between polling attempts
+    await page.waitForLoadState("domcontentloaded");
   }
 
   const visibleButtons = await page
@@ -534,77 +533,28 @@ async function clickStartOrSimulateTask(
   page: Page,
   startBtn: Locator,
 ): Promise<void> {
-  async function getRunStartState() {
-    const currentUrl = new URL(page.url());
-    if (
-      currentUrl.searchParams.get("activeTab") === "runs" &&
-      currentUrl.searchParams.get("activeItem")
-    ) {
-      return "started";
-    }
+  // Happy-path tests must exercise a real run — do NOT fall back to the
+  // "Simulate" button if Start fails, because a broken Start code path is
+  // exactly the regression these tests exist to catch.
+  await expect(startBtn).toBeEnabled({ timeout: 10000 });
+  await startBtn.click();
 
-    if (
-      await page
-        .getByText(/Run started|Agent execution started/i)
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return "started";
-    }
-
-    if (
-      await getSelectors(page)
-        .getId("agent-activity-badge")
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return "started";
-    }
-
-    if (!(await startBtn.isVisible().catch(() => false))) {
-      return "started";
-    }
-
-    return "pending";
-  }
-
-  if (await startBtn.isEnabled()) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      await startBtn.click({ force: true });
-
-      const started = await expect
-        .poll(getRunStartState, { timeout: 10000 })
-        .toBe("started")
-        .then(() => true)
-        .catch(() => false);
-
-      if (started) {
-        return;
-      }
-    }
-  }
-
-  const simulateBtn = page.getByRole("button", { name: /Simulate/i }).first();
-  if (await simulateBtn.isVisible().catch(() => false)) {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      await simulateBtn.click({ force: true });
-
-      const started = await expect
-        .poll(getRunStartState, { timeout: 10000 })
-        .toBe("started")
-        .then(() => true)
-        .catch(() => false);
-
-      if (started) {
-        return;
-      }
-    }
-  }
-
-  throw new Error(
-    "Could not start or simulate task after opening the run dialog",
-  );
+  await expect
+    .poll(
+      () => {
+        const currentUrl = new URL(page.url());
+        return (
+          currentUrl.searchParams.get("activeTab") === "runs" &&
+          currentUrl.searchParams.get("activeItem") !== null
+        );
+      },
+      {
+        timeout: 15000,
+        message:
+          "Start Task click did not navigate to a run detail (?activeTab=runs&activeItem=...)",
+      },
+    )
+    .toBe(true);
 }
 
 async function fillVisibleTaskInputs(page: Page): Promise<void> {
@@ -655,9 +605,9 @@ export async function runAgent(page: Page): Promise<void> {
 
 export async function waitForAgentPageLoad(page: Page): Promise<void> {
   await page.waitForURL(/.*\/library\/agents\/[^/]+/);
-  // Wait for sidebar data to finish loading so the page settles
+  // Wait for the primary content area to be present so the page has settled
   // into its final state (empty view vs sidebar view)
-  await page.waitForLoadState("networkidle");
+  await page.waitForLoadState("domcontentloaded");
 
   // Transient "Something went wrong — All connection attempts failed" error
   // boundary appears when the library agent page loads before the backend
@@ -676,8 +626,7 @@ export async function waitForAgentPageLoad(page: Page): Promise<void> {
     } else {
       await page.reload();
     }
-    await page.waitForLoadState("networkidle").catch(() => undefined);
-    await page.waitForTimeout(1000);
+    await page.waitForLoadState("domcontentloaded");
   }
 }
 
@@ -718,35 +667,15 @@ export async function assertRunProducedOutput(
   page: Page,
   timeout = 15000,
 ): Promise<void> {
+  // A completed run must surface output on the CURRENT render without a
+  // page reload. Reloading to "rule out stale cache" would mask a real
+  // user-visible regression where the frontend only shows output after a
+  // manual refresh.
   const noOutput = page.getByText("No output from this run.", { exact: true });
-
-  // Phase 1: give the current page render up to half `timeout` ms to swap
-  // from the initial placeholder to real content. React Query may have the
-  // outputs in flight from the backend; a short poll lets the re-render land.
-  const phase1End = Date.now() + Math.floor(timeout / 2);
-  while (Date.now() < phase1End) {
-    if (!(await noOutput.isVisible({ timeout: 300 }).catch(() => false))) {
-      return;
-    }
-    await page.waitForTimeout(500);
-  }
-
-  // Phase 2: force a backend re-fetch. Stale React Query cache is a common
-  // cause of the UI showing "No output" while the backend has the full run.
-  // A single targeted reload rules this out before we declare a real bug.
-  await page.reload();
-  await page.waitForLoadState("domcontentloaded");
-  const phase2End = Date.now() + Math.floor(timeout / 2);
-  while (Date.now() < phase2End) {
-    if (!(await noOutput.isVisible({ timeout: 300 }).catch(() => false))) {
-      return;
-    }
-    await page.waitForTimeout(500);
-  }
-
-  throw new Error(
-    'run completed but produced no output ("No output from this run." still shown after reload) — likely a broken graph or missing output node',
-  );
+  await expect(noOutput, {
+    message:
+      'run completed but produced no output ("No output from this run." still shown) — broken graph, missing output node, or stale React Query cache',
+  }).toBeHidden({ timeout });
 }
 
 export async function waitForRunToComplete(
@@ -758,7 +687,7 @@ export async function waitForRunToComplete(
   while (Date.now() - start < timeout) {
     lastStatus = await getRunStatus(page);
     if (TERMINAL_RUN_STATUSES.has(lastStatus)) return;
-    await page.waitForTimeout(500);
+    await page.waitForLoadState("domcontentloaded");
   }
   throw new Error(
     `waitForRunToComplete timed out after ${timeout}ms — last status was "${lastStatus}" (expected one of: ${[...TERMINAL_RUN_STATUSES].join(", ")})`,
@@ -773,12 +702,16 @@ export async function dismissFeedbackDialog(page: Page): Promise<void> {
   const feedbackDialog = page.getByRole("dialog", {
     name: "We'd love your feedback",
   });
-  if (!(await feedbackDialog.isVisible().catch(() => false))) {
+  // Dialog is genuinely optional — it only appears on some run completions.
+  // Give it a realistic window to animate in; 500ms races the dialog
+  // transition and causes later clicks to land on it instead of the button
+  // behind it.
+  if (!(await feedbackDialog.isVisible({ timeout: 3000 }).catch(() => false))) {
     return;
   }
 
   const cancelButton = feedbackDialog.getByRole("button", { name: "Cancel" });
-  if (await cancelButton.isVisible().catch(() => false)) {
+  if (await cancelButton.isVisible()) {
     await cancelButton.click();
     await expect(feedbackDialog).toBeHidden({ timeout: 15000 });
     return;
@@ -807,7 +740,11 @@ export async function importAgentFromFile(
   });
   await page.getByRole("button", { name: "Upload" }).click();
 
-  await expect(page).toHaveURL(/\/build/);
+  // Upload → backend creates the graph → router pushes /build?flowID=...
+  // This pipeline can comfortably exceed the default 5s toHaveURL timeout on
+  // slower backends, so wait generously here. A failure after 20s indicates
+  // a real regression in the import→builder hand-off, not flake.
+  await expect(page).toHaveURL(/\/build/, { timeout: 20000 });
 
   // Import should produce a real graph, not an empty canvas. Lazy-import
   // BuildPage locally to avoid a circular dependency between the two
@@ -825,15 +762,48 @@ export async function importAgentFromFile(
   await libraryPage.searchAgents(agentName);
   await libraryPage.waitForAgentsToLoad();
 
-  const importedAgents = await libraryPage.getAgents();
-  const importedAgent = importedAgents.find((agent) =>
-    agent.name.includes(agentName),
-  );
+  // Look up the specific imported card directly rather than calling
+  // getAgents() in a loop. getAgents() iterates every visible card and
+  // reads hrefs via `.getAttribute`, which deadlocks if the library list
+  // re-renders mid-iteration (previously caused this test to hang 120s on
+  // the 8th card). A filter-based lookup on the agent name is both faster
+  // and immune to list churn.
+  const { getId } = getSelectors(page);
+  const importedCard = getId("library-agent-card")
+    .filter({ hasText: agentName })
+    .first();
+  await expect(
+    importedCard,
+    `imported agent card "${agentName}" must appear in the library search results`,
+  ).toBeVisible({ timeout: 15000 });
 
-  expect(importedAgent).toBeTruthy();
-  if (!importedAgent) {
-    throw new Error("Imported agent was not found in the library");
-  }
+  const seeRunsLink = getId("library-agent-card-see-runs-link", importedCard);
+  const seeRunsUrl = (await seeRunsLink.getAttribute("href")) ?? "";
+  const openInBuilderLink = getId(
+    "library-agent-card-open-in-builder-link",
+    importedCard,
+  );
+  const openInBuilderUrl =
+    (await openInBuilderLink.count()) > 0
+      ? ((await openInBuilderLink.getAttribute("href")) ?? "")
+      : "";
+
+  const idMatch = seeRunsUrl.match(/\/library\/agents\/([^/]+)/);
+  const importedAgent: Agent = {
+    id: idMatch ? idMatch[1] : "",
+    name:
+      (
+        await getId("library-agent-card-name", importedCard).textContent()
+      )?.trim() ?? agentName,
+    description: "",
+    seeRunsUrl,
+    openInBuilderUrl,
+  };
+
+  expect(
+    importedAgent.name,
+    "imported agent name should contain the requested name",
+  ).toContain(agentName);
 
   return { libraryPage, importedAgent };
 }
@@ -880,18 +850,19 @@ async function waitForExportControl(page: Page): Promise<string> {
   for (let attempt = 0; attempt < 2; attempt++) {
     let exportControl = "pending";
 
-    await expect
-      .poll(
-        async () => {
-          exportControl = await getVisibleExportControl(page);
-          return exportControl;
-        },
-        { timeout: 15000 },
-      )
-      .not.toBe("pending")
-      .catch(() => {
-        exportControl = "pending";
-      });
+    try {
+      await expect
+        .poll(
+          async () => {
+            exportControl = await getVisibleExportControl(page);
+            return exportControl;
+          },
+          { timeout: 15000 },
+        )
+        .not.toBe("pending");
+    } catch {
+      exportControl = "pending";
+    }
 
     if (exportControl !== "pending") {
       return exportControl;
@@ -926,6 +897,20 @@ export async function clickExportAgent(page: Page): Promise<void> {
   await dropdownExportButton.click();
 }
 
+// The run status is rendered by RunStatusBadge as lowercase text inside a
+// `.capitalize` element (uppercased via CSS). Scoping to that class prevents
+// false positives from free-text occurrences of words like "completed"
+// elsewhere on the page (filter chips, tooltips, etc.).
+const RUN_STATUS_WORDS = [
+  "completed",
+  "failed",
+  "terminated",
+  "incomplete",
+  "queued",
+  "review",
+  "running",
+] as const;
+
 export async function getRunStatus(page: Page): Promise<string> {
   // 1. Detect React error boundary first — fast loud failure if the page
   //    crashed mid-run, instead of polling until timeout.
@@ -941,77 +926,18 @@ export async function getRunStatus(page: Page): Promise<string> {
     return "error";
   }
 
-  // 2. Look for an EXPLICIT status badge first. The page renders one of
-  //    these strings in the run-detail header once the run reaches a known
-  //    state. We must check terminal states BEFORE the running heuristics
-  //    below, otherwise a completed run on /library/agents/[id]?activeTab=runs
-  //    would be misread as "running" because the URL still carries activeItem.
-  const statusTexts = [
-    { text: "completed", status: "completed" },
-    { text: "failed", status: "failed" },
-    { text: "terminated", status: "terminated" },
-    { text: "incomplete", status: "incomplete" },
-    { text: "queued", status: "queued" },
-    { text: "review", status: "review" },
-  ] as const;
-
-  for (const { text, status } of statusTexts) {
-    const locator = page.getByText(new RegExp(`^${text}$`, "i")).first();
-    if (await locator.isVisible().catch(() => false)) {
-      return status;
+  // 2. Read the status from the scoped RunStatusBadge element. This is the
+  //    only source of truth — no free-text matching across the whole page,
+  //    no spinner heuristics that confuse a skeleton loader with a live run.
+  const badges = page.locator(".capitalize");
+  const badgeCount = await badges.count().catch(() => 0);
+  for (let i = 0; i < badgeCount; i += 1) {
+    const badge = badges.nth(i);
+    if (!(await badge.isVisible().catch(() => false))) continue;
+    const text = ((await badge.textContent()) ?? "").trim().toLowerCase();
+    if ((RUN_STATUS_WORDS as readonly string[]).includes(text)) {
+      return text;
     }
-  }
-
-  // 3. Heuristics that only mean "the run is in progress" — the run was
-  //    just kicked off and there's no terminal badge yet.
-  const runStartedToast = page.getByText(
-    /Run started|Agent execution started/i,
-  );
-  if (
-    await runStartedToast
-      .first()
-      .isVisible()
-      .catch(() => false)
-  ) {
-    return "running";
-  }
-
-  if (
-    await page
-      .locator(".animate-spin")
-      .first()
-      .isVisible()
-      .catch(() => false)
-  ) {
-    return "running";
-  }
-
-  if (
-    await getSelectors(page)
-      .getId("agent-activity-badge")
-      .isVisible()
-      .catch(() => false)
-  ) {
-    return "running";
-  }
-
-  // 4. URL pattern fallback — once the page navigates to a run's detail
-  //    panel (?activeTab=runs&activeItem=X) without yet rendering a
-  //    terminal badge, assume the run is still mid-flight. Note: this is
-  //    a LAST RESORT, not a first check — terminal badges above win.
-  const currentUrl = new URL(page.url());
-  if (
-    currentUrl.searchParams.get("activeTab") === "runs" &&
-    currentUrl.searchParams.get("activeItem")
-  ) {
-    return "running";
-  }
-
-  // 5. Soft fallback: a "running" badge text if it's the only thing on
-  //    the page. (Was previously checked alongside terminal states.)
-  const runningLocator = page.getByText(/^running$/i).first();
-  if (await runningLocator.isVisible().catch(() => false)) {
-    return "running";
   }
 
   return "unknown";

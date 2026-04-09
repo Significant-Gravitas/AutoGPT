@@ -3,14 +3,11 @@ import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage, createUniqueAgentName } from "./pages/build.page";
 import {
-  assertRunProducedOutput,
   clickRunButton,
   dismissFeedbackDialog,
   getActiveItemId,
-  getRunStatus,
   importAgentFromFile,
-  openSavedAgentInLibrary,
-  waitForRunToComplete,
+  LibraryPage,
 } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.library });
@@ -43,9 +40,11 @@ test("library happy path: user can open the imported or saved agent from Library
     createUniqueAgentName("E2E Open Agent"),
   );
 
+  // Register the popup listener before clicking so we don't miss a fast open.
+  // A short timeout covers the case where the link opens in the current tab.
   const popupPromise = page
     .context()
-    .waitForEvent("page")
+    .waitForEvent("page", { timeout: 10000 })
     .catch(() => null);
   await libraryPage.clickOpenInBuilder(importedAgent);
   const builderPage = (await popupPromise) ?? page;
@@ -66,9 +65,10 @@ test("library happy path: user can rerun a completed task from the Library agent
   const { agentName } =
     await buildPage.createAndSaveSimpleAgent("E2E Rerun Agent");
 
-  await openSavedAgentInLibrary(page, agentName);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.openSavedAgent(agentName);
   await clickRunButton(page);
-  await waitForRunToComplete(page, 45000);
+  await libraryPage.waitForRunToComplete();
   await dismissFeedbackDialog(page);
 
   const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
@@ -91,11 +91,11 @@ test("library happy path: user can rerun a completed task from the Library agent
     .poll(() => getActiveItemId(page), { timeout: 45000 })
     .not.toBe(initialRunId);
 
-  await waitForRunToComplete(page, 45000);
+  await libraryPage.waitForRunToComplete();
 
-  const runStatus = await getRunStatus(page);
+  // Simple agent has no AgentOutputBlock — verify run completion only.
+  const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
-  await assertRunProducedOutput(page);
 });
 
 test("library happy path: user can delete a completed task from the run sidebar", async ({
@@ -108,9 +108,10 @@ test("library happy path: user can delete a completed task from the run sidebar"
     "E2E Delete Task Agent",
   );
 
-  await openSavedAgentInLibrary(page, agentName);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.openSavedAgent(agentName);
   await clickRunButton(page);
-  await waitForRunToComplete(page, 45000);
+  await libraryPage.waitForRunToComplete();
   await dismissFeedbackDialog(page);
 
   // Open the per-task actions dropdown ("More actions" three-dot button)
@@ -150,17 +151,18 @@ test("library happy path: user can open the agent in builder from the run detail
     "E2E View Task Agent",
   );
 
-  await openSavedAgentInLibrary(page, agentName);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.openSavedAgent(agentName);
   await clickRunButton(page);
-  await waitForRunToComplete(page, 45000);
+  await libraryPage.waitForRunToComplete();
   await dismissFeedbackDialog(page);
 
   // The "View task details" eye-icon button on a completed run opens the
   // agent in the builder in a new tab. This exercises the runner → builder
   // navigation that QA item #22 ("Customise Agent" from Runner UI) covers.
-  const viewTaskButton = page.getByRole("button", {
-    name: "View task details",
-  });
+  const viewTaskButton = page
+    .locator('[aria-label="View task details"]')
+    .first();
   await expect(viewTaskButton).toBeVisible({ timeout: 15000 });
 
   const popupPromise = context.waitForEvent("page", { timeout: 15000 });

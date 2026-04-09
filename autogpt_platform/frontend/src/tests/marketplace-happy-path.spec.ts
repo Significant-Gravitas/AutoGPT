@@ -1,11 +1,9 @@
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import {
-  assertRunProducedOutput,
   clickRunButton,
-  getRunStatus,
+  LibraryPage,
   waitForAgentPageLoad,
-  waitForRunToComplete,
 } from "./pages/library.page";
 import { MarketplacePage } from "./pages/marketplace.page";
 
@@ -36,9 +34,11 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
 
   await waitForAgentPageLoad(page);
   await clickRunButton(page);
-  await waitForRunToComplete(page, 45000);
 
-  const runStatus = await getRunStatus(page);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.waitForRunToComplete();
+
+  const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
-  await assertRunProducedOutput(page);
+  await libraryPage.assertRunProducedOutput();
 });

@@ -74,7 +74,7 @@ export class BuildPage extends BasePage {
     );
     await searchInput.clear();
     await searchInput.fill(searchTerm);
-    await this.page.waitForTimeout(300);
+    await expect(searchInput).toHaveValue(searchTerm);
   }
 
   private getBlockCardByName(name: string): Locator {
@@ -246,14 +246,12 @@ export class BuildPage extends BasePage {
   }
 
   async clickRunButton(): Promise<void> {
-    // Dismiss any post-save toast that may be intercepting pointer events
-    // on the run button. Sonner toasts auto-dismiss, but the Run button can
-    // become clickable before the toast animates out, causing flakes.
-    await this.page
-      .getByText("Graph saved successfully")
-      .first()
-      .waitFor({ state: "hidden", timeout: 5000 })
-      .catch(() => undefined);
+    // Dismiss any post-save toast that may be intercepting pointer events on
+    // the run button. Actively close it rather than waiting for Sonner's
+    // default auto-dismiss — the auto-dismiss + fade-out routinely runs over
+    // 5s and caused flakes here. The toast is optional (only after save), so
+    // the dismissal is guarded.
+    await this.dismissSaveToast();
     const runButton = this.page.locator('[data-id="run-graph-button"]');
     await runButton.click();
   }
@@ -332,10 +330,12 @@ export class BuildPage extends BasePage {
   async open(): Promise<void> {
     await this.goto();
     await this.closeTutorial();
-    await expect(this.page.locator(".react-flow")).toBeVisible();
+    await expect(this.page.locator(".react-flow")).toBeVisible({
+      timeout: 15000,
+    });
     await expect(
       this.page.getByTestId("blocks-control-blocks-button"),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
   }
 
   async addSimpleAgentBlocks(): Promise<void> {
@@ -382,23 +382,25 @@ export class BuildPage extends BasePage {
     const closeToastButton = this.page.getByRole("button", {
       name: "Close toast",
     });
-    if (
-      await closeToastButton.isVisible({ timeout: 1000 }).catch(() => false)
-    ) {
+    // Toast is optional — only shown after a save action
+    if (await closeToastButton.isVisible({ timeout: 1000 })) {
       await closeToastButton.click();
     }
 
-    await this.page
-      .getByText("Graph saved successfully")
-      .waitFor({ state: "hidden", timeout: 10000 })
-      .catch(() => {});
+    // If the toast appeared but is not yet hidden, wait for it. If it never
+    // appeared at all the locator is simply hidden already — no-op.
+    const savedToast = this.page.getByText("Graph saved successfully");
+    if (await savedToast.isVisible({ timeout: 500 })) {
+      await expect(savedToast).toBeHidden({ timeout: 10000 });
+    }
   }
 
   async startRun(): Promise<void> {
     await this.clickRunButton();
 
+    // The run-input dialog is optional — agents without required inputs skip it
     const runDialog = this.page.locator('[data-id="run-input-dialog-content"]');
-    if (await runDialog.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await runDialog.isVisible({ timeout: 5000 })) {
       await this.page
         .locator('[data-id="run-input-manual-run-button"]')
         .click();
@@ -417,6 +419,122 @@ export class BuildPage extends BasePage {
     }
 
     return "unknown";
+  }
+
+  // --- Tutorial (Shepherd.js tour) ---
+
+  // Each Shepherd step's <h3> title has id="<stepId>-label"; using it avoids
+  // title-overlap collisions like "Open the Block Menu" vs "The Block Menu".
+  private getShepherdStep(stepId: string): Locator {
+    return this.page.locator(`#${stepId}-label`);
+  }
+
+  // Scope to .shepherd-enabled so we don't click buttons on hidden-but-still-
+  // attached previous steps.
+  private getShepherdButton(name: string | RegExp): Locator {
+    return this.page
+      .locator(".shepherd-element.shepherd-enabled")
+      .getByRole("button", { name });
+  }
+
+  async startTutorial(): Promise<void> {
+    // Tutorial only starts from pristine /build; a flowID query param routes
+    // the tutorial button to /build?view=new instead.
+    await this.page.goto("/build");
+    await this.page.waitForLoadState("domcontentloaded");
+    await expect(this.page.locator(".react-flow")).toBeVisible({
+      timeout: 15000,
+    });
+
+    await this.page.evaluate(() => {
+      window.localStorage.removeItem("shepherd-tour");
+    });
+
+    const tutorialButton = this.page.locator('[data-id="tutorial-button"]');
+    await expect(tutorialButton).toBeVisible({ timeout: 15000 });
+    await expect(tutorialButton).toBeEnabled({ timeout: 15000 });
+    await tutorialButton.click();
+
+    await expect(this.getShepherdStep("welcome")).toBeVisible({
+      timeout: 15000,
+    });
+  }
+
+  async walkWelcomeToBlockMenu(): Promise<void> {
+    await this.getShepherdButton("Let's Begin").click();
+
+    await expect(this.getShepherdStep("open-block-menu")).toBeVisible({
+      timeout: 10000,
+    });
+    await this.page
+      .locator('[data-id="blocks-control-popover-trigger"]')
+      .click();
+
+    await expect(this.getShepherdStep("block-menu-overview")).toBeVisible({
+      timeout: 10000,
+    });
+    await this.getShepherdButton("Next").click();
+  }
+
+  async walkSearchAndAddCalculator(): Promise<void> {
+    // search-calculator auto-advances once the Calculator block card appears
+    // in the filtered results; select-calculator auto-advances once the
+    // Calculator is added to the node store.
+    await expect(this.getShepherdStep("search-calculator")).toBeVisible({
+      timeout: 10000,
+    });
+    await this.page
+      .locator('[data-id="blocks-control-search-bar"] input[type="text"]')
+      .fill("Calculator");
+
+    await expect(this.getShepherdStep("select-calculator")).toBeVisible({
+      timeout: 10000,
+    });
+    const calculatorCard = this.page.locator(
+      '[data-id="block-card-b1ab9b1967a6406dabf52dba76d00c79"]',
+    );
+    await expect(calculatorCard).toBeVisible({ timeout: 10000 });
+    await calculatorCard.click();
+
+    await expect(this.getShepherdStep("focus-new-block")).toBeVisible({
+      timeout: 10000,
+    });
+    await this.waitForNodeOnCanvas(1);
+  }
+
+  // Use dispatchEvent — the Shepherd cancel icon sits inside a step that's
+  // pinned to an off-screen React Flow node, so Playwright's visibility
+  // checks reject a normal click. A synthetic click event still triggers
+  // tour.cancel() via Shepherd's listener.
+  async cancelTutorial(): Promise<void> {
+    await this.page
+      .locator(".shepherd-element.shepherd-enabled .shepherd-cancel-icon")
+      .first()
+      .dispatchEvent("click");
+    await expect(
+      this.page.locator(".shepherd-element.shepherd-enabled"),
+    ).toHaveCount(0, { timeout: 10000 });
+  }
+
+  // NOTE: welcome.ts "Skip Tutorial" only calls handleTutorialSkip, which
+  // writes localStorage but does NOT call tour.cancel(). The tour UI stays
+  // open — the skip state is persisted so the next /build visit knows the
+  // user already dismissed the tour. Callers that want the UI closed must
+  // also call cancelTutorial().
+  async skipTutorialFromWelcome(): Promise<void> {
+    await expect(this.getShepherdStep("welcome")).toBeVisible({
+      timeout: 10000,
+    });
+    await this.getShepherdButton(/Skip Tutorial/i).click();
+    await expect
+      .poll(() => this.getTutorialStateFromStorage(), { timeout: 5000 })
+      .toBe("skipped");
+  }
+
+  async getTutorialStateFromStorage(): Promise<string | null> {
+    return this.page.evaluate(() =>
+      window.localStorage.getItem("shepherd-tour"),
+    );
   }
 
   // --- Scheduling ---

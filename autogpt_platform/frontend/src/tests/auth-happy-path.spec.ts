@@ -11,7 +11,7 @@ test.use({ storageState: COOKIE_CONSENT_STORAGE_STATE });
 test("auth happy path: user can sign up with a fresh account", async ({
   page,
 }) => {
-  test.setTimeout(90000);
+  test.setTimeout(60000);
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
@@ -19,7 +19,7 @@ test("auth happy path: user can sign up with a fresh account", async ({
 });
 
 test("auth happy path: seeded user can log in", async ({ page }) => {
-  test.setTimeout(90000);
+  test.setTimeout(60000);
 
   const testUser = getSeededTestUser("smokeAuth");
   const loginPage = new LoginPage(page);
@@ -34,7 +34,7 @@ test("auth happy path: seeded user can log in", async ({ page }) => {
 test("auth happy path: seeded user can log out and protected routes redirect to login", async ({
   page,
 }) => {
-  test.setTimeout(90000);
+  test.setTimeout(60000);
 
   const testUser = getSeededTestUser("smokeAuth");
   const loginPage = new LoginPage(page);
@@ -55,7 +55,7 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
 test("auth happy path: user can complete onboarding and land in the app", async ({
   page,
 }) => {
-  test.setTimeout(90000);
+  test.setTimeout(60000);
 
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
@@ -73,7 +73,8 @@ test("auth happy path: user can complete onboarding and land in the app", async 
 test("auth happy path: multi-tab logout clears shared builder sessions", async ({
   context,
 }) => {
-  test.setTimeout(120000);
+  // Two pages + builder load + logout sequence justifies a higher timeout
+  test.setTimeout(90000);
 
   const testUser = getSeededTestUser("smokeBuilder");
   const consoleErrors: string[] = [];
@@ -117,18 +118,18 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
   expect(consoleErrors).toHaveLength(0);
 
   // Prove the auth token is actually gone, not just the UI hidden. Supabase
-  // does not delete the cookie on signout — it overwrites it with an empty
-  // value and a past expiry. Either form is "cleared"; a non-empty value
-  // would mean a regression where the session token still resides in the
-  // shared browser context after logout.
+  // overwrites the cookie on signout with an empty value + past expiry
+  // rather than deleting it. An assertion that is silently skipped when the
+  // cookie is missing under the expected name would hide a real regression,
+  // so we assert on every non-empty sb-*auth-token* cookie explicitly.
   const cookiesAfterLogout = await context.cookies();
-  const authCookie = cookiesAfterLogout.find(
+  const authCookies = cookiesAfterLogout.filter(
     (c) => c.name.startsWith("sb-") && c.name.includes("auth-token"),
   );
-  if (authCookie !== undefined) {
+  for (const cookie of authCookies) {
     expect(
-      authCookie.value,
-      "supabase auth cookie must be empty after logout",
+      cookie.value,
+      `supabase auth cookie ${cookie.name} must be empty after logout`,
     ).toBe("");
   }
 

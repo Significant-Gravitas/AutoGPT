@@ -80,7 +80,6 @@ export class LoginPage {
 
     console.log(`⌛ Post-login redirected to ${this.page.url()}`);
 
-    await new Promise((resolve) => setTimeout(resolve, 200)); // allow time for client-side redirect
     await this.page.waitForLoadState("load", { timeout: 10_000 });
 
     // If redirected to onboarding, complete it via API so tests can proceed
@@ -90,31 +89,21 @@ export class LoginPage {
     await this.page.goto("/marketplace", { timeout: 20_000 });
     console.log("✅ Login process complete");
 
-    // If Wallet popover auto-opens, close it to avoid blocking account menu interactions
-    try {
-      const walletPanel = this.page.getByText("Your credits").first();
-      // Wait briefly for wallet to appear after navigation (it may open asynchronously)
-      const appeared = await walletPanel
-        .waitFor({ state: "visible", timeout: 2500 })
-        .then(() => true)
-        .catch(() => false);
-      if (appeared) {
-        const closeWalletButton = this.page.getByRole("button", {
-          name: /Close wallet/i,
-        });
-        await closeWalletButton.click({ timeout: 3000 }).catch(async () => {
-          // Fallbacks: try Escape, then click outside
-          await this.page.keyboard.press("Escape").catch(() => {});
-        });
-        await walletPanel
-          .waitFor({ state: "hidden", timeout: 3000 })
-          .catch(async () => {
-            await this.page.mouse.click(5, 5).catch(() => {});
-          });
+    // If Wallet popover auto-opens, close it to avoid blocking account menu interactions.
+    // The popover is genuinely optional — only appears on some accounts/environments.
+    const walletPanel = this.page.getByText("Your credits").first();
+    if (await walletPanel.isVisible({ timeout: 2500 })) {
+      const closeWalletButton = this.page.getByRole("button", {
+        name: /Close wallet/i,
+      });
+      if (await closeWalletButton.isVisible()) {
+        await closeWalletButton.click();
+      } else {
+        await this.page.keyboard.press("Escape");
       }
-    } catch (_e) {
-      // Non-fatal in tests; continue
-      console.log("(info) Wallet popover not present or already closed");
+      if (await walletPanel.isVisible({ timeout: 3000 })) {
+        await this.page.mouse.click(5, 5);
+      }
     }
   }
 }

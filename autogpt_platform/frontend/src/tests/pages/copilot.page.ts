@@ -14,8 +14,9 @@ export class CopilotPage extends BasePage {
   }
 
   async dismissNotificationPrompt(): Promise<void> {
+    // Notification permission prompt is optional — only shown on first visit
     const notNowButton = this.page.getByRole("button", { name: "Not now" });
-    if (await notNowButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await notNowButton.isVisible({ timeout: 3000 })) {
       await notNowButton.click();
     }
   }
