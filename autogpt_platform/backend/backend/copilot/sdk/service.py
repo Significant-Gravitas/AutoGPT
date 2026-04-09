@@ -2462,20 +2462,24 @@ async def stream_chat_completion_sdk(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if user_id and message:
+            from backend.copilot.graphiti.config import is_enabled_for_user
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
-            # Extract last assistant message from session for ingestion
-            _assistant_msgs = [
-                m.content or ""
-                for m in (session.messages if session else [])
-                if m.role == "assistant"
-            ]
-            _assistant_text = _assistant_msgs[-1] if _assistant_msgs else ""
-            _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(user_id, session_id, message, _assistant_text)
-            )
-            _background_tasks.add(_ingest_task)
-            _ingest_task.add_done_callback(_background_tasks.discard)
+            if await is_enabled_for_user(user_id):
+                # Extract last assistant message from session for ingestion
+                _assistant_msgs = [
+                    m.content or ""
+                    for m in (session.messages if session else [])
+                    if m.role == "assistant"
+                ]
+                _assistant_text = _assistant_msgs[-1] if _assistant_msgs else ""
+                _ingest_task = asyncio.create_task(
+                    enqueue_conversation_turn(
+                        user_id, session_id, message, _assistant_text
+                    )
+                )
+                _background_tasks.add(_ingest_task)
+                _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
         # TranscriptBuilder is the single source of truth.  It mirrors the
