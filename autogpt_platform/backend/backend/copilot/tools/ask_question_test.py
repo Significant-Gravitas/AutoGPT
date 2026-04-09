@@ -309,3 +309,38 @@ async def test_execute_questions_as_non_list_falls_back(
     assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == 1
     assert result.questions[0].question == "Fallback?"
+
+
+@pytest.mark.asyncio
+async def test_execute_multi_keyword_null_gets_fallback(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """If keyword is None (JSON null), use the question-{idx} fallback."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {"question": "First?", "keyword": None},
+            {"question": "Second?"},
+        ],
+    )
+
+    assert len(result.questions) == 2
+    assert result.questions[0].keyword == "question-0"
+    assert result.questions[1].keyword == "question-1"
+
+
+@pytest.mark.asyncio
+async def test_execute_options_filters_empty_strings(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """Empty-string options should be filtered out to avoid artifacts."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        question="Pick one",
+        options=["Email", "", "Slack", None],  # type: ignore[list-item]
+        keyword="channel",
+    )
+
+    assert result.questions[0].example == "Email, Slack"

@@ -96,6 +96,7 @@ class AskQuestionTool(BaseTool):
                     ),
                 },
             },
+            "required": ["question"],
         }
 
     @property
@@ -114,7 +115,7 @@ class AskQuestionTool(BaseTool):
     ) -> ClarifyingQuestion:
         """Build a single ``ClarifyingQuestion`` from raw inputs."""
         safe_options = (
-            [str(o) for o in options if o is not None]
+            [str(o) for o in options if o is not None and str(o).strip()]
             if isinstance(options, list)
             else []
         )
@@ -131,7 +132,7 @@ class AskQuestionTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session: ChatSession | None,
+        session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
         del user_id  # unused; required by BaseTool contract
@@ -158,8 +159,8 @@ class AskQuestionTool(BaseTool):
         if not isinstance(raw_options, list):
             raw_options = []
 
-        raw_keyword = kwargs.get("keyword", "")
-        keyword: str = str(raw_keyword) if raw_keyword else ""
+        raw_keyword = kwargs.get("keyword") or ""
+        keyword: str = str(raw_keyword).strip()
 
         clarifying_question = self._build_question(question, raw_options, keyword)
         return ClarificationNeededResponse(
@@ -186,7 +187,12 @@ class AskQuestionTool(BaseTool):
                     idx,
                 )
                 continue
-            keyword = str(item.get("keyword", "")) or f"question-{idx}"
+            raw_keyword = item.get("keyword")
+            keyword = (
+                str(raw_keyword).strip()
+                if raw_keyword is not None and str(raw_keyword).strip()
+                else f"question-{idx}"
+            )
             clarifying_questions.append(
                 self._build_question(
                     question=q_text.strip(),
