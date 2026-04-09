@@ -1249,7 +1249,7 @@ async def llm_call(
         avian_model_map = {
             LlmModel.AVIAN_GLM_5.value: "z-ai/glm-5",
         }
-        api_model = avian_model_map.get(llm_model.value, llm_model.value)
+        api_model = avian_model_map.get(llm_model.value) or llm_model.value
 
         response = await client.chat.completions.create(
             model=api_model,
