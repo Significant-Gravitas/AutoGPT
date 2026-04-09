@@ -3,10 +3,8 @@ import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
-const RUNNABLE_MARKETPLACE_AGENT_PATH =
+const DETERMINISTIC_MARKETPLACE_AGENT_PATH =
   "/marketplace/agent/e2e-marketplace/e2e-calculator-agent";
-const FALLBACK_MARKETPLACE_AGENT_PATH =
-  "/marketplace/agent/autogpt/unspirational-poster-maker";
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -150,59 +148,16 @@ export class MarketplacePage extends BasePage {
   // --- Happy-path flows shared across PR smoke specs ---
 
   async openRunnableAgent(): Promise<{ path: string }> {
-    const candidatePaths = [
-      RUNNABLE_MARKETPLACE_AGENT_PATH,
-      FALLBACK_MARKETPLACE_AGENT_PATH,
-    ];
-
-    for (const candidate of candidatePaths) {
-      await this.page.goto(candidate);
-      const addToLibraryButton = this.page.getByTestId(
-        "agent-add-library-button",
-      );
-
-      if (
-        await addToLibraryButton.isVisible({ timeout: 5000 }).catch(() => false)
-      ) {
-        await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
-        await expect(
-          this.page.getByTestId("agent-title").first(),
-        ).toBeVisible();
-        return { path: candidate };
-      }
-    }
-
-    await this.goto(this.page);
-
-    const candidateLinks = await this.page
-      .locator('a[href*="/marketplace/agent/"]')
-      .evaluateAll((links) =>
-        links
-          .map((link) => link.getAttribute("href"))
-          .filter((href): href is string => Boolean(href)),
-      );
-
-    const uniquePaths = [...new Set(candidateLinks)].slice(0, 8);
-    for (const path of uniquePaths) {
-      await this.page.goto(path);
-      const addToLibraryButton = this.page.getByTestId(
-        "agent-add-library-button",
-      );
-
-      if (
-        await addToLibraryButton.isVisible({ timeout: 5000 }).catch(() => false)
-      ) {
-        await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
-        await expect(
-          this.page.getByTestId("agent-title").first(),
-        ).toBeVisible();
-        return { path };
-      }
-    }
-
-    throw new Error(
-      "Could not find a runnable marketplace agent for PR E2E coverage",
+    await this.page.goto(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
+    await expect(this.page).toHaveURL(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
+    await expect(this.page.getByTestId("agent-title")).toContainText(
+      "E2E Calculator Agent",
     );
+    await expect(this.page.getByTestId("agent-add-library-button")).toBeVisible(
+      { timeout: 10000 },
+    );
+
+    return { path: DETERMINISTIC_MARKETPLACE_AGENT_PATH };
   }
 
   async openFeaturedAgent(): Promise<void> {
