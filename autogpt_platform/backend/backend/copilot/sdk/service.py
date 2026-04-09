@@ -52,6 +52,7 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 from ..config import ChatConfig, CopilotMode
+from ..graphiti.config import is_enabled_for_user
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -1871,8 +1872,6 @@ async def stream_chat_completion_sdk(
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
-
-        from backend.copilot.graphiti.config import is_enabled_for_user
 
         graphiti_enabled = await is_enabled_for_user(user_id)
 
