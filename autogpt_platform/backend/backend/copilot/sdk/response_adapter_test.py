@@ -260,13 +260,13 @@ def test_result_error_emits_error_and_finish():
         is_error=True,
         num_turns=0,
         session_id="s1",
-        result="API rate limited",
+        result="Invalid API key provided",
     )
     results = adapter.convert_message(msg)
     # No step was open, so no FinishStep — just Error + Finish
     assert len(results) == 2
     assert isinstance(results[0], StreamError)
-    assert "API rate limited" in results[0].errorText
+    assert "Invalid API key provided" in results[0].errorText
     assert isinstance(results[1], StreamFinish)
 
 
