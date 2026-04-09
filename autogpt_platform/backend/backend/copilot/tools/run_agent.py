@@ -71,10 +71,7 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
-    # Internal field — always overwritten from session.dry_run in _execute.
-    # Not exposed to the LLM (absent from the tool schema). exclude=True keeps
-    # it out of model_dump() outputs and makes the internal-only nature explicit.
-    dry_run: bool = Field(default=False, exclude=True)
+    dry_run: bool = Field(default=False)
 
     @field_validator(
         "username_agent_slug",
@@ -154,6 +151,10 @@ class RunAgentTool(BaseTool):
                     "minimum": 0,
                     "maximum": 300,
                 },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Simulate the agent run without executing real actions (default: false). Use when testing agent behaviour or when the user explicitly asks for a dry run.",
+                },
             },
             "required": [],
         }
@@ -176,8 +177,10 @@ class RunAgentTool(BaseTool):
         validators defined in the Pydantic model.
         """
         params = RunAgentInput(**kwargs)
-        # Session-level flag drives dry-run mode — not exposed to the LLM.
-        params.dry_run = session.dry_run
+        # Session-level dry_run forces all runs to be dry. In normal sessions
+        # the LLM may still request dry_run=True on individual calls.
+        if session.dry_run:
+            params.dry_run = True
         session_id = session.session_id
 
         # Validate at least one identifier is provided

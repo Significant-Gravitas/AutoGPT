@@ -739,10 +739,8 @@ def _make_graph_mock(graph_id: str = "g1") -> MagicMock:
 async def test_run_agent_session_dry_run_overrides_kwargs():
     """session.dry_run=True must override any dry_run=False from LLM kwargs.
 
-    The LLM cannot set dry_run — it's stripped from the schema.  But even if
-    somehow a caller passes dry_run=False, the session-level flag wins.
-    Asserts directly that params.dry_run=True is passed into _check_prerequisites
-    by intercepting the call and capturing the params argument.
+    The LLM can pass dry_run=False, but when the session is a dry-run session,
+    the session-level flag wins and forces dry_run=True for all runs.
     """
     from backend.copilot.tools.run_agent import RunAgentTool
 
@@ -822,11 +820,13 @@ async def test_run_agent_session_dry_run_false_allows_scheduling():
 
 
 @pytest.mark.asyncio
-async def test_run_agent_session_dry_run_false_overrides_true_kwarg():
-    """session.dry_run=False must override an explicit dry_run=True kwarg.
+async def test_run_agent_session_dry_run_false_allows_llm_dry_run_true():
+    """session.dry_run=False must NOT override an explicit dry_run=True kwarg.
 
-    Verifies the reverse override direction: a caller passing dry_run=True
-    is unconditionally overwritten by session.dry_run=False.
+    In a normal session the LLM can still request a dry run on individual
+    run_agent calls (e.g. "test this agent without executing it").
+    Only session.dry_run=True forces dry_run — the False value does not force
+    the opposite direction.
     """
     from backend.copilot.tools.run_agent import RunAgentTool
 
@@ -851,7 +851,7 @@ async def test_run_agent_session_dry_run_false_overrides_true_kwarg():
     ) as mock_run_agent:
         mock_run_agent.return_value = MagicMock()
 
-        # Caller passes dry_run=True; session.dry_run=False must override it
+        # LLM passes dry_run=True; normal session must NOT override it to False
         await tool._execute(
             user_id="user-1",
             session=session,
@@ -859,5 +859,5 @@ async def test_run_agent_session_dry_run_false_overrides_true_kwarg():
             dry_run=True,
         )
 
-    # Session-level False must have overridden the True kwarg
-    assert captured_params["dry_run"] is False
+    # LLM-requested dry_run=True is preserved in a normal session
+    assert captured_params["dry_run"] is True
