@@ -3,25 +3,28 @@
 import logging
 from typing import Any
 
+from graphiti_core.utils.maintenance.graph_data_operations import clear_data
+
 from backend.copilot.graphiti.client import (
     derive_group_id,
     evict_client,
     get_graphiti_client,
 )
+from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .models import ErrorResponse, GraphitiDeleteResponse, ToolResponseBase
+from .models import ErrorResponse, MemoryDeleteResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
 
-class GraphitiDeleteTool(BaseTool):
+class MemoryDeleteTool(BaseTool):
     """Delete all stored memories for the current user."""
 
     @property
     def name(self) -> str:
-        return "graphiti_delete_user_data"
+        return "memory_delete_user_data"
 
     @property
     def description(self) -> str:
@@ -52,6 +55,8 @@ class GraphitiDeleteTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        *,
+        confirm: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -60,22 +65,17 @@ class GraphitiDeleteTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        from backend.copilot.graphiti.config import is_enabled_for_user
-
         if not await is_enabled_for_user(user_id):
             return ErrorResponse(
                 message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
 
-        confirm = kwargs.get("confirm", False)
         if not confirm:
             return ErrorResponse(
                 message="You must set confirm=true to delete all memories. This action is irreversible.",
                 session_id=session.session_id,
             )
-
-        from graphiti_core.utils.maintenance.graph_data_operations import clear_data
 
         group_id = derive_group_id(user_id)
         client = await get_graphiti_client(group_id)
@@ -84,7 +84,7 @@ class GraphitiDeleteTool(BaseTool):
 
         evict_client(group_id)
 
-        return GraphitiDeleteResponse(
+        return MemoryDeleteResponse(
             message="All memories have been permanently deleted.",
             session_id=session.session_id,
         )

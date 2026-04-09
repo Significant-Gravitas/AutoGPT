@@ -28,7 +28,7 @@ class GraphitiConfig(BaseSettings):
 
     # FalkorDB connection
     falkordb_host: str = Field(default="localhost")
-    falkordb_port: int = Field(default=6379)
+    falkordb_port: int = Field(default=6380)
     falkordb_password: str = Field(default="")
 
     # LLM for entity extraction (used by graphiti-core during ingestion)
@@ -114,7 +114,25 @@ class GraphitiConfig(BaseSettings):
         return None  # OpenAI SDK default
 
 
-graphiti_config = GraphitiConfig()
+_graphiti_config: GraphitiConfig | None = None
+
+
+def _get_config() -> GraphitiConfig:
+    global _graphiti_config
+    if _graphiti_config is None:
+        _graphiti_config = GraphitiConfig()
+    return _graphiti_config
+
+
+# Backwards-compatible module-level attribute access.
+# All internal code should use ``_get_config()`` to avoid import-time
+# construction, but this keeps existing ``graphiti_config.xxx`` usage working.
+class _LazyConfigProxy:
+    def __getattr__(self, name: str):
+        return getattr(_get_config(), name)
+
+
+graphiti_config = _LazyConfigProxy()  # type: ignore[assignment]
 
 
 async def is_enabled_for_user(user_id: str | None) -> bool:

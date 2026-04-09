@@ -1791,6 +1791,7 @@ async def stream_chat_completion_sdk(
     turn_cache_read_tokens = 0
     turn_cache_creation_tokens = 0
     turn_cost_usd: float | None = None
+    graphiti_enabled = False
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -1870,11 +1871,12 @@ async def stream_chat_completion_sdk(
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
+
         from backend.copilot.graphiti.config import is_enabled_for_user
 
-        graphiti_supplement = (
-            get_graphiti_supplement() if await is_enabled_for_user(user_id) else ""
-        )
+        graphiti_enabled = await is_enabled_for_user(user_id)
+
+        graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b, cwd=sdk_cwd)
@@ -1882,15 +1884,12 @@ async def stream_chat_completion_sdk(
         )
 
         # Warm context: pre-load relevant facts from Graphiti on first turn
-        if user_id and len(session.messages) <= 1:
-            from backend.copilot.graphiti.config import is_enabled_for_user
+        if graphiti_enabled and user_id and len(session.messages) <= 1:
+            from backend.copilot.graphiti.context import fetch_warm_context
 
-            if await is_enabled_for_user(user_id):
-                from backend.copilot.graphiti.context import fetch_warm_context
-
-                warm_ctx = await fetch_warm_context(user_id, message or "")
-                if warm_ctx:
-                    system_prompt += f"\n\n{warm_ctx}"
+            warm_ctx = await fetch_warm_context(user_id, message or "")
+            if warm_ctx:
+                system_prompt += f"\n\n{warm_ctx}"
 
         # Process transcript download result
         transcript_msg_count = 0
@@ -2461,25 +2460,21 @@ async def stream_chat_completion_sdk(
             task.add_done_callback(_background_tasks.discard)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if user_id and message:
-            from backend.copilot.graphiti.config import is_enabled_for_user
+        if graphiti_enabled and user_id and message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
-            if await is_enabled_for_user(user_id):
-                # Extract last assistant message from session for ingestion
-                _assistant_msgs = [
-                    m.content or ""
-                    for m in (session.messages if session else [])
-                    if m.role == "assistant"
-                ]
-                _assistant_text = _assistant_msgs[-1] if _assistant_msgs else ""
-                _ingest_task = asyncio.create_task(
-                    enqueue_conversation_turn(
-                        user_id, session_id, message, _assistant_text
-                    )
-                )
-                _background_tasks.add(_ingest_task)
-                _ingest_task.add_done_callback(_background_tasks.discard)
+            # Extract last assistant message from session for ingestion
+            _assistant_msgs = [
+                m.content or ""
+                for m in (session.messages if session else [])
+                if m.role == "assistant"
+            ]
+            _assistant_text = _assistant_msgs[-1] if _assistant_msgs else ""
+            _ingest_task = asyncio.create_task(
+                enqueue_conversation_turn(user_id, session_id, message, _assistant_text)
+            )
+            _background_tasks.add(_ingest_task)
+            _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn --resume ---
         # TranscriptBuilder is the single source of truth.  It mirrors the

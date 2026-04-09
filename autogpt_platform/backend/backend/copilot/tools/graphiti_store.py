@@ -1,24 +1,24 @@
 """Tool for storing memories in the Graphiti temporal knowledge graph."""
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
-from backend.copilot.graphiti.client import derive_group_id, get_graphiti_client
+from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.ingest import enqueue_episode
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
-from .models import ErrorResponse, GraphitiStoreResponse, ToolResponseBase
+from .models import ErrorResponse, MemoryStoreResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
 
 
-class GraphitiStoreTool(BaseTool):
+class MemoryStoreTool(BaseTool):
     """Store a memory/fact in the user's temporal knowledge graph."""
 
     @property
     def name(self) -> str:
-        return "graphiti_store"
+        return "memory_store"
 
     @property
     def description(self) -> str:
@@ -59,6 +59,10 @@ class GraphitiStoreTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        *,
+        name: str = "",
+        content: str = "",
+        source_description: str = "Conversation memory",
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -67,17 +71,11 @@ class GraphitiStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        from backend.copilot.graphiti.config import is_enabled_for_user
-
         if not await is_enabled_for_user(user_id):
             return ErrorResponse(
                 message="Memory features are not enabled for your account.",
                 session_id=session.session_id,
             )
-
-        name = kwargs.get("name", "")
-        content = kwargs.get("content", "")
-        source_description = kwargs.get("source_description", "Conversation memory")
 
         if not name or not content:
             return ErrorResponse(
@@ -85,37 +83,16 @@ class GraphitiStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        from graphiti_core.nodes import EpisodeType
-
-        from backend.copilot.graphiti.ingest import CUSTOM_EXTRACTION_INSTRUCTIONS
-
-        group_id = derive_group_id(user_id)
-        client = await get_graphiti_client(group_id)
-
-        await client.add_episode(
+        await enqueue_episode(
+            user_id,
+            session.session_id,
             name=name,
             episode_body=content,
-            source=EpisodeType.text,
-            source_description=source_description,
-            reference_time=datetime.now(timezone.utc),
-            group_id=group_id,
-            custom_extraction_instructions=CUSTOM_EXTRACTION_INSTRUCTIONS,
-        )
-
-        from backend.copilot.graphiti.ingest import _persist_to_replay_log
-
-        await _persist_to_replay_log(
-            user_id=user_id,
-            session_id=session.session_id,
-            group_id=group_id,
-            episode_name=name,
-            episode_body=content,
-            source="text",
             source_description=source_description,
         )
 
-        return GraphitiStoreResponse(
-            message=f"Memory '{name}' stored successfully.",
+        return MemoryStoreResponse(
+            message=f"Memory '{name}' queued for storage.",
             session_id=session.session_id,
             memory_name=name,
         )

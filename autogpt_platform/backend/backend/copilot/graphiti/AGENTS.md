@@ -1,17 +1,17 @@
 # Graphiti Memory
 
 This directory contains the Graphiti-backed memory integration for CoPilot.
+This file is developer documentation only — it is NOT injected into LLM prompts.
+Runtime prompt instructions live in `prompting.py:get_graphiti_supplement()`.
 
 ## Scope
 
 - Keep Graphiti and FalkorDB-specific logic in this package.
 - Prefer changes here over scattering Graphiti behavior across unrelated copilot modules.
-- Keep replay-log persistence aligned with the existing `chat_db()` and `DatabaseManager` RPC pattern.
 
 ## Debugging
 
 - Use raw FalkorDB queries to inspect stored nodes, episodes, and `RELATES_TO` facts before changing retrieval behavior.
-- Use `MemoryEpisodeLog` to verify what was queued for ingestion versus what Graphiti actually extracted.
 - Distinguish user-provided facts, assistant-generated findings, and provenance/meta entities when evaluating memory quality.
 
 ## Design Intent
@@ -149,40 +149,6 @@ async def run():
             print(row)
     finally:
         await driver.close()
-
-asyncio.run(run())
-PY
-```
-
-Inspect replay-log rows instead of the extracted graph:
-
-```bash
-poetry run python - <<'PY'
-import asyncio
-from prisma import Prisma
-
-USER_ID = "883cc9da-fe37-4863-839b-acba022bf3ef"
-
-async def run():
-    db = Prisma()
-    await db.connect()
-    try:
-        rows = await db.query_raw(
-            '''
-            select "createdAt" as created_at,
-                   "sessionId" as session_id,
-                   "episodeName" as episode_name,
-                   left("episodeBody", 300) as episode_body
-            from "MemoryEpisodeLog"
-            where "userId" = $1
-            order by "createdAt"
-            ''',
-            USER_ID,
-        )
-        for row in rows:
-            print(row)
-    finally:
-        await db.disconnect()
 
 asyncio.run(run())
 PY

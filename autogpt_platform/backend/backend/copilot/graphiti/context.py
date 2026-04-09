@@ -4,6 +4,12 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from ._format import (
+    extract_episode_body,
+    extract_episode_timestamp,
+    extract_fact,
+    extract_temporal_validity,
+)
 from .client import derive_group_id, get_graphiti_client
 from .config import graphiti_config
 
@@ -68,21 +74,16 @@ def _format_context(edges, episodes) -> str:
     if edges:
         fact_lines = []
         for e in edges:
-            valid_from = getattr(e, "valid_at", "unknown")
-            valid_to = getattr(e, "invalid_at", "present")
-            fact = getattr(e, "fact", "") or getattr(e, "name", "")
+            valid_from, valid_to = extract_temporal_validity(e)
+            fact = extract_fact(e)
             fact_lines.append(f"  - {fact} ({valid_from} — {valid_to})")
         sections.append("<FACTS>\n" + "\n".join(fact_lines) + "\n</FACTS>")
 
     if episodes:
         ep_lines = []
         for ep in episodes:
-            ts = getattr(ep, "created_at", "")
-            body = str(
-                getattr(ep, "content", "")
-                or getattr(ep, "body", "")
-                or getattr(ep, "episode_body", "")
-            )[:500]
+            ts = extract_episode_timestamp(ep)
+            body = extract_episode_body(ep)
             ep_lines.append(f"  - [{ts}] {body}")
         sections.append(
             "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"

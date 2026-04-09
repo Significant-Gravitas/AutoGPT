@@ -1005,21 +1005,18 @@ async def stream_chat_completion_baseline(
     from backend.copilot.graphiti.config import is_enabled_for_user
     from backend.copilot.prompting import get_graphiti_supplement
 
-    graphiti_supplement = (
-        get_graphiti_supplement() if await is_enabled_for_user(user_id) else ""
-    )
+    graphiti_enabled = await is_enabled_for_user(user_id)
+
+    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
 
     # Warm context: pre-load relevant facts from Graphiti on first turn
-    if user_id and len(session.messages) <= 1:
-        from backend.copilot.graphiti.config import is_enabled_for_user
+    if graphiti_enabled and user_id and len(session.messages) <= 1:
+        from backend.copilot.graphiti.context import fetch_warm_context
 
-        if await is_enabled_for_user(user_id):
-            from backend.copilot.graphiti.context import fetch_warm_context
-
-            warm_ctx = await fetch_warm_context(user_id, message or "")
-            if warm_ctx:
-                system_prompt += f"\n\n{warm_ctx}"
+        warm_ctx = await fetch_warm_context(user_id, message or "")
+        if warm_ctx:
+            system_prompt += f"\n\n{warm_ctx}"
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(
@@ -1290,18 +1287,16 @@ async def stream_chat_completion_baseline(
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if user_id and message:
-            from backend.copilot.graphiti.config import is_enabled_for_user
+        if graphiti_enabled and user_id and message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
-            if await is_enabled_for_user(user_id):
-                _ingest_task = asyncio.create_task(
-                    enqueue_conversation_turn(
-                        user_id, session_id, message, state.assistant_text
-                    )
+            _ingest_task = asyncio.create_task(
+                enqueue_conversation_turn(
+                    user_id, session_id, message, state.assistant_text
                 )
-                _background_tasks.add(_ingest_task)
-                _ingest_task.add_done_callback(_background_tasks.discard)
+            )
+            _background_tasks.add(_ingest_task)
+            _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the

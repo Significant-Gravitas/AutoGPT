@@ -33,10 +33,10 @@ def derive_group_id(user_id: str) -> str:
         )
 
     if safe_id != user_id:
-        logger.warning(
-            "derive_group_id: sanitized user_id (original length=%d, sanitized='%s')",
-            len(user_id),
-            safe_id[:32],
+        raise ValueError(
+            f"user_id contains invalid characters for group_id derivation "
+            f"(original length={len(user_id)}, sanitized='{safe_id[:32]}'). "
+            f"Only [a-zA-Z0-9_-] are allowed."
         )
 
     group_id = f"user_{safe_id}"
@@ -78,38 +78,36 @@ async def get_graphiti_client(group_id: str):
         if group_id in cache:
             return cache[group_id]
 
-    llm_config = LLMConfig(
-        api_key=graphiti_config.resolve_llm_api_key(),
-        model=graphiti_config.llm_model,
-        small_model=graphiti_config.llm_model,  # avoid gpt-4.1-nano dedup hallucination (#760)
-        base_url=graphiti_config.resolve_llm_base_url(),
-    )
-    llm_client = OpenAIClient(config=llm_config)
+        llm_config = LLMConfig(
+            api_key=graphiti_config.resolve_llm_api_key(),
+            model=graphiti_config.llm_model,
+            small_model=graphiti_config.llm_model,  # avoid gpt-4.1-nano dedup hallucination (#760)
+            base_url=graphiti_config.resolve_llm_base_url(),
+        )
+        llm_client = OpenAIClient(config=llm_config)
 
-    embedder_config = OpenAIEmbedderConfig(
-        api_key=graphiti_config.resolve_embedder_api_key(),
-        embedding_model=graphiti_config.embedder_model,
-        base_url=graphiti_config.resolve_embedder_base_url(),
-    )
-    embedder = OpenAIEmbedder(config=embedder_config)
+        embedder_config = OpenAIEmbedderConfig(
+            api_key=graphiti_config.resolve_embedder_api_key(),
+            embedding_model=graphiti_config.embedder_model,
+            base_url=graphiti_config.resolve_embedder_base_url(),
+        )
+        embedder = OpenAIEmbedder(config=embedder_config)
 
-    graph_driver = AutoGPTFalkorDriver(
-        host=graphiti_config.falkordb_host,
-        port=graphiti_config.falkordb_port,
-        password=graphiti_config.falkordb_password or None,
-        database=group_id,
-    )
-    client = Graphiti(
-        llm_client=llm_client,
-        embedder=embedder,
-        graph_driver=graph_driver,
-        max_coroutines=graphiti_config.semaphore_limit,
-    )
+        graph_driver = AutoGPTFalkorDriver(
+            host=graphiti_config.falkordb_host,
+            port=graphiti_config.falkordb_port,
+            password=graphiti_config.falkordb_password or None,
+            database=group_id,
+        )
+        client = Graphiti(
+            llm_client=llm_client,
+            embedder=embedder,
+            graph_driver=graph_driver,
+            max_coroutines=graphiti_config.semaphore_limit,
+        )
 
-    async with _cache_lock:
         cache[group_id] = client
-
-    return client
+        return client
 
 
 def evict_client(group_id: str) -> None:
