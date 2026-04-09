@@ -19,7 +19,7 @@ export async function signupTestUser(
 
   try {
     // Navigate to signup page
-    await page.goto("http://localhost:3000/signup");
+    await page.goto("/signup");
 
     // Wait for page to load
     getText("Create a new account");
@@ -122,7 +122,7 @@ export async function signupAndNavigateToMarketplace(
 export async function validateSignupForm(page: any): Promise<void> {
   console.log("🧪 Validating signup form...");
 
-  await page.goto("http://localhost:3000/signup");
+  await page.goto("/signup");
 
   // Test empty form submission
   console.log("❌ Testing empty form submission...");

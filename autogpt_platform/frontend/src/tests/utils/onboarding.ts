@@ -1,5 +1,14 @@
 import { Page, expect } from "@playwright/test";
 
+function resolveAppUrl(page: Page, destination: string) {
+  const baseURL =
+    page.url().startsWith("http://") || page.url().startsWith("https://")
+      ? page.url()
+      : (process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000");
+
+  return new URL(destination, baseURL).toString();
+}
+
 /**
  * Complete the onboarding wizard via API.
  * Use this when a test needs an authenticated user who has already finished onboarding
@@ -10,8 +19,11 @@ import { Page, expect } from "@playwright/test";
  */
 export async function completeOnboardingViaAPI(page: Page) {
   await page.request.post(
-    "http://localhost:3000/api/proxy/api/onboarding/step?step=VISIT_COPILOT",
-    { headers: { "Content-Type": "application/json" } },
+    resolveAppUrl(page, "/api/proxy/api/onboarding/step"),
+    {
+      headers: { "Content-Type": "application/json" },
+      params: { step: "VISIT_COPILOT" },
+    },
   );
 }
 
@@ -28,7 +40,7 @@ export async function skipOnboardingIfPresent(
   if (!url.includes("/onboarding")) return;
 
   await completeOnboardingViaAPI(page);
-  await page.goto(`http://localhost:3000${destination}`);
+  await page.goto(resolveAppUrl(page, destination));
   await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
 }
 
