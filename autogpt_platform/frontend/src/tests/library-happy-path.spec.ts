@@ -122,7 +122,7 @@ test("library happy path: user can delete a completed task from the run sidebar"
   await expect(moreActionsButton).toBeVisible({ timeout: 15000 });
   await moreActionsButton.click();
 
-  await page.getByRole("menuitem", { name: "Delete task" }).click();
+  await page.getByRole("menuitem", { name: /Delete( this)? task/i }).click();
 
   const confirmDialog = page.getByRole("dialog", { name: /Delete task/i });
   await expect(confirmDialog).toBeVisible({ timeout: 10000 });

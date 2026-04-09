@@ -25,12 +25,45 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
 
   await page.getByRole("button", { name: "Create Key" }).click();
   await page.getByLabel("Name").fill(keyName);
-  await page.getByRole("checkbox", { name: /EXECUTE_GRAPH/i }).click();
+  const executeGraphCheckbox = page.getByRole("checkbox", {
+    name: /EXECUTE_GRAPH/i,
+  });
+  const executeGraphChecked =
+    (await executeGraphCheckbox.getAttribute("aria-checked")) === "true";
+  if (!executeGraphChecked) {
+    await executeGraphCheckbox.click();
+  }
+  await expect(executeGraphCheckbox).toHaveAttribute("aria-checked", "true");
+
   await page.getByRole("button", { name: "Create" }).click();
 
   const secretDialog = page.getByRole("dialog", {
     name: "AutoGPT Platform API Key Created",
   });
+  await expect
+    .poll(
+      async () => {
+        if (await secretDialog.isVisible().catch(() => false)) {
+          return "created";
+        }
+
+        const creationFailed = await page
+          .getByText("Failed to create AutoGPT Platform API key")
+          .isVisible()
+          .catch(() => false);
+        if (creationFailed) {
+          return "failed";
+        }
+
+        return "pending";
+      },
+      {
+        timeout: 30000,
+        message:
+          "API key creation should either open the created-key dialog or surface an explicit failure toast",
+      },
+    )
+    .toBe("created");
   await expect(secretDialog).toBeVisible();
 
   const createdSecret = (

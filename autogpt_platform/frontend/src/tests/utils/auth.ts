@@ -150,6 +150,62 @@ export function hasSeededAuthStates(baseURL: string): boolean {
   );
 }
 
+async function authStateHasLiveSession(
+  baseURL: string,
+  accountKey: (typeof AUTH_STATE_KEYS)[number],
+): Promise<boolean> {
+  const browser = await getBrowser();
+
+  try {
+    const context = await browser.newContext({
+      baseURL,
+      storageState: getAuthStatePath(accountKey),
+    });
+    const page = await context.newPage();
+
+    try {
+      await page.goto("/marketplace");
+      await page.waitForLoadState("domcontentloaded");
+      await skipOnboardingIfPresent(page, "/marketplace");
+      return await page
+        .getByTestId("profile-popout-menu-trigger")
+        .waitFor({ state: "visible", timeout: 10_000 })
+        .then(() => true)
+        .catch(() => false);
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  } catch {
+    return false;
+  } finally {
+    await browser.close();
+  }
+}
+
+export async function getInvalidSeededAuthStateKeys(
+  baseURL: string,
+): Promise<(typeof AUTH_STATE_KEYS)[number][]> {
+  const origin = new URL(baseURL).origin;
+  const invalidKeys: (typeof AUTH_STATE_KEYS)[number][] = [];
+
+  for (const accountKey of AUTH_STATE_KEYS) {
+    if (
+      !hasStoredAuthState(accountKey) ||
+      !authStateMatchesOrigin(accountKey, origin)
+    ) {
+      invalidKeys.push(accountKey);
+      continue;
+    }
+
+    if (!(await authStateHasLiveSession(baseURL, accountKey))) {
+      invalidKeys.push(accountKey);
+    }
+  }
+
+  return invalidKeys;
+}
+
 async function createAuthStateForUser(
   baseURL: string,
   accountKey: (typeof AUTH_STATE_KEYS)[number],
@@ -196,13 +252,10 @@ async function createAuthStateForUser(
 }
 
 export async function ensureSeededAuthStates(baseURL: string): Promise<void> {
-  const origin = new URL(baseURL).origin;
+  const invalidKeys = await getInvalidSeededAuthStateKeys(baseURL);
 
   for (const accountKey of AUTH_STATE_KEYS) {
-    if (
-      hasStoredAuthState(accountKey) &&
-      authStateMatchesOrigin(accountKey, origin)
-    ) {
+    if (!invalidKeys.includes(accountKey)) {
       continue;
     }
 

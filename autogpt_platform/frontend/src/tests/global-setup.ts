@@ -1,5 +1,8 @@
 import { FullConfig } from "@playwright/test";
-import { ensureSeededAuthStates, hasSeededAuthStates } from "./utils/auth";
+import {
+  ensureSeededAuthStates,
+  getInvalidSeededAuthStateKeys,
+} from "./utils/auth";
 
 function resolveBaseURL(config: FullConfig) {
   const configuredBaseURL =
@@ -21,13 +24,16 @@ async function globalSetup(config: FullConfig) {
 
   try {
     const baseURL = resolveBaseURL(config);
+    const invalidKeys = await getInvalidSeededAuthStateKeys(baseURL);
 
-    if (hasSeededAuthStates(baseURL)) {
+    if (invalidKeys.length === 0) {
       console.log("♻️ Reusing stored seeded auth states");
       return;
     }
 
-    console.log("🔐 Creating reusable seeded auth states...");
+    console.log(
+      `🔐 Refreshing seeded auth states for: ${invalidKeys.join(", ")}`,
+    );
     await ensureSeededAuthStates(baseURL);
 
     console.log("✅ Global setup completed successfully!");

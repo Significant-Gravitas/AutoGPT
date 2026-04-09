@@ -487,13 +487,15 @@ export class BuildPage extends BasePage {
       .locator('[data-id="blocks-control-search-bar"] input[type="text"]')
       .fill("Calculator");
 
-    await expect(this.getShepherdStep("select-calculator")).toBeVisible({
-      timeout: 10000,
-    });
     const calculatorCard = this.page.locator(
-      '[data-id="block-card-b1ab9b1967a6406dabf52dba76d00c79"]',
+      '[data-id="blocks-control-search-results"] [data-id="block-card-b1ab9b1967a6406dabf52dba76d00c79"]',
     );
-    await expect(calculatorCard).toBeVisible({ timeout: 10000 });
+    await expect(calculatorCard).toBeVisible({ timeout: 15000 });
+
+    await expect(this.getShepherdStep("select-calculator")).toBeVisible({
+      timeout: 15000,
+    });
+    await calculatorCard.scrollIntoViewIfNeeded();
     await calculatorCard.click();
 
     await expect(this.getShepherdStep("focus-new-block")).toBeVisible({

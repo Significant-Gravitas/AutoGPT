@@ -741,16 +741,49 @@ export async function importAgentFromFile(
 
   const fileInput = page.locator('input[type="file"]');
   await fileInput.setInputFiles(filePath);
-  await expect(page.getByRole("button", { name: "Upload" })).toBeEnabled({
+  const uploadButton = page.getByRole("button", { name: "Upload" });
+  await expect(uploadButton).toBeEnabled({
     timeout: 10000,
   });
-  await page.getByRole("button", { name: "Upload" }).click();
+  await uploadButton.click();
+  const uploadingButton = page.getByRole("button", { name: /Uploading\.\.\./i });
+  const sawUploadingState = await uploadingButton
+    .waitFor({ state: "visible", timeout: 2000 })
+    .then(() => true)
+    .catch(() => false);
+  if (sawUploadingState) {
+    await expect(uploadingButton).toBeDisabled();
+  }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...
-  // This pipeline can comfortably exceed the default 5s toHaveURL timeout on
-  // slower backends, so wait generously here. A failure after 20s indicates
-  // a real regression in the import→builder hand-off, not flake.
-  await expect(page).toHaveURL(/\/build/, { timeout: 20000 });
+  // This pipeline includes file parsing plus a backend graph creation call.
+  // On a cold stack it can take longer than a normal UI transition, so poll
+  // for the real terminal states: builder navigation or an explicit error.
+  await expect
+    .poll(
+      async () => {
+        if (/\/build/.test(page.url())) {
+          return "build";
+        }
+
+        const uploadFailed = await page
+          .getByText("Error Uploading agent")
+          .isVisible()
+          .catch(() => false);
+        if (uploadFailed) {
+          return "failed";
+        }
+
+        return "pending";
+      },
+      {
+        timeout: 60000,
+        message:
+          "agent import should either navigate to /build or surface an explicit upload error toast",
+      },
+    )
+    .toBe("build");
+  await expect(page).toHaveURL(/\/build/, { timeout: 15000 });
 
   // Import should produce a real graph, not an empty canvas. Lazy-import
   // BuildPage locally to avoid a circular dependency between the two
