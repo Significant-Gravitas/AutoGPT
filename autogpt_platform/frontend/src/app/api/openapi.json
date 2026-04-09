@@ -12544,9 +12544,9 @@
           "web_fetch",
           "feature_request_search",
           "feature_request_created",
-          "graphiti_store",
-          "graphiti_search",
-          "graphiti_delete"
+          "memory_store",
+          "memory_search",
+          "memory_delete"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

@@ -34,7 +34,7 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
-from backend.copilot.prompting import get_baseline_supplement
+from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -1003,7 +1003,6 @@ async def stream_chat_completion_baseline(
 
     # Append tool documentation, technical notes, and Graphiti memory instructions
     from backend.copilot.graphiti.config import is_enabled_for_user
-    from backend.copilot.prompting import get_graphiti_supplement
 
     graphiti_enabled = await is_enabled_for_user(user_id)
 
