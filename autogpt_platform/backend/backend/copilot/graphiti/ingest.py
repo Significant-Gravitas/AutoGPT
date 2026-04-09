@@ -81,7 +81,12 @@ async def enqueue_conversation_turn(
 
     from graphiti_core.nodes import EpisodeType
 
-    group_id = derive_group_id(user_id)
+    try:
+        group_id = derive_group_id(user_id)
+    except ValueError:
+        logger.warning("Invalid user_id for ingestion: %s", user_id[:12])
+        return
+
     user_display_name = await _resolve_user_name(user_id)
 
     episode_name = f"conversation_{session_id}"
@@ -132,7 +137,11 @@ async def enqueue_episode(
 
     from graphiti_core.nodes import EpisodeType
 
-    group_id = derive_group_id(user_id)
+    try:
+        group_id = derive_group_id(user_id)
+    except ValueError:
+        logger.warning("Invalid user_id for episode ingestion: %s", user_id[:12])
+        return
 
     await _ensure_worker(user_id)
 
