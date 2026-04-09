@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from graphiti_core.nodes import EpisodeType
 
 from .client import derive_group_id, get_graphiti_client
+from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +72,17 @@ async def enqueue_conversation_turn(
     user_id: str,
     session_id: str,
     user_msg: str,
+    assistant_msg: str = "",
 ) -> None:
     """Enqueue a conversation turn for async background ingestion.
 
     This returns almost immediately — the actual graphiti-core
     ``add_episode()`` call (which triggers LLM entity extraction)
     runs in a background worker task.
+
+    If ``assistant_msg`` is provided and contains substantive findings
+    (not just acknowledgments), a separate derived-finding episode is
+    queued with ``source_kind=assistant_derived`` and ``status=tentative``.
     """
     if not user_id:
         return
@@ -117,6 +123,35 @@ async def enqueue_conversation_turn(
             "Graphiti ingestion queue full for user %s — dropping episode",
             user_id[:12],
         )
+        return
+
+    # --- Derived-finding lane ---
+    # If the assistant response is substantive, distill it into a
+    # structured finding with tentative status.
+    if assistant_msg and _is_finding_worthy(assistant_msg):
+        finding = _distill_finding(assistant_msg)
+        if finding:
+            envelope = MemoryEnvelope(
+                content=finding,
+                source_kind=SourceKind.assistant_derived,
+                memory_kind=MemoryKind.finding,
+                status=MemoryStatus.tentative,
+                provenance=f"session:{session_id}",
+            )
+            try:
+                queue.put_nowait(
+                    {
+                        "name": f"finding_{session_id}",
+                        "episode_body": envelope.model_dump_json(),
+                        "source": EpisodeType.json,
+                        "source_description": f"Assistant-derived finding in session {session_id}",
+                        "reference_time": datetime.now(timezone.utc),
+                        "group_id": group_id,
+                        "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+                    }
+                )
+            except asyncio.QueueFull:
+                pass  # user canonical episode already queued — finding is best-effort
 
 
 async def enqueue_episode(
@@ -203,3 +238,59 @@ async def _resolve_user_name(user_id: str) -> str:
     except Exception:
         logger.debug("Could not resolve user name for %s", user_id[:12])
     return "User"
+
+
+# --- Derived-finding distillation ---
+
+# Phrases that indicate workflow chatter, not substantive findings.
+_CHATTER_PREFIXES = (
+    "done",
+    "got it",
+    "sure",
+    "ok",
+    "okay",
+    "here's",
+    "here is",
+    "i've created",
+    "i've updated",
+    "i've sent",
+    "i'll ",
+    "let me ",
+    "a sign-in button",
+    "please click",
+)
+
+# Minimum length for an assistant message to be considered finding-worthy.
+_MIN_FINDING_LENGTH = 150
+
+
+def _is_finding_worthy(assistant_msg: str) -> bool:
+    """Heuristic gate: is this assistant response worth distilling into a finding?
+
+    Skips short acknowledgments, workflow chatter, and UI prompts.
+    Only passes through responses that likely contain substantive
+    factual content (research results, analysis, conclusions).
+    """
+    if len(assistant_msg) < _MIN_FINDING_LENGTH:
+        return False
+
+    lower = assistant_msg.lower().strip()
+    for prefix in _CHATTER_PREFIXES:
+        if lower.startswith(prefix):
+            return False
+
+    return True
+
+
+def _distill_finding(assistant_msg: str) -> str | None:
+    """Extract the core finding from an assistant response.
+
+    For now, uses a simple truncation approach. Phase 3+ could use
+    a lightweight LLM call for proper distillation.
+    """
+    # Take the first 500 chars as the finding content.
+    # Strip markdown formatting artifacts.
+    content = assistant_msg.strip()
+    if len(content) > 500:
+        content = content[:500] + "..."
+    return content if content else None

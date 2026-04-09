@@ -2803,8 +2803,18 @@ async def stream_chat_completion_sdk(
         if graphiti_enabled and user_id and message and is_user_message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
+            # Extract last assistant message for derived-finding distillation.
+            _assistant_msgs = [
+                m.content or ""
+                for m in (session.messages if session else [])
+                if m.role == "assistant"
+            ]
+            _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
+
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(user_id, session_id, message)
+                enqueue_conversation_turn(
+                    user_id, session_id, message, assistant_msg=_last_assistant
+                )
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)

@@ -1289,7 +1289,12 @@ async def stream_chat_completion_baseline(
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(user_id, session_id, message)
+                enqueue_conversation_turn(
+                    user_id,
+                    session_id,
+                    message,
+                    assistant_msg=state.assistant_text if state else "",
+                )
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
