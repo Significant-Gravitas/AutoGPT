@@ -651,8 +651,8 @@ async def test_run_agent_session_dry_run_overrides_kwargs():
 
     The LLM cannot set dry_run — it's stripped from the schema.  But even if
     somehow a caller passes dry_run=False, the session-level flag wins.
-    This test verifies that the dry-run+schedule block fires (proving
-    params.dry_run is True) when session.dry_run=True, regardless of kwargs.
+    Asserts directly that params.dry_run=True is passed into _check_prerequisites
+    by intercepting the call and capturing the params argument.
     """
     from backend.copilot.tools.run_agent import RunAgentTool
 
@@ -660,40 +660,41 @@ async def test_run_agent_session_dry_run_overrides_kwargs():
     session = _make_dry_run_session(dry_run=True)
     graph = _make_graph_mock()
 
-    with patch("backend.copilot.tools.run_agent.graph_db") as mock_graph_db, patch(
-        "backend.copilot.tools.run_agent.library_db"
-    ) as mock_library_db:
-        mock_graph_db.return_value.get_graph = AsyncMock(return_value=graph)
-        mock_library_db.return_value.get_library_agent = AsyncMock(return_value=None)
+    captured_params = {}
+
+    async def capture_prerequisites(graph, user_id, params, session_id):
+        captured_params["dry_run"] = params.dry_run
+        return {}, None
+
+    with patch(
+        "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
+        new_callable=AsyncMock,
+        return_value=(graph, None),
+    ), patch.object(
+        tool, "_check_prerequisites", side_effect=capture_prerequisites
+    ), patch.object(
+        tool, "_run_agent", new_callable=AsyncMock
+    ) as mock_run_agent:
+        mock_run_agent.return_value = MagicMock()
 
         # Pass dry_run=False in kwargs — session.dry_run=True should win.
-        # Use schedule_name+cron to trigger the dry-run+schedule error path,
-        # which only fires when params.dry_run is True.
-        response = await tool._execute(
+        await tool._execute(
             user_id="user-1",
             session=session,
             username_agent_slug="user/agent",
             dry_run=False,  # LLM would pass this; session should override it
-            schedule_name="daily",
-            cron="0 9 * * *",
         )
 
-    # dry-run blocks scheduling — this error only fires when params.dry_run is True
-    import json
-
-    result = json.loads(response.model_dump_json())
-    assert result["type"] == "error"
-    assert (
-        "dry-run" in result["message"].lower() or "dry_run" in result["message"].lower()
-    )
+    # Session-level flag must have overridden the False kwarg
+    assert captured_params["dry_run"] is True
 
 
 @pytest.mark.asyncio
 async def test_run_agent_session_dry_run_false_allows_scheduling():
-    """session.dry_run=False must not block scheduling.
+    """session.dry_run=False must pass dry_run=False through to _check_prerequisites.
 
-    Verifies that the dry-run guard only fires when session.dry_run=True,
-    so a normal (non-dry-run) session can still attempt scheduling.
+    Verifies that when the session is not a dry run, params.dry_run=False
+    is what reaches the prerequisite check — not some stale True value.
     """
     from backend.copilot.tools.run_agent import RunAgentTool
 
@@ -701,13 +702,24 @@ async def test_run_agent_session_dry_run_false_allows_scheduling():
     session = _make_dry_run_session(dry_run=False)
     graph = _make_graph_mock()
 
-    with patch("backend.copilot.tools.run_agent.graph_db") as mock_graph_db, patch(
-        "backend.copilot.tools.run_agent.library_db"
-    ) as mock_library_db:
-        mock_graph_db.return_value.get_graph = AsyncMock(return_value=graph)
-        mock_library_db.return_value.get_library_agent = AsyncMock(return_value=None)
+    captured_params = {}
 
-        response = await tool._execute(
+    async def capture_prerequisites(graph, user_id, params, session_id):
+        captured_params["dry_run"] = params.dry_run
+        return {}, None
+
+    with patch(
+        "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
+        new_callable=AsyncMock,
+        return_value=(graph, None),
+    ), patch.object(
+        tool, "_check_prerequisites", side_effect=capture_prerequisites
+    ), patch.object(
+        tool, "_schedule_agent", new_callable=AsyncMock
+    ) as mock_schedule:
+        mock_schedule.return_value = MagicMock()
+
+        await tool._execute(
             user_id="user-1",
             session=session,
             username_agent_slug="user/agent",
@@ -715,15 +727,5 @@ async def test_run_agent_session_dry_run_false_allows_scheduling():
             cron="0 9 * * *",
         )
 
-    # Should NOT hit the dry-run schedule block — the response will be something
-    # else (likely a credentials or _check_prerequisites result), NOT the dry-run error.
-    import json
-
-    result = json.loads(response.model_dump_json())
-    assert not (
-        result["type"] == "error"
-        and (
-            "dry-run" in result["message"].lower()
-            or "dry_run" in result["message"].lower()
-        )
-    )
+    # Non-dry-run session must propagate dry_run=False
+    assert captured_params["dry_run"] is False

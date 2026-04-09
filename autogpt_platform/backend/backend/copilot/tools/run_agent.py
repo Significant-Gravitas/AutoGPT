@@ -255,7 +255,6 @@ class RunAgentTool(BaseTool):
                 user_id=user_id,
                 params=params,
                 session_id=session_id,
-                dry_run=params.dry_run,
             )
             if prereq_error:
                 return prereq_error
@@ -363,12 +362,12 @@ class RunAgentTool(BaseTool):
         user_id: str,
         params: "RunAgentInput",
         session_id: str,
-        dry_run: bool = False,
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
         Dry runs skip all prerequisite gates (credentials, input prompts)
         since simulate_block doesn't need real credentials or complete inputs.
+        The dry_run flag is read from params.dry_run (set from session.dry_run).
 
         Returns:
             (graph_credentials, error_response) — error_response is None when ready.
@@ -396,7 +395,7 @@ class RunAgentTool(BaseTool):
             )
 
         # Dry runs bypass remaining prerequisite gates (credentials, missing inputs)
-        if dry_run:
+        if params.dry_run:
             return graph_credentials, None
 
         # --- Credential gate ---
