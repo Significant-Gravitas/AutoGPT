@@ -1,408 +1,25 @@
-import { randomUUID } from "crypto";
-import { Locator, Page } from "@playwright/test";
+import { readFile } from "fs/promises";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import {
+  assertRunProducedOutput,
+  clickExportAgent,
   getRunStatus,
-  LibraryPage,
-  navigateToAgentByName,
-  waitForAgentPageLoad,
+  openSavedAgentInLibrary,
   waitForRunToComplete,
 } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
 test.describe.configure({ mode: "serial" });
 
-function createUniqueAgentName(prefix: string) {
-  return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
-}
-
-const ACCEPTED_RUN_STATUSES = [
-  "completed",
-  "failed",
-  "running",
-  "queued",
-  "review",
-] as const;
-
-async function openBuilder(page: Page) {
-  const buildPage = new BuildPage(page);
-
-  await page.goto("/build");
-  await page.waitForLoadState("domcontentloaded");
-  await buildPage.closeTutorial();
-
-  await expect(page.locator(".react-flow")).toBeVisible();
-  await expect(page.getByTestId("blocks-control-blocks-button")).toBeVisible();
-
-  return buildPage;
-}
-
-async function addSimpleAgentBlocks(buildPage: BuildPage) {
-  await buildPage.addBlockByClick("Store Value");
-  await buildPage.waitForNodeOnCanvas(1);
-  await buildPage.fillBlockInputByPlaceholder(
-    "Enter string value...",
-    "smoke-value",
-    0,
-  );
-
-  await buildPage.addBlockByClick("Add to Dictionary");
-  await buildPage.waitForNodeOnCanvas(2);
-
-  const dictionaryInputs = buildPage
-    .getNodeLocator(1)
-    .locator('input[placeholder="Enter string value..."]');
-  await dictionaryInputs.nth(0).fill("smoke-key");
-  await dictionaryInputs.nth(1).fill("smoke-value");
-}
-
-async function createAndSaveAgent(page: Page, prefix: string) {
-  const buildPage = await openBuilder(page);
-  const agentName = createUniqueAgentName(prefix);
-
-  await addSimpleAgentBlocks(buildPage);
-  await buildPage.saveAgent(agentName, "PR E2E builder coverage");
-  await buildPage.waitForSaveComplete();
-  await buildPage.waitForSaveButton();
-
-  return { buildPage, agentName };
-}
-
-async function dismissSaveToast(page: Page) {
-  const closeToastButton = page.getByRole("button", { name: "Close toast" });
-  if (await closeToastButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-    await closeToastButton.click();
-  }
-
-  await page
-    .getByText("Graph saved successfully")
-    .waitFor({ state: "hidden", timeout: 10000 })
-    .catch(() => {});
-}
-
-async function waitForScheduleUi(page: Page) {
-  const runDialog = page.locator('[data-id="run-input-dialog-content"]');
-  const scheduleDialog = page.getByRole("dialog", { name: "Schedule Graph" });
-
-  const state = await expect
-    .poll(
-      async () => {
-        if (await scheduleDialog.isVisible().catch(() => false)) {
-          return "schedule";
-        }
-        if (await runDialog.isVisible().catch(() => false)) {
-          return "run-input";
-        }
-        return "pending";
-      },
-      { timeout: 8000 },
-    )
-    .not.toBe("pending")
-    .then(() => "ready")
-    .catch(() => "pending");
-
-  return {
-    state,
-    runDialog,
-    scheduleDialog,
-  };
-}
-
-async function openScheduleDialog(page: Page, buildPage: BuildPage) {
-  const scheduleButton = page.locator('[data-id="schedule-graph-button"]');
-
-  await dismissSaveToast(page);
-
-  for (let attempt = 0; attempt < 2; attempt++) {
-    await expect(scheduleButton).toBeVisible({ timeout: 15000 });
-    await expect(scheduleButton).toBeEnabled({ timeout: 15000 });
-    await scheduleButton.click();
-
-    const { state, runDialog, scheduleDialog } = await waitForScheduleUi(page);
-    if (state !== "pending") {
-      return { runDialog, scheduleDialog };
-    }
-
-    await page.reload();
-    await page.waitForLoadState("domcontentloaded");
-    await buildPage.closeTutorial();
-    await expect(page.locator(".react-flow")).toBeVisible({ timeout: 15000 });
-    await dismissSaveToast(page);
-  }
-
-  throw new Error("Schedule UI did not open from the builder");
-}
-
-async function startBuilderRun(page: Page, buildPage: BuildPage) {
-  await buildPage.clickRunButton();
-
-  const runDialog = page.locator('[data-id="run-input-dialog-content"]');
-  if (await runDialog.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await page.locator('[data-id="run-input-manual-run-button"]').click();
-  }
-}
-
-async function getBuilderExecutionState(page: Page) {
-  const stopButton = page.locator('[data-id="stop-graph-button"]');
-  if (await stopButton.isVisible().catch(() => false)) {
-    return "running";
-  }
-
-  const runButton = page.locator('[data-id="run-graph-button"]');
-  if (await runButton.isVisible().catch(() => false)) {
-    return "idle";
-  }
-
-  return "unknown";
-}
-
-async function openSavedAgentInLibrary(page: Page, agentName: string) {
-  const libraryPage = new LibraryPage(page);
-
-  await page.goto("/library");
-  await libraryPage.waitForAgentsToLoad();
-  await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
-  await navigateToAgentByName(page, agentName);
-  await waitForAgentPageLoad(page);
-}
-
-async function getVisibleExportControl(page: Page) {
-  const directExportButton = page.getByRole("button", {
-    name: "Export agent to file",
-  });
-  if (await directExportButton.isVisible().catch(() => false)) {
-    return "direct";
-  }
-
-  const moreActionsButtons = page.getByRole("button", { name: "More actions" });
-  const moreActionsCount = await moreActionsButtons.count();
-  for (let index = 0; index < moreActionsCount; index++) {
-    if (
-      await moreActionsButtons
-        .nth(index)
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return `menu:${index}`;
-    }
-  }
-
-  return "pending";
-}
-
-async function waitForExportControl(page: Page) {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let exportControl = "pending";
-
-    await expect
-      .poll(
-        async () => {
-          exportControl = await getVisibleExportControl(page);
-          return exportControl;
-        },
-        { timeout: 15000 },
-      )
-      .not.toBe("pending")
-      .catch(() => {
-        exportControl = "pending";
-      });
-
-    if (exportControl !== "pending") {
-      return exportControl;
-    }
-
-    await page.reload();
-    await waitForAgentPageLoad(page);
-  }
-
-  throw new Error("Export controls did not appear on the agent page");
-}
-
-async function clickExportAgent(page: Page) {
-  const exportControl = await waitForExportControl(page);
-  if (exportControl === "direct") {
-    await page
-      .getByRole("button", { name: "Export agent to file" })
-      .click({ timeout: 15000 });
-    return;
-  }
-
-  const moreActionsIndex = Number(exportControl.replace("menu:", ""));
-  await page
-    .getByRole("button", { name: "More actions" })
-    .nth(moreActionsIndex)
-    .click();
-
-  const dropdownExportButton = page.getByRole("menuitem", {
-    name: "Export agent to file",
-  });
-  await dropdownExportButton.waitFor({ state: "visible", timeout: 15000 });
-  await dropdownExportButton.click();
-}
-
-async function configureSchedule(page: Page) {
-  const hourSelect = page.locator("#time-hour");
-  await expect(hourSelect).toBeVisible({ timeout: 15000 });
-
-  const currentHourText = (await hourSelect.textContent()) ?? "";
-  const currentHourMatch = currentHourText.match(/\b(1[0-2]|[1-9])\b/);
-  const currentHour = currentHourMatch?.[0] ?? "9";
-  const nextHour = currentHour === "10" ? "11" : "10";
-
-  await hourSelect.click();
-
-  const nextHourOption = page.getByRole("option", {
-    name: nextHour,
-    exact: true,
-  });
-  await nextHourOption.waitFor({ state: "visible", timeout: 15000 });
-  await nextHourOption.click();
-
-  await expect(hourSelect).toContainText(nextHour);
-}
-
-async function waitForScheduleCreation(page: Page, scheduleDialog: Locator) {
-  const successToastTitle = page.getByText("Schedule created", {
-    exact: true,
-  });
-  const successToastDescription = page.getByText(
-    "Schedule created successfully",
-  );
-  const invalidScheduleToast = page.getByText("Invalid schedule", {
-    exact: true,
-  });
-  const failedScheduleToast = page.getByText("Failed to create schedule", {
-    exact: true,
-  });
-
-  await expect
-    .poll(
-      async () => {
-        if (
-          (await successToastTitle.isVisible().catch(() => false)) ||
-          (await successToastDescription.isVisible().catch(() => false))
-        ) {
-          return "success";
-        }
-
-        if (!(await scheduleDialog.isVisible().catch(() => false))) {
-          return "success";
-        }
-
-        if (await invalidScheduleToast.isVisible().catch(() => false)) {
-          return "invalid";
-        }
-
-        if (await failedScheduleToast.isVisible().catch(() => false)) {
-          return "failed";
-        }
-
-        return "pending";
-      },
-      { timeout: 60000 },
-    )
-    .toBe("success");
-}
-
-async function createScheduleForSavedAgent(
-  page: Page,
-  buildPage: BuildPage,
-  agentName: string,
-) {
-  const { runDialog, scheduleDialog } = await openScheduleDialog(
-    page,
-    buildPage,
-  );
-
-  if (
-    (await runDialog.isVisible({ timeout: 1000 }).catch(() => false)) &&
-    !(await scheduleDialog.isVisible({ timeout: 1000 }).catch(() => false))
-  ) {
-    await page.locator('[data-id="run-input-schedule-button"]').click();
-  }
-
-  await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
-  await page.locator("#schedule-name").fill(`Daily ${agentName}`);
-  await configureSchedule(page);
-
-  const doneButton = scheduleDialog.getByRole("button", {
-    name: "Done",
-    exact: true,
-  });
-  await expect(doneButton).toBeEnabled({ timeout: 15000 });
-
-  async function getScheduleSubmissionState() {
-    if (!(await scheduleDialog.isVisible().catch(() => false))) {
-      return "submitted";
-    }
-
-    if (
-      await scheduleDialog
-        .getByRole("button", { name: /Creating schedule/i })
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return "submitted";
-    }
-
-    return "idle";
-  }
-
-  await doneButton.click();
-
-  const initialSubmissionStarted = await expect
-    .poll(getScheduleSubmissionState, { timeout: 5000 })
-    .not.toBe("idle")
-    .then(() => true)
-    .catch(() => false);
-
-  if (!initialSubmissionStarted) {
-    await doneButton.click();
-    await expect
-      .poll(getScheduleSubmissionState, { timeout: 5000 })
-      .not.toBe("idle");
-  }
-
-  await waitForScheduleCreation(page, scheduleDialog);
-  await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
-}
-
-async function openActivityDropdown(page: Page) {
-  const activityButton = page.getByTestId("agent-activity-button");
-  await expect(activityButton).toBeVisible({ timeout: 15000 });
-
-  if (
-    !(await page
-      .getByTestId("agent-activity-dropdown")
-      .isVisible()
-      .catch(() => false))
-  ) {
-    await activityButton.click();
-  }
-
-  await expect(page.getByTestId("agent-activity-dropdown")).toBeVisible({
-    timeout: 10000,
-  });
-}
-
-async function getActivityItemCount(page: Page) {
-  return await page
-    .getByTestId("agent-activity-dropdown")
-    .getByText(
-      /^(Started|Completed|Failed|Stopped|Incomplete|Awaiting approval)/i,
-    )
-    .count();
-}
-
 test("builder happy path: user can complete or skip the builder tutorial successfully", async ({
   page,
 }) => {
   test.setTimeout(90000);
 
-  await openBuilder(page);
+  const buildPage = new BuildPage(page);
+  await buildPage.open();
 
   await expect(
     page.getByRole("button", { name: "Skip Tutorial", exact: true }),
@@ -415,8 +32,9 @@ test("builder happy path: user can create a simple agent in builder with core bl
 }) => {
   test.setTimeout(120000);
 
-  const buildPage = await openBuilder(page);
-  await addSimpleAgentBlocks(buildPage);
+  const buildPage = new BuildPage(page);
+  await buildPage.open();
+  await buildPage.addSimpleAgentBlocks();
 
   await expect(buildPage.getNodeLocator()).toHaveCount(2);
 });
@@ -426,65 +44,46 @@ test("builder happy path: user can save the created agent", async ({
 }) => {
   test.setTimeout(120000);
 
-  const { buildPage } = await createAndSaveAgent(page, "Smoke Save Agent");
+  const buildPage = new BuildPage(page);
+  await buildPage.createAndSaveSimpleAgent("Smoke Save Agent");
 
   await expect(page).toHaveURL(/flowID=/);
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
 });
 
-test("builder happy path: user can run the saved agent from builder", async ({
+test("builder happy path: user can run the saved agent from builder and see execution state", async ({
   page,
 }) => {
   test.setTimeout(120000);
 
-  const { buildPage } = await createAndSaveAgent(page, "Smoke Run Agent");
+  const buildPage = new BuildPage(page);
+  await buildPage.createAndSaveSimpleAgent("Smoke Run Agent");
 
-  await startBuilderRun(page, buildPage);
+  await buildPage.startRun();
   await expect(
     page.locator('[data-id="stop-graph-button"], [data-id="run-graph-button"]'),
   ).toBeVisible({ timeout: 15000 });
-});
 
-test("builder happy path: user can see the run result or execution status", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const { buildPage } = await createAndSaveAgent(page, "Smoke Status Agent");
-
-  await startBuilderRun(page, buildPage);
+  // Builder should reflect a real execution state (running or idle), never
+  // "unknown" — that would mean the run UI didn't transition at all.
   await expect
-    .poll(() => getBuilderExecutionState(page), {
-      timeout: 15000,
-    })
+    .poll(() => buildPage.getExecutionState(), { timeout: 15000 })
     .not.toBe("unknown");
 });
 
-test("builder happy path: user can schedule the saved agent", async ({
+test("builder happy path: user can schedule the saved agent and run it from Library", async ({
   page,
 }) => {
-  test.setTimeout(120000);
+  test.setTimeout(180000);
 
-  const { buildPage, agentName } = await createAndSaveAgent(
-    page,
+  const buildPage = new BuildPage(page);
+  const { agentName } = await buildPage.createAndSaveSimpleAgent(
     "Smoke Schedule Agent",
   );
 
-  await createScheduleForSavedAgent(page, buildPage, agentName);
+  await buildPage.createScheduleForSavedAgent(agentName);
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
-});
 
-test("builder happy path: user can run a created schedule from Library", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const { buildPage, agentName } = await createAndSaveAgent(
-    page,
-    "Smoke Run Now Agent",
-  );
-
-  await createScheduleForSavedAgent(page, buildPage, agentName);
   await openSavedAgentInLibrary(page, agentName);
 
   const scheduledTab = page.getByRole("tab", { name: /Scheduled/i });
@@ -498,46 +97,8 @@ test("builder happy path: user can run a created schedule from Library", async (
   await waitForRunToComplete(page, 45000);
 
   const runStatus = await getRunStatus(page);
-  expect(ACCEPTED_RUN_STATUSES).toContain(
-    runStatus as (typeof ACCEPTED_RUN_STATUSES)[number],
-  );
-});
-
-test("builder happy path: user can see a saved agent run in the activity feed", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const { buildPage } = await createAndSaveAgent(page, "Smoke Activity Agent");
-
-  await page.reload();
-  await page.waitForLoadState("domcontentloaded");
-  await buildPage.closeTutorial();
-  await expect(page.locator(".react-flow")).toBeVisible({ timeout: 15000 });
-  await dismissSaveToast(page);
-
-  await openActivityDropdown(page);
-  const initialActivityItemCount = await getActivityItemCount(page);
-
-  await startBuilderRun(page, buildPage);
-  await openActivityDropdown(page);
-
-  await expect
-    .poll(
-      async () => {
-        const hasBadge = await page
-          .getByTestId("agent-activity-badge")
-          .isVisible()
-          .catch(() => false);
-        if (hasBadge) {
-          return true;
-        }
-
-        return (await getActivityItemCount(page)) > initialActivityItemCount;
-      },
-      { timeout: 30000 },
-    )
-    .toBe(true);
+  expect(runStatus).toBe("completed");
+  await assertRunProducedOutput(page);
 });
 
 test("builder happy path: user can export the created agent", async ({
@@ -545,20 +106,39 @@ test("builder happy path: user can export the created agent", async ({
 }) => {
   test.setTimeout(120000);
 
-  const { agentName } = await createAndSaveAgent(page, "Smoke Export Agent");
+  const buildPage = new BuildPage(page);
+  const { agentName } =
+    await buildPage.createAndSaveSimpleAgent("Smoke Export Agent");
 
   await openSavedAgentInLibrary(page, agentName);
 
-  const downloadPromise = page
-    .waitForEvent("download", { timeout: 15000 })
-    .catch(() => null);
-
+  const downloadPromise = page.waitForEvent("download", { timeout: 15000 });
   await clickExportAgent(page);
-
   const download = await downloadPromise;
-  if (download) {
-    expect(download.suggestedFilename()).toMatch(/\.json$/i);
-  }
+
+  expect(download.suggestedFilename()).toMatch(/\.json$/i);
+
+  // Verify the downloaded file is a real, well-formed agent export — not an
+  // empty stub. Catches a regression where the export endpoint returns {} or
+  // an HTML error page with a .json extension.
+  const filePath = await download.path();
+  expect(filePath).toBeTruthy();
+  const raw = await readFile(filePath!, "utf-8");
+  const parsed = JSON.parse(raw);
+
+  expect(parsed.name, "exported agent must include name").toBeTruthy();
+  expect(
+    Array.isArray(parsed.nodes),
+    "exported agent must have a nodes array",
+  ).toBe(true);
+  expect(
+    parsed.nodes.length,
+    "exported agent must contain at least one node",
+  ).toBeGreaterThan(0);
+  expect(
+    Array.isArray(parsed.links),
+    "exported agent must have a links array",
+  ).toBe(true);
 
   await expect(page.getByText("Agent exported")).toBeVisible({
     timeout: 15000,

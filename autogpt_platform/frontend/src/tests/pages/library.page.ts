@@ -658,6 +658,27 @@ export async function waitForAgentPageLoad(page: Page): Promise<void> {
   // Wait for sidebar data to finish loading so the page settles
   // into its final state (empty view vs sidebar view)
   await page.waitForLoadState("networkidle");
+
+  // Transient "Something went wrong — All connection attempts failed" error
+  // boundary appears when the library agent page loads before the backend
+  // has indexed a newly-cloned agent (race between marketplace "Add to
+  // Library" and backend availability). Click "Try Again" and re-settle.
+  const errorHeading = page.getByText("Something went wrong", {
+    exact: false,
+  });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (!(await errorHeading.isVisible({ timeout: 300 }).catch(() => false))) {
+      return;
+    }
+    const tryAgain = page.getByRole("button", { name: "Try Again" });
+    if (await tryAgain.isVisible({ timeout: 500 }).catch(() => false)) {
+      await tryAgain.click();
+    } else {
+      await page.reload();
+    }
+    await page.waitForLoadState("networkidle").catch(() => undefined);
+    await page.waitForTimeout(1000);
+  }
 }
 
 export async function getAgentName(page: Page): Promise<string> {
@@ -668,14 +689,281 @@ export async function isLoaded(page: Page): Promise<boolean> {
   return await page.locator("h1").isVisible();
 }
 
+// Terminal states — once a run reaches one of these, polling stops.
+// "error" means the page itself crashed (React error boundary), which must
+// surface as a hard test failure rather than be confused with a normal status.
+const TERMINAL_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "terminated",
+  "incomplete",
+  "error",
+]);
+
+/**
+ * Assert that a completed run actually produced output.
+ *
+ * The Library run-detail Output panel renders "No output from this run." when
+ * the run object has no `outputs` field. There's a brief window after the run
+ * reaches "completed" status where the run object is loaded without outputs,
+ * then outputs arrive and the panel re-renders. We poll for up to `timeout`
+ * ms waiting for the "No output" placeholder to GO AWAY before concluding
+ * the run genuinely produced nothing.
+ *
+ * This catches the "agent runs but produces nothing" failure mode
+ * (disconnected edges, broken graph, runtime crash before any output node
+ * fired) — the exact regression that ACCEPTED_RUN_STATUSES previously hid.
+ */
+export async function assertRunProducedOutput(
+  page: Page,
+  timeout = 15000,
+): Promise<void> {
+  const noOutput = page.getByText("No output from this run.", { exact: true });
+
+  // Phase 1: give the current page render up to half `timeout` ms to swap
+  // from the initial placeholder to real content. React Query may have the
+  // outputs in flight from the backend; a short poll lets the re-render land.
+  const phase1End = Date.now() + Math.floor(timeout / 2);
+  while (Date.now() < phase1End) {
+    if (!(await noOutput.isVisible({ timeout: 300 }).catch(() => false))) {
+      return;
+    }
+    await page.waitForTimeout(500);
+  }
+
+  // Phase 2: force a backend re-fetch. Stale React Query cache is a common
+  // cause of the UI showing "No output" while the backend has the full run.
+  // A single targeted reload rules this out before we declare a real bug.
+  await page.reload();
+  await page.waitForLoadState("domcontentloaded");
+  const phase2End = Date.now() + Math.floor(timeout / 2);
+  while (Date.now() < phase2End) {
+    if (!(await noOutput.isVisible({ timeout: 300 }).catch(() => false))) {
+      return;
+    }
+    await page.waitForTimeout(500);
+  }
+
+  throw new Error(
+    'run completed but produced no output ("No output from this run." still shown after reload) — likely a broken graph or missing output node',
+  );
+}
+
 export async function waitForRunToComplete(
   page: Page,
-  timeout = 30000,
+  timeout = 45000,
 ): Promise<void> {
-  await expect.poll(() => getRunStatus(page), { timeout }).not.toBe("unknown");
+  const start = Date.now();
+  let lastStatus = "unknown";
+  while (Date.now() - start < timeout) {
+    lastStatus = await getRunStatus(page);
+    if (TERMINAL_RUN_STATUSES.has(lastStatus)) return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error(
+    `waitForRunToComplete timed out after ${timeout}ms — last status was "${lastStatus}" (expected one of: ${[...TERMINAL_RUN_STATUSES].join(", ")})`,
+  );
+}
+
+export function getActiveItemId(page: Page): string | null {
+  return new URL(page.url()).searchParams.get("activeItem");
+}
+
+export async function dismissFeedbackDialog(page: Page): Promise<void> {
+  const feedbackDialog = page.getByRole("dialog", {
+    name: "We'd love your feedback",
+  });
+  if (!(await feedbackDialog.isVisible().catch(() => false))) {
+    return;
+  }
+
+  const cancelButton = feedbackDialog.getByRole("button", { name: "Cancel" });
+  if (await cancelButton.isVisible().catch(() => false)) {
+    await cancelButton.click();
+    await expect(feedbackDialog).toBeHidden({ timeout: 15000 });
+    return;
+  }
+
+  await feedbackDialog.getByRole("button", { name: "Close" }).click();
+  await expect(feedbackDialog).toBeHidden({ timeout: 15000 });
+}
+
+export async function importAgentFromFile(
+  page: Page,
+  filePath: string,
+  agentName: string,
+  description: string = "PR E2E library coverage",
+): Promise<{ libraryPage: LibraryPage; importedAgent: Agent }> {
+  const libraryPage = new LibraryPage(page);
+
+  await page.goto("/library");
+  await libraryPage.openUploadDialog();
+  await libraryPage.fillUploadForm(agentName, description);
+
+  const fileInput = page.locator('input[type="file"]');
+  await fileInput.setInputFiles(filePath);
+  await expect(page.getByRole("button", { name: "Upload" })).toBeEnabled({
+    timeout: 10000,
+  });
+  await page.getByRole("button", { name: "Upload" }).click();
+
+  await expect(page).toHaveURL(/\/build/);
+
+  // Import should produce a real graph, not an empty canvas. Lazy-import
+  // BuildPage locally to avoid a circular dependency between the two
+  // page-object modules.
+  const { BuildPage } = await import("./build.page");
+  const importedBuildPage = new BuildPage(page);
+  await importedBuildPage.waitForNodeOnCanvas();
+  const importedNodeCount = await importedBuildPage.getNodeCount();
+  expect(
+    importedNodeCount,
+    "imported agent must render at least one node on canvas",
+  ).toBeGreaterThan(0);
+
+  await page.goto("/library");
+  await libraryPage.searchAgents(agentName);
+  await libraryPage.waitForAgentsToLoad();
+
+  const importedAgents = await libraryPage.getAgents();
+  const importedAgent = importedAgents.find((agent) =>
+    agent.name.includes(agentName),
+  );
+
+  expect(importedAgent).toBeTruthy();
+  if (!importedAgent) {
+    throw new Error("Imported agent was not found in the library");
+  }
+
+  return { libraryPage, importedAgent };
+}
+
+export async function openSavedAgentInLibrary(
+  page: Page,
+  agentName: string,
+): Promise<void> {
+  const libraryPage = new LibraryPage(page);
+
+  await page.goto("/library");
+  await libraryPage.waitForAgentsToLoad();
+  await libraryPage.searchAgents(agentName);
+  await libraryPage.waitForAgentsToLoad();
+  await navigateToAgentByName(page, agentName);
+  await waitForAgentPageLoad(page);
+}
+
+async function getVisibleExportControl(page: Page): Promise<string> {
+  const directExportButton = page.getByRole("button", {
+    name: "Export agent to file",
+  });
+  if (await directExportButton.isVisible().catch(() => false)) {
+    return "direct";
+  }
+
+  const moreActionsButtons = page.getByRole("button", { name: "More actions" });
+  const moreActionsCount = await moreActionsButtons.count();
+  for (let index = 0; index < moreActionsCount; index++) {
+    if (
+      await moreActionsButtons
+        .nth(index)
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return `menu:${index}`;
+    }
+  }
+
+  return "pending";
+}
+
+async function waitForExportControl(page: Page): Promise<string> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let exportControl = "pending";
+
+    await expect
+      .poll(
+        async () => {
+          exportControl = await getVisibleExportControl(page);
+          return exportControl;
+        },
+        { timeout: 15000 },
+      )
+      .not.toBe("pending")
+      .catch(() => {
+        exportControl = "pending";
+      });
+
+    if (exportControl !== "pending") {
+      return exportControl;
+    }
+
+    await page.reload();
+    await waitForAgentPageLoad(page);
+  }
+
+  throw new Error("Export controls did not appear on the agent page");
+}
+
+export async function clickExportAgent(page: Page): Promise<void> {
+  const exportControl = await waitForExportControl(page);
+  if (exportControl === "direct") {
+    await page
+      .getByRole("button", { name: "Export agent to file" })
+      .click({ timeout: 15000 });
+    return;
+  }
+
+  const moreActionsIndex = Number(exportControl.replace("menu:", ""));
+  await page
+    .getByRole("button", { name: "More actions" })
+    .nth(moreActionsIndex)
+    .click();
+
+  const dropdownExportButton = page.getByRole("menuitem", {
+    name: "Export agent to file",
+  });
+  await dropdownExportButton.waitFor({ state: "visible", timeout: 15000 });
+  await dropdownExportButton.click();
 }
 
 export async function getRunStatus(page: Page): Promise<string> {
+  // 1. Detect React error boundary first — fast loud failure if the page
+  //    crashed mid-run, instead of polling until timeout.
+  const errorBoundary = page.getByText(
+    /Something went wrong|We had the following error|Application error/i,
+  );
+  if (
+    await errorBoundary
+      .first()
+      .isVisible({ timeout: 200 })
+      .catch(() => false)
+  ) {
+    return "error";
+  }
+
+  // 2. Look for an EXPLICIT status badge first. The page renders one of
+  //    these strings in the run-detail header once the run reaches a known
+  //    state. We must check terminal states BEFORE the running heuristics
+  //    below, otherwise a completed run on /library/agents/[id]?activeTab=runs
+  //    would be misread as "running" because the URL still carries activeItem.
+  const statusTexts = [
+    { text: "completed", status: "completed" },
+    { text: "failed", status: "failed" },
+    { text: "terminated", status: "terminated" },
+    { text: "incomplete", status: "incomplete" },
+    { text: "queued", status: "queued" },
+    { text: "review", status: "review" },
+  ] as const;
+
+  for (const { text, status } of statusTexts) {
+    const locator = page.getByText(new RegExp(`^${text}$`, "i")).first();
+    if (await locator.isVisible().catch(() => false)) {
+      return status;
+    }
+  }
+
+  // 3. Heuristics that only mean "the run is in progress" — the run was
+  //    just kicked off and there's no terminal badge yet.
   const runStartedToast = page.getByText(
     /Run started|Agent execution started/i,
   );
@@ -684,14 +972,6 @@ export async function getRunStatus(page: Page): Promise<string> {
       .first()
       .isVisible()
       .catch(() => false)
-  ) {
-    return "running";
-  }
-
-  const currentUrl = new URL(page.url());
-  if (
-    currentUrl.searchParams.get("activeTab") === "runs" &&
-    currentUrl.searchParams.get("activeItem")
   ) {
     return "running";
   }
@@ -715,21 +995,23 @@ export async function getRunStatus(page: Page): Promise<string> {
     return "running";
   }
 
-  const statusTexts = [
-    { text: "completed", status: "completed" },
-    { text: "failed", status: "failed" },
-    { text: "running", status: "running" },
-    { text: "queued", status: "queued" },
-    { text: "review", status: "review" },
-    { text: "terminated", status: "terminated" },
-    { text: "incomplete", status: "incomplete" },
-  ] as const;
+  // 4. URL pattern fallback — once the page navigates to a run's detail
+  //    panel (?activeTab=runs&activeItem=X) without yet rendering a
+  //    terminal badge, assume the run is still mid-flight. Note: this is
+  //    a LAST RESORT, not a first check — terminal badges above win.
+  const currentUrl = new URL(page.url());
+  if (
+    currentUrl.searchParams.get("activeTab") === "runs" &&
+    currentUrl.searchParams.get("activeItem")
+  ) {
+    return "running";
+  }
 
-  for (const { text, status } of statusTexts) {
-    const locator = page.getByText(new RegExp(`^${text}$`, "i")).first();
-    if (await locator.isVisible().catch(() => false)) {
-      return status;
-    }
+  // 5. Soft fallback: a "running" badge text if it's the only thing on
+  //    the page. (Was previously checked alongside terminal states.)
+  const runningLocator = page.getByText(/^running$/i).first();
+  if (await runningLocator.isVisible().catch(() => false)) {
+    return "running";
   }
 
   return "unknown";

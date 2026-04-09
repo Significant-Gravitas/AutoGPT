@@ -1,6 +1,12 @@
-import { Page } from "@playwright/test";
+import { expect, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
+import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
+
+const RUNNABLE_MARKETPLACE_AGENT_PATH =
+  "/marketplace/agent/e2e-marketplace/e2e-calculator-agent";
+const FALLBACK_MARKETPLACE_AGENT_PATH =
+  "/marketplace/agent/autogpt/unspirational-poster-maker";
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -139,5 +145,168 @@ export class MarketplacePage extends BasePage {
     const { getId } = getSelectors(page);
     const storeCards = getId("store-card");
     return await storeCards.count();
+  }
+
+  // --- Happy-path flows shared across PR smoke specs ---
+
+  async openRunnableAgent(): Promise<{ path: string }> {
+    const candidatePaths = [
+      RUNNABLE_MARKETPLACE_AGENT_PATH,
+      FALLBACK_MARKETPLACE_AGENT_PATH,
+    ];
+
+    for (const candidate of candidatePaths) {
+      await this.page.goto(candidate);
+      const addToLibraryButton = this.page.getByTestId(
+        "agent-add-library-button",
+      );
+
+      if (
+        await addToLibraryButton.isVisible({ timeout: 5000 }).catch(() => false)
+      ) {
+        await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
+        await expect(
+          this.page.getByTestId("agent-title").first(),
+        ).toBeVisible();
+        return { path: candidate };
+      }
+    }
+
+    await this.goto(this.page);
+
+    const candidateLinks = await this.page
+      .locator('a[href*="/marketplace/agent/"]')
+      .evaluateAll((links) =>
+        links
+          .map((link) => link.getAttribute("href"))
+          .filter((href): href is string => Boolean(href)),
+      );
+
+    const uniquePaths = [...new Set(candidateLinks)].slice(0, 8);
+    for (const path of uniquePaths) {
+      await this.page.goto(path);
+      const addToLibraryButton = this.page.getByTestId(
+        "agent-add-library-button",
+      );
+
+      if (
+        await addToLibraryButton.isVisible({ timeout: 5000 }).catch(() => false)
+      ) {
+        await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
+        await expect(
+          this.page.getByTestId("agent-title").first(),
+        ).toBeVisible();
+        return { path };
+      }
+    }
+
+    throw new Error(
+      "Could not find a runnable marketplace agent for PR E2E coverage",
+    );
+  }
+
+  async openFeaturedAgent(): Promise<void> {
+    await this.goto(this.page);
+    await expect(
+      this.page.getByRole("heading", { level: 1 }).first(),
+    ).toBeVisible();
+
+    const featuredAgentLink = this.page
+      .locator('a[href*="/marketplace/agent/"]')
+      .first();
+    if (
+      await featuredAgentLink.isVisible({ timeout: 5000 }).catch(() => false)
+    ) {
+      await featuredAgentLink.click();
+    } else {
+      const agentCard = await this.getFirstTopAgent();
+      await agentCard.click();
+    }
+
+    await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
+    await expect(this.page.getByTestId("agent-title")).toBeVisible();
+    await dismissFeedbackDialog(this.page);
+  }
+
+  async submitAgentForReview(publishableAgentName: string): Promise<string> {
+    await this.page.goto("/marketplace");
+    await this.page.getByRole("button", { name: "Become a Creator" }).click();
+
+    const publishAgentModal = this.page.getByTestId("publish-agent-modal");
+    await expect(publishAgentModal).toBeVisible();
+    await expect(
+      publishAgentModal.getByText(
+        "Select your project that you'd like to publish",
+      ),
+    ).toBeVisible();
+
+    const publishableAgentCard = publishAgentModal
+      .getByTestId("agent-card")
+      .filter({ hasText: publishableAgentName })
+      .first();
+    await expect(publishableAgentCard).toBeVisible({ timeout: 15000 });
+    await publishableAgentCard.click();
+    await publishAgentModal
+      .getByRole("button", { name: "Next", exact: true })
+      .click();
+
+    await expect(
+      publishAgentModal.getByText("Write a bit of details about your agent"),
+    ).toBeVisible();
+
+    const suffix = Date.now().toString().slice(-6);
+    const agentTitle = `Publish Flow ${suffix}`;
+
+    await publishAgentModal.getByLabel("Title").fill(agentTitle);
+    await publishAgentModal
+      .getByLabel("Subheader")
+      .fill("A deterministic marketplace submission");
+    await publishAgentModal.getByLabel("Slug").fill(`publish-flow-${suffix}`);
+    await publishAgentModal
+      .getByLabel("YouTube video link")
+      .fill("https://www.youtube.com/watch?v=test123");
+
+    await publishAgentModal.getByRole("combobox", { name: "Category" }).click();
+    await this.page.getByRole("option", { name: "Other" }).click();
+
+    await publishAgentModal
+      .getByLabel("Description")
+      .fill(
+        "A deterministic publish flow for consolidated Playwright coverage.",
+      );
+
+    const submitButton = publishAgentModal.getByRole("button", {
+      name: "Submit for review",
+    });
+    await expect(submitButton).toBeEnabled();
+    await submitButton.click();
+
+    await expect(
+      publishAgentModal.getByText("Agent is awaiting review"),
+    ).toBeVisible();
+    await expect(
+      publishAgentModal.getByTestId("view-progress-button"),
+    ).toBeVisible();
+
+    return agentTitle;
+  }
+
+  async waitForDashboardSubmission(agentTitle: string) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const submissionRow = this.page
+        .getByTestId("agent-table-row")
+        .filter({ hasText: agentTitle })
+        .first();
+
+      if (await submissionRow.isVisible().catch(() => false)) {
+        return submissionRow;
+      }
+
+      await this.page.reload();
+      await expect(this.page).toHaveURL(/\/profile\/dashboard/);
+      await expect(this.page.getByText("Agent dashboard")).toBeVisible();
+    }
+
+    throw new Error(`Submission row for "${agentTitle}" did not appear`);
   }
 }

@@ -1,15 +1,6 @@
 import { expect, test } from "./coverage-fixture";
-import { getSeededTestUser } from "./credentials/accounts";
+import { CopilotPage } from "./pages/copilot.page";
 import { LoginPage } from "./pages/login.page";
-
-async function dismissCopilotNotificationPrompt(
-  page: import("@playwright/test").Page,
-) {
-  const notNowButton = page.getByRole("button", { name: "Not now" });
-  if (await notNowButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await notNowButton.click();
-  }
-}
 
 test("copilot happy path: user can create a deterministic AutoPilot session and keep it after reload", async ({
   page,
@@ -17,40 +8,38 @@ test("copilot happy path: user can create a deterministic AutoPilot session and 
   test.setTimeout(120000);
 
   const loginPage = new LoginPage(page);
-  const copilotUser = getSeededTestUser("smokeMarketplace");
+  const copilotPage = new CopilotPage(page);
 
-  await page.goto("/login");
-  await loginPage.login(copilotUser.email, copilotUser.password);
+  await loginPage.loginAsSeededUser("smokeMarketplace");
+  await copilotPage.open();
 
-  await page.goto("/copilot");
-  await expect(page).toHaveURL(/\/copilot/);
-  await dismissCopilotNotificationPrompt(page);
+  const sessionId = await copilotPage.createSessionViaApi();
 
-  const response = await page.request.post("/api/proxy/api/chat/sessions", {
-    data: null,
-  });
-  expect(response.ok()).toBeTruthy();
-
-  const session = await response.json();
-  const sessionId = session?.id;
-  expect(sessionId).toBeTruthy();
-
-  await page.goto(`/copilot?sessionId=${sessionId}`);
-  await dismissCopilotNotificationPrompt(page);
-  await expect(page.locator("#chat-input-session")).toBeVisible({
-    timeout: 15000,
-  });
+  await copilotPage.open(sessionId);
+  await copilotPage.waitForChatInput();
 
   await page.reload();
   await page.waitForLoadState("domcontentloaded");
-  await dismissCopilotNotificationPrompt(page);
+  await copilotPage.dismissNotificationPrompt();
 
   await expect
     .poll(() => new URL(page.url()).searchParams.get("sessionId"), {
       timeout: 15000,
     })
     .toBe(sessionId);
-  await expect(page.locator("#chat-input-session")).toBeVisible({
-    timeout: 15000,
-  });
+  await copilotPage.waitForChatInput();
+
+  // Sending a message must render the user's prompt in the conversation
+  // immediately. This catches a regression where the chat input accepts
+  // text but Enter is a no-op, without depending on knowing the exact
+  // backend endpoint name (which has shifted historically).
+  const userPrompt = `ping from e2e ${Date.now().toString().slice(-6)}`;
+  const chatInput = copilotPage.getChatInput();
+  await chatInput.fill(userPrompt);
+  await chatInput.press("Enter");
+
+  await expect(
+    page.getByText(userPrompt, { exact: false }).first(),
+    "user's typed prompt must appear in the chat after pressing Enter",
+  ).toBeVisible({ timeout: 15000 });
 });

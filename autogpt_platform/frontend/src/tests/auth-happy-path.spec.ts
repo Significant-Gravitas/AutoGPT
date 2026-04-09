@@ -116,6 +116,22 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
 
   expect(consoleErrors).toHaveLength(0);
 
+  // Prove the auth token is actually gone, not just the UI hidden. Supabase
+  // does not delete the cookie on signout — it overwrites it with an empty
+  // value and a past expiry. Either form is "cleared"; a non-empty value
+  // would mean a regression where the session token still resides in the
+  // shared browser context after logout.
+  const cookiesAfterLogout = await context.cookies();
+  const authCookie = cookiesAfterLogout.find(
+    (c) => c.name.startsWith("sb-") && c.name.includes("auth-token"),
+  );
+  if (authCookie !== undefined) {
+    expect(
+      authCookie.value,
+      "supabase auth cookie must be empty after logout",
+    ).toBe("");
+  }
+
   await page1.close();
   await page2.close();
 });

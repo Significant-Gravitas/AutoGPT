@@ -1,4 +1,8 @@
 import { Page } from "@playwright/test";
+import {
+  getSeededTestUser,
+  type SeededTestAccountKey,
+} from "../credentials/accounts";
 import { skipOnboardingIfPresent } from "../utils/onboarding";
 
 export class LoginPage {
@@ -6,6 +10,12 @@ export class LoginPage {
 
   async goto() {
     await this.page.goto("/login");
+  }
+
+  async loginAsSeededUser(userKey: SeededTestAccountKey): Promise<void> {
+    const user = getSeededTestUser(userKey);
+    await this.page.goto("/login");
+    await this.login(user.email, user.password);
   }
 
   async login(email: string, password: string) {

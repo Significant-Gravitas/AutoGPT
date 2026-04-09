@@ -1,7 +1,18 @@
+import { randomUUID } from "crypto";
 import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
+export function createUniqueAgentName(prefix: string): string {
+  return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
+}
+
 export class BuildPage extends BasePage {
+  // Backend-level success signal for schedule creation. Set right before we
+  // click the schedule dialog's Done button so the network listener is active
+  // when the POST fires. Read inside waitForScheduleCreation. Avoids a race
+  // where a fast POST completes before a listener registered later attaches.
+  private schedulePostPromise?: Promise<boolean>;
+
   constructor(page: Page) {
     super(page);
   }
@@ -235,6 +246,14 @@ export class BuildPage extends BasePage {
   }
 
   async clickRunButton(): Promise<void> {
+    // Dismiss any post-save toast that may be intercepting pointer events
+    // on the run button. Sonner toasts auto-dismiss, but the Run button can
+    // become clickable before the toast animates out, causing flakes.
+    await this.page
+      .getByText("Graph saved successfully")
+      .first()
+      .waitFor({ state: "hidden", timeout: 5000 })
+      .catch(() => undefined);
     const runButton = this.page.locator('[data-id="run-graph-button"]');
     await runButton.click();
   }
@@ -306,5 +325,318 @@ export class BuildPage extends BasePage {
     await this.waitForNodeOnCanvas(1);
     await this.saveAgent("Test Agent", "Test Description");
     await this.waitForSaveComplete();
+  }
+
+  // --- Happy-path flows shared across PR smoke specs ---
+
+  async open(): Promise<void> {
+    await this.goto();
+    await this.closeTutorial();
+    await expect(this.page.locator(".react-flow")).toBeVisible();
+    await expect(
+      this.page.getByTestId("blocks-control-blocks-button"),
+    ).toBeVisible();
+  }
+
+  async addSimpleAgentBlocks(): Promise<void> {
+    await this.addBlockByClick("Store Value");
+    await this.waitForNodeOnCanvas(1);
+    await this.fillBlockInputByPlaceholder(
+      "Enter string value...",
+      "smoke-value",
+      0,
+    );
+
+    await this.addBlockByClick("Add to Dictionary");
+    await this.waitForNodeOnCanvas(2);
+
+    const dictionaryInputs = this.getNodeLocator(1).locator(
+      'input[placeholder="Enter string value..."]',
+    );
+    await dictionaryInputs.nth(0).fill("smoke-key");
+    await dictionaryInputs.nth(1).fill("smoke-value");
+
+    // Connect Store Value's output to Add to Dictionary so the graph has a
+    // real edge and actually produces output when run. Without this edge the
+    // graph runs but emits no output, and `assertRunProducedOutput` rightly
+    // fails — catching exactly the "I forgot to connect the blocks" bug
+    // manual QA would catch.
+    await this.connectNodes(0, 1);
+  }
+
+  async createAndSaveSimpleAgent(
+    prefix: string,
+  ): Promise<{ agentName: string }> {
+    await this.open();
+    const agentName = createUniqueAgentName(prefix);
+
+    await this.addSimpleAgentBlocks();
+    await this.saveAgent(agentName, "PR E2E builder coverage");
+    await this.waitForSaveComplete();
+    await this.waitForSaveButton();
+
+    return { agentName };
+  }
+
+  async dismissSaveToast(): Promise<void> {
+    const closeToastButton = this.page.getByRole("button", {
+      name: "Close toast",
+    });
+    if (
+      await closeToastButton.isVisible({ timeout: 1000 }).catch(() => false)
+    ) {
+      await closeToastButton.click();
+    }
+
+    await this.page
+      .getByText("Graph saved successfully")
+      .waitFor({ state: "hidden", timeout: 10000 })
+      .catch(() => {});
+  }
+
+  async startRun(): Promise<void> {
+    await this.clickRunButton();
+
+    const runDialog = this.page.locator('[data-id="run-input-dialog-content"]');
+    if (await runDialog.isVisible({ timeout: 5000 }).catch(() => false)) {
+      await this.page
+        .locator('[data-id="run-input-manual-run-button"]')
+        .click();
+    }
+  }
+
+  async getExecutionState(): Promise<"running" | "idle" | "unknown"> {
+    const stopButton = this.page.locator('[data-id="stop-graph-button"]');
+    if (await stopButton.isVisible().catch(() => false)) {
+      return "running";
+    }
+
+    const runButton = this.page.locator('[data-id="run-graph-button"]');
+    if (await runButton.isVisible().catch(() => false)) {
+      return "idle";
+    }
+
+    return "unknown";
+  }
+
+  // --- Scheduling ---
+
+  private async waitForScheduleUi(): Promise<{
+    state: "ready" | "pending";
+    runDialog: Locator;
+    scheduleDialog: Locator;
+  }> {
+    const runDialog = this.page.locator('[data-id="run-input-dialog-content"]');
+    const scheduleDialog = this.page.getByRole("dialog", {
+      name: "Schedule Graph",
+    });
+
+    const state = await expect
+      .poll(
+        async () => {
+          if (await scheduleDialog.isVisible().catch(() => false)) {
+            return "schedule";
+          }
+          if (await runDialog.isVisible().catch(() => false)) {
+            return "run-input";
+          }
+          return "pending";
+        },
+        { timeout: 8000 },
+      )
+      .not.toBe("pending")
+      .then(() => "ready" as const)
+      .catch(() => "pending" as const);
+
+    return { state, runDialog, scheduleDialog };
+  }
+
+  async openScheduleDialog(): Promise<{
+    runDialog: Locator;
+    scheduleDialog: Locator;
+  }> {
+    const scheduleButton = this.page.locator(
+      '[data-id="schedule-graph-button"]',
+    );
+
+    await this.dismissSaveToast();
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await expect(scheduleButton).toBeVisible({ timeout: 15000 });
+      await expect(scheduleButton).toBeEnabled({ timeout: 15000 });
+      await scheduleButton.click();
+
+      const { state, runDialog, scheduleDialog } =
+        await this.waitForScheduleUi();
+      if (state !== "pending") {
+        return { runDialog, scheduleDialog };
+      }
+
+      await this.page.reload();
+      await this.page.waitForLoadState("domcontentloaded");
+      await this.closeTutorial();
+      await expect(this.page.locator(".react-flow")).toBeVisible({
+        timeout: 15000,
+      });
+      await this.dismissSaveToast();
+    }
+
+    throw new Error("Schedule UI did not open from the builder");
+  }
+
+  private async configureSchedule(): Promise<void> {
+    const hourSelect = this.page.locator("#time-hour");
+    await expect(hourSelect).toBeVisible({ timeout: 15000 });
+
+    const currentHourText = (await hourSelect.textContent()) ?? "";
+    const currentHourMatch = currentHourText.match(/\b(1[0-2]|[1-9])\b/);
+    const currentHour = currentHourMatch?.[0] ?? "9";
+    const nextHour = currentHour === "10" ? "11" : "10";
+
+    await hourSelect.click();
+
+    const nextHourOption = this.page.getByRole("option", {
+      name: nextHour,
+      exact: true,
+    });
+    await nextHourOption.waitFor({ state: "visible", timeout: 15000 });
+    await nextHourOption.click();
+
+    await expect(hourSelect).toContainText(nextHour);
+  }
+
+  private async waitForScheduleCreation(
+    scheduleDialog: Locator,
+  ): Promise<void> {
+    const successToastTitle = this.page.getByText("Schedule created", {
+      exact: true,
+    });
+    const successToastDescription = this.page.getByText(
+      "Schedule created successfully",
+    );
+    const invalidScheduleToast = this.page.getByText("Invalid schedule", {
+      exact: true,
+    });
+    const failedScheduleToast = this.page.getByText(
+      "Failed to create schedule",
+      {
+        exact: true,
+      },
+    );
+
+    // Consume the network-level success signal that was registered BEFORE
+    // the Done click in createScheduleForSavedAgent. If it resolves true, the
+    // backend created the schedule even if the UI dialog never transitioned.
+    let schedulePostSucceeded = false;
+    const postPromise = this.schedulePostPromise;
+    if (postPromise) {
+      postPromise.then((ok) => {
+        schedulePostSucceeded = ok;
+      });
+    }
+
+    await expect
+      .poll(
+        async () => {
+          if (
+            (await successToastTitle.isVisible().catch(() => false)) ||
+            (await successToastDescription.isVisible().catch(() => false))
+          ) {
+            return "success";
+          }
+
+          if (!(await scheduleDialog.isVisible().catch(() => false))) {
+            return "success";
+          }
+
+          if (schedulePostSucceeded) {
+            return "success";
+          }
+
+          if (await invalidScheduleToast.isVisible().catch(() => false)) {
+            return "invalid";
+          }
+
+          if (await failedScheduleToast.isVisible().catch(() => false)) {
+            return "failed";
+          }
+
+          return "pending";
+        },
+        { timeout: 120000 },
+      )
+      .toBe("success");
+  }
+
+  async createScheduleForSavedAgent(agentName: string): Promise<void> {
+    const { runDialog, scheduleDialog } = await this.openScheduleDialog();
+
+    if (
+      (await runDialog.isVisible({ timeout: 1000 }).catch(() => false)) &&
+      !(await scheduleDialog.isVisible({ timeout: 1000 }).catch(() => false))
+    ) {
+      await this.page.locator('[data-id="run-input-schedule-button"]').click();
+    }
+
+    await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
+    await this.page.locator("#schedule-name").fill(`Daily ${agentName}`);
+    await this.configureSchedule();
+
+    const doneButton = scheduleDialog.getByRole("button", {
+      name: "Done",
+      exact: true,
+    });
+    await expect(doneButton).toBeEnabled({ timeout: 15000 });
+
+    // CRITICAL: register the network listener BEFORE clicking Done, otherwise
+    // the POST can fire and return before the listener attaches, causing a
+    // 120s false-pending timeout even though the schedule was created.
+    // waitForScheduleCreation reads this promise.
+    this.schedulePostPromise = this.page
+      .waitForResponse(
+        (res) =>
+          res.request().method() === "POST" &&
+          /\/api\/graphs\/[^/]+\/schedules/.test(res.url()) &&
+          res.status() >= 200 &&
+          res.status() < 300,
+        { timeout: 120000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+
+    const getScheduleSubmissionState = async () => {
+      if (!(await scheduleDialog.isVisible().catch(() => false))) {
+        return "submitted";
+      }
+
+      if (
+        await scheduleDialog
+          .getByRole("button", { name: /Creating schedule/i })
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return "submitted";
+      }
+
+      return "idle";
+    };
+
+    await doneButton.click();
+
+    const initialSubmissionStarted = await expect
+      .poll(getScheduleSubmissionState, { timeout: 5000 })
+      .not.toBe("idle")
+      .then(() => true)
+      .catch(() => false);
+
+    if (!initialSubmissionStarted) {
+      await doneButton.click();
+      await expect
+        .poll(getScheduleSubmissionState, { timeout: 5000 })
+        .not.toBe("idle");
+    }
+
+    await this.waitForScheduleCreation(scheduleDialog);
+    await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
   }
 }
