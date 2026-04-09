@@ -33,6 +33,8 @@ interface Props {
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
   onDroppedFilesConsumed?: () => void;
+  /** When true, the dry-run toggle is disabled (session is active and immutable). */
+  hasSession?: boolean;
 }
 
 export function ChatInput({
@@ -46,6 +48,7 @@ export function ChatInput({
   inputId = "chat-input",
   droppedFiles,
   onDroppedFilesConsumed,
+  hasSession = false,
 }: Props) {
   const { copilotMode, setCopilotMode, isDryRun, setIsDryRun } =
     useCopilotUIStore();
@@ -75,8 +78,8 @@ export function ChatInput({
     toast({
       title: next ? "Test mode enabled" : "Test mode disabled",
       description: next
-        ? "Current session cleared — next message starts a new dry-run session."
-        : "Current session cleared — next message starts a normal session.",
+        ? "New chats will run agents in test mode."
+        : "New chats will run agents normally.",
     });
   }
 
@@ -204,6 +207,7 @@ export function ChatInput({
               <DryRunToggleButton
                 isDryRun={isDryRun}
                 isStreaming={isStreaming}
+                hasSession={hasSession}
                 onToggle={handleToggleDryRun}
               />
             )}
