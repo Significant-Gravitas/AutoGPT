@@ -9,6 +9,8 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from graphiti_core.nodes import EpisodeType
+
 from .client import derive_group_id, get_graphiti_client
 
 logger = logging.getLogger(__name__)
@@ -79,8 +81,6 @@ async def enqueue_conversation_turn(
     if not user_id:
         return
 
-    from graphiti_core.nodes import EpisodeType
-
     try:
         group_id = derive_group_id(user_id)
     except ValueError:
@@ -136,8 +136,6 @@ async def enqueue_episode(
     """
     if not user_id:
         return False
-
-    from graphiti_core.nodes import EpisodeType
 
     try:
         group_id = derive_group_id(user_id)
