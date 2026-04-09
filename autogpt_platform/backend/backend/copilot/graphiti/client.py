@@ -165,6 +165,4 @@ async def evict_client(group_id: str) -> None:
             try:
                 await driver.close()
             except Exception:
-                logger.debug(
-                    "Failed to close driver for %s", group_id, exc_info=True
-                )
+                logger.debug("Failed to close driver for %s", group_id, exc_info=True)

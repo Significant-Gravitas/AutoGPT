@@ -113,7 +113,9 @@ class MemorySearchTool(BaseTool):
                 ),
             )
         except Exception:
-            logger.warning("Memory search failed for user %s", user_id[:12], exc_info=True)
+            logger.warning(
+                "Memory search failed for user %s", user_id[:12], exc_info=True
+            )
             return ErrorResponse(
                 message="Memory search is temporarily unavailable.",
                 session_id=session.session_id,
