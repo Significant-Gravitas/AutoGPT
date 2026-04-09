@@ -3,7 +3,10 @@ import { getSeededTestUser } from "./credentials/accounts";
 import { COOKIE_CONSENT_STORAGE_STATE } from "./credentials/storage-state";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
-import { completeOnboardingWizard } from "./utils/onboarding";
+import {
+  completeOnboardingWizard,
+  skipOnboardingIfPresent,
+} from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
 
 test.use({ storageState: COOKIE_CONSENT_STORAGE_STATE });
@@ -16,6 +19,28 @@ test("auth happy path: user can sign up with a fresh account", async ({
   await signupTestUser(page, undefined, undefined, false);
   await expect(page).toHaveURL(/\/onboarding/);
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
+});
+
+test("auth happy path: user can sign up, enter the app, and log out", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+
+  await signupTestUser(page, undefined, undefined, false);
+  await expect(page).toHaveURL(/\/onboarding/);
+  await expect(page.getByText("Welcome to AutoGPT")).toBeVisible();
+
+  await skipOnboardingIfPresent(page, "/marketplace");
+  await expect(page).toHaveURL(/\/marketplace/);
+  await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible();
+
+  await page.getByTestId("profile-popout-menu-trigger").click();
+  await page.getByRole("button", { name: "Log out" }).click();
+
+  await expect(page).toHaveURL(/\/login/);
+
+  await page.goto("/library");
+  await expect(page).toHaveURL(/\/login\?next=%2Flibrary/);
 });
 
 test("auth happy path: seeded user can log in", async ({ page }) => {

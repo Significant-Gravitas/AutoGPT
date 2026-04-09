@@ -40,6 +40,10 @@ test("publish happy path: user can submit, track, and delete an agent submission
 
   const submissionRow =
     await marketplacePage.waitForDashboardSubmission(agentTitle);
+  await expect(
+    submissionRow.getByTestId("agent-status"),
+    `submission "${agentTitle}" should appear in the dashboard review-pending state`,
+  ).toContainText(/awaiting review/i);
   await submissionRow.getByTestId("agent-table-row-actions").click();
   await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
 
