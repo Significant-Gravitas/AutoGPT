@@ -11,7 +11,11 @@ import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
 
-export function useChatSession() {
+interface UseChatSessionOptions {
+  dryRun?: boolean;
+}
+
+export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
 
@@ -106,8 +110,9 @@ export function useChatSession() {
   async function createSession() {
     if (sessionId) return sessionId;
     try {
+      const body = dryRun ? { data: { dry_run: true } } : { data: null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (createSessionMutation as any)({ data: null });
+      const response = await (createSessionMutation as any)(body);
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {

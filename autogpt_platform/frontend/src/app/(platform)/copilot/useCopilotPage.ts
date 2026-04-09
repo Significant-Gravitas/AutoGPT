@@ -43,6 +43,7 @@ export function useCopilotPage() {
     isDrawerOpen,
     setDrawerOpen,
     copilotMode,
+    isDryRun,
   } = useCopilotUIStore();
 
   const {
@@ -59,7 +60,7 @@ export function useCopilotPage() {
     createSession,
     isCreatingSession,
     refetchSession,
-  } = useChatSession();
+  } = useChatSession({ dryRun: isDryRun });
 
   const {
     messages: currentMessages,
@@ -414,5 +415,7 @@ export function useCopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
+    // Dry run dev toggle
+    isDryRun,
   };
 }

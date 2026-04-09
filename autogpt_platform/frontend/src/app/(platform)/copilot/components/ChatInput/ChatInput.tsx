@@ -9,8 +9,10 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { AppEnv, environment } from "@/services/environment";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
+import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
@@ -46,8 +48,10 @@ export function ChatInput({
   droppedFiles,
   onDroppedFilesConsumed,
 }: Props) {
-  const { copilotMode, setCopilotMode } = useCopilotUIStore();
+  const { copilotMode, setCopilotMode, isDryRun, setIsDryRun } =
+    useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const showDryRunToggle = environment.getAppEnv() !== AppEnv.PROD;
   const [files, setFiles] = useState<File[]>([]);
 
   function handleToggleMode() {
@@ -63,6 +67,17 @@ export function ChatInput({
         next === "fast"
           ? "Optimized for speed — ideal for simpler tasks."
           : "Responses may take longer.",
+    });
+  }
+
+  function handleToggleDryRun() {
+    const next = !isDryRun;
+    setIsDryRun(next);
+    toast({
+      title: next ? "Test mode enabled" : "Test mode disabled",
+      description: next
+        ? "New sessions will be created with dry_run=true."
+        : "New sessions will use normal production mode.",
     });
   }
 
@@ -184,6 +199,13 @@ export function ChatInput({
                 mode={copilotMode}
                 isStreaming={isStreaming}
                 onToggle={handleToggleMode}
+              />
+            )}
+            {showDryRunToggle && (
+              <DryRunToggleButton
+                isDryRun={isDryRun}
+                isStreaming={isStreaming}
+                onToggle={handleToggleDryRun}
               />
             )}
           </PromptInputTools>
