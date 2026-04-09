@@ -9,7 +9,6 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { AppEnv, environment } from "@/services/environment";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
@@ -51,7 +50,7 @@ export function ChatInput({
   const { copilotMode, setCopilotMode, isDryRun, setIsDryRun } =
     useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
-  const showDryRunToggle = environment.getAppEnv() !== AppEnv.PROD;
+  const showDryRunToggle = useGetFlag(Flag.DRY_RUN_TOGGLE);
   const [files, setFiles] = useState<File[]>([]);
 
   function handleToggleMode() {
