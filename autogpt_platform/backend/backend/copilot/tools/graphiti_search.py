@@ -89,7 +89,14 @@ class MemorySearchTool(BaseTool):
 
         limit = min(limit, _MAX_LIMIT)
 
-        group_id = derive_group_id(user_id)
+        try:
+            group_id = derive_group_id(user_id)
+        except ValueError:
+            return ErrorResponse(
+                message="Invalid user ID for memory operations.",
+                session_id=session.session_id,
+            )
+
         client = await get_graphiti_client(group_id)
 
         edges, episodes = await asyncio.gather(

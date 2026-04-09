@@ -1286,13 +1286,11 @@ async def stream_chat_completion_baseline(
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
-        if graphiti_enabled and user_id and message:
+        if graphiti_enabled and user_id and message and is_user_message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
-                    user_id, session_id, message, state.assistant_text
-                )
+                enqueue_conversation_turn(user_id, session_id, message)
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)

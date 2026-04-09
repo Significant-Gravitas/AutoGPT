@@ -77,7 +77,14 @@ class MemoryDeleteTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        group_id = derive_group_id(user_id)
+        try:
+            group_id = derive_group_id(user_id)
+        except ValueError:
+            return ErrorResponse(
+                message="Invalid user ID for memory operations.",
+                session_id=session.session_id,
+            )
+
         client = await get_graphiti_client(group_id)
 
         await clear_data(client.driver, group_ids=[group_id])

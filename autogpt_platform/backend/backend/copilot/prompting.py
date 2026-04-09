@@ -360,9 +360,9 @@ def get_graphiti_supplement() -> str:
 You have access to persistent temporal memory tools that remember facts across sessions.
 
 ### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
-**You MUST call graphiti_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
+**You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
 
-### When to STORE (graphiti_store):
+### When to STORE (memory_store):
 - User shares personal info, preferences, business context
 - User describes workflows, tools they use, pain points
 - Important decisions or outcomes from agent runs
@@ -370,7 +370,7 @@ You have access to persistent temporal memory tools that remember facts across s
 - Operational rules (e.g. "invoices go out on the 1st", "CC Sarah on client stuff")
 - When you learn something new about the user
 
-### When to RECALL (graphiti_search):
+### When to RECALL (memory_search):
 - **BEFORE answering any factual or context-dependent question — ALWAYS**
 - When the user references something from a past conversation
 - When building an agent that should use past preferences

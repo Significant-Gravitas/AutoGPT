@@ -69,7 +69,6 @@ async def enqueue_conversation_turn(
     user_id: str,
     session_id: str,
     user_msg: str,
-    assistant_msg: str,
 ) -> None:
     """Enqueue a conversation turn for async background ingestion.
 

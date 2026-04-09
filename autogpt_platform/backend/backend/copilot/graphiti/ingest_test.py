@@ -73,7 +73,6 @@ class TestEnqueueConversationTurn:
             user_id="",
             session_id="sess1",
             user_msg="hi",
-            assistant_msg="hello",
         )
         # No queue should have been created.
         assert len(ingest._user_queues) == 0
@@ -114,7 +113,6 @@ class TestQueueFullScenario:
                 user_id=user_id,
                 session_id="sess1",
                 user_msg="hi",
-                assistant_msg="hello",
             )
 
 
