@@ -572,22 +572,40 @@ async function fillVisibleTaskInputs(page: Page): Promise<void> {
     }
 
     const type = (await input.getAttribute("type"))?.toLowerCase() ?? "text";
-    const placeholder = (
-      (await input.getAttribute("placeholder")) ?? ""
-    ).toLowerCase();
-    const ariaLabel = (
-      (await input.getAttribute("aria-label")) ?? ""
-    ).toLowerCase();
-    const labelText = `${placeholder} ${ariaLabel}`;
+    const inputMetadata = await input.evaluate((element) => {
+      const formField = element as HTMLInputElement | HTMLTextAreaElement;
+      const closestLabel = formField.closest("label")?.textContent ?? "";
+      const forLabel = formField.id
+        ? (document.querySelector(`label[for="${CSS.escape(formField.id)}"]`)
+            ?.textContent ?? "")
+        : "";
+
+      return {
+        placeholder: formField.getAttribute("placeholder") ?? "",
+        ariaLabel: formField.getAttribute("aria-label") ?? "",
+        name: formField.getAttribute("name") ?? "",
+        labelText: `${closestLabel} ${forLabel}`.trim(),
+      };
+    });
+    const fieldDescriptor = [
+      inputMetadata.placeholder,
+      inputMetadata.ariaLabel,
+      inputMetadata.name,
+      inputMetadata.labelText,
+    ]
+      .join(" ")
+      .toLowerCase();
 
     if (type === "checkbox" || type === "radio") {
       continue;
     }
 
     const value =
-      type === "email" || labelText.includes("email")
+      type === "email" || fieldDescriptor.includes("email")
         ? seededEmail
-        : type === "number"
+        : type === "number" ||
+            /\b(a|b)\b/.test(fieldDescriptor) ||
+            fieldDescriptor.includes("number")
           ? "1"
           : "e2e-input";
 

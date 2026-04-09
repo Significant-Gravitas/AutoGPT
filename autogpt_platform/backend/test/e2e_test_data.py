@@ -625,20 +625,100 @@ class TestDataCreator:
             ),
             None,
         )
-        if test_user and self.agent_graphs:
-            test_user_graphs = [
-                graph
-                for graph in self.agent_graphs
-                if graph.get("userId") == test_user["id"]
-            ]
-            deterministic_graph = next(
+        if test_user:
+            deterministic_graph = None
+
+            calculator_block = next(
                 (
-                    graph
-                    for graph in test_user_graphs
-                    if not graph.get("name", "").startswith("DummyInput ")
+                    block
+                    for block in self.agent_blocks
+                    if block["name"] == "CalculatorBlock"
                 ),
-                test_user_graphs[0] if test_user_graphs else None,
+                None,
             )
+            output_block = next(
+                (
+                    block
+                    for block in self.agent_blocks
+                    if block["name"] == "AgentOutputBlock"
+                ),
+                None,
+            )
+
+            if calculator_block and output_block:
+                calculator_node_id = str(faker.uuid4())
+                output_node_id = str(faker.uuid4())
+                deterministic_marketplace_graph = Graph(
+                    id=str(faker.uuid4()),
+                    name="E2E Marketplace Calculator Agent",
+                    description=(
+                        "Deterministic marketplace calculator graph for "
+                        "Playwright PR E2E coverage."
+                    ),
+                    nodes=[
+                        Node(
+                            id=calculator_node_id,
+                            block_id=calculator_block["id"],
+                            input_default={
+                                "operation": "Add",
+                                "a": 1,
+                                "b": 1,
+                                "round_result": False,
+                            },
+                            metadata={"position": {"x": -200, "y": 0}},
+                        ),
+                        Node(
+                            id=output_node_id,
+                            block_id=output_block["id"],
+                            input_default={
+                                "name": "result",
+                                "title": None,
+                                "value": "",
+                                "format": "",
+                                "advanced": False,
+                                "description": None,
+                            },
+                            metadata={"position": {"x": 250, "y": 0}},
+                        ),
+                    ],
+                    links=[
+                        Link(
+                            source_id=calculator_node_id,
+                            sink_id=output_node_id,
+                            source_name="result",
+                            sink_name="value",
+                            is_static=False,
+                        )
+                    ],
+                    is_active=True,
+                )
+
+                try:
+                    created_deterministic_graph = await create_graph(
+                        deterministic_marketplace_graph,
+                        test_user["id"],
+                    )
+                    deterministic_graph = created_deterministic_graph.model_dump()
+                    deterministic_graph["userId"] = test_user["id"]
+                    self.agent_graphs.append(deterministic_graph)
+                    print("✅ Created deterministic marketplace graph")
+                except Exception as e:
+                    print(f"Error creating deterministic marketplace graph: {e}")
+
+            if deterministic_graph is None and self.agent_graphs:
+                test_user_graphs = [
+                    graph
+                    for graph in self.agent_graphs
+                    if graph.get("userId") == test_user["id"]
+                ]
+                deterministic_graph = next(
+                    (
+                        graph
+                        for graph in test_user_graphs
+                        if not graph.get("name", "").startswith("DummyInput ")
+                    ),
+                    test_user_graphs[0] if test_user_graphs else None,
+                )
 
             if deterministic_graph:
                 test_submission_data = {
@@ -654,7 +734,7 @@ class TestDataCreator:
                         "https://picsum.photos/seed/e2e-marketplace-2/200/301",
                         "https://picsum.photos/seed/e2e-marketplace-3/200/302",
                     ],
-                    "description": "A simple marketplace agent built from Agent Input, Calculator, and Agent Output blocks for deterministic frontend E2E coverage.",
+                    "description": "A deterministic marketplace agent built from Calculator and Agent Output blocks for frontend E2E coverage.",
                     "categories": ["test", "demo", "frontend"],
                     "changes_summary": "Initial deterministic calculator submission",
                 }
