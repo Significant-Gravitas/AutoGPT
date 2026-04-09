@@ -29,6 +29,19 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     },
   });
 
+  // When dry-run mode is toggled, discard the current session so the next
+  // send creates a fresh one with the correct dry_run flag.  Sessions are
+  // immutable once created: dry_run cannot be changed after the fact.
+  const prevDryRunRef = useRef(dryRun);
+  useEffect(() => {
+    if (prevDryRunRef.current !== dryRun) {
+      prevDryRunRef.current = dryRun;
+      if (sessionId) {
+        setSessionId(null);
+      }
+    }
+  }, [dryRun, sessionId, setSessionId]);
+
   // Invalidate query cache on session switch.
   // useChat destroys its Chat instance on id change, so messages are lost.
   // We invalidate BOTH the old session (stale after leaving) and the new

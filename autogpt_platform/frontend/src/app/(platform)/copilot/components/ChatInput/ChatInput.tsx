@@ -76,8 +76,8 @@ export function ChatInput({
     toast({
       title: next ? "Test mode enabled" : "Test mode disabled",
       description: next
-        ? "New sessions will be created with dry_run=true."
-        : "New sessions will use normal production mode.",
+        ? "Current session cleared — next message starts a new dry-run session."
+        : "Current session cleared — next message starts a normal session.",
     });
   }
 
