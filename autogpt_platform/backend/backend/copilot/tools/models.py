@@ -710,5 +710,3 @@ class MemorySearchResponse(ToolResponseBase):
     type: ResponseType = ResponseType.MEMORY_SEARCH
     facts: list[str] = Field(default_factory=list)
     recent_episodes: list[str] = Field(default_factory=list)
-
-
