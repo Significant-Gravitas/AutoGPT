@@ -848,6 +848,65 @@ async def _compress_messages(
     return messages, False
 
 
+def _session_messages_to_transcript(messages: list[ChatMessage]) -> str:
+    """Convert session ChatMessages to JSONL transcript for ``--resume``.
+
+    Reconstructs proper ``tool_use`` and ``tool_result`` content blocks from
+    :attr:`ChatMessage.tool_calls` and :attr:`ChatMessage.tool_call_id` so the
+    Claude CLI receives full structural context when no previous transcript file
+    is available (e.g. first turn after a storage failure or compaction drop).
+
+    This gives the model the same fidelity as an on-disk session JSONL file —
+    preserving tool call names, IDs, inputs, and *complete* (un-truncated)
+    tool results — rather than the lossy plain-text injection produced by
+    :func:`_format_conversation_context` (which caps tool results at 500 chars
+    and discards structural linkage).
+
+    Args:
+        messages: Prior session messages, typically ``session.messages[:-1]``
+            (all turns except the current user query).
+
+    Returns:
+        A JSONL string suitable for writing to a temp file and passing as
+        ``ClaudeAgentOptions.resume``.  Returns an empty string if the input
+        list is empty after filtering compaction entries.
+    """
+    filtered = filter_compaction_messages(messages)
+    if not filtered:
+        return ""
+    builder = TranscriptBuilder()
+    for msg in filtered:
+        if msg.role == "user" and msg.content:
+            builder.append_user(msg.content)
+        elif msg.role == "assistant":
+            blocks: list[dict[str, Any]] = []
+            if msg.content:
+                blocks.append({"type": "text", "text": msg.content})
+            for tc in msg.tool_calls or []:
+                try:
+                    tc_input: dict[str, Any] = json.loads(
+                        tc.get("function", {}).get("arguments", "{}")
+                    )
+                except (json.JSONDecodeError, ValueError):
+                    tc_input = {}
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.get("id", ""),
+                        "name": tc.get("function", {}).get("name", ""),
+                        "input": tc_input,
+                    }
+                )
+            if blocks:
+                builder.append_assistant(blocks)
+        elif msg.role == "tool" and msg.tool_call_id:
+            builder.append_tool_result(
+                tool_use_id=msg.tool_call_id,
+                content=msg.content or "",
+            )
+    return builder.to_jsonl()
+
+
 def _format_conversation_context(messages: list[ChatMessage]) -> str | None:
     """Format conversation messages into a context prefix for the user message.
 
@@ -2035,12 +2094,48 @@ async def stream_chat_completion_sdk(
                 logger.warning("%s Transcript downloaded but invalid", log_prefix)
                 transcript_covers_prefix = False
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-            logger.warning(
-                "%s No transcript available (%d messages in session)",
-                log_prefix,
-                len(session.messages),
-            )
-            transcript_covers_prefix = False
+            # No transcript on disk — try to reconstruct a full JSONL from the
+            # session.messages stored in the DB.  This gives the Claude CLI
+            # proper tool_use/tool_result structural context via --resume
+            # instead of the lossy plain-text injection in _build_query_message
+            # (which caps tool results at 500 chars and drops call/result IDs).
+            prior = session.messages[:-1]
+            reconstructed = _session_messages_to_transcript(prior)
+            if reconstructed:
+                rebuilt_resume = await asyncio.to_thread(
+                    write_transcript_to_tempfile, reconstructed, session_id, sdk_cwd
+                )
+                if rebuilt_resume:
+                    use_resume = True
+                    resume_file = rebuilt_resume
+                    transcript_msg_count = len(prior)
+                    transcript_content = reconstructed
+                    transcript_builder.load_previous(
+                        reconstructed, log_prefix=log_prefix
+                    )
+                    transcript_covers_prefix = True
+                    logger.info(
+                        "%s Reconstructed transcript from %d session messages "
+                        "for --resume (no previous transcript file)",
+                        log_prefix,
+                        len(prior),
+                    )
+                else:
+                    logger.warning(
+                        "%s Transcript reconstruction failed — write_transcript_to_tempfile"
+                        " returned None (%d messages)",
+                        log_prefix,
+                        len(prior),
+                    )
+                    transcript_covers_prefix = False
+            else:
+                logger.warning(
+                    "%s No transcript available and reconstruction produced empty"
+                    " output (%d messages in session)",
+                    log_prefix,
+                    len(session.messages),
+                )
+                transcript_covers_prefix = False
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 

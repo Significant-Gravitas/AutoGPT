@@ -1266,3 +1266,208 @@ class TestGenericExceptionTransientRetry:
         assert (
             backoff is None
         ), "retry must not be attempted when events have already been sent to the client"
+
+
+# ---------------------------------------------------------------------------
+# _session_messages_to_transcript
+# ---------------------------------------------------------------------------
+
+
+class TestSessionMessagesToTranscript:
+    """Unit tests for _session_messages_to_transcript.
+
+    Verifies that ChatMessage lists are converted to valid JSONL transcripts
+    with proper tool_use / tool_result content blocks — giving the Claude CLI
+    full structural context via --resume when no previous transcript file is
+    available.
+    """
+
+    def _parse_jsonl(self, jsonl: str) -> list[dict]:
+        import json as _json
+
+        return [
+            _json.loads(line) for line in jsonl.strip().splitlines() if line.strip()
+        ]
+
+    def test_empty_messages_returns_empty_string(self):
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        assert _session_messages_to_transcript([]) == ""
+
+    def test_simple_user_assistant_messages(self):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        messages = [
+            ChatMessage(role="user", content="Hello"),
+            ChatMessage(role="assistant", content="Hi there"),
+        ]
+        result = _session_messages_to_transcript(messages)
+        entries = self._parse_jsonl(result)
+
+        assert len(entries) == 2
+        assert entries[0]["type"] == "user"
+        assert entries[0]["message"]["role"] == "user"
+        assert entries[0]["message"]["content"] == "Hello"
+        assert entries[1]["type"] == "assistant"
+        assert entries[1]["message"]["role"] == "assistant"
+        content_blocks = entries[1]["message"]["content"]
+        assert any(
+            b.get("type") == "text" and b.get("text") == "Hi there"
+            for b in content_blocks
+        )
+
+    def test_assistant_with_tool_calls_produces_tool_use_blocks(self):
+        import json as _json
+
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        messages = [
+            ChatMessage(role="user", content="List files"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_abc123",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": _json.dumps({"cmd": "ls -la"}),
+                        },
+                    }
+                ],
+            ),
+        ]
+        result = _session_messages_to_transcript(messages)
+        entries = self._parse_jsonl(result)
+
+        assert len(entries) == 2
+        assistant_entry = entries[1]
+        assert assistant_entry["type"] == "assistant"
+        blocks = assistant_entry["message"]["content"]
+        tool_use_blocks = [b for b in blocks if b.get("type") == "tool_use"]
+        assert len(tool_use_blocks) == 1
+        tu = tool_use_blocks[0]
+        assert tu["id"] == "call_abc123"
+        assert tu["name"] == "bash"
+        assert tu["input"] == {"cmd": "ls -la"}
+
+    def test_tool_result_produces_tool_result_block(self):
+        import json as _json
+
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        messages = [
+            ChatMessage(role="user", content="List files"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_xyz",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": _json.dumps({"cmd": "ls"}),
+                        },
+                    }
+                ],
+            ),
+            ChatMessage(
+                role="tool",
+                tool_call_id="call_xyz",
+                content="file1.txt\nfile2.txt\nfile3.txt",
+            ),
+        ]
+        result = _session_messages_to_transcript(messages)
+        entries = self._parse_jsonl(result)
+
+        # user + assistant + user(tool_result)
+        assert len(entries) == 3
+        tool_result_entry = entries[2]
+        assert tool_result_entry["type"] == "user"
+        content = tool_result_entry["message"]["content"]
+        assert isinstance(content, list)
+        tr_blocks = [b for b in content if b.get("type") == "tool_result"]
+        assert len(tr_blocks) == 1
+        assert tr_blocks[0]["tool_use_id"] == "call_xyz"
+        assert tr_blocks[0]["content"] == "file1.txt\nfile2.txt\nfile3.txt"
+
+    def test_tool_result_full_content_not_truncated(self):
+        """Tool result content must NOT be truncated (unlike _format_conversation_context
+        which caps at 500 chars)."""
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        big_output = "x" * 10_000
+        messages = [
+            ChatMessage(role="user", content="q"),
+            ChatMessage(
+                role="tool",
+                tool_call_id="call_big",
+                content=big_output,
+            ),
+        ]
+        result = _session_messages_to_transcript(messages)
+        entries = self._parse_jsonl(result)
+        tool_result_entry = next(
+            e
+            for e in entries
+            if e.get("type") == "user" and isinstance(e["message"].get("content"), list)
+        )
+        tr_block = next(
+            b
+            for b in tool_result_entry["message"]["content"]
+            if b.get("type") == "tool_result"
+        )
+        assert tr_block["content"] == big_output, "Tool result must not be truncated"
+
+    def test_parent_uuid_chain_is_correct(self):
+        """Each entry's parentUuid must equal the previous entry's uuid."""
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        messages = [
+            ChatMessage(role="user", content="A"),
+            ChatMessage(role="assistant", content="B"),
+            ChatMessage(role="user", content="C"),
+        ]
+        result = _session_messages_to_transcript(messages)
+        entries = self._parse_jsonl(result)
+
+        assert entries[0]["parentUuid"] == ""
+        for i in range(1, len(entries)):
+            assert (
+                entries[i]["parentUuid"] == entries[i - 1]["uuid"]
+            ), f"Entry {i} parentUuid mismatch"
+
+    def test_invalid_tool_call_arguments_use_empty_input(self):
+        """Malformed JSON in tool_call arguments must not raise — use empty dict."""
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _session_messages_to_transcript
+
+        messages = [
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "call_bad",
+                        "type": "function",
+                        "function": {
+                            "name": "broken_tool",
+                            "arguments": "NOT_VALID_JSON",
+                        },
+                    }
+                ],
+            ),
+        ]
+        result = _session_messages_to_transcript(messages)
+        entries = self._parse_jsonl(result)
+        assert len(entries) == 1
+        blocks = entries[0]["message"]["content"]
+        tu = next(b for b in blocks if b.get("type") == "tool_use")
+        assert tu["input"] == {}
