@@ -183,7 +183,10 @@ export class MarketplacePage extends BasePage {
     await dismissFeedbackDialog(this.page);
   }
 
-  async submitAgentForReview(publishableAgentName: string): Promise<string> {
+  async submitAgentForReview(publishableAgentName: string): Promise<{
+    agentTitle: string;
+    agentSlug: string;
+  }> {
     await this.page.goto("/marketplace");
     await this.page.getByRole("button", { name: "Become a Creator" }).click();
 
@@ -211,12 +214,13 @@ export class MarketplacePage extends BasePage {
 
     const suffix = Date.now().toString().slice(-6);
     const agentTitle = `Publish Flow ${suffix}`;
+    const agentSlug = `publish-flow-${suffix}`;
 
     await publishAgentModal.getByLabel("Title").fill(agentTitle);
     await publishAgentModal
       .getByLabel("Subheader")
       .fill("A deterministic marketplace submission");
-    await publishAgentModal.getByLabel("Slug").fill(`publish-flow-${suffix}`);
+    await publishAgentModal.getByLabel("Slug").fill(agentSlug);
     await publishAgentModal
       .getByLabel("YouTube video link")
       .fill("https://www.youtube.com/watch?v=test123");
@@ -243,7 +247,7 @@ export class MarketplacePage extends BasePage {
       publishAgentModal.getByTestId("view-progress-button"),
     ).toBeVisible();
 
-    return agentTitle;
+    return { agentTitle, agentSlug };
   }
 
   async waitForDashboardSubmission(agentTitle: string) {

@@ -1,5 +1,6 @@
 import { expect, test } from "./coverage-fixture";
 import { LoginPage } from "./pages/login.page";
+import { ProfileFormPage } from "./pages/profile-form.page";
 import { SettingsPage } from "./pages/settings.page";
 
 test("settings happy path: user can save notification preferences and keep them after reload and re-login", async ({
@@ -44,4 +45,31 @@ test("settings happy path: user can save notification preferences and keep them 
     "aria-checked",
     expectedState,
   );
+});
+
+test("settings happy path: user can edit display name and keep it after refresh", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+
+  const loginPage = new LoginPage(page);
+  const profileFormPage = new ProfileFormPage(page);
+  const updatedDisplayName = `E2E Display ${Date.now()}`;
+
+  await loginPage.loginAsSeededUser("smokeSettings");
+  await page.goto("/profile");
+  await expect(await profileFormPage.isLoaded()).toBe(true);
+
+  await profileFormPage.setDisplayName(updatedDisplayName);
+  await profileFormPage.saveChanges();
+
+  await expect
+    .poll(() => profileFormPage.getDisplayName(), { timeout: 15000 })
+    .toBe(updatedDisplayName);
+
+  await page.reload();
+  await expect(await profileFormPage.isLoaded()).toBe(true);
+  await expect
+    .poll(() => profileFormPage.getDisplayName(), { timeout: 15000 })
+    .toBe(updatedDisplayName);
 });

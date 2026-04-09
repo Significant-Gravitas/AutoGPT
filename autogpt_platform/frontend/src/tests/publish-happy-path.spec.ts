@@ -31,7 +31,7 @@ test("publish happy path: user can submit, track, and delete an agent submission
     .first();
   await expect(createdAgent).toBeVisible({ timeout: 15000 });
 
-  const agentTitle =
+  const { agentTitle, agentSlug } =
     await marketplacePage.submitAgentForReview(publishableAgentName);
 
   await page.getByTestId("view-progress-button").click();
@@ -56,5 +56,22 @@ test("publish happy path: user can submit, track, and delete an agent submission
   await expect(
     page.getByTestId("agent-table-row").filter({ hasText: agentTitle }),
     `submission row "${agentTitle}" must be removed from the dashboard after delete`,
+  ).toHaveCount(0, { timeout: 15000 });
+
+  // Validate the deleted submission is no longer discoverable in Marketplace.
+  await page.goto("/marketplace");
+  const searchInput = page.getByTestId("store-search-input");
+  await expect(searchInput).toBeVisible({ timeout: 15000 });
+  await searchInput.fill(agentSlug);
+  await searchInput.press("Enter");
+  await expect(page).toHaveURL(/\/marketplace\/search/);
+
+  await expect(
+    page
+      .locator(
+        '[data-testid="store-card"], [data-testid="featured-store-card"]',
+      )
+      .filter({ hasText: agentTitle }),
+    `deleted submission "${agentTitle}" should not appear in marketplace results`,
   ).toHaveCount(0, { timeout: 15000 });
 });
