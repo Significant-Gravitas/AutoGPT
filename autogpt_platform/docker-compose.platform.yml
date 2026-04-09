@@ -83,6 +83,8 @@ services:
       - "3001:3000"   # FalkorDB web UI
     volumes:
       - falkordb_data:/data
+    networks:
+      - app-network
     healthcheck:
       test: ["CMD", "redis-cli", "-p", "6379", "ping"]
       interval: 10s
@@ -389,6 +391,7 @@ services:
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
 volumes:
   workspace-data:
+  falkordb_data:
 
 networks:
   app-network:

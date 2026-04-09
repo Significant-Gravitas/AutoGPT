@@ -21,11 +21,14 @@ class AutoGPTFalkorDriver(FalkorDriver):
         filtered_words = [word for word in query_words if word.lower() not in STOPWORDS]
         sanitized_query = " | ".join(filtered_words)
 
-        if len(sanitized_query.split(" ")) + len(group_ids or []) >= max_query_length:
-            return ""
         if not sanitized_query:
-            return group_filter
-        if not group_filter:
-            return f"({sanitized_query})"
+            fulltext_query = group_filter
+        elif not group_filter:
+            fulltext_query = f"({sanitized_query})"
+        else:
+            fulltext_query = f"{group_filter} ({sanitized_query})"
 
-        return f"{group_filter} ({sanitized_query})"
+        if len(fulltext_query) >= max_query_length:
+            return ""
+
+        return fulltext_query

@@ -1,4 +1,4 @@
-"""Tool for deleting all Graphiti memories for a user (GDPR compliance)."""
+"""Tool for deleting all Graphiti memories for a user."""
 
 import logging
 from typing import Any
@@ -28,8 +28,7 @@ class GraphitiDeleteTool(BaseTool):
         return (
             "Delete ALL stored memories for the current user. "
             "This is irreversible and removes all entities, relationships, "
-            "facts, and episodes from the knowledge graph. "
-            "For GDPR right-to-be-forgotten compliance."
+            "facts, and episodes from the knowledge graph."
         )
 
     @property

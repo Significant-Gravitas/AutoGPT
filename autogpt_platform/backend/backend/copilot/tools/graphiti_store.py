@@ -102,6 +102,18 @@ class GraphitiStoreTool(BaseTool):
             custom_extraction_instructions=CUSTOM_EXTRACTION_INSTRUCTIONS,
         )
 
+        from backend.copilot.graphiti.ingest import _persist_to_replay_log
+
+        await _persist_to_replay_log(
+            user_id=user_id,
+            session_id=session.session_id,
+            group_id=group_id,
+            episode_name=name,
+            episode_body=content,
+            source="text",
+            source_description=source_description,
+        )
+
         return GraphitiStoreResponse(
             message=f"Memory '{name}' stored successfully.",
             session_id=session.session_id,

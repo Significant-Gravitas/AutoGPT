@@ -1870,10 +1870,15 @@ async def stream_chat_completion_sdk(
 
         use_e2b = e2b_sandbox is not None
         # Append appropriate supplement (Claude gets tool schemas automatically)
+        from backend.copilot.graphiti.config import is_enabled_for_user
+
+        graphiti_supplement = (
+            get_graphiti_supplement() if await is_enabled_for_user(user_id) else ""
+        )
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b, cwd=sdk_cwd)
-            + get_graphiti_supplement()
+            + graphiti_supplement
         )
 
         # Warm context: pre-load relevant facts from Graphiti on first turn

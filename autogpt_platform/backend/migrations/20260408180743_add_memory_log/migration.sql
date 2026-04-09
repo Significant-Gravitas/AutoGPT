@@ -4,9 +4,6 @@
   - You are about to drop the column `search` on the `StoreListingVersion` table. All the data in the column will be lost.
 
 */
--- DropIndex
-DROP INDEX "UnifiedContentEmbedding_search_idx";
-
 -- AlterTable
 ALTER TABLE "StoreListingVersion" DROP COLUMN "search";
 

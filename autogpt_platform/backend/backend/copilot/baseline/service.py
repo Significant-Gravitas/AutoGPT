@@ -1002,11 +1002,13 @@ async def stream_chat_completion_baseline(
     message_id = str(uuid.uuid4())
 
     # Append tool documentation, technical notes, and Graphiti memory instructions
+    from backend.copilot.graphiti.config import is_enabled_for_user
     from backend.copilot.prompting import get_graphiti_supplement
 
-    system_prompt = (
-        base_system_prompt + get_baseline_supplement() + get_graphiti_supplement()
+    graphiti_supplement = (
+        get_graphiti_supplement() if await is_enabled_for_user(user_id) else ""
     )
+    system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
 
     # Warm context: pre-load relevant facts from Graphiti on first turn
     if user_id and len(session.messages) <= 1:
@@ -1289,15 +1291,17 @@ async def stream_chat_completion_baseline(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if user_id and message:
+            from backend.copilot.graphiti.config import is_enabled_for_user
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
-            _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(
-                    user_id, session_id, message, state.assistant_text
+            if await is_enabled_for_user(user_id):
+                _ingest_task = asyncio.create_task(
+                    enqueue_conversation_turn(
+                        user_id, session_id, message, state.assistant_text
+                    )
                 )
-            )
-            _background_tasks.add(_ingest_task)
-            _ingest_task.add_done_callback(_background_tasks.discard)
+                _background_tasks.add(_ingest_task)
+                _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the
