@@ -693,7 +693,7 @@ export async function waitForRunToComplete(
     if (FAILURE_RUN_STATUSES.has(lastStatus)) {
       throw new Error(`Run reached terminal failure state "${lastStatus}"`);
     }
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForTimeout(250);
   }
   throw new Error(
     `waitForRunToComplete timed out after ${timeout}ms — last status was "${lastStatus}" (expected "${SUCCESS_RUN_STATUS}")`,
