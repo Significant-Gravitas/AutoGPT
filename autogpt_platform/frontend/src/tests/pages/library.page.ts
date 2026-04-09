@@ -746,7 +746,9 @@ export async function importAgentFromFile(
     timeout: 10000,
   });
   await uploadButton.click();
-  const uploadingButton = page.getByRole("button", { name: /Uploading\.\.\./i });
+  const uploadingButton = page.getByRole("button", {
+    name: /Uploading\.\.\./i,
+  });
   const sawUploadingState = await uploadingButton
     .waitFor({ state: "visible", timeout: 2000 })
     .then(() => true)

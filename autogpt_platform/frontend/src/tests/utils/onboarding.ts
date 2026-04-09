@@ -84,8 +84,9 @@ export async function completeOnboardingWizard(
 
   // Step 4: Preparing — require the real transition state to appear first,
   // then wait for the app shell on /copilot rather than racing the redirect.
-  await expect(page.getByText("Preparing your workspace...", { exact: false }))
-    .toBeVisible({ timeout: 10000 });
+  await expect(
+    page.getByText("Preparing your workspace...", { exact: false }),
+  ).toBeVisible({ timeout: 10000 });
   await page.waitForURL(/\/copilot/, { timeout: 30000 });
   await expect(page.getByTestId("profile-popout-menu-trigger")).toBeVisible({
     timeout: 15000,
