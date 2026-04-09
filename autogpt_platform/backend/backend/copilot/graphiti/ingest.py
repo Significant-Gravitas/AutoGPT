@@ -126,14 +126,16 @@ async def enqueue_episode(
     name: str,
     episode_body: str,
     source_description: str = "Conversation memory",
-) -> None:
+) -> bool:
     """Enqueue an arbitrary episode for background ingestion.
 
     Used by ``MemoryStoreTool`` so that explicit memory-store calls go
     through the same per-user serialization queue as conversation turns.
+
+    Returns ``True`` if the episode was queued, ``False`` if it was dropped.
     """
     if not user_id:
-        return
+        return False
 
     from graphiti_core.nodes import EpisodeType
 
@@ -141,7 +143,7 @@ async def enqueue_episode(
         group_id = derive_group_id(user_id)
     except ValueError:
         logger.warning("Invalid user_id for episode ingestion: %s", user_id[:12])
-        return
+        return False
 
     await _ensure_worker(user_id)
 
@@ -157,11 +159,13 @@ async def enqueue_episode(
                 "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
             }
         )
+        return True
     except (asyncio.QueueFull, KeyError):
         logger.warning(
             "Graphiti ingestion queue full or missing for user %s — dropping episode",
             user_id[:12],
         )
+        return False
 
 
 async def _ensure_worker(user_id: str) -> None:

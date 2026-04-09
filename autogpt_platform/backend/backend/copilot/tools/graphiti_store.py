@@ -83,13 +83,19 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        await enqueue_episode(
+        queued = await enqueue_episode(
             user_id,
             session.session_id,
             name=name,
             episode_body=content,
             source_description=source_description,
         )
+
+        if not queued:
+            return ErrorResponse(
+                message="Memory queue is full — please try again shortly.",
+                session_id=session.session_id,
+            )
 
         return MemoryStoreResponse(
             message=f"Memory '{name}' queued for storage.",
