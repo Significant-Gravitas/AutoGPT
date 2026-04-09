@@ -869,8 +869,11 @@ class TestStripLlmFields:
 
         This test calls the ACTUAL _make_truncating_wrapper so that swapping
         the stash/strip lines in production code causes this test to fail.
+        Uses a session with dry_run=True so that stripping is active.
         """
-        set_execution_context(user_id="test", session=None, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        dry_run_session = MagicMock()
+        dry_run_session.dry_run = True
+        set_execution_context(user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -888,7 +891,41 @@ class TestStripLlmFields:
         assert stashed is not None
         assert '"is_dry_run": true' in stashed
 
-        # LLM return value must NOT contain is_dry_run
+        # LLM return value must NOT contain is_dry_run (stripped for session dry_run)
         llm_parsed = json.loads(llm_result["content"][0]["text"])
         assert "is_dry_run" not in llm_parsed
         assert llm_parsed["message"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_truncating_wrapper_normal_mode_preserves_is_dry_run_for_llm(self):
+        """In normal (non-session-dry_run) mode, is_dry_run=True must reach the LLM.
+
+        When a single tool was individually dry-run but the session is not in
+        dry_run mode, the LLM should see is_dry_run=True so it knows that
+        specific tool result was simulated.
+        """
+        normal_session = MagicMock()
+        normal_session.dry_run = False
+        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        full_payload = '{"message": "simulated", "is_dry_run": true}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": full_payload}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_normal")
+        llm_result = await wrapper({})
+
+        # LLM return value MUST contain is_dry_run in normal session mode
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" in llm_parsed
+        assert llm_parsed["is_dry_run"] is True
+        assert llm_parsed["message"] == "simulated"
+
+        # Stash also still has is_dry_run (stash is always unstripped)
+        stashed = pop_pending_tool_output("fake_tool_normal")
+        assert stashed is not None
+        assert '"is_dry_run": true' in stashed

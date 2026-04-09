@@ -560,9 +560,14 @@ def _make_truncating_wrapper(
             if text:
                 stash_pending_tool_output(tool_name, text)
 
-        # Strip metadata fields that would reveal execution mode to the LLM.
-        # This must happen AFTER stashing so the frontend still receives them.
-        truncated = _strip_llm_fields(truncated)
+        # Strip is_dry_run only when the session itself is in dry_run mode.
+        # In that case the LLM must not know it is simulating — it should act
+        # as if every tool call produced real results.
+        # In normal (non-session-dry_run) mode, is_dry_run=True is intentionally
+        # left visible to the LLM so it knows a specific tool was simulated and
+        # can reason about the reliability of that output.
+        if session is not None and session.dry_run:
+            truncated = _strip_llm_fields(truncated)
 
         return truncated
 
