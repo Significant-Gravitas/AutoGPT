@@ -64,7 +64,7 @@ class RunBlockTool(BaseTool):
         *,
         block_id: str = "",
         input_data: dict | None = None,
-        **kwargs,
+        **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
 

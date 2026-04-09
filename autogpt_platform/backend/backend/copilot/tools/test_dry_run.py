@@ -385,6 +385,41 @@ async def test_run_block_tool_uses_session_dry_run():
 
 
 @pytest.mark.asyncio
+async def test_run_block_tool_uses_session_dry_run_false():
+    """RunBlockTool._execute passes dry_run=False when session.dry_run is False.
+
+    Symmetric counterpart to test_run_block_tool_uses_session_dry_run (True case).
+    """
+    from backend.copilot.tools.run_block import RunBlockTool
+
+    tool = RunBlockTool()
+    session = MagicMock()
+    session.dry_run = False
+    session.session_id = "test-session-id"
+
+    captured = {}
+
+    async def capture_prep(**kwargs):
+        captured["dry_run"] = kwargs.get("dry_run")
+        from backend.copilot.tools.models import ErrorResponse
+
+        return ErrorResponse(message="stub", session_id="test-session-id")
+
+    with patch(
+        "backend.copilot.tools.run_block.prepare_block_for_execution",
+        side_effect=capture_prep,
+    ):
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            block_id="block-id-123",
+            input_data={},
+        )
+
+    assert captured["dry_run"] is False
+
+
+@pytest.mark.asyncio
 async def test_execute_block_dry_run_no_empty_error_from_simulator():
     """The simulator no longer yields empty error pins, so execute_block
     simply passes through whatever the simulator produces.
@@ -757,4 +792,46 @@ async def test_run_agent_session_dry_run_false_allows_scheduling():
         )
 
     # Non-dry-run session must propagate dry_run=False
+    assert captured_params["dry_run"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_agent_session_dry_run_false_overrides_true_kwarg():
+    """session.dry_run=False must override an explicit dry_run=True kwarg.
+
+    Verifies the reverse override direction: a caller passing dry_run=True
+    is unconditionally overwritten by session.dry_run=False.
+    """
+    from backend.copilot.tools.run_agent import RunAgentTool
+
+    tool = RunAgentTool()
+    session = _make_dry_run_session(dry_run=False)
+    graph = _make_graph_mock()
+
+    captured_params = {}
+
+    async def capture_prerequisites(graph, user_id, params, session_id):
+        captured_params["dry_run"] = params.dry_run
+        return {}, None
+
+    with patch(
+        "backend.copilot.tools.run_agent.fetch_graph_from_store_slug",
+        new_callable=AsyncMock,
+        return_value=(graph, None),
+    ), patch.object(
+        tool, "_check_prerequisites", side_effect=capture_prerequisites
+    ), patch.object(
+        tool, "_run_agent", new_callable=AsyncMock
+    ) as mock_run_agent:
+        mock_run_agent.return_value = MagicMock()
+
+        # Caller passes dry_run=True; session.dry_run=False must override it
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            username_agent_slug="user/agent",
+            dry_run=True,
+        )
+
+    # Session-level False must have overridden the True kwarg
     assert captured_params["dry_run"] is False

@@ -475,6 +475,11 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
     for block in content:
         if isinstance(block, dict) and block.get("type") == "text":
             raw = block.get("text", "")
+            # Skip JSON parse/re-serialise round-trip when no stripped field
+            # appears in the raw text — fast path for the common non-dry-run case.
+            if not any(field in raw for field in _STRIP_FROM_LLM):
+                new_content.append(block)
+                continue
             try:
                 parsed = json.loads(raw)
             except json.JSONDecodeError:
@@ -486,6 +491,82 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
                 block = {**block, "text": json.dumps(parsed)}
         new_content.append(block)
     return {**result, "content": new_content}
+
+
+def _make_truncating_wrapper(
+    fn, tool_name: str, input_schema: dict[str, Any] | None = None
+):
+    """Return a wrapper around *fn* that truncates output, stashes it for the
+    frontend SSE stream, and strips LLM-revealing fields before returning.
+
+    Extracted from ``create_copilot_mcp_server`` so it can be tested directly.
+
+    WARNING: ``stash_pending_tool_output`` must be called BEFORE
+    ``_strip_llm_fields`` so the frontend SSE stream receives the full payload
+    (including ``is_dry_run``) while the LLM sees a cleaned version.
+    Swapping this order would cause the frontend to lose ``is_dry_run``.
+    """
+
+    async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
+        if not args and input_schema and input_schema.get("required"):
+            logger.warning(
+                "[MCP] %s called with empty args (likely output "
+                "token truncation) — returning guidance",
+                tool_name,
+            )
+            return _mcp_error(
+                f"Your call to {tool_name} had empty arguments — "
+                f"this means your previous response was too long and "
+                f"the tool call input was truncated by the API. "
+                f"To fix this: break your work into smaller steps. "
+                f"For large content, first write it to a file using "
+                f"bash_exec with cat >> (append section by section), "
+                f"then pass it via @@agptfile:filename reference. "
+                f"Do NOT retry with the same approach — it will "
+                f"be truncated again."
+            )
+
+        original_args = args
+        stop_msg = _check_circuit_breaker(tool_name, original_args)
+        if stop_msg:
+            return _mcp_error(stop_msg)
+
+        user_id, session = get_execution_context()
+        if session is not None:
+            try:
+                args = await expand_file_refs_in_args(
+                    args, user_id, session, input_schema=input_schema
+                )
+            except FileRefExpansionError as exc:
+                _record_tool_failure(tool_name, original_args)
+                return _mcp_error(
+                    f"@@agptfile: reference could not be resolved: {exc}. "
+                    "Ensure the file exists before referencing it. "
+                    "For sandbox paths use bash_exec to verify the file exists first; "
+                    "for workspace files use a workspace:// URI."
+                )
+        result = await fn(args)
+        truncated = truncate(result, _MCP_MAX_CHARS)
+
+        if truncated.get("isError"):
+            _record_tool_failure(tool_name, original_args)
+        else:
+            _clear_tool_failures(tool_name)
+
+        # Stash BEFORE stripping so the frontend SSE stream receives
+        # the full output including _STRIP_FROM_LLM fields (e.g. is_dry_run).
+        if not truncated.get("isError"):
+            text = _text_from_mcp_result(truncated)
+            if text:
+                stash_pending_tool_output(tool_name, text)
+
+        # Strip metadata fields that would reveal execution mode to the LLM.
+        # This must happen AFTER stashing so the frontend still receives them.
+        truncated = _strip_llm_fields(truncated)
+
+        return truncated
+
+    return wrapper
 
 
 def create_copilot_mcp_server(*, use_e2b: bool = False):
@@ -504,90 +585,6 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
     :func:`get_sdk_disallowed_tools`.
     """
 
-    def _truncating(fn, tool_name: str, input_schema: dict[str, Any] | None = None):
-        """Wrap a tool handler so its response is truncated to stay under the
-        SDK's 10 MB JSON buffer, and stash the (truncated) output for the
-        response adapter before the SDK can apply its own head-truncation.
-
-        Also expands ``@@agptfile:`` references in args so every registered tool
-        (BaseTool, E2B file tools, Read) receives resolved content uniformly.
-
-        Applied once to every registered tool."""
-
-        async def wrapper(args: dict[str, Any]) -> dict[str, Any]:
-            # Empty tool args = model's output was truncated by the API's
-            # max_tokens limit.  Instead of letting the tool fail with a
-            # confusing error (and eventually tripping the circuit breaker),
-            # return clear guidance so the model can self-correct.
-            if not args and input_schema and input_schema.get("required"):
-                logger.warning(
-                    "[MCP] %s called with empty args (likely output "
-                    "token truncation) — returning guidance",
-                    tool_name,
-                )
-                return _mcp_error(
-                    f"Your call to {tool_name} had empty arguments — "
-                    f"this means your previous response was too long and "
-                    f"the tool call input was truncated by the API. "
-                    f"To fix this: break your work into smaller steps. "
-                    f"For large content, first write it to a file using "
-                    f"bash_exec with cat >> (append section by section), "
-                    f"then pass it via @@agptfile:filename reference. "
-                    f"Do NOT retry with the same approach — it will "
-                    f"be truncated again."
-                )
-
-            # Circuit breaker: stop infinite retry loops with identical args.
-            # Use the original (pre-expansion) args for fingerprinting so
-            # check and record always use the same key — @@agptfile:
-            # expansion mutates args, which would cause a key mismatch.
-            original_args = args
-            stop_msg = _check_circuit_breaker(tool_name, original_args)
-            if stop_msg:
-                return _mcp_error(stop_msg)
-
-            user_id, session = get_execution_context()
-            if session is not None:
-                try:
-                    args = await expand_file_refs_in_args(
-                        args, user_id, session, input_schema=input_schema
-                    )
-                except FileRefExpansionError as exc:
-                    _record_tool_failure(tool_name, original_args)
-                    return _mcp_error(
-                        f"@@agptfile: reference could not be resolved: {exc}. "
-                        "Ensure the file exists before referencing it. "
-                        "For sandbox paths use bash_exec to verify the file exists first; "
-                        "for workspace files use a workspace:// URI."
-                    )
-            result = await fn(args)
-            truncated = truncate(result, _MCP_MAX_CHARS)
-
-            # Track consecutive failures for circuit breaker
-            if truncated.get("isError"):
-                _record_tool_failure(tool_name, original_args)
-            else:
-                _clear_tool_failures(tool_name)
-
-            # Stash the text so the response adapter can forward our
-            # middle-out truncated version to the frontend instead of the
-            # SDK's head-truncated version (for outputs >~100 KB the SDK
-            # persists to tool-results/ with a 2 KB head-only preview).
-            # Stash BEFORE stripping so the frontend SSE stream receives
-            # the full output including _STRIP_FROM_LLM fields (e.g. is_dry_run).
-            if not truncated.get("isError"):
-                text = _text_from_mcp_result(truncated)
-                if text:
-                    stash_pending_tool_output(tool_name, text)
-
-            # Strip metadata fields that would reveal execution mode to the LLM.
-            # This must happen AFTER stashing so the frontend still receives them.
-            truncated = _strip_llm_fields(truncated)
-
-            return truncated
-
-        return wrapper
-
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
@@ -602,7 +599,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
             base_tool.description,
             schema,
             annotations=_PARALLEL_ANNOTATION,
-        )(_truncating(handler, tool_name, input_schema=schema))
+        )(_make_truncating_wrapper(handler, tool_name, input_schema=schema))
         sdk_tools.append(decorated)
 
     # E2B file tools replace SDK built-in Read/Write/Edit/Glob/Grep.
@@ -613,7 +610,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
                 desc,
                 schema,
                 annotations=_PARALLEL_ANNOTATION,
-            )(_truncating(handler, name))
+            )(_make_truncating_wrapper(handler, name))
             sdk_tools.append(decorated)
 
     # Read tool for SDK-truncated tool results (always needed, read-only).
@@ -622,7 +619,7 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
         _READ_TOOL_DESCRIPTION,
         _READ_TOOL_SCHEMA,
         annotations=_PARALLEL_ANNOTATION,
-    )(_truncating(_read_file_handler, _READ_TOOL_NAME))
+    )(_make_truncating_wrapper(_read_file_handler, _READ_TOOL_NAME))
     sdk_tools.append(read_tool)
 
     return create_sdk_mcp_server(

@@ -72,9 +72,9 @@ class RunAgentInput(BaseModel):
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
     # Internal field — always overwritten from session.dry_run in _execute.
-    # Not exposed to the LLM (absent from the tool schema). Any value passed
-    # by a caller is unconditionally replaced before use.
-    dry_run: bool = False
+    # Not exposed to the LLM (absent from the tool schema). exclude=True keeps
+    # it out of model_dump() outputs and makes the internal-only nature explicit.
+    dry_run: bool = Field(default=False, exclude=True)
 
     @field_validator(
         "username_agent_slug",
@@ -369,7 +369,7 @@ class RunAgentTool(BaseTool):
         """Validate credentials and inputs before execution.
 
         Dry runs skip all prerequisite gates (credentials, input prompts)
-        since simulate_block doesn't need real credentials or complete inputs.
+        since the agent executor runs the graph with simulated inputs.
         The dry_run flag is read from params.dry_run (set from session.dry_run).
 
         Returns:

@@ -15,6 +15,7 @@ from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
     SDK_DISALLOWED_TOOLS,
+    _make_truncating_wrapper,
     _strip_llm_fields,
     _text_from_mcp_result,
     create_tool_handler,
@@ -863,15 +864,13 @@ class TestStripLlmFields:
 
     @pytest.mark.asyncio
     async def test_truncating_wrapper_stash_then_strip_ordering(self):
-        """The _truncating wrapper must stash BEFORE strip so the frontend gets
-        is_dry_run while the LLM return value does not.
+        """The _make_truncating_wrapper must stash BEFORE strip so the frontend
+        gets is_dry_run while the LLM return value does not.
 
-        This test replicates the call-site logic from _truncating lines 572-585
-        using a mock tool fn to verify the ordering invariant at the wrapper level.
+        This test calls the ACTUAL _make_truncating_wrapper so that swapping
+        the stash/strip lines in production code causes this test to fail.
         """
-        from backend.util.truncate import truncate as _truncate
-
-        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+        set_execution_context(user_id="test", session=None, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -881,14 +880,8 @@ class TestStripLlmFields:
                 "isError": False,
             }
 
-        # Replicate the stash-then-strip ordering from _truncating
-        result = await fake_tool_fn({})
-        truncated = _truncate(result, _MCP_MAX_CHARS)
-        if not truncated.get("isError"):
-            text = _text_from_mcp_result(truncated)
-            if text:
-                stash_pending_tool_output("fake_tool", text)
-        llm_result = _strip_llm_fields(truncated)
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool")
+        llm_result = await wrapper({})
 
         # Stash (frontend path) must contain is_dry_run
         stashed = pop_pending_tool_output("fake_tool")
