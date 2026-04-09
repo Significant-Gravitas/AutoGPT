@@ -1,4 +1,3 @@
-import { randomInt } from "crypto";
 import fs from "fs";
 import path from "path";
 import { LoginPage } from "../pages/login.page";
@@ -105,13 +104,34 @@ export async function createTestUsers(count: number): Promise<TestUser[]> {
   return users;
 }
 
-export async function getTestUser(): Promise<TestUser> {
+export async function getTestUser(accountKey?: string): Promise<TestUser> {
   if (SEEDED_TEST_USERS.length === 0) {
     throw new Error("No seeded E2E users are configured");
   }
 
-  const randomIndex = randomInt(SEEDED_TEST_USERS.length);
-  const { email, password } = SEEDED_TEST_USERS[randomIndex];
+  if (accountKey) {
+    const matchedUser = SEEDED_TEST_USERS.find(
+      (user) => user.key === accountKey || user.email === accountKey,
+    );
+
+    if (!matchedUser) {
+      throw new Error(
+        `No seeded E2E user found for account key or email: ${accountKey}`,
+      );
+    }
+
+    return { email: matchedUser.email, password: matchedUser.password };
+  }
+
+  const rawWorkerIndex = Number.parseInt(
+    process.env.PLAYWRIGHT_WORKER_INDEX ?? "0",
+    10,
+  );
+  const workerIndex = Number.isNaN(rawWorkerIndex) ? 0 : rawWorkerIndex;
+  const deterministicIndex =
+    ((workerIndex % SEEDED_TEST_USERS.length) + SEEDED_TEST_USERS.length) %
+    SEEDED_TEST_USERS.length;
+  const { email, password } = SEEDED_TEST_USERS[deterministicIndex];
   return { email, password };
 }
 
@@ -242,9 +262,9 @@ async function createAuthStateForUser(
   } catch (error) {
     const { email } = SEEDED_TEST_ACCOUNTS[accountKey];
     throw new Error(
-      `Failed to create auth state for ${email}. Seed the backend test data with backend/test/e2e_test_data.py before running Playwright. ${String(
+      `Failed to create auth state for ${email}: ${String(
         error,
-      )}`,
+      )}. If these seeded QA accounts are missing, seed them with backend/test/e2e_test_data.py before running Playwright.`,
     );
   } finally {
     await browser.close();
