@@ -1,8 +1,11 @@
 """AskQuestionTool - Ask the user one or more clarifying questions."""
 
+import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
+
+logger = logging.getLogger(__name__)
 
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
@@ -92,11 +95,7 @@ class AskQuestionTool(BaseTool):
                     ),
                 },
             },
-            "required": [],
-            "anyOf": [
-                {"required": ["question"]},
-                {"required": ["questions"]},
-            ],
+            "required": ["question"],
         }
 
     @property
@@ -115,7 +114,9 @@ class AskQuestionTool(BaseTool):
     ) -> ClarifyingQuestion:
         """Build a single ``ClarifyingQuestion`` from raw inputs."""
         safe_options = (
-            [str(o) for o in options if o] if isinstance(options, list) else []
+            [str(o) for o in options if o is not None]
+            if isinstance(options, list)
+            else []
         )
         return ClarifyingQuestion(
             question=question,
@@ -156,7 +157,7 @@ class AskQuestionTool(BaseTool):
         raw_options = kwargs.get("options", [])
         if not isinstance(raw_options, list):
             raw_options = []
-        options: list[str] = [str(o) for o in raw_options if o]
+        options: list[str] = [str(o) for o in raw_options if o is not None]
 
         raw_keyword = kwargs.get("keyword", "")
         keyword: str = str(raw_keyword) if raw_keyword else ""
@@ -177,9 +178,14 @@ class AskQuestionTool(BaseTool):
         clarifying_questions: list[ClarifyingQuestion] = []
         for idx, item in enumerate(raw_questions):
             if not isinstance(item, dict):
+                logger.warning("ask_question: skipping non-dict item at index %d", idx)
                 continue
             q_text = item.get("question")
             if not isinstance(q_text, str) or not q_text.strip():
+                logger.warning(
+                    "ask_question: skipping item at index %d with missing/empty question",
+                    idx,
+                )
                 continue
             keyword = str(item.get("keyword", "")) or f"question-{idx}"
             clarifying_questions.append(
@@ -195,7 +201,7 @@ class AskQuestionTool(BaseTool):
                 "ask_question requires at least one valid question in 'questions'"
             )
 
-        message = clarifying_questions[0].question
+        message = "; ".join(q.question for q in clarifying_questions)
         return ClarificationNeededResponse(
             message=message,
             session_id=session_id,

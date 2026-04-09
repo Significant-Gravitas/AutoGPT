@@ -129,7 +129,7 @@ async def test_execute_multiple_questions(tool: AskQuestionTool, session: ChatSe
 
     assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == 3
-    assert result.message == "Which channel?"
+    assert result.message == "Which channel?; How often?; Any extra notes?"
 
     q0 = result.questions[0]
     assert q0.question == "Which channel?"
@@ -151,7 +151,7 @@ async def test_execute_multiple_questions(tool: AskQuestionTool, session: ChatSe
 async def test_execute_multiple_questions_skips_invalid_items(
     tool: AskQuestionTool, session: ChatSession
 ):
-    """Non-dict items and items without a question are silently skipped."""
+    """Non-dict items and items without a question are skipped with a warning."""
     result = await tool._execute(
         user_id=None,
         session=session,
@@ -218,3 +218,77 @@ async def test_execute_empty_questions_falls_back_to_single(
     assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == 1
     assert result.questions[0].question == "Fallback question?"
+
+
+# ── Edge cases (from review) ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_execute_with_none_session(tool: AskQuestionTool):
+    """session_id should be None when session has no session_id."""
+
+    class FakeSession:
+        session_id = None
+
+    result = await tool._execute(
+        user_id=None,
+        session=FakeSession(),  # type: ignore[arg-type]
+        question="Does this work?",
+    )
+    assert isinstance(result, ClarificationNeededResponse)
+    assert result.session_id is None
+    assert result.questions[0].question == "Does this work?"
+
+
+@pytest.mark.asyncio
+async def test_execute_single_item_questions_array(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """A questions array with a single item should work like the single path."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[{"question": "Only one?", "keyword": "solo"}],
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert len(result.questions) == 1
+    assert result.questions[0].question == "Only one?"
+    assert result.questions[0].keyword == "solo"
+    assert result.message == "Only one?"
+
+
+@pytest.mark.asyncio
+async def test_execute_duplicate_keywords_preserved(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """Duplicate keywords from the LLM are passed through; the frontend
+    normalizes them via normalizeClarifyingQuestions()."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        questions=[
+            {"question": "First?", "keyword": "same"},
+            {"question": "Second?", "keyword": "same"},
+        ],
+    )
+
+    assert len(result.questions) == 2
+    assert result.questions[0].keyword == "same"
+    assert result.questions[1].keyword == "same"
+
+
+@pytest.mark.asyncio
+async def test_execute_options_with_falsy_values(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """Falsy but valid option values like '0' should be preserved."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        question="Pick a number",
+        options=["0", "1", "2"],
+        keyword="number",
+    )
+
+    assert result.questions[0].example == "0, 1, 2"
