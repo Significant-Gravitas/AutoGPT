@@ -66,13 +66,20 @@ def _close_client_driver(client) -> None:
 
 
 class _EvictingTTLCache(TTLCache):
-    """TTLCache that closes Graphiti drivers when entries are evicted."""
+    """TTLCache that closes Graphiti drivers on TTL expiry and capacity eviction.
 
-    def __delitem__(self, key):
-        client = self.get(key)
-        super().__delitem__(key)
-        if client is not None:
+    Overrides ``expire()`` (not ``__delitem__``) per cachetools maintainer
+    guidance — ``expire()`` is the only hook that fires for TTL-expired items
+    since the internal expiry path uses ``Cache.__delitem__`` directly,
+    bypassing subclass overrides.  ``popitem()`` handles capacity eviction.
+    See https://github.com/tkem/cachetools/issues/205.
+    """
+
+    def expire(self, time=None):
+        expired = super().expire(time)
+        for _key, client in expired:
             _close_client_driver(client)
+        return expired
 
     def popitem(self):
         key, client = super().popitem()
@@ -147,10 +154,17 @@ async def get_graphiti_client(group_id: str):
 async def evict_client(group_id: str) -> None:
     """Remove a cached client and close its driver connection."""
     cache = _get_cache()
+    # pop() may return None for expired or missing keys.
+    # _EvictingTTLCache.expire() handles TTL-expired cleanup separately.
     client = cache.pop(group_id, None)
     if client is not None:
         driver = getattr(client, "graph_driver", None) or getattr(
             client, "driver", None
         )
         if driver and hasattr(driver, "close"):
-            await driver.close()
+            try:
+                await driver.close()
+            except Exception:
+                logger.debug(
+                    "Failed to close driver for %s", group_id, exc_info=True
+                )

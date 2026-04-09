@@ -97,20 +97,27 @@ class MemorySearchTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        client = await get_graphiti_client(group_id)
+        try:
+            client = await get_graphiti_client(group_id)
 
-        edges, episodes = await asyncio.gather(
-            client.search(
-                query=query,
-                group_ids=[group_id],
-                num_results=limit,
-            ),
-            client.retrieve_episodes(
-                reference_time=datetime.now(timezone.utc),
-                group_ids=[group_id],
-                last_n=5,
-            ),
-        )
+            edges, episodes = await asyncio.gather(
+                client.search(
+                    query=query,
+                    group_ids=[group_id],
+                    num_results=limit,
+                ),
+                client.retrieve_episodes(
+                    reference_time=datetime.now(timezone.utc),
+                    group_ids=[group_id],
+                    last_n=5,
+                ),
+            )
+        except Exception:
+            logger.warning("Memory search failed for user %s", user_id[:12], exc_info=True)
+            return ErrorResponse(
+                message="Memory search is temporarily unavailable.",
+                session_id=session.session_id,
+            )
 
         facts = _format_edges(edges)
         recent = _format_episodes(episodes)
