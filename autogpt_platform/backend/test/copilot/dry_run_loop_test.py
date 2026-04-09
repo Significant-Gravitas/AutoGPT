@@ -85,13 +85,14 @@ class TestToolDescriptionsDryRunLoop:
         desc = TOOL_REGISTRY["get_agent_building_guide"].description
         assert "dry-run" in desc.lower()
 
-    def test_run_agent_dry_run_not_in_llm_schema(self):
-        """dry_run must NOT be in the run_agent LLM schema — it is session-level."""
+    def test_run_agent_dry_run_in_llm_schema(self):
+        """dry_run must be in the run_agent LLM schema so the LLM can request
+        per-call dry runs in normal sessions (e.g. "test this agent")."""
         schema = TOOL_REGISTRY["run_agent"].as_openai_tool()
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        assert "dry_run" not in params.get("properties", {}), (
-            "dry_run must not be exposed in the run_agent LLM schema; "
-            "it is controlled at the session level"
+        assert "dry_run" in params.get("properties", {}), (
+            "dry_run must be exposed in the run_agent LLM schema so the LLM "
+            "can request per-call dry runs in normal sessions"
         )
 
     def test_run_block_dry_run_not_in_llm_schema(self):
@@ -188,12 +189,13 @@ class TestRunAgentToolSchema:
         assert "parameters" in func
         assert func["name"] == "run_agent"
 
-    def test_dry_run_not_in_llm_schema(self, schema: ChatCompletionToolParam):
-        """dry_run must NOT be in the run_agent LLM schema — it is session-level."""
+    def test_dry_run_in_llm_schema(self, schema: ChatCompletionToolParam):
+        """dry_run must be in the run_agent LLM schema so the LLM can request
+        per-call dry runs in normal sessions."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        assert "dry_run" not in params.get(
+        assert "dry_run" in params.get(
             "properties", {}
-        ), "dry_run must not be exposed in the run_agent LLM schema"
+        ), "dry_run must be exposed in the run_agent LLM schema"
         assert "dry_run" not in params.get("required", [])
 
     def test_wait_for_result_in_schema(self, schema: ChatCompletionToolParam):
@@ -247,9 +249,9 @@ class TestRunBlockToolSchema:
 class TestRunAgentInputModel:
     """Validate RunAgentInput Pydantic model handles dry_run correctly.
 
-    dry_run is an internal field on RunAgentInput (not exposed in LLM schema).
-    It defaults to False. The executor always sets params.dry_run = session.dry_run
-    before execution, overriding any value that might have been passed.
+    dry_run is exposed in the LLM schema so the LLM can request per-call
+    dry runs in normal sessions. It defaults to False. Session-level
+    dry_run=True forces all runs dry; normal sessions respect the LLM's choice.
     """
 
     def test_dry_run_default_false(self):
@@ -257,14 +259,15 @@ class TestRunAgentInputModel:
         model = RunAgentInput(username_agent_slug="user/agent")
         assert model.dry_run is False
 
-    def test_dry_run_not_in_schema_parameters(self):
-        """dry_run must NOT appear in RunAgentTool.parameters — it's session-level."""
+    def test_dry_run_in_schema_parameters(self):
+        """dry_run must appear in RunAgentTool.parameters so the LLM can
+        request per-call dry runs in normal sessions."""
         from backend.copilot.tools.run_agent import RunAgentTool
 
         tool = RunAgentTool()
-        assert "dry_run" not in tool.parameters.get(
+        assert "dry_run" in tool.parameters.get(
             "properties", {}
-        ), "dry_run must not be exposed in the LLM tool schema"
+        ), "dry_run must be exposed in the LLM tool schema"
 
     def test_dry_run_accepts_true(self):
         model = RunAgentInput(username_agent_slug="user/agent", dry_run=True)
