@@ -198,6 +198,7 @@ async def test_execute_multiple_questions_ignores_single_params(
         ],
     )
 
+    assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == 1
     assert result.questions[0].question == "Real question?"
     assert result.questions[0].keyword == "real"
