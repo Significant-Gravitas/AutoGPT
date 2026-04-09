@@ -5,10 +5,10 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 
-logger = logging.getLogger(__name__)
-
 from .base import BaseTool
 from .models import ClarificationNeededResponse, ClarifyingQuestion, ToolResponseBase
+
+logger = logging.getLogger(__name__)
 
 
 class AskQuestionTool(BaseTool):
@@ -91,11 +91,11 @@ class AskQuestionTool(BaseTool):
                     },
                     "description": (
                         "Ask multiple questions at once. Each item has "
-                        "'question' (required), 'options', and 'keyword'."
+                        "'question' (required), 'options', and 'keyword'. "
+                        "Takes precedence over the single 'question' param."
                     ),
                 },
             },
-            "required": ["question"],
         }
 
     @property
@@ -131,7 +131,7 @@ class AskQuestionTool(BaseTool):
     async def _execute(
         self,
         user_id: str | None,
-        session: ChatSession,
+        session: ChatSession | None,
         **kwargs: Any,
     ) -> ToolResponseBase:
         del user_id  # unused; required by BaseTool contract
@@ -157,12 +157,11 @@ class AskQuestionTool(BaseTool):
         raw_options = kwargs.get("options", [])
         if not isinstance(raw_options, list):
             raw_options = []
-        options: list[str] = [str(o) for o in raw_options if o is not None]
 
         raw_keyword = kwargs.get("keyword", "")
         keyword: str = str(raw_keyword) if raw_keyword else ""
 
-        clarifying_question = self._build_question(question, options, keyword)
+        clarifying_question = self._build_question(question, raw_options, keyword)
         return ClarificationNeededResponse(
             message=question,
             session_id=session_id,

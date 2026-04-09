@@ -292,3 +292,20 @@ async def test_execute_options_with_falsy_values(
     )
 
     assert result.questions[0].example == "0, 1, 2"
+
+
+@pytest.mark.asyncio
+async def test_execute_questions_as_non_list_falls_back(
+    tool: AskQuestionTool, session: ChatSession
+):
+    """If 'questions' is a truthy non-list (e.g. a dict), fall back to single path."""
+    result = await tool._execute(
+        user_id=None,
+        session=session,
+        question="Fallback?",
+        questions={"question": "Not a list"},  # type: ignore[arg-type]
+    )
+
+    assert isinstance(result, ClarificationNeededResponse)
+    assert len(result.questions) == 1
+    assert result.questions[0].question == "Fallback?"
