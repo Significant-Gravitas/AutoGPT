@@ -273,6 +273,7 @@ async def test_execute_duplicate_keywords_preserved(
         ],
     )
 
+    assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == 2
     assert result.questions[0].keyword == "same"
     assert result.questions[1].keyword == "same"
@@ -291,6 +292,7 @@ async def test_execute_options_with_falsy_values(
         keyword="number",
     )
 
+    assert isinstance(result, ClarificationNeededResponse)
     assert result.questions[0].example == "0, 1, 2"
 
 
@@ -325,6 +327,7 @@ async def test_execute_multi_keyword_null_gets_fallback(
         ],
     )
 
+    assert isinstance(result, ClarificationNeededResponse)
     assert len(result.questions) == 2
     assert result.questions[0].keyword == "question-0"
     assert result.questions[1].keyword == "question-1"
@@ -343,4 +346,5 @@ async def test_execute_options_filters_empty_strings(
         keyword="channel",
     )
 
+    assert isinstance(result, ClarificationNeededResponse)
     assert result.questions[0].example == "Email, Slack"
