@@ -463,7 +463,9 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
-    is_dry_run: bool = False
+    is_dry_run: bool | None = (
+        None  # only set to True on dry-run; omitted in normal runs
+    )
 
 
 class ReviewRequiredResponse(ToolResponseBase):

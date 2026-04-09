@@ -294,6 +294,32 @@ async def test_execute_block_dry_run_response_format():
     # so the frontend receives it but the LLM does not.
     assert response.is_dry_run is True
     assert "is_dry_run" in response.model_dump()
+    # model_dump_json excludes None fields — is_dry_run=True must still appear.
+    assert '"is_dry_run"' in response.model_dump_json(exclude_none=True)
+
+
+@pytest.mark.asyncio
+async def test_execute_block_normal_run_omits_is_dry_run():
+    """Normal (non-dry-run) BlockOutputResponse must NOT carry is_dry_run in JSON.
+
+    The field must be absent so the frontend and LLM don't see spurious
+    'is_dry_run: false' noise on every tool call.
+    """
+    from backend.copilot.tools.models import BlockOutputResponse
+
+    response = BlockOutputResponse(
+        message="Block 'X' executed successfully",
+        block_id="b1",
+        block_name="X",
+        outputs={"result": ["real"]},
+        success=True,
+        session_id="s1",
+        # is_dry_run intentionally NOT set → stays None
+    )
+
+    assert response.is_dry_run is None
+    serialized = response.model_dump_json(exclude_none=True)
+    assert '"is_dry_run"' not in serialized
 
 
 @pytest.mark.asyncio

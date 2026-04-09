@@ -8523,9 +8523,8 @@
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
-            "type": "boolean",
-            "title": "Is Dry Run",
-            "default": false
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Dry Run"
           }
         },
         "type": "object",
