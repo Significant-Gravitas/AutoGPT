@@ -5,6 +5,12 @@ from typing import Any
 
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.ingest import enqueue_episode
+from backend.copilot.graphiti.memory_model import (
+    MemoryEnvelope,
+    MemoryKind,
+    MemoryStatus,
+    SourceKind,
+)
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -26,7 +32,7 @@ class MemoryStoreTool(BaseTool):
             "Store a memory or fact about the user for future recall. "
             "Use when the user shares preferences, business context, decisions, "
             "relationships, or other important information worth remembering "
-            "across sessions."
+            "across sessions. Supports optional metadata for scoping and classification."
         )
 
     @property
@@ -47,6 +53,23 @@ class MemoryStoreTool(BaseTool):
                     "description": "Context about where this info came from",
                     "default": "Conversation memory",
                 },
+                "source_kind": {
+                    "type": "string",
+                    "enum": [e.value for e in SourceKind],
+                    "description": "Who asserted this: user_asserted (default), assistant_derived, or tool_observed",
+                    "default": "user_asserted",
+                },
+                "scope": {
+                    "type": "string",
+                    "description": "Namespace for this memory: 'real:global' (default), 'project:<name>', 'book:<title>'",
+                    "default": "real:global",
+                },
+                "memory_kind": {
+                    "type": "string",
+                    "enum": [e.value for e in MemoryKind],
+                    "description": "Type of memory: fact (default), preference, rule, finding, plan, event, procedure",
+                    "default": "fact",
+                },
             },
             "required": ["name", "content"],
         }
@@ -63,6 +86,9 @@ class MemoryStoreTool(BaseTool):
         name: str = "",
         content: str = "",
         source_description: str = "Conversation memory",
+        source_kind: str = "user_asserted",
+        scope: str = "real:global",
+        memory_kind: str = "fact",
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -83,12 +109,22 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
+        envelope = MemoryEnvelope(
+            content=content,
+            source_kind=SourceKind(source_kind),
+            scope=scope,
+            memory_kind=MemoryKind(memory_kind),
+            status=MemoryStatus.active,
+            provenance=session.session_id,
+        )
+
         queued = await enqueue_episode(
             user_id,
             session.session_id,
             name=name,
-            episode_body=content,
+            episode_body=envelope.model_dump_json(),
             source_description=source_description,
+            is_json=True,
         )
 
         if not queued:

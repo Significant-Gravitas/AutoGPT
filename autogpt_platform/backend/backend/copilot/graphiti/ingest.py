@@ -126,11 +126,17 @@ async def enqueue_episode(
     name: str,
     episode_body: str,
     source_description: str = "Conversation memory",
+    is_json: bool = False,
 ) -> bool:
     """Enqueue an arbitrary episode for background ingestion.
 
     Used by ``MemoryStoreTool`` so that explicit memory-store calls go
     through the same per-user serialization queue as conversation turns.
+
+    Args:
+        is_json: When ``True``, ingest as ``EpisodeType.json`` (for
+            structured ``MemoryEnvelope`` payloads).  Otherwise uses
+            ``EpisodeType.text``.
 
     Returns ``True`` if the episode was queued, ``False`` if it was dropped.
     """
@@ -145,12 +151,14 @@ async def enqueue_episode(
 
     queue = await _ensure_worker(user_id)
 
+    source = EpisodeType.json if is_json else EpisodeType.text
+
     try:
         queue.put_nowait(
             {
                 "name": name,
                 "episode_body": episode_body,
-                "source": EpisodeType.text,
+                "source": source,
                 "source_description": source_description,
                 "reference_time": datetime.now(timezone.utc),
                 "group_id": group_id,

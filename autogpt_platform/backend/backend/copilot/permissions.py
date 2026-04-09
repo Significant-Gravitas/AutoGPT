@@ -89,6 +89,8 @@ ToolName = Literal[
     "get_mcp_guide",
     "list_folders",
     "list_workspace_files",
+    "memory_forget_confirm",
+    "memory_forget_search",
     "memory_search",
     "memory_store",
     "move_agents_to_folder",
