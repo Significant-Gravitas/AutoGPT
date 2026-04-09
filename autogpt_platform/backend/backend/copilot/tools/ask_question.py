@@ -15,16 +15,9 @@ class AskQuestionTool(BaseTool):
     """Ask the user one or more clarifying questions and wait for answers.
 
     Use this tool when the user's request is ambiguous and you need more
-    information before proceeding. Call find_block or other discovery tools
+    information before proceeding.  Call find_block or other discovery tools
     first to ground your questions in real platform options, then call this
     tool with concrete questions listing those options.
-
-    Supports two calling conventions (backward-compatible):
-      1. Single question: ``question="Which channel?"``
-      2. Multiple questions: ``questions=[{...}, {...}]``
-
-    When *questions* (plural) is provided, the *question*, *options*, and
-    *keyword* top-level parameters are ignored.
     """
 
     @property
@@ -36,8 +29,7 @@ class AskQuestionTool(BaseTool):
         return (
             "Ask the user one or more clarifying questions. Use when the "
             "request is ambiguous and you need to confirm intent, choose "
-            "between options, or gather missing details before proceeding. "
-            "Pass a single question via 'question' or multiple via 'questions'."
+            "between options, or gather missing details before proceeding."
         )
 
     @property
@@ -45,29 +37,6 @@ class AskQuestionTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "question": {
-                    "type": "string",
-                    "description": (
-                        "A single concrete question to ask the user. "
-                        "Ignored when 'questions' is provided."
-                    ),
-                },
-                "options": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Options for the single question "
-                        "(e.g. ['Email', 'Slack', 'Google Docs']). "
-                        "Ignored when 'questions' is provided."
-                    ),
-                },
-                "keyword": {
-                    "type": "string",
-                    "description": (
-                        "Short label for the single question. "
-                        "Ignored when 'questions' is provided."
-                    ),
-                },
                 "questions": {
                     "type": "array",
                     "items": {
@@ -90,44 +59,17 @@ class AskQuestionTool(BaseTool):
                         "required": ["question"],
                     },
                     "description": (
-                        "Ask multiple questions at once. Each item has "
-                        "'question' (required), 'options', and 'keyword'. "
-                        "Takes precedence over the single 'question' param."
+                        "One or more clarifying questions. Each item has "
+                        "'question' (required), 'options', and 'keyword'."
                     ),
                 },
             },
-            "required": ["question"],
+            "required": ["questions"],
         }
 
     @property
     def requires_auth(self) -> bool:
         return False
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _build_question(
-        question: str,
-        options: list[str] | None = None,
-        keyword: str = "",
-    ) -> ClarifyingQuestion:
-        """Build a single ``ClarifyingQuestion`` from raw inputs."""
-        safe_options = (
-            [str(o) for o in options if o is not None and str(o).strip()]
-            if isinstance(options, list)
-            else []
-        )
-        return ClarifyingQuestion(
-            question=question,
-            keyword=keyword,
-            example=", ".join(safe_options) if safe_options else None,
-        )
-
-    # ------------------------------------------------------------------
-    # Execute
-    # ------------------------------------------------------------------
 
     async def _execute(
         self,
@@ -135,80 +77,63 @@ class AskQuestionTool(BaseTool):
         session: ChatSession,
         **kwargs: Any,
     ) -> ToolResponseBase:
-        del user_id  # unused; required by BaseTool contract
-        session_id = session.session_id if session else None
+        del user_id
+        raw_questions = kwargs.get("questions", [])
+        if not isinstance(raw_questions, list) or not raw_questions:
+            raise ValueError("ask_question requires a non-empty 'questions' array")
 
-        raw_questions = kwargs.get("questions")
-        if isinstance(raw_questions, list) and raw_questions:
-            return self._execute_multi(raw_questions, session_id)
-
-        return self._execute_single(kwargs, session_id)
-
-    def _execute_single(
-        self,
-        kwargs: dict[str, Any],
-        session_id: str | None,
-    ) -> ClarificationNeededResponse:
-        """Original single-question path (backward-compatible)."""
-        question_raw = kwargs.get("question")
-        if not isinstance(question_raw, str) or not question_raw.strip():
-            raise ValueError("ask_question requires a non-empty 'question' string")
-        question = question_raw.strip()
-
-        raw_options = kwargs.get("options", [])
-        if not isinstance(raw_options, list):
-            raw_options = []
-
-        raw_keyword = kwargs.get("keyword") or ""
-        keyword: str = str(raw_keyword).strip()
-
-        clarifying_question = self._build_question(question, raw_options, keyword)
-        return ClarificationNeededResponse(
-            message=question,
-            session_id=session_id,
-            questions=[clarifying_question],
-        )
-
-    def _execute_multi(
-        self,
-        raw_questions: list[Any],
-        session_id: str | None,
-    ) -> ClarificationNeededResponse:
-        """New multi-question path."""
-        clarifying_questions: list[ClarifyingQuestion] = []
-        for idx, item in enumerate(raw_questions):
-            if not isinstance(item, dict):
-                logger.warning("ask_question: skipping non-dict item at index %d", idx)
-                continue
-            q_text = item.get("question")
-            if not isinstance(q_text, str) or not q_text.strip():
-                logger.warning(
-                    "ask_question: skipping item at index %d with missing/empty question",
-                    idx,
-                )
-                continue
-            raw_keyword = item.get("keyword")
-            keyword = (
-                str(raw_keyword).strip()
-                if raw_keyword is not None and str(raw_keyword).strip()
-                else f"question-{idx}"
-            )
-            clarifying_questions.append(
-                self._build_question(
-                    question=q_text.strip(),
-                    options=item.get("options"),
-                    keyword=keyword,
-                )
-            )
-
-        if not clarifying_questions:
+        questions = _parse_questions(raw_questions)
+        if not questions:
             raise ValueError(
                 "ask_question requires at least one valid question in 'questions'"
             )
 
-        message = "; ".join(q.question for q in clarifying_questions)
         return ClarificationNeededResponse(
-            message=message,
-            session_id=session_id,
-            questions=clarifying_questions,
+            message="; ".join(q.question for q in questions),
+            session_id=session.session_id if session else None,
+            questions=questions,
         )
+
+
+def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
+    """Parse and validate raw question dicts into ClarifyingQuestion objects."""
+    return [
+        q
+        for idx, item in enumerate(raw)
+        if (q := _parse_one(item, idx)) is not None
+    ]
+
+
+def _parse_one(item: Any, idx: int) -> ClarifyingQuestion | None:
+    """Parse a single question item, returning None for invalid entries."""
+    if not isinstance(item, dict):
+        logger.warning("ask_question: skipping non-dict item at index %d", idx)
+        return None
+
+    text = item.get("question")
+    if not isinstance(text, str) or not text.strip():
+        logger.warning(
+            "ask_question: skipping item at index %d with missing/empty question",
+            idx,
+        )
+        return None
+
+    raw_keyword = item.get("keyword")
+    keyword = (
+        str(raw_keyword).strip()
+        if raw_keyword is not None and str(raw_keyword).strip()
+        else f"question-{idx}"
+    )
+
+    raw_options = item.get("options")
+    options = (
+        [str(o) for o in raw_options if o is not None and str(o).strip()]
+        if isinstance(raw_options, list)
+        else []
+    )
+
+    return ClarifyingQuestion(
+        question=text.strip(),
+        keyword=keyword,
+        example=", ".join(options) if options else None,
+    )
