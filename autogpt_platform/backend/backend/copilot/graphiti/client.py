@@ -21,7 +21,7 @@ def derive_group_id(user_id: str) -> str:
     """Derive a deterministic, injection-safe group_id from a user_id.
 
     Strips to ``[a-zA-Z0-9_-]``, enforces max length, and prefixes with
-    ``user_``.  Logs a warning if sanitization changed the input.
+    ``user_``.  Raises if sanitization changed the input.
     """
     if not user_id:
         raise ValueError("user_id must be non-empty to derive group_id")
@@ -46,10 +46,44 @@ def derive_group_id(user_id: str) -> str:
     return group_id
 
 
+def _close_client_driver(client) -> None:
+    """Best-effort close of a Graphiti client's graph driver.
+
+    Called on cache eviction (TTL expiry or manual pop) to prevent
+    leaked FalkorDB connections.  Runs the async ``driver.close()``
+    in a fire-and-forget task if an event loop is running, otherwise
+    logs and moves on.
+    """
+    driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+    if driver is None or not hasattr(driver, "close"):
+        return
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(driver.close())
+    except RuntimeError:
+        logger.debug("No running event loop — skipping driver.close() on eviction")
+
+
+class _EvictingTTLCache(TTLCache):
+    """TTLCache that closes Graphiti drivers when entries are evicted."""
+
+    def __delitem__(self, key):
+        client = self.get(key)
+        super().__delitem__(key)
+        if client is not None:
+            _close_client_driver(client)
+
+    def popitem(self):
+        key, client = super().popitem()
+        _close_client_driver(client)
+        return key, client
+
+
 def _get_cache() -> TTLCache:
     global _client_cache
     if _client_cache is None:
-        _client_cache = TTLCache(
+        _client_cache = _EvictingTTLCache(
             maxsize=graphiti_config.client_cache_maxsize,
             ttl=graphiti_config.client_cache_ttl,
         )
@@ -110,7 +144,13 @@ async def get_graphiti_client(group_id: str):
         return client
 
 
-def evict_client(group_id: str) -> None:
-    """Remove a cached client (e.g. after GDPR deletion)."""
+async def evict_client(group_id: str) -> None:
+    """Remove a cached client and close its driver connection."""
     cache = _get_cache()
-    cache.pop(group_id, None)
+    client = cache.pop(group_id, None)
+    if client is not None:
+        driver = getattr(client, "graph_driver", None) or getattr(
+            client, "driver", None
+        )
+        if driver and hasattr(driver, "close"):
+            await driver.close()

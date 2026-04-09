@@ -33,5 +33,6 @@ class TestDeriveGroupId:
 
 
 class TestEvictClient:
-    def test_evict_nonexistent_group_id_does_not_raise(self) -> None:
-        evict_client("no-such-group-id")
+    @pytest.mark.asyncio
+    async def test_evict_nonexistent_group_id_does_not_raise(self) -> None:
+        await evict_client("no-such-group-id")
