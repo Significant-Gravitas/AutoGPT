@@ -52,7 +52,12 @@ def build_sdk_env(
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
     elif not config.openrouter_active:
-        env = {}
+        # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
+        # rather than subscription auth if the container has those tokens set.
+        env = {
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "CLAUDE_CODE_REFRESH_TOKEN": "",
+        }
 
     # --- Mode 3: OpenRouter proxy ---
     else:
@@ -63,6 +68,8 @@ def build_sdk_env(
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
             "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+            "CLAUDE_CODE_OAUTH_TOKEN": "",  # prevent OAuth override of ANTHROPIC_AUTH_TOKEN
+            "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
         }
 
         # Inject broadcast headers so OpenRouter forwards traces to Langfuse.

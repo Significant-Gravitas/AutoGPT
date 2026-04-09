@@ -287,6 +287,36 @@ class TestBuildSdkEnv:
 
         assert "ANTHROPIC_CUSTOM_HEADERS" not in env
 
+    def test_openrouter_clears_oauth_tokens(self):
+        """Mode 3: OAuth tokens are explicitly cleared to prevent CLI preferring subscription auth."""
+        cfg = _make_config(
+            use_claude_code_subscription=False,
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+        )
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert env["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert env["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+
+    def test_direct_anthropic_clears_oauth_tokens(self):
+        """Mode 2: OAuth tokens are cleared so CLI uses ANTHROPIC_API_KEY from parent env."""
+        cfg = _make_config(
+            use_claude_code_subscription=False,
+            use_openrouter=False,
+        )
+        with patch(f"{_ENV}.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            env = build_sdk_env()
+
+        assert env["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+        assert env["CLAUDE_CODE_REFRESH_TOKEN"] == ""
+
     def test_all_modes_return_mutable_dict(self):
         """build_sdk_env must return a mutable dict (not None) in every mode."""
         for cfg in (
