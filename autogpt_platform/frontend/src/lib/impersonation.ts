@@ -10,8 +10,6 @@ import {
 } from "./constants";
 import { environment } from "@/services/environment";
 
-const COOKIE_NAME = IMPERSONATION_COOKIE_NAME;
-
 /**
  * Cookie utility functions
  */
@@ -23,7 +21,7 @@ export const ImpersonationCookie = {
     if (!environment.isClientSide()) return;
 
     const encodedUserId = encodeURIComponent(userId);
-    document.cookie = `${COOKIE_NAME}=${encodedUserId}; path=/; SameSite=Lax; Secure`;
+    document.cookie = `${IMPERSONATION_COOKIE_NAME}=${encodedUserId}; path=/; SameSite=Lax; Secure`;
   },
 
   /**
@@ -32,7 +30,7 @@ export const ImpersonationCookie = {
   clear(): void {
     if (!environment.isClientSide()) return;
 
-    document.cookie = `${COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
+    document.cookie = `${IMPERSONATION_COOKIE_NAME}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; Secure`;
   },
 
   /**
@@ -44,7 +42,7 @@ export const ImpersonationCookie = {
     try {
       const cookieValue = document.cookie
         .split("; ")
-        .find((row) => row.startsWith(`${COOKIE_NAME}=`))
+        .find((row) => row.startsWith(`${IMPERSONATION_COOKIE_NAME}=`))
         ?.split("=")[1];
 
       return cookieValue ? decodeURIComponent(cookieValue) : null;
@@ -63,7 +61,7 @@ export const ImpersonationCookie = {
     try {
       const { cookies } = await import("next/headers");
       const cookieStore = await cookies();
-      const impersonationCookie = cookieStore.get(COOKIE_NAME);
+      const impersonationCookie = cookieStore.get(IMPERSONATION_COOKIE_NAME);
       return impersonationCookie?.value || null;
     } catch (error) {
       console.debug("Could not access server-side cookies:", error);
