@@ -91,12 +91,9 @@ def build_sdk_env(
         env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
 
     # Harden multi-tenant deployment: prevent loading untrusted workspace
-    # .claude.md files, persisting prompt history, writing auto-memory,
-    # and sending non-essential telemetry traffic.
-    # These are undocumented CLI internals validated against
-    # claude-agent-sdk 0.1.45 — re-verify when upgrading the SDK.
+    # .claude.md files, writing auto-memory, and sending non-essential
+    # telemetry traffic.
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
-    env["CLAUDE_CODE_SKIP_PROMPT_HISTORY"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
 
