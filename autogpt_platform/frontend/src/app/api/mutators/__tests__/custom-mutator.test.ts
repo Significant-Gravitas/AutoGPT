@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/impersonation", () => ({
-  ImpersonationState: { get: vi.fn() },
+  getSystemHeaders: vi.fn(),
 }));
 
 vi.mock("@/services/environment", () => ({
@@ -27,18 +27,18 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
 }));
 
 import { customMutator } from "../custom-mutator";
-import { ImpersonationState } from "@/lib/impersonation";
+import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
 
 const mockIsClientSide = vi.mocked(environment.isClientSide);
-const mockImpersonationGet = vi.mocked(ImpersonationState.get);
+const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
 
 describe("customMutator — impersonation header", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsClientSide.mockReturnValue(true);
-    mockImpersonationGet.mockReturnValue(null);
+    mockGetSystemHeaders.mockReturnValue({});
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -51,7 +51,9 @@ describe("customMutator — impersonation header", () => {
   });
 
   it("adds impersonation header when impersonation is active", async () => {
-    mockImpersonationGet.mockReturnValue("impersonated-user-abc");
+    mockGetSystemHeaders.mockReturnValue({
+      [IMPERSONATION_HEADER_NAME]: "impersonated-user-abc",
+    });
 
     await customMutator("/test", { method: "GET" });
 
@@ -61,7 +63,7 @@ describe("customMutator — impersonation header", () => {
   });
 
   it("does not add impersonation header when no impersonation active", async () => {
-    mockImpersonationGet.mockReturnValue(null);
+    mockGetSystemHeaders.mockReturnValue({});
 
     await customMutator("/test", { method: "GET" });
 

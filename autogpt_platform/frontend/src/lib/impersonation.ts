@@ -5,6 +5,7 @@
 
 import {
   IMPERSONATION_COOKIE_NAME,
+  IMPERSONATION_HEADER_NAME,
   IMPERSONATION_STORAGE_KEY,
 } from "./constants";
 import { environment } from "@/services/environment";
@@ -168,3 +169,19 @@ export const ImpersonationState = {
     return await ImpersonationCookie.getServerSide();
   },
 };
+
+/**
+ * Returns system headers to attach to every backend request.
+ *
+ * Currently adds the impersonation header (X-Act-As-User-Id) when an admin
+ * is impersonating a user. Extend this function to add other cross-cutting
+ * request headers rather than scattering them across callers.
+ */
+export function getSystemHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const impersonatedUserId = ImpersonationState.get();
+  if (impersonatedUserId) {
+    headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
+  }
+  return headers;
+}

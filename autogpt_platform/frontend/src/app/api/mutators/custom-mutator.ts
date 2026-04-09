@@ -4,8 +4,7 @@ import {
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 
-import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
-import { ImpersonationState } from "@/lib/impersonation";
+import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
@@ -54,10 +53,7 @@ export const customMutator = async <
   };
 
   if (environment.isClientSide()) {
-    const impersonatedUserId = ImpersonationState.get();
-    if (impersonatedUserId) {
-      headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
-    }
+    Object.assign(headers, getSystemHeaders());
   }
 
   const isFormData = data instanceof FormData;

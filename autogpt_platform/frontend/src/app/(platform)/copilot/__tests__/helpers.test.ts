@@ -7,21 +7,19 @@ vi.mock("@/lib/supabase/actions", () => ({
 }));
 
 vi.mock("@/lib/impersonation", () => ({
-  ImpersonationState: {
-    get: vi.fn(),
-  },
+  getSystemHeaders: vi.fn(),
 }));
 
 import { getWebSocketToken } from "@/lib/supabase/actions";
-import { ImpersonationState } from "@/lib/impersonation";
+import { getSystemHeaders } from "@/lib/impersonation";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
-const mockImpersonationStateGet = vi.mocked(ImpersonationState.get);
+const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
 
 describe("getCopilotAuthHeaders", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockImpersonationStateGet.mockReturnValue(null);
+    mockGetSystemHeaders.mockReturnValue({});
   });
 
   it("returns Authorization header when token is present and no impersonation active", async () => {
@@ -40,7 +38,9 @@ describe("getCopilotAuthHeaders", () => {
       token: "test-jwt-token",
       error: undefined,
     });
-    mockImpersonationStateGet.mockReturnValue("impersonated-user-123");
+    mockGetSystemHeaders.mockReturnValue({
+      [IMPERSONATION_HEADER_NAME]: "impersonated-user-123",
+    });
 
     const headers = await getCopilotAuthHeaders();
 

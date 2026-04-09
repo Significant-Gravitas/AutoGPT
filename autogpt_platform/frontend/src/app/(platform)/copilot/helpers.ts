@@ -1,5 +1,4 @@
-import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
-import { ImpersonationState } from "@/lib/impersonation";
+import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import type { UIMessage } from "ai";
 
@@ -19,14 +18,10 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
     console.warn("[Copilot] Failed to get auth token:", error);
     throw new Error("Authentication failed — please sign in again.");
   }
-  const headers: Record<string, string> = {
+  return {
     Authorization: `Bearer ${token}`,
+    ...getSystemHeaders(),
   };
-  const impersonatedUserId = ImpersonationState.get();
-  if (impersonatedUserId) {
-    headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
-  }
-  return headers;
 }
 
 /**
