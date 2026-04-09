@@ -462,7 +462,11 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
     SSE stream, so StreamToolOutputAvailable still receives the full payload
     (including ``is_dry_run``).  The returned dict is what the LLM sees.
 
-    Non-JSON blocks and error results are returned unchanged.
+    Non-JSON blocks, non-dict JSON values, and error results are returned unchanged.
+
+    Note: only top-level keys are stripped. Nested occurrences of _STRIP_FROM_LLM
+    fields (e.g. inside an ``outputs`` sub-dict) are not removed. Current tool
+    responses only set these fields at the top level.
     """
     if result.get("isError"):
         return result
@@ -473,11 +477,13 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
             raw = block.get("text", "")
             try:
                 parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                new_content.append(block)
+                continue
+            if isinstance(parsed, dict):
                 for field in _STRIP_FROM_LLM:
                     parsed.pop(field, None)
                 block = {**block, "text": json.dumps(parsed)}
-            except (json.JSONDecodeError, AttributeError, TypeError):
-                pass
         new_content.append(block)
     return {**result, "content": new_content}
 

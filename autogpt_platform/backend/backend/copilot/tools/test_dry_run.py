@@ -1,12 +1,10 @@
 """Tests for dry-run execution mode."""
 
-import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import backend.copilot.tools.run_block as run_block_module
 from backend.copilot.tools.helpers import execute_block
 from backend.copilot.tools.models import BlockOutputResponse, ErrorResponse
 from backend.copilot.tools.run_block import RunBlockTool
@@ -347,12 +345,43 @@ def test_run_block_tool_no_dry_run_param():
     assert "dry_run" not in params["properties"]
 
 
-def test_run_block_tool_uses_session_dry_run():
-    """RunBlockTool._execute derives dry_run from session, not from kwargs."""
-    source = inspect.getsource(run_block_module.RunBlockTool._execute)
-    # Verify dry_run comes from session, not from kwargs
-    assert "session.dry_run" in source
-    assert 'kwargs.get("dry_run"' not in source
+@pytest.mark.asyncio
+async def test_run_block_tool_uses_session_dry_run():
+    """RunBlockTool._execute derives dry_run from session.dry_run, not from kwargs.
+
+    Behavioral test: intercepts prepare_block_for_execution and captures the
+    dry_run argument actually passed, asserting it matches session.dry_run
+    regardless of what a hypothetical kwarg would say.
+    """
+    from backend.copilot.tools.run_block import RunBlockTool
+
+    tool = RunBlockTool()
+    session = MagicMock()
+    session.dry_run = True
+    session.session_id = "test-session-id"
+
+    captured = {}
+
+    async def capture_prep(**kwargs):
+        captured["dry_run"] = kwargs.get("dry_run")
+        # Return an error response to short-circuit execution
+        from backend.copilot.tools.models import ErrorResponse
+
+        return ErrorResponse(message="stub", session_id="test-session-id")
+
+    with patch(
+        "backend.copilot.tools.run_block.prepare_block_for_execution",
+        side_effect=capture_prep,
+    ):
+        await tool._execute(
+            user_id="user-1",
+            session=session,
+            block_id="block-id-123",
+            input_data={},
+        )
+
+    # dry_run must come from session, not from a default or kwarg
+    assert captured["dry_run"] is True
 
 
 @pytest.mark.asyncio

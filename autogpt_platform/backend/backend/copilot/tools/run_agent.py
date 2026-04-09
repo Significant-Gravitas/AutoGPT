@@ -71,6 +71,9 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
+    # Internal field — always overwritten from session.dry_run in _execute.
+    # Not exposed to the LLM (absent from the tool schema). Any value passed
+    # by a caller is unconditionally replaced before use.
     dry_run: bool = False
 
     @field_validator(

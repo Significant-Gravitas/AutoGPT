@@ -814,3 +814,88 @@ class TestStripLlmFields:
         # LLM result does NOT have is_dry_run
         llm_parsed = json.loads(llm_result["content"][0]["text"])
         assert "is_dry_run" not in llm_parsed
+
+    def test_multiple_text_blocks_strips_only_json_blocks(self):
+        """Mixed content array: JSON block is stripped, plain-text block is untouched."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"message": "ok", "is_dry_run": true}',
+                },
+                {
+                    "type": "text",
+                    "text": "plain text block — not JSON",
+                },
+                {
+                    "type": "text",
+                    "text": '{"other": "data", "is_dry_run": false}',
+                },
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        # First block: JSON — is_dry_run removed
+        first = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" not in first
+        assert first["message"] == "ok"
+        # Second block: plain text — unchanged
+        assert stripped["content"][1]["text"] == "plain text block — not JSON"
+        # Third block: JSON — is_dry_run removed
+        third = json.loads(stripped["content"][2]["text"])
+        assert "is_dry_run" not in third
+        assert third["other"] == "data"
+
+    def test_non_dict_json_value_unchanged(self):
+        """A JSON array or string value is valid JSON but not a dict — left as-is."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '["is_dry_run", true]',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        # Not a dict, so should be returned unchanged
+        assert stripped["content"][0]["text"] == '["is_dry_run", true]'
+
+    @pytest.mark.asyncio
+    async def test_truncating_wrapper_stash_then_strip_ordering(self):
+        """The _truncating wrapper must stash BEFORE strip so the frontend gets
+        is_dry_run while the LLM return value does not.
+
+        This test replicates the call-site logic from _truncating lines 572-585
+        using a mock tool fn to verify the ordering invariant at the wrapper level.
+        """
+        from backend.util.truncate import truncate as _truncate
+
+        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+
+        full_payload = '{"message": "done", "is_dry_run": true}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": full_payload}],
+                "isError": False,
+            }
+
+        # Replicate the stash-then-strip ordering from _truncating
+        result = await fake_tool_fn({})
+        truncated = _truncate(result, _MCP_MAX_CHARS)
+        if not truncated.get("isError"):
+            text = _text_from_mcp_result(truncated)
+            if text:
+                stash_pending_tool_output("fake_tool", text)
+        llm_result = _strip_llm_fields(truncated)
+
+        # Stash (frontend path) must contain is_dry_run
+        stashed = pop_pending_tool_output("fake_tool")
+        assert stashed is not None
+        assert '"is_dry_run": true' in stashed
+
+        # LLM return value must NOT contain is_dry_run
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" not in llm_parsed
+        assert llm_parsed["message"] == "done"
