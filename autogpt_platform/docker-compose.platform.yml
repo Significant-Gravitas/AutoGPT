@@ -86,7 +86,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      test: ["CMD-SHELL", "redis-cli -p 6379 ping && wget --spider -q http://localhost:3000 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
