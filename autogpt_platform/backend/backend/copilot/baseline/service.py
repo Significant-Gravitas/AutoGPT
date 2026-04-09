@@ -27,6 +27,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -34,7 +35,6 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
-from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,

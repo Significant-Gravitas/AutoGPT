@@ -52,7 +52,6 @@ from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
 from ..config import ChatConfig, CopilotMode
-from ..graphiti.config import is_enabled_for_user
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -61,6 +60,7 @@ from ..constants import (
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli
+from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
     ChatSession,
