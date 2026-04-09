@@ -98,9 +98,7 @@ class AskQuestionTool(BaseTool):
 def _parse_questions(raw: list[Any]) -> list[ClarifyingQuestion]:
     """Parse and validate raw question dicts into ClarifyingQuestion objects."""
     return [
-        q
-        for idx, item in enumerate(raw)
-        if (q := _parse_one(item, idx)) is not None
+        q for idx, item in enumerate(raw) if (q := _parse_one(item, idx)) is not None
     ]
 
 

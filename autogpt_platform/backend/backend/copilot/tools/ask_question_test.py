@@ -63,8 +63,16 @@ async def test_multiple_questions(tool: AskQuestionTool, session: ChatSession):
         user_id=None,
         session=session,
         questions=[
-            {"question": "Which channel?", "options": ["Email", "Slack"], "keyword": "channel"},
-            {"question": "How often?", "options": ["Daily", "Weekly"], "keyword": "frequency"},
+            {
+                "question": "Which channel?",
+                "options": ["Email", "Slack"],
+                "keyword": "channel",
+            },
+            {
+                "question": "How often?",
+                "options": ["Daily", "Weekly"],
+                "keyword": "frequency",
+            },
             {"question": "Any extra notes?"},
         ],
     )
@@ -193,9 +201,7 @@ async def test_skips_non_dict_items(tool: AskQuestionTool, session: ChatSession)
 
 
 @pytest.mark.asyncio
-async def test_skips_empty_question_items(
-    tool: AskQuestionTool, session: ChatSession
-):
+async def test_skips_empty_question_items(tool: AskQuestionTool, session: ChatSession):
     result = await tool._execute(
         user_id=None,
         session=session,
@@ -212,9 +218,7 @@ async def test_skips_empty_question_items(
 
 
 @pytest.mark.asyncio
-async def test_rejects_all_invalid_items(
-    tool: AskQuestionTool, session: ChatSession
-):
+async def test_rejects_all_invalid_items(tool: AskQuestionTool, session: ChatSession):
     with pytest.raises(ValueError, match="at least one valid question"):
         await tool._execute(
             user_id=None,
@@ -232,17 +236,13 @@ async def test_rejects_empty_questions_array(
 
 
 @pytest.mark.asyncio
-async def test_rejects_missing_questions(
-    tool: AskQuestionTool, session: ChatSession
-):
+async def test_rejects_missing_questions(tool: AskQuestionTool, session: ChatSession):
     with pytest.raises(ValueError, match="non-empty"):
         await tool._execute(user_id=None, session=session)
 
 
 @pytest.mark.asyncio
-async def test_rejects_non_list_questions(
-    tool: AskQuestionTool, session: ChatSession
-):
+async def test_rejects_non_list_questions(tool: AskQuestionTool, session: ChatSession):
     with pytest.raises(ValueError, match="non-empty"):
         await tool._execute(
             user_id=None,
