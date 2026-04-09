@@ -52,6 +52,15 @@ class MemorySearchTool(BaseTool):
                     "description": "Maximum number of results to return",
                     "default": 15,
                 },
+                "scope": {
+                    "type": "string",
+                    "description": (
+                        "Optional scope filter. When set, only memories matching "
+                        "this scope are returned (hard filter). "
+                        "Examples: 'real:global', 'project:crm', 'book:my-novel'. "
+                        "Omit to search all scopes."
+                    ),
+                },
             },
             "required": ["query"],
         }
@@ -67,6 +76,7 @@ class MemorySearchTool(BaseTool):
         *,
         query: str = "",
         limit: int = 15,
+        scope: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -124,6 +134,11 @@ class MemorySearchTool(BaseTool):
         facts = _format_edges(edges)
         recent = _format_episodes(episodes)
 
+        # Scope hard-filter: if a scope was requested, filter episodes
+        # whose MemoryEnvelope JSON contains a different scope.
+        if scope:
+            recent = _filter_episodes_by_scope(episodes, scope)
+
         if not facts and not recent:
             return MemorySearchResponse(
                 message="No memories found matching your query.",
@@ -132,9 +147,10 @@ class MemorySearchTool(BaseTool):
                 recent_episodes=[],
             )
 
+        scope_note = f" (scope filter: {scope})" if scope else ""
         return MemorySearchResponse(
             message=(
-                f"Found {len(facts)} relationship facts and {len(recent)} stored memories. "
+                f"Found {len(facts)} relationship facts and {len(recent)} stored memories{scope_note}. "
                 "Use BOTH sections to answer — stored memories often contain operational "
                 "rules and instructions that relationship facts summarize."
             ),
@@ -158,5 +174,31 @@ def _format_episodes(episodes) -> list[str]:
     for ep in episodes:
         ts = extract_episode_timestamp(ep)
         body = extract_episode_body(ep)
+        results.append(f"[{ts}] {body}")
+    return results
+
+
+def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
+    """Filter episodes by scope — hard filter on MemoryEnvelope JSON content.
+
+    Episodes that are plain conversation text (not JSON envelopes) are
+    included by default since they have no scope metadata and belong
+    to the implicit ``real:global`` scope.
+    """
+    import json
+
+    results = []
+    for ep in episodes:
+        body = extract_episode_body(ep)
+        try:
+            data = json.loads(body)
+            ep_scope = data.get("scope", "real:global")
+            if ep_scope != scope:
+                continue
+        except (json.JSONDecodeError, TypeError):
+            # Not JSON — plain conversation episode, treat as real:global
+            if scope != "real:global":
+                continue
+        ts = extract_episode_timestamp(ep)
         results.append(f"[{ts}] {body}")
     return results

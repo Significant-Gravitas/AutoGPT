@@ -82,12 +82,28 @@ def _format_context(edges, episodes) -> str:
     if episodes:
         ep_lines = []
         for ep in episodes:
-            ts = extract_episode_timestamp(ep)
+            # Warm context defaults to real:global scope — skip fiction/project episodes.
             body = extract_episode_body(ep)
+            if _is_non_global_scope(body):
+                continue
+            ts = extract_episode_timestamp(ep)
             ep_lines.append(f"  - [{ts}] {body}")
-        sections.append(
-            "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"
-        )
+        if ep_lines:
+            sections.append(
+                "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"
+            )
 
     body = "\n\n".join(sections)
     return f"<temporal_context>\n{body}\n</temporal_context>"
+
+
+def _is_non_global_scope(body: str) -> bool:
+    """Check if an episode body is a MemoryEnvelope with a non-global scope."""
+    import json
+
+    try:
+        data = json.loads(body)
+        scope = data.get("scope", "real:global")
+        return scope != "real:global"
+    except (json.JSONDecodeError, TypeError):
+        return False
