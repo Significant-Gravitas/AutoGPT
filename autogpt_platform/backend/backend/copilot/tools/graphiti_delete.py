@@ -11,6 +11,7 @@ from backend.copilot.graphiti.client import (
     get_graphiti_client,
 )
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.ingest import _user_queues, _user_workers
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -84,6 +85,13 @@ class MemoryDeleteTool(BaseTool):
                 message="Invalid user ID for memory operations.",
                 session_id=session.session_id,
             )
+
+        # Cancel any pending ingestion so queued episodes don't
+        # re-populate the graph after we clear it.
+        worker = _user_workers.pop(user_id, None)
+        _user_queues.pop(user_id, None)
+        if worker:
+            worker.cancel()
 
         client = await get_graphiti_client(group_id)
 
