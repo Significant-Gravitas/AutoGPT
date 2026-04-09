@@ -482,7 +482,8 @@ def _strip_llm_fields(result: dict[str, Any]) -> dict[str, Any]:
                 continue
             try:
                 parsed = json.loads(raw)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                logger.debug("_strip_llm_fields: skipping non-JSON block: %s", exc)
                 new_content.append(block)
                 continue
             if isinstance(parsed, dict):

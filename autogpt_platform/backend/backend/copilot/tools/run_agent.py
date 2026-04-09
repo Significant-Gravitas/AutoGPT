@@ -371,9 +371,9 @@ class RunAgentTool(BaseTool):
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
-        Dry runs skip all prerequisite gates (credentials, input prompts)
-        since the agent executor runs the graph with simulated inputs.
-        The dry_run flag is read from params.dry_run (set from session.dry_run).
+        Dry runs skip all prerequisite gates (credentials, input prompts).
+        The dry_run flag is read from params.dry_run (which may be set by the
+        LLM per-call, or forced to True when session.dry_run is True).
 
         Returns:
             (graph_credentials, error_response) — error_response is None when ready.
