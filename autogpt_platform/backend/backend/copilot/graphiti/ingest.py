@@ -98,10 +98,10 @@ async def enqueue_conversation_turn(
 
     source_description = f"User message in session {session_id}"
 
-    await _ensure_worker(user_id)
+    queue = await _ensure_worker(user_id)
 
     try:
-        _user_queues[user_id].put_nowait(
+        queue.put_nowait(
             {
                 "name": episode_name,
                 "episode_body": episode_body_for_graphiti,
@@ -112,9 +112,9 @@ async def enqueue_conversation_turn(
                 "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
             }
         )
-    except (asyncio.QueueFull, KeyError):
+    except asyncio.QueueFull:
         logger.warning(
-            "Graphiti ingestion queue full or missing for user %s — dropping episode",
+            "Graphiti ingestion queue full for user %s — dropping episode",
             user_id[:12],
         )
 
@@ -143,10 +143,10 @@ async def enqueue_episode(
         logger.warning("Invalid user_id for episode ingestion: %s", user_id[:12])
         return False
 
-    await _ensure_worker(user_id)
+    queue = await _ensure_worker(user_id)
 
     try:
-        _user_queues[user_id].put_nowait(
+        queue.put_nowait(
             {
                 "name": name,
                 "episode_body": episode_body,
@@ -158,16 +158,21 @@ async def enqueue_episode(
             }
         )
         return True
-    except (asyncio.QueueFull, KeyError):
+    except asyncio.QueueFull:
         logger.warning(
-            "Graphiti ingestion queue full or missing for user %s — dropping episode",
+            "Graphiti ingestion queue full for user %s — dropping episode",
             user_id[:12],
         )
         return False
 
 
-async def _ensure_worker(user_id: str) -> None:
-    """Create a queue and worker for *user_id* if one doesn't exist."""
+async def _ensure_worker(user_id: str) -> asyncio.Queue:
+    """Create a queue and worker for *user_id* if one doesn't exist.
+
+    Returns the queue directly so callers don't need to look it up from
+    ``_user_queues`` (which avoids a TOCTOU race if the worker times out
+    and cleans up between this call and the put_nowait).
+    """
     async with _workers_lock:
         if user_id not in _user_queues:
             q: asyncio.Queue = asyncio.Queue(maxsize=100)
@@ -176,6 +181,7 @@ async def _ensure_worker(user_id: str) -> None:
                 _ingestion_worker(user_id, q),
                 name=f"graphiti-ingest-{user_id[:12]}",
             )
+        return _user_queues[user_id]
 
 
 async def _resolve_user_name(user_id: str) -> str:
