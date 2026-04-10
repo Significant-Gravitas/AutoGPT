@@ -25,7 +25,7 @@ import json
 import logging
 from typing import Any, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from backend.data.redis_client import get_redis_async
 
@@ -45,12 +45,19 @@ _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
 _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
 
+class PendingMessageContext(BaseModel):
+    """Structured page context attached to a pending message."""
+
+    url: str | None = None
+    content: str | None = None
+
+
 class PendingMessage(BaseModel):
     """A user message queued for injection into an in-flight turn."""
 
     content: str = Field(min_length=1, max_length=16_000)
     file_ids: list[str] = Field(default_factory=list)
-    context: dict[str, str] | None = None
+    context: PendingMessageContext | None = None
 
 
 def _buffer_key(session_id: str) -> str:
@@ -153,7 +160,7 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     for payload in decoded:
         try:
             messages.append(PendingMessage(**json.loads(payload)))
-        except Exception as e:
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed entry for %s: %s",
                 session_id,
@@ -198,12 +205,10 @@ def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     """
     parts: list[str] = [message.content]
     if message.context:
-        url = message.context.get("url")
-        if url:
-            parts.append(f"\n\n[Page URL: {url}]")
-        page_content = message.context.get("content")
-        if page_content:
-            parts.append(f"\n\n[Page content]\n{page_content}")
+        if message.context.url:
+            parts.append(f"\n\n[Page URL: {message.context.url}]")
+        if message.context.content:
+            parts.append(f"\n\n[Page content]\n{message.context.content}")
     if message.file_ids:
         parts.append(
             "\n\n[Attached files]\n"

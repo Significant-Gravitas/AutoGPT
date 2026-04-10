@@ -32,6 +32,7 @@ from backend.copilot.model import (
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
+    PendingMessageContext,
     push_pending_message,
 )
 from backend.copilot.rate_limit import (
@@ -1162,7 +1163,7 @@ async def queue_pending_message(
     pending = PendingMessage(
         content=request.message,
         file_ids=sanitized_file_ids,
-        context=request.context,
+        context=PendingMessageContext(**request.context) if request.context else None,
     )
     buffer_length = await push_pending_message(session_id, pending)
 
