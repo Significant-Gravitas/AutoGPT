@@ -1187,14 +1187,23 @@ async def stream_chat_completion_baseline(
             # messages on its next LLM call.
             #
             # IMPORTANT: skip when the loop has already finished (no
-            # more LLM calls are coming).  Draining here would silently
-            # lose the message because ``tool_call_loop`` is about to
-            # return on the next ``async for`` step — the user would
-            # see a 202 from the pending endpoint but the model would
-            # never actually read the text.  Those messages stay in
-            # the buffer and will be picked up at the start of the
-            # next turn.
-            if loop_result is None or loop_result.finished_naturally:
+            # more LLM calls are coming).  ``tool_call_loop`` yields
+            # a final ``ToolCallLoopResult`` on both paths:
+            #   - natural finish: ``finished_naturally=True``
+            #   - hit max_iterations: ``finished_naturally=False``
+            #                         and ``iterations >= max_iterations``
+            # In either case the loop is about to return on the next
+            # ``async for`` step, so draining here would silently
+            # lose the message (the user sees 202 but the model never
+            # reads the text).  Those messages stay in the buffer and
+            # get picked up at the start of the next turn.
+            if loop_result is None:
+                continue
+            is_final_yield = (
+                loop_result.finished_naturally
+                or loop_result.iterations >= _MAX_TOOL_ROUNDS
+            )
+            if is_final_yield:
                 continue
             pending = await drain_pending_messages(session_id)
             if pending:
