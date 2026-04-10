@@ -90,6 +90,15 @@ _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
 
+# Call-frequency cap for the pending-message endpoint.  The token-budget
+# check in queue_pending_message guards against overspend, but does not
+# prevent rapid-fire pushes from a client with a large budget.  This cap
+# (per user, per 60-second window) limits the rate a caller can hammer the
+# endpoint independently of token consumption.
+_PENDING_CALL_LIMIT = 30  # pushes per minute per user
+_PENDING_CALL_WINDOW_SECONDS = 60
+_PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
+
 
 async def _validate_and_get_session(
     session_id: str,
@@ -1132,6 +1141,25 @@ async def queue_pending_message(
         )
     except RateLimitExceeded as e:
         raise HTTPException(status_code=429, detail=str(e)) from e
+
+    # Call-frequency cap: prevent rapid-fire pushes that would bypass the
+    # token-budget check (which only fires per-turn, not per-push).
+    # Uses a Redis INCR + EXPIRE sliding counter; fails open if Redis is down.
+    try:
+        _redis = await get_redis_async()
+        _call_key = f"{_PENDING_CALL_KEY_PREFIX}{user_id}"
+        _call_count = await _redis.incr(_call_key)
+        if _call_count == 1:
+            await _redis.expire(_call_key, _PENDING_CALL_WINDOW_SECONDS)
+        if _call_count > _PENDING_CALL_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many pending messages: limit is {_PENDING_CALL_LIMIT} per {_PENDING_CALL_WINDOW_SECONDS}s",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Redis failure is non-fatal; fail open
 
     track_user_message(
         user_id=user_id,

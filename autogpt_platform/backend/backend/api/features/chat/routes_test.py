@@ -676,7 +676,10 @@ class TestQueuePendingMessageRequest:
 
 
 def _mock_pending_internals(
-    mocker: pytest_mock.MockerFixture, *, session_exists: bool = True
+    mocker: pytest_mock.MockerFixture,
+    *,
+    session_exists: bool = True,
+    call_count: int = 1,
 ):
     """Mock all async dependencies for the pending-message endpoint."""
     if session_exists:
@@ -703,6 +706,15 @@ def _mock_pending_internals(
         "backend.api.features.chat.routes.check_rate_limit",
         new_callable=AsyncMock,
         return_value=None,
+    )
+    # Mock Redis for per-user call-frequency rate limit
+    mock_redis = mocker.MagicMock()
+    mock_redis.incr = mocker.AsyncMock(return_value=call_count)
+    mock_redis.expire = mocker.AsyncMock(return_value=True)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
     )
     mocker.patch(
         "backend.api.features.chat.routes.track_user_message",
@@ -784,6 +796,22 @@ def test_queue_pending_message_rate_limited_returns_429(
         json={"message": "hi"},
     )
     assert response.status_code == 429
+
+
+def test_queue_pending_message_call_frequency_limit_returns_429(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """When per-user call frequency limit is exceeded, endpoint returns 429."""
+    from backend.api.features.chat.routes import _PENDING_CALL_LIMIT
+
+    _mock_pending_internals(mocker, call_count=_PENDING_CALL_LIMIT + 1)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
+    )
+    assert response.status_code == 429
+    assert "Too many pending messages" in response.json()["detail"]
 
 
 def test_queue_pending_message_context_url_too_long_returns_422() -> None:
