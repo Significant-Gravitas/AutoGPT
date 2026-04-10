@@ -1085,30 +1085,29 @@ async def queue_pending_message(
     # this, a client could bypass per-turn token limits by batching
     # their extra context through this endpoint while a cheap stream
     # is in flight.
-    if user_id:
-        try:
-            daily_limit, weekly_limit, _tier = await get_global_rate_limits(
-                user_id, config.daily_token_limit, config.weekly_token_limit
-            )
-            await check_rate_limit(
-                user_id=user_id,
-                daily_token_limit=daily_limit,
-                weekly_token_limit=weekly_limit,
-            )
-        except RateLimitExceeded as e:
-            raise HTTPException(status_code=429, detail=str(e)) from e
-
-    if user_id:
-        track_user_message(
-            user_id=user_id,
-            session_id=session_id,
-            message_length=len(request.message),
+    # user_id is guaranteed non-empty by Security(auth.get_user_id) — no guard needed.
+    try:
+        daily_limit, weekly_limit, _tier = await get_global_rate_limits(
+            user_id, config.daily_token_limit, config.weekly_token_limit
         )
+        await check_rate_limit(
+            user_id=user_id,
+            daily_token_limit=daily_limit,
+            weekly_token_limit=weekly_limit,
+        )
+    except RateLimitExceeded as e:
+        raise HTTPException(status_code=429, detail=str(e)) from e
+
+    track_user_message(
+        user_id=user_id,
+        session_id=session_id,
+        message_length=len(request.message),
+    )
 
     # Sanitise file IDs to the user's own workspace (same logic as
     # stream_chat_post) so injection doesn't surface other users' files.
     sanitized_file_ids: list[str] = []
-    if request.file_ids and user_id:
+    if request.file_ids:
         valid_ids = [fid for fid in request.file_ids if _UUID_RE.match(fid)]
         if valid_ids:
             workspace = await get_or_create_workspace(user_id)

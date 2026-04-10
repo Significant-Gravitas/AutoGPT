@@ -2291,11 +2291,12 @@ async def stream_chat_completion_sdk(
         #
         # The drained content is concatenated into ``current_message``
         # so the SDK CLI sees it in the new user message, AND appended
-        # to ``session.messages`` (via ``maybe_append_user_message``,
-        # which dedupes trailing same-role repeats) so the durable
-        # transcript records it too.  The endpoint deliberately does
-        # NOT persist to session.messages — Redis is the single source
-        # of truth until this drain runs.
+        # directly to ``session.messages`` (no dedup — pending messages are
+        # atomically-popped from Redis and are never stale-cache duplicates)
+        # so the durable transcript records it too.  Session is persisted
+        # immediately after the drain so a crash doesn't lose the messages.
+        # The endpoint deliberately does NOT persist to session.messages —
+        # Redis is the single source of truth until this drain runs.
         pending_at_start = await drain_pending_messages(session_id)
         if pending_at_start:
             logger.info(
@@ -2307,11 +2308,24 @@ async def stream_chat_completion_sdk(
                 format_pending_as_user_message(pm)["content"] for pm in pending_at_start
             ]
             for _pt in pending_texts:
-                maybe_append_user_message(session, _pt, is_user_message=True)
+                # Append directly — pending messages are atomically-popped from
+                # Redis and are never stale-cache duplicates, so the
+                # maybe_append_user_message dedup is wrong here.
+                session.messages.append(ChatMessage(role="user", content=_pt))
             if current_message.strip():
                 current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
             else:
                 current_message = "\n\n".join(pending_texts)
+            # Persist immediately so a crash between here and the finally block
+            # doesn't lose messages that were already drained from Redis.
+            try:
+                session = await upsert_chat_session(session)
+            except Exception as _persist_err:
+                logger.warning(
+                    "%s Failed to persist drained pending messages: %s",
+                    log_prefix,
+                    _persist_err,
+                )
 
         if not current_message.strip():
             yield StreamError(
