@@ -2282,6 +2282,14 @@ async def stream_chat_completion_sdk(
         # the drain and stays queued for the next turn instead of being
         # lost between LPOP and clear.  File IDs and context are
         # preserved via format_pending_as_user_message.
+        #
+        # The drained content is concatenated into ``current_message``
+        # so the SDK CLI sees it in the new user message, AND appended
+        # to ``session.messages`` (via ``maybe_append_user_message``,
+        # which dedupes trailing same-role repeats) so the durable
+        # transcript records it too.  The endpoint deliberately does
+        # NOT persist to session.messages — Redis is the single source
+        # of truth until this drain runs.
         pending_at_start = await drain_pending_messages(session_id)
         if pending_at_start:
             logger.info(
@@ -2292,6 +2300,8 @@ async def stream_chat_completion_sdk(
             pending_texts: list[str] = [
                 format_pending_as_user_message(pm)["content"] for pm in pending_at_start
             ]
+            for _pt in pending_texts:
+                maybe_append_user_message(session, _pt, is_user_message=True)
             if current_message.strip():
                 current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
             else:

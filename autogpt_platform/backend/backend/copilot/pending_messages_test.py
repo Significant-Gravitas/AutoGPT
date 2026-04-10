@@ -24,60 +24,13 @@ from backend.copilot.pending_messages import (
 # ── Fake Redis ──────────────────────────────────────────────────────
 
 
-class _FakePipeline:
-    def __init__(self, parent: "_FakeRedis") -> None:
-        self._parent = parent
-        self._ops: list[tuple[str, tuple[Any, ...]]] = []
-
-    async def __aenter__(self) -> "_FakePipeline":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def rpush(self, key: str, value: Any) -> None:
-        self._ops.append(("rpush", (key, value)))
-
-    def ltrim(self, key: str, start: int, stop: int) -> None:
-        self._ops.append(("ltrim", (key, start, stop)))
-
-    def expire(self, key: str, ttl: int) -> None:
-        self._ops.append(("expire", (key, ttl)))
-
-    def llen(self, key: str) -> None:
-        self._ops.append(("llen", (key,)))
-
-    async def execute(self) -> list[Any]:
-        results: list[Any] = []
-        for op, args in self._ops:
-            if op == "rpush":
-                key, value = args
-                self._parent.lists.setdefault(key, []).append(value)
-                results.append(len(self._parent.lists[key]))
-            elif op == "ltrim":
-                key, start, stop = args
-                lst = self._parent.lists.get(key, [])
-                # Emulate Redis LTRIM (-N, -1) = last N
-                if start < 0 and stop == -1:
-                    self._parent.lists[key] = lst[start:]
-                else:
-                    self._parent.lists[key] = lst[start : stop + 1]
-                results.append(True)
-            elif op == "expire":
-                results.append(True)
-            elif op == "llen":
-                key = args[0]
-                results.append(len(self._parent.lists.get(key, [])))
-        return results
-
-
 class _FakeRedis:
     def __init__(self) -> None:
-        self.lists: dict[str, list[str]] = {}
+        # Values are ``str | bytes`` because real redis-py returns
+        # bytes when ``decode_responses=False``; the drain path must
+        # handle both and our tests exercise both.
+        self.lists: dict[str, list[str | bytes]] = {}
         self.published: list[tuple[str, str]] = []
-
-    def pipeline(self, transaction: bool = False) -> _FakePipeline:
-        return _FakePipeline(self)
 
     async def eval(self, script: str, num_keys: int, *args: Any) -> Any:
         """Emulate the push Lua script.
@@ -102,7 +55,7 @@ class _FakeRedis:
         self.published.append((channel, payload))
         return 1
 
-    async def lpop(self, key: str, count: int) -> list[str] | None:
+    async def lpop(self, key: str, count: int) -> list[str | bytes] | None:
         lst = self.lists.get(key)
         if not lst:
             return None
@@ -250,3 +203,21 @@ async def test_drain_skips_malformed_entries(
     assert len(drained) == 2
     assert drained[0].content == "valid"
     assert drained[1].content == "also valid"
+
+
+@pytest.mark.asyncio
+async def test_drain_decodes_bytes_payloads(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Real redis-py returns ``bytes`` when ``decode_responses=False``.
+
+    Seed the fake with bytes values to exercise the ``decode("utf-8")``
+    branch in ``drain_pending_messages`` so a regression there doesn't
+    slip past CI.
+    """
+    fake_redis.lists["copilot:pending:bytes_sess"] = [
+        json.dumps({"content": "from bytes"}).encode("utf-8"),
+    ]
+    drained = await drain_pending_messages("bytes_sess")
+    assert len(drained) == 1
+    assert drained[0].content == "from bytes"

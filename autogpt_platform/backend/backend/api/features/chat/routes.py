@@ -32,7 +32,6 @@ from backend.copilot.model import (
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
-    format_pending_as_user_message,
     push_pending_message,
 )
 from backend.copilot.rate_limit import (
@@ -147,15 +146,17 @@ class QueuePendingMessageRequest(BaseModel):
 class QueuePendingMessageResponse(BaseModel):
     """Response for the pending-message endpoint.
 
-    Clients should rely on ``queued`` / ``buffer_length`` / ``turn_in_flight``
-    — the ``detail`` field is human-readable and may change without notice.
+    - ``buffer_length``: how many messages are now in the session's
+      pending buffer (after this push)
+    - ``max_buffer_length``: the per-session cap (server-side constant)
+    - ``turn_in_flight``: ``True`` if a copilot turn was running when
+      we checked — purely informational for UX feedback.  Even when
+      ``False`` the message is still queued: the next turn drains it.
     """
 
-    queued: bool
     buffer_length: int
     max_buffer_length: int
     turn_in_flight: bool
-    detail: str
 
 
 class CreateSessionRequest(BaseModel):
@@ -1127,10 +1128,15 @@ async def queue_pending_message(
                     session_id,
                 )
 
-    # Push to Redis BEFORE writing to the session DB.  If the push
-    # fails we raise 5xx and the client retries; ``append_and_save_message``
-    # would otherwise leave an orphan user message persisted with no
-    # corresponding queued pending entry, and a retry would duplicate it.
+    # Redis is the single source of truth for pending messages.  We do
+    # NOT persist to ``session.messages`` here — the drain-at-start
+    # path in the baseline/SDK executor is the sole writer for pending
+    # content.  Persisting both here AND in the drain would cause
+    # double injection (executor sees the message in ``session.messages``
+    # *and* drains it from Redis) unless we also dedupe.  The dedup in
+    # ``maybe_append_user_message`` only checks trailing same-role
+    # repeats, so relying on it is fragile.  Keeping the endpoint
+    # Redis-only avoids the whole consistency-bug class.
     pending = PendingMessage(
         content=request.message,
         file_ids=sanitized_file_ids,
@@ -1138,33 +1144,14 @@ async def queue_pending_message(
     )
     buffer_length = await push_pending_message(session_id, pending)
 
-    # Persist the message into the session transcript only after the
-    # push succeeds.  The message content embeds file/context metadata
-    # via format_pending_as_user_message so the DB copy matches what
-    # the model will actually see on drain.
-    chat_msg = ChatMessage(
-        role="user",
-        content=format_pending_as_user_message(pending)["content"],
-    )
-    await append_and_save_message(session_id, chat_msg)
-
     # Check whether a turn is currently running for UX feedback.
     active_session = await stream_registry.get_session(session_id)
     turn_in_flight = bool(active_session and active_session.status == "running")
 
     return QueuePendingMessageResponse(
-        queued=True,
         buffer_length=buffer_length,
         max_buffer_length=MAX_PENDING_MESSAGES,
         turn_in_flight=turn_in_flight,
-        detail=(
-            (
-                "Queued — will be injected into the current turn."
-                if turn_in_flight
-                else "Queued — will be injected at the start of the next turn."
-            )
-            + f" buffer={buffer_length}/{MAX_PENDING_MESSAGES}"
-        ),
     )
 
 
