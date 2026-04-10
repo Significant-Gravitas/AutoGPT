@@ -50,6 +50,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [Smarter starts, faster feedback](changelog/march-23-april-9-2026.md)
   * [Import workflows from other platforms and enjoy a polished marketplace](changelog/march-20-march-25-2026.md)
   * [Refreshed marketplace, usage monitor, and personalized prompts](changelog/march-13-march-20-2026.md)
   * [Organize your agents, get notified, and enjoy a cleaner chat](changelog/march-5-march-12-2026.md)
