@@ -79,6 +79,25 @@ class _FakeRedis:
     def pipeline(self, transaction: bool = False) -> _FakePipeline:
         return _FakePipeline(self)
 
+    async def eval(self, script: str, num_keys: int, *args: Any) -> Any:
+        """Emulate the push Lua script.
+
+        The real Lua script runs atomically in Redis; the fake
+        implementation just runs the equivalent list operations in
+        order and returns the final LLEN.  That's enough to exercise
+        the cap + ordering invariants the tests care about.
+        """
+        key = args[0]
+        payload = args[1]
+        max_len = int(args[2])
+        # ARGV[3] is TTL — fake doesn't enforce expiry
+        lst = self.lists.setdefault(key, [])
+        lst.append(payload)
+        if len(lst) > max_len:
+            # RPUSH + LTRIM(-N, -1) = keep only last N
+            self.lists[key] = lst[-max_len:]
+        return len(self.lists[key])
+
     async def publish(self, channel: str, payload: str) -> int:
         self.published.append((channel, payload))
         return 1

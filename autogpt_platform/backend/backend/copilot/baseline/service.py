@@ -36,7 +36,6 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.pending_messages import (
-    clear_pending_messages,
     drain_pending_messages,
     format_pending_as_user_message,
 )
@@ -933,6 +932,23 @@ async def stream_chat_completion_baseline(
                 message_length=len(message or ""),
             )
 
+    # Drain any messages the user queued via POST /messages/pending
+    # while this session was idle (or during a previous turn whose
+    # mid-loop drains missed them).  Atomic LPOP guarantees that a
+    # concurrent push lands *after* the drain and stays queued for the
+    # next turn instead of being lost.  Prepended to the session so
+    # the initial LLM call sees them.
+    drained_at_start = await drain_pending_messages(session_id)
+    if drained_at_start:
+        logger.info(
+            "[Baseline] Draining %d pending message(s) at turn start " "for session %s",
+            len(drained_at_start),
+            session_id,
+        )
+        for _pm in drained_at_start:
+            _content = format_pending_as_user_message(_pm)["content"]
+            maybe_append_user_message(session, _content, is_user_message=True)
+
     session = await upsert_chat_session(session)
 
     # Select model based on the per-request mode.  'fast' downgrades to
@@ -1168,16 +1184,32 @@ async def stream_chat_completion_baseline(
             # Inject any messages the user queued while the turn was
             # running.  ``tool_call_loop`` mutates ``openai_messages``
             # in-place, so appending here means the model sees the new
-            # messages before its next LLM call.  Also persist them to
-            # the ChatSession so they're part of the durable transcript.
+            # messages on its next LLM call.
+            #
+            # IMPORTANT: skip when the loop has already finished (no
+            # more LLM calls are coming).  Draining here would silently
+            # lose the message because ``tool_call_loop`` is about to
+            # return on the next ``async for`` step — the user would
+            # see a 202 from the pending endpoint but the model would
+            # never actually read the text.  Those messages stay in
+            # the buffer and will be picked up at the start of the
+            # next turn.
+            if loop_result is None or loop_result.finished_naturally:
+                continue
             pending = await drain_pending_messages(session_id)
             if pending:
                 for pm in pending:
+                    # ``format_pending_as_user_message`` embeds file
+                    # attachments and context URL/page content into the
+                    # content string so the in-session transcript is
+                    # a faithful copy of what the model actually saw.
+                    formatted = format_pending_as_user_message(pm)
+                    content_for_db = formatted["content"]
                     maybe_append_user_message(
-                        session, pm.content, is_user_message=True
+                        session, content_for_db, is_user_message=True
                     )
-                    openai_messages.append(format_pending_as_user_message(pm))
-                    transcript_builder.append_user(content=pm.content)
+                    openai_messages.append(formatted)
+                    transcript_builder.append_user(content=content_for_db)
                 try:
                     await upsert_chat_session(session)
                 except Exception as persist_err:
@@ -1234,19 +1266,10 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
-        # Safety net — if the stream exited early (error, timeout, etc.)
-        # we may still have queued pending messages in the buffer.  Drop
-        # them so they don't leak into the next turn.  During normal
-        # completion the tool-call loop drain will already have cleared
-        # the buffer, so this is a no-op in the happy path.
-        try:
-            await clear_pending_messages(session_id)
-        except Exception as clear_err:
-            logger.warning(
-                "[Baseline] Failed to clear pending messages for %s: %s",
-                session_id,
-                clear_err,
-            )
+        # Pending messages are drained atomically at turn start and
+        # between tool rounds, so there's nothing to clear in finally.
+        # Any message pushed after the final drain window stays in the
+        # buffer and gets picked up at the start of the next turn.
 
         # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:

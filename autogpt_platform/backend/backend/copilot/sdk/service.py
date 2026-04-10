@@ -35,9 +35,8 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.pending_messages import (
-    PendingMessage,
-    clear_pending_messages,
     drain_pending_messages,
+    format_pending_as_user_message,
 )
 from backend.copilot.permissions import apply_tool_permissions
 from backend.copilot.rate_limit import get_user_tier
@@ -216,25 +215,6 @@ def _is_prompt_too_long(err: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
-
-
-def _combine_pending_messages(pending: list[PendingMessage]) -> str:
-    """Merge drained pending messages into a single user-message body.
-
-    The Claude Agent SDK's ``client.query()`` takes a plain string (or
-    an async iterable); the simplest way to preserve ordering across
-    multiple drained messages is to concatenate them with a separator
-    and send a single ``query()`` call.  If there's only one message,
-    its ``content`` is returned verbatim so the transcript stays clean.
-    """
-    if len(pending) == 1:
-        return pending[0].content
-    parts: list[str] = []
-    for idx, msg in enumerate(pending, start=1):
-        header = f"[Additional message {idx}]" if idx > 1 else ""
-        body = msg.content
-        parts.append(f"{header}\n{body}".lstrip("\n") if header else body)
-    return "\n\n".join(parts)
 
 
 def _is_sdk_disconnect_error(exc: BaseException) -> bool:
@@ -1808,39 +1788,6 @@ async def _run_stream_attempt(
                 _msgs_since_flush = 0
 
             if acc.stream_completed:
-                # Before exiting the loop, check if the user queued any
-                # follow-up messages while this turn was running.  If so,
-                # send them to the same live SDK client as a new query
-                # and reset the stream completion state so we keep
-                # consuming CLI messages.  This avoids releasing the
-                # cluster lock and requeueing — the pending messages
-                # flow directly into the existing conversation.
-                pending = await drain_pending_messages(ctx.session_id)
-                if pending:
-                    logger.info(
-                        "%s Injecting %d pending message(s) mid-turn",
-                        ctx.log_prefix,
-                        len(pending),
-                    )
-                    injected_text = _combine_pending_messages(pending)
-                    injected_chat_msg = ChatMessage(role="user", content=injected_text)
-                    ctx.session.messages.append(injected_chat_msg)
-                    state.transcript_builder.append_user(content=injected_text)
-                    try:
-                        await asyncio.shield(upsert_chat_session(ctx.session))
-                    except Exception as persist_err:
-                        logger.warning(
-                            "%s Failed to persist injected pending message: %s",
-                            ctx.log_prefix,
-                            persist_err,
-                        )
-                    await client.query(injected_text, session_id=ctx.session_id)
-                    # Reset turn-level state so the next ResultMessage
-                    # ends the injected turn cleanly instead of
-                    # re-completing the previous one.
-                    acc.stream_completed = False
-                    _last_real_msg_time = time.monotonic()
-                    continue
                 break
     finally:
         await _safe_close_sdk_client(sdk_client, ctx.log_prefix)
@@ -2328,6 +2275,28 @@ async def stream_chat_completion_sdk(
             if last_user:
                 current_message = last_user[-1].content or ""
 
+        # Drain any messages the user queued via POST /messages/pending
+        # while the previous turn was running (or since the session was
+        # idle).  Messages are drained ATOMICALLY — one LPOP with count
+        # removes them all at once, so a concurrent push lands *after*
+        # the drain and stays queued for the next turn instead of being
+        # lost between LPOP and clear.  File IDs and context are
+        # preserved via format_pending_as_user_message.
+        pending_at_start = await drain_pending_messages(session_id)
+        if pending_at_start:
+            logger.info(
+                "%s Draining %d pending message(s) at turn start",
+                log_prefix,
+                len(pending_at_start),
+            )
+            pending_texts: list[str] = [
+                format_pending_as_user_message(pm)["content"] for pm in pending_at_start
+            ]
+            if current_message.strip():
+                current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
+            else:
+                current_message = "\n\n".join(pending_texts)
+
         if not current_message.strip():
             yield StreamError(
                 errorText="Message cannot be empty.",
@@ -2783,17 +2752,10 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
-        # Safety net — drop any pending messages still in the buffer.
-        # During normal completion the mid-turn drain already cleared
-        # them; this handles early exits (errors, cancellation, retry).
-        try:
-            await clear_pending_messages(session_id)
-        except Exception as _clear_err:
-            logger.warning(
-                "Failed to clear pending messages for %s: %s",
-                session_id,
-                _clear_err,
-            )
+        # Pending messages are drained atomically at the start of each
+        # turn (see drain_pending_messages call above), so there's
+        # nothing to clean up here — any message pushed after that
+        # point belongs to the next turn.
 
         # --- Close OTEL context (with cost attributes) ---
         if _otel_ctx is not None:

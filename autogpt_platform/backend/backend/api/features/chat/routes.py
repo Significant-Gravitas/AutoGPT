@@ -32,6 +32,7 @@ from backend.copilot.model import (
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
+    format_pending_as_user_message,
     push_pending_message,
 )
 from backend.copilot.rate_limit import (
@@ -133,15 +134,28 @@ class QueuePendingMessageRequest(BaseModel):
     rounds.
     """
 
-    message: str = Field(min_length=1)
-    context: dict[str, str] | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(min_length=1, max_length=16_000)
+    context: dict[str, str] | None = Field(
+        default=None,
+        description="Optional page context: expected keys are 'url' and 'content'.",
+    )
     file_ids: list[str] | None = Field(default=None, max_length=20)
 
 
 class QueuePendingMessageResponse(BaseModel):
+    """Response for the pending-message endpoint.
+
+    Clients should rely on ``queued`` / ``buffer_length`` / ``turn_in_flight``
+    — the ``detail`` field is human-readable and may change without notice.
+    """
+
     queued: bool
     buffer_length: int
-    message: str
+    max_buffer_length: int
+    turn_in_flight: bool
+    detail: str
 
 
 class CreateSessionRequest(BaseModel):
@@ -1051,32 +1065,44 @@ async def queue_pending_message(
 
     When a user sends a follow-up message while a turn is still
     streaming, we don't want to block them or start a separate turn —
-    this endpoint appends the message to a per-session pending buffer
-    that the executor currently processing the turn will drain between
-    tool-call rounds, injecting it into the conversation before the
-    model's next LLM call.
+    this endpoint appends the message to a per-session pending buffer.
+    The executor currently running the turn (baseline path) drains the
+    buffer between tool-call rounds and appends the message to the
+    conversation before the next LLM call.  On the SDK path the buffer
+    is drained at the *start* of the next turn (the long-lived
+    ``ClaudeSDKClient.receive_response`` iterator returns after a
+    ``ResultMessage`` so there is no safe point to inject mid-stream
+    into an existing connection).
 
-    Returns 202 with the new buffer length on success.  If the buffer
-    is full (``MAX_PENDING_MESSAGES``), the oldest pending message is
-    evicted to make room for the new one — the newest message always
-    wins.
-
-    Intended for the frontend "send while streaming" flow.  If no turn
-    is currently in flight the message is still queued — the next turn
-    the user starts will pick it up before its first LLM call.
+    Returns 202.  Enforces the same per-user daily/weekly token rate
+    limit as the regular ``/stream`` endpoint so a client can't bypass
+    it by batching messages through here.
     """
     await _validate_and_get_session(session_id, user_id)
 
-    # Persist the message to the session immediately so it shows up in
-    # the transcript even before the executor drains the buffer.
-    chat_msg = ChatMessage(role="user", content=request.message)
+    # Pre-turn rate-limit check — mirrors stream_chat_post.  Without
+    # this, a client could bypass per-turn token limits by batching
+    # their extra context through this endpoint while a cheap stream
+    # is in flight.
+    if user_id:
+        try:
+            daily_limit, weekly_limit, _tier = await get_global_rate_limits(
+                user_id, config.daily_token_limit, config.weekly_token_limit
+            )
+            await check_rate_limit(
+                user_id=user_id,
+                daily_token_limit=daily_limit,
+                weekly_token_limit=weekly_limit,
+            )
+        except RateLimitExceeded as e:
+            raise HTTPException(status_code=429, detail=str(e)) from e
+
     if user_id:
         track_user_message(
             user_id=user_id,
             session_id=session_id,
             message_length=len(request.message),
         )
-    await append_and_save_message(session_id, chat_msg)
 
     # Sanitise file IDs to the user's own workspace (same logic as
     # stream_chat_post) so injection doesn't surface other users' files.
@@ -1093,7 +1119,18 @@ async def queue_pending_message(
                 }
             )
             sanitized_file_ids = [wf.id for wf in files]
+            if len(sanitized_file_ids) != len(valid_ids):
+                logger.warning(
+                    "queue_pending_message: dropped %d file id(s) not in "
+                    "caller's workspace (session=%s)",
+                    len(valid_ids) - len(sanitized_file_ids),
+                    session_id,
+                )
 
+    # Push to Redis BEFORE writing to the session DB.  If the push
+    # fails we raise 5xx and the client retries; ``append_and_save_message``
+    # would otherwise leave an orphan user message persisted with no
+    # corresponding queued pending entry, and a retry would duplicate it.
     pending = PendingMessage(
         content=request.message,
         file_ids=sanitized_file_ids,
@@ -1101,12 +1138,32 @@ async def queue_pending_message(
     )
     buffer_length = await push_pending_message(session_id, pending)
 
+    # Persist the message into the session transcript only after the
+    # push succeeds.  The message content embeds file/context metadata
+    # via format_pending_as_user_message so the DB copy matches what
+    # the model will actually see on drain.
+    chat_msg = ChatMessage(
+        role="user",
+        content=format_pending_as_user_message(pending)["content"],
+    )
+    await append_and_save_message(session_id, chat_msg)
+
+    # Check whether a turn is currently running for UX feedback.
+    active_session = await stream_registry.get_session(session_id)
+    turn_in_flight = bool(active_session and active_session.status == "running")
+
     return QueuePendingMessageResponse(
         queued=True,
         buffer_length=buffer_length,
-        message=(
-            f"Queued — will be injected into the current turn "
-            f"(buffer: {buffer_length}/{MAX_PENDING_MESSAGES})"
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=turn_in_flight,
+        detail=(
+            (
+                "Queued — will be injected into the current turn."
+                if turn_in_flight
+                else "Queued — will be injected at the start of the next turn."
+            )
+            + f" buffer={buffer_length}/{MAX_PENDING_MESSAGES}"
         ),
     )
 
