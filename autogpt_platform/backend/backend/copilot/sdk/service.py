@@ -2046,6 +2046,7 @@ async def stream_chat_completion_sdk(
 
         async def _fetch_transcript():
             """Download transcript for --resume if applicable."""
+            assert session is not None  # narrowed at line 1898
             if not (
                 config.claude_agent_use_resume and user_id and len(session.messages) > 1
             ):
