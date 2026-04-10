@@ -35,7 +35,7 @@ You can now **copy your own prompt messages** in AutoPilot with a single click. 
 - **Spend credits to reset AutoPilot daily rate limit** — Hit your daily message cap? Spend credits to keep going without waiting for the reset. ([#12526](https://github.com/Significant-Gravitas/AutoGPT/pull/12526))
 - **Rate-limit tiering system** — AutoPilot now supports configurable rate-limit tiers so different user plans get different message caps. ([#12581](https://github.com/Significant-Gravitas/AutoGPT/pull/12581))
 - **Extended thinking execution mode** — OrchestratorBlock gains an extended thinking mode for deeper, multi-step reasoning. ([#12512](https://github.com/Significant-Gravitas/AutoGPT/pull/12512))
-- **Generic managed credential system** — A new managed credential system with AgentMail auto-provisioning simplifies credential handling. ([#12537](https://github.com/Significant-Gravitas/AutoGPT/pull/12537))
+- **Automatic AgentMail setup** — AgentMail now works out of the box. Your email address is created automatically the first time you need it — no API keys or manual setup required. ([#12537](https://github.com/Significant-Gravitas/AutoGPT/pull/12537))
 - **Session-level dry-run flag** — Autopilot sessions can now be flagged as dry-run at the session level. ([#12582](https://github.com/Significant-Gravitas/AutoGPT/pull/12582))
 - **Generic ask_question AutoPilot tool** — A new tool lets AutoPilot ask structured clarifying questions mid-conversation. ([#12647](https://github.com/Significant-Gravitas/AutoGPT/pull/12647))
 - **Git committer identity from GitHub profile** — E2B sandbox commits now use the user's real GitHub name and email. ([#12650](https://github.com/Significant-Gravitas/AutoGPT/pull/12650))
