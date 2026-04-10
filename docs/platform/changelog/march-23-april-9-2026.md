@@ -6,13 +6,13 @@
 
 ## Themed Prompt Categories
 
-The CoPilot empty-session screen now replaces flat suggestion pills with **themed prompt categories** — Learn, Create, Automate, and Organize. Each theme button opens a popover with **5 contextual prompts** tailored to the category. Personalized prompts from your Tally survey are distributed across themes automatically, and the system falls back to curated defaults when no custom prompts exist. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12515)
+The AutoPilot empty-session screen now replaces flat suggestion pills with **themed prompt categories** — Learn, Create, Automate, and Organize. Each theme button opens a popover with **5 contextual prompts** tailored to the category. Personalized prompts from your Tally survey are distributed across themes automatically, and the system falls back to curated defaults when no custom prompts exist. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12515)
 
-<figure><img src="../.gitbook/assets/v0654-prompt-categories-hero.png" alt="Themed prompt categories in the CoPilot empty session"><figcaption><p>Themed prompt categories replace flat suggestion pills</p></figcaption></figure>
+<figure><img src="../.gitbook/assets/v0654-prompt-categories-hero.png" alt="Themed prompt categories in the AutoPilot empty session"><figcaption><p>Themed prompt categories replace flat suggestion pills</p></figcaption></figure>
 
 ## Live Timer Stats
 
-A **live elapsed timer** now appears in the CoPilot thinking indicator while the AI is processing — showing "23s", "1m 5s" and so on after a 20-second threshold so quick responses aren't cluttered. Once the response completes, a **"Thought for Xm Ys" badge** freezes in place below the message. The duration is **persisted to the database**, so it survives page reloads and is visible on historical conversations. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12583)
+A **live elapsed timer** now appears in the AutoPilot thinking indicator while the AI is processing — showing "23s", "1m 5s" and so on after a 20-second threshold so quick responses aren't cluttered. Once the response completes, a **"Thought for Xm Ys" badge** freezes in place below the message. The duration is **persisted to the database**, so it survives page reloads and is visible on historical conversations. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12583)
 
 <figure><img src="../.gitbook/assets/v0654-live-timer-hero.png" alt="Live timer stats showing elapsed thinking time"><figcaption><p>Live elapsed timer and persisted thinking duration</p></figcaption></figure>
 
@@ -24,7 +24,7 @@ The onboarding wizard has been **completely redesigned** with an Autopilot-first
 
 ## Copy Your Prompts
 
-You can now **copy your own prompt messages** in CoPilot with a single click. A copy button appears on hover — right-aligned below the message — using the same `CopyButton` component already available on assistant responses. No more manual text selection when you want to **reuse or share a prompt** you've written. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12571)
+You can now **copy your own prompt messages** in AutoPilot with a single click. A copy button appears on hover — right-aligned below the message — using the same `CopyButton` component already available on assistant responses. No more manual text selection when you want to **reuse or share a prompt** you've written. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12571)
 
 <figure><img src="../.gitbook/assets/v0654-copy-prompts-hero.png" alt="Copy button on user prompt messages"><figcaption><p>One-click copy button on your own prompt messages</p></figcaption></figure>
 
@@ -32,22 +32,22 @@ You can now **copy your own prompt messages** in CoPilot with a single click. A 
 
 <summary>✨ Improvements</summary>
 
-- **Spend credits to reset CoPilot daily rate limit** — Hit your daily message cap? Spend credits to keep going without waiting for the reset. ([#12526](https://github.com/Significant-Gravitas/AutoGPT/pull/12526))
-- **Rate-limit tiering system** — CoPilot now supports configurable rate-limit tiers so different user plans get different message caps. ([#12581](https://github.com/Significant-Gravitas/AutoGPT/pull/12581))
+- **Spend credits to reset AutoPilot daily rate limit** — Hit your daily message cap? Spend credits to keep going without waiting for the reset. ([#12526](https://github.com/Significant-Gravitas/AutoGPT/pull/12526))
+- **Rate-limit tiering system** — AutoPilot now supports configurable rate-limit tiers so different user plans get different message caps. ([#12581](https://github.com/Significant-Gravitas/AutoGPT/pull/12581))
 - **Admin rate-limit check and reset** — Admins can look up any user's rate-limit status and reset it with LD-configurable global limits. ([#12566](https://github.com/Significant-Gravitas/AutoGPT/pull/12566))
 - **Admin user search + rate-limit modal** — Shared admin user search component with a rate-limit modal on the spending page. ([#12577](https://github.com/Significant-Gravitas/AutoGPT/pull/12577))
 - **Extended thinking execution mode** — OrchestratorBlock gains an extended thinking mode for deeper, multi-step reasoning. ([#12512](https://github.com/Significant-Gravitas/AutoGPT/pull/12512))
 - **Generic managed credential system** — A new managed credential system with AgentMail auto-provisioning simplifies credential handling. ([#12537](https://github.com/Significant-Gravitas/AutoGPT/pull/12537))
 - **Session-level dry-run flag** — Autopilot sessions can now be flagged as dry-run at the session level. ([#12582](https://github.com/Significant-Gravitas/AutoGPT/pull/12582))
-- **Generic ask_question CoPilot tool** — A new tool lets CoPilot ask structured clarifying questions mid-conversation. ([#12647](https://github.com/Significant-Gravitas/AutoGPT/pull/12647))
+- **Generic ask_question AutoPilot tool** — A new tool lets AutoPilot ask structured clarifying questions mid-conversation. ([#12647](https://github.com/Significant-Gravitas/AutoGPT/pull/12647))
 - **Git committer identity from GitHub profile** — E2B sandbox commits now use the user's real GitHub name and email. ([#12650](https://github.com/Significant-Gravitas/AutoGPT/pull/12650))
-- **SQL query block for CoPilot analytics** — Multi-database SQL block enables CoPilot to query analytics data directly. ([#12569](https://github.com/Significant-Gravitas/AutoGPT/pull/12569))
+- **SQL query block for AutoPilot analytics** — Multi-database SQL block enables AutoPilot to query analytics data directly. ([#12569](https://github.com/Significant-Gravitas/AutoGPT/pull/12569))
 - **Create → dry-run → fix agent generation loop** — Agent generation now follows an iterative create, dry-run, and fix cycle for better results. ([#12578](https://github.com/Significant-Gravitas/AutoGPT/pull/12578))
-- **Fast/Thinking mode toggle** — CoPilot adds a toggle for Fast mode vs Thinking mode with full tool parity. ([#12623](https://github.com/Significant-Gravitas/AutoGPT/pull/12623))
+- **Fast/Thinking mode toggle** — AutoPilot adds a toggle for Fast mode vs Thinking mode with full tool parity. ([#12623](https://github.com/Significant-Gravitas/AutoGPT/pull/12623))
 - **All 12 Z.ai GLM models via OpenRouter** — Access every Z.ai GLM model through OpenRouter integration. ([#12672](https://github.com/Significant-Gravitas/AutoGPT/pull/12672))
 - **include_graph option for find_library_agent** — Fetch the full graph structure when searching library agents for debugging or editing. ([#12622](https://github.com/Significant-Gravitas/AutoGPT/pull/12622))
-- **CoPilot artifact preview panel** — A new preview panel for artifacts generated during CoPilot conversations. ([#12629](https://github.com/Significant-Gravitas/AutoGPT/pull/12629))
-- **Cursor-based message pagination** — CoPilot messages load newest-first with cursor-based pagination for faster load times. ([#12328](https://github.com/Significant-Gravitas/AutoGPT/pull/12328))
+- **AutoPilot artifact preview panel** — A new preview panel for artifacts generated during AutoPilot conversations. ([#12629](https://github.com/Significant-Gravitas/AutoGPT/pull/12629))
+- **Cursor-based message pagination** — AutoPilot messages load newest-first with cursor-based pagination for faster load times. ([#12328](https://github.com/Significant-Gravitas/AutoGPT/pull/12328))
 - **Gitleaks secret scanning** — Pre-commit hooks now include gitleaks to catch secrets before they're committed. ([#12649](https://github.com/Significant-Gravitas/AutoGPT/pull/12649))
 - **Codecov coverage reporting** — Coverage reporting set up across platform and classic with Playwright E2E included. ([#12655](https://github.com/Significant-Gravitas/AutoGPT/pull/12655), [#12665](https://github.com/Significant-Gravitas/AutoGPT/pull/12665))
 - **React integration testing** — Vitest + React Testing Library + MSW test infrastructure added. ([#12667](https://github.com/Significant-Gravitas/AutoGPT/pull/12667))
@@ -59,11 +59,11 @@ You can now **copy your own prompt messages** in CoPilot with a single click. A 
 
 <summary>🎨 UI/UX Improvements</summary>
 
-- **Auto-reconnect after device sleep** — CoPilot chat reconnects automatically after your device wakes from sleep. ([#12519](https://github.com/Significant-Gravitas/AutoGPT/pull/12519))
+- **Auto-reconnect after device sleep** — AutoPilot chat reconnects automatically after your device wakes from sleep. ([#12519](https://github.com/Significant-Gravitas/AutoGPT/pull/12519))
 - **Marketplace card descriptions** — Cards now show 3-line descriptions with a fallback color when no image exists. ([#12557](https://github.com/Significant-Gravitas/AutoGPT/pull/12557))
-- **Hide placeholder during voice recording** — Placeholder text hides when CoPilot voice recording is active. ([#12534](https://github.com/Significant-Gravitas/AutoGPT/pull/12534))
+- **Hide placeholder during voice recording** — Placeholder text hides when AutoPilot voice recording is active. ([#12534](https://github.com/Significant-Gravitas/AutoGPT/pull/12534))
 - **Array field layout fix** — Fixed array field item layout and added FormRenderer Storybook stories. ([#12532](https://github.com/Significant-Gravitas/AutoGPT/pull/12532))
-- **Realistic CoPilot suggestions** — Replaced unrealistic CoPilot suggestion prompts with practical ones. ([#12564](https://github.com/Significant-Gravitas/AutoGPT/pull/12564))
+- **Realistic AutoPilot suggestions** — Replaced unrealistic AutoPilot suggestion prompts with practical ones. ([#12564](https://github.com/Significant-Gravitas/AutoGPT/pull/12564))
 - **Show all agent outputs** — Agent results now display all outputs, not just the last one. ([#12504](https://github.com/Significant-Gravitas/AutoGPT/pull/12504))
 - **Notification follow-ups** — AutoPilot notifications gain branding, UX improvements, persistence, and cross-tab sync. ([#12428](https://github.com/Significant-Gravitas/AutoGPT/pull/12428))
 - **Horizontal scroll for JSON output** — Builder JSON output data now scrolls horizontally instead of overflowing. ([#12638](https://github.com/Significant-Gravitas/AutoGPT/pull/12638))
@@ -84,9 +84,9 @@ You can now **copy your own prompt messages** in CoPilot with a single click. A 
 - **Host-scoped credentials** — Fixed credential resolution for authenticated web requests. ([#12579](https://github.com/Significant-Gravitas/AutoGPT/pull/12579))
 - **Duplicate tool name disambiguation** — OrchestratorBlock now disambiguates duplicate tool names. ([#12555](https://github.com/Significant-Gravitas/AutoGPT/pull/12555))
 - **Gmail recipient validation** — Gmail blocks validate email recipients before making API calls. ([#12546](https://github.com/Significant-Gravitas/AutoGPT/pull/12546))
-- **Tool call circuit breakers** — Added circuit breakers and intermediate persistence in CoPilot. ([#12604](https://github.com/Significant-Gravitas/AutoGPT/pull/12604))
+- **Tool call circuit breakers** — Added circuit breakers and intermediate persistence in AutoPilot. ([#12604](https://github.com/Significant-Gravitas/AutoGPT/pull/12604))
 - **Prompt-too-long retry** — Automatic compaction, model-aware compression, and truncated tool call recovery. ([#12625](https://github.com/Significant-Gravitas/AutoGPT/pull/12625))
-- **Credential loading fix** — Fixed CoPilot credential loading across event loops. ([#12628](https://github.com/Significant-Gravitas/AutoGPT/pull/12628))
+- **Credential loading fix** — Fixed AutoPilot credential loading across event loops. ([#12628](https://github.com/Significant-Gravitas/AutoGPT/pull/12628))
 - **Duplicate block execution prevention** — Prevented duplicate execution from pre-launch argument mismatch. ([#12632](https://github.com/Significant-Gravitas/AutoGPT/pull/12632))
 - **Tool output file reading** — Fixed tool output file reading between E2B and host. ([#12646](https://github.com/Significant-Gravitas/AutoGPT/pull/12646))
 - **Dry-run mode propagation** — Dry-run mode now propagates to special blocks with LLM-powered simulation. ([#12575](https://github.com/Significant-Gravitas/AutoGPT/pull/12575))
