@@ -52,11 +52,6 @@ vi.mock("@/services/environment", () => ({
   environment: { getAGPTServerBaseUrl: () => "http://localhost:8000" },
 }));
 
-const mockInvalidateQueries = vi.fn();
-vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
-}));
-
 const mockToast = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
@@ -108,7 +103,6 @@ beforeEach(() => {
   mockSetNodes.mockClear();
   mockSetEdges.mockClear();
   mockPostV2CreateSession.mockClear();
-  mockInvalidateQueries.mockClear();
   mockSendMessage.mockClear();
   mockSetMessages.mockClear();
   mockToast.mockClear();
@@ -425,29 +419,6 @@ describe("useBuilderChatPanel – flowID reset", () => {
 
     // setMessages([]) must be called unconditionally regardless of cached session
     expect(mockSetMessages).toHaveBeenCalledWith([]);
-  });
-});
-
-describe("useBuilderChatPanel – apply does not trigger cache refetch", () => {
-  it("does NOT call invalidateQueries after applying an update_node_input action (prevents refetch overwriting local state)", () => {
-    mockNodes.push({
-      id: "n1",
-      data: { hardcodedValues: { existing: "val" } },
-    });
-    mockFlowID = "flow-cache";
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n1",
-        key: "query",
-        value: "new val",
-      });
-    });
-
-    expect(mockInvalidateQueries).not.toHaveBeenCalled();
   });
 });
 

@@ -7,7 +7,6 @@ import { DefaultChatTransport } from "ai";
 import {
   type KeyboardEvent,
   type RefObject,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -31,11 +30,9 @@ import {
   parseGraphActions,
   serializeGraphForChat,
 } from "./helpers";
+import { TEXTAREA_MAX_LENGTH } from "./components/PanelInput";
 
 type SendMessageFn = ReturnType<typeof useChat>["sendMessage"];
-
-/** Maximum characters accepted by `sendRawMessage`, mirroring the textarea `maxLength`. */
-const MAX_RAW_MESSAGE_LENGTH = 4000;
 
 /**
  * Per-graph session cache with a simple LRU cap.
@@ -452,35 +449,32 @@ export function useBuilderChatPanel({
     }
   }
 
-  const handleApplyAction = useCallback(
-    (action: GraphAction) => {
-      const deps: ApplyActionDeps = {
-        toast,
-        setNodes,
-        setEdges,
-        setUndoStack,
-        setAppliedActionKeys,
-      };
-      let applied = false;
-      if (action.type === "update_node_input") {
-        applied = applyUpdateNodeInput(action, deps);
-      } else if (action.type === "connect_nodes") {
-        applied = applyConnectNodes(action, deps);
-      } else {
-        // Exhaustiveness guard — TypeScript ensures all GraphAction types are handled above.
-        const _: never = action;
-        void _;
-      }
-      if (applied) {
-        setAppliedActionKeys((prev) => {
-          const next = new Set(prev);
-          next.add(getActionKey(action));
-          return next;
-        });
-      }
-    },
-    [toast, setNodes, setEdges],
-  );
+  function handleApplyAction(action: GraphAction) {
+    const deps: ApplyActionDeps = {
+      toast,
+      setNodes,
+      setEdges,
+      setUndoStack,
+      setAppliedActionKeys,
+    };
+    let applied = false;
+    if (action.type === "update_node_input") {
+      applied = applyUpdateNodeInput(action, deps);
+    } else if (action.type === "connect_nodes") {
+      applied = applyConnectNodes(action, deps);
+    } else {
+      // Exhaustiveness guard — TypeScript ensures all GraphAction types are handled above.
+      const _: never = action;
+      void _;
+    }
+    if (applied) {
+      setAppliedActionKeys((prev) => {
+        const next = new Set(prev);
+        next.add(getActionKey(action));
+        return next;
+      });
+    }
+  }
 
   function handleUndoLastAction() {
     // Read the current stack directly rather than inside the setUndoStack updater.
@@ -502,8 +496,8 @@ export function useBuilderChatPanel({
   function sendRawMessage(text: string) {
     if (!text || !canSend) return;
     const trimmed =
-      text.length > MAX_RAW_MESSAGE_LENGTH
-        ? text.slice(0, MAX_RAW_MESSAGE_LENGTH)
+      text.length > TEXTAREA_MAX_LENGTH
+        ? text.slice(0, TEXTAREA_MAX_LENGTH)
         : text;
     sendMessage({ text: trimmed });
   }
