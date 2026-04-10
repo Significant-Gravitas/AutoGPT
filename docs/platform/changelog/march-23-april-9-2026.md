@@ -6,7 +6,7 @@
 
 ## Themed Prompt Categories
 
-When you start a new AutoPilot conversation, you now see **themed prompt categories** — Learn, Create, Automate, and Organize. Each theme button opens a popover with **5 contextual prompts** tailored to the category. Personalized prompts from your Tally survey are distributed across themes automatically, and the system falls back to curated defaults when no custom prompts exist. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12515)
+When you start a new AutoPilot conversation, you now see **themed prompt categories** — Learn, Create, Automate, and Organize. Each theme button opens a popover with **5 contextual prompts** tailored to the category. Personalized prompts are distributed across themes automatically. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12515)
 
 <figure><img src="../.gitbook/assets/v0654-prompt-categories-hero.png" alt="Themed prompt categories in the AutoPilot empty session"><figcaption><p>Themed prompt categories on the new conversation screen</p></figcaption></figure>
 
