@@ -231,6 +231,8 @@ def _make_group_by_row(
     cost: int = 5000,
     input_tokens: int = 1000,
     output_tokens: int = 500,
+    cache_read_tokens: int = 0,
+    cache_creation_tokens: int = 0,
     duration: float = 10.5,
     tracking_amount: float = 0.0,
     count: int = 3,
@@ -241,6 +243,8 @@ def _make_group_by_row(
             "costMicrodollars": cost,
             "inputTokens": input_tokens,
             "outputTokens": output_tokens,
+            "cacheReadTokens": cache_read_tokens,
+            "cacheCreationTokens": cache_creation_tokens,
             "duration": duration,
             "trackingAmount": tracking_amount,
         },
@@ -309,6 +313,50 @@ class TestGetPlatformCostDashboard:
         assert dashboard.by_provider[0].total_duration_seconds == 10.5
         assert len(dashboard.by_user) == 1
         assert dashboard.by_user[0].email == "a***@b.com"
+
+    @pytest.mark.asyncio
+    async def test_cache_tokens_aggregated_not_hardcoded(self):
+        """cache_read_tokens and cache_creation_tokens must be read from the
+        DB aggregation, not hardcoded to 0 (regression guard for Sentry report)."""
+        provider_row = _make_group_by_row(
+            provider="anthropic",
+            tracking_type="tokens",
+            cost=1000,
+            input_tokens=800,
+            output_tokens=200,
+            cache_read_tokens=400,
+            cache_creation_tokens=100,
+            count=1,
+        )
+        user_row = _make_group_by_row(user_id="u2", cost=1000, count=1)
+
+        mock_actions = MagicMock()
+        mock_actions.group_by = AsyncMock(
+            side_effect=[
+                [provider_row],  # by_provider
+                [user_row],  # by_user
+                [{"userId": "u2"}],  # distinct users
+                [provider_row],  # total agg
+            ]
+        )
+        mock_actions.find_many = AsyncMock(return_value=[])
+
+        with (
+            patch(
+                "backend.data.platform_cost.PrismaLog.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost.PrismaUser.prisma",
+                return_value=mock_actions,
+            ),
+        ):
+            dashboard = await get_platform_cost_dashboard()
+
+        assert len(dashboard.by_provider) == 1
+        row = dashboard.by_provider[0]
+        assert row.total_cache_read_tokens == 400
+        assert row.total_cache_creation_tokens == 100
 
     @pytest.mark.asyncio
     async def test_returns_empty_dashboard(self):

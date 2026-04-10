@@ -239,6 +239,8 @@ async def get_platform_cost_dashboard(
         "costMicrodollars": True,
         "inputTokens": True,
         "outputTokens": True,
+        "cacheReadTokens": True,
+        "cacheCreationTokens": True,
         "duration": True,
         "trackingAmount": True,
     }
@@ -327,8 +329,12 @@ async def get_platform_cost_dashboard(
                 or 0,
                 total_input_tokens=(r.get("_sum") or {}).get("inputTokens") or 0,
                 total_output_tokens=(r.get("_sum") or {}).get("outputTokens") or 0,
-                total_cache_read_tokens=0,
-                total_cache_creation_tokens=0,
+                total_cache_read_tokens=(r.get("_sum") or {}).get("cacheReadTokens")
+                or 0,
+                total_cache_creation_tokens=(r.get("_sum") or {}).get(
+                    "cacheCreationTokens"
+                )
+                or 0,
                 total_duration_seconds=(r.get("_sum") or {}).get("duration") or 0.0,
                 total_tracking_amount=(r.get("_sum") or {}).get("trackingAmount")
                 or 0.0,
