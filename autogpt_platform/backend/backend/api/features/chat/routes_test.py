@@ -579,3 +579,273 @@ class TestStreamChatRequestModeValidation:
 
         req = StreamChatRequest(message="hi")
         assert req.mode is None
+
+
+# ─── QueuePendingMessageRequest validation ────────────────────────────
+
+
+class TestQueuePendingMessageRequest:
+    """Unit tests for QueuePendingMessageRequest field validation."""
+
+    def test_accepts_valid_message(self) -> None:
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        req = QueuePendingMessageRequest(message="hello")
+        assert req.message == "hello"
+
+    def test_rejects_empty_message(self) -> None:
+        import pydantic
+
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            QueuePendingMessageRequest(message="")
+
+    def test_rejects_message_over_limit(self) -> None:
+        import pydantic
+
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            QueuePendingMessageRequest(message="x" * 16_001)
+
+    def test_accepts_valid_context(self) -> None:
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        req = QueuePendingMessageRequest(
+            message="hi",
+            context={"url": "https://example.com", "content": "page text"},
+        )
+        assert req.context is not None
+        assert req.context["url"] == "https://example.com"
+
+    def test_rejects_context_url_over_limit(self) -> None:
+        import pydantic
+
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        with pytest.raises(pydantic.ValidationError, match="url"):
+            QueuePendingMessageRequest(
+                message="hi",
+                context={"url": "https://example.com/" + "x" * 2_000},
+            )
+
+    def test_rejects_context_content_over_limit(self) -> None:
+        import pydantic
+
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        with pytest.raises(pydantic.ValidationError, match="content"):
+            QueuePendingMessageRequest(
+                message="hi",
+                context={"content": "x" * 32_001},
+            )
+
+    def test_rejects_extra_fields(self) -> None:
+        """extra='forbid' should reject unknown fields."""
+        import pydantic
+
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            QueuePendingMessageRequest(message="hi", unknown_field="bad")  # type: ignore[call-arg]
+
+    def test_accepts_up_to_20_file_ids(self) -> None:
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        req = QueuePendingMessageRequest(
+            message="hi",
+            file_ids=[f"00000000-0000-0000-0000-{i:012d}" for i in range(20)],
+        )
+        assert req.file_ids is not None
+        assert len(req.file_ids) == 20
+
+    def test_rejects_more_than_20_file_ids(self) -> None:
+        import pydantic
+
+        from backend.api.features.chat.routes import QueuePendingMessageRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            QueuePendingMessageRequest(
+                message="hi",
+                file_ids=[f"00000000-0000-0000-0000-{i:012d}" for i in range(21)],
+            )
+
+
+# ─── queue_pending_message endpoint ──────────────────────────────────
+
+
+def _mock_pending_internals(
+    mocker: pytest_mock.MockerFixture, *, session_exists: bool = True
+):
+    """Mock all async dependencies for the pending-message endpoint."""
+    if session_exists:
+        mock_session = mocker.MagicMock()
+        mock_session.id = "sess-1"
+        mocker.patch(
+            "backend.api.features.chat.routes._validate_and_get_session",
+            new_callable=AsyncMock,
+            return_value=mock_session,
+        )
+    else:
+        mocker.patch(
+            "backend.api.features.chat.routes._validate_and_get_session",
+            side_effect=fastapi.HTTPException(
+                status_code=404, detail="Session not found."
+            ),
+        )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, None),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.track_user_message",
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.push_pending_message",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    mock_registry = mocker.MagicMock()
+    mock_registry.get_session = mocker.AsyncMock(return_value=None)
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry",
+        mock_registry,
+    )
+
+
+def test_queue_pending_message_returns_202(mocker: pytest_mock.MockerFixture) -> None:
+    """Happy path: valid message returns 202 with buffer_length."""
+    _mock_pending_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["buffer_length"] == 1
+    assert data["turn_in_flight"] is False
+
+
+def test_queue_pending_message_empty_body_returns_422() -> None:
+    """Empty message must be rejected by Pydantic before hitting any route logic."""
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": ""},
+    )
+    assert response.status_code == 422
+
+
+def test_queue_pending_message_missing_message_returns_422() -> None:
+    """Missing 'message' field returns 422."""
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={},
+    )
+    assert response.status_code == 422
+
+
+def test_queue_pending_message_session_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """If the session doesn't exist or belong to the user, returns 404."""
+    _mock_pending_internals(mocker, session_exists=False)
+
+    response = client.post(
+        "/sessions/bad-sess/messages/pending",
+        json={"message": "hi"},
+    )
+    assert response.status_code == 404
+
+
+def test_queue_pending_message_rate_limited_returns_429(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """When rate limit is exceeded, endpoint returns 429."""
+    from backend.copilot.rate_limit import RateLimitExceeded
+
+    _mock_pending_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        side_effect=RateLimitExceeded("daily", datetime.now(UTC) + timedelta(hours=1)),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
+    )
+    assert response.status_code == 429
+
+
+def test_queue_pending_message_context_url_too_long_returns_422() -> None:
+    """context.url over 2 KB is rejected."""
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={
+            "message": "hi",
+            "context": {"url": "https://example.com/" + "x" * 2_000},
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_queue_pending_message_context_content_too_long_returns_422() -> None:
+    """context.content over 32 KB is rejected."""
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={
+            "message": "hi",
+            "context": {"content": "x" * 32_001},
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_queue_pending_message_too_many_file_ids_returns_422() -> None:
+    """More than 20 file_ids should be rejected."""
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={
+            "message": "hi",
+            "file_ids": [f"00000000-0000-0000-0000-{i:012d}" for i in range(21)],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_queue_pending_message_file_ids_scoped_to_workspace(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """File IDs must be sanitized to the user's workspace before push."""
+    _mock_pending_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_workspace",
+        new_callable=AsyncMock,
+        return_value=type("W", (), {"id": "ws-1"})(),
+    )
+    mock_prisma = mocker.MagicMock()
+    mock_prisma.find_many = mocker.AsyncMock(return_value=[])
+    mocker.patch(
+        "prisma.models.UserWorkspaceFile.prisma",
+        return_value=mock_prisma,
+    )
+    fid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi", "file_ids": [fid, "not-a-uuid"]},
+    )
+
+    call_kwargs = mock_prisma.find_many.call_args[1]
+    assert call_kwargs["where"]["id"]["in"] == [fid]
+    assert call_kwargs["where"]["workspaceId"] == "ws-1"
+    assert call_kwargs["where"]["isDeleted"] is False
