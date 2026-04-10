@@ -35,6 +35,11 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.pending_messages import (
+    clear_pending_messages,
+    drain_pending_messages,
+    format_pending_as_user_message,
+)
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
@@ -1160,6 +1165,35 @@ async def stream_chat_completion_baseline(
                 yield evt
             state.pending_events.clear()
 
+            # Inject any messages the user queued while the turn was
+            # running.  ``tool_call_loop`` mutates ``openai_messages``
+            # in-place, so appending here means the model sees the new
+            # messages before its next LLM call.  Also persist them to
+            # the ChatSession so they're part of the durable transcript.
+            pending = await drain_pending_messages(session_id)
+            if pending:
+                for pm in pending:
+                    maybe_append_user_message(
+                        session, pm.content, is_user_message=True
+                    )
+                    openai_messages.append(format_pending_as_user_message(pm))
+                    transcript_builder.append_user(content=pm.content)
+                try:
+                    await upsert_chat_session(session)
+                except Exception as persist_err:
+                    logger.warning(
+                        "[Baseline] Failed to persist pending messages for "
+                        "session %s: %s",
+                        session_id,
+                        persist_err,
+                    )
+                logger.info(
+                    "[Baseline] Injected %d pending message(s) into "
+                    "session %s mid-turn",
+                    len(pending),
+                    session_id,
+                )
+
         if loop_result and not loop_result.finished_naturally:
             limit_msg = (
                 f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
@@ -1200,6 +1234,20 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
+        # Safety net — if the stream exited early (error, timeout, etc.)
+        # we may still have queued pending messages in the buffer.  Drop
+        # them so they don't leak into the next turn.  During normal
+        # completion the tool-call loop drain will already have cleared
+        # the buffer, so this is a no-op in the happy path.
+        try:
+            await clear_pending_messages(session_id)
+        except Exception as clear_err:
+            logger.warning(
+                "[Baseline] Failed to clear pending messages for %s: %s",
+                session_id,
+                clear_err,
+            )
+
         # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
             try:
