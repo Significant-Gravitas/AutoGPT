@@ -39,7 +39,6 @@ You can now **copy your own prompt messages** in AutoPilot with a single click. 
 - **Session-level dry-run flag** — Autopilot sessions can now be flagged as dry-run at the session level. ([#12582](https://github.com/Significant-Gravitas/AutoGPT/pull/12582))
 - **Generic ask_question AutoPilot tool** — A new tool lets AutoPilot ask structured clarifying questions mid-conversation. ([#12647](https://github.com/Significant-Gravitas/AutoGPT/pull/12647))
 - **Git committer identity from GitHub profile** — E2B sandbox commits now use the user's real GitHub name and email. ([#12650](https://github.com/Significant-Gravitas/AutoGPT/pull/12650))
-- **SQL query block for AutoPilot analytics** — Multi-database SQL block enables AutoPilot to query analytics data directly. ([#12569](https://github.com/Significant-Gravitas/AutoGPT/pull/12569))
 - **Create → dry-run → fix agent generation loop** — Agent generation now follows an iterative create, dry-run, and fix cycle for better results. ([#12578](https://github.com/Significant-Gravitas/AutoGPT/pull/12578))
 - **Fast/Thinking mode toggle** — AutoPilot adds a toggle for Fast mode vs Thinking mode with full tool parity. ([#12623](https://github.com/Significant-Gravitas/AutoGPT/pull/12623))
 - **All 12 Z.ai GLM models via OpenRouter** — Access every Z.ai GLM model through OpenRouter integration. ([#12672](https://github.com/Significant-Gravitas/AutoGPT/pull/12672))
