@@ -23,7 +23,6 @@ buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
 
 import json
 import logging
-import time
 from typing import Any, cast
 
 from pydantic import BaseModel, Field
@@ -49,11 +48,9 @@ _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 class PendingMessage(BaseModel):
     """A user message queued for injection into an in-flight turn."""
 
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=16_000)
     file_ids: list[str] = Field(default_factory=list)
     context: dict[str, str] | None = None
-    # Unix epoch seconds at enqueue time, for ordering and debugging.
-    enqueued_at: float = Field(default_factory=time.time)
 
 
 def _buffer_key(session_id: str) -> str:
@@ -64,31 +61,50 @@ def _notify_channel(session_id: str) -> str:
     return f"{_PENDING_CHANNEL_PREFIX}{session_id}"
 
 
+# Lua script: push-then-trim-then-expire-then-length, atomically.
+# Running these four commands via a single EVAL guarantees a concurrent
+# LPOP drain lands either entirely before the push (returns 0 from
+# our earlier LLEN) or entirely after it (sees the new message) —
+# never in the middle of a partial state.
+_PUSH_LUA = """
+redis.call('RPUSH', KEYS[1], ARGV[1])
+redis.call('LTRIM', KEYS[1], -tonumber(ARGV[2]), -1)
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+return redis.call('LLEN', KEYS[1])
+"""
+
+
 async def push_pending_message(
     session_id: str,
     message: PendingMessage,
 ) -> int:
-    """Append a pending message to the session's buffer.
+    """Append a pending message to the session's buffer atomically.
 
     Returns the new buffer length.  Enforces ``MAX_PENDING_MESSAGES`` by
     trimming from the left (oldest) — the newest message always wins if
     the user has been typing faster than the copilot can drain.
+
+    The push + trim + expire + llen are wrapped in a single Lua EVAL so
+    concurrent LPOP drains from the executor never observe a partial
+    state.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
 
-    # Push + trim + expire in a pipeline so the three writes land atomically
-    # enough for this use case (pipelining doesn't guarantee atomicity
-    # across commands but ordering is preserved).
-    async with redis.pipeline(transaction=False) as pipe:
-        pipe.rpush(key, payload)
-        pipe.ltrim(key, -MAX_PENDING_MESSAGES, -1)
-        pipe.expire(key, _PENDING_TTL_SECONDS)
-        pipe.llen(key)
-        results = await pipe.execute()
-
-    new_length = int(results[-1])
+    new_length = int(
+        await cast(
+            "Any",
+            redis.eval(
+                _PUSH_LUA,
+                1,
+                key,
+                payload,
+                str(MAX_PENDING_MESSAGES),
+                str(_PENDING_TTL_SECONDS),
+            ),
+        )
+    )
 
     # Fire-and-forget notify.  Subscribers use this as a wake-up hint;
     # the buffer itself is authoritative so a lost notify is harmless.
