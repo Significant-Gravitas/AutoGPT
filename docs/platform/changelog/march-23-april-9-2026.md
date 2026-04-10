@@ -34,8 +34,6 @@ You can now **copy your own prompt messages** in AutoPilot with a single click. 
 
 - **Spend credits to reset AutoPilot daily rate limit** — Hit your daily message cap? Spend credits to keep going without waiting for the reset. ([#12526](https://github.com/Significant-Gravitas/AutoGPT/pull/12526))
 - **Rate-limit tiering system** — AutoPilot now supports configurable rate-limit tiers so different user plans get different message caps. ([#12581](https://github.com/Significant-Gravitas/AutoGPT/pull/12581))
-- **Admin rate-limit check and reset** — Admins can look up any user's rate-limit status and reset it with LD-configurable global limits. ([#12566](https://github.com/Significant-Gravitas/AutoGPT/pull/12566))
-- **Admin user search + rate-limit modal** — Shared admin user search component with a rate-limit modal on the spending page. ([#12577](https://github.com/Significant-Gravitas/AutoGPT/pull/12577))
 - **Extended thinking execution mode** — OrchestratorBlock gains an extended thinking mode for deeper, multi-step reasoning. ([#12512](https://github.com/Significant-Gravitas/AutoGPT/pull/12512))
 - **Generic managed credential system** — A new managed credential system with AgentMail auto-provisioning simplifies credential handling. ([#12537](https://github.com/Significant-Gravitas/AutoGPT/pull/12537))
 - **Session-level dry-run flag** — Autopilot sessions can now be flagged as dry-run at the session level. ([#12582](https://github.com/Significant-Gravitas/AutoGPT/pull/12582))
