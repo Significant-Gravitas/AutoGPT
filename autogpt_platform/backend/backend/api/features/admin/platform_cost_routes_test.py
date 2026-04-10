@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -6,7 +7,7 @@ import pytest
 import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
-from backend.data.platform_cost import PlatformCostDashboard
+from backend.data.platform_cost import CostLogRow, PlatformCostDashboard
 
 from .platform_cost_routes import router as platform_cost_router
 
@@ -190,3 +191,101 @@ def test_get_dashboard_repeated_requests(
     assert r2.status_code == 200
     assert r1.json()["total_cost_microdollars"] == 42
     assert r2.json()["total_cost_microdollars"] == 42
+
+
+def _make_cost_log_row() -> CostLogRow:
+    return CostLogRow(
+        id="log-1",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        user_id="user-1",
+        email="u***@example.com",
+        graph_exec_id="graph-1",
+        node_exec_id="node-1",
+        block_name="LlmCallBlock",
+        provider="anthropic",
+        tracking_type="token",
+        cost_microdollars=500,
+        input_tokens=100,
+        output_tokens=50,
+        cache_read_tokens=10,
+        cache_creation_tokens=5,
+        duration=1.5,
+        model="claude-3-5-sonnet-20241022",
+    )
+
+
+def test_export_logs_success(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    row = _make_cost_log_row()
+    mocker.patch(
+        "backend.api.features.admin.platform_cost_routes.get_platform_cost_logs_for_export",
+        AsyncMock(return_value=([row], False)),
+    )
+
+    response = client.get("/platform-costs/logs/export")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_rows"] == 1
+    assert data["truncated"] is False
+    assert len(data["logs"]) == 1
+    assert data["logs"][0]["cache_read_tokens"] == 10
+    assert data["logs"][0]["cache_creation_tokens"] == 5
+
+
+def test_export_logs_truncated(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    rows = [_make_cost_log_row() for _ in range(3)]
+    mocker.patch(
+        "backend.api.features.admin.platform_cost_routes.get_platform_cost_logs_for_export",
+        AsyncMock(return_value=(rows, True)),
+    )
+
+    response = client.get("/platform-costs/logs/export")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_rows"] == 3
+    assert data["truncated"] is True
+
+
+def test_export_logs_with_filters(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mock_export = AsyncMock(return_value=([], False))
+    mocker.patch(
+        "backend.api.features.admin.platform_cost_routes.get_platform_cost_logs_for_export",
+        mock_export,
+    )
+
+    response = client.get(
+        "/platform-costs/logs/export",
+        params={
+            "provider": "anthropic",
+            "model": "claude-3-5-sonnet-20241022",
+            "block_name": "LlmCallBlock",
+            "tracking_type": "token",
+        },
+    )
+    assert response.status_code == 200
+    mock_export.assert_called_once()
+    call_kwargs = mock_export.call_args.kwargs
+    assert call_kwargs["provider"] == "anthropic"
+    assert call_kwargs["model"] == "claude-3-5-sonnet-20241022"
+    assert call_kwargs["block_name"] == "LlmCallBlock"
+    assert call_kwargs["tracking_type"] == "token"
+
+
+def test_export_logs_requires_admin() -> None:
+    import fastapi
+    from fastapi import HTTPException
+
+    def reject_jwt(request: fastapi.Request):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    app.dependency_overrides[get_jwt_payload] = reject_jwt
+    try:
+        response = client.get("/platform-costs/logs/export")
+        assert response.status_code == 401
+    finally:
+        app.dependency_overrides.clear()

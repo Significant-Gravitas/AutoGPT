@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { CostLogRow } from "@/app/api/__generated__/models/costLogRow";
 import type { ProviderCostSummary } from "@/app/api/__generated__/models/providerCostSummary";
 import {
   toDateOrUndefined,
+  buildCostLogsCsv,
   formatMicrodollars,
   formatTokens,
   formatDuration,
@@ -126,6 +128,25 @@ describe("estimateCostForRow", () => {
     expect(estimateCostForRow(row, {})).toBeNull();
   });
 
+  it("uses cache-aware rates when cache tokens present", () => {
+    // anthropic base rate = $0.008/1K tokens
+    // uncached input 1000 * 0.008/1K = 0.008
+    // cache reads 2000 * 0.008 * 0.1 / 1K = 0.0016
+    // cache writes 500 * 0.008 * 1.25 / 1K = 0.005
+    // output 1000 * 0.008/1K = 0.008
+    // total = 0.0226 USD = 22_600 microdollars
+    const row = makeRow({
+      provider: "anthropic",
+      tracking_type: "tokens",
+      total_cost_microdollars: 0,
+      total_input_tokens: 1000,
+      total_output_tokens: 1000,
+      total_cache_read_tokens: 2000,
+      total_cache_creation_tokens: 500,
+    });
+    expect(estimateCostForRow(row, {})).toBe(22_600);
+  });
+
   it("uses per-run override when provided", () => {
     const row = makeRow({
       provider: "google_maps",
@@ -133,7 +154,7 @@ describe("estimateCostForRow", () => {
       request_count: 10,
     });
     // override = 0.05 * 10 * 1_000_000 = 500_000
-    expect(estimateCostForRow(row, { "google_maps:per_run": 0.05 })).toBe(
+    expect(estimateCostForRow(row, { "google_maps:per_run:": 0.05 })).toBe(
       500_000,
     );
   });
@@ -296,5 +317,52 @@ describe("toUtcIso", () => {
   it("converts local datetime-local to ISO string", () => {
     const result = toUtcIso("2026-01-15T12:30");
     expect(result).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+});
+
+describe("buildCostLogsCsv", () => {
+  function makeLog(overrides: Partial<CostLogRow>): CostLogRow {
+    return {
+      id: "abc123",
+      created_at: "2026-01-15T10:00:00Z" as unknown as Date,
+      block_name: "LLMBlock",
+      provider: "anthropic",
+      ...overrides,
+    };
+  }
+
+  it("emits a header row and one data row", () => {
+    const csv = buildCostLogsCsv([makeLog({})]);
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("Time (UTC)");
+    expect(lines[0]).toContain("Provider");
+    expect(lines[1]).toContain("anthropic");
+  });
+
+  it("escapes double-quotes in field values", () => {
+    const csv = buildCostLogsCsv([makeLog({ block_name: 'Say "Hello"' })]);
+    expect(csv).toContain('"Say ""Hello"""');
+  });
+
+  it("converts cost_microdollars to USD with 8 decimal places", () => {
+    const csv = buildCostLogsCsv([makeLog({ cost_microdollars: 1_234_567 })]);
+    expect(csv).toContain("1.23456700");
+  });
+
+  it("includes cache token columns", () => {
+    const csv = buildCostLogsCsv([
+      makeLog({ cache_read_tokens: 500, cache_creation_tokens: 100 }),
+    ]);
+    const lines = csv.split("\r\n");
+    expect(lines[0]).toContain("Cache Read Tokens");
+    expect(lines[0]).toContain("Cache Creation Tokens");
+    expect(lines[1]).toContain('"500"');
+    expect(lines[1]).toContain('"100"');
+  });
+
+  it("returns only header for empty log list", () => {
+    const csv = buildCostLogsCsv([]);
+    expect(csv.split("\r\n")).toHaveLength(1);
   });
 });

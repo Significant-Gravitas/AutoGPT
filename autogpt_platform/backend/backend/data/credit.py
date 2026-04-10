@@ -10,6 +10,7 @@ from prisma.enums import (
     CreditTransactionType,
     NotificationType,
     OnboardingStep,
+    SubscriptionTier,
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
@@ -31,7 +32,7 @@ from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
 from backend.util.exceptions import InsufficientBalanceError
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 from backend.util.json import SafeJson, dumps
 from backend.util.models import Pagination
 from backend.util.retry import func_retry
@@ -1144,10 +1145,12 @@ class BetaUserCredit(UserCredit):
         if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
             return balance
 
+        target = self.num_user_credits_refill
+
         try:
             balance, _ = await self._add_transaction(
                 user_id=user_id,
-                amount=max(self.num_user_credits_refill - balance, 0),
+                amount=max(target - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
                 metadata=SafeJson({"reason": "Monthly credit refill"}),
@@ -1250,6 +1253,33 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
         where={"id": user_id},
         data={"topUpConfig": SafeJson(config.model_dump())},
     )
+    get_user_by_id.cache_delete(user_id)
+
+
+async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
+    """Set the user's subscription tier (used by webhook and admin flows)."""
+    await User.prisma().update(
+        where={"id": user_id},
+        data={"subscriptionTier": tier},
+    )
+    get_user_by_id.cache_delete(user_id)
+
+
+async def cancel_stripe_subscription(user_id: str) -> None:
+    """Cancel all active Stripe subscriptions for a user (called on downgrade to FREE)."""
+    customer_id = await get_stripe_customer_id(user_id)
+    subscriptions = stripe.Subscription.list(
+        customer=customer_id, status="active", limit=10
+    )
+    for sub in subscriptions.auto_paging_iter():
+        try:
+            stripe.Subscription.cancel(sub["id"])
+        except stripe.StripeError:
+            logger.warning(
+                "cancel_stripe_subscription: failed to cancel sub %s for user %s",
+                sub["id"],
+                user_id,
+            )
 
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
@@ -1259,6 +1289,78 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.top_up_config)
+
+
+async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
+    """Return Stripe Price ID for a tier from LaunchDarkly. None = not configured."""
+    flag_map = {
+        SubscriptionTier.PRO: Flag.STRIPE_PRICE_PRO,
+        SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_BUSINESS,
+    }
+    flag = flag_map.get(tier)
+    if flag is None:
+        return None
+    price_id = await get_feature_flag_value(flag.value, user_id="", default="")
+    return price_id if isinstance(price_id, str) and price_id else None
+
+
+async def create_subscription_checkout(
+    user_id: str,
+    tier: SubscriptionTier,
+    success_url: str,
+    cancel_url: str,
+) -> str:
+    """Create a Stripe Checkout Session for a subscription. Returns the redirect URL."""
+    price_id = await get_subscription_price_id(tier)
+    if not price_id:
+        raise ValueError(f"Subscription not available for tier {tier.value}")
+    customer_id = await get_stripe_customer_id(user_id)
+    session = stripe.checkout.Session.create(
+        customer=customer_id,
+        mode="subscription",
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        subscription_data={"metadata": {"user_id": user_id, "tier": tier.value}},
+    )
+    return session.url or ""
+
+
+async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
+    """Update User.subscriptionTier from a Stripe subscription object."""
+    customer_id = stripe_subscription["customer"]
+    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    if not user:
+        logger.warning(
+            "sync_subscription_from_stripe: no user for customer %s", customer_id
+        )
+        return
+    status = stripe_subscription.get("status", "")
+    if status in ("active", "trialing"):
+        price_id = ""
+        items = stripe_subscription.get("items", {}).get("data", [])
+        if items:
+            price_id = items[0].get("price", {}).get("id", "")
+        pro_price = await get_subscription_price_id(SubscriptionTier.PRO)
+        biz_price = await get_subscription_price_id(SubscriptionTier.BUSINESS)
+        if price_id and pro_price and price_id == pro_price:
+            tier = SubscriptionTier.PRO
+        elif price_id and biz_price and price_id == biz_price:
+            tier = SubscriptionTier.BUSINESS
+        else:
+            # Unknown or unconfigured price ID — preserve the user's current tier
+            # rather than defaulting to FREE. This prevents accidental downgrades
+            # during a price migration or when LD flags are not yet configured.
+            logger.warning(
+                "sync_subscription_from_stripe: unknown price %s for customer %s,"
+                " preserving current tier",
+                price_id,
+                customer_id,
+            )
+            return
+    else:
+        tier = SubscriptionTier.FREE
+    await set_subscription_tier(user.id, tier)
 
 
 async def admin_get_user_history(

@@ -498,6 +498,42 @@ async def update_tool_message_content(
         return False
 
 
+async def update_message_content_by_sequence(
+    session_id: str,
+    sequence: int,
+    new_content: str,
+) -> bool:
+    """Update the content of a specific message by its sequence number.
+
+    Used to persist content modifications (e.g. user-context prefix injection)
+    to a message that was already saved to the DB.
+
+    Args:
+        session_id: The chat session ID.
+        sequence: The 0-based sequence number of the message to update.
+        new_content: The new content to set.
+
+    Returns:
+        True if a message was updated, False otherwise.
+    """
+    try:
+        result = await PrismaChatMessage.prisma().update_many(
+            where={"sessionId": session_id, "sequence": sequence},
+            data={"content": sanitize_string(new_content)},
+        )
+        if result == 0:
+            logger.warning(
+                f"No message found to update for session {session_id}, sequence {sequence}"
+            )
+            return False
+        return True
+    except Exception as e:
+        logger.error(
+            f"Failed to update message for session {session_id}, sequence {sequence}: {e}"
+        )
+        return False
+
+
 async def set_turn_duration(session_id: str, duration_ms: int) -> None:
     """Set durationMs on the last assistant message in a session.
 

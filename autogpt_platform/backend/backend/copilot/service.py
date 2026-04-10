@@ -70,6 +70,21 @@ Your goal is to help users automate tasks by:
 
 Be concise, proactive, and action-oriented. Bias toward showing working solutions over lengthy explanations."""
 
+# Static system prompt for token caching — identical for all users.
+# User-specific context is injected into the first user message instead,
+# so the system prompt never changes and can be cached across all sessions.
+_CACHEABLE_SYSTEM_PROMPT = """You are an AI automation assistant helping users build and run automations.
+
+Your goal is to help users automate tasks by:
+- Understanding their needs and business context
+- Building and running working automations
+- Delivering tangible value through action, not just explanation
+
+Be concise, proactive, and action-oriented. Bias toward showing working solutions over lengthy explanations.
+
+When the user provides a <user_context> block in their message, use it to personalise your responses.
+For users you are meeting for the first time with no context provided, greet them warmly and introduce them to the AutoGPT platform."""
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers (used by SDK service and baseline)
@@ -148,6 +163,50 @@ async def _build_system_prompt(
 
     compiled = await _get_system_prompt_template(context)
     return compiled, understanding
+
+
+async def _build_cacheable_system_prompt(
+    user_id: str | None,
+) -> tuple[str, Any]:
+    """Build a fully static system prompt suitable for LLM token caching.
+
+    Unlike _build_system_prompt, user-specific context is NOT embedded here.
+    Callers must inject the returned understanding into the first user message
+    via format_understanding_for_prompt() so the system prompt stays identical
+    across all users and sessions, enabling cross-session cache hits.
+
+    Returns:
+        Tuple of (static_prompt, understanding_object_or_None)
+    """
+    understanding = None
+    if user_id:
+        try:
+            understanding = await understanding_db().get_business_understanding(user_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch business understanding: {e}")
+
+    if _is_langfuse_configured():
+        try:
+            label = (
+                None
+                if settings.config.app_env == AppEnvironment.PRODUCTION
+                else "latest"
+            )
+            prompt = await asyncio.to_thread(
+                _get_langfuse().get_prompt,
+                config.langfuse_prompt_name,
+                label=label,
+                cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
+            )
+            # Pass empty string so existing Langfuse templates stay static
+            compiled = prompt.compile(users_information="")
+            return compiled, understanding
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch cacheable prompt from Langfuse, using default: {e}"
+            )
+
+    return _CACHEABLE_SYSTEM_PROMPT, understanding
 
 
 async def _generate_session_title(

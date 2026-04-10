@@ -10,11 +10,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
-import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
+from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockSchema
@@ -393,7 +395,7 @@ async def execute_node(
     output_size = 0
 
     # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
-    scope = sentry_sdk.get_current_scope()
+    scope = _sentry_get_current_scope()
 
     # save the tags
     original_user = scope._user
@@ -428,8 +430,8 @@ async def execute_node(
             ex, (NotFoundError, GraphNotFoundError)
         )
         if not is_expected:
-            sentry_sdk.capture_exception(error=ex, scope=scope)
-            sentry_sdk.flush()
+            _sentry_capture_exception(error=ex, scope=scope)
+            _sentry_flush()
         # Re-raise to maintain normal error flow
         raise
     finally:
