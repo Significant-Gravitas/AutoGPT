@@ -62,10 +62,9 @@ def _notify_channel(session_id: str) -> str:
 
 
 # Lua script: push-then-trim-then-expire-then-length, atomically.
-# Running these four commands via a single EVAL guarantees a concurrent
-# LPOP drain lands either entirely before the push (returns 0 from
-# our earlier LLEN) or entirely after it (sees the new message) —
-# never in the middle of a partial state.
+# Redis serializes EVAL commands, so a concurrent ``LPOP`` drain
+# observes either the pre-push or post-push state of the list — never
+# a partial state where the RPUSH has landed but LTRIM hasn't run.
 _PUSH_LUA = """
 redis.call('RPUSH', KEYS[1], ARGV[1])
 redis.call('LTRIM', KEYS[1], -tonumber(ARGV[2]), -1)
@@ -180,9 +179,11 @@ async def peek_pending_count(session_id: str) -> int:
 async def clear_pending_messages(session_id: str) -> None:
     """Drop the session's pending buffer.
 
-    Called at the end of a turn (success or failure) so messages from a
-    previous turn don't leak into the next one.  The buffer may already
-    have been drained inside the turn — this is a safety net.
+    Not called by the normal turn flow — the atomic ``LPOP`` drain at
+    turn start is the primary consumer, and any push that arrives
+    after the drain window belongs to the next turn by definition.
+    Retained as an operator/debug escape hatch for manually clearing a
+    stuck session and as a fixture in the unit tests.
     """
     redis = await get_redis_async()
     await redis.delete(_buffer_key(session_id))
