@@ -142,6 +142,29 @@ class QueuePendingMessageRequest(BaseModel):
     )
     file_ids: list[str] | None = Field(default=None, max_length=20)
 
+    @field_validator("context")
+    @classmethod
+    def _validate_context_length(
+        cls, v: dict[str, str] | None
+    ) -> dict[str, str] | None:
+        if v is None:
+            return v
+        # Cap context values to prevent LLM context-window stuffing via
+        # large page payloads (url: 2 KB, content: 32 KB).
+        _URL_LIMIT = 2_000
+        _CONTENT_LIMIT = 32_000
+        url = v.get("url", "")
+        if len(url) > _URL_LIMIT:
+            raise ValueError(
+                f"context.url exceeds maximum length of {_URL_LIMIT} characters"
+            )
+        content = v.get("content", "")
+        if len(content) > _CONTENT_LIMIT:
+            raise ValueError(
+                f"context.content exceeds maximum length of {_CONTENT_LIMIT} characters"
+            )
+        return v
+
 
 class QueuePendingMessageResponse(BaseModel):
     """Response for the pending-message endpoint.
