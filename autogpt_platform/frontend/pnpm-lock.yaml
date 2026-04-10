@@ -367,6 +367,9 @@ importers:
       '@types/react-window':
         specifier: 2.0.0
         version: 2.0.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/twemoji':
+        specifier: 13.1.2
+        version: 13.1.2
       '@vitejs/plugin-react':
         specifier: 5.1.2
         version: 5.1.2(vite@7.3.1(@types/node@24.10.0)(jiti@2.6.1)(terser@5.44.1)(yaml@2.8.2))
@@ -3704,6 +3707,10 @@ packages:
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
+  '@types/twemoji@13.1.2':
+    resolution: {integrity: sha512-vPNsrN08aRI2Gmdo+Ds3zZXzUk6igp1Hg+JPCeHavpiUGfgth/tGiHLQxfSrKzPXeRC0zbLs8WaUZSYxRWPbNg==}
+    deprecated: This is a stub types definition. twemoji provides its own type definitions, so you do not need this installed.
 
   '@types/unist@2.0.11':
     resolution: {integrity: sha512-CmBKiL6NNo/OqgmMn95Fk9Whlp2mtvIv+KNpQKN2F4SjvrEesubTRWGYSg+BnWZOnlCaSTU1sMpsBOzgbYhnsA==}
@@ -12680,6 +12687,10 @@ snapshots:
 
   '@types/trusted-types@2.0.7':
     optional: true
+
+  '@types/twemoji@13.1.2':
+    dependencies:
+      twemoji: 14.0.2
 
   '@types/unist@2.0.11': {}
 

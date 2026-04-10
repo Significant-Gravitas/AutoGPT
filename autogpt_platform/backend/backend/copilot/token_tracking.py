@@ -202,6 +202,8 @@ async def persist_and_record_usage(
                 cost_microdollars=cost_microdollars,
                 input_tokens=prompt_tokens,
                 output_tokens=completion_tokens,
+                cache_read_tokens=cache_read_tokens or None,
+                cache_creation_tokens=cache_creation_tokens or None,
                 model=model,
                 tracking_type=tracking_type,
                 tracking_amount=tracking_amount,

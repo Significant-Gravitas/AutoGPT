@@ -14,6 +14,7 @@ from backend.copilot.db import (
     PaginatedMessages,
     get_chat_messages_paginated,
     set_turn_duration,
+    update_message_content_by_sequence,
 )
 from backend.copilot.model import ChatMessage as CopilotChatMessage
 from backend.copilot.model import ChatSession, get_chat_session, upsert_chat_session
@@ -386,3 +387,53 @@ async def test_set_turn_duration_no_assistant_message(setup_test_user, test_user
     assert cached is not None
     # User message should not have durationMs
     assert cached.messages[0].duration_ms is None
+
+
+# ---------- update_message_content_by_sequence ----------
+
+
+@pytest.mark.asyncio
+async def test_update_message_content_by_sequence_success():
+    """Returns True when update_many reports at least one row updated."""
+    with patch.object(PrismaChatMessage, "prisma") as mock_prisma:
+        mock_prisma.return_value.update_many = AsyncMock(return_value=1)
+
+        result = await update_message_content_by_sequence("sess-1", 0, "new content")
+
+    assert result is True
+    mock_prisma.return_value.update_many.assert_called_once_with(
+        where={"sessionId": "sess-1", "sequence": 0},
+        data={"content": "new content"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_message_content_by_sequence_not_found():
+    """Returns False and logs a warning when no rows are updated."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(return_value=0)
+
+        result = await update_message_content_by_sequence("sess-1", 99, "content")
+
+    assert result is False
+    mock_logger.warning.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_message_content_by_sequence_db_error():
+    """Returns False and logs an error when the DB raises an exception."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(
+            side_effect=RuntimeError("db error")
+        )
+
+        result = await update_message_content_by_sequence("sess-1", 0, "content")
+
+    assert result is False
+    mock_logger.error.assert_called_once()

@@ -1,3 +1,4 @@
+import type { CostLogRow } from "@/app/api/__generated__/models/costLogRow";
 import type { ProviderCostSummary } from "@/app/api/__generated__/models/providerCostSummary";
 
 const MICRODOLLARS_PER_USD = 1_000_000;
@@ -111,13 +112,14 @@ export function defaultRateFor(
   }
 }
 
-// Overrides are keyed on `${provider}:${tracking_type}` since the same
-// provider can have multiple rows with different billing models.
+// Overrides are keyed on `${provider}:${tracking_type}:${model}` since the
+// same provider can have multiple rows with different billing models and models.
 export function rateKey(
   provider: string,
   trackingType: string | null | undefined,
+  model?: string | null,
 ): string {
-  return `${provider}:${trackingType ?? "per_run"}`;
+  return `${provider}:${trackingType ?? "per_run"}:${model ?? ""}`;
 }
 
 export function estimateCostForRow(
@@ -136,17 +138,34 @@ export function estimateCostForRow(
   }
 
   const rate =
-    rateOverrides[rateKey(row.provider, tt)] ??
+    rateOverrides[rateKey(row.provider, tt, row.model)] ??
     defaultRateFor(row.provider, tt);
   if (rate === null || rate === undefined) return null;
 
   // Compute the amount for this tracking type, then multiply by rate.
   let amount: number;
   switch (tt) {
-    case "tokens":
+    case "tokens": {
+      // Anthropic cache tokens are billed at different rates:
+      // - cache reads: 10% of base input rate
+      // - cache writes: 125% of base input rate
+      // - uncached input: 100% of base input rate
+      const cacheRead = row.total_cache_read_tokens ?? 0;
+      const cacheWrite = row.total_cache_creation_tokens ?? 0;
+      if (cacheRead > 0 || cacheWrite > 0) {
+        const uncachedInput = row.total_input_tokens;
+        const output = row.total_output_tokens;
+        const cost =
+          (uncachedInput / 1000) * rate +
+          (cacheRead / 1000) * rate * 0.1 +
+          (cacheWrite / 1000) * rate * 1.25 +
+          (output / 1000) * rate;
+        return Math.round(cost * MICRODOLLARS_PER_USD);
+      }
       // Rate is per-1K tokens.
       amount = (row.total_input_tokens + row.total_output_tokens) / 1000;
       break;
+    }
     case "characters":
       // Rate is per-1K chars. trackingAmount aggregates char counts.
       amount = (row.total_tracking_amount || 0) / 1000;
@@ -175,6 +194,11 @@ export function trackingValue(row: ProviderCostSummary) {
   if (tt === "cost_usd") return formatMicrodollars(row.total_cost_microdollars);
   if (tt === "tokens") {
     const tokens = row.total_input_tokens + row.total_output_tokens;
+    const cacheRead = row.total_cache_read_tokens ?? 0;
+    const cacheWrite = row.total_cache_creation_tokens ?? 0;
+    if (cacheRead > 0 || cacheWrite > 0) {
+      return `${formatTokens(tokens)} tokens (+${formatTokens(cacheRead)}r/${formatTokens(cacheWrite)}w cached)`;
+    }
     return `${formatTokens(tokens)} tokens`;
   }
   if (tt === "sandbox_seconds" || tt === "walltime_seconds")
@@ -201,4 +225,55 @@ export function toUtcIso(local: string) {
   if (!local) return "";
   const d = new Date(local);
   return isNaN(d.getTime()) ? "" : d.toISOString();
+}
+
+const CSV_HEADERS = [
+  "Time (UTC)",
+  "User ID",
+  "Email",
+  "Block",
+  "Provider",
+  "Type",
+  "Model",
+  "Cost (USD)",
+  "Input Tokens",
+  "Output Tokens",
+  "Cache Read Tokens",
+  "Cache Creation Tokens",
+  "Duration (s)",
+  "Graph Exec ID",
+  "Node Exec ID",
+];
+
+function csvEscape(val: unknown): string {
+  const s = val == null ? "" : String(val);
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+export function buildCostLogsCsv(logs: CostLogRow[]): string {
+  const header = CSV_HEADERS.map(csvEscape).join(",");
+  const rows = logs.map((log) =>
+    [
+      log.created_at,
+      log.user_id,
+      log.email,
+      log.block_name,
+      log.provider,
+      log.tracking_type,
+      log.model,
+      log.cost_microdollars != null
+        ? (log.cost_microdollars / 1_000_000).toFixed(8)
+        : null,
+      log.input_tokens,
+      log.output_tokens,
+      log.cache_read_tokens,
+      log.cache_creation_tokens,
+      log.duration,
+      log.graph_exec_id,
+      log.node_exec_id,
+    ]
+      .map(csvEscape)
+      .join(","),
+  );
+  return [header, ...rows].join("\r\n");
 }
