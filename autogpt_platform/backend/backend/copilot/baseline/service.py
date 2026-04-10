@@ -950,12 +950,12 @@ async def stream_chat_completion_baseline(
             len(drained_at_start),
             session_id,
         )
-        for _pm in drained_at_start:
-            _content = format_pending_as_user_message(_pm)["content"]
+        for pm in drained_at_start:
+            content = format_pending_as_user_message(pm)["content"]
             # Append directly — pending messages are atomically-popped from
             # Redis and are never stale-cache duplicates, so the
             # maybe_append_user_message dedup is wrong here.
-            session.messages.append(ChatMessage(role="user", content=_content))
+            session.messages.append(ChatMessage(role="user", content=content))
 
     session = await upsert_chat_session(session)
 
@@ -999,8 +999,10 @@ async def stream_chat_completion_baseline(
         prompt_task = _build_cacheable_system_prompt(None)
 
     # Run download + prompt build concurrently — both are independent I/O
-    # on the request critical path.
-    if user_id and len(session.messages) > 1:
+    # on the request critical path.  Use the pre-drain count so pending
+    # messages drained at turn start don't spuriously trigger a transcript
+    # load on an actual first turn.
+    if user_id and _pre_drain_msg_count > 1:
         transcript_covers_prefix, (base_system_prompt, understanding) = (
             await asyncio.gather(
                 _load_prior_transcript(
@@ -1025,9 +1027,9 @@ async def stream_chat_completion_baseline(
     # missing them and a mid-turn upload could leave a malformed
     # assistant-after-assistant structure on the next turn.
     if drained_at_start:
-        for _pm in drained_at_start:
+        for pm in drained_at_start:
             transcript_builder.append_user(
-                content=format_pending_as_user_message(_pm)["content"]
+                content=format_pending_as_user_message(pm)["content"]
             )
 
     # Generate title for new sessions
@@ -1050,8 +1052,10 @@ async def stream_chat_completion_baseline(
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
 
-    # Warm context: pre-load relevant facts from Graphiti on first turn
-    if graphiti_enabled and user_id and len(session.messages) <= 1:
+    # Warm context: pre-load relevant facts from Graphiti on first turn.
+    # Use the pre-drain count so pending messages drained at turn start
+    # don't prevent warm context injection on an actual first turn.
+    if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         from backend.copilot.graphiti.context import fetch_warm_context
 
         warm_ctx = await fetch_warm_context(user_id, message or "")

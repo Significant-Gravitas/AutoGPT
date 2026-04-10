@@ -2308,11 +2308,11 @@ async def stream_chat_completion_sdk(
             pending_texts: list[str] = [
                 format_pending_as_user_message(pm)["content"] for pm in pending_at_start
             ]
-            for _pt in pending_texts:
+            for pt in pending_texts:
                 # Append directly — pending messages are atomically-popped from
                 # Redis and are never stale-cache duplicates, so the
                 # maybe_append_user_message dedup is wrong here.
-                session.messages.append(ChatMessage(role="user", content=_pt))
+                session.messages.append(ChatMessage(role="user", content=pt))
             if current_message.strip():
                 current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
             else:
