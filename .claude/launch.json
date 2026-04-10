@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sampler",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5555", "--directory", "/Users/alex/Auto-GPT/.claude/worktrees/funny-tereshkova"],
+      "port": 5555
+    }
+  ]
+}
