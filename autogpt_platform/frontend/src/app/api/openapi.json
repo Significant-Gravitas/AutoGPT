@@ -1605,6 +1605,56 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/messages/pending": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Queue Pending Message",
+        "description": "Queue a new user message into an in-flight copilot turn.\n\nWhen a user sends a follow-up message while a turn is still\nstreaming, we don't want to block them or start a separate turn —\nthis endpoint appends the message to a per-session pending buffer.\nThe executor currently running the turn (baseline path) drains the\nbuffer between tool-call rounds and appends the message to the\nconversation before the next LLM call.  On the SDK path the buffer\nis drained at the *start* of the next turn (the long-lived\n``ClaudeSDKClient.receive_response`` iterator returns after a\n``ResultMessage`` so there is no safe point to inject mid-stream\ninto an existing connection).\n\nReturns 202.  Enforces the same per-user daily/weekly token rate\nlimit as the regular ``/stream`` endpoint so a client can't bypass\nit by batching messages through here.",
+        "operationId": "postV2QueuePendingMessage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueuePendingMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePendingMessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -12667,6 +12717,57 @@
         "type": "object",
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
+      },
+      "QueuePendingMessageRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Message"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Context",
+            "description": "Optional page context: expected keys are 'url' and 'content'."
+          },
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": { "type": "string" },
+                "type": "array",
+                "maxItems": 20
+              },
+              { "type": "null" }
+            ],
+            "title": "File Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["message"],
+        "title": "QueuePendingMessageRequest",
+        "description": "Request model for queueing a message into an in-flight turn.\n\nUnlike ``StreamChatRequest`` this endpoint does **not** start a new\nturn — the message is appended to a per-session pending buffer that\nthe executor currently processing the turn will drain between tool\nrounds."
+      },
+      "QueuePendingMessageResponse": {
+        "properties": {
+          "buffer_length": { "type": "integer", "title": "Buffer Length" },
+          "max_buffer_length": {
+            "type": "integer",
+            "title": "Max Buffer Length"
+          },
+          "turn_in_flight": { "type": "boolean", "title": "Turn In Flight" }
+        },
+        "type": "object",
+        "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
+        "title": "QueuePendingMessageResponse",
+        "description": "Response for the pending-message endpoint.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback.  Even when\n  ``False`` the message is still queued: the next turn drains it."
       },
       "RateLimitResetResponse": {
         "properties": {
