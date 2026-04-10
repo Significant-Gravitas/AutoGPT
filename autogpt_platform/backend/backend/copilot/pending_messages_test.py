@@ -14,6 +14,7 @@ from backend.copilot import pending_messages as pm_module
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
+    PendingMessageContext,
     clear_pending_messages,
     drain_pending_messages,
     format_pending_as_user_message,
@@ -171,7 +172,7 @@ def test_format_pending_plain_text() -> None:
 def test_format_pending_with_context_url() -> None:
     msg = PendingMessage(
         content="see this page",
-        context={"url": "https://example.com"},
+        context=PendingMessageContext(url="https://example.com"),
     )
     out = format_pending_as_user_message(msg)
     content = out["content"]
