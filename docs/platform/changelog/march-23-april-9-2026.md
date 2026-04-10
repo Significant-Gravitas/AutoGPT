@@ -43,7 +43,6 @@ You can now **copy your own prompt messages** in AutoPilot with a single click. 
 - **Fast/Thinking mode toggle** — AutoPilot adds a toggle for Fast mode vs Thinking mode with full tool parity. ([#12623](https://github.com/Significant-Gravitas/AutoGPT/pull/12623))
 - **All 12 Z.ai GLM models via OpenRouter** — Access every Z.ai GLM model through OpenRouter integration. ([#12672](https://github.com/Significant-Gravitas/AutoGPT/pull/12672))
 - **include_graph option for find_library_agent** — Fetch the full graph structure when searching library agents for debugging or editing. ([#12622](https://github.com/Significant-Gravitas/AutoGPT/pull/12622))
-- **AutoPilot artifact preview panel** — A new preview panel for artifacts generated during AutoPilot conversations. ([#12629](https://github.com/Significant-Gravitas/AutoGPT/pull/12629))
 - **Cursor-based message pagination** — AutoPilot messages load newest-first with cursor-based pagination for faster load times. ([#12328](https://github.com/Significant-Gravitas/AutoGPT/pull/12328))
 - **Codecov coverage reporting** — Coverage reporting set up across platform and classic with Playwright E2E included. ([#12655](https://github.com/Significant-Gravitas/AutoGPT/pull/12655), [#12665](https://github.com/Significant-Gravitas/AutoGPT/pull/12665))
 - **React integration testing** — Vitest + React Testing Library + MSW test infrastructure added. ([#12667](https://github.com/Significant-Gravitas/AutoGPT/pull/12667))
