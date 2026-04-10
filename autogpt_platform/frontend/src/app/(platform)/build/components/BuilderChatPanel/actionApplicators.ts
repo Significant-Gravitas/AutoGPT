@@ -145,9 +145,16 @@ export function applyUpdateNodeInput(
     });
     return false;
   }
-  // Deep-clone via structuredClone so the undo restore references values
-  // isolated from any in-place mutations elsewhere in the app.
-  const prevNodes = cloneNodes(liveNodes);
+  // Snapshot only the single field that is about to change so the undo
+  // restore can revert it without clobbering unrelated edits the user may
+  // have made to other nodes (or to other fields on this node) in between.
+  const hadKey = Object.prototype.hasOwnProperty.call(
+    node.data.hardcodedValues ?? {},
+    action.key,
+  );
+  const prevFieldValue: unknown = hadKey
+    ? (node.data.hardcodedValues as Record<string, unknown>)[action.key]
+    : undefined;
   const nextNodes = liveNodes.map((n) =>
     n.id === action.nodeId
       ? {
@@ -166,7 +173,21 @@ export function applyUpdateNodeInput(
   pushUndoEntry(setUndoStack, {
     actionKey: key,
     restore: () => {
-      setNodes(prevNodes);
+      // Differential restore: re-read the live nodes at undo time and only
+      // revert `action.key` on the target node. This preserves any other
+      // edits (to this node or other nodes) that happened after apply.
+      const currentNodes = useNodeStore.getState().nodes;
+      const restoredNodes = currentNodes.map((n) => {
+        if (n.id !== action.nodeId) return n;
+        const { [action.key]: _omitted, ...rest } =
+          (n.data.hardcodedValues ?? {}) as Record<string, unknown>;
+        void _omitted;
+        const nextHardcoded = hadKey
+          ? { ...rest, [action.key]: prevFieldValue }
+          : rest;
+        return { ...n, data: { ...n.data, hardcodedValues: nextHardcoded } };
+      });
+      setNodes(restoredNodes);
       removeAppliedActionKey(setAppliedActionKeys, key);
     },
   });
@@ -223,13 +244,10 @@ export function applyConnectNodes(
     return false;
   }
   const edgeId = `${action.source}:${action.sourceHandle}->${action.target}:${action.targetHandle}`;
-  // Deep-clone the edges snapshot via the shared helper so the undo restore
-  // references values isolated from in-place mutations elsewhere in the app.
   const liveEdges = useEdgeStore.getState().edges;
-  const prevEdges = safeCloneArray(liveEdges);
   // Guard against duplicate edges — the same connection may appear after an
   // undo-then-reapply or from identical suggestions across AI messages.
-  const alreadyExists = prevEdges.some(
+  const alreadyExists = liveEdges.some(
     (e) =>
       e.source === action.source &&
       e.target === action.target &&
@@ -249,12 +267,26 @@ export function applyConnectNodes(
   pushUndoEntry(setUndoStack, {
     actionKey: key,
     restore: () => {
-      setEdges(prevEdges);
+      // Differential restore: re-read the live edges at undo time and only
+      // remove the specific edge that this action added. This preserves any
+      // other edges (added manually or by later AI actions) that may have
+      // been created after apply.
+      const currentEdges = useEdgeStore.getState().edges;
+      const restoredEdges = currentEdges.filter(
+        (e) =>
+          !(
+            e.source === action.source &&
+            e.target === action.target &&
+            e.sourceHandle === action.sourceHandle &&
+            e.targetHandle === action.targetHandle
+          ),
+      );
+      setEdges(restoredEdges);
       removeAppliedActionKey(setAppliedActionKeys, key);
     },
   });
   setEdges([
-    ...prevEdges,
+    ...liveEdges,
     {
       id: edgeId,
       source: action.source,

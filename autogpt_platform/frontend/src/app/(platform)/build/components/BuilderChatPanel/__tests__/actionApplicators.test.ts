@@ -345,12 +345,15 @@ describe("applyUpdateNodeInput", () => {
     expect(deps.setUndoStack).toHaveBeenCalledTimes(1);
   });
 
-  it("undo snapshot restores the previous nodes array independent of later mutation", () => {
+  it("undo reverts only the target field and preserves later edits to other fields", () => {
     const original = {
       id: "node-1",
       title: "T",
-      inputSchema: { type: "object", properties: { text: {} } },
-      hardcodedValues: { text: "old" },
+      inputSchema: {
+        type: "object",
+        properties: { text: {}, other: {} },
+      },
+      hardcodedValues: { text: "old", other: "untouched" },
     };
     mockNodes = [
       makeNode({ id: "node-1", data: original } as unknown as CustomNode),
@@ -371,20 +374,63 @@ describe("applyUpdateNodeInput", () => {
     expect(stack).toHaveLength(1);
     const entry = stack[0];
 
-    // Now mutate the live node in place. The undo snapshot must be isolated.
-    (
-      mockNodes[0].data as { hardcodedValues: Record<string, unknown> }
-    ).hardcodedValues.text = "mutated";
+    // Simulate a later edit to an unrelated field on the same node by
+    // replacing the live node with an updated version — this mirrors what
+    // setNodes(…) does in production.
+    mockNodes = [
+      makeNode({
+        id: "node-1",
+        data: {
+          id: "node-1",
+          title: "T",
+          inputSchema: original.inputSchema,
+          hardcodedValues: { text: "new", other: "edited-after-apply" },
+        },
+      } as unknown as CustomNode),
+    ];
 
     mockSetNodes.mockClear();
     entry.restore();
     expect(mockSetNodes).toHaveBeenCalledTimes(1);
     const restoredNodes = mockSetNodes.mock.calls[0][0];
-    // Restored state should be "old", not "mutated".
-    expect(
-      (restoredNodes[0].data as { hardcodedValues: Record<string, string> })
-        .hardcodedValues.text,
-    ).toBe("old");
+    const hardcoded = (
+      restoredNodes[0].data as { hardcodedValues: Record<string, string> }
+    ).hardcodedValues;
+    // `text` should be reverted to the pre-apply value.
+    expect(hardcoded.text).toBe("old");
+    // The later unrelated edit must be preserved (differential undo).
+    expect(hardcoded.other).toBe("edited-after-apply");
+  });
+
+  it("undo removes a newly-added key when the field did not exist pre-apply", () => {
+    const original = {
+      id: "node-1",
+      title: "T",
+      inputSchema: { type: "object", properties: { text: {} } },
+      hardcodedValues: {},
+    };
+    mockNodes = [
+      makeNode({ id: "node-1", data: original } as unknown as CustomNode),
+    ];
+    const deps = makeDeps();
+    applyUpdateNodeInput(
+      {
+        type: "update_node_input",
+        nodeId: "node-1",
+        key: "text",
+        value: "new",
+      },
+      deps,
+    );
+    const stack = deps.setUndoStack.mock.calls[0][0]([]);
+    mockSetNodes.mockClear();
+    stack[0].restore();
+    const restoredNodes = mockSetNodes.mock.calls[0][0];
+    const hardcoded = (
+      restoredNodes[0].data as { hardcodedValues: Record<string, unknown> }
+    ).hardcodedValues;
+    // Key did not exist before apply → undo should remove it entirely.
+    expect(Object.prototype.hasOwnProperty.call(hardcoded, "text")).toBe(false);
   });
 });
 
@@ -540,7 +586,7 @@ describe("applyConnectNodes", () => {
     expect(deps.setUndoStack).not.toHaveBeenCalled();
   });
 
-  it("undo restores the previous edges array", () => {
+  it("undo removes only the AI-added edge and preserves later edits", () => {
     mockEdges = [
       {
         id: "other",
@@ -565,22 +611,43 @@ describe("applyConnectNodes", () => {
     const stack = deps.setUndoStack.mock.calls[0][0]([]);
     expect(stack).toHaveLength(1);
 
-    // Mutate live edges after the apply — the undo snapshot must be isolated.
-    mockEdges.push({
-      id: "polluting",
-      source: "x",
-      target: "y",
-      sourceHandle: "a",
-      targetHandle: "b",
-      type: "custom",
-    } as unknown as CustomEdge);
+    // Simulate a later user edit — the applied edge plus a brand new
+    // manually-added edge. Differential undo should only drop the former.
+    mockEdges = [
+      {
+        id: "other",
+        source: "a",
+        target: "b",
+        sourceHandle: "x",
+        targetHandle: "y",
+        type: "custom",
+      } as unknown as CustomEdge,
+      {
+        id: "src:result->dst:text",
+        source: "src",
+        target: "dst",
+        sourceHandle: "result",
+        targetHandle: "text",
+        type: "custom",
+      } as unknown as CustomEdge,
+      {
+        id: "later-manual-edge",
+        source: "a",
+        target: "dst",
+        sourceHandle: "x",
+        targetHandle: "text",
+        type: "custom",
+      } as unknown as CustomEdge,
+    ];
 
     mockSetEdges.mockClear();
     stack[0].restore();
     expect(mockSetEdges).toHaveBeenCalledTimes(1);
     const restored = mockSetEdges.mock.calls[0][0];
-    // Only the single pre-existing edge should remain — not the polluter.
-    expect(restored).toHaveLength(1);
-    expect(restored[0].id).toBe("other");
+    // Should contain the pre-existing edge AND the later manual edge.
+    // Only the AI-applied edge should be removed.
+    expect(restored).toHaveLength(2);
+    const ids = restored.map((e: CustomEdge) => e.id).sort();
+    expect(ids).toEqual(["later-manual-edge", "other"]);
   });
 });
