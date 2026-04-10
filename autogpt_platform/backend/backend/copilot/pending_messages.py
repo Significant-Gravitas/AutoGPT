@@ -44,6 +44,10 @@ _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
 _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
+# Payload sent on the pub/sub notify channel.  Subscribers treat any
+# message as a wake-up hint; the value itself is not meaningful.
+_NOTIFY_PAYLOAD = "1"
+
 
 class PendingMessageContext(BaseModel):
     """Structured page context attached to a pending message."""
@@ -115,7 +119,7 @@ async def push_pending_message(
     # Fire-and-forget notify.  Subscribers use this as a wake-up hint;
     # the buffer itself is authoritative so a lost notify is harmless.
     try:
-        await redis.publish(_notify_channel(session_id), "1")
+        await redis.publish(_notify_channel(session_id), _NOTIFY_PAYLOAD)
     except Exception as e:  # pragma: no cover
         logger.warning("pending_messages: publish failed for %s: %s", session_id, e)
 
