@@ -9,6 +9,9 @@ from backend.copilot.graphiti.memory_model import (
     MemoryEnvelope,
     MemoryKind,
     MemoryStatus,
+    ProcedureMemory,
+    ProcedureStep,
+    RuleMemory,
     SourceKind,
 )
 from backend.copilot.model import ChatSession
@@ -70,6 +73,47 @@ class MemoryStoreTool(BaseTool):
                     "description": "Type of memory: fact (default), preference, rule, finding, plan, event, procedure",
                     "default": "fact",
                 },
+                "rule": {
+                    "type": "object",
+                    "description": (
+                        "Structured rule data — use when memory_kind=rule to preserve "
+                        "exact operational instructions. Example: "
+                        '{"instruction": "CC Sarah on client communications", '
+                        '"actor": "Sarah", "trigger": "client-related communications"}'
+                    ),
+                    "properties": {
+                        "instruction": {"type": "string", "description": "The actionable instruction"},
+                        "actor": {"type": "string", "description": "Who performs or is subject to the rule"},
+                        "trigger": {"type": "string", "description": "When the rule applies"},
+                        "negation": {"type": "string", "description": "What NOT to do, if applicable"},
+                    },
+                    "required": ["instruction"],
+                },
+                "procedure": {
+                    "type": "object",
+                    "description": (
+                        "Structured procedure data — use when memory_kind=procedure "
+                        "for multi-step workflows with ordering, tools, and conditions."
+                    ),
+                    "properties": {
+                        "description": {"type": "string", "description": "What this procedure accomplishes"},
+                        "steps": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "order": {"type": "integer", "description": "Step number"},
+                                    "action": {"type": "string", "description": "What to do"},
+                                    "tool": {"type": "string", "description": "Tool or service to use"},
+                                    "condition": {"type": "string", "description": "When this step applies"},
+                                    "negation": {"type": "string", "description": "What NOT to do"},
+                                },
+                                "required": ["order", "action"],
+                            },
+                        },
+                    },
+                    "required": ["description", "steps"],
+                },
             },
             "required": ["name", "content"],
         }
@@ -89,6 +133,8 @@ class MemoryStoreTool(BaseTool):
         source_kind: str = "user_asserted",
         scope: str = "real:global",
         memory_kind: str = "fact",
+        rule: dict | None = None,
+        procedure: dict | None = None,
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -109,6 +155,18 @@ class MemoryStoreTool(BaseTool):
                 session_id=session.session_id,
             )
 
+        rule_model = None
+        if rule and memory_kind == "rule":
+            rule_model = RuleMemory(**rule)
+
+        procedure_model = None
+        if procedure and memory_kind == "procedure":
+            steps = [ProcedureStep(**s) for s in procedure.get("steps", [])]
+            procedure_model = ProcedureMemory(
+                description=procedure.get("description", content),
+                steps=steps,
+            )
+
         envelope = MemoryEnvelope(
             content=content,
             source_kind=SourceKind(source_kind),
@@ -116,6 +174,8 @@ class MemoryStoreTool(BaseTool):
             memory_kind=MemoryKind(memory_kind),
             status=MemoryStatus.active,
             provenance=session.session_id,
+            rule=rule_model,
+            procedure=procedure_model,
         )
 
         queued = await enqueue_episode(
