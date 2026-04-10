@@ -189,6 +189,26 @@ def test_format_pending_with_file_ids() -> None:
     assert "file_id=b" in out["content"]
 
 
+def test_format_pending_with_all_fields() -> None:
+    """All fields (content + context url/content + file_ids) should all appear."""
+    msg = PendingMessage(
+        content="summarise this",
+        context=PendingMessageContext(
+            url="https://example.com/page",
+            content="headline text",
+        ),
+        file_ids=["f1", "f2"],
+    )
+    out = format_pending_as_user_message(msg)
+    body = out["content"]
+    assert out["role"] == "user"
+    assert "summarise this" in body
+    assert "[Page URL: https://example.com/page]" in body
+    assert "[Page content]\nheadline text" in body
+    assert "file_id=f1" in body
+    assert "file_id=f2" in body
+
+
 # ── Malformed payload handling ──────────────────────────────────────
 
 
