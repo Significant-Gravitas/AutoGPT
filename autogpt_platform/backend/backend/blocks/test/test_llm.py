@@ -77,7 +77,11 @@ class TestLLMStatsTracking:
         mock_response.usage = mock_usage
         mock_response.stop_reason = "end_turn"
 
-        with patch("anthropic.AsyncAnthropic") as mock_anthropic:
+        with (
+            patch("anthropic.AsyncAnthropic") as mock_anthropic,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = ""
             mock_client = AsyncMock()
             mock_anthropic.return_value = mock_client
             mock_client.messages.create = AsyncMock(return_value=mock_response)
@@ -95,6 +99,56 @@ class TestLLMStatsTracking:
             assert response.cache_read_tokens == 100
             assert response.cache_creation_tokens == 50
             assert response.response == "Test anthropic response"
+
+    @pytest.mark.asyncio
+    async def test_anthropic_routes_through_openrouter_when_key_present(self):
+        """When open_router_api_key is set, Anthropic models route via OpenRouter."""
+        from pydantic import SecretStr
+
+        import backend.blocks.llm as llm
+        from backend.data.model import APIKeyCredentials
+
+        anthropic_creds = APIKeyCredentials(
+            id="test-anthropic-id",
+            provider="anthropic",
+            api_key=SecretStr("mock-anthropic-key"),
+            title="Mock Anthropic key",
+        )
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "routed response"
+        mock_choice.message.tool_calls = None
+
+        mock_usage = MagicMock()
+        mock_usage.prompt_tokens = 10
+        mock_usage.completion_tokens = 5
+
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_response.usage = mock_usage
+
+        mock_create = AsyncMock(return_value=mock_response)
+
+        with (
+            patch("openai.AsyncOpenAI") as mock_openai,
+            patch("backend.blocks.llm.settings") as mock_settings,
+        ):
+            mock_settings.secrets.open_router_api_key = "sk-or-test-key"
+            mock_client = MagicMock()
+            mock_openai.return_value = mock_client
+            mock_client.chat.completions.create = mock_create
+
+            await llm.llm_call(
+                credentials=anthropic_creds,
+                llm_model=llm.LlmModel.CLAUDE_3_HAIKU,
+                prompt=[{"role": "user", "content": "Hello"}],
+                max_tokens=100,
+            )
+
+        # Verify OpenAI client was used (not Anthropic SDK) and model was prefixed
+        mock_openai.assert_called_once()
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["model"] == "anthropic/claude-3-haiku-20240307"
 
     @pytest.mark.asyncio
     async def test_ai_structured_response_block_tracks_stats(self):
