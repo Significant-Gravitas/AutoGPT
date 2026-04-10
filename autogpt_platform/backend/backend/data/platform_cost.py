@@ -169,6 +169,25 @@ class PlatformCostDashboard(BaseModel):
     total_users: int
 
 
+def _si(row: dict, field: str) -> int:
+    """Extract an integer from a Prisma group_by _sum dict.
+
+    Prisma Python serialises BigInt/Int aggregate sums as strings; coerce to int.
+    """
+    return int((row.get("_sum") or {}).get(field) or 0)
+
+
+def _sf(row: dict, field: str) -> float:
+    """Extract a float from a Prisma group_by _sum dict."""
+    return float((row.get("_sum") or {}).get(field) or 0.0)
+
+
+def _ca(row: dict) -> int:
+    """Extract _count._all from a Prisma group_by row."""
+    c = row.get("_count") or {}
+    return int(c.get("_all") or 0) if isinstance(c, dict) else int(c or 0)
+
+
 def _build_prisma_where(
     start: datetime | None,
     end: datetime | None,
@@ -281,17 +300,11 @@ async def get_platform_cost_dashboard(
     )
 
     # Sort by_provider by total cost descending and cap at MAX_PROVIDER_ROWS.
-    by_provider_groups.sort(
-        key=lambda r: (r.get("_sum") or {}).get("costMicrodollars") or 0,
-        reverse=True,
-    )
+    by_provider_groups.sort(key=lambda r: _si(r, "costMicrodollars"), reverse=True)
     by_provider_groups = by_provider_groups[:MAX_PROVIDER_ROWS]
 
     # Sort by_user by total cost descending and cap at MAX_USER_ROWS.
-    by_user_groups.sort(
-        key=lambda r: (r.get("_sum") or {}).get("costMicrodollars") or 0,
-        reverse=True,
-    )
+    by_user_groups.sort(key=lambda r: _si(r, "costMicrodollars"), reverse=True)
     by_user_groups = by_user_groups[:MAX_USER_ROWS]
 
     # Batch-fetch emails for the users in by_user.
@@ -307,17 +320,8 @@ async def get_platform_cost_dashboard(
     total_users = len(total_user_groups)
 
     # Grand totals — sum across all provider groups (no LIMIT applied above).
-    total_cost = sum(
-        (r.get("_sum") or {}).get("costMicrodollars") or 0 for r in total_agg_groups
-    )
-    total_requests = sum(
-        (
-            (r.get("_count") or 0)
-            if isinstance(r.get("_count"), int)
-            else (r.get("_count") or {}).get("_all") or 0
-        )
-        for r in total_agg_groups
-    )
+    total_cost = sum(_si(r, "costMicrodollars") for r in total_agg_groups)
+    total_requests = sum(_ca(r) for r in total_agg_groups)
 
     return PlatformCostDashboard(
         by_provider=[
@@ -325,20 +329,14 @@ async def get_platform_cost_dashboard(
                 provider=r["provider"],
                 tracking_type=r.get("trackingType"),
                 model=r.get("model"),
-                total_cost_microdollars=(r.get("_sum") or {}).get("costMicrodollars")
-                or 0,
-                total_input_tokens=(r.get("_sum") or {}).get("inputTokens") or 0,
-                total_output_tokens=(r.get("_sum") or {}).get("outputTokens") or 0,
-                total_cache_read_tokens=(r.get("_sum") or {}).get("cacheReadTokens")
-                or 0,
-                total_cache_creation_tokens=(r.get("_sum") or {}).get(
-                    "cacheCreationTokens"
-                )
-                or 0,
-                total_duration_seconds=(r.get("_sum") or {}).get("duration") or 0.0,
-                total_tracking_amount=(r.get("_sum") or {}).get("trackingAmount")
-                or 0.0,
-                request_count=(r.get("_count") or {}).get("_all") or 0,
+                total_cost_microdollars=_si(r, "costMicrodollars"),
+                total_input_tokens=_si(r, "inputTokens"),
+                total_output_tokens=_si(r, "outputTokens"),
+                total_cache_read_tokens=_si(r, "cacheReadTokens"),
+                total_cache_creation_tokens=_si(r, "cacheCreationTokens"),
+                total_duration_seconds=_sf(r, "duration"),
+                total_tracking_amount=_sf(r, "trackingAmount"),
+                request_count=_ca(r),
             )
             for r in by_provider_groups
         ],
@@ -346,11 +344,10 @@ async def get_platform_cost_dashboard(
             UserCostSummary(
                 user_id=r.get("userId"),
                 email=_mask_email(email_by_user_id.get(r.get("userId") or "")),
-                total_cost_microdollars=(r.get("_sum") or {}).get("costMicrodollars")
-                or 0,
-                total_input_tokens=(r.get("_sum") or {}).get("inputTokens") or 0,
-                total_output_tokens=(r.get("_sum") or {}).get("outputTokens") or 0,
-                request_count=(r.get("_count") or {}).get("_all") or 0,
+                total_cost_microdollars=_si(r, "costMicrodollars"),
+                total_input_tokens=_si(r, "inputTokens"),
+                total_output_tokens=_si(r, "outputTokens"),
+                request_count=_ca(r),
             )
             for r in by_user_groups
         ],
