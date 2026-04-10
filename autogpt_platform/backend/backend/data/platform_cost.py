@@ -316,8 +316,8 @@ async def get_platform_cost_dashboard(
         )
         email_by_user_id = {u.id: u.email for u in users}
 
-    # Total distinct users.
-    total_users = len(total_user_groups)
+    # Total distinct users — exclude the NULL-userId group (deleted users).
+    total_users = len([g for g in total_user_groups if g.get("userId") is not None])
 
     # Grand totals — sum across all provider groups (no LIMIT applied above).
     total_cost = sum(_si(r, "costMicrodollars") for r in total_agg_groups)
