@@ -179,8 +179,8 @@ export function applyUpdateNodeInput(
       const currentNodes = useNodeStore.getState().nodes;
       const restoredNodes = currentNodes.map((n) => {
         if (n.id !== action.nodeId) return n;
-        const { [action.key]: _omitted, ...rest } =
-          (n.data.hardcodedValues ?? {}) as Record<string, unknown>;
+        const { [action.key]: _omitted, ...rest } = (n.data.hardcodedValues ??
+          {}) as Record<string, unknown>;
         void _omitted;
         const nextHardcoded = hadKey
           ? { ...rest, [action.key]: prevFieldValue }
