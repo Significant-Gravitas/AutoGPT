@@ -1031,6 +1031,12 @@ def _make_sdk_patches(
         ),
         (f"{_SVC}.upload_transcript", dict(new_callable=AsyncMock)),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
+        # Stub pending-message drain so retry tests don't hit Redis.
+        # Returns an empty list → no mid-turn injection happens.
+        (
+            f"{_SVC}.drain_pending_messages",
+            dict(new_callable=AsyncMock, return_value=[]),
+        ),
     ]
 
 
