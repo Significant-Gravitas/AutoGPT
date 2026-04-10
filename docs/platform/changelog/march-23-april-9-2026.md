@@ -40,7 +40,6 @@ You can now **copy your own prompt messages** in AutoPilot with a single click. 
 - **Generic ask_question AutoPilot tool** — A new tool lets AutoPilot ask structured clarifying questions mid-conversation. ([#12647](https://github.com/Significant-Gravitas/AutoGPT/pull/12647))
 - **Git committer identity from GitHub profile** — E2B sandbox commits now use the user's real GitHub name and email. ([#12650](https://github.com/Significant-Gravitas/AutoGPT/pull/12650))
 - **Create → dry-run → fix agent generation loop** — Agent generation now follows an iterative create, dry-run, and fix cycle for better results. ([#12578](https://github.com/Significant-Gravitas/AutoGPT/pull/12578))
-- **Fast/Thinking mode toggle** — AutoPilot adds a toggle for Fast mode vs Thinking mode with full tool parity. ([#12623](https://github.com/Significant-Gravitas/AutoGPT/pull/12623))
 - **All 12 Z.ai GLM models via OpenRouter** — Access every Z.ai GLM model through OpenRouter integration. ([#12672](https://github.com/Significant-Gravitas/AutoGPT/pull/12672))
 - **include_graph option for find_library_agent** — Fetch the full graph structure when searching library agents for debugging or editing. ([#12622](https://github.com/Significant-Gravitas/AutoGPT/pull/12622))
 - **Cursor-based message pagination** — AutoPilot messages load newest-first with cursor-based pagination for faster load times. ([#12328](https://github.com/Significant-Gravitas/AutoGPT/pull/12328))
