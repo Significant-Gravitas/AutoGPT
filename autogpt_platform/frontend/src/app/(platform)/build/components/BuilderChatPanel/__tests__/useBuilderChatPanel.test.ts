@@ -1757,3 +1757,65 @@ describe("useBuilderChatPanel – prototype pollution blocklist (no-schema nodes
     );
   });
 });
+
+describe("useBuilderChatPanel – sendRawMessage length clamp", () => {
+  async function openPanel(result: { current: { handleToggle: () => void } }) {
+    await openAndFlush(() => result.current.handleToggle());
+  }
+
+  it("drops empty input without calling sendMessage", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-1" },
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await openPanel(result);
+
+    act(() => {
+      result.current.sendRawMessage("");
+    });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not send when canSend is false (no session yet)", () => {
+    const { result } = renderHook(() => useBuilderChatPanel());
+    act(() => {
+      result.current.sendRawMessage("hello");
+    });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it("forwards text as-is when under the 4000-char cap", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-2" },
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await openPanel(result);
+
+    const msg = "hello world";
+    act(() => {
+      result.current.sendRawMessage(msg);
+    });
+    expect(mockSendMessage).toHaveBeenCalledWith({ text: msg });
+  });
+
+  it("truncates input longer than 4000 characters", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-3" },
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await openPanel(result);
+
+    const huge = "a".repeat(5000);
+    act(() => {
+      result.current.sendRawMessage(huge);
+    });
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    const sentText = (mockSendMessage.mock.calls[0][0] as { text: string })
+      .text;
+    expect(sentText.length).toBe(4000);
+    expect(sentText).toBe("a".repeat(4000));
+  });
+});

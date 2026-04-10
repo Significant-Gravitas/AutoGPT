@@ -115,6 +115,11 @@ export function useBuilderChatPanel({
     new Set(),
   );
   const [undoStack, setUndoStack] = useState<UndoSnapshot[]>([]);
+  // Parsed actions accumulated across completed assistant turns. Kept in state
+  // (rather than derived via useMemo) because the incremental cache mutates
+  // refs — mutating inside a memo would break React Strict Mode, which runs
+  // memos twice and would cause the second pass to skip messages.
+  const [parsedActions, setParsedActions] = useState<GraphAction[]>([]);
   // Input state owned here to keep render logic out of the component.
   const [inputValue, setInputValue] = useState("");
 
@@ -145,8 +150,11 @@ export function useBuilderChatPanel({
     flowExecutionID: parseAsString,
   });
   // Keep ref in sync with the current flowID so in-flight session callbacks can
-  // detect stale graph context without closure staleness issues.
-  currentFlowIDRef.current = flowID;
+  // detect stale graph context without closure staleness issues. Using an
+  // effect rather than a render-body write keeps the render pure.
+  useEffect(() => {
+    currentFlowIDRef.current = flowID;
+  }, [flowID]);
   const { toast } = useToast();
 
   const nodes = useNodeStore(
@@ -167,6 +175,7 @@ export function useBuilderChatPanel({
     setAppliedActionKeys(new Set());
     setUndoStack([]);
     setInputValue("");
+    setParsedActions([]);
     isCreatingSessionRef.current = false;
     processedToolCallsRef.current = new Set();
     hasSentSeedMessageRef.current = false;
@@ -305,8 +314,13 @@ export function useBuilderChatPanel({
   // Uses an incremental cache keyed off `lastParsedMessageIndexRef` so each
   // completed turn only re-scans the newly added messages rather than the
   // entire conversation history.
-  const parsedActions = useMemo(() => {
-    if (status !== "ready") return parsedActionsCacheRef.current.actions;
+  //
+  // This lives in an effect (not a memo) because ref mutation inside a memo
+  // body would break React Strict Mode: memos can run twice and the second
+  // pass would see `lastParsedMessageIndexRef` already advanced and skip the
+  // new messages, losing actions.
+  useEffect(() => {
+    if (status !== "ready") return;
     const cache = parsedActionsCacheRef.current;
     const startIndex = lastParsedMessageIndexRef.current + 1;
     let appendedAny = false;
@@ -323,9 +337,10 @@ export function useBuilderChatPanel({
       }
     }
     lastParsedMessageIndexRef.current = messages.length - 1;
-    // Return a fresh array reference only when something was appended so
-    // downstream `parsedActions`-based memos don't re-run unnecessarily.
-    return appendedAny ? [...cache.actions] : cache.actions;
+    if (appendedAny) {
+      // Fresh array reference so consumers re-render with the new actions.
+      setParsedActions([...cache.actions]);
+    }
   }, [messages, status]);
 
   // Detect completed edit_agent and run_agent tool calls and act on them.
@@ -411,6 +426,7 @@ export function useBuilderChatPanel({
     hasSentSeedMessageRef.current = false;
     lastParsedMessageIndexRef.current = -1;
     parsedActionsCacheRef.current = { actions: [], seen: new Set() };
+    setParsedActions([]);
     setMessages([]);
   }
 

@@ -116,6 +116,7 @@ export function BuilderChatPanel({
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
         className={cn(
           "pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2",
           isOpen
             ? "bg-slate-800 text-white hover:bg-slate-700"
             : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",

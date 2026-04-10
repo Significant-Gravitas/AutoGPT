@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import { GraphAction, getActionKey, getNodeDisplayName } from "../helpers";
 
@@ -14,7 +15,9 @@ export function ActionList({
   appliedActionKeys,
   onApplyAction,
 }: ActionListProps) {
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  // Memoized so we only rebuild the map when the nodes array identity
+  // changes, not on every streaming re-render of the parent component.
+  const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
   return (
     <div className="space-y-2 rounded-lg border border-violet-100 bg-violet-50 p-3">
       <p className="text-xs font-medium text-violet-700">Suggested changes</p>
@@ -51,7 +54,11 @@ function ActionItem({ action, nodeMap, isApplied, onApply }: ActionItemProps) {
     <div className="flex items-start justify-between gap-2 rounded bg-white p-2 text-xs shadow-sm">
       <span className="leading-tight text-slate-700">{label}</span>
       {isApplied ? (
-        <span className="shrink-0 rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+        <span
+          role="status"
+          aria-live="polite"
+          className="shrink-0 rounded bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700"
+        >
           Applied
         </span>
       ) : (

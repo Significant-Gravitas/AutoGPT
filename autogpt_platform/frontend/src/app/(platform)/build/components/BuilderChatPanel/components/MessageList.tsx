@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { ChatCircle, SpinnerGap } from "@phosphor-icons/react";
 import { ToolUIPart } from "ai";
+import { useMemo } from "react";
 import { MessagePartRenderer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/components/MessagePartRenderer";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import {
@@ -13,20 +14,40 @@ import { ActionList } from "./ActionList";
 import { TypingIndicator } from "./TypingIndicator";
 
 /**
- * Normalize a message part for the copilot MessagePartRenderer.
+ * Runtime guard: does `part` look like an AI SDK dynamic-tool part?
+ *
+ * Dynamic-tool parts have a string `toolName`, which `MessagePartRenderer`
+ * needs to route to the correct tool-specific renderer.
+ */
+function isDynamicToolPart(
+  part: unknown,
+): part is { type: "dynamic-tool"; toolName: string } {
+  if (typeof part !== "object" || part === null) return false;
+  const p = part as { type?: unknown; toolName?: unknown };
+  return p.type === "dynamic-tool" && typeof p.toolName === "string";
+}
+
+/**
+ * Normalize a message part for the copilot `MessagePartRenderer`.
  *
  * The AI SDK emits `dynamic-tool` parts with a separate `toolName`, while
  * `MessagePartRenderer` dispatches on `type === "tool-<name>"`. Rewriting the
  * type here lets `edit_agent`/`run_agent` get their specific renderers and
  * everything else fall through to `GenericTool` (collapsed accordion).
+ *
+ * Exported for direct unit testing — the runtime type guard and cast live
+ * here so they can be covered without mounting the full MessageList.
  */
-function normalizePartForRenderer(part: { type: string }): ToolUIPart {
-  if (part.type === "dynamic-tool") {
-    const dynPart = part as unknown as { toolName: string };
+export function normalizePartForRenderer(part: unknown): ToolUIPart {
+  if (isDynamicToolPart(part)) {
+    // MessagePartRenderer only reads `type`, `toolCallId`, `state`, and
+    // `output` from the part, so preserving the extra `toolName` key is safe
+    // — the structural mismatch with the narrower `ToolUIPart` union is
+    // intentional and only surfaces at the cast boundary.
     return {
       ...part,
-      type: `tool-${dynPart.toolName}`,
-    } as ToolUIPart;
+      type: `tool-${part.toolName}`,
+    } as unknown as ToolUIPart;
   }
   return part as ToolUIPart;
 }
@@ -58,16 +79,23 @@ export function MessageList({
   messagesEndRef,
   isStreaming,
 }: Props) {
-  const visibleMessages = messages.filter((msg) => {
-    const text = extractTextFromParts(msg.parts);
-    if (msg.role === "user" && text.startsWith(SEED_PROMPT_PREFIX))
-      return false;
-    return (
-      Boolean(text) ||
-      (msg.role === "assistant" &&
-        msg.parts?.some((p) => p.type === "dynamic-tool"))
-    );
-  });
+  // Memoized so the filter (which walks every part of every message to extract
+  // text) only re-runs when the messages array identity changes, not on every
+  // parent re-render during streaming.
+  const visibleMessages = useMemo(
+    () =>
+      messages.filter((msg) => {
+        const text = extractTextFromParts(msg.parts);
+        if (msg.role === "user" && text.startsWith(SEED_PROMPT_PREFIX))
+          return false;
+        return (
+          Boolean(text) ||
+          (msg.role === "assistant" &&
+            msg.parts?.some((p) => p.type === "dynamic-tool"))
+        );
+      }),
+    [messages],
+  );
   const lastVisibleRole = visibleMessages.at(-1)?.role;
   const showTypingIndicator =
     isStreaming && (!lastVisibleRole || lastVisibleRole === "user");

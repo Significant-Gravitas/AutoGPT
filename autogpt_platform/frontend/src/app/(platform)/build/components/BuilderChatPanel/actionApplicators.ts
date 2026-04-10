@@ -15,6 +15,33 @@ export const MAX_UNDO = 20;
 /** Keys that must never be written via `update_node_input` to prevent prototype pollution. */
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Default edge arrowhead color. Mirrors the value used by the manual
+ * addEdge helper in `edgeStore` so chat-applied edges render identically.
+ */
+export const DEFAULT_EDGE_MARKER_COLOR = "#555";
+
+/**
+ * Deep-clone an array of simple objects. Prefers `structuredClone` when
+ * available (isolates nested data from later in-place mutation) and falls
+ * back to an element-level spread on older environments.
+ *
+ * Used for undo snapshots where holding the original object graph keeps the
+ * restore state independent of subsequent store mutations.
+ */
+export function safeCloneArray<T extends object>(items: T[]): T[] {
+  if (typeof structuredClone === "function") {
+    try {
+      return structuredClone(items);
+    } catch {
+      // Fall through — some items may contain non-cloneable values
+      // (functions, DOM nodes, class instances). A shallow spread is the
+      // best we can do on the fallback path.
+    }
+  }
+  return items.map((item) => ({ ...item }));
+}
+
 /** Snapshot of node data taken before an action is applied, enabling undo. */
 export interface UndoSnapshot {
   actionKey: string;
@@ -37,10 +64,11 @@ export function pushUndoEntry(
 
 /**
  * Deep-clones a nodes array so an undo snapshot is isolated from in-place
- * mutations of node data elsewhere in the app. Falls back to a shallow copy
- * on environments where `structuredClone` is unavailable.
+ * mutations of node data elsewhere in the app. Uses `safeCloneArray` with a
+ * node-specific fallback that also copies the `data` sub-object so the
+ * shallow path still isolates the field commonly mutated by the builder.
  */
-function cloneNodes(nodes: CustomNode[]): CustomNode[] {
+export function cloneNodes(nodes: CustomNode[]): CustomNode[] {
   if (typeof structuredClone === "function") {
     try {
       return structuredClone(nodes);
@@ -195,13 +223,10 @@ export function applyConnectNodes(
     return false;
   }
   const edgeId = `${action.source}:${action.sourceHandle}->${action.target}:${action.targetHandle}`;
-  // Deep-clone the edges snapshot so the undo restore references values
-  // isolated from in-place mutations elsewhere in the app.
+  // Deep-clone the edges snapshot via the shared helper so the undo restore
+  // references values isolated from in-place mutations elsewhere in the app.
   const liveEdges = useEdgeStore.getState().edges;
-  const prevEdges =
-    typeof structuredClone === "function"
-      ? structuredClone(liveEdges)
-      : liveEdges.map((e) => ({ ...e }));
+  const prevEdges = safeCloneArray(liveEdges);
   // Guard against duplicate edges — the same connection may appear after an
   // undo-then-reapply or from identical suggestions across AI messages.
   const alreadyExists = prevEdges.some(
@@ -242,7 +267,7 @@ export function applyConnectNodes(
       markerEnd: {
         type: MarkerType.ArrowClosed,
         strokeWidth: 2,
-        color: "#555",
+        color: DEFAULT_EDGE_MARKER_COLOR,
       },
     },
   ]);
