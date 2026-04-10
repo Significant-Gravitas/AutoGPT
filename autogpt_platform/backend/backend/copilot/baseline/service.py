@@ -934,6 +934,10 @@ async def stream_chat_completion_baseline(
                 message_length=len(message or ""),
             )
 
+    # Capture count *before* the pending drain so is_first_turn and the
+    # transcript staleness check are not skewed by queued messages.
+    _pre_drain_msg_count = len(session.messages)
+
     # Drain any messages the user queued via POST /messages/pending
     # while this session was idle (or during a previous turn whose
     # mid-loop drains missed them).  Atomic LPOP guarantees that a
@@ -948,7 +952,10 @@ async def stream_chat_completion_baseline(
         )
         for _pm in drained_at_start:
             _content = format_pending_as_user_message(_pm)["content"]
-            maybe_append_user_message(session, _content, is_user_message=True)
+            # Append directly — pending messages are atomically-popped from
+            # Redis and are never stale-cache duplicates, so the
+            # maybe_append_user_message dedup is wrong here.
+            session.messages.append(ChatMessage(role="user", content=_content))
 
     session = await upsert_chat_session(session)
 
@@ -979,7 +986,9 @@ async def stream_chat_completion_baseline(
 
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
-    is_first_turn = len(session.messages) <= 1
+    # Use the pre-drain count so queued pending messages don't incorrectly
+    # flip is_first_turn to False on an actual first turn.
+    is_first_turn = _pre_drain_msg_count <= 1
     # Gate context fetch on both first turn AND user message so that assistant-
     # role calls (e.g. tool-result submissions) on the first turn don't trigger
     # a needless DB lookup for user understanding.
@@ -997,7 +1006,9 @@ async def stream_chat_completion_baseline(
                 _load_prior_transcript(
                     user_id=user_id,
                     session_id=session_id,
-                    session_msg_count=len(session.messages),
+                    # Use pre-drain count so pending messages don't falsely
+                    # mark the stored transcript as stale and prevent upload.
+                    session_msg_count=_pre_drain_msg_count,
                     transcript_builder=transcript_builder,
                 ),
                 prompt_task,
@@ -1266,8 +1277,12 @@ async def stream_chat_completion_baseline(
                     # a faithful copy of what the model actually saw.
                     formatted = format_pending_as_user_message(pm)
                     content_for_db = formatted["content"]
-                    maybe_append_user_message(
-                        session, content_for_db, is_user_message=True
+                    # Append directly — pending messages are atomically-popped
+                    # from Redis and are never stale-cache duplicates, so the
+                    # maybe_append_user_message dedup is wrong here and would
+                    # cause openai_messages/transcript to diverge from session.
+                    session.messages.append(
+                        ChatMessage(role="user", content=content_for_db)
                     )
                     openai_messages.append(formatted)
                     transcript_builder.append_user(content=content_for_db)
