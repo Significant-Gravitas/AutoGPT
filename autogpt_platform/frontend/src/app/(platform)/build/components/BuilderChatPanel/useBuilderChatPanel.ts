@@ -321,6 +321,14 @@ export function useBuilderChatPanel({
   // new messages, losing actions.
   useEffect(() => {
     if (status !== "ready") return;
+    // Guard against a navigation race: when flowID changes, the
+    // flow-reset effect clears `messages` + `parsedActions` but those
+    // state updates aren't committed until the next render. If this
+    // effect ran on a render where the ref still holds the *previous*
+    // flowID, we'd briefly re-populate parsedActions from the old
+    // graph's stale messages, causing old action buttons to flash in
+    // the new chat panel. Skip parsing until the ref catches up.
+    if (currentFlowIDRef.current !== flowID) return;
     const cache = parsedActionsCacheRef.current;
     const startIndex = lastParsedMessageIndexRef.current + 1;
     let appendedAny = false;
@@ -341,7 +349,7 @@ export function useBuilderChatPanel({
       // Fresh array reference so consumers re-render with the new actions.
       setParsedActions([...cache.actions]);
     }
-  }, [messages, status]);
+  }, [messages, status, flowID]);
 
   // Detect completed edit_agent and run_agent tool calls and act on them.
   // edit_agent → trigger a graph reload via the onGraphEdited callback.
