@@ -936,12 +936,11 @@ async def stream_chat_completion_baseline(
     # while this session was idle (or during a previous turn whose
     # mid-loop drains missed them).  Atomic LPOP guarantees that a
     # concurrent push lands *after* the drain and stays queued for the
-    # next turn instead of being lost.  Prepended to the session so
-    # the initial LLM call sees them.
+    # next turn instead of being lost.
     drained_at_start = await drain_pending_messages(session_id)
     if drained_at_start:
         logger.info(
-            "[Baseline] Draining %d pending message(s) at turn start " "for session %s",
+            "[Baseline] Draining %d pending message(s) at turn start for session %s",
             len(drained_at_start),
             session_id,
         )
@@ -1008,6 +1007,16 @@ async def stream_chat_completion_baseline(
     # assistant-after-assistant structure when the LLM reply is added.
     if message and is_user_message:
         transcript_builder.append_user(content=message)
+
+    # Mirror any messages drained at turn start (see above) into the
+    # transcript — otherwise the loaded prior transcript would be
+    # missing them and a mid-turn upload could leave a malformed
+    # assistant-after-assistant structure on the next turn.
+    if drained_at_start:
+        for _pm in drained_at_start:
+            transcript_builder.append_user(
+                content=format_pending_as_user_message(_pm)["content"]
+            )
 
     # Generate title for new sessions
     if is_user_message and not session.title:
