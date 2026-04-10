@@ -174,9 +174,11 @@ def test_format_pending_with_context_url() -> None:
         context={"url": "https://example.com"},
     )
     out = format_pending_as_user_message(msg)
+    content = out["content"]
     assert out["role"] == "user"
-    assert "see this page" in out["content"]
-    assert "https://example.com" in out["content"]
+    assert "see this page" in content
+    # The URL should appear verbatim in the [Page URL: ...] block.
+    assert "[Page URL: https://example.com]" in content
 
 
 def test_format_pending_with_file_ids() -> None:
