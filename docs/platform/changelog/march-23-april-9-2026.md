@@ -12,7 +12,7 @@ When you start a new AutoPilot conversation, you now see **themed prompt categor
 
 ## Live Timer Stats
 
-A **live elapsed timer** now appears in the AutoPilot thinking indicator while the AI is processing — showing "23s", "1m 5s" and so on after a 20-second threshold so quick responses aren't cluttered. Once the response completes, a **"Thought for Xm Ys" badge** freezes in place below the message. The duration is **persisted to the database**, so it survives page reloads and is visible on historical conversations. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12583)
+A **live elapsed timer** now appears in the AutoPilot thinking indicator while the AI is processing — showing "23s", "1m 5s" and so on after a 20-second threshold so quick responses aren't cluttered. Once the response completes, a **"Thought for Xm Ys" badge** freezes in place below the message. The duration **stays with the conversation**, so you can always see how long a response took — even after refreshing the page or revisiting an older chat. [↗](https://github.com/Significant-Gravitas/AutoGPT/pull/12583)
 
 <figure><img src="../.gitbook/assets/v0654-live-timer-hero.png" alt="Live timer stats showing elapsed thinking time"><figcaption><p>Live elapsed timer and persisted thinking duration</p></figcaption></figure>
 
