@@ -4,10 +4,10 @@ import { environment } from "@/services/environment";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
-import { MarkerType } from "@xyflow/react";
 import {
   type KeyboardEvent,
   type RefObject,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -18,33 +18,56 @@ import { useShallow } from "zustand/react/shallow";
 import { useEdgeStore } from "../../stores/edgeStore";
 import { useNodeStore } from "../../stores/nodeStore";
 import {
+  ApplyActionDeps,
+  UndoSnapshot,
+  applyConnectNodes,
+  applyUpdateNodeInput,
+} from "./actionApplicators";
+import {
   GraphAction,
   buildSeedPrompt,
   extractTextFromParts,
   getActionKey,
-  getNodeDisplayName,
   parseGraphActions,
   serializeGraphForChat,
 } from "./helpers";
 
 type SendMessageFn = ReturnType<typeof useChat>["sendMessage"];
 
-/** Maximum number of undo entries to keep. Oldest entries are dropped when the limit is reached. */
-const MAX_UNDO = 20;
-
-/** Snapshot of node data taken before an action is applied, enabling undo. */
-interface UndoSnapshot {
-  actionKey: string;
-  restore: () => void;
-}
+/** Maximum characters accepted by `sendRawMessage`, mirroring the textarea `maxLength`. */
+const MAX_RAW_MESSAGE_LENGTH = 4000;
 
 /**
- * Per-graph session cache.
+ * Per-graph session cache with a simple LRU cap.
  * Maps flowID → sessionId so the same chat session is reused each time the
  * user opens the panel for a given graph, preserving conversation history.
  * Lives at module scope to survive panel close/re-open without server round-trips.
+ *
+ * JavaScript `Map` preserves insertion order, so we implement LRU by deleting
+ * and re-inserting on access, and evicting the oldest entry when over `MAX_SESSION_CACHE`.
  */
+const MAX_SESSION_CACHE = 50;
 const graphSessionCache = new Map<string, string>();
+
+function cacheGetSession(flowID: string): string | undefined {
+  const id = graphSessionCache.get(flowID);
+  if (id !== undefined) {
+    // Move to most-recent position.
+    graphSessionCache.delete(flowID);
+    graphSessionCache.set(flowID, id);
+  }
+  return id;
+}
+
+function cacheSetSession(flowID: string, sessionId: string): void {
+  if (graphSessionCache.has(flowID)) {
+    graphSessionCache.delete(flowID);
+  } else if (graphSessionCache.size >= MAX_SESSION_CACHE) {
+    const oldestKey = graphSessionCache.keys().next().value;
+    if (oldestKey !== undefined) graphSessionCache.delete(oldestKey);
+  }
+  graphSessionCache.set(flowID, sessionId);
+}
 
 /** Stable empty array so the useShallow selector returns the same reference when the panel is closed. */
 const EMPTY_NODES: never[] = [];
@@ -69,9 +92,11 @@ interface UseBuilderChatPanelArgs {
  * - Transport: builds a `DefaultChatTransport` once per session, with per-request
  *   auth token refresh via `getWebSocketToken`.
  * - Action parsing: extracts `update_node_input` and `connect_nodes` actions from
- *   completed assistant messages (gated on `status === "ready"`).
- * - Action application: applies validated graph mutations to Zustand stores,
- *   bypassing the global history to keep chat changes separate from Ctrl+Z.
+ *   completed assistant messages (gated on `status === "ready"`). Parsing is
+ *   incremental — only newly added messages are re-scanned each turn.
+ * - Action application: delegates to helpers in `actionApplicators.ts` that
+ *   validate and apply graph mutations to Zustand stores, bypassing the global
+ *   history to keep chat changes separate from Ctrl+Z.
  * - Tool detection: watches for completed `edit_agent` and `run_agent` tool calls
  *   to trigger graph reload and run auto-follow respectively.
  * - Undo: maintains a bounded LIFO stack (MAX_UNDO = 20) of restore callbacks.
@@ -105,6 +130,15 @@ export function useBuilderChatPanel({
   // Tracks the current flowID as a ref so in-flight session creation callbacks
   // can verify the graph hasn't changed before committing the new sessionId.
   const currentFlowIDRef = useRef<string | null>(null);
+  // Tracks the highest message index already scanned for actions so subsequent
+  // turns only re-parse new assistant messages instead of O(all_messages).
+  const lastParsedMessageIndexRef = useRef(-1);
+  // Cached deduplicated action list that survives across re-renders so that
+  // incremental parsing can merge new actions into it without a full re-scan.
+  const parsedActionsCacheRef = useRef<{
+    actions: GraphAction[];
+    seen: Set<string>;
+  }>({ actions: [], seen: new Set() });
 
   const [{ flowID }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
@@ -127,9 +161,7 @@ export function useBuilderChatPanel({
   // so restoring messages while resetting action state would show previously applied
   // actions as unapplied, allowing them to be re-applied and creating duplicate undo entries.
   useEffect(() => {
-    const cachedSessionId = flowID
-      ? (graphSessionCache.get(flowID) ?? null)
-      : null;
+    const cachedSessionId = flowID ? (cacheGetSession(flowID) ?? null) : null;
     setSessionId(cachedSessionId);
     setSessionError(false);
     setAppliedActionKeys(new Set());
@@ -138,6 +170,8 @@ export function useBuilderChatPanel({
     isCreatingSessionRef.current = false;
     processedToolCallsRef.current = new Set();
     hasSentSeedMessageRef.current = false;
+    lastParsedMessageIndexRef.current = -1;
+    parsedActionsCacheRef.current = { actions: [], seen: new Set() };
     setMessages([]);
     // setMessages is a stable function from useChat; excluding from deps is safe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -177,7 +211,7 @@ export function useBuilderChatPanel({
           }
           setSessionId(id);
           // Cache so this session is reused next time the same graph is opened.
-          if (effectFlowID) graphSessionCache.set(effectFlowID, id);
+          if (effectFlowID) cacheSetSession(effectFlowID, id);
         } else {
           setSessionError(true);
         }
@@ -268,18 +302,30 @@ export function useBuilderChatPanel({
 
   // Parsed actions from all assistant messages, accumulated across turns.
   // Gated on `status === "ready"` so parsing only runs on completed turns.
+  // Uses an incremental cache keyed off `lastParsedMessageIndexRef` so each
+  // completed turn only re-scans the newly added messages rather than the
+  // entire conversation history.
   const parsedActions = useMemo(() => {
-    if (status !== "ready") return [];
-    const seen = new Set<string>();
-    return messages
-      .filter((m) => m.role === "assistant")
-      .flatMap((msg) => parseGraphActions(extractTextFromParts(msg.parts)))
-      .filter((action) => {
+    if (status !== "ready") return parsedActionsCacheRef.current.actions;
+    const cache = parsedActionsCacheRef.current;
+    const startIndex = lastParsedMessageIndexRef.current + 1;
+    let appendedAny = false;
+    for (let i = startIndex; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      const newActions = parseGraphActions(extractTextFromParts(msg.parts));
+      for (const action of newActions) {
         const key = getActionKey(action);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+        if (cache.seen.has(key)) continue;
+        cache.seen.add(key);
+        cache.actions.push(action);
+        appendedAny = true;
+      }
+    }
+    lastParsedMessageIndexRef.current = messages.length - 1;
+    // Return a fresh array reference only when something was appended so
+    // downstream `parsedActions`-based memos don't re-run unnecessarily.
+    return appendedAny ? [...cache.actions] : cache.actions;
   }, [messages, status]);
 
   // Detect completed edit_agent and run_agent tool calls and act on them.
@@ -363,6 +409,8 @@ export function useBuilderChatPanel({
     setSessionError(false);
     isCreatingSessionRef.current = false;
     hasSentSeedMessageRef.current = false;
+    lastParsedMessageIndexRef.current = -1;
+    parsedActionsCacheRef.current = { actions: [], seen: new Set() };
     setMessages([]);
   }
 
@@ -380,193 +428,35 @@ export function useBuilderChatPanel({
     }
   }
 
-  function handleApplyAction(action: GraphAction) {
-    if (action.type === "update_node_input") {
-      // Read live state for both validation and mutation so rapid successive
-      // applies see the latest nodes rather than a stale render-cycle snapshot.
-      const liveNodes = useNodeStore.getState().nodes;
-      const node = liveNodes.find((n) => n.id === action.nodeId);
-      if (!node) {
-        toast({
-          title: "Cannot apply change",
-          description: `Node "${action.nodeId}" was not found in the graph.`,
-          variant: "destructive",
-        });
-        return;
+  const handleApplyAction = useCallback(
+    (action: GraphAction) => {
+      const deps: ApplyActionDeps = {
+        toast,
+        setNodes,
+        setEdges,
+        setUndoStack,
+        setAppliedActionKeys,
+      };
+      let applied = false;
+      if (action.type === "update_node_input") {
+        applied = applyUpdateNodeInput(action, deps);
+      } else if (action.type === "connect_nodes") {
+        applied = applyConnectNodes(action, deps);
+      } else {
+        // Exhaustiveness guard — TypeScript ensures all GraphAction types are handled above.
+        const _: never = action;
+        void _;
       }
-      // Block prototype-polluting keys regardless of schema presence.
-      // The schema check below uses hasOwnProperty so __proto__ is caught when
-      // schemaProps exists, but this guard handles the no-schema case.
-      const DANGEROUS_KEYS = ["__proto__", "constructor", "prototype"];
-      if (DANGEROUS_KEYS.includes(action.key)) {
-        toast({
-          title: "Cannot apply change",
-          description: `Field "${action.key}" is not a valid input.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Reject keys not present in the node's input schema to prevent writing
-      // arbitrary fields that the block does not support.
-      const schemaProps = node.data.inputSchema?.properties;
-      if (
-        schemaProps &&
-        !Object.prototype.hasOwnProperty.call(schemaProps, action.key)
-      ) {
-        toast({
-          title: "Cannot apply change",
-          description: `Field "${action.key}" is not a valid input for "${getNodeDisplayName(node, node.id)}".`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Capture a shallow-copied nodes snapshot before mutating. Spreading
-      // ensures the undo restore references an independent array rather than
-      // the same reference that the store may update in-place.
-      // Both the apply and the restore use setNodes (not updateNodeData) to
-      // bypass the global history store — this keeps chat-panel changes
-      // completely separate from Ctrl+Z, preventing the "Applied" badge from
-      // going stale after a global undo.
-      const prevNodes = [...liveNodes];
-      const nextNodes = liveNodes.map((n) =>
-        n.id === action.nodeId
-          ? {
-              ...n,
-              data: {
-                ...n.data,
-                hardcodedValues: {
-                  ...n.data.hardcodedValues,
-                  [action.key]: action.value,
-                },
-              },
-            }
-          : n,
-      );
-      const key = getActionKey(action);
-      setUndoStack((prev) => {
-        const entry: UndoSnapshot = {
-          actionKey: key,
-          restore: () => {
-            setNodes(prevNodes);
-            setAppliedActionKeys((keys) => {
-              const next = new Set(keys);
-              next.delete(key);
-              return next;
-            });
-          },
-        };
-        const trimmed = prev.length >= MAX_UNDO ? prev.slice(1) : prev;
-        return [...trimmed, entry];
-      });
-      setNodes(nextNodes);
-    } else if (action.type === "connect_nodes") {
-      // Read live state so validation reflects the current graph even when
-      // multiple actions are applied within the same render cycle.
-      const liveNodes = useNodeStore.getState().nodes;
-      const sourceNode = liveNodes.find((n) => n.id === action.source);
-      const targetNode = liveNodes.find((n) => n.id === action.target);
-      if (!sourceNode || !targetNode) {
-        toast({
-          title: "Cannot apply connection",
-          description: `One or both nodes (${action.source}, ${action.target}) were not found.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Validate that the referenced handles exist on the respective nodes.
-      const srcProps = sourceNode.data.outputSchema?.properties;
-      const tgtProps = targetNode.data.inputSchema?.properties;
-      if (
-        srcProps &&
-        !Object.prototype.hasOwnProperty.call(srcProps, action.sourceHandle)
-      ) {
-        toast({
-          title: "Cannot apply connection",
-          description: `Output handle "${action.sourceHandle}" does not exist on "${getNodeDisplayName(sourceNode, action.source)}".`,
-          variant: "destructive",
-        });
-        return;
-      }
-      if (
-        tgtProps &&
-        !Object.prototype.hasOwnProperty.call(tgtProps, action.targetHandle)
-      ) {
-        toast({
-          title: "Cannot apply connection",
-          description: `Input handle "${action.targetHandle}" does not exist on "${getNodeDisplayName(targetNode, action.target)}".`,
-          variant: "destructive",
-        });
-        return;
-      }
-      const edgeId = `${action.source}:${action.sourceHandle}->${action.target}:${action.targetHandle}`;
-      // Shallow-copy the edges snapshot so the undo restore references an
-      // independent array rather than the same reference the store may update.
-      // Both the apply and the restore use setEdges (not addEdge/removeEdge)
-      // to bypass the global history store — keeps chat-panel changes separate.
-      const prevEdges = [...useEdgeStore.getState().edges];
-      // Guard against duplicate edges — the same connection may appear after an
-      // undo-then-reapply or from identical suggestions across AI messages.
-      const alreadyExists = prevEdges.some(
-        (e) =>
-          e.source === action.source &&
-          e.target === action.target &&
-          e.sourceHandle === action.sourceHandle &&
-          e.targetHandle === action.targetHandle,
-      );
-      if (alreadyExists) {
-        // Edge already present — mark as applied without duplicating it.
+      if (applied) {
         setAppliedActionKeys((prev) => {
           const next = new Set(prev);
           next.add(getActionKey(action));
           return next;
         });
-        return;
       }
-      const key = getActionKey(action);
-      setUndoStack((prev) => {
-        const entry: UndoSnapshot = {
-          actionKey: key,
-          restore: () => {
-            setEdges(prevEdges);
-            setAppliedActionKeys((keys) => {
-              const next = new Set(keys);
-              next.delete(key);
-              return next;
-            });
-          },
-        };
-        const trimmed = prev.length >= MAX_UNDO ? prev.slice(1) : prev;
-        return [...trimmed, entry];
-      });
-      setEdges([
-        ...prevEdges,
-        {
-          id: edgeId,
-          source: action.source,
-          target: action.target,
-          sourceHandle: action.sourceHandle,
-          targetHandle: action.targetHandle,
-          type: "custom",
-          // Match the markerEnd style used by addEdge in edgeStore so
-          // chat-applied edges render with the same arrowhead as manually drawn ones.
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            strokeWidth: 2,
-            color: "#555",
-          },
-        },
-      ]);
-    } else {
-      // Exhaustiveness guard — TypeScript ensures all GraphAction types are handled above.
-      const _: never = action;
-      return _;
-    }
-    setAppliedActionKeys((prev) => {
-      const next = new Set(prev);
-      next.add(getActionKey(action));
-      return next;
-    });
-  }
+    },
+    [toast, setNodes, setEdges],
+  );
 
   function handleUndoLastAction() {
     // Read the current stack directly rather than inside the setUndoStack updater.
@@ -583,9 +473,15 @@ export function useBuilderChatPanel({
   // Sends an arbitrary text message directly, bypassing the input field.
   // Used by CopilotChatActionsProvider so tool components (e.g. EditAgentTool)
   // can programmatically send "try again" prompts without touching the textarea.
+  // Enforces the same length cap as the visible textarea so programmatic callers
+  // cannot bypass the limit.
   function sendRawMessage(text: string) {
     if (!text || !canSend) return;
-    sendMessage({ text });
+    const trimmed =
+      text.length > MAX_RAW_MESSAGE_LENGTH
+        ? text.slice(0, MAX_RAW_MESSAGE_LENGTH)
+        : text;
+    sendMessage({ text: trimmed });
   }
 
   return {

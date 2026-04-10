@@ -187,6 +187,84 @@ describe("BuilderChatPanel", () => {
     expect(screen.getByText(`Set "Search" "query" = "AI news"`)).toBeDefined();
   });
 
+  it("renders the action label correctly for connect_nodes", () => {
+    const nodes = [
+      {
+        id: "src-id",
+        data: {
+          title: "Web Search",
+          metadata: { customized_name: "Google Search" },
+          description: "",
+          hardcodedValues: {},
+          inputSchema: {},
+          outputSchema: {},
+          uiType: 1,
+          block_id: "b1",
+          costs: [],
+          categories: [],
+        },
+        type: "custom" as const,
+        position: { x: 0, y: 0 },
+      },
+      {
+        id: "tgt-id",
+        data: {
+          title: "Format Output",
+          description: "",
+          hardcodedValues: {},
+          inputSchema: {},
+          outputSchema: {},
+          uiType: 1,
+          block_id: "b2",
+          costs: [],
+          categories: [],
+        },
+        type: "custom" as const,
+        position: { x: 100, y: 0 },
+      },
+    ] as unknown as CustomNode[];
+
+    mockUseBuilderChatPanel.mockReturnValue(
+      makeMockHook({
+        isOpen: true,
+        nodes,
+        parsedActions: [
+          {
+            type: "connect_nodes",
+            source: "src-id",
+            target: "tgt-id",
+            sourceHandle: "result",
+            targetHandle: "text",
+          },
+        ],
+      }),
+    );
+    render(<BuilderChatPanel />);
+    expect(
+      screen.getByText(`Connect "Google Search" → "Format Output"`),
+    ).toBeDefined();
+  });
+
+  it("falls back to raw node id when a connect_nodes action references an unknown node", () => {
+    mockUseBuilderChatPanel.mockReturnValue(
+      makeMockHook({
+        isOpen: true,
+        nodes: [],
+        parsedActions: [
+          {
+            type: "connect_nodes",
+            source: "ghost-src",
+            target: "ghost-tgt",
+            sourceHandle: "out",
+            targetHandle: "in",
+          },
+        ],
+      }),
+    );
+    render(<BuilderChatPanel />);
+    expect(screen.getByText(`Connect "ghost-src" → "ghost-tgt"`)).toBeDefined();
+  });
+
   it("shows Apply button for unapplied actions and Applied badge for applied actions", () => {
     const action = {
       type: "update_node_input" as const,
