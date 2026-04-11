@@ -227,6 +227,78 @@ async def test_build_query_no_resume_multi_message(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_build_query_session_msg_ceiling_prevents_pending_duplication():
+    """session_msg_ceiling stops pending messages from leaking into the gap.
+
+    Scenario: transcript covers 2 messages, session has 2 historical + 1 current
+    + 2 pending drained at turn start.  Without the ceiling the gap would include
+    the pending messages AND current_message already has them → duplication.
+    With session_msg_ceiling=3 (pre-drain count) the gap slice is empty and
+    only current_message carries the pending content.
+    """
+    # session.messages after drain: [hist1, hist2, current_msg, pending1, pending2]
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="hist1"),
+            ChatMessage(role="assistant", content="hist2"),
+            ChatMessage(role="user", content="current msg with pending1 pending2"),
+            ChatMessage(role="user", content="pending1"),
+            ChatMessage(role="user", content="pending2"),
+        ]
+    )
+    # transcript covers hist1+hist2 (2 messages); pre-drain count was 3 (includes current_msg)
+    result, was_compacted = await _build_query_message(
+        "current msg with pending1 pending2",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+        session_msg_ceiling=3,  # len(session.messages) before drain
+    )
+    # Gap should be empty (transcript_msg_count == ceiling - 1), so no history prepended
+    assert result == "current msg with pending1 pending2"
+    assert was_compacted is False
+    # Pending messages must NOT appear in gap context
+    assert "pending1" not in result.split("current msg")[0]
+
+
+@pytest.mark.asyncio
+async def test_build_query_session_msg_ceiling_preserves_real_gap():
+    """session_msg_ceiling still surfaces a genuine stale-transcript gap.
+
+    Scenario: transcript covers 2 messages, session has 4 historical + 1 current
+    + 2 pending.  Ceiling = 5 (pre-drain).  Real gap = messages 2-3 (hist3, hist4).
+    """
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="hist1"),
+            ChatMessage(role="assistant", content="hist2"),
+            ChatMessage(role="user", content="hist3"),
+            ChatMessage(role="assistant", content="hist4"),
+            ChatMessage(role="user", content="current"),
+            ChatMessage(role="user", content="pending1"),
+            ChatMessage(role="user", content="pending2"),
+        ]
+    )
+    result, was_compacted = await _build_query_message(
+        "current",
+        session,
+        use_resume=True,
+        transcript_msg_count=2,
+        session_id="test-session",
+        session_msg_ceiling=5,  # pre-drain: [hist1..hist4, current]
+    )
+    # Gap = session.messages[2:4] = [hist3, hist4]
+    assert "<conversation_history>" in result
+    assert "hist3" in result
+    assert "hist4" in result
+    assert "Now, the user says:\ncurrent" in result
+    # Pending messages must NOT appear in gap
+    assert "pending1" not in result
+    assert "pending2" not in result
+
+
+@pytest.mark.asyncio
 async def test_build_query_no_resume_multi_message_compacted(monkeypatch):
     """When compression actually compacts, was_compacted should be True."""
     session = _make_session(
