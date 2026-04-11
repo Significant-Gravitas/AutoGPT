@@ -957,7 +957,19 @@ async def stream_chat_completion_baseline(
             # maybe_append_user_message dedup is wrong here.
             session.messages.append(ChatMessage(role="user", content=content))
 
-    session = await upsert_chat_session(session)
+    # Persist the drained pending messages (if any) plus the current user
+    # message.  Wrap in try/except so a transient DB failure here does not
+    # silently discard messages that were already popped from Redis — the
+    # turn can still proceed using the in-memory session.messages, and a
+    # later resume/replay will backfill from the DB on the next turn.
+    try:
+        session = await upsert_chat_session(session)
+    except Exception as _persist_err:
+        logger.warning(
+            "[Baseline] Failed to persist session at turn start "
+            "(pending drain may not be durable): %s",
+            _persist_err,
+        )
 
     # Select model based on the per-request mode.  'fast' downgrades to
     # the cheaper/faster model; everything else keeps the default.
@@ -1274,6 +1286,21 @@ async def stream_chat_completion_baseline(
                 continue
             pending = await drain_pending_messages(session_id)
             if pending:
+                # Flush any buffered assistant/tool messages from completed
+                # rounds into session.messages BEFORE appending the pending
+                # user message.  ``_baseline_conversation_updater`` only
+                # records assistant+tool rounds into ``state.session_messages``
+                # — they are normally batch-flushed in the finally block.
+                # Without this in-order flush, the mid-loop pending user
+                # message lands before the preceding round's assistant/tool
+                # entries, producing chronologically-wrong session.messages
+                # on persist (user interposed between an assistant tool_call
+                # and its tool-result), which breaks OpenAI tool-call ordering
+                # invariants on the next turn's replay.
+                for _buffered in state.session_messages:
+                    session.messages.append(_buffered)
+                state.session_messages.clear()
+
                 for pm in pending:
                     # ``format_pending_as_user_message`` embeds file
                     # attachments and context URL/page content into the
