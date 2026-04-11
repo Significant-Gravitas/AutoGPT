@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
 import { ChatCircle, SpinnerGap } from "@phosphor-icons/react";
 import { ToolUIPart } from "ai";
-import { useMemo } from "react";
 import { MessagePartRenderer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/components/MessagePartRenderer";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import {
@@ -79,23 +78,16 @@ export function MessageList({
   messagesEndRef,
   isStreaming,
 }: Props) {
-  // Memoized so the filter (which walks every part of every message to extract
-  // text) only re-runs when the messages array identity changes, not on every
-  // parent re-render during streaming.
-  const visibleMessages = useMemo(
-    () =>
-      messages.filter((msg) => {
-        const text = extractTextFromParts(msg.parts);
-        if (msg.role === "user" && text.startsWith(SEED_PROMPT_PREFIX))
-          return false;
-        return (
-          Boolean(text) ||
-          (msg.role === "assistant" &&
-            msg.parts?.some((p) => p.type === "dynamic-tool"))
-        );
-      }),
-    [messages],
-  );
+  const visibleMessages = messages.filter((msg) => {
+    const text = extractTextFromParts(msg.parts);
+    if (msg.role === "user" && text.startsWith(SEED_PROMPT_PREFIX))
+      return false;
+    return (
+      Boolean(text) ||
+      (msg.role === "assistant" &&
+        msg.parts?.some((p) => p.type === "dynamic-tool"))
+    );
+  });
   const lastVisibleRole = visibleMessages.at(-1)?.role;
   const showTypingIndicator =
     isStreaming && (!lastVisibleRole || lastVisibleRole === "user");

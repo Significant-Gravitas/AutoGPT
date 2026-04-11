@@ -8,7 +8,6 @@ import {
   type KeyboardEvent,
   type RefObject,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -135,6 +134,9 @@ export function useBuilderChatPanel({
   // Tracks the highest message index already scanned for actions so subsequent
   // turns only re-parse new assistant messages instead of O(all_messages).
   const lastParsedMessageIndexRef = useRef(-1);
+  // Mirrors lastParsedMessageIndexRef but for tool-call detection, so the
+  // tool-call effect is also O(new_messages) not O(all_messages).
+  const lastScannedToolCallIndexRef = useRef(-1);
   // Cached deduplicated action list that survives across re-renders so that
   // incremental parsing can merge new actions into it without a full re-scan.
   const parsedActionsCacheRef = useRef<{
@@ -177,6 +179,7 @@ export function useBuilderChatPanel({
     processedToolCallsRef.current = new Set();
     hasSentSeedMessageRef.current = false;
     lastParsedMessageIndexRef.current = -1;
+    lastScannedToolCallIndexRef.current = -1;
     parsedActionsCacheRef.current = { actions: [], seen: new Set() };
     setMessages([]);
     // setMessages is a stable function from useChat; excluding from deps is safe.
@@ -241,38 +244,32 @@ export function useBuilderChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, sessionId, sessionError]);
 
-  const transport = useMemo(
-    () =>
-      sessionId
-        ? new DefaultChatTransport({
-            api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
-            prepareSendMessagesRequest: async ({ messages }) => {
-              const last = messages.at(-1);
-              if (!last)
-                throw new Error(
-                  "No message to send — messages array is empty.",
-                );
-              const { token, error } = await getWebSocketToken();
-              if (error || !token)
-                throw new Error(
-                  "Authentication failed — please sign in again.",
-                );
-              const messageText = extractTextFromParts(last.parts ?? []);
-              return {
-                body: {
-                  message: messageText,
-                  is_user_message: last.role === "user",
-                  context: null,
-                  file_ids: null,
-                  mode: null,
-                },
-                headers: { Authorization: `Bearer ${token}` },
-              };
+  // Transport is recreated when sessionId changes (at most once per graph navigation),
+  // so memoisation provides no meaningful benefit — use a plain conditional.
+  const transport = sessionId
+    ? new DefaultChatTransport({
+        api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+        prepareSendMessagesRequest: async ({ messages }) => {
+          const last = messages.at(-1);
+          if (!last)
+            throw new Error("No message to send — messages array is empty.");
+          const { token, error } = await getWebSocketToken();
+          if (error || !token)
+            throw new Error("Authentication failed — please sign in again.");
+          const messageText = extractTextFromParts(last.parts ?? []);
+          return {
+            body: {
+              message: messageText,
+              is_user_message: last.role === "user",
+              context: null,
+              file_ids: null,
+              mode: null,
             },
-          })
-        : null,
-    [sessionId],
-  );
+            headers: { Authorization: `Bearer ${token}` },
+          };
+        },
+      })
+    : null;
 
   const { messages, setMessages, sendMessage, stop, status, error } = useChat({
     id: sessionId ?? undefined,
@@ -351,9 +348,13 @@ export function useBuilderChatPanel({
   // Detect completed edit_agent and run_agent tool calls and act on them.
   // edit_agent → trigger a graph reload via the onGraphEdited callback.
   // run_agent  → update flowExecutionID in the URL to auto-follow the new run.
+  // Uses lastScannedToolCallIndexRef to mirror the action parser's incremental
+  // approach — only newly added messages are scanned each turn.
   useEffect(() => {
     if (status !== "ready") return;
-    for (const msg of messages) {
+    const startIndex = lastScannedToolCallIndexRef.current + 1;
+    for (let i = startIndex; i < messages.length; i++) {
+      const msg = messages[i];
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
         if (part.type !== "dynamic-tool") continue;
@@ -379,6 +380,7 @@ export function useBuilderChatPanel({
         }
       }
     }
+    lastScannedToolCallIndexRef.current = messages.length - 1;
   }, [messages, status, onGraphEdited, setQueryStates]);
 
   // Close the panel on Escape when focus is inside the panel, so pressing Escape
@@ -430,6 +432,7 @@ export function useBuilderChatPanel({
     isCreatingSessionRef.current = false;
     hasSentSeedMessageRef.current = false;
     lastParsedMessageIndexRef.current = -1;
+    lastScannedToolCallIndexRef.current = -1;
     parsedActionsCacheRef.current = { actions: [], seen: new Set() };
     setParsedActions([]);
     setMessages([]);

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import { GraphAction, getActionKey, getNodeDisplayName } from "../helpers";
 
@@ -15,9 +14,7 @@ export function ActionList({
   appliedActionKeys,
   onApplyAction,
 }: ActionListProps) {
-  // Memoized so we only rebuild the map when the nodes array identity
-  // changes, not on every streaming re-render of the parent component.
-  const nodeMap = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   return (
     <div className="space-y-2 rounded-lg border border-violet-100 bg-violet-50 p-3">
       <p className="text-xs font-medium text-violet-700">Suggested changes</p>
