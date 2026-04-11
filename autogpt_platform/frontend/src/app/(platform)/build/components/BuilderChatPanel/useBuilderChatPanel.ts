@@ -144,14 +144,20 @@ export function useBuilderChatPanel({
     actions: GraphAction[];
     seen: Set<string>;
   }>({ actions: [], seen: new Set() });
-  // Navigation race guard: set by the flowID-reset effect when an *actual*
-  // graph navigation occurs (not initial mount). The parse-actions effect
-  // checks this flag and skips one pass, because the cleanup effect's
-  // `setMessages([])` is queued and not yet committed when parse-actions
-  // runs in the same effect cycle — without the skip, we'd re-scan the
-  // previous graph's messages from index 0 (refs were just reset) and
-  // briefly flash old action buttons in the new graph's panel.
+  // Navigation race guards: set by the flowID-reset effect when an *actual*
+  // graph navigation occurs (not initial mount). The parse-actions and
+  // tool-call detection effects each check their own flag and skip one pass,
+  // because the cleanup effect's `setMessages([])` is queued and not yet
+  // committed when these effects run in the same effect cycle — without the
+  // skip, they'd re-scan the previous graph's messages from index 0 (refs
+  // were just reset) and either flash old action buttons in the new graph's
+  // panel or re-fire tool-call callbacks (refetchGraph via edit_agent,
+  // auto-follow via run_agent) for executions that belong to the previous
+  // graph. Separate refs are used because each effect consumes its own flag
+  // independently — a single shared ref would let whichever effect runs
+  // first clear the guard before the other got a chance to skip.
   const skipNextParseRef = useRef(false);
+  const skipNextToolScanRef = useRef(false);
   // Tracks the previous flowID so the reset effect can distinguish initial
   // mount (no skip needed — fresh hook, no stale messages) from real
   // navigation (skip needed — closure has prior-graph messages).
@@ -182,13 +188,15 @@ export function useBuilderChatPanel({
   // actions as unapplied, allowing them to be re-applied and creating duplicate undo entries.
   useEffect(() => {
     // Detect actual navigation (not initial mount) so the parse-actions
-    // effect can skip its next pass — see ``skipNextParseRef`` declaration
-    // for the race-condition rationale.
+    // and tool-scan effects can skip their next pass — see the
+    // ``skipNextParseRef`` / ``skipNextToolScanRef`` declarations for the
+    // race-condition rationale.
     const isNavigation =
       prevFlowIDRef.current !== null && prevFlowIDRef.current !== flowID;
     prevFlowIDRef.current = flowID;
     if (isNavigation) {
       skipNextParseRef.current = true;
+      skipNextToolScanRef.current = true;
     }
 
     const cachedSessionId = flowID ? (cacheGetSession(flowID) ?? null) : null;
@@ -388,6 +396,18 @@ export function useBuilderChatPanel({
   // approach — only newly added messages are scanned each turn.
   useEffect(() => {
     if (status !== "ready") return;
+    // Navigation race guard: mirrors the parse-actions effect above. When
+    // `flowID` changes, the reset effect clears `processedToolCallsRef` and
+    // `lastScannedToolCallIndexRef` and queues `setMessages([])`, but the
+    // empty-messages commit is deferred — this effect's `messages` closure
+    // still holds the previous graph's messages. Skipping one pass prevents
+    // re-firing `onGraphEdited` / `setQueryStates(flowExecutionID)` for
+    // tool calls that belong to the prior graph (which would trigger a
+    // stray `refetchGraph()` on the new graph or auto-follow a stale run).
+    if (skipNextToolScanRef.current) {
+      skipNextToolScanRef.current = false;
+      return;
+    }
     const startIndex = lastScannedToolCallIndexRef.current + 1;
     for (let i = startIndex; i < messages.length; i++) {
       const msg = messages[i];
