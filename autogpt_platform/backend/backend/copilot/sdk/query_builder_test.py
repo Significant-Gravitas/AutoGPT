@@ -299,6 +299,39 @@ async def test_build_query_session_msg_ceiling_preserves_real_gap():
 
 
 @pytest.mark.asyncio
+async def test_build_query_session_msg_ceiling_suppresses_spurious_no_resume_fallback():
+    """session_msg_ceiling prevents the no-resume compression fallback from
+    firing on the first turn of a session when pending messages inflate msg_count.
+
+    Scenario: fresh session (1 message) + 1 pending message drained at turn start.
+    Without the ceiling: msg_count=2 > 1 → fallback triggers → pending message
+    leaked into history → wrong context sent to model.
+    With session_msg_ceiling=1 (pre-drain count): effective_count=1, 1 > 1 is False
+    → fallback does not trigger → current_message returned as-is.
+    """
+    # session.messages after drain: [current_msg, pending_msg]
+    session = _make_session(
+        [
+            ChatMessage(role="user", content="What is 2 plus 2?"),
+            ChatMessage(role="user", content="What is 7 plus 7?"),  # pending
+        ]
+    )
+    result, was_compacted = await _build_query_message(
+        "What is 2 plus 2?\n\nWhat is 7 plus 7?",
+        session,
+        use_resume=False,
+        transcript_msg_count=0,
+        session_id="test-session",
+        session_msg_ceiling=1,  # pre-drain: only 1 message existed
+    )
+    # Should return current_message directly without wrapping in history context
+    assert result == "What is 2 plus 2?\n\nWhat is 7 plus 7?"
+    assert was_compacted is False
+    # Pending question must NOT appear in a spurious history section
+    assert "<conversation_history>" not in result
+
+
+@pytest.mark.asyncio
 async def test_build_query_no_resume_multi_message_compacted(monkeypatch):
     """When compression actually compacts, was_compacted should be True."""
     session = _make_session(
