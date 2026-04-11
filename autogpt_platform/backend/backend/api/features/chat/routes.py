@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from collections.abc import AsyncGenerator
-from typing import Annotated
+from typing import Annotated, Any, cast
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -98,6 +98,18 @@ _UUID_RE = re.compile(
 _PENDING_CALL_LIMIT = 30  # pushes per minute per user
 _PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
+
+# Lua script for atomic INCR + conditional EXPIRE.
+# Using a single EVAL ensures the counter never persists without a TTL —
+# a bare INCR followed by a separate EXPIRE can leave the key without
+# an expiry if the process crashes between the two commands.
+_CALL_INCR_LUA = """
+local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
+end
+return count
+"""
 
 
 async def _validate_and_get_session(
@@ -1144,13 +1156,22 @@ async def queue_pending_message(
 
     # Call-frequency cap: prevent rapid-fire pushes that would bypass the
     # token-budget check (which only fires per-turn, not per-push).
-    # Uses a Redis INCR + EXPIRE sliding counter; fails open if Redis is down.
+    # Uses an atomic Lua EVAL (INCR + EXPIRE) so the key can never be
+    # orphaned without a TTL; fails open if Redis is down.
     try:
         _redis = await get_redis_async()
         _call_key = f"{_PENDING_CALL_KEY_PREFIX}{user_id}"
-        _call_count = await _redis.incr(_call_key)
-        if _call_count == 1:
-            await _redis.expire(_call_key, _PENDING_CALL_WINDOW_SECONDS)
+        _call_count = int(
+            await cast(
+                "Any",
+                _redis.eval(
+                    _CALL_INCR_LUA,
+                    1,
+                    _call_key,
+                    str(_PENDING_CALL_WINDOW_SECONDS),
+                ),
+            )
+        )
         if _call_count > _PENDING_CALL_LIMIT:
             raise HTTPException(
                 status_code=429,

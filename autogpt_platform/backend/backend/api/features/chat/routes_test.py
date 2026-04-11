@@ -707,10 +707,9 @@ def _mock_pending_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
-    # Mock Redis for per-user call-frequency rate limit
+    # Mock Redis for per-user call-frequency rate limit (atomic Lua EVAL)
     mock_redis = mocker.MagicMock()
-    mock_redis.incr = mocker.AsyncMock(return_value=call_count)
-    mock_redis.expire = mocker.AsyncMock(return_value=True)
+    mock_redis.eval = mocker.AsyncMock(return_value=call_count)
     mocker.patch(
         "backend.api.features.chat.routes.get_redis_async",
         new_callable=AsyncMock,
