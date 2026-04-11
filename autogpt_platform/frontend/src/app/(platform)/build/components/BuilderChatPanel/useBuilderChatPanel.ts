@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   type RefObject,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -244,32 +245,42 @@ export function useBuilderChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, sessionId, sessionError]);
 
-  // Transport is recreated when sessionId changes (at most once per graph navigation),
-  // so memoisation provides no meaningful benefit — use a plain conditional.
-  const transport = sessionId
-    ? new DefaultChatTransport({
-        api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
-        prepareSendMessagesRequest: async ({ messages }) => {
-          const last = messages.at(-1);
-          if (!last)
-            throw new Error("No message to send — messages array is empty.");
-          const { token, error } = await getWebSocketToken();
-          if (error || !token)
-            throw new Error("Authentication failed — please sign in again.");
-          const messageText = extractTextFromParts(last.parts ?? []);
-          return {
-            body: {
-              message: messageText,
-              is_user_message: last.role === "user",
-              context: null,
-              file_ids: null,
-              mode: null,
+  // Memoised so the same DefaultChatTransport instance is reused across
+  // re-renders (e.g. every streaming chunk triggers a render). Recreating it
+  // on each render resets useChat's internal Chat instance mid-stream, causing
+  // the streaming connection to break. Only recreate when sessionId changes.
+  const transport = useMemo(
+    () =>
+      sessionId
+        ? new DefaultChatTransport({
+            api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
+            prepareSendMessagesRequest: async ({ messages }) => {
+              const last = messages.at(-1);
+              if (!last)
+                throw new Error(
+                  "No message to send — messages array is empty.",
+                );
+              const { token, error } = await getWebSocketToken();
+              if (error || !token)
+                throw new Error(
+                  "Authentication failed — please sign in again.",
+                );
+              const messageText = extractTextFromParts(last.parts ?? []);
+              return {
+                body: {
+                  message: messageText,
+                  is_user_message: last.role === "user",
+                  context: null,
+                  file_ids: null,
+                  mode: null,
+                },
+                headers: { Authorization: `Bearer ${token}` },
+              };
             },
-            headers: { Authorization: `Bearer ${token}` },
-          };
-        },
-      })
-    : null;
+          })
+        : null,
+    [sessionId],
+  );
 
   const { messages, setMessages, sendMessage, stop, status, error } = useChat({
     id: sessionId ?? undefined,
@@ -315,14 +326,6 @@ export function useBuilderChatPanel({
   // new messages, losing actions.
   useEffect(() => {
     if (status !== "ready") return;
-    // Guard against a navigation race: when flowID changes, the
-    // flow-reset effect clears `messages` + `parsedActions` but those
-    // state updates aren't committed until the next render. If this
-    // effect ran on a render where the ref still holds the *previous*
-    // flowID, we'd briefly re-populate parsedActions from the old
-    // graph's stale messages, causing old action buttons to flash in
-    // the new chat panel. Skip parsing until the ref catches up.
-    if (currentFlowIDRef.current !== flowID) return;
     const cache = parsedActionsCacheRef.current;
     const startIndex = lastParsedMessageIndexRef.current + 1;
     let appendedAny = false;
