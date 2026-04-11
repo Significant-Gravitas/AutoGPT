@@ -800,14 +800,18 @@ class WriteWorkspaceFileTool(BaseTool):
             if not has_any_content:
                 return ErrorResponse(
                     message=(
-                        "Tool call appears truncated (no arguments received). "
-                        "This happens when the content is too large for a "
-                        "single tool call. Instead of passing content inline, "
-                        "first write the file to the working directory using "
-                        "bash_exec (e.g. cat > /home/user/file.md << 'EOF'... "
-                        "EOF), then use source_path to copy it to workspace: "
-                        "write_workspace_file(filename='file.md', "
-                        "source_path='/home/user/file.md')"
+                        "Your file write was truncated because the content "
+                        "was too large for a single tool call (all arguments "
+                        "were lost). Instead of passing content inline, write "
+                        "the file in sections:\n"
+                        '1. Use bash_exec with \'cat > filename << "EOF"\\n'
+                        "...\\nEOF' for the first section\n"
+                        "2. Use 'cat >> filename << \"EOF\"\\n...\\nEOF' to "
+                        "append more sections\n"
+                        "3. Then use write_workspace_file(filename=..., "
+                        "source_path=...) to save it to workspace\n"
+                        "Do NOT retry with the same approach — it will be "
+                        "truncated again."
                     ),
                     session_id=session_id,
                 )

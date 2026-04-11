@@ -179,6 +179,11 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
     return _mcp(numbered)
 
 
+# Inline content above this threshold triggers a warning — it survived this
+# time but is dangerously close to the API output-token truncation limit.
+_LARGE_CONTENT_WARN_CHARS = 50_000
+
+
 async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     """Write content to a sandbox file, creating parent directories as needed."""
     file_path: str = args.get("file_path", "")
@@ -207,7 +212,20 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         return _mcp(f"Failed to write {remote}: {exc}", error=True)
 
-    return _mcp(f"Successfully wrote to {remote}")
+    msg = f"Successfully wrote to {remote}"
+    if len(content) > _LARGE_CONTENT_WARN_CHARS:
+        logger.warning(
+            "[E2B] write_file: large inline content (%d chars) for %s",
+            len(content),
+            remote,
+        )
+        msg += (
+            f"\n\nWARNING: The content was very large ({len(content)} chars). "
+            "Next time, write large files in sections using bash_exec with "
+            "'cat > file << EOF ... EOF' and 'cat >> file << EOF ... EOF' "
+            "to avoid output-token truncation."
+        )
+    return _mcp(msg)
 
 
 async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:

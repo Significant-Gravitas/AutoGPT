@@ -527,6 +527,28 @@ def _make_truncating_wrapper(
                 f"be truncated again."
             )
 
+        # Partial truncation: the API cut the JSON mid-way — `content` or
+        # `new_string` survived but `file_path` (emitted later) was lost.
+        if (
+            tool_name in ("write_file", "write_workspace_file", "edit_file")
+            and args
+            and "file_path" not in args
+            and ("content" in args or "new_string" in args)
+        ):
+            logger.warning(
+                "[MCP] %s: partial truncation detected — file_path missing",
+                tool_name,
+            )
+            return _mcp_error(
+                f"Your {tool_name} call was truncated (file_path missing). "
+                "The content was too large for a single tool call. "
+                "Write in chunks: use bash_exec with "
+                "'cat > file << EOF ... EOF' for the first section, "
+                "'cat >> file << EOF ... EOF' to append subsequent "
+                "sections, then reference the file with "
+                "@@agptfile:/path/to/file if needed."
+            )
+
         original_args = args
         stop_msg = _check_circuit_breaker(tool_name, original_args)
         if stop_msg:
@@ -655,10 +677,17 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 # WebFetch: SSRF risk — can reach internal network (localhost, 10.x, etc.).
 #   Agent uses the SSRF-protected mcp__copilot__web_fetch tool instead.
 # AskUserQuestion: interactive CLI tool — no terminal in copilot context.
+# Write: the CLI's built-in Write tool has no defence against output-token
+#   truncation.  When the LLM generates a very large `content` argument the
+#   API truncates the response mid-JSON and Ajv rejects it with the opaque
+#   "'file_path' is a required property" error, losing the user's work.
+#   All writes go through our MCP write_file / write_workspace_file tools
+#   where we control validation and return actionable guidance.
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
     "AskUserQuestion",
+    "Write",
 ]
 
 # Tools that are blocked entirely in security hooks (defence-in-depth).

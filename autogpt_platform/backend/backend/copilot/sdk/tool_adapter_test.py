@@ -929,3 +929,101 @@ class TestStripLlmFields:
         stashed = pop_pending_tool_output("fake_tool_normal")
         assert stashed is not None
         assert '"is_dry_run": true' in stashed
+
+
+# ---------------------------------------------------------------------------
+# Partial truncation detection (Layer 2 of write-tool-truncation fix)
+# ---------------------------------------------------------------------------
+
+
+class TestPartialTruncationDetection:
+    """When the API truncates a write tool call mid-JSON, `content` may survive
+    but `file_path` is lost.  The wrapper must detect this and return actionable
+    guidance instead of letting the call through to fail with an opaque error.
+    """
+
+    @pytest.mark.asyncio
+    async def test_write_file_partial_truncation_detected(self):
+        """write_file with content but no file_path returns truncation error."""
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            raise AssertionError("Should not be called")
+
+        wrapper = _make_truncating_wrapper(
+            fake_tool_fn,
+            "write_file",
+            input_schema={"required": ["file_path", "content"]},
+        )
+        result = await wrapper({"content": "some data"})
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "truncated" in text
+        assert "file_path" in text
+
+    @pytest.mark.asyncio
+    async def test_edit_file_partial_truncation_detected(self):
+        """edit_file with new_string but no file_path returns truncation error."""
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            raise AssertionError("Should not be called")
+
+        wrapper = _make_truncating_wrapper(
+            fake_tool_fn,
+            "edit_file",
+            input_schema={"required": ["file_path", "old_string", "new_string"]},
+        )
+        result = await wrapper({"new_string": "replacement"})
+        assert result["isError"] is True
+        text = result["content"][0]["text"]
+        assert "truncated" in text
+
+    @pytest.mark.asyncio
+    async def test_write_file_with_file_path_passes_through(self):
+        """write_file with file_path present should NOT trigger truncation guard."""
+        called = False
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            nonlocal called
+            called = True
+            return {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": False,
+            }
+
+        normal_session = MagicMock()
+        normal_session.dry_run = False
+        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        wrapper = _make_truncating_wrapper(
+            fake_tool_fn,
+            "write_file",
+            input_schema={"required": ["file_path", "content"]},
+        )
+        result = await wrapper({"file_path": "/home/user/f.txt", "content": "data"})
+        assert called
+        assert result["isError"] is False
+
+    @pytest.mark.asyncio
+    async def test_non_write_tool_not_affected(self):
+        """Partial truncation guard only applies to write/edit tools."""
+        called = False
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            nonlocal called
+            called = True
+            return {
+                "content": [{"type": "text", "text": "ok"}],
+                "isError": False,
+            }
+
+        normal_session = MagicMock()
+        normal_session.dry_run = False
+        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        wrapper = _make_truncating_wrapper(
+            fake_tool_fn,
+            "bash_exec",
+            input_schema={"required": ["command"]},
+        )
+        await wrapper({"content": "some data"})
+        assert called

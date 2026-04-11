@@ -623,3 +623,46 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
     # Normal workspace path must have produced a content response.
     assert isinstance(result, WorkspaceFileContentResponse)
     assert base64.b64decode(result.content_base64) == fake_content
+
+
+# ---------------------------------------------------------------------------
+# Truncation error message (Layer 4 of write-tool-truncation fix)
+# ---------------------------------------------------------------------------
+
+
+class TestWriteTruncationMessage:
+    """When write_workspace_file receives empty args due to API output-token
+    truncation, the error message must give actionable step-by-step guidance."""
+
+    @pytest.mark.asyncio
+    async def test_empty_args_returns_actionable_truncation_message(
+        self, ephemeral_dir
+    ):
+        """Calling write with no args at all should mention cat > and cat >>."""
+        write_tool = WriteWorkspaceFileTool()
+        result = await write_tool._execute(
+            user_id="test-user",
+            session=make_session(),
+            filename=None,  # type: ignore[arg-type]
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "truncated" in result.message.lower()
+        assert "cat >" in result.message
+        assert "cat >>" in result.message
+        assert "source_path" in result.message
+
+    @pytest.mark.asyncio
+    async def test_missing_filename_with_content_gives_simple_error(
+        self, ephemeral_dir
+    ):
+        """When content is present but filename is missing, it's not truncation —
+        just a missing required field."""
+        write_tool = WriteWorkspaceFileTool()
+        result = await write_tool._execute(
+            user_id="test-user",
+            session=make_session(),
+            filename=None,  # type: ignore[arg-type]
+            content="some content",
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "filename" in result.message.lower()
