@@ -843,6 +843,46 @@ describe("useBuilderChatPanel – parsedActions integration", () => {
 
     expect(result.current.parsedActions).toHaveLength(1);
   });
+
+  it("does NOT re-parse stale messages from the previous graph after navigation (sentry race PRRT_kwDOJKSTjM56RVeU)", () => {
+    // Reproduces the navigation race: when flowID changes, the cleanup
+    // effect resets the parsed-actions cache and queues setMessages([]),
+    // but the parse-actions effect runs in the same effect cycle while
+    // the messages closure still holds the previous graph's messages.
+    // Without the navigation guard, the parser would re-scan those stale
+    // messages from index 0 (because the cache was reset) and populate
+    // parsedActions with the previous graph's actions.
+    const flow1Action =
+      '```json\n{"action":"update_node_input","node_id":"flow-1-node","key":"query","value":"flow-1 value"}\n```';
+    mockChatMessages = [
+      {
+        id: "msg-1",
+        role: "assistant",
+        parts: [{ type: "text", text: flow1Action }],
+      },
+    ];
+    mockChatStatus = "ready";
+    mockFlowID = "flow-1";
+
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+
+    // Initial mount on flow-1: actions parsed normally.
+    expect(result.current.parsedActions).toHaveLength(1);
+    expect(result.current.parsedActions[0]).toMatchObject({
+      nodeId: "flow-1-node",
+    });
+
+    // Simulate navigation to flow-2. The test mock keeps `mockChatMessages`
+    // pointing at the flow-1 messages (mirroring the real race window where
+    // useChat hasn't yet picked up `setMessages([])`).
+    mockFlowID = "flow-2";
+    rerender();
+
+    // The navigation guard must prevent the parse-actions effect from
+    // re-populating parsedActions with the stale flow-1 message it can
+    // still see in its closure.
+    expect(result.current.parsedActions).toHaveLength(0);
+  });
 });
 
 describe("useBuilderChatPanel – Escape key handler", () => {

@@ -144,6 +144,18 @@ export function useBuilderChatPanel({
     actions: GraphAction[];
     seen: Set<string>;
   }>({ actions: [], seen: new Set() });
+  // Navigation race guard: set by the flowID-reset effect when an *actual*
+  // graph navigation occurs (not initial mount). The parse-actions effect
+  // checks this flag and skips one pass, because the cleanup effect's
+  // `setMessages([])` is queued and not yet committed when parse-actions
+  // runs in the same effect cycle — without the skip, we'd re-scan the
+  // previous graph's messages from index 0 (refs were just reset) and
+  // briefly flash old action buttons in the new graph's panel.
+  const skipNextParseRef = useRef(false);
+  // Tracks the previous flowID so the reset effect can distinguish initial
+  // mount (no skip needed — fresh hook, no stale messages) from real
+  // navigation (skip needed — closure has prior-graph messages).
+  const prevFlowIDRef = useRef<string | null>(null);
 
   const [{ flowID }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
@@ -169,6 +181,16 @@ export function useBuilderChatPanel({
   // so restoring messages while resetting action state would show previously applied
   // actions as unapplied, allowing them to be re-applied and creating duplicate undo entries.
   useEffect(() => {
+    // Detect actual navigation (not initial mount) so the parse-actions
+    // effect can skip its next pass — see ``skipNextParseRef`` declaration
+    // for the race-condition rationale.
+    const isNavigation =
+      prevFlowIDRef.current !== null && prevFlowIDRef.current !== flowID;
+    prevFlowIDRef.current = flowID;
+    if (isNavigation) {
+      skipNextParseRef.current = true;
+    }
+
     const cachedSessionId = flowID ? (cacheGetSession(flowID) ?? null) : null;
     setSessionId(cachedSessionId);
     setSessionError(false);
@@ -326,6 +348,17 @@ export function useBuilderChatPanel({
   // new messages, losing actions.
   useEffect(() => {
     if (status !== "ready") return;
+    // Navigation race guard: the flowID-reset effect above signals a graph
+    // navigation by setting `skipNextParseRef`. The cleanup runs first in the
+    // effect cycle and resets `lastParsedMessageIndexRef` + the cache, but the
+    // `setMessages([])` it queues is not committed until the next render —
+    // so this effect's `messages` closure still belongs to the previous graph.
+    // Skipping one pass prevents a re-scan of stale messages from index 0
+    // (which would flash the prior graph's actions in the new panel).
+    if (skipNextParseRef.current) {
+      skipNextParseRef.current = false;
+      return;
+    }
     const cache = parsedActionsCacheRef.current;
     const startIndex = lastParsedMessageIndexRef.current + 1;
     let appendedAny = false;
