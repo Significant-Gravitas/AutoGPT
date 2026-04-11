@@ -235,7 +235,7 @@ def test_sdk_exports_hook_event_type(hook_event: str):
 # CLI versions verified to work against OpenRouter from production
 # traffic.  When upstream lands a fix and we can confirm a newer version
 # works, add it to this set rather than blanket-removing the assertion.
-_KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset({"2.1.63"})
+_KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset({"2.1.63", "2.1.70"})
 
 
 def test_bundled_cli_version_is_known_good_against_openrouter():
