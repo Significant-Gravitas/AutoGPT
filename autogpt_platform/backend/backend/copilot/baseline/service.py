@@ -345,6 +345,11 @@ class _BaselineStreamState:
     cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
+    # Tracks how much of ``assistant_text`` has already been flushed to
+    # ``session.messages`` via mid-loop pending drains, so the ``finally``
+    # block only appends the *new* assistant text (avoiding duplication of
+    # round-1 text when round-1 entries were cleared from session_messages).
+    _flushed_assistant_text_len: int = 0
 
 
 async def _baseline_llm_caller(
@@ -1300,6 +1305,10 @@ async def stream_chat_completion_baseline(
                 for _buffered in state.session_messages:
                     session.messages.append(_buffered)
                 state.session_messages.clear()
+                # Record how much assistant_text has been covered by the
+                # structured entries just flushed, so the finally block's
+                # final-text dedup doesn't re-append rounds already persisted.
+                state._flushed_assistant_text_len = len(state.assistant_text)
 
                 for pm in pending:
                     # ``format_pending_as_user_message`` embeds file
@@ -1447,7 +1456,11 @@ async def stream_chat_completion_baseline(
         # no tool calls, i.e. the natural finish).  Only add it if the
         # conversation updater didn't already record it as part of a
         # tool-call round (which would have empty response_text).
-        final_text = state.assistant_text
+        # Only consider assistant text produced AFTER the last mid-loop
+        # flush.  ``_flushed_assistant_text_len`` tracks the prefix already
+        # persisted via structured session_messages during mid-loop pending
+        # drains; including it here would duplicate those rounds.
+        final_text = state.assistant_text[state._flushed_assistant_text_len :]
         if state.session_messages:
             # Strip text already captured in tool-call round messages
             recorded = "".join(
