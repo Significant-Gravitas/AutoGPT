@@ -1001,12 +1001,14 @@ async def _build_query_message(
                     f"{gap_context}\n\nNow, the user says:\n{current_message}",
                     was_compressed,
                 )
-    elif not use_resume and msg_count > 1:
+    elif not use_resume and effective_count > 1:
         logger.warning(
             f"[SDK] Using compression fallback for session "
-            f"{session_id} ({msg_count} messages) — no transcript for --resume"
+            f"{session_id} ({effective_count} messages) — no transcript for --resume"
         )
-        compressed, was_compressed = await _compress_messages(session.messages[:-1])
+        compressed, was_compressed = await _compress_messages(
+            session.messages[: effective_count - 1]
+        )
         history_context = _format_conversation_context(compressed)
         if history_context:
             return (
