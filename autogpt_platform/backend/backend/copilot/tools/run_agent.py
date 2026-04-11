@@ -71,7 +71,7 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
-    dry_run: bool
+    dry_run: bool = Field(default=False)
 
     @field_validator(
         "username_agent_slug",
@@ -153,14 +153,10 @@ class RunAgentTool(BaseTool):
                 },
                 "dry_run": {
                     "type": "boolean",
-                    "description": (
-                        "When true, simulates execution using an LLM for each block "
-                        "— no real API calls, credentials, or credits. "
-                        "See agent_generation_guide for the full workflow."
-                    ),
+                    "description": "Simulate the agent run without executing real actions (default: false). Use when testing agent behaviour or when the user explicitly asks for a dry run.",
                 },
             },
-            "required": ["dry_run"],
+            "required": [],
         }
 
     @property
@@ -181,7 +177,8 @@ class RunAgentTool(BaseTool):
         validators defined in the Pydantic model.
         """
         params = RunAgentInput(**kwargs)
-        # Session-level dry_run forces all tool calls to use dry-run mode.
+        # Session-level dry_run forces all runs to be dry. In normal sessions
+        # the LLM may still request dry_run=True on individual calls.
         if session.dry_run:
             params.dry_run = True
         session_id = session.session_id
@@ -374,8 +371,9 @@ class RunAgentTool(BaseTool):
     ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
         """Validate credentials and inputs before execution.
 
-        Dry runs skip all prerequisite gates (credentials, input prompts)
-        since simulate_block doesn't need real credentials or complete inputs.
+        Dry runs skip all prerequisite gates (credentials, input prompts).
+        The dry_run flag is read from params.dry_run (which may be set by the
+        LLM per-call, or forced to True when session.dry_run is True).
 
         Returns:
             (graph_credentials, error_response) — error_response is None when ready.

@@ -349,6 +349,42 @@ def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
     return _get_local_storage_supplement(cwd)
 
 
+def get_graphiti_supplement() -> str:
+    """Get the memory system instructions to append when Graphiti is enabled.
+
+    Appended after the SDK/baseline supplement in both execution paths.
+    """
+    return """
+
+## Memory System (Graphiti)
+You have access to persistent temporal memory tools that remember facts across sessions.
+
+### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
+**You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
+
+### When to STORE (memory_store):
+- User shares personal info, preferences, business context
+- User describes workflows, tools they use, pain points
+- Important decisions or outcomes from agent runs
+- Relationships between people, organizations, events
+- Operational rules (e.g. "invoices go out on the 1st", "CC Sarah on client stuff")
+- When you learn something new about the user
+
+### When to RECALL (memory_search):
+- **BEFORE answering any factual or context-dependent question — ALWAYS**
+- When the user references something from a past conversation
+- When building an agent that should use past preferences
+- At the START of every new conversation to check for relevant context
+
+### MEMORY RULES:
+- Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
+- Never fabricate memories. Only persist what the user actually said.
+- Memory is private to this user — no other user can see it.
+- group_id is handled automatically by the system — never set it yourself.
+- When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
+"""
+
+
 def get_baseline_supplement() -> str:
     """Get the supplement for baseline mode (direct OpenAI API).
 

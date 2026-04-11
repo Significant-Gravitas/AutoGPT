@@ -4,7 +4,6 @@ import {
   postV2CancelSessionTask,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { getWebSocketToken } from "@/lib/supabase/actions";
 import { environment } from "@/services/environment";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +11,7 @@ import { DefaultChatTransport } from "ai";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  getCopilotAuthHeaders,
   deduplicateMessages,
   extractSendMessageText,
   hasActiveBackendStream,
@@ -25,16 +25,6 @@ const RECONNECT_MAX_ATTEMPTS = 3;
 
 /** Minimum time the page must have been hidden to trigger a wake re-sync. */
 const WAKE_RESYNC_THRESHOLD_MS = 30_000;
-
-/** Fetch a fresh JWT for direct backend requests (same pattern as WebSocket). */
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const { token, error } = await getWebSocketToken();
-  if (error || !token) {
-    console.warn("[Copilot] Failed to get auth token:", error);
-    throw new Error("Authentication failed — please sign in again.");
-  }
-  return { Authorization: `Bearer ${token}` };
-}
 
 interface UseCopilotStreamArgs {
   sessionId: string | null;
@@ -94,12 +84,12 @@ export function useCopilotStream({
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
                   mode: copilotModeRef.current ?? null,
                 },
-                headers: await getAuthHeaders(),
+                headers: await getCopilotAuthHeaders(),
               };
             },
             prepareReconnectToStreamRequest: async () => ({
               api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
-              headers: await getAuthHeaders(),
+              headers: await getCopilotAuthHeaders(),
             }),
           })
         : null,
@@ -224,7 +214,7 @@ export function useCopilotStream({
         return;
       }
 
-      // Detect authentication failures (from getAuthHeaders or 401 responses)
+      // Detect authentication failures (from getCopilotAuthHeaders or 401 responses)
       const isAuthError =
         errorDetail.includes("Authentication failed") ||
         errorDetail.includes("Unauthorized") ||

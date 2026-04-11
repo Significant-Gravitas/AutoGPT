@@ -27,6 +27,8 @@ from opentelemetry import trace as otel_trace
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.db import update_message_content_by_sequence
+from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -34,7 +36,7 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
-from backend.copilot.prompting import get_baseline_supplement
+from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -51,7 +53,7 @@ from backend.copilot.response_model import (
     StreamUsage,
 )
 from backend.copilot.service import (
-    _build_system_prompt,
+    _build_cacheable_system_prompt,
     _get_openai_client,
     _update_title_async,
     config,
@@ -68,6 +70,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.data.understanding import format_understanding_for_prompt
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
     compress_context,
@@ -957,35 +960,34 @@ async def stream_chat_completion_baseline(
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
     is_first_turn = len(session.messages) <= 1
-    if is_first_turn:
-        prompt_task = _build_system_prompt(user_id, has_conversation_history=False)
+    # Gate context fetch on both first turn AND user message so that assistant-
+    # role calls (e.g. tool-result submissions) on the first turn don't trigger
+    # a needless DB lookup for user understanding.
+    should_inject_user_context = is_first_turn and is_user_message
+    if should_inject_user_context:
+        prompt_task = _build_cacheable_system_prompt(user_id)
     else:
-        prompt_task = _build_system_prompt(user_id=None, has_conversation_history=True)
+        prompt_task = _build_cacheable_system_prompt(None)
 
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.
     if user_id and len(session.messages) > 1:
-        transcript_covers_prefix, (base_system_prompt, _) = await asyncio.gather(
-            _load_prior_transcript(
-                user_id=user_id,
-                session_id=session_id,
-                session_msg_count=len(session.messages),
-                transcript_builder=transcript_builder,
-            ),
-            prompt_task,
+        transcript_covers_prefix, (base_system_prompt, understanding) = (
+            await asyncio.gather(
+                _load_prior_transcript(
+                    user_id=user_id,
+                    session_id=session_id,
+                    session_msg_count=len(session.messages),
+                    transcript_builder=transcript_builder,
+                ),
+                prompt_task,
+            )
         )
     else:
-        base_system_prompt, _ = await prompt_task
+        base_system_prompt, understanding = await prompt_task
 
-    # Append user message to transcript.
-    # Always append when the message is present and is from the user,
-    # even on duplicate-suppressed retries (is_new_message=False).
-    # The loaded transcript may be stale (uploaded before the previous
-    # attempt stored this message), so skipping it would leave the
-    # transcript without the user turn, creating a malformed
-    # assistant-after-assistant structure when the LLM reply is added.
-    if message and is_user_message:
-        transcript_builder.append_user(content=message)
+    # Append user message to transcript after context injection below so the
+    # transcript receives the prefixed message when user context is available.
 
     # Generate title for new sessions
     if is_user_message and not session.title:
@@ -1001,8 +1003,19 @@ async def stream_chat_completion_baseline(
 
     message_id = str(uuid.uuid4())
 
-    # Append tool documentation and technical notes
-    system_prompt = base_system_prompt + get_baseline_supplement()
+    # Append tool documentation, technical notes, and Graphiti memory instructions
+    graphiti_enabled = await is_enabled_for_user(user_id)
+
+    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
+
+    # Warm context: pre-load relevant facts from Graphiti on first turn
+    if graphiti_enabled and user_id and len(session.messages) <= 1:
+        from backend.copilot.graphiti.context import fetch_warm_context
+
+        warm_ctx = await fetch_warm_context(user_id, message or "")
+        if warm_ctx:
+            system_prompt += f"\n\n{warm_ctx}"
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(
@@ -1034,6 +1047,48 @@ async def stream_chat_completion_baseline(
             )
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
+
+    # Inject user context into the first user message on first turn.
+    # Done before attachment/URL injection so the context prefix lands at
+    # the very start of the message content.
+    # The prefixed content is also stored back into session.messages and the
+    # transcript so that resumed sessions and the transcript both carry the
+    # personalisation beyond the first request.
+    user_message_for_transcript = message
+    if should_inject_user_context and understanding:
+        user_ctx = format_understanding_for_prompt(understanding)
+        prefixed: str | None = None
+        for msg in openai_messages:
+            if msg["role"] == "user":
+                prefixed = (
+                    f"<user_context>\n{user_ctx}\n</user_context>\n\n{msg['content']}"
+                )
+                msg["content"] = prefixed
+                break
+        if prefixed is not None:
+            # Persist the prefixed content so subsequent turns and --resume
+            # retain the user context.
+            # The user message was already saved to DB before context injection
+            # (at ~line 932); update the DB record so the prefixed content
+            # survives page reload.
+            for idx, session_msg in enumerate(session.messages):
+                if session_msg.role == "user":
+                    session_msg.content = prefixed
+                    await update_message_content_by_sequence(session_id, idx, prefixed)
+                    break
+            user_message_for_transcript = prefixed
+        else:
+            logger.warning("[Baseline] No user message found for context injection")
+
+    # Append user message to transcript.
+    # Always append when the message is present and is from the user,
+    # even on duplicate-suppressed retries (is_new_message=False).
+    # The loaded transcript may be stale (uploaded before the previous
+    # attempt stored this message), so skipping it would leave the
+    # transcript without the user turn, creating a malformed
+    # assistant-after-assistant structure when the LLM reply is added.
+    if message and is_user_message:
+        transcript_builder.append_user(content=user_message_for_transcript or message)
 
     # --- File attachments (feature parity with SDK path) ---
     working_dir: str | None = None
@@ -1271,6 +1326,16 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+        # --- Graphiti: ingest conversation turn for temporal memory ---
+        if graphiti_enabled and user_id and message and is_user_message:
+            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+
+            _ingest_task = asyncio.create_task(
+                enqueue_conversation_turn(user_id, session_id, message)
+            )
+            _background_tasks.add(_ingest_task)
+            _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the

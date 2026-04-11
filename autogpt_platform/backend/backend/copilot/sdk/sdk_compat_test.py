@@ -105,6 +105,10 @@ def test_agent_options_accepts_all_our_fields():
         "env",
         "resume",
         "max_buffer_size",
+        "stderr",
+        "fallback_model",
+        "max_turns",
+        "max_budget_usd",
     ]
     sig = inspect.signature(ClaudeAgentOptions)
     for field in fields_we_use:

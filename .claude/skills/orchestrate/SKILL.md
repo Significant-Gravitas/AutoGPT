@@ -458,8 +458,8 @@ When run-loop marks an agent `pending_evaluation` and you're notified, do all of
 
 **When multiple PRs reach `pending_evaluation` at the same time, use TodoWrite to queue them:**
 ```
-- [ ] /pr-test PR #12636 — fix copilot retry logic
-- [ ] /pr-test PR #12699 — builder chat panel
+- [ ] /pr-test https://github.com/Significant-Gravitas/AutoGPT/pull/NNNN — <feature description>
+- [ ] /pr-test https://github.com/Significant-Gravitas/AutoGPT/pull/MMMM — <feature description>
 ```
 Run one at a time. Check off as you go.
 
@@ -507,7 +507,7 @@ Only one `/pr-test` at a time — they share ports and DB.
 
 **Rule: only ALL-PASS qualifies for approval.** A mix of PASS + PARTIAL is a failure.
 
-> **Why this matters**: PR #12699 was wrongly approved with S5 PARTIAL — the AI never output JSON action blocks so the Apply button never appeared. The fix was already in the agent's reach but slipped through because PARTIAL was not treated as blocking.
+> **Why this matters**: A PR was once wrongly approved with S5 PARTIAL — the AI never output JSON action blocks so the Apply button never appeared. The fix was already in the agent's reach but slipped through because PARTIAL was not treated as blocking.
 
 ### 2. Do your own evaluation
 
