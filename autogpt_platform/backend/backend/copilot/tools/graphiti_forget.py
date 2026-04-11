@@ -134,7 +134,11 @@ class MemoryForgetSearchTool(BaseTool):
 
 
 class MemoryForgetConfirmTool(BaseTool):
-    """Delete specific memory edges by UUID after user confirmation."""
+    """Delete specific memory edges by UUID after user confirmation.
+
+    Supports both soft delete (temporal invalidation — reversible) and
+    hard delete (remove from graph — irreversible, for GDPR).
+    """
 
     @property
     def name(self) -> str:
@@ -145,7 +149,8 @@ class MemoryForgetConfirmTool(BaseTool):
         return (
             "Delete specific memories by UUID. Use after memory_forget_search "
             "returns candidates and the user confirms which to delete. "
-            "This action is irreversible."
+            "Default is soft delete (marks as expired but keeps history). "
+            "Set hard_delete=true for permanent removal (GDPR)."
         )
 
     @property
@@ -157,6 +162,11 @@ class MemoryForgetConfirmTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "List of edge UUIDs to delete (from memory_forget_search results)",
+                },
+                "hard_delete": {
+                    "type": "boolean",
+                    "description": "If true, permanently removes edges from the graph (GDPR). Default false (soft delete — marks as expired).",
+                    "default": False,
                 },
             },
             "required": ["uuids"],
@@ -172,6 +182,7 @@ class MemoryForgetConfirmTool(BaseTool):
         session: ChatSession,
         *,
         uuids: list[str] | None = None,
+        hard_delete: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -209,8 +220,6 @@ class MemoryForgetConfirmTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        deleted = []
-        failed = []
         driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
         if not driver:
             return ErrorResponse(
@@ -218,20 +227,88 @@ class MemoryForgetConfirmTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        for uuid in uuids:
-            try:
-                await driver.execute_query(
-                    "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() DELETE e",
-                    uuid=uuid,
-                )
-                deleted.append(uuid)
-            except Exception:
-                logger.warning("Failed to delete edge %s for user %s", uuid, user_id[:12], exc_info=True)
-                failed.append(uuid)
+        if hard_delete:
+            deleted, failed = await _hard_delete_edges(driver, uuids, user_id)
+            mode = "permanently deleted"
+        else:
+            deleted, failed = await _soft_delete_edges(driver, uuids, user_id)
+            mode = "invalidated"
 
         return MemoryForgetConfirmResponse(
-            message=f"Deleted {len(deleted)} memory edge(s)." + (f" {len(failed)} failed." if failed else ""),
+            message=(
+                f"{len(deleted)} memory edge(s) {mode}."
+                + (f" {len(failed)} failed." if failed else "")
+            ),
             session_id=session.session_id,
             deleted_uuids=deleted,
             failed_uuids=failed,
         )
+
+
+async def _soft_delete_edges(
+    driver, uuids: list[str], user_id: str
+) -> tuple[list[str], list[str]]:
+    """Temporal invalidation — mark edges as expired without removing them.
+
+    Sets ``invalid_at`` and ``expired_at`` to now, which excludes them
+    from default search results while preserving history.
+    """
+    deleted = []
+    failed = []
+    for uuid in uuids:
+        try:
+            await driver.execute_query(
+                """
+                MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
+                SET e.invalid_at = datetime(),
+                    e.expired_at = datetime()
+                RETURN e.uuid AS uuid
+                """,
+                uuid=uuid,
+            )
+            deleted.append(uuid)
+        except Exception:
+            logger.warning(
+                "Failed to soft-delete edge %s for user %s",
+                uuid, user_id[:12], exc_info=True,
+            )
+            failed.append(uuid)
+    return deleted, failed
+
+
+async def _hard_delete_edges(
+    driver, uuids: list[str], user_id: str
+) -> tuple[list[str], list[str]]:
+    """Permanent removal — delete edges and clean up back-references.
+
+    Uses graphiti's ``Edge.delete()`` pattern (handles MENTIONS,
+    RELATES_TO, HAS_MEMBER in one query).  Does NOT delete orphaned
+    entity nodes — they may have summaries, embeddings, or future
+    connections.  Cleans up episode ``entity_edges`` back-references.
+    """
+    deleted = []
+    failed = []
+    for uuid in uuids:
+        try:
+            # Delete the edge itself (all edge types matching this UUID)
+            await driver.execute_query(
+                "MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->() DELETE e",
+                uuid=uuid,
+            )
+            # Clean up episode back-references
+            await driver.execute_query(
+                """
+                MATCH (ep:Episodic)
+                WHERE $uuid IN ep.entity_edges
+                SET ep.entity_edges = [x IN ep.entity_edges WHERE x <> $uuid]
+                """,
+                uuid=uuid,
+            )
+            deleted.append(uuid)
+        except Exception:
+            logger.warning(
+                "Failed to hard-delete edge %s for user %s",
+                uuid, user_id[:12], exc_info=True,
+            )
+            failed.append(uuid)
+    return deleted, failed
