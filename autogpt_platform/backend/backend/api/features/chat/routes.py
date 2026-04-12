@@ -181,30 +181,28 @@ class QueuePendingMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=16_000)
-    context: dict[str, str] | None = Field(
+    context: PendingMessageContext | None = Field(
         default=None,
-        description="Optional page context: expected keys are 'url' and 'content'.",
+        description="Optional page context with 'url' and 'content' fields.",
     )
     file_ids: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("context")
     @classmethod
     def _validate_context_length(
-        cls, v: dict[str, str] | None
-    ) -> dict[str, str] | None:
+        cls, v: PendingMessageContext | None
+    ) -> PendingMessageContext | None:
         if v is None:
             return v
         # Cap context values to prevent LLM context-window stuffing via
         # large page payloads (url: 2 KB, content: 32 KB).
         _URL_LIMIT = 2_000
         _CONTENT_LIMIT = 32_000
-        url = v.get("url", "")
-        if len(url) > _URL_LIMIT:
+        if v.url and len(v.url) > _URL_LIMIT:
             raise ValueError(
                 f"context.url exceeds maximum length of {_URL_LIMIT} characters"
             )
-        content = v.get("content", "")
-        if len(content) > _CONTENT_LIMIT:
+        if v.content and len(v.content) > _CONTENT_LIMIT:
             raise ValueError(
                 f"context.content exceeds maximum length of {_CONTENT_LIMIT} characters"
             )
@@ -1210,7 +1208,7 @@ async def queue_pending_message(
     pending = PendingMessage(
         content=request.message,
         file_ids=sanitized_file_ids,
-        context=PendingMessageContext(**request.context) if request.context else None,
+        context=request.context,
     )
     buffer_length = await push_pending_message(session_id, pending)
 
