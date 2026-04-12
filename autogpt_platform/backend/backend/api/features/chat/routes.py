@@ -1170,7 +1170,7 @@ async def queue_pending_message(
                 ),
             )
         )
-        if _call_count >= _PENDING_CALL_LIMIT:
+        if _call_count > _PENDING_CALL_LIMIT:
             raise HTTPException(
                 status_code=429,
                 detail=f"Too many pending messages: limit is {_PENDING_CALL_LIMIT} per {_PENDING_CALL_WINDOW_SECONDS}s",
