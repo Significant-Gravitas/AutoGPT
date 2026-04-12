@@ -12718,6 +12718,24 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "PendingMessageContext": {
+        "properties": {
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url",
+            "default": null
+          },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content",
+            "default": null
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PendingMessageContext",
+        "description": "Structured page context attached to a pending message."
+      },
       "QueuePendingMessageRequest": {
         "properties": {
           "message": {
@@ -12728,14 +12746,11 @@
           },
           "context": {
             "anyOf": [
-              {
-                "additionalProperties": { "type": "string" },
-                "type": "object"
-              },
+              { "$ref": "#/components/schemas/PendingMessageContext" },
               { "type": "null" }
             ],
             "title": "Context",
-            "description": "Optional page context: expected keys are 'url' and 'content'."
+            "description": "Optional page context with 'url' and 'content' fields."
           },
           "file_ids": {
             "anyOf": [
