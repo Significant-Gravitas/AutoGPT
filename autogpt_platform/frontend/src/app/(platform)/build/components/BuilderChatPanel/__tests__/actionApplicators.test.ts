@@ -579,9 +579,9 @@ describe("applyConnectNodes", () => {
       deps,
     );
     expect(result).toBe(true);
-    // No new edge written; applied key still marked.
+    // No new edge written; caller (handleApplyAction) marks the key.
     expect(mockSetEdges).not.toHaveBeenCalled();
-    expect(deps.setAppliedActionKeys).toHaveBeenCalledTimes(1);
+    expect(deps.setAppliedActionKeys).not.toHaveBeenCalled();
     // No undo entry for a no-op.
     expect(deps.setUndoStack).not.toHaveBeenCalled();
   });
