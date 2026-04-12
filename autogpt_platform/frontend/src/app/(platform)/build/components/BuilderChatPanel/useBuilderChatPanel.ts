@@ -14,6 +14,7 @@ import {
 } from "react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useShallow } from "zustand/react/shallow";
+import { useSupabaseStore } from "@/lib/supabase/hooks/useSupabaseStore";
 import { useEdgeStore } from "../../stores/edgeStore";
 import { useNodeStore } from "../../stores/nodeStore";
 import {
@@ -173,6 +174,19 @@ export function useBuilderChatPanel({
   useEffect(() => {
     currentFlowIDRef.current = flowID;
   }, [flowID]);
+
+  const userId = useSupabaseStore((s) => s.user?.id ?? null);
+  const prevUserIdRef = useRef(userId);
+
+  // Clear the session cache when the user changes (sign-out or different user)
+  // so stale sessions from one user are never served to another.
+  useEffect(() => {
+    if (userId !== prevUserIdRef.current) {
+      graphSessionCache.clear();
+      prevUserIdRef.current = userId;
+    }
+  }, [userId]);
+
   const { toast } = useToast();
 
   const nodes = useNodeStore(
@@ -476,17 +490,19 @@ export function useBuilderChatPanel({
   // Resets session error state so the session-creation effect re-runs on
   // the next render without toggling the panel closed and back open.
   // Also evicts the stale cached session so a fresh one is created.
-  // hasSentSeedMessageRef is reset so the seed message is re-sent to the
-  // new session (it may have been set to true by a previous successful session
-  // that was later invalidated without a flowID change).
-  // Messages are cleared so stale messages from the previous session are not
-  // shown alongside content from the new session.
+  // All per-session UI state is reset so the new session starts clean.
   function retrySession() {
     if (flowID) graphSessionCache.delete(flowID);
     setSessionId(null);
     setSessionError(false);
+    setAppliedActionKeys(new Set());
+    setUndoStack([]);
+    setInputValue("");
     isCreatingSessionRef.current = false;
+    processedToolCallsRef.current = new Set();
     hasSentSeedMessageRef.current = false;
+    skipNextParseRef.current = false;
+    skipNextToolScanRef.current = false;
     lastParsedMessageIndexRef.current = -1;
     lastScannedToolCallIndexRef.current = -1;
     parsedActionsCacheRef.current = { actions: [], seen: new Set() };
@@ -553,12 +569,13 @@ export function useBuilderChatPanel({
   // Enforces the same length cap as the visible textarea so programmatic callers
   // cannot bypass the limit.
   function sendRawMessage(text: string) {
-    if (!text || !canSend) return;
-    const trimmed =
-      text.length > TEXTAREA_MAX_LENGTH
-        ? text.slice(0, TEXTAREA_MAX_LENGTH)
-        : text;
-    sendMessage({ text: trimmed });
+    const trimmed = text.trim();
+    if (!trimmed || !canSend) return;
+    const capped =
+      trimmed.length > TEXTAREA_MAX_LENGTH
+        ? trimmed.slice(0, TEXTAREA_MAX_LENGTH)
+        : trimmed;
+    sendMessage({ text: capped });
   }
 
   return {

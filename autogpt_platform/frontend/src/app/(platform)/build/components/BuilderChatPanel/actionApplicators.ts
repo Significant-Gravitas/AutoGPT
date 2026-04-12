@@ -255,12 +255,7 @@ export function applyConnectNodes(
       e.targetHandle === action.targetHandle,
   );
   if (alreadyExists) {
-    // Edge already present — mark as applied without duplicating it.
-    setAppliedActionKeys((prev) => {
-      const next = new Set(prev);
-      next.add(getActionKey(action));
-      return next;
-    });
+    // Edge already present — caller (handleApplyAction) will mark as applied.
     return true;
   }
   const key = getActionKey(action);
