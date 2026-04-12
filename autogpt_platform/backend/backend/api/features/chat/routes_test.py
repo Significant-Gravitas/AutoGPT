@@ -617,7 +617,7 @@ class TestQueuePendingMessageRequest:
             context={"url": "https://example.com", "content": "page text"},
         )
         assert req.context is not None
-        assert req.context["url"] == "https://example.com"
+        assert req.context.url == "https://example.com"
 
     def test_rejects_context_url_over_limit(self) -> None:
         import pydantic
