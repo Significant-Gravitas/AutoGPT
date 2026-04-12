@@ -631,6 +631,15 @@ async def update_graph_in_library(
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if created_graph.webhook_input_node:
+            await migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=created_graph.id,
+                new_version=created_graph.version,
+            )
+
     return created_graph, library_agent
 
 
@@ -1823,6 +1832,50 @@ async def set_preset_webhook(
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
     return library_model.LibraryAgentPreset.from_db(updated)
+
+
+async def migrate_webhook_presets_to_new_version(
+    user_id: str,
+    graph_id: str,
+    new_version: int,
+) -> int:
+    """
+    Migrates webhook-attached presets for a graph to a new version.
+
+    When a new agent version is published, presets with webhooks that were
+    pinned to the old version should be updated to point to the new version,
+    so that existing webhook URLs continue to trigger the latest agent version.
+
+    Only migrates presets that:
+    - Belong to the user
+    - Are attached to a webhook (webhookId is not null)
+    - Are not deleted
+    - Are for the given graph but pinned to an older version
+
+    Args:
+        user_id: The owner of the presets.
+        graph_id: The graph ID whose presets should be migrated.
+        new_version: The new graph version to migrate presets to.
+
+    Returns:
+        The number of presets migrated.
+    """
+    count = await prisma.models.AgentPreset.prisma().update_many(
+        where={
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "agentGraphVersion": {"not": new_version},
+            "webhookId": {"not": None},
+            "isDeleted": False,
+        },
+        data={"agentGraphVersion": new_version},
+    )
+    if count > 0:
+        logger.info(
+            f"Migrated {count} webhook preset(s) for graph #{graph_id} "
+            f"to version {new_version} (user #{user_id})"
+        )
+    return count
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

@@ -919,6 +919,15 @@ async def update_graph(
         if current_active_version:
             await on_graph_deactivate(current_active_version, user_id=user_id)
 
+        # Migrate webhook-attached presets to the new version so that
+        # existing webhook URLs continue to trigger the latest agent version.
+        if new_graph_version.webhook_input_node:
+            await library_db.migrate_webhook_presets_to_new_version(
+                user_id=user_id,
+                graph_id=graph_id,
+                new_version=new_graph_version.version,
+            )
+
     new_graph_version_with_subgraphs = await graph_db.get_graph(
         graph_id,
         new_graph_version.version,
@@ -970,6 +979,15 @@ async def set_graph_active_version(
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
         await on_graph_deactivate(current_active_graph, user_id=user_id)
+
+    # Migrate webhook-attached presets to the new active version so that
+    # existing webhook URLs continue to trigger the latest agent version.
+    if new_active_graph.webhook_input_node:
+        await library_db.migrate_webhook_presets_to_new_version(
+            user_id=user_id,
+            graph_id=graph_id,
+            new_version=new_active_version,
+        )
 
 
 @v1_router.patch(
