@@ -8,6 +8,7 @@
 import type { ResponseType } from "./responseType";
 import type { BlockOutputResponseSessionId } from "./blockOutputResponseSessionId";
 import type { BlockOutputResponseOutputs } from "./blockOutputResponseOutputs";
+import type { BlockOutputResponseIsDryRun } from "./blockOutputResponseIsDryRun";
 
 /**
  * Response for run_block tool.
@@ -20,5 +21,5 @@ export interface BlockOutputResponse {
   block_name: string;
   outputs: BlockOutputResponseOutputs;
   success?: boolean;
-  is_dry_run?: boolean;
+  is_dry_run?: BlockOutputResponseIsDryRun;
 }

@@ -18,6 +18,7 @@ export enum Key {
   COPILOT_ARTIFACT_PANEL_WIDTH = "copilot-artifact-panel-width",
   COPILOT_MODE = "copilot-mode",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
+  COPILOT_DRY_RUN = "copilot-dry-run",
 }
 
 function get(key: Key) {

@@ -17,6 +17,8 @@ x-backend-env: &backend-env # Docker internal service hostnames (override localh
   DB_HOST: db
   REDIS_HOST: redis
   RABBITMQ_HOST: rabbitmq
+  GRAPHITI_FALKORDB_HOST: falkordb
+  GRAPHITI_FALKORDB_PORT: "6379"
   # Override Supabase URL for Docker network
   SUPABASE_URL: http://kong:8000
   # Database connection string for Docker network
@@ -74,6 +76,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6380:6379"   # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
+      - "3001:3000"   # FalkorDB web UI
+    environment:
+      - REDIS_ARGS=--requirepass ${GRAPHITI_FALKORDB_PASSWORD:-}
+    volumes:
+      - falkordb_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -p 6379 -a \"${GRAPHITI_FALKORDB_PASSWORD:-}\" --no-auth-warning ping && wget --spider -q http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:4.1.4
     container_name: rabbitmq
@@ -374,6 +393,7 @@ services:
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
 volumes:
   workspace-data:
+  falkordb_data:
 
 networks:
   app-network:

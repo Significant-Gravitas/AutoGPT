@@ -849,7 +849,10 @@ class OrchestratorBlock(Block):
             NodeExecutionStats(
                 input_token_count=resp.prompt_tokens,
                 output_token_count=resp.completion_tokens,
+                cache_read_token_count=resp.cache_read_tokens,
+                cache_creation_token_count=resp.cache_creation_tokens,
                 llm_call_count=1,
+                provider_cost=resp.provider_cost,
             )
         )
 
@@ -1577,6 +1580,7 @@ class OrchestratorBlock(Block):
         conversation: list[dict[str, Any]] = list(prompt)  # Start with input prompt
         total_prompt_tokens = 0
         total_completion_tokens = 0
+        total_cost_usd: float | None = None
 
         sdk_error: Exception | None = None
         try:
@@ -1720,6 +1724,8 @@ class OrchestratorBlock(Block):
                                 total_completion_tokens += getattr(
                                     sdk_msg.usage, "output_tokens", 0
                                 )
+                            if sdk_msg.total_cost_usd is not None:
+                                total_cost_usd = sdk_msg.total_cost_usd
                 finally:
                     if pending_task is not None and not pending_task.done():
                         pending_task.cancel()
@@ -1739,12 +1745,17 @@ class OrchestratorBlock(Block):
             # those stats would under-count resource usage.
             # llm_call_count=1 is approximate; the SDK manages its own
             # multi-turn loop and only exposes aggregate usage.
-            if total_prompt_tokens > 0 or total_completion_tokens > 0:
+            if (
+                total_prompt_tokens > 0
+                or total_completion_tokens > 0
+                or total_cost_usd is not None
+            ):
                 self.merge_stats(
                     NodeExecutionStats(
                         input_token_count=total_prompt_tokens,
                         output_token_count=total_completion_tokens,
                         llm_call_count=1,
+                        provider_cost=total_cost_usd,
                     )
                 )
             # Clean up execution-specific working directory.

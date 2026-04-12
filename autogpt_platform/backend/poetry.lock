@@ -641,14 +641,14 @@ redis = ["redis (>=2.10.5)"]
 
 [[package]]
 name = "cachetools"
-version = "6.2.6"
+version = "5.5.2"
 description = "Extensible memoizing collections and decorators"
 optional = false
-python-versions = ">=3.9"
+python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "cachetools-6.2.6-py3-none-any.whl", hash = "sha256:8c9717235b3c651603fff0076db52d6acbfd1b338b8ed50256092f7ce9c85bda"},
-    {file = "cachetools-6.2.6.tar.gz", hash = "sha256:16c33e1f276b9a9c0b49ab5782d901e3ad3de0dd6da9bf9bcd29ac5672f2f9e6"},
+    {file = "cachetools-5.5.2-py3-none-any.whl", hash = "sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a"},
+    {file = "cachetools-5.5.2.tar.gz", hash = "sha256:1a661caa9175d26759571b2e19580f9d6393969e5dfca11fdb1f947a23e640d4"},
 ]
 
 [[package]]
@@ -1552,6 +1552,22 @@ files = [
 tzdata = "*"
 
 [[package]]
+name = "falkordb"
+version = "1.2.2"
+description = "Python client for interacting with FalkorDB database"
+optional = false
+python-versions = "<4.0,>=3.8"
+groups = ["main"]
+files = [
+    {file = "falkordb-1.2.2-py3-none-any.whl", hash = "sha256:cc1fcccaa1148be9e3d22d85af03d027f19b398e0f38d04424f3757a02744976"},
+    {file = "falkordb-1.2.2.tar.gz", hash = "sha256:3fc150d3262b971916a0f2c15f419f7fe521a94fe3a672b6f174288d885fd239"},
+]
+
+[package.dependencies]
+python-dateutil = ">=2.9.0,<3.0.0"
+redis = ">=6.0.0,<7.0.0"
+
+[[package]]
 name = "fastapi"
 version = "0.128.7"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
@@ -2304,6 +2320,41 @@ files = [
 
 [package.dependencies]
 requests = ">=2.20.0,<3.0"
+
+[[package]]
+name = "graphiti-core"
+version = "0.28.2"
+description = "A temporal graph building library"
+optional = false
+python-versions = "<4,>=3.10"
+groups = ["main"]
+files = [
+    {file = "graphiti_core-0.28.2-py3-none-any.whl", hash = "sha256:4e1c19b7bc70a73a612a473144ed4b3fe615ac6d4c5d6b10f48e206a858bcb53"},
+    {file = "graphiti_core-0.28.2.tar.gz", hash = "sha256:9b2a72f117827e015a21b610eb2c3acbe05310b79736abef7372e81247578e9d"},
+]
+
+[package.dependencies]
+neo4j = ">=5.26.0"
+numpy = ">=1.0.0"
+openai = ">=1.91.0"
+posthog = ">=3.0.0"
+pydantic = ">=2.11.5"
+python-dotenv = ">=1.0.1"
+tenacity = ">=9.0.0"
+
+[package.extras]
+anthropic = ["anthropic (>=0.49.0)"]
+dev = ["anthropic (>=0.49.0)", "boto3 (>=1.39.16)", "falkordb (>=1.1.2,<2.0.0)", "google-genai (>=1.8.0)", "groq (>=0.2.0)", "ipykernel (>=6.29.5)", "jupyterlab (>=4.2.4)", "kuzu (>=0.11.3)", "langchain-anthropic (>=0.2.4)", "langchain-aws (>=0.2.29)", "langchain-openai (>=0.2.6)", "langgraph (>=0.2.15)", "langsmith (>=0.1.108)", "opensearch-py (>=3.0.0)", "opentelemetry-sdk (>=1.20.0)", "pyright (>=1.1.404)", "pytest (>=8.3.3)", "pytest-asyncio (>=0.24.0)", "pytest-xdist (>=3.6.1)", "ruff (>=0.7.1)", "sentence-transformers (>=3.2.1)", "transformers (>=4.45.2)", "voyageai (>=0.2.3)"]
+falkordb = ["falkordb (>=1.1.2,<2.0.0)"]
+gliner2 = ["gliner2 (>=1.2.0) ; python_version >= \"3.11\""]
+google-genai = ["google-genai (>=1.62.0)"]
+groq = ["groq (>=0.2.0)"]
+kuzu = ["kuzu (>=0.11.3)"]
+neo4j-opensearch = ["boto3 (>=1.39.16)", "opensearch-py (>=3.0.0)"]
+neptune = ["boto3 (>=1.39.16)", "langchain-aws (>=0.2.29)", "opensearch-py (>=3.0.0)"]
+sentence-transformers = ["sentence-transformers (>=3.2.1)"]
+tracing = ["opentelemetry-api (>=1.20.0)", "opentelemetry-sdk (>=1.20.0)"]
+voyageai = ["voyageai (>=0.2.3)"]
 
 [[package]]
 name = "gravitas-md2gdocs"
@@ -3892,6 +3943,26 @@ files = [
     {file = "mypy_extensions-1.1.0-py3-none-any.whl", hash = "sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505"},
     {file = "mypy_extensions-1.1.0.tar.gz", hash = "sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558"},
 ]
+
+[[package]]
+name = "neo4j"
+version = "6.1.0"
+description = "Neo4j Bolt driver for Python"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "neo4j-6.1.0-py3-none-any.whl", hash = "sha256:3bd93941f3a3559af197031157220af9fd71f4f93a311db687bd69ffa417b67d"},
+    {file = "neo4j-6.1.0.tar.gz", hash = "sha256:b5dde8c0d8481e7b6ae3733569d990dd3e5befdc5d452f531ad1884ed3500b84"},
+]
+
+[package.dependencies]
+pytz = "*"
+
+[package.extras]
+numpy = ["numpy (>=1.21.2,<3.0.0)"]
+pandas = ["numpy (>=1.21.2,<3.0.0)", "pandas (>=1.1.0,<3.0.0)"]
+pyarrow = ["pyarrow (>=6.0.0,<23.0.0)"]
 
 [[package]]
 name = "nest-asyncio"
@@ -8857,4 +8928,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.14"
-content-hash = "8dd9db689a2dd57fc3cccea02e596a522f334f6b5ed18e92252555f61835d71d"
+content-hash = "da61798b73758b9292fc1933268d488fbe739dc1fbf5c6586cd0c76a3411eb2e"

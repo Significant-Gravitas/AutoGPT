@@ -383,7 +383,8 @@ class AutoPilotBlock(Block):
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
-                execution_context.user_id, dry_run=input_data.dry_run
+                execution_context.user_id,
+                dry_run=input_data.dry_run or execution_context.dry_run,
             )
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own
