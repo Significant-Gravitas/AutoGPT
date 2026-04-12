@@ -49,7 +49,7 @@ _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 _NOTIFY_PAYLOAD = "1"
 
 
-class PendingMessageContext(BaseModel):
+class PendingMessageContext(BaseModel, extra="forbid"):
     """Structured page context attached to a pending message."""
 
     url: str | None = None
