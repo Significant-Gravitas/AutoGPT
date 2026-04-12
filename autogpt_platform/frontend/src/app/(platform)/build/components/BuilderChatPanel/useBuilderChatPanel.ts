@@ -45,6 +45,7 @@ type SendMessageFn = ReturnType<typeof useChat>["sendMessage"];
  * and re-inserting on access, and evicting the oldest entry when over `MAX_SESSION_CACHE`.
  */
 const MAX_SESSION_CACHE = 50;
+const MAX_PARSED_ACTIONS = 100;
 const graphSessionCache = new Map<string, string>();
 
 function cacheGetSession(flowID: string): string | undefined {
@@ -397,6 +398,16 @@ export function useBuilderChatPanel({
       }
     }
     lastParsedMessageIndexRef.current = messages.length - 1;
+    // Cap the accumulated actions so the list doesn't grow unboundedly in
+    // very long conversations. When over the limit, trim the oldest entries.
+    if (cache.actions.length > MAX_PARSED_ACTIONS) {
+      const removed = cache.actions.splice(
+        0,
+        cache.actions.length - MAX_PARSED_ACTIONS,
+      );
+      for (const r of removed) cache.seen.delete(getActionKey(r));
+      appendedAny = true;
+    }
     if (appendedAny) {
       // Fresh array reference so consumers re-render with the new actions.
       setParsedActions([...cache.actions]);
@@ -492,6 +503,7 @@ export function useBuilderChatPanel({
   // Also evicts the stale cached session so a fresh one is created.
   // All per-session UI state is reset so the new session starts clean.
   function retrySession() {
+    setIsCreatingSession(false);
     if (flowID) graphSessionCache.delete(flowID);
     setSessionId(null);
     setSessionError(false);
