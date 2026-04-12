@@ -1289,7 +1289,15 @@ async def stream_chat_completion_baseline(
             )
             if is_final_yield:
                 continue
-            pending = await drain_pending_messages(session_id)
+            try:
+                pending = await drain_pending_messages(session_id)
+            except Exception:
+                logger.warning(
+                    "Mid-loop drain_pending_messages failed for session %s",
+                    session_id,
+                    exc_info=True,
+                )
+                pending = []
             if pending:
                 # Flush any buffered assistant/tool messages from completed
                 # rounds into session.messages BEFORE appending the pending
