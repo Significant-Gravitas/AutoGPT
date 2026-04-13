@@ -379,44 +379,59 @@ async def _baseline_llm_caller(
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
-        async for chunk in response:
-            if chunk.usage:
-                state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if not delta:
-                continue
-
-            if delta.content:
-                emit = state.thinking_stripper.process(delta.content)
-                if emit:
-                    if not state.text_started:
-                        state.pending_events.append(
-                            StreamTextStart(id=state.text_block_id)
-                        )
-                        state.text_started = True
-                    round_text += emit
-                    state.pending_events.append(
-                        StreamTextDelta(id=state.text_block_id, delta=emit)
+        # Iterate under an inner try/finally so early exits (cancel, tool-call
+        # break, exception) always release the underlying httpx connection.
+        # Without this, openai.AsyncStream leaks the streaming response and
+        # the TCP socket ends up in CLOSE_WAIT until the process exits.
+        try:
+            async for chunk in response:
+                if chunk.usage:
+                    state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    state.turn_completion_tokens += (
+                        chunk.usage.completion_tokens or 0
                     )
 
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_calls_by_index:
-                        tool_calls_by_index[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-                    entry = tool_calls_by_index[idx]
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        entry["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        entry["arguments"] += tc.function.arguments
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+
+                if delta.content:
+                    emit = state.thinking_stripper.process(delta.content)
+                    if emit:
+                        if not state.text_started:
+                            state.pending_events.append(
+                                StreamTextStart(id=state.text_block_id)
+                            )
+                            state.text_started = True
+                        round_text += emit
+                        state.pending_events.append(
+                            StreamTextDelta(id=state.text_block_id, delta=emit)
+                        )
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_by_index:
+                            tool_calls_by_index[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+                        entry = tool_calls_by_index[idx]
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+        finally:
+            # Release the streaming httpx connection back to the pool on every
+            # exit path (normal completion, break, exception). openai.AsyncStream
+            # does not auto-close when the async-for loop exits early.
+            try:
+                await response.close()
+            except Exception:
+                pass
 
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()

@@ -7,6 +7,7 @@ ingestion while keeping it fire-and-forget from the caller's perspective.
 
 import asyncio
 import logging
+import weakref
 from datetime import datetime, timezone
 
 from graphiti_core.nodes import EpisodeType
@@ -16,9 +17,35 @@ from .memory_model import MemoryEnvelope, MemoryKind, MemoryStatus, SourceKind
 
 logger = logging.getLogger(__name__)
 
-_user_queues: dict[str, asyncio.Queue] = {}
-_user_workers: dict[str, asyncio.Task] = {}
-_workers_lock = asyncio.Lock()
+
+# The CoPilot executor runs one asyncio loop per worker thread, and
+# asyncio.Queue / asyncio.Lock / asyncio.Task are all bound to the loop they
+# were first used on. A process-wide worker registry would hand a loop-1-bound
+# Queue to a coroutine running on loop 2 → RuntimeError "Future attached to a
+# different loop". Scope the registry per running loop so each loop has its
+# own queues, workers, and lock. Entries auto-clean when the loop is GC'd.
+class _LoopIngestState:
+    __slots__ = ("user_queues", "user_workers", "workers_lock")
+
+    def __init__(self) -> None:
+        self.user_queues: dict[str, asyncio.Queue] = {}
+        self.user_workers: dict[str, asyncio.Task] = {}
+        self.workers_lock = asyncio.Lock()
+
+
+_loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopIngestState]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _get_loop_state() -> _LoopIngestState:
+    loop = asyncio.get_running_loop()
+    state = _loop_state.get(loop)
+    if state is None:
+        state = _LoopIngestState()
+        _loop_state[loop] = state
+    return state
+
 
 # Idle workers are cleaned up after this many seconds of inactivity.
 _WORKER_IDLE_TIMEOUT = 60
@@ -38,6 +65,10 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
     Exits after ``_WORKER_IDLE_TIMEOUT`` seconds of inactivity so that
     idle workers don't leak memory indefinitely.
     """
+    # Snapshot the loop-local state at task start so cleanup always runs
+    # against the same state dict the worker was registered in, even if the
+    # worker is cancelled from another task.
+    state = _get_loop_state()
     try:
         while True:
             try:
@@ -64,8 +95,8 @@ async def _ingestion_worker(user_id: str, queue: asyncio.Queue) -> None:
         raise
     finally:
         # Clean up so the next message re-creates the worker.
-        _user_queues.pop(user_id, None)
-        _user_workers.pop(user_id, None)
+        state.user_queues.pop(user_id, None)
+        state.user_workers.pop(user_id, None)
 
 
 async def enqueue_conversation_turn(
@@ -213,18 +244,19 @@ async def _ensure_worker(user_id: str) -> asyncio.Queue:
     """Create a queue and worker for *user_id* if one doesn't exist.
 
     Returns the queue directly so callers don't need to look it up from
-    ``_user_queues`` (which avoids a TOCTOU race if the worker times out
+    the state dict (which avoids a TOCTOU race if the worker times out
     and cleans up between this call and the put_nowait).
     """
-    async with _workers_lock:
-        if user_id not in _user_queues:
+    state = _get_loop_state()
+    async with state.workers_lock:
+        if user_id not in state.user_queues:
             q: asyncio.Queue = asyncio.Queue(maxsize=100)
-            _user_queues[user_id] = q
-            _user_workers[user_id] = asyncio.create_task(
+            state.user_queues[user_id] = q
+            state.user_workers[user_id] = asyncio.create_task(
                 _ingestion_worker(user_id, q),
                 name=f"graphiti-ingest-{user_id[:12]}",
             )
-        return _user_queues[user_id]
+        return state.user_queues[user_id]
 
 
 async def _resolve_user_name(user_id: str) -> str:

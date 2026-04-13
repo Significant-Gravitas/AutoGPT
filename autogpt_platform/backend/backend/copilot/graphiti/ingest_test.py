@@ -9,20 +9,9 @@ import pytest
 from . import ingest
 
 
-def _clean_module_state() -> None:
-    """Reset module-level state to avoid cross-test contamination."""
-    ingest._user_queues.clear()
-    ingest._user_workers.clear()
-
-
-@pytest.fixture(autouse=True)
-def _reset_state():
-    _clean_module_state()
-    yield
-    # Cancel any lingering worker tasks.
-    for task in ingest._user_workers.values():
-        task.cancel()
-    _clean_module_state()
+# Per-loop state in ingest.py auto-isolates between tests: pytest-asyncio
+# creates a fresh event loop per test function, and the WeakKeyDictionary
+# forgets the previous loop's state when it is GC'd. No manual reset needed.
 
 
 class TestIngestionWorkerExceptionHandling:
@@ -75,7 +64,7 @@ class TestEnqueueConversationTurn:
             user_msg="hi",
         )
         # No queue should have been created.
-        assert len(ingest._user_queues) == 0
+        assert len(ingest._get_loop_state().user_queues) == 0
 
 
 class TestQueueFullScenario:
@@ -106,7 +95,7 @@ class TestQueueFullScenario:
             # Replace the queue with one that is already full.
             tiny_q: asyncio.Queue = asyncio.Queue(maxsize=1)
             tiny_q.put_nowait({"dummy": True})
-            ingest._user_queues[user_id] = tiny_q
+            ingest._get_loop_state().user_queues[user_id] = tiny_q
 
             # Should not raise even though the queue is full.
             await ingest.enqueue_conversation_turn(
@@ -169,9 +158,10 @@ class TestWorkerIdleTimeout:
         queue: asyncio.Queue = asyncio.Queue(maxsize=10)
 
         # Pre-populate state so cleanup can remove entries.
-        ingest._user_queues[user_id] = queue
+        state = ingest._get_loop_state()
+        state.user_queues[user_id] = queue
         task_sentinel = MagicMock()
-        ingest._user_workers[user_id] = task_sentinel
+        state.user_workers[user_id] = task_sentinel
 
         original_timeout = ingest._WORKER_IDLE_TIMEOUT
         ingest._WORKER_IDLE_TIMEOUT = 0.05
@@ -181,5 +171,5 @@ class TestWorkerIdleTimeout:
             ingest._WORKER_IDLE_TIMEOUT = original_timeout
 
         # After idle timeout the worker should have cleaned up.
-        assert user_id not in ingest._user_queues
-        assert user_id not in ingest._user_workers
+        assert user_id not in state.user_queues
+        assert user_id not in state.user_workers
