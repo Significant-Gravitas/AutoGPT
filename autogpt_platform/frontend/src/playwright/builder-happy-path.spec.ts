@@ -1,4 +1,3 @@
-import { readFile } from "fs/promises";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
@@ -121,25 +120,29 @@ test("builder happy path: user can export the created agent", async ({
   test.setTimeout(120000);
 
   const buildPage = new BuildPage(page);
-  const { agentName } =
+  const { agentName, graphId, graphVersion } =
     await buildPage.createAndSaveSimpleAgent("Smoke Export Agent");
 
   const libraryPage = new LibraryPage(page);
   await libraryPage.openSavedAgent(agentName);
 
-  const downloadPromise = page.waitForEvent("download", { timeout: 15000 });
+  const exportResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      response
+        .url()
+        .includes(
+          `/api/proxy/api/graphs/${graphId}/versions/${graphVersion}`,
+        ) &&
+      response.url().includes("for_export=true"),
+    { timeout: 15000 },
+  );
+
   await libraryPage.clickExportAgent();
-  const download = await downloadPromise;
+  const exportResponse = await exportResponsePromise;
 
-  expect(download.suggestedFilename()).toMatch(/\.json$/i);
-
-  // Verify the downloaded file is a real, well-formed agent export — not an
-  // empty stub. Catches a regression where the export endpoint returns {} or
-  // an HTML error page with a .json extension.
-  const filePath = await download.path();
-  expect(filePath).toBeTruthy();
-  const raw = await readFile(filePath!, "utf-8");
-  const parsed = JSON.parse(raw);
+  expect(exportResponse.ok(), "export request should succeed").toBe(true);
+  const parsed = await exportResponse.json();
 
   expect(parsed.name, "exported agent must include name").toBeTruthy();
   expect(

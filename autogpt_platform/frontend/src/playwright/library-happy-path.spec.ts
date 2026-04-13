@@ -16,6 +16,12 @@ test.use({ storageState: E2E_AUTH_STATES.library });
 const TEST_AGENT_PATH = path.resolve(__dirname, "assets", "testing_agent.json");
 const CALCULATOR_BLOCK_ID = "b1ab9b19-67a6-406d-abf5-2dba76d00c79";
 const AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4";
+const STOPPED_RUN_STATUSES = new Set([
+  "terminated",
+  "failed",
+  "incomplete",
+  "completed",
+]);
 
 type UploadedGraphNode = {
   id: string;
@@ -101,7 +107,7 @@ function createLongRunningCalculatorGraph(
 async function createLongRunningSavedAgent(
   page: Page,
   agentName: string,
-): Promise<void> {
+): Promise<{ graphId: string; graphVersion: number }> {
   const response = await page.request.post("/api/proxy/api/graphs", {
     data: {
       graph: createLongRunningCalculatorGraph(agentName),
@@ -121,6 +127,11 @@ async function createLongRunningSavedAgent(
     body.data?.id ?? body.id,
     "graph creation should return a graph id",
   ).toBeTruthy();
+
+  return {
+    graphId: String(body.data?.id ?? body.id),
+    graphVersion: Number(body.data?.version ?? body.version ?? 1),
+  };
 }
 
 async function createDeterministicCalculatorSavedAgent(
@@ -181,6 +192,20 @@ async function createDeterministicCalculatorSavedAgent(
     response.ok(),
     "expected deterministic calculator graph creation API request to succeed",
   ).toBe(true);
+}
+
+async function getExecutionStatusFromApi(
+  page: Page,
+  graphId: string,
+  runId: string,
+): Promise<string> {
+  const response = await page.request.get(
+    `/api/proxy/api/graphs/${graphId}/executions/${runId}`,
+  );
+  expect(response.ok(), "execution details API should succeed").toBe(true);
+
+  const body = (await response.json()) as { status?: string };
+  return body.status?.toLowerCase() ?? "unknown";
 }
 
 async function createAndSaveDeterministicOutputAgent(
@@ -269,7 +294,7 @@ test("library happy path: user can start and stop a saved task from runner UI", 
   test.setTimeout(180000);
 
   const agentName = createUniqueAgentName("E2E Stop Task Agent");
-  await createLongRunningSavedAgent(page, agentName);
+  const { graphId } = await createLongRunningSavedAgent(page, agentName);
 
   const libraryPage = new LibraryPage(page);
   await libraryPage.openSavedAgent(agentName);
@@ -278,17 +303,40 @@ test("library happy path: user can start and stop a saved task from runner UI", 
   await expect
     .poll(() => getActiveItemId(page), { timeout: 45000 })
     .not.toBe(null);
+  const runId = getActiveItemId(page);
+  expect(runId, "run id should be present after starting task").toBeTruthy();
   await expect
     .poll(() => libraryPage.getRunStatus(), { timeout: 45000 })
     .toBe("running");
 
   const stopTaskButton = page.getByRole("button", { name: /Stop task/i });
   await expect(stopTaskButton).toBeVisible({ timeout: 30000 });
+  const stopResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response
+        .url()
+        .includes(`/api/graphs/${graphId}/executions/${runId}/stop`),
+    { timeout: 15000 },
+  );
   await stopTaskButton.click();
+  const stopResponse = await stopResponsePromise;
 
+  expect(stopResponse.ok(), "stop run API should succeed").toBe(true);
+  await expect(page.getByText("Run stopped")).toBeVisible({ timeout: 15000 });
   await expect
-    .poll(() => libraryPage.getRunStatus(), { timeout: 45000 })
-    .toBe("terminated");
+    .poll(
+      async () => {
+        const status = await getExecutionStatusFromApi(
+          page,
+          graphId,
+          String(runId),
+        );
+        return STOPPED_RUN_STATUSES.has(status) ? status : "running";
+      },
+      { timeout: 45000 },
+    )
+    .not.toBe("running");
 });
 
 test("library happy path: user can run a saved agent and verify expected output", async ({

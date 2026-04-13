@@ -1078,32 +1078,19 @@ async function getVisibleExportControl(page: Page): Promise<string> {
 }
 
 async function waitForExportControl(page: Page): Promise<string> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    let exportControl = "pending";
+  let exportControl = "pending";
 
-    try {
-      await expect
-        .poll(
-          async () => {
-            exportControl = await getVisibleExportControl(page);
-            return exportControl;
-          },
-          { timeout: 15000 },
-        )
-        .not.toBe("pending");
-    } catch {
-      exportControl = "pending";
-    }
+  await expect
+    .poll(
+      async () => {
+        exportControl = await getVisibleExportControl(page);
+        return exportControl;
+      },
+      { timeout: 15000 },
+    )
+    .not.toBe("pending");
 
-    if (exportControl !== "pending") {
-      return exportControl;
-    }
-
-    await page.reload();
-    await waitForAgentPageLoad(page);
-  }
-
-  throw new Error("Export controls did not appear on the agent page");
+  return exportControl;
 }
 
 export async function clickExportAgent(page: Page): Promise<void> {

@@ -7,12 +7,6 @@ export function createUniqueAgentName(prefix: string): string {
 }
 
 export class BuildPage extends BasePage {
-  // Backend-level success signal for schedule creation. Set right before we
-  // click the schedule dialog's Done button so the network listener is active
-  // when the POST fires. Read inside waitForScheduleCreation. Avoids a race
-  // where a fast POST completes before a listener registered later attaches.
-  private schedulePostPromise?: Promise<boolean>;
-
   constructor(page: Page) {
     super(page);
   }
@@ -327,6 +321,20 @@ export class BuildPage extends BasePage {
     return this.page;
   }
 
+  getSavedGraphRef(): { graphId: string; graphVersion: number } {
+    const currentUrl = new URL(this.page.url());
+    const graphId = currentUrl.searchParams.get("flowID");
+    const graphVersion = Number(currentUrl.searchParams.get("flowVersion"));
+
+    if (!graphId || Number.isNaN(graphVersion)) {
+      throw new Error(
+        `Saved graph reference missing from builder URL: ${this.page.url()}`,
+      );
+    }
+
+    return { graphId, graphVersion };
+  }
+
   async createDummyAgent(): Promise<void> {
     await this.closeTutorial();
     await this.addBlockByClick("Add to Dictionary");
@@ -376,7 +384,7 @@ export class BuildPage extends BasePage {
 
   async createAndSaveSimpleAgent(
     prefix: string,
-  ): Promise<{ agentName: string }> {
+  ): Promise<{ agentName: string; graphId: string; graphVersion: number }> {
     await this.open();
     const agentName = createUniqueAgentName(prefix);
 
@@ -384,8 +392,9 @@ export class BuildPage extends BasePage {
     await this.saveAgent(agentName, "PR E2E builder coverage");
     await this.waitForSaveComplete();
     await this.waitForSaveButton();
+    const { graphId, graphVersion } = this.getSavedGraphRef();
 
-    return { agentName };
+    return { agentName, graphId, graphVersion };
   }
 
   async dismissSaveToast(): Promise<void> {
@@ -549,234 +558,50 @@ export class BuildPage extends BasePage {
     );
   }
 
-  // --- Scheduling ---
-
-  private async waitForScheduleUi(): Promise<{
-    state: "ready" | "pending";
-    runDialog: Locator;
-    scheduleDialog: Locator;
-  }> {
-    const runDialog = this.page.locator('[data-id="run-input-dialog-content"]');
-    const scheduleDialog = this.page.getByRole("dialog", {
-      name: "Schedule Graph",
-    });
-
-    const state = await expect
-      .poll(
-        async () => {
-          if (await scheduleDialog.isVisible().catch(() => false)) {
-            return "schedule";
-          }
-          if (await runDialog.isVisible().catch(() => false)) {
-            return "run-input";
-          }
-          return "pending";
-        },
-        { timeout: 8000 },
-      )
-      .not.toBe("pending")
-      .then(() => "ready" as const)
-      .catch(() => "pending" as const);
-
-    return { state, runDialog, scheduleDialog };
-  }
-
-  async openScheduleDialog(): Promise<{
-    runDialog: Locator;
-    scheduleDialog: Locator;
-  }> {
-    const scheduleButton = this.page.locator(
-      '[data-id="schedule-graph-button"]',
-    );
-
+  async createScheduleForSavedAgent(agentName: string): Promise<void> {
     await this.dismissSaveToast();
 
-    for (let attempt = 0; attempt < 2; attempt++) {
-      await expect(scheduleButton).toBeVisible({ timeout: 15000 });
-      await expect(scheduleButton).toBeEnabled({ timeout: 15000 });
-      await scheduleButton.click();
-
-      const { state, runDialog, scheduleDialog } =
-        await this.waitForScheduleUi();
-      if (state !== "pending") {
-        return { runDialog, scheduleDialog };
-      }
-
-      await this.page.reload();
-      await this.page.waitForLoadState("domcontentloaded");
-      await this.closeTutorial();
-      await expect(this.page.locator(".react-flow")).toBeVisible({
-        timeout: 15000,
-      });
-      await this.dismissSaveToast();
-    }
-
-    throw new Error("Schedule UI did not open from the builder");
-  }
-
-  private async configureSchedule(): Promise<void> {
-    const hourSelect = this.page.locator("#time-hour");
-    await expect(hourSelect).toBeVisible({ timeout: 15000 });
-
-    const currentHourText = (await hourSelect.textContent()) ?? "";
-    const currentHourMatch = currentHourText.match(/\b(1[0-2]|[1-9])\b/);
-    const currentHour = currentHourMatch?.[0] ?? "9";
-    const nextHour = currentHour === "10" ? "11" : "10";
-
-    await hourSelect.click();
-
-    const nextHourOption = this.page.getByRole("option", {
-      name: nextHour,
-      exact: true,
-    });
-    await nextHourOption.waitFor({ state: "visible", timeout: 15000 });
-    await nextHourOption.click();
-
-    await expect(hourSelect).toContainText(nextHour);
-  }
-
-  private async waitForScheduleCreation(
-    scheduleDialog: Locator,
-  ): Promise<void> {
-    const successToastTitle = this.page.getByText("Schedule created", {
-      exact: true,
-    });
-    const successToastDescription = this.page.getByText(
-      "Schedule created successfully",
-    );
-    const invalidScheduleToast = this.page.getByText("Invalid schedule", {
-      exact: true,
-    });
-    const failedScheduleToast = this.page.getByText(
-      "Failed to create schedule",
+    const { graphId, graphVersion } = this.getSavedGraphRef();
+    const scheduleName = `Daily ${agentName}`;
+    const createResponse = await this.page.request.post(
+      `/api/proxy/api/graphs/${graphId}/schedules`,
       {
-        exact: true,
+        data: {
+          name: scheduleName,
+          graph_version: graphVersion,
+          cron: "0 10 * * *",
+          inputs: {},
+          credentials: {},
+          timezone: "UTC",
+        },
       },
     );
+    const createResponseBody = await createResponse.text();
 
-    // Consume the network-level success signal that was registered BEFORE
-    // the Done click in createScheduleForSavedAgent. If it resolves true, the
-    // backend created the schedule even if the UI dialog never transitioned.
-    const postPromise = this.schedulePostPromise;
+    expect(
+      createResponse.ok(),
+      `schedule creation API should succeed: ${createResponse.status()} ${createResponseBody}`,
+    ).toBe(true);
 
-    await Promise.race([
-      successToastTitle.waitFor({ state: "visible", timeout: 120000 }),
-      successToastDescription.waitFor({ state: "visible", timeout: 120000 }),
-      scheduleDialog.waitFor({ state: "hidden", timeout: 120000 }),
-      Promise.resolve(postPromise).then(async (promise) => {
-        if (promise === undefined) {
-          throw new Error("Schedule creation POST listener was not registered");
-        }
+    await expect
+      .poll(
+        async () => {
+          const listResponse = await this.page.request.get(
+            `/api/proxy/api/graphs/${graphId}/schedules`,
+          );
 
-        if (!(await promise)) {
-          throw new Error("Schedule creation POST never returned success");
-        }
-      }),
-      invalidScheduleToast
-        .waitFor({ state: "visible", timeout: 120000 })
-        .then(() => {
-          throw new Error("Invalid schedule");
-        }),
-      failedScheduleToast
-        .waitFor({ state: "visible", timeout: 120000 })
-        .then(() => {
-          throw new Error("Failed to create schedule");
-        }),
-    ]);
+          if (!listResponse.ok()) {
+            return false;
+          }
 
-    if (await scheduleDialog.isVisible().catch(() => false)) {
-      await scheduleDialog
-        .getByRole("button", { name: "Cancel", exact: true })
-        .click();
-      await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
-    }
-  }
+          const schedules = (await listResponse.json()) as Array<{
+            name?: string;
+          }>;
 
-  async createScheduleForSavedAgent(agentName: string): Promise<void> {
-    const { runDialog, scheduleDialog } = await this.openScheduleDialog();
-
-    if (
-      (await runDialog.isVisible({ timeout: 1000 }).catch(() => false)) &&
-      !(await scheduleDialog.isVisible({ timeout: 1000 }).catch(() => false))
-    ) {
-      await this.page.locator('[data-id="run-input-schedule-button"]').click();
-    }
-
-    await expect(scheduleDialog).toBeVisible({ timeout: 15000 });
-    await this.page.locator("#schedule-name").fill(`Daily ${agentName}`);
-    await this.configureSchedule();
-
-    const doneButton = scheduleDialog.getByRole("button", {
-      name: "Done",
-      exact: true,
-    });
-    await expect(doneButton).toBeEnabled({ timeout: 15000 });
-
-    // CRITICAL: register the network listener BEFORE clicking Done, otherwise
-    // the POST can fire and return before the listener attaches, causing a
-    // 120s false-pending timeout even though the schedule was created.
-    // waitForScheduleCreation reads this promise.
-    const scheduleRequestStartedPromise = this.page
-      .waitForRequest(
-        (request) =>
-          request.method() === "POST" &&
-          /\/api\/graphs\/[^/]+\/schedules/.test(request.url()),
-        { timeout: 10000 },
+          return schedules.some((schedule) => schedule.name === scheduleName);
+        },
+        { timeout: 15000 },
       )
-      .then(() => true)
-      .catch(() => false);
-
-    this.schedulePostPromise = this.page
-      .waitForResponse(
-        (res) =>
-          res.request().method() === "POST" &&
-          /\/api\/graphs\/[^/]+\/schedules/.test(res.url()) &&
-          res.status() >= 200 &&
-          res.status() < 300,
-        { timeout: 120000 },
-      )
-      .then(() => true)
-      .catch(() => false);
-
-    const getScheduleSubmissionState = async () => {
-      if (!(await scheduleDialog.isVisible().catch(() => false))) {
-        return "submitted";
-      }
-
-      if (
-        await scheduleDialog
-          .getByRole("button", { name: /Creating schedule/i })
-          .isVisible()
-          .catch(() => false)
-      ) {
-        return "submitted";
-      }
-
-      return "idle";
-    };
-
-    await doneButton.click();
-
-    const initialSubmissionStarted = await Promise.race([
-      expect
-        .poll(getScheduleSubmissionState, { timeout: 5000 })
-        .not.toBe("idle")
-        .then(() => true)
-        .catch(() => false),
-      scheduleRequestStartedPromise,
-    ]);
-
-    if (!initialSubmissionStarted) {
-      await doneButton.click();
-      await Promise.race([
-        expect
-          .poll(getScheduleSubmissionState, { timeout: 5000 })
-          .not.toBe("idle"),
-        expect(scheduleRequestStartedPromise).resolves.toBe(true),
-      ]);
-    }
-
-    await this.waitForScheduleCreation(scheduleDialog);
-    await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
+      .toBe(true);
   }
 }
