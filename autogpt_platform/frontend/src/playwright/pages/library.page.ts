@@ -1199,17 +1199,58 @@ export async function openSavedAgentInLibrary(
   await waitForAgentPageLoad(page, agentName);
 }
 
-async function waitForDirectExportButton(page: Page): Promise<Locator> {
+async function waitForExportActionSurface(
+  page: Page,
+): Promise<"direct" | "menu"> {
   const directExportButton = page
     .getByRole("button", { name: "Export agent to file" })
     .first();
-  await expect(directExportButton).toBeVisible({ timeout: 15000 });
-  return directExportButton;
+  const moreActionsButton = page
+    .getByRole("button", { name: "More actions" })
+    .first();
+
+  await expect
+    .poll(
+      async () => {
+        if (await directExportButton.isVisible().catch(() => false)) {
+          return "direct";
+        }
+
+        if (await moreActionsButton.isVisible().catch(() => false)) {
+          return "menu";
+        }
+
+        return "pending";
+      },
+      { timeout: 15000 },
+    )
+    .not.toBe("pending");
+
+  if (await directExportButton.isVisible().catch(() => false)) {
+    return "direct";
+  }
+
+  return "menu";
 }
 
 export async function clickExportAgent(page: Page): Promise<void> {
-  const exportButton = await waitForDirectExportButton(page);
-  await exportButton.click({ timeout: 15000 });
+  const exportSurface = await waitForExportActionSurface(page);
+
+  if (exportSurface === "direct") {
+    await page
+      .getByRole("button", { name: "Export agent to file" })
+      .first()
+      .click({ timeout: 15000 });
+    return;
+  }
+
+  await page.getByRole("button", { name: "More actions" }).first().click({
+    timeout: 15000,
+  });
+  await page
+    .getByRole("menuitem", { name: "Export agent to file" })
+    .first()
+    .click({ timeout: 15000 });
 }
 
 // The run status is rendered by RunStatusBadge as lowercase text inside a
