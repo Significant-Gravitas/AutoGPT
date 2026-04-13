@@ -1644,6 +1644,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1651,6 +1652,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "429": {
+            "description": "Token rate-limit or call-frequency cap exceeded"
           }
         }
       }
@@ -12174,6 +12178,22 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PendingMessageContext": {
+        "properties": {
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PendingMessageContext",
+        "description": "Structured page context attached to a pending message."
+      },
       "PlatformCostDashboard": {
         "properties": {
           "by_provider": {
@@ -12728,14 +12748,10 @@
           },
           "context": {
             "anyOf": [
-              {
-                "additionalProperties": { "type": "string" },
-                "type": "object"
-              },
+              { "$ref": "#/components/schemas/PendingMessageContext" },
               { "type": "null" }
             ],
-            "title": "Context",
-            "description": "Optional page context: expected keys are 'url' and 'content'."
+            "description": "Optional page context with 'url' and 'content' fields."
           },
           "file_ids": {
             "anyOf": [

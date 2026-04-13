@@ -99,6 +99,11 @@ _PENDING_CALL_LIMIT = 30  # pushes per minute per user
 _PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
 
+# Maximum lengths for pending-message context fields (url: 2 KB, content: 32 KB).
+# Enforced by QueuePendingMessageRequest._validate_context_length.
+_CONTEXT_URL_MAX_LENGTH = 2_000
+_CONTEXT_CONTENT_MAX_LENGTH = 32_000
+
 # Lua script for atomic INCR + conditional EXPIRE.
 # Using a single EVAL ensures the counter never persists without a TTL —
 # a bare INCR followed by a separate EXPIRE can leave the key without
@@ -133,7 +138,7 @@ async def _resolve_workspace_files(
     Used by both the stream and pending-message endpoints to prevent callers from
     referencing other users' files.
     """
-    valid_ids = [fid for fid in file_ids if _UUID_RE.match(fid)]
+    valid_ids = [fid for fid in file_ids if _UUID_RE.fullmatch(fid)]
     if not valid_ids:
         return []
     workspace = await get_or_create_workspace(user_id)
@@ -181,32 +186,29 @@ class QueuePendingMessageRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     message: str = Field(min_length=1, max_length=16_000)
-    context: dict[str, str] | None = Field(
+    context: PendingMessageContext | None = Field(
         default=None,
-        description="Optional page context: expected keys are 'url' and 'content'.",
+        description="Optional page context with 'url' and 'content' fields.",
     )
     file_ids: list[str] | None = Field(default=None, max_length=20)
 
     @field_validator("context")
     @classmethod
     def _validate_context_length(
-        cls, v: dict[str, str] | None
-    ) -> dict[str, str] | None:
+        cls, v: PendingMessageContext | None
+    ) -> PendingMessageContext | None:
         if v is None:
             return v
         # Cap context values to prevent LLM context-window stuffing via
-        # large page payloads (url: 2 KB, content: 32 KB).
-        _URL_LIMIT = 2_000
-        _CONTENT_LIMIT = 32_000
-        url = v.get("url", "")
-        if len(url) > _URL_LIMIT:
+        # large page payloads.  Limits are module-level constants so
+        # they are visible to callers and documentation.
+        if v.url and len(v.url) > _CONTEXT_URL_MAX_LENGTH:
             raise ValueError(
-                f"context.url exceeds maximum length of {_URL_LIMIT} characters"
+                f"context.url exceeds maximum length of {_CONTEXT_URL_MAX_LENGTH} characters"
             )
-        content = v.get("content", "")
-        if len(content) > _CONTENT_LIMIT:
+        if v.content and len(v.content) > _CONTEXT_CONTENT_MAX_LENGTH:
             raise ValueError(
-                f"context.content exceeds maximum length of {_CONTENT_LIMIT} characters"
+                f"context.content exceeds maximum length of {_CONTEXT_CONTENT_MAX_LENGTH} characters"
             )
         return v
 
@@ -1112,6 +1114,10 @@ async def stream_chat_post(
     "/sessions/{session_id}/messages/pending",
     response_model=QueuePendingMessageResponse,
     status_code=202,
+    responses={
+        404: {"description": "Session not found or access denied"},
+        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+    },
 )
 async def queue_pending_message(
     session_id: str,
@@ -1180,20 +1186,16 @@ async def queue_pending_message(
     except HTTPException:
         raise
     except Exception:
-        pass  # Redis failure is non-fatal; fail open
-
-    track_user_message(
-        user_id=user_id,
-        session_id=session_id,
-        message_length=len(request.message),
-    )
+        logger.warning(
+            "queue_pending_message: rate-limit check failed, failing open"
+        )  # non-fatal
 
     # Sanitise file IDs to the user's own workspace so injection doesn't
     # surface other users' files.  _resolve_workspace_files handles UUID
     # filtering and the workspace-scoped DB lookup.
     sanitized_file_ids: list[str] = []
     if request.file_ids:
-        valid_id_count = sum(1 for fid in request.file_ids if _UUID_RE.match(fid))
+        valid_id_count = sum(1 for fid in request.file_ids if _UUID_RE.fullmatch(fid))
         files = await _resolve_workspace_files(user_id, request.file_ids)
         sanitized_file_ids = [wf.id for wf in files]
         if len(sanitized_file_ids) != valid_id_count:
@@ -1216,9 +1218,15 @@ async def queue_pending_message(
     pending = PendingMessage(
         content=request.message,
         file_ids=sanitized_file_ids,
-        context=PendingMessageContext(**request.context) if request.context else None,
+        context=request.context,
     )
     buffer_length = await push_pending_message(session_id, pending)
+
+    track_user_message(
+        user_id=user_id,
+        session_id=session_id,
+        message_length=len(request.message),
+    )
 
     # Check whether a turn is currently running for UX feedback.
     active_session = await stream_registry.get_session(session_id)
