@@ -25,7 +25,6 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
   page,
 }) => {
   test.setTimeout(120000);
-  const outputName = "Output";
 
   const marketplacePage = new MarketplacePage(page);
   await marketplacePage.openRunnableAgent();
@@ -44,15 +43,5 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
   const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
   await libraryPage.assertRunProducedOutput();
-  await expect(
-    page.getByText(outputName, { exact: false }),
-    `run output should include output key "${outputName}"`,
-  ).toBeVisible({ timeout: 15000 });
-  const outputValue = page
-    .getByText(outputName, { exact: false })
-    .locator("xpath=following-sibling::*[1]");
-  await expect(
-    outputValue,
-    `run output value for "${outputName}" should be 42`,
-  ).toHaveText(/^42(?:\.0+)?$/, { timeout: 15000 });
+  await libraryPage.assertRunOutputValue("Output", /^42(?:\.0+)?$/);
 });

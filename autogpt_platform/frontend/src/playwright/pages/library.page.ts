@@ -56,6 +56,14 @@ export class LibraryPage extends BasePage {
     await assertRunProducedOutput(this.page, timeout);
   }
 
+  async assertRunOutputValue(
+    outputName: string,
+    expectedValue: RegExp | string,
+    timeout = 15000,
+  ): Promise<void> {
+    await assertRunOutputValue(this.page, outputName, expectedValue, timeout);
+  }
+
   async clickExportAgent(): Promise<void> {
     await clickExportAgent(this.page);
   }
@@ -660,12 +668,9 @@ export async function isLoaded(page: Page): Promise<boolean> {
 }
 
 const SUCCESS_RUN_STATUS = "completed";
-const FAILURE_RUN_STATUSES = new Set([
-  "failed",
-  "terminated",
-  "incomplete",
-  "error",
-]);
+const FAILURE_RUN_STATUSES = new Set(["failed", "terminated", "incomplete"]);
+const RUN_ERROR_RECOVERY_GRACE_PERIOD_MS = 1500;
+const RUN_ERROR_RECOVERY_ATTEMPTS = 2;
 
 /**
  * Assert that a completed run actually produced output.
@@ -696,16 +701,70 @@ export async function assertRunProducedOutput(
   }).toBeHidden({ timeout });
 }
 
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function assertRunOutputValue(
+  page: Page,
+  outputName: string,
+  expectedValue: RegExp | string,
+  timeout = 15000,
+): Promise<void> {
+  const outputLabel = page.locator("p.capitalize").filter({
+    hasText: new RegExp(`^${escapeRegex(outputName)}$`),
+  });
+
+  await expect(
+    outputLabel,
+    `run output should include output key "${outputName}"`,
+  ).toBeVisible({ timeout });
+
+  const outputValue = outputLabel.locator("xpath=following-sibling::*[1]");
+  if (expectedValue instanceof RegExp) {
+    await expect(
+      outputValue,
+      `run output value for "${outputName}" should match ${expectedValue.toString()}`,
+    ).toHaveText(expectedValue, { timeout });
+    return;
+  }
+
+  await expect(
+    outputValue,
+    `run output value for "${outputName}" should be "${expectedValue}"`,
+  ).toHaveText(expectedValue, { timeout });
+}
+
 export async function waitForRunToComplete(
   page: Page,
   timeout = 45000,
 ): Promise<void> {
   const start = Date.now();
   let lastStatus = "unknown";
+  let runErrorDetectedAt: number | null = null;
+  let recoveryAttempts = 0;
   while (Date.now() - start < timeout) {
     lastStatus = await getRunStatus(page);
     if (lastStatus === SUCCESS_RUN_STATUS) {
       return;
+    }
+    if (lastStatus === "error") {
+      runErrorDetectedAt ??= Date.now();
+      if (
+        Date.now() - runErrorDetectedAt >=
+        RUN_ERROR_RECOVERY_GRACE_PERIOD_MS
+      ) {
+        if (recoveryAttempts >= RUN_ERROR_RECOVERY_ATTEMPTS) {
+          throw new Error(`Run reached terminal failure state "${lastStatus}"`);
+        }
+        recoveryAttempts += 1;
+        runErrorDetectedAt = null;
+        await page.reload();
+        await waitForAgentPageLoad(page);
+        continue;
+      }
+    } else {
+      runErrorDetectedAt = null;
     }
     if (FAILURE_RUN_STATUSES.has(lastStatus)) {
       throw new Error(`Run reached terminal failure state "${lastStatus}"`);
