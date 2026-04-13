@@ -8,7 +8,6 @@ import pytest
 
 from . import ingest
 
-
 # Per-loop state in ingest.py auto-isolates between tests: pytest-asyncio
 # creates a fresh event loop per test function, and the WeakKeyDictionary
 # forgets the previous loop's state when it is GC'd. No manual reset needed.

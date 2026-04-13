@@ -389,9 +389,7 @@ async def _baseline_llm_caller(
             async for chunk in response:
                 if chunk.usage:
                     state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                    state.turn_completion_tokens += (
-                        chunk.usage.completion_tokens or 0
-                    )
+                    state.turn_completion_tokens += chunk.usage.completion_tokens or 0
 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:

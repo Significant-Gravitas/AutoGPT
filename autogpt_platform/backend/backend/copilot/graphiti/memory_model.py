@@ -41,10 +41,20 @@ class RuleMemory(BaseModel):
     extraction to reconstruct it from prose.
     """
 
-    instruction: str = Field(description="The actionable instruction (e.g. 'CC Sarah on client communications')")
-    actor: str | None = Field(default=None, description="Who performs or is subject to the rule")
-    trigger: str | None = Field(default=None, description="When the rule applies (e.g. 'client-related communications')")
-    negation: str | None = Field(default=None, description="What NOT to do, if applicable (e.g. 'do not use SMTP')")
+    instruction: str = Field(
+        description="The actionable instruction (e.g. 'CC Sarah on client communications')"
+    )
+    actor: str | None = Field(
+        default=None, description="Who performs or is subject to the rule"
+    )
+    trigger: str | None = Field(
+        default=None,
+        description="When the rule applies (e.g. 'client-related communications')",
+    )
+    negation: str | None = Field(
+        default=None,
+        description="What NOT to do, if applicable (e.g. 'do not use SMTP')",
+    )
 
 
 class ProcedureStep(BaseModel):
@@ -54,7 +64,9 @@ class ProcedureStep(BaseModel):
     action: str = Field(description="What to do in this step")
     tool: str | None = Field(default=None, description="Tool or service to use")
     condition: str | None = Field(default=None, description="When/if this step applies")
-    negation: str | None = Field(default=None, description="What NOT to do in this step")
+    negation: str | None = Field(
+        default=None, description="What NOT to do in this step"
+    )
 
 
 class ProcedureMemory(BaseModel):
@@ -81,7 +93,9 @@ class MemoryEnvelope(BaseModel):
     ``ProcedureMemory`` for structured steps.
     """
 
-    content: str = Field(description="The memory content — the actual fact, rule, or finding")
+    content: str = Field(
+        description="The memory content — the actual fact, rule, or finding"
+    )
     source_kind: SourceKind = Field(default=SourceKind.user_asserted)
     scope: str = Field(
         default="real:global",

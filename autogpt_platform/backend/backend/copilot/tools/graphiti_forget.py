@@ -97,7 +97,9 @@ class MemoryForgetSearchTool(BaseTool):
                 num_results=10,
             )
         except Exception:
-            logger.warning("Memory forget search failed for user %s", user_id[:12], exc_info=True)
+            logger.warning(
+                "Memory forget search failed for user %s", user_id[:12], exc_info=True
+            )
             return ErrorResponse(
                 message="Memory search is temporarily unavailable.",
                 session_id=session.session_id,
@@ -214,13 +216,17 @@ class MemoryForgetConfirmTool(BaseTool):
         try:
             client = await get_graphiti_client(group_id)
         except Exception:
-            logger.warning("Failed to get Graphiti client for user %s", user_id[:12], exc_info=True)
+            logger.warning(
+                "Failed to get Graphiti client for user %s", user_id[:12], exc_info=True
+            )
             return ErrorResponse(
                 message="Memory service is temporarily unavailable.",
                 session_id=session.session_id,
             )
 
-        driver = getattr(client, "graph_driver", None) or getattr(client, "driver", None)
+        driver = getattr(client, "graph_driver", None) or getattr(
+            client, "driver", None
+        )
         if not driver:
             return ErrorResponse(
                 message="Could not access graph driver for deletion.",
@@ -270,7 +276,9 @@ async def _soft_delete_edges(
         except Exception:
             logger.warning(
                 "Failed to soft-delete edge %s for user %s",
-                uuid, user_id[:12], exc_info=True,
+                uuid,
+                user_id[:12],
+                exc_info=True,
             )
             failed.append(uuid)
     return deleted, failed
@@ -308,7 +316,9 @@ async def _hard_delete_edges(
         except Exception:
             logger.warning(
                 "Failed to hard-delete edge %s for user %s",
-                uuid, user_id[:12], exc_info=True,
+                uuid,
+                user_id[:12],
+                exc_info=True,
             )
             failed.append(uuid)
     return deleted, failed

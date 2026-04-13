@@ -82,10 +82,22 @@ class MemoryStoreTool(BaseTool):
                         '"actor": "Sarah", "trigger": "client-related communications"}'
                     ),
                     "properties": {
-                        "instruction": {"type": "string", "description": "The actionable instruction"},
-                        "actor": {"type": "string", "description": "Who performs or is subject to the rule"},
-                        "trigger": {"type": "string", "description": "When the rule applies"},
-                        "negation": {"type": "string", "description": "What NOT to do, if applicable"},
+                        "instruction": {
+                            "type": "string",
+                            "description": "The actionable instruction",
+                        },
+                        "actor": {
+                            "type": "string",
+                            "description": "Who performs or is subject to the rule",
+                        },
+                        "trigger": {
+                            "type": "string",
+                            "description": "When the rule applies",
+                        },
+                        "negation": {
+                            "type": "string",
+                            "description": "What NOT to do, if applicable",
+                        },
                     },
                     "required": ["instruction"],
                 },
@@ -96,17 +108,35 @@ class MemoryStoreTool(BaseTool):
                         "for multi-step workflows with ordering, tools, and conditions."
                     ),
                     "properties": {
-                        "description": {"type": "string", "description": "What this procedure accomplishes"},
+                        "description": {
+                            "type": "string",
+                            "description": "What this procedure accomplishes",
+                        },
                         "steps": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "order": {"type": "integer", "description": "Step number"},
-                                    "action": {"type": "string", "description": "What to do"},
-                                    "tool": {"type": "string", "description": "Tool or service to use"},
-                                    "condition": {"type": "string", "description": "When this step applies"},
-                                    "negation": {"type": "string", "description": "What NOT to do"},
+                                    "order": {
+                                        "type": "integer",
+                                        "description": "Step number",
+                                    },
+                                    "action": {
+                                        "type": "string",
+                                        "description": "What to do",
+                                    },
+                                    "tool": {
+                                        "type": "string",
+                                        "description": "Tool or service to use",
+                                    },
+                                    "condition": {
+                                        "type": "string",
+                                        "description": "When this step applies",
+                                    },
+                                    "negation": {
+                                        "type": "string",
+                                        "description": "What NOT to do",
+                                    },
                                 },
                                 "required": ["order", "action"],
                             },
