@@ -138,4 +138,51 @@ describe("artifactPanel store actions", () => {
     expect(s.width).toBe(720);
     expect(s.isMaximized).toBe(false);
   });
+
+  it("panel remains open after openArtifact with no explicit close (documents session-switch bug)", () => {
+    // This documents the bug: when a user opens an artifact in session A
+    // and then switches to session B, the panel remains open because
+    // nothing calls closeArtifactPanel on session switch.
+    const a = makeArtifact("a");
+    useCopilotUIStore.getState().openArtifact(a);
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    // Simulate what happens on session switch: nothing.
+    // The store has no session-aware logic — the panel stays open.
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
+      "a",
+    );
+  });
+
+  it("history is capped at 25 entries (MAX_HISTORY)", () => {
+    // Open 27 artifacts sequentially (A0..A26). History should never exceed 25.
+    for (let i = 0; i < 27; i++) {
+      useCopilotUIStore.getState().openArtifact(makeArtifact(`a${i}`));
+    }
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("a26");
+    expect(s.history.length).toBe(25);
+    // The oldest entry (a0) should have been dropped; a1 is the earliest surviving.
+    expect(s.history[0].id).toBe("a1");
+    expect(s.history[24].id).toBe("a25");
+  });
+
+  it("clearCopilotLocalData resets artifact panel to default", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().maximizeArtifactPanel();
+
+    useCopilotUIStore.getState().clearCopilotLocalData();
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.isMinimized).toBe(false);
+    expect(s.isMaximized).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+    expect(s.width).toBe(600); // DEFAULT_PANEL_WIDTH
+  });
 });

@@ -5,6 +5,7 @@ import {
   FileText,
   Image,
   Table,
+  VideoCamera,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 
@@ -17,6 +18,7 @@ export interface ArtifactClassification {
     | "csv"
     | "json"
     | "image"
+    | "video"
     | "pdf"
     | "text"
     | "download-only";
@@ -35,6 +37,13 @@ const KIND: Record<string, ArtifactClassification> = {
     type: "image",
     icon: Image,
     label: "Image",
+    openable: true,
+    hasSourceToggle: false,
+  },
+  video: {
+    type: "video",
+    icon: VideoCamera,
+    label: "Video",
     openable: true,
     hasSourceToggle: false,
   },
@@ -113,6 +122,12 @@ const EXT_KIND: Record<string, string> = {
   ".svg": "image",
   ".bmp": "image",
   ".ico": "image",
+  ".mp4": "video",
+  ".webm": "video",
+  ".ogg": "video",
+  ".mov": "video",
+  ".avi": "video",
+  ".mkv": "video",
   ".pdf": "pdf",
   ".csv": "csv",
   ".html": "html",
@@ -210,14 +225,11 @@ export function classifyArtifact(
   // MIME fallbacks.
   const mime = (mimeType ?? "").toLowerCase();
   if (mime.startsWith("image/")) return KIND.image;
+  if (mime.startsWith("video/")) return KIND.video;
   const mimeKind = MIME_KIND[mime];
   if (mimeKind) return KIND[mimeKind];
   if (mime.startsWith("text/x-")) return KIND.code;
-  if (
-    BINARY_MIMES.has(mime) ||
-    mime.startsWith("audio/") ||
-    mime.startsWith("video/")
-  ) {
+  if (BINARY_MIMES.has(mime) || mime.startsWith("audio/")) {
     return KIND["download-only"];
   }
   if (mime.startsWith("text/")) return KIND.text;

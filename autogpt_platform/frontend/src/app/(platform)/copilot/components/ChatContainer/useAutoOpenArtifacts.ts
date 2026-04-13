@@ -22,13 +22,26 @@ export function useAutoOpenArtifacts({
   sessionId,
 }: UseAutoOpenArtifactsOptions) {
   const openArtifact = useCopilotUIStore((state) => state.openArtifact);
+  const closeArtifactPanel = useCopilotUIStore(
+    (state) => state.closeArtifactPanel,
+  );
   const messageFingerprintsRef = useRef<Map<string, string>>(new Map());
   const hasInitializedRef = useRef(false);
+  const prevSessionIdRef = useRef(sessionId);
 
   useEffect(() => {
+    const isSessionChange = prevSessionIdRef.current !== sessionId;
+    prevSessionIdRef.current = sessionId;
+
     messageFingerprintsRef.current = new Map();
     hasInitializedRef.current = false;
-  }, [sessionId]);
+
+    // Close the artifact panel when switching sessions so a stale preview
+    // from the previous chat doesn't linger on screen.
+    if (isSessionChange) {
+      closeArtifactPanel();
+    }
+  }, [sessionId, closeArtifactPanel]);
 
   useEffect(() => {
     if (messages.length === 0) {
