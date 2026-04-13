@@ -225,7 +225,12 @@ function ArtifactRenderer({
 
   // CSV: pass with explicit metadata so CSVRenderer matches
   if (classification.type === "csv") {
-    const csvMeta = { mimeType: "text/csv", filename: artifact.title };
+    const csvMimeType =
+      artifact.mimeType?.toLowerCase() === "text/tab-separated-values" ||
+      artifact.title.toLowerCase().endsWith(".tsv")
+        ? "text/tab-separated-values"
+        : "text/csv";
+    const csvMeta = { mimeType: csvMimeType, filename: artifact.title };
     const csvRenderer = globalRegistry.getRenderer(content, csvMeta);
     if (csvRenderer) {
       return <div className="p-4">{csvRenderer.render(content, csvMeta)}</div>;

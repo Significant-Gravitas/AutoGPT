@@ -115,11 +115,19 @@ describe("classifyArtifact", () => {
     expect(classifyArtifact(null, "docs.mdx").type).toBe("markdown");
   });
 
-  it("routes video extensions to video", () => {
-    for (const ext of [".ogg", ".mov", ".avi", ".mkv"]) {
+  it("routes browser-safe video extensions to video", () => {
+    for (const ext of [".mp4", ".webm", ".m4v"]) {
       const c = classifyArtifact(null, `clip${ext}`);
       expect(c.type).toBe("video");
       expect(c.openable).toBe(true);
+    }
+  });
+
+  it("keeps legacy or unsupported video extensions download-only", () => {
+    for (const ext of [".ogg", ".mov", ".avi", ".mkv", ".flv", ".mpeg"]) {
+      const c = classifyArtifact(null, `clip${ext}`);
+      expect(c.type).toBe("download-only");
+      expect(c.openable).toBe(false);
     }
   });
 
@@ -127,6 +135,12 @@ describe("classifyArtifact", () => {
     const codeExts = [
       "main.js",
       "app.ts",
+      "theme.scss",
+      "legacy.less",
+      "schema.graphql",
+      "query.gql",
+      "api.proto",
+      "main.dart",
       "lib.rb",
       "server.rs",
       "App.java",
@@ -152,6 +166,38 @@ describe("classifyArtifact", () => {
     for (const file of codeExts) {
       expect(classifyArtifact(null, file).type).toBe("code");
     }
+  });
+
+  it("routes config filenames and extensions to code", () => {
+    const configFiles = [
+      ".env",
+      ".env.local",
+      "app.properties",
+      "service.conf",
+      ".gitignore",
+      "Dockerfile",
+      "Makefile",
+    ];
+
+    for (const file of configFiles) {
+      expect(classifyArtifact(null, file).type).toBe("code");
+    }
+  });
+
+  it("routes .jsonl as code for now", () => {
+    const c = classifyArtifact(null, "events.jsonl");
+    expect(c.type).toBe("code");
+  });
+
+  it("routes .tsv as csv/spreadsheet", () => {
+    const c = classifyArtifact(null, "table.tsv");
+    expect(c.type).toBe("csv");
+    expect(c.hasSourceToggle).toBe(true);
+  });
+
+  it("routes .ics and .vcf as text", () => {
+    expect(classifyArtifact(null, "calendar.ics").type).toBe("text");
+    expect(classifyArtifact(null, "contact.vcf").type).toBe("text");
   });
 
   it("routes all image extensions to image", () => {
@@ -206,21 +252,50 @@ describe("classifyArtifact", () => {
     expect(classifyArtifact("text/csv", "noext").type).toBe("csv");
   });
 
-  it("routes unknown text/* MIME to text (not download-only)", () => {
-    expect(classifyArtifact("text/rtf", "noext").type).toBe("text");
+  it("routes TSV MIME to csv", () => {
     expect(classifyArtifact("text/tab-separated-values", "noext").type).toBe(
-      "text",
+      "csv",
     );
   });
 
-  it("routes image/* MIME prefix to image even for exotic subtypes", () => {
-    expect(classifyArtifact("image/tiff", "noext").type).toBe("image");
+  it("routes unknown text/* MIME to text (not download-only)", () => {
+    expect(classifyArtifact("text/rtf", "noext").type).toBe("text");
+  });
+
+  it("routes browser-safe image MIME types to image", () => {
     expect(classifyArtifact("image/avif", "noext").type).toBe("image");
   });
 
-  it("routes video/* MIME prefix to video even for exotic subtypes", () => {
-    expect(classifyArtifact("video/quicktime", "noext").type).toBe("video");
-    expect(classifyArtifact("video/x-matroska", "noext").type).toBe("video");
+  it("keeps unsupported image MIME types download-only", () => {
+    for (const mime of [
+      "image/tiff",
+      "image/x-portable-pixmap",
+      "image/x-portable-graymap",
+    ]) {
+      const c = classifyArtifact(mime, "noext");
+      expect(c.type).toBe("download-only");
+      expect(c.openable).toBe(false);
+    }
+  });
+
+  it("routes browser-safe video MIME types to video", () => {
+    expect(classifyArtifact("video/mp4", "noext").type).toBe("video");
+    expect(classifyArtifact("video/webm", "noext").type).toBe("video");
+  });
+
+  it("keeps legacy or unsupported video MIME types download-only", () => {
+    for (const mime of [
+      "video/x-msvideo",
+      "video/x-flv",
+      "video/mpeg",
+      "video/quicktime",
+      "video/x-matroska",
+      "video/ogg",
+    ]) {
+      const c = classifyArtifact(mime, "noext");
+      expect(c.type).toBe("download-only");
+      expect(c.openable).toBe(false);
+    }
   });
 
   // ── BINARY_MIMES coverage ────────────────────────────────────────
@@ -303,9 +378,9 @@ describe("classifyArtifact", () => {
     expect(c.type).toBe("download-only");
   });
 
-  it("handles file with no extension and null MIME as download-only", () => {
+  it("handles known config files with no extension", () => {
     const c = classifyArtifact(null, "Makefile");
-    expect(c.type).toBe("download-only");
+    expect(c.type).toBe("code");
   });
 
   // ── Exotic/compound extensions must NOT open the side panel ───────

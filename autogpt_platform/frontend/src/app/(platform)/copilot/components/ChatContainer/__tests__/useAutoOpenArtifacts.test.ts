@@ -2,30 +2,15 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useAutoOpenArtifacts } from "../useAutoOpenArtifacts";
 import { useCopilotUIStore } from "../../../store";
-import type { UIMessage, UIDataTypes, UITools } from "ai";
-
-function makeMessage(
-  id: string,
-  role: "assistant" | "user",
-  parts: UIMessage<unknown, UIDataTypes, UITools>["parts"] = [],
-): UIMessage<unknown, UIDataTypes, UITools> {
-  return {
-    id,
-    role,
-    parts,
-    createdAt: new Date(),
-    content: "",
-  } as UIMessage<unknown, UIDataTypes, UITools>;
-}
 
 // Capture the real store actions before any test can replace them.
 const realOpenArtifact = useCopilotUIStore.getState().openArtifact;
-const realCloseArtifactPanel = useCopilotUIStore.getState().closeArtifactPanel;
+const realResetArtifactPanel = useCopilotUIStore.getState().resetArtifactPanel;
 
 function resetStore() {
   useCopilotUIStore.setState({
     openArtifact: realOpenArtifact,
-    closeArtifactPanel: realCloseArtifactPanel,
+    resetArtifactPanel: realResetArtifactPanel,
     artifactPanel: {
       isOpen: false,
       isMinimized: false,
@@ -42,48 +27,22 @@ describe("useAutoOpenArtifacts", () => {
   afterEach(resetStore);
 
   it("does not auto-open artifacts on initial message load", () => {
-    const messages = [
-      makeMessage("m1", "user"),
-      makeMessage("m2", "assistant", [
-        {
-          type: "text" as const,
-          text: "Here is workspace://file1#image/png",
-        },
-      ]),
-    ];
-
-    renderHook(() =>
-      useAutoOpenArtifacts({ messages, sessionId: "session-1" }),
-    );
-
-    // First render is initialization — should NOT auto-open existing artifacts
+    renderHook(() => useAutoOpenArtifacts({ sessionId: "session-1" }));
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
-  it("resets hydration baseline when sessionId changes", () => {
-    const messages = [
-      makeMessage("m1", "assistant", [
-        {
-          type: "text" as const,
-          text: "Here is workspace://file1#image/png",
-        },
-      ]),
-    ];
-
+  it("does not auto-open when rerendering within the same session", () => {
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
-        useAutoOpenArtifacts({ messages, sessionId }),
+        useAutoOpenArtifacts({ sessionId }),
       { initialProps: { sessionId: "session-1" } },
     );
 
-    // Switch session — should not auto-open existing artifacts
-    rerender({ sessionId: "session-2" });
-
+    rerender({ sessionId: "session-1" });
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
-  it("panel should close when session changes", () => {
-    // Pre-open the panel as if an artifact was viewed in session-1
+  it("panel should fully reset when session changes", () => {
     const artifact = {
       id: "file1",
       title: "image.png",
@@ -92,30 +51,27 @@ describe("useAutoOpenArtifacts", () => {
       origin: "agent" as const,
     };
     useCopilotUIStore.getState().openArtifact(artifact);
+    useCopilotUIStore.getState().openArtifact({
+      ...artifact,
+      id: "file2",
+      title: "second.png",
+      sourceUrl: "/api/proxy/api/workspace/files/file2/download",
+    });
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-
-    const messages = [
-      makeMessage("m1", "assistant", [
-        {
-          type: "text" as const,
-          text: "Here is workspace://file1#image/png",
-        },
-      ]),
-    ];
 
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
-        useAutoOpenArtifacts({ messages, sessionId }),
+        useAutoOpenArtifacts({ sessionId }),
       { initialProps: { sessionId: "session-1" } },
     );
 
-    // Panel should still be open after initial render
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
-    // Switch to a different session
     rerender({ sessionId: "session-2" });
 
-    // Panel should be closed after session switch
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
   });
 });

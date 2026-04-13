@@ -262,7 +262,7 @@ describe("downloadArtifact", () => {
     expect(anchor.download).toBe("download");
   });
 
-  it("falls back to 'download' when title is only leading dots", async () => {
+  it("falls back to 'download' when title is only dots", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -281,7 +281,7 @@ describe("downloadArtifact", () => {
       anchor as unknown as HTMLAnchorElement,
     );
 
-    // After stripping ".." and leading dots, nothing is left
+    // Dot-only names should not produce a hidden or empty filename.
     await downloadArtifact(makeArtifact({ title: "...." }));
     expect(anchor.download).toBe("download");
   });

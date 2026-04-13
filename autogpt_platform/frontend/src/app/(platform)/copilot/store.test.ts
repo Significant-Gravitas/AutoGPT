@@ -99,6 +99,50 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  it("openArtifact does not resurrect a previously closed artifact into history", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().openArtifact(b);
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe("b");
+    expect(s.history).toEqual([]);
+  });
+
+  it("openArtifact ignores non-previewable artifacts", () => {
+    const binary = {
+      ...makeArtifact("bin", "artifact.bin"),
+      mimeType: "application/octet-stream",
+    };
+
+    useCopilotUIStore.getState().openArtifact(binary);
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+
+  it("resetArtifactPanel clears active artifact and history", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().maximizeArtifactPanel();
+
+    useCopilotUIStore.getState().resetArtifactPanel();
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.isMinimized).toBe(false);
+    expect(s.isMaximized).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+
   it("minimize/restore toggles isMinimized without touching activeArtifact", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
@@ -137,22 +181,6 @@ describe("artifactPanel store actions", () => {
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.width).toBe(720);
     expect(s.isMaximized).toBe(false);
-  });
-
-  it("panel remains open after openArtifact with no explicit close (documents session-switch bug)", () => {
-    // This documents the bug: when a user opens an artifact in session A
-    // and then switches to session B, the panel remains open because
-    // nothing calls closeArtifactPanel on session switch.
-    const a = makeArtifact("a");
-    useCopilotUIStore.getState().openArtifact(a);
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-
-    // Simulate what happens on session switch: nothing.
-    // The store has no session-aware logic — the panel stays open.
-    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
-    expect(useCopilotUIStore.getState().artifactPanel.activeArtifact?.id).toBe(
-      "a",
-    );
   });
 
   it("history is capped at 25 entries (MAX_HISTORY)", () => {

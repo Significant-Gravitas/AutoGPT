@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { ArtifactContent } from "../ArtifactContent";
 import type { ArtifactRef } from "../../../../store";
 import type { ArtifactClassification } from "../../helpers";
@@ -75,6 +81,7 @@ describe("ArtifactContent", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.unstubAllGlobals();
   });
 
@@ -553,6 +560,39 @@ describe("ArtifactContent", () => {
     const rendered = await screen.findByTestId("global-renderer");
     expect(rendered).toBeTruthy();
     expect(rendered.textContent).toContain("text/csv");
+  });
+
+  it("renders TSV via globalRegistry with tab-separated metadata", async () => {
+    const tsvContent = "Name\tAge\nAlice\t30\nBob\t25";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(tsvContent),
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "tsv-render-001",
+      title: "data.tsv",
+      mimeType: "text/tab-separated-values",
+    });
+    const classification = makeClassification({
+      type: "csv",
+      hasSourceToggle: true,
+    });
+
+    render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    const rendered = await screen.findByTestId("global-renderer");
+    expect(rendered).toBeTruthy();
+    expect(rendered.textContent).toContain("text/tab-separated-values");
   });
 
   // ── Markdown ──────────────────────────────────────────────────────
