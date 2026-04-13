@@ -23,6 +23,8 @@ import random
 from pathlib import Path
 from typing import Any, Dict, List
 
+import prisma.enums as prisma_enums
+import prisma.models as prisma_models
 from faker import Faker
 
 # Import API functions from the backend
@@ -32,6 +34,7 @@ from backend.api.features.store.db import (
     create_store_submission,
     review_store_submission,
 )
+from backend.api.features.store.model import StoreSubmission
 from backend.blocks.io import AgentInputBlock
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
@@ -717,31 +720,83 @@ class TestDataCreator:
                 }
 
                 try:
-                    test_submission = await create_store_submission(
-                        **test_submission_data
+                    existing_deterministic_submission = (
+                        await prisma_models.StoreListingVersion.prisma().find_first(
+                            where={
+                                "isDeleted": False,
+                                "StoreListing": {
+                                    "is": {
+                                        "owningUserId": test_user["id"],
+                                        "slug": E2E_MARKETPLACE_AGENT_SLUG,
+                                        "isDeleted": False,
+                                    }
+                                },
+                            },
+                            include={"StoreListing": True},
+                            order={"version": "desc"},
+                        )
                     )
-                    submissions.append(test_submission.model_dump())
-                    print(
-                        f"✅ Created deterministic marketplace submission: {E2E_MARKETPLACE_AGENT_NAME}"
+
+                    if existing_deterministic_submission:
+                        test_submission = StoreSubmission.from_listing_version(
+                            existing_deterministic_submission
+                        )
+                        submissions.append(test_submission.model_dump())
+                        print(
+                            "✅ Reused deterministic marketplace submission: "
+                            f"{E2E_MARKETPLACE_AGENT_NAME}"
+                        )
+                    else:
+                        test_submission = await create_store_submission(
+                            **test_submission_data
+                        )
+                        submissions.append(test_submission.model_dump())
+                        print(
+                            "✅ Created deterministic marketplace submission: "
+                            f"{E2E_MARKETPLACE_AGENT_NAME}"
+                        )
+
+                    current_status = (
+                        existing_deterministic_submission.submissionStatus
+                        if existing_deterministic_submission
+                        else test_submission.status
+                    )
+                    is_featured = bool(
+                        existing_deterministic_submission
+                        and existing_deterministic_submission.isFeatured
                     )
 
                     if test_submission.listing_version_id:
-                        approved_submission = await review_store_submission(
-                            store_listing_version_id=test_submission.listing_version_id,
-                            is_approved=True,
-                            external_comments="Deterministic calculator submission approved",
-                            internal_comments="Auto-approved PR E2E marketplace submission",
-                            reviewer_id=test_user["id"],
-                        )
-                        approved_submissions.append(approved_submission.model_dump())
-                        print("✅ Approved deterministic marketplace submission")
+                        if current_status != prisma_enums.SubmissionStatus.APPROVED:
+                            approved_submission = await review_store_submission(
+                                store_listing_version_id=test_submission.listing_version_id,
+                                is_approved=True,
+                                external_comments="Deterministic calculator submission approved",
+                                internal_comments="Auto-approved PR E2E marketplace submission",
+                                reviewer_id=test_user["id"],
+                            )
+                            approved_submissions.append(
+                                approved_submission.model_dump()
+                            )
+                            print("✅ Approved deterministic marketplace submission")
+                        else:
+                            approved_submissions.append(test_submission.model_dump())
+                            print(
+                                "✅ Deterministic marketplace submission already approved"
+                            )
 
-                        await prisma.storelistingversion.update(
-                            where={"id": test_submission.listing_version_id},
-                            data={"isFeatured": True},
-                        )
-                        featured_count += 1
-                        print("🌟 Marked deterministic marketplace agent as FEATURED")
+                        if is_featured:
+                            featured_count += 1
+                            print("🌟 Deterministic marketplace agent already FEATURED")
+                        else:
+                            await prisma.storelistingversion.update(
+                                where={"id": test_submission.listing_version_id},
+                                data={"isFeatured": True},
+                            )
+                            featured_count += 1
+                            print(
+                                "🌟 Marked deterministic marketplace agent as FEATURED"
+                            )
 
                 except Exception as e:
                     print(f"Error creating deterministic marketplace submission: {e}")

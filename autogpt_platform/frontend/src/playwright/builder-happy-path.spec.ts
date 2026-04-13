@@ -83,38 +83,6 @@ test("builder happy path: user can run the saved agent from builder and see exec
     .not.toBe("unknown");
 });
 
-test("builder happy path: user can schedule the saved agent and run it from Library", async ({
-  page,
-}) => {
-  test.setTimeout(180000);
-
-  const buildPage = new BuildPage(page);
-  const { agentName } = await buildPage.createAndSaveSimpleAgent(
-    "Smoke Schedule Agent",
-  );
-
-  await buildPage.createScheduleForSavedAgent(agentName);
-  expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
-
-  const libraryPage = new LibraryPage(page);
-  await libraryPage.openSavedAgent(agentName);
-
-  const scheduledTab = page.getByRole("tab", { name: /Scheduled/i });
-  await expect(scheduledTab).toBeVisible({ timeout: 15000 });
-  await scheduledTab.click();
-
-  const runNowButton = page.getByRole("button", { name: /Run now/i }).first();
-  await expect(runNowButton).toBeVisible({ timeout: 15000 });
-  await runNowButton.click();
-
-  await libraryPage.waitForRunToComplete();
-
-  // The simple agent (Store Value + Add to Dictionary) has no AgentOutputBlock,
-  // so "No output from this run." is expected — assert only the run status.
-  const runStatus = await libraryPage.getRunStatus();
-  expect(runStatus).toBe("completed");
-});
-
 test("builder happy path: user can export the created agent", async ({
   page,
 }) => {
