@@ -8,7 +8,10 @@ import {
 } from "@testing-library/react";
 import { ArtifactContent } from "../ArtifactContent";
 import type { ArtifactRef } from "../../../../store";
-import type { ArtifactClassification } from "../../helpers";
+import { classifyArtifact, type ArtifactClassification } from "../../helpers";
+import { globalRegistry } from "@/components/contextual/OutputRenderers";
+import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
+import { ArtifactReactPreview } from "../ArtifactReactPreview";
 
 // Mock the renderers so we don't pull in the full renderer dependency tree
 vi.mock("@/components/contextual/OutputRenderers", () => ({
@@ -70,6 +73,7 @@ function makeClassification(
 
 describe("ArtifactContent", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -416,6 +420,92 @@ describe("ArtifactContent", () => {
     expect(preview.getAttribute("data-title")).toBe("App.tsx");
   });
 
+  it("routes a concrete props-based TSX artifact into ArtifactReactPreview", async () => {
+    const jsxSource = `
+      import React, { FC, useState } from "react";
+
+      interface ArtifactFile {
+        id: string;
+        name: string;
+        mimeType: string;
+        url: string;
+        sizeBytes: number;
+      }
+
+      interface Props {
+        files: ArtifactFile[];
+        onSelect: (file: ArtifactFile) => void;
+      }
+
+      export const previewProps: Props = {
+        files: [
+          {
+            id: "1",
+            name: "report.png",
+            mimeType: "image/png",
+            url: "/report.png",
+            sizeBytes: 2048,
+          },
+        ],
+        onSelect: () => {},
+      };
+
+      const ArtifactList: FC<Props> = ({ files, onSelect }) => {
+        const [selected, setSelected] = useState<string | null>(null);
+
+        const handleClick = (file: ArtifactFile) => {
+          setSelected(file.id);
+          onSelect(file);
+        };
+
+        return (
+          <ul>
+            {files.map((file) => (
+              <li key={file.id} onClick={() => handleClick(file)}>
+                <span>{selected === file.id ? "selected" : file.name}</span>
+              </li>
+            ))}
+          </ul>
+        );
+      };
+
+      export default ArtifactList;
+    `;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(jsxSource),
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "react-props-001",
+      title: "ArtifactList.tsx",
+      mimeType: "text/tsx",
+    });
+    const classification = classifyArtifact(artifact.mimeType, artifact.title);
+
+    render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    const preview = await screen.findByTestId("react-preview");
+    expect(preview.textContent).toContain("previewProps");
+    expect(preview.getAttribute("data-title")).toBe("ArtifactList.tsx");
+    expect(vi.mocked(ArtifactReactPreview).mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        source: expect.stringContaining("export const previewProps"),
+        title: "ArtifactList.tsx",
+      }),
+    );
+  });
+
   // ── Code ──────────────────────────────────────────────────────────
 
   it("renders code artifacts via codeRenderer", async () => {
@@ -447,6 +537,70 @@ describe("ArtifactContent", () => {
     expect(rendered).toBeTruthy();
     expect(rendered.textContent).toContain(code);
   });
+
+  it.each([
+    {
+      filename: "events.jsonl",
+      mimeType: "application/x-ndjson",
+      content: '{"event":"start"}\n{"event":"finish"}',
+    },
+    {
+      filename: ".env.local",
+      mimeType: "text/plain",
+      content: "OPENAI_API_KEY=test\nDEBUG=true",
+    },
+    {
+      filename: "Dockerfile",
+      mimeType: "text/plain",
+      content: "FROM node:20\nRUN pnpm install",
+    },
+    {
+      filename: "schema.graphql",
+      mimeType: "text/plain",
+      content: "type Query { viewer: User }",
+    },
+  ])(
+    "renders concrete code artifact $filename through codeRenderer",
+    async ({ filename, mimeType, content }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(content),
+        }),
+      );
+
+      const artifact = makeArtifact({
+        id: `code-${filename}`,
+        title: filename,
+        mimeType,
+      });
+      const classification = classifyArtifact(
+        artifact.mimeType,
+        artifact.title,
+      );
+
+      render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
+
+      await screen.findByTestId("code-renderer");
+
+      expect(classification.type).toBe("code");
+      expect(vi.mocked(codeRenderer.render)).toHaveBeenCalledWith(
+        content,
+        expect.objectContaining({
+          filename,
+          mimeType,
+          type: "code",
+        }),
+      );
+    },
+  );
 
   // ── JSON ──────────────────────────────────────────────────────────
 
@@ -659,6 +813,59 @@ describe("ArtifactContent", () => {
     const rendered = await screen.findByTestId("global-renderer");
     expect(rendered).toBeTruthy();
   });
+
+  it.each([
+    {
+      filename: "calendar.ics",
+      mimeType: "text/calendar",
+      content: "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
+    },
+    {
+      filename: "contact.vcf",
+      mimeType: "text/vcard",
+      content: "BEGIN:VCARD\nVERSION:4.0\nFN:Alice Example\nEND:VCARD",
+    },
+  ])(
+    "renders concrete text artifact $filename through the global renderer path",
+    async ({ filename, mimeType, content }) => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve(content),
+        }),
+      );
+
+      const artifact = makeArtifact({
+        id: `text-${filename}`,
+        title: filename,
+        mimeType,
+      });
+      const classification = classifyArtifact(
+        artifact.mimeType,
+        artifact.title,
+      );
+
+      render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
+
+      await screen.findByTestId("global-renderer");
+
+      expect(classification.type).toBe("text");
+      expect(vi.mocked(globalRegistry.getRenderer)).toHaveBeenCalledWith(
+        content,
+        expect.objectContaining({
+          filename,
+          mimeType,
+        }),
+      );
+    },
+  );
 
   it("falls back to pre tag when no renderer matches", async () => {
     const { globalRegistry } = await import(

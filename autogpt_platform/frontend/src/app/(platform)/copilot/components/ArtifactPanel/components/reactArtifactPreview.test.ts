@@ -97,4 +97,11 @@ describe("buildReactArtifactSrcDoc", () => {
     expect(doc).toContain("This component appears to expect props.");
     expect(doc).toContain("previewProps");
   });
+
+  it("supports named exported components and provider wrappers in the runtime", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain('name.endsWith("Provider")');
+    expect(doc).toContain("/^[A-Z]/.test(name)");
+    expect(doc).toContain("wrapWithProviders");
+  });
 });
