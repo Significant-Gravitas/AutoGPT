@@ -41,6 +41,7 @@ import backend.data.graph
 import backend.data.llm_registry
 import backend.data.user
 import backend.integrations.webhooks.utils
+import backend.server.v2.llm
 import backend.util.service
 import backend.util.settings
 from backend.api.features.library.exceptions import (
@@ -387,6 +388,11 @@ app.include_router(
     backend.api.features.oauth.router,
     tags=["oauth"],
     prefix="/api/oauth",
+)
+app.include_router(
+    backend.server.v2.llm.router,
+    tags=["v2", "llm"],
+    prefix="/api",
 )
 
 app.mount("/external-api", external_api)
