@@ -664,7 +664,7 @@ export class BuildPage extends BasePage {
       successToastDescription.waitFor({ state: "visible", timeout: 120000 }),
       scheduleDialog.waitFor({ state: "hidden", timeout: 120000 }),
       Promise.resolve(postPromise).then(async (promise) => {
-        if (!promise) {
+        if (promise === undefined) {
           throw new Error("Schedule creation POST listener was not registered");
         }
 
