@@ -124,7 +124,7 @@ export async function getTestUser(accountKey?: string): Promise<TestUser> {
   }
 
   const rawWorkerIndex = Number.parseInt(
-    process.env.PLAYWRIGHT_WORKER_INDEX ?? "0",
+    process.env.TEST_WORKER_INDEX ?? process.env.PLAYWRIGHT_WORKER_INDEX ?? "0",
     10,
   );
   const workerIndex = Number.isNaN(rawWorkerIndex) ? 0 : rawWorkerIndex;

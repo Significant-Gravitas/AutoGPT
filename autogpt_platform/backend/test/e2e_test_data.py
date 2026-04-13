@@ -18,7 +18,9 @@ images: {
 """
 
 import asyncio
+import json
 import random
+from pathlib import Path
 from typing import Any, Dict, List
 
 from faker import Faker
@@ -30,6 +32,7 @@ from backend.api.features.store.db import (
     create_store_submission,
     review_store_submission,
 )
+from backend.blocks.io import AgentInputBlock
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
@@ -64,6 +67,11 @@ E2E_MARKETPLACE_CREATOR_EMAIL = "test123@example.com"
 E2E_MARKETPLACE_CREATOR_USERNAME = "e2e-marketplace"
 E2E_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent"
 E2E_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent"
+E2E_MARKETPLACE_AGENT_INPUT_VALUE = 8
+E2E_MARKETPLACE_AGENT_OUTPUT_VALUE = 42
+E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[1] / "agents" / "calculator-agent.json"
+)
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
     "e2e.qa.auth@example.com",
@@ -112,6 +120,25 @@ def get_category():
         "other",
     ]
     return random.choice(categories)
+
+
+def load_deterministic_marketplace_graph() -> Graph:
+    graph = Graph.model_validate(
+        json.loads(E2E_MARKETPLACE_AGENT_TEMPLATE_PATH.read_text())
+    )
+    graph.name = E2E_MARKETPLACE_AGENT_NAME
+    graph.description = (
+        "Deterministic marketplace calculator graph for Playwright PR E2E coverage."
+    )
+
+    for node in graph.nodes:
+        if (
+            node.block_id == AgentInputBlock().id
+            and node.input_default.get("value") is None
+        ):
+            node.input_default["value"] = E2E_MARKETPLACE_AGENT_INPUT_VALUE
+
+    return graph
 
 
 class TestDataCreator:
@@ -628,82 +655,17 @@ class TestDataCreator:
         if test_user:
             deterministic_graph = None
 
-            calculator_block = next(
-                (
-                    block
-                    for block in self.agent_blocks
-                    if block["name"] == "CalculatorBlock"
-                ),
-                None,
-            )
-            output_block = next(
-                (
-                    block
-                    for block in self.agent_blocks
-                    if block["name"] == "AgentOutputBlock"
-                ),
-                None,
-            )
-
-            if calculator_block and output_block:
-                calculator_node_id = str(faker.uuid4())
-                output_node_id = str(faker.uuid4())
-                deterministic_marketplace_graph = Graph(
-                    id=str(faker.uuid4()),
-                    name="E2E Marketplace Calculator Agent",
-                    description=(
-                        "Deterministic marketplace calculator graph for "
-                        "Playwright PR E2E coverage."
-                    ),
-                    nodes=[
-                        Node(
-                            id=calculator_node_id,
-                            block_id=calculator_block["id"],
-                            input_default={
-                                "operation": "Add",
-                                "a": 1,
-                                "b": 1,
-                                "round_result": False,
-                            },
-                            metadata={"position": {"x": -200, "y": 0}},
-                        ),
-                        Node(
-                            id=output_node_id,
-                            block_id=output_block["id"],
-                            input_default={
-                                "name": "result",
-                                "title": None,
-                                "value": "",
-                                "format": "",
-                                "advanced": False,
-                                "description": None,
-                            },
-                            metadata={"position": {"x": 250, "y": 0}},
-                        ),
-                    ],
-                    links=[
-                        Link(
-                            source_id=calculator_node_id,
-                            sink_id=output_node_id,
-                            source_name="result",
-                            sink_name="value",
-                            is_static=False,
-                        )
-                    ],
-                    is_active=True,
+            try:
+                created_deterministic_graph = await create_graph(
+                    load_deterministic_marketplace_graph(),
+                    test_user["id"],
                 )
-
-                try:
-                    created_deterministic_graph = await create_graph(
-                        deterministic_marketplace_graph,
-                        test_user["id"],
-                    )
-                    deterministic_graph = created_deterministic_graph.model_dump()
-                    deterministic_graph["userId"] = test_user["id"]
-                    self.agent_graphs.append(deterministic_graph)
-                    print("✅ Created deterministic marketplace graph")
-                except Exception as e:
-                    print(f"Error creating deterministic marketplace graph: {e}")
+                deterministic_graph = created_deterministic_graph.model_dump()
+                deterministic_graph["userId"] = test_user["id"]
+                self.agent_graphs.append(deterministic_graph)
+                print("✅ Created deterministic marketplace graph")
+            except Exception as e:
+                print(f"Error creating deterministic marketplace graph: {e}")
 
             if deterministic_graph is None and self.agent_graphs:
                 test_user_graphs = [
@@ -734,9 +696,16 @@ class TestDataCreator:
                         "https://picsum.photos/seed/e2e-marketplace-2/200/301",
                         "https://picsum.photos/seed/e2e-marketplace-3/200/302",
                     ],
-                    "description": "A deterministic marketplace agent built from Calculator and Agent Output blocks for frontend E2E coverage.",
+                    "description": (
+                        "A deterministic marketplace calculator agent that adds "
+                        f"{E2E_MARKETPLACE_AGENT_INPUT_VALUE} and 34 to produce "
+                        f"{E2E_MARKETPLACE_AGENT_OUTPUT_VALUE} for frontend E2E coverage."
+                    ),
                     "categories": ["test", "demo", "frontend"],
-                    "changes_summary": "Initial deterministic calculator submission",
+                    "changes_summary": (
+                        "Initial deterministic calculator submission seeded from "
+                        "backend/agents/calculator-agent.json"
+                    ),
                 }
 
                 try:
