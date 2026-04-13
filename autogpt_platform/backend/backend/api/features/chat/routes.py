@@ -108,6 +108,12 @@ _CONTEXT_CONTENT_MAX_LENGTH = 32_000
 # Using a single EVAL ensures the counter never persists without a TTL —
 # a bare INCR followed by a separate EXPIRE can leave the key without
 # an expiry if the process crashes between the two commands.
+#
+# This is a fixed-window counter (not sliding-window): the TTL is set only
+# on the first request in the window, so the window resets every 60 seconds
+# from the first request, not from each request.  A burst at the end of
+# window N and the start of window N+1 can briefly exceed the per-window
+# limit by up to 2×.  This trade-off is acceptable at this call frequency.
 _CALL_INCR_LUA = """
 local count = redis.call('INCR', KEYS[1])
 if count == 1 then

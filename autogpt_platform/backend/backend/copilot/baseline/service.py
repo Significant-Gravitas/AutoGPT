@@ -1292,8 +1292,6 @@ async def stream_chat_completion_baseline(
             # lose the message (the user sees 202 but the model never
             # reads the text).  Those messages stay in the buffer and
             # get picked up at the start of the next turn.
-            if loop_result is None:
-                continue
             is_final_yield = (
                 loop_result.finished_naturally
                 or loop_result.iterations >= _MAX_TOOL_ROUNDS
