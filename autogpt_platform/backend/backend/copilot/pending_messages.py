@@ -143,13 +143,12 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
 
     # Redis LPOP with count (Redis 6.2+) returns None for missing key,
     # empty list if we somehow race an empty key, or the popped items.
-    # redis-py's async lpop overload with a count collapses the return
-    # type in pyright; cast the awaitable so strict type-check stays
-    # clean without changing runtime behaviour.
-    lpop_result = await cast(
-        "Any",
-        redis.lpop(key, MAX_PENDING_MESSAGES),
-    )
+    # We drain exactly MAX_PENDING_MESSAGES per call, which is safe
+    # because the push-side Lua script trims to that same cap so the
+    # list can never hold more than MAX_PENDING_MESSAGES items.
+    # Both constants must stay in sync; if you raise the cap on the
+    # push side, raise it here too (or switch to a loop drain).
+    lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
