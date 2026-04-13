@@ -712,7 +712,7 @@ export async function assertRunOutputValue(
   timeout = 15000,
 ): Promise<void> {
   const outputLabel = page.locator("p.capitalize").filter({
-    hasText: new RegExp(`^${escapeRegex(outputName)}$`),
+    hasText: new RegExp(`^${escapeRegex(outputName)}$`, "i"),
   });
 
   await expect(

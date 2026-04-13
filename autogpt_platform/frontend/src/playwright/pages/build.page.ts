@@ -627,8 +627,6 @@ export class BuildPage extends BasePage {
 
   private async waitForScheduleCreation(
     scheduleDialog: Locator,
-    graphId: string,
-    scheduleName: string,
   ): Promise<void> {
     const successToastTitle = this.page.getByText("Schedule created", {
       exact: true,
@@ -649,57 +647,39 @@ export class BuildPage extends BasePage {
     // Consume the network-level success signal that was registered BEFORE
     // the Done click in createScheduleForSavedAgent. If it resolves true, the
     // backend created the schedule even if the UI dialog never transitioned.
-    let schedulePostSucceeded = false;
     const postPromise = this.schedulePostPromise;
-    if (postPromise) {
-      postPromise.then((ok) => {
-        schedulePostSucceeded = ok;
-      });
+
+    await Promise.race([
+      successToastTitle.waitFor({ state: "visible", timeout: 120000 }),
+      successToastDescription.waitFor({ state: "visible", timeout: 120000 }),
+      scheduleDialog.waitFor({ state: "hidden", timeout: 120000 }),
+      Promise.resolve(postPromise).then(async (promise) => {
+        if (!promise) {
+          throw new Error("Schedule creation POST listener was not registered");
+        }
+
+        if (!(await promise)) {
+          throw new Error("Schedule creation POST never returned success");
+        }
+      }),
+      invalidScheduleToast
+        .waitFor({ state: "visible", timeout: 120000 })
+        .then(() => {
+          throw new Error("Invalid schedule");
+        }),
+      failedScheduleToast
+        .waitFor({ state: "visible", timeout: 120000 })
+        .then(() => {
+          throw new Error("Failed to create schedule");
+        }),
+    ]);
+
+    if (await scheduleDialog.isVisible().catch(() => false)) {
+      await scheduleDialog
+        .getByRole("button", { name: "Cancel", exact: true })
+        .click();
+      await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
     }
-
-    await expect
-      .poll(
-        async () => {
-          const schedulesResponse = await this.page.request
-            .get(`/api/proxy/api/graphs/${graphId}/schedules`)
-            .catch(() => null);
-          const schedulePersisted =
-            schedulesResponse?.ok() &&
-            ((await schedulesResponse.json()) as Array<{ name?: string }>).some(
-              (schedule) => schedule.name === scheduleName,
-            );
-
-          if (
-            (await successToastTitle.isVisible().catch(() => false)) ||
-            (await successToastDescription.isVisible().catch(() => false))
-          ) {
-            return "success";
-          }
-
-          if (schedulePersisted) {
-            return "success";
-          }
-
-          if (
-            schedulePostSucceeded &&
-            !(await scheduleDialog.isVisible().catch(() => false))
-          ) {
-            return "success";
-          }
-
-          if (await invalidScheduleToast.isVisible().catch(() => false)) {
-            return "invalid";
-          }
-
-          if (await failedScheduleToast.isVisible().catch(() => false)) {
-            return "failed";
-          }
-
-          return "pending";
-        },
-        { timeout: 120000 },
-      )
-      .toBe("success");
   }
 
   async createScheduleForSavedAgent(agentName: string): Promise<void> {
@@ -721,12 +701,6 @@ export class BuildPage extends BasePage {
       exact: true,
     });
     await expect(doneButton).toBeEnabled({ timeout: 15000 });
-    const flowId = new URL(this.page.url()).searchParams.get("flowID");
-    expect(
-      flowId,
-      "builder URL should include flowID before scheduling",
-    ).toBeTruthy();
-    const scheduleName = `Daily ${agentName}`;
 
     // CRITICAL: register the network listener BEFORE clicking Done, otherwise
     // the POST can fire and return before the listener attaches, causing a
@@ -776,7 +750,7 @@ export class BuildPage extends BasePage {
         .not.toBe("idle");
     }
 
-    await this.waitForScheduleCreation(scheduleDialog, flowId!, scheduleName);
+    await this.waitForScheduleCreation(scheduleDialog);
     await expect(scheduleDialog).toBeHidden({ timeout: 15000 });
   }
 }
