@@ -149,25 +149,19 @@ export function MessageList({
                 : "bg-slate-100 text-slate-800",
             )}
           >
-            {msg.role === "assistant" ? (
-              <>
-                {/* Render plain text content directly — MessagePartRenderer only
-                    handles tool parts; passing UITextPart to it is a type mismatch. */}
-                {textParts && <span>{textParts}</span>}
-                {/* Render tool parts (edit_agent, run_agent, etc.) via the shared
-                    copilot renderer which knows how to display each tool type. */}
-                {(msg.parts ?? []).filter(isDynamicToolPart).map((part, i) => (
+            {msg.role === "assistant"
+              ? /* Route ALL parts (text and tool) through MessagePartRenderer so
+                 parseSpecialMarkers() is applied to text content and styled
+                 error/system messages render correctly. */
+                (msg.parts ?? []).map((part, i) => (
                   <MessagePartRenderer
-                    key={`${msg.id}-tool-${i}`}
+                    key={`${msg.id}-${i}`}
                     part={normalizePartForRenderer(part)}
                     messageID={msg.id}
                     partIndex={i}
                   />
-                ))}
-              </>
-            ) : (
-              textParts
-            )}
+                ))
+              : textParts}
           </div>
         );
       })}
