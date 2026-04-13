@@ -38,30 +38,7 @@ export class CopilotPage extends BasePage {
     return this.page.locator("#chat-input-session");
   }
 
-  getEmptyChatInput(): Locator {
-    return this.page.locator("#chat-input-empty");
-  }
-
-  getEmptyChatSubmitButton(): Locator {
-    return this.page
-      .locator("form")
-      .filter({ has: this.getEmptyChatInput() })
-      .getByRole("button", { name: "Submit" });
-  }
-
   async waitForChatInput(): Promise<void> {
     await expect(this.getChatInput()).toBeVisible({ timeout: 15000 });
-  }
-
-  async waitForEmptyChatInput(): Promise<void> {
-    await expect(this.getEmptyChatInput()).toBeVisible({ timeout: 15000 });
-  }
-
-  async submitEmptyChatPrompt(prompt: string): Promise<void> {
-    await this.getEmptyChatInput().fill(prompt);
-    await expect(this.getEmptyChatSubmitButton()).toBeEnabled({
-      timeout: 15000,
-    });
-    await this.getEmptyChatSubmitButton().click();
   }
 }
