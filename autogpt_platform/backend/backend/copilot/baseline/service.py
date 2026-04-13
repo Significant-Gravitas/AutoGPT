@@ -948,7 +948,14 @@ async def stream_chat_completion_baseline(
     # mid-loop drains missed them).  Atomic LPOP guarantees that a
     # concurrent push lands *after* the drain and stays queued for the
     # next turn instead of being lost.
-    drained_at_start = await drain_pending_messages(session_id)
+    try:
+        drained_at_start = await drain_pending_messages(session_id)
+    except Exception:
+        logger.warning(
+            "[Baseline] drain_pending_messages failed at turn start, skipping",
+            exc_info=True,
+        )
+        drained_at_start = []
     # Pre-compute formatted content once per message so we don't call
     # format_pending_as_user_message twice (once for session.messages and
     # once for transcript_builder below).
