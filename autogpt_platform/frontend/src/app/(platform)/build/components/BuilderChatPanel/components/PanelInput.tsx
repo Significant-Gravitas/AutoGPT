@@ -49,17 +49,19 @@ export function PanelInput({
         />
         {isStreaming ? (
           <button
+            type="button"
             onClick={onStop}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 transition-colors hover:bg-red-200"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 transition-colors hover:bg-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2"
             aria-label="Stop"
           >
             <StopCircle size={18} />
           </button>
         ) : (
           <button
+            type="button"
             onClick={onSend}
             disabled={isDisabled || !value.trim()}
-            className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white transition-colors hover:bg-violet-700 disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-600 text-white transition-colors hover:bg-violet-700 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
             aria-label="Send"
           >
             <PaperPlaneTilt size={18} />

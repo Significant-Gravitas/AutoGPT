@@ -60,6 +60,7 @@ function ActionItem({ action, nodeMap, isApplied, onApply }: ActionItemProps) {
         </span>
       ) : (
         <button
+          type="button"
           onClick={() => onApply(action)}
           aria-label={`Apply: ${label}`}
           className="shrink-0 rounded bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 hover:bg-violet-200"

@@ -91,7 +91,7 @@ vi.mock("nuqs", () => ({
 // Import after mocks
 import {
   useBuilderChatPanel,
-  clearGraphSessionCacheForTesting,
+  _graphSessionCache,
 } from "../useBuilderChatPanel";
 
 beforeEach(() => {
@@ -107,7 +107,7 @@ beforeEach(() => {
   mockSetMessages.mockClear();
   mockToast.mockClear();
   mockSetQueryStates.mockClear();
-  clearGraphSessionCacheForTesting();
+  _graphSessionCache.clear();
 });
 
 afterEach(() => {
@@ -230,15 +230,13 @@ describe("useBuilderChatPanel – session lifecycle", () => {
 });
 
 describe("useBuilderChatPanel – no auto-send on open", () => {
-  it("does NOT auto-send any message when the panel opens", async () => {
+  it("does NOT auto-send any message when the panel opens (isGraphLoaded defaults to false)", async () => {
     mockPostV2CreateSession.mockResolvedValue({
       status: 200,
       data: { id: "sess-open" },
     });
-    mockNodes.push({
-      id: "n1",
-      data: { title: "Search Block", description: "" },
-    });
+    // Note: the guard that prevents the seed is `isGraphLoaded === false` (the
+    // default). The node array content is irrelevant here — no node push needed.
 
     const { result } = renderHook(() => useBuilderChatPanel());
 

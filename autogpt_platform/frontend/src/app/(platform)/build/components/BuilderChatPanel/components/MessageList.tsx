@@ -110,6 +110,7 @@ export function MessageList({
         <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
           <p>Failed to start chat session.</p>
           <button
+            type="button"
             onClick={onRetry}
             className="mt-1 underline hover:no-underline"
           >
@@ -148,16 +149,27 @@ export function MessageList({
                 : "bg-slate-100 text-slate-800",
             )}
           >
-            {msg.role === "assistant"
-              ? (msg.parts ?? []).map((part, i) => (
-                  <MessagePartRenderer
-                    key={`${msg.id}-${i}`}
-                    part={normalizePartForRenderer(part)}
-                    messageID={msg.id}
-                    partIndex={i}
-                  />
-                ))
-              : textParts}
+            {msg.role === "assistant" ? (
+              <>
+                {/* Render plain text content directly — MessagePartRenderer only
+                    handles tool parts; passing UITextPart to it is a type mismatch. */}
+                {textParts && <span>{textParts}</span>}
+                {/* Render tool parts (edit_agent, run_agent, etc.) via the shared
+                    copilot renderer which knows how to display each tool type. */}
+                {(msg.parts ?? [])
+                  .filter(isDynamicToolPart)
+                  .map((part, i) => (
+                    <MessagePartRenderer
+                      key={`${msg.id}-tool-${i}`}
+                      part={normalizePartForRenderer(part)}
+                      messageID={msg.id}
+                      partIndex={i}
+                    />
+                  ))}
+              </>
+            ) : (
+              textParts
+            )}
           </div>
         );
       })}

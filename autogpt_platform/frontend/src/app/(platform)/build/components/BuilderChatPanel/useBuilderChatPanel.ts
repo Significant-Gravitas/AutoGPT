@@ -71,10 +71,11 @@ function cacheSetSession(flowID: string, sessionId: string): void {
 /** Stable empty array so the useShallow selector returns the same reference when the panel is closed. */
 const EMPTY_NODES: never[] = [];
 
-/** Clears the session cache. Exported only for use in tests. */
-export function clearGraphSessionCacheForTesting() {
-  graphSessionCache.clear();
-}
+/**
+ * @internal Exposed only for unit tests via `__tests__/testUtils.ts`.
+ * Do not call from production code.
+ */
+export const _graphSessionCache = graphSessionCache;
 
 interface UseBuilderChatPanelArgs {
   isGraphLoaded?: boolean;

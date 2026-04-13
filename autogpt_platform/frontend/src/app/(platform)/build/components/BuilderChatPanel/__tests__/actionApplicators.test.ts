@@ -432,6 +432,38 @@ describe("applyUpdateNodeInput", () => {
     // Key did not exist before apply → undo should remove it entirely.
     expect(Object.prototype.hasOwnProperty.call(hardcoded, "text")).toBe(false);
   });
+
+  it("undo toasts and skips setNodes when the target node was deleted after apply", () => {
+    mockNodes = [
+      makeNode({
+        id: "node-1",
+        data: {
+          id: "node-1",
+          title: "T",
+          inputSchema: { type: "object", properties: { text: {} } },
+          hardcodedValues: {},
+        },
+      } as unknown as CustomNode),
+    ];
+    const deps = makeDeps();
+    applyUpdateNodeInput(
+      { type: "update_node_input", nodeId: "node-1", key: "text", value: "v" },
+      deps,
+    );
+    const stack = deps.setUndoStack.mock.calls[0][0]([]);
+
+    // Simulate node deletion between apply and undo.
+    mockNodes = [];
+    mockSetNodes.mockClear();
+    stack[0].restore();
+
+    // setNodes must NOT be called — there is nothing to restore.
+    expect(mockSetNodes).not.toHaveBeenCalled();
+    // User must be notified via toast.
+    expect(deps.toast).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "destructive" }),
+    );
+  });
 });
 
 // -----------------------------------------------------------------------

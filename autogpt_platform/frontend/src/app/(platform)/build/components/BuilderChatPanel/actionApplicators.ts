@@ -177,6 +177,18 @@ export function applyUpdateNodeInput(
       // revert `action.key` on the target node. This preserves any other
       // edits (to this node or other nodes) that happened after apply.
       const currentNodes = useNodeStore.getState().nodes;
+      // If the target node was deleted between apply and undo, skip the
+      // restore and notify the user so they aren't left wondering why nothing
+      // changed. The stale undo entry is still popped by the caller.
+      if (!currentNodes.some((n) => n.id === action.nodeId)) {
+        toast({
+          title: "Undo skipped",
+          description: `Node "${action.nodeId}" no longer exists in the graph.`,
+          variant: "destructive",
+        });
+        removeAppliedActionKey(setAppliedActionKeys, key);
+        return;
+      }
       const restoredNodes = currentNodes.map((n) => {
         if (n.id !== action.nodeId) return n;
         const { [action.key]: _omitted, ...rest } = (n.data.hardcodedValues ??
