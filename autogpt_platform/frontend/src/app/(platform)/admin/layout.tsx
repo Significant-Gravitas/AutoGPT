@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/__legacy__/Sidebar";
 import { Users, DollarSign, UserSearch, FileText } from "lucide-react";
+import { Gauge, ChatsCircle } from "@phosphor-icons/react/dist/ssr";
 
 import { IconSliders } from "@/components/__legacy__/ui/icons";
 
@@ -22,9 +23,19 @@ const sidebarLinkGroups = [
         icon: <UserSearch className="h-6 w-6" />,
       },
       {
+        text: "Rate Limits",
+        href: "/admin/rate-limits",
+        icon: <Gauge className="h-6 w-6" />,
+      },
+      {
         text: "Execution Analytics",
         href: "/admin/execution-analytics",
         icon: <FileText className="h-6 w-6" />,
+      },
+      {
+        text: "LLM Registry",
+        href: "/admin/llms",
+        icon: <ChatsCircle className="h-6 w-6" />,
       },
       {
         text: "Admin User Management",
