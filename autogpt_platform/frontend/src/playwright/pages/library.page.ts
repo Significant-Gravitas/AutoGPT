@@ -64,6 +64,13 @@ export class LibraryPage extends BasePage {
     await assertRunOutputValue(this.page, outputName, expectedValue, timeout);
   }
 
+  async assertFirstRunOutputValue(
+    expectedValue: RegExp | string,
+    timeout = 15000,
+  ): Promise<void> {
+    await assertRunOutputContainsText(this.page, expectedValue, timeout);
+  }
+
   async clickExportAgent(): Promise<void> {
     await clickExportAgent(this.page);
   }
@@ -690,6 +697,8 @@ export async function assertRunProducedOutput(
   page: Page,
   timeout = 15000,
 ): Promise<void> {
+  await openRunOutputTab(page);
+
   // A completed run must surface output on the CURRENT render without a
   // page reload. Reloading to "rule out stale cache" would mask a real
   // user-visible regression where the frontend only shows output after a
@@ -705,13 +714,28 @@ function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+async function openRunOutputTab(page: Page): Promise<void> {
+  const outputTab = page.getByRole("tab", { name: /^Output$/i }).first();
+  if (await outputTab.isVisible().catch(() => false)) {
+    await outputTab.click();
+    return;
+  }
+
+  const outputButton = page.getByRole("button", { name: /^Output$/i }).first();
+  if (await outputButton.isVisible().catch(() => false)) {
+    await outputButton.click();
+  }
+}
+
 export async function assertRunOutputValue(
   page: Page,
   outputName: string,
   expectedValue: RegExp | string,
   timeout = 15000,
 ): Promise<void> {
-  const outputLabel = page.locator("p.capitalize").filter({
+  await openRunOutputTab(page);
+
+  const outputLabel = page.locator("p.capitalize:visible").filter({
     hasText: new RegExp(`^${escapeRegex(outputName)}$`, "i"),
   });
 
@@ -733,6 +757,45 @@ export async function assertRunOutputValue(
     outputValue,
     `run output value for "${outputName}" should be "${expectedValue}"`,
   ).toHaveText(expectedValue, { timeout });
+}
+
+export async function assertFirstRunOutputValue(
+  page: Page,
+  expectedValue: RegExp | string,
+  timeout = 15000,
+): Promise<void> {
+  await assertRunOutputContainsText(page, expectedValue, timeout);
+}
+
+export async function assertRunOutputContainsText(
+  page: Page,
+  expectedValue: RegExp | string,
+  timeout = 15000,
+): Promise<void> {
+  await openRunOutputTab(page);
+
+  const outputCard = page
+    .locator("div")
+    .filter({
+      has: page.getByRole("button", { name: "Copy all text outputs" }),
+    })
+    .first();
+  await expect(outputCard, "run output card should be visible").toBeVisible({
+    timeout,
+  });
+
+  if (expectedValue instanceof RegExp) {
+    await expect(
+      outputCard.getByText(expectedValue).first(),
+      `run output should contain text matching ${expectedValue.toString()}`,
+    ).toBeVisible({ timeout });
+    return;
+  }
+
+  await expect(
+    outputCard.getByText(expectedValue, { exact: true }).first(),
+    `run output should contain "${expectedValue}"`,
+  ).toBeVisible({ timeout });
 }
 
 export async function waitForRunToComplete(

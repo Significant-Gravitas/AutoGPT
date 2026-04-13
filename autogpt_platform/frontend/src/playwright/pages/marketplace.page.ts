@@ -154,14 +154,21 @@ export class MarketplacePage extends BasePage {
     await searchInput.press("Enter");
 
     await this.waitForSearchResults();
+    const agentTitle = this.page
+      .locator('[data-testid="store-card"]:visible')
+      .getByText(DETERMINISTIC_MARKETPLACE_AGENT_NAME, { exact: true })
+      .first();
+    await expect(agentTitle).toBeVisible({ timeout: 15000 });
 
-    const agentCard = this.page.getByRole("button", {
-      name: new RegExp(`^${DETERMINISTIC_MARKETPLACE_AGENT_NAME} agent card$`),
+    const agentCard = this.page
+      .locator('[data-testid="store-card"]:visible')
+      .filter({ hasText: DETERMINISTIC_MARKETPLACE_AGENT_NAME })
+      .first();
+    await agentCard.dispatchEvent("click");
+
+    await expect(this.page).toHaveURL(/\/marketplace\/agent\//, {
+      timeout: 15000,
     });
-    await expect(agentCard).toBeVisible({ timeout: 15000 });
-    await agentCard.click();
-
-    await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
     await expect(this.page.getByTestId("agent-title")).toContainText(
       DETERMINISTIC_MARKETPLACE_AGENT_NAME,
     );

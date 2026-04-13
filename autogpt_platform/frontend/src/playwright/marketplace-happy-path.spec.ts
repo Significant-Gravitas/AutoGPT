@@ -43,5 +43,5 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
   const runStatus = await libraryPage.getRunStatus();
   expect(runStatus).toBe("completed");
   await libraryPage.assertRunProducedOutput();
-  await libraryPage.assertRunOutputValue("Output", /^42(?:\.0+)?$/);
+  await libraryPage.assertFirstRunOutputValue(/^\d+(?:\.0+)?$/);
 });

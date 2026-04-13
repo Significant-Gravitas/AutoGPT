@@ -88,15 +88,25 @@ export class BuildPage extends BasePage {
 
   async addBlockByClick(searchTerm: string): Promise<void> {
     await this.openBlocksPanel();
-    await this.searchBlock(searchTerm);
-
-    // Wait for any search results to appear
-    const anyCard = this.page.locator('[data-id^="block-card-"]').first();
-    await anyCard.waitFor({ state: "visible", timeout: 10000 });
-
-    // Click the card matching the search term name
     const blockCard = this.getBlockCardByName(searchTerm);
-    await blockCard.waitFor({ state: "visible", timeout: 5000 });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await this.searchBlock(searchTerm);
+
+      const cardVisible = await blockCard
+        .waitFor({
+          state: "visible",
+          timeout: attempt === 0 ? 15000 : 5000,
+        })
+        .then(() => true)
+        .catch(() => false);
+
+      if (cardVisible) {
+        break;
+      }
+    }
+
+    await expect(blockCard).toBeVisible({ timeout: 5000 });
     await blockCard.click();
 
     // Close the panel so it doesn't overlay the canvas
@@ -706,6 +716,16 @@ export class BuildPage extends BasePage {
     // the POST can fire and return before the listener attaches, causing a
     // 120s false-pending timeout even though the schedule was created.
     // waitForScheduleCreation reads this promise.
+    const scheduleRequestStartedPromise = this.page
+      .waitForRequest(
+        (request) =>
+          request.method() === "POST" &&
+          /\/api\/graphs\/[^/]+\/schedules/.test(request.url()),
+        { timeout: 10000 },
+      )
+      .then(() => true)
+      .catch(() => false);
+
     this.schedulePostPromise = this.page
       .waitForResponse(
         (res) =>
@@ -737,17 +757,23 @@ export class BuildPage extends BasePage {
 
     await doneButton.click();
 
-    const initialSubmissionStarted = await expect
-      .poll(getScheduleSubmissionState, { timeout: 5000 })
-      .not.toBe("idle")
-      .then(() => true)
-      .catch(() => false);
+    const initialSubmissionStarted = await Promise.race([
+      expect
+        .poll(getScheduleSubmissionState, { timeout: 5000 })
+        .not.toBe("idle")
+        .then(() => true)
+        .catch(() => false),
+      scheduleRequestStartedPromise,
+    ]);
 
     if (!initialSubmissionStarted) {
       await doneButton.click();
-      await expect
-        .poll(getScheduleSubmissionState, { timeout: 5000 })
-        .not.toBe("idle");
+      await Promise.race([
+        expect
+          .poll(getScheduleSubmissionState, { timeout: 5000 })
+          .not.toBe("idle"),
+        expect(scheduleRequestStartedPromise).resolves.toBe(true),
+      ]);
     }
 
     await this.waitForScheduleCreation(scheduleDialog);
