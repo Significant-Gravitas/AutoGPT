@@ -156,16 +156,14 @@ export function MessageList({
                 {textParts && <span>{textParts}</span>}
                 {/* Render tool parts (edit_agent, run_agent, etc.) via the shared
                     copilot renderer which knows how to display each tool type. */}
-                {(msg.parts ?? [])
-                  .filter(isDynamicToolPart)
-                  .map((part, i) => (
-                    <MessagePartRenderer
-                      key={`${msg.id}-tool-${i}`}
-                      part={normalizePartForRenderer(part)}
-                      messageID={msg.id}
-                      partIndex={i}
-                    />
-                  ))}
+                {(msg.parts ?? []).filter(isDynamicToolPart).map((part, i) => (
+                  <MessagePartRenderer
+                    key={`${msg.id}-tool-${i}`}
+                    part={normalizePartForRenderer(part)}
+                    messageID={msg.id}
+                    partIndex={i}
+                  />
+                ))}
               </>
             ) : (
               textParts
