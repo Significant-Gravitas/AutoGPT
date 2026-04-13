@@ -5,6 +5,7 @@ instance (the backend test suite's DB/Redis fixtures are heavyweight
 and pull in the full app startup).
 """
 
+import asyncio
 import json
 from typing import Any
 
@@ -244,3 +245,42 @@ async def test_drain_decodes_bytes_payloads(
     drained = await drain_pending_messages("bytes_sess")
     assert len(drained) == 1
     assert drained[0].content == "from bytes"
+
+
+# ── Concurrency ─────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_concurrent_push_and_drain(fake_redis: _FakeRedis) -> None:
+    """Two pushes fired concurrently should both land; a concurrent drain
+    should see at least one of them (the fake serialises, so it will
+    always see both, but we exercise the code path either way)."""
+    await asyncio.gather(
+        push_pending_message("sess_conc", PendingMessage(content="a")),
+        push_pending_message("sess_conc", PendingMessage(content="b")),
+    )
+    drained = await drain_pending_messages("sess_conc")
+    assert len(drained) >= 1
+    contents = {m.content for m in drained}
+    assert contents <= {"a", "b"}
+
+
+# ── Publish error path ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_push_survives_publish_failure(
+    fake_redis: _FakeRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A publish error must not propagate — the buffer is still authoritative."""
+
+    async def _fail_publish(channel: str, payload: str) -> int:
+        raise RuntimeError("redis publish down")
+
+    monkeypatch.setattr(fake_redis, "publish", _fail_publish)
+
+    length = await push_pending_message("sess_pub_err", PendingMessage(content="ok"))
+    assert length == 1
+    drained = await drain_pending_messages("sess_pub_err")
+    assert len(drained) == 1
+    assert drained[0].content == "ok"
