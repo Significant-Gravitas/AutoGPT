@@ -162,7 +162,7 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     messages: list[PendingMessage] = []
     for payload in decoded:
         try:
-            messages.append(PendingMessage(**json.loads(payload)))
+            messages.append(PendingMessage.model_validate(json.loads(payload)))
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed entry for %s: %s",
