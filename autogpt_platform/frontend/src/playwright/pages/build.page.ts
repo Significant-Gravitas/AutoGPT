@@ -142,7 +142,7 @@ export class BuildPage extends BasePage {
 
   getNodeTextInputs(nodeTitle: string): Locator {
     return this.getNodeLocatorByTitle(nodeTitle).locator(
-      'input[placeholder="Enter string value..."]',
+      'input[placeholder="Enter string value..."]:visible',
     );
   }
 
@@ -155,8 +155,15 @@ export class BuildPage extends BasePage {
     value: string,
     inputIndex = 0,
   ): Promise<void> {
+    const node = this.getNodeLocatorByTitle(nodeTitle);
+    await expect(node).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(async () => await this.getNodeTextInputs(nodeTitle).count(), {
+        timeout: 15000,
+      })
+      .toBeGreaterThan(inputIndex);
     const input = this.getNodeTextInput(nodeTitle, inputIndex);
-    await input.waitFor({ state: "visible", timeout: 10000 });
+    await input.scrollIntoViewIfNeeded();
     await input.fill(value);
   }
 

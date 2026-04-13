@@ -1202,21 +1202,16 @@ export async function openSavedAgentInLibrary(
 async function waitForExportActionSurface(
   page: Page,
 ): Promise<"direct" | "menu"> {
-  const directExportButton = page
-    .getByRole("button", { name: "Export agent to file" })
-    .first();
-  const moreActionsButton = page
-    .getByRole("button", { name: "More actions" })
-    .first();
-
   await expect
     .poll(
       async () => {
-        if (await directExportButton.isVisible().catch(() => false)) {
+        if (
+          await getFirstVisibleLocator(page, "button", "Export agent to file")
+        ) {
           return "direct";
         }
 
-        if (await moreActionsButton.isVisible().catch(() => false)) {
+        if (await getFirstVisibleLocator(page, "button", "More actions")) {
           return "menu";
         }
 
@@ -1226,31 +1221,78 @@ async function waitForExportActionSurface(
     )
     .not.toBe("pending");
 
-  if (await directExportButton.isVisible().catch(() => false)) {
+  if (await getFirstVisibleLocator(page, "button", "Export agent to file")) {
     return "direct";
   }
 
   return "menu";
 }
 
+async function getFirstVisibleLocator(
+  page: Page,
+  role: "button" | "menuitem",
+  name: string,
+): Promise<Locator | null> {
+  const locator = page.getByRole(role, { name });
+  const count = await locator.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const candidate = locator.nth(index);
+    if (await candidate.isVisible().catch(() => false)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 export async function clickExportAgent(page: Page): Promise<void> {
   const exportSurface = await waitForExportActionSurface(page);
 
   if (exportSurface === "direct") {
-    await page
-      .getByRole("button", { name: "Export agent to file" })
-      .first()
-      .click({ timeout: 15000 });
+    const directExportButton = await getFirstVisibleLocator(
+      page,
+      "button",
+      "Export agent to file",
+    );
+    if (!directExportButton) {
+      throw new Error(
+        "Export button was not visible after export surface resolved",
+      );
+    }
+
+    await directExportButton.click({ timeout: 15000 });
     return;
   }
 
-  await page.getByRole("button", { name: "More actions" }).first().click({
-    timeout: 15000,
-  });
-  await page
-    .getByRole("menuitem", { name: "Export agent to file" })
-    .first()
-    .click({ timeout: 15000 });
+  const moreActionsButtons = page.getByRole("button", { name: "More actions" });
+  const moreActionsCount = await moreActionsButtons.count();
+
+  for (let index = 0; index < moreActionsCount; index += 1) {
+    const moreActionsButton = moreActionsButtons.nth(index);
+
+    if (!(await moreActionsButton.isVisible().catch(() => false))) {
+      continue;
+    }
+
+    await moreActionsButton.click({ timeout: 15000 });
+
+    const exportMenuItem = await getFirstVisibleLocator(
+      page,
+      "menuitem",
+      "Export agent to file",
+    );
+    if (exportMenuItem) {
+      await exportMenuItem.click({ timeout: 15000 });
+      return;
+    }
+
+    await page.keyboard.press("Escape").catch(() => {});
+  }
+
+  throw new Error(
+    "Export action was not available from any visible More actions menu",
+  );
 }
 
 // The run status is rendered by RunStatusBadge as lowercase text inside a
