@@ -167,6 +167,19 @@ export class BuildPage extends BasePage {
     await input.fill(value);
   }
 
+  async fillLastNodeTextInput(nodeTitle: string, value: string): Promise<void> {
+    const node = this.getNodeLocatorByTitle(nodeTitle);
+    await expect(node).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(async () => await this.getNodeTextInputs(nodeTitle).count(), {
+        timeout: 15000,
+      })
+      .toBeGreaterThan(0);
+    const input = this.getNodeTextInputs(nodeTitle).last();
+    await input.scrollIntoViewIfNeeded();
+    await input.fill(value);
+  }
+
   async getNodeCount(): Promise<number> {
     return await this.getNodeLocator().count();
   }

@@ -229,7 +229,7 @@ async function createAndSaveDeterministicOutputAgent(
   await buildPage.addBlockByClick("Agent Output");
   await buildPage.waitForNodeOnCanvas(2);
   await buildPage.connectNodes(0, 1);
-  await buildPage.fillNodeTextInput("Agent Output", outputName, 1);
+  await buildPage.fillLastNodeTextInput("Agent Output", outputName);
 
   await buildPage.saveAgent(
     agentName,
