@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import logging
 import platform
@@ -37,6 +38,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.llm_registry
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -117,15 +119,46 @@ async def lifespan_context(app: fastapi.FastAPI):
 
     AutoRegistry.patch_integrations()
 
+    _registry_subscription_task: asyncio.Task | None = None
+
+    try:
+        await backend.data.llm_registry.refresh_llm_registry()
+        logger.info("LLM registry loaded successfully at startup")
+    except Exception as e:
+        logger.warning(
+            f"Failed to load LLM registry at startup: {e}. "
+            "Blocks will initialize with empty registry."
+        )
+
+    _registry_subscription_task = asyncio.create_task(
+        backend.data.llm_registry.subscribe_to_registry_refresh(
+            backend.data.llm_registry.refresh_llm_registry
+        )
+    )
+
     await backend.data.block.initialize_blocks()
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    try:
+        await backend.data.graph.migrate_llm_models(DEFAULT_LLM_MODEL)
+    except Exception as e:
+        if "AgentNode" in str(e):
+            logger.warning("migrate_llm_models skipped: AgentNode table not found (%s)", e)
+        else:
+            logger.error("migrate_llm_models failed unexpectedly: %s", e, exc_info=True)
+
     await backend.integrations.webhooks.utils.migrate_legacy_triggered_graphs()
 
     with launch_darkly_context():
         yield
+
+    if _registry_subscription_task:
+        _registry_subscription_task.cancel()
+        try:
+            await _registry_subscription_task
+        except asyncio.CancelledError:
+            pass
 
     try:
         await shutdown_cloud_storage_handler()
