@@ -111,6 +111,7 @@ export function BuilderChatPanel({
       )}
 
       <button
+        type="button"
         onClick={handleToggle}
         aria-expanded={isOpen}
         aria-label={isOpen ? "Close chat" : "Chat with builder"}
