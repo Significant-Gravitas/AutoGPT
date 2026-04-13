@@ -10,11 +10,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
-import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
+from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockSchema
@@ -45,6 +47,10 @@ from backend.data.notifications import (
     ZeroBalanceData,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.cost_tracking import (
+    drain_pending_cost_logs,
+    log_system_credential_cost,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.notifications.notifications import queue_notification
 from backend.util import json
@@ -303,9 +309,18 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
-        # Dry-run platform credentials bypass the credential store
+        # Dry-run platform credentials bypass the credential store.
+        # Keep the existing credential metadata so _execute's input_schema(**...)
+        # doesn't fail on the required field.  If no metadata is present,
+        # synthesize a minimal placeholder from the platform credentials.
         if _dry_run_creds is not None:
-            input_data[field_name] = None
+            if input_data.get(field_name) is None:
+                input_data[field_name] = {
+                    "id": _dry_run_creds.id,
+                    "provider": _dry_run_creds.provider,
+                    "type": _dry_run_creds.type,
+                    "title": _dry_run_creds.title,
+                }
             extra_exec_kwargs[field_name] = _dry_run_creds
             continue
 
@@ -380,7 +395,7 @@ async def execute_node(
     output_size = 0
 
     # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
-    scope = sentry_sdk.get_current_scope()
+    scope = _sentry_get_current_scope()
 
     # save the tags
     original_user = scope._user
@@ -415,8 +430,8 @@ async def execute_node(
             ex, (NotFoundError, GraphNotFoundError)
         )
         if not is_expected:
-            sentry_sdk.capture_exception(error=ex, scope=scope)
-            sentry_sdk.flush()
+            _sentry_capture_exception(error=ex, scope=scope)
+            _sentry_flush()
         # Re-raise to maintain normal error flow
         raise
     finally:
@@ -691,6 +706,15 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
+
+        # Log platform cost if system credentials were used (only on success)
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+                db_client=db_client,
+            )
 
         return execution_stats
 
@@ -2043,6 +2067,18 @@ class ExecutionManager(AppProcess):
             self.cancel_client,
             prefix + " [cancel-consumer]",
         )
+
+        # Drain any in-flight cost log tasks before exit so we don't silently
+        # drop INSERT operations during deployments.
+        loop = getattr(self, "node_execution_loop", None)
+        if loop is not None and loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    drain_pending_cost_logs(), loop
+                ).result(timeout=10)
+                logger.info(f"{prefix} ✅ Cost log tasks drained")
+            except Exception as e:
+                logger.warning(f"{prefix} ⚠️ Failed to drain cost log tasks: {e}")
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 

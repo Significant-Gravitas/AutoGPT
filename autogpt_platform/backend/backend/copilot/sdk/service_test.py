@@ -10,6 +10,7 @@ import pytest
 
 from .service import (
     _is_sdk_disconnect_error,
+    _normalize_model_name,
     _prepare_file_attachments,
     _resolve_sdk_model,
     _safe_close_sdk_client,
@@ -403,6 +404,49 @@ _CONFIG_ENV_VARS = (
 def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in _CONFIG_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+class TestNormalizeModelName:
+    """Tests for _normalize_model_name — shared provider-aware normalization."""
+
+    def test_strips_provider_prefix(self, monkeypatch, _clean_config_env):
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
+
+    def test_dots_preserved_for_openrouter(self, monkeypatch, _clean_config_env):
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4.6"
+
+    def test_no_prefix_no_dots(self, monkeypatch, _clean_config_env):
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert (
+            _normalize_model_name("claude-sonnet-4-20250514")
+            == "claude-sonnet-4-20250514"
+        )
 
 
 class TestResolveSdkModel:

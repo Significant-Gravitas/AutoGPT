@@ -15,6 +15,7 @@ from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
+from backend.data.db_accessors import user_db
 from backend.data.redis_client import get_redis_async
 from backend.util.cache import cached
 
@@ -409,9 +410,12 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     prevents a race condition where a non-existent user's ``DEFAULT_TIER`` is
     cached and then persists after the user is created with a higher tier.
     """
-    user = await PrismaUser.prisma().find_unique(where={"id": user_id})
-    if user and user.subscriptionTier:  # type: ignore[reportAttributeAccessIssue]
-        return SubscriptionTier(user.subscriptionTier)  # type: ignore[reportAttributeAccessIssue]
+    try:
+        user = await user_db().get_user_by_id(user_id)
+    except Exception:
+        raise _UserNotFoundError(user_id)
+    if user.subscription_tier:
+        return SubscriptionTier(user.subscription_tier)
     raise _UserNotFoundError(user_id)
 
 

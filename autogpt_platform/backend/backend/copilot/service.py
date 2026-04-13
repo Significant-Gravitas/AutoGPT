@@ -22,7 +22,12 @@ from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
 from .config import ChatConfig
-from .model import ChatSessionInfo, get_chat_session, upsert_chat_session
+from .model import (
+    ChatSessionInfo,
+    get_chat_session,
+    update_session_title,
+    upsert_chat_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +69,21 @@ Your goal is to help users automate tasks by:
 - Delivering tangible value through action, not just explanation
 
 Be concise, proactive, and action-oriented. Bias toward showing working solutions over lengthy explanations."""
+
+# Static system prompt for token caching — identical for all users.
+# User-specific context is injected into the first user message instead,
+# so the system prompt never changes and can be cached across all sessions.
+_CACHEABLE_SYSTEM_PROMPT = """You are an AI automation assistant helping users build and run automations.
+
+Your goal is to help users automate tasks by:
+- Understanding their needs and business context
+- Building and running working automations
+- Delivering tangible value through action, not just explanation
+
+Be concise, proactive, and action-oriented. Bias toward showing working solutions over lengthy explanations.
+
+When the user provides a <user_context> block in their message, use it to personalise your responses.
+For users you are meeting for the first time with no context provided, greet them warmly and introduce them to the AutoGPT platform."""
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +165,50 @@ async def _build_system_prompt(
     return compiled, understanding
 
 
+async def _build_cacheable_system_prompt(
+    user_id: str | None,
+) -> tuple[str, Any]:
+    """Build a fully static system prompt suitable for LLM token caching.
+
+    Unlike _build_system_prompt, user-specific context is NOT embedded here.
+    Callers must inject the returned understanding into the first user message
+    via format_understanding_for_prompt() so the system prompt stays identical
+    across all users and sessions, enabling cross-session cache hits.
+
+    Returns:
+        Tuple of (static_prompt, understanding_object_or_None)
+    """
+    understanding = None
+    if user_id:
+        try:
+            understanding = await understanding_db().get_business_understanding(user_id)
+        except Exception as e:
+            logger.warning(f"Failed to fetch business understanding: {e}")
+
+    if _is_langfuse_configured():
+        try:
+            label = (
+                None
+                if settings.config.app_env == AppEnvironment.PRODUCTION
+                else "latest"
+            )
+            prompt = await asyncio.to_thread(
+                _get_langfuse().get_prompt,
+                config.langfuse_prompt_name,
+                label=label,
+                cache_ttl_seconds=config.langfuse_prompt_cache_ttl,
+            )
+            # Pass empty string so existing Langfuse templates stay static
+            compiled = prompt.compile(users_information="")
+            return compiled, understanding
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch cacheable prompt from Langfuse, using default: {e}"
+            )
+
+    return _CACHEABLE_SYSTEM_PROMPT, understanding
+
+
 async def _generate_session_title(
     message: str,
     user_id: str | None = None,
@@ -200,6 +264,22 @@ async def _generate_session_title(
     except Exception as e:
         logger.warning(f"Failed to generate session title: {e}")
         return None
+
+
+async def _update_title_async(
+    session_id: str, message: str, user_id: str | None = None
+) -> None:
+    """Generate and persist a session title in the background.
+
+    Shared by both the SDK and baseline execution paths.
+    """
+    try:
+        title = await _generate_session_title(message, user_id, session_id)
+        if title and user_id:
+            await update_session_title(session_id, user_id, title, only_if_empty=True)
+            logger.debug("Generated title for session %s", session_id)
+    except Exception as e:
+        logger.warning("Failed to update session title for %s: %s", session_id, e)
 
 
 async def assign_user_to_session(

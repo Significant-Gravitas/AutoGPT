@@ -211,6 +211,30 @@ class TestConvertRawResponseToDict:
             # A single dict is wrong — there are two distinct items
             pytest.fail("Expected a list of output items, got a single dict")
 
+    def test_responses_api_strips_status_from_function_call(self):
+        """Responses API function_call items have a 'status' field that OpenAI
+        rejects when sent back as input ('Unknown parameter: input[N].status').
+        It must be stripped before the item is stored in conversation history."""
+        resp = _MockResponse(
+            output=[_MockFunctionCall("my_tool", '{"x": 1}', call_id="call_xyz")]
+        )
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+        for item in result:
+            assert (
+                "status" not in item
+            ), f"'status' must be stripped from Responses API items: {item}"
+
+    def test_responses_api_strips_status_from_message(self):
+        """Responses API message items also carry 'status'; it must be stripped."""
+        resp = _MockResponse(output=[_MockOutputMessage("Hello")])
+        result = _convert_raw_response_to_dict(resp)
+        assert isinstance(result, list)
+        for item in result:
+            assert (
+                "status" not in item
+            ), f"'status' must be stripped from Responses API items: {item}"
+
 
 # ───────────────────────────────────────────────────────────────────────────
 # _get_tool_requests  (lines 61-86)

@@ -1,6 +1,7 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
 # flake8: noqa: E501
 import logging
+import math
 import re
 import secrets
 from abc import ABC
@@ -13,6 +14,7 @@ import ollama
 import openai
 from anthropic.types import ToolParam
 from groq import AsyncGroq
+from openai.types.chat import ChatCompletion as OpenAIChatCompletion
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -736,17 +738,20 @@ class LLMResponse(BaseModel):
     tool_calls: Optional[List[ToolContentBlock]] | None
     prompt_tokens: int
     completion_tokens: int
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
     reasoning: Optional[str] = None
+    provider_cost: float | None = None
 
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | anthropic.Omit:
+) -> Iterable[ToolParam] | anthropic.NotGiven:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
     if not openai_tools or len(openai_tools) == 0:
-        return anthropic.omit
+        return anthropic.NOT_GIVEN
 
     anthropic_tools = []
     for tool in openai_tools:
@@ -769,6 +774,35 @@ def convert_openai_tool_fmt_to_anthropic(
         anthropic_tools.append(anthropic_tool)
 
     return anthropic_tools
+
+
+def extract_openrouter_cost(response: OpenAIChatCompletion) -> float | None:
+    """Extract OpenRouter's `x-total-cost` header from an OpenAI SDK response.
+
+    OpenRouter returns the per-request USD cost in a response header. The
+    OpenAI SDK exposes the raw httpx response via an undocumented `_response`
+    attribute. We use try/except AttributeError so that if the SDK ever drops
+    or renames that attribute, the warning is visible in logs rather than
+    silently degrading to no cost tracking.
+    """
+    try:
+        raw_resp = response._response  # type: ignore[attr-defined]
+    except AttributeError:
+        logger.warning(
+            "OpenAI SDK response missing _response attribute"
+            " — OpenRouter cost tracking unavailable"
+        )
+        return None
+    try:
+        cost_header = raw_resp.headers.get("x-total-cost")
+        if not cost_header:
+            return None
+        cost = float(cost_header)
+        if not math.isfinite(cost) or cost < 0:
+            return None
+        return cost
+    except (ValueError, TypeError, AttributeError):
+        return None
 
 
 def extract_openai_reasoning(response) -> str | None:
@@ -852,6 +886,21 @@ async def llm_call(
     """
     provider = llm_model.metadata.provider
     context_window = llm_model.context_window
+
+    # Transparent OpenRouter routing for Anthropic models: when an OpenRouter API key
+    # is configured, route direct-Anthropic models through OpenRouter instead. This
+    # gives us the x-total-cost header for free, so provider_cost is always populated
+    # without manual token-rate arithmetic.
+    or_key = settings.secrets.open_router_api_key
+    or_model_id: str | None = None
+    if provider == "anthropic" and or_key:
+        provider = "open_router"
+        credentials = APIKeyCredentials(
+            provider=ProviderName.OPEN_ROUTER,
+            title="OpenRouter (auto)",
+            api_key=SecretStr(or_key),
+        )
+        or_model_id = f"anthropic/{llm_model.value}"
 
     if compress_prompt_to_fit:
         result = await compress_context(
@@ -940,6 +989,11 @@ async def llm_call(
     elif provider == "anthropic":
 
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
+        # Cache tool definitions alongside the system prompt.
+        # Placing cache_control on the last tool caches all tool schemas as a
+        # single prefix — reads cost 10% of normal input tokens.
+        if isinstance(an_tools, list) and an_tools:
+            an_tools[-1] = {**an_tools[-1], "cache_control": {"type": "ephemeral"}}
 
         system_messages = [p["content"] for p in prompt if p["role"] == "system"]
         sysprompt = " ".join(system_messages)
@@ -962,14 +1016,22 @@ async def llm_call(
         client = anthropic.AsyncAnthropic(
             api_key=credentials.api_key.get_secret_value()
         )
-        resp = await client.messages.create(
+        create_kwargs: dict[str, Any] = dict(
             model=llm_model.value,
-            system=sysprompt,
             messages=messages,
             max_tokens=max_tokens,
             tools=an_tools,
             timeout=600,
         )
+        if sysprompt.strip():
+            create_kwargs["system"] = [
+                {
+                    "type": "text",
+                    "text": sysprompt,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
+        resp = await client.messages.create(**create_kwargs)
 
         if not resp.content:
             raise ValueError("No content returned from Anthropic.")
@@ -1014,6 +1076,11 @@ async def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=resp.usage.input_tokens,
             completion_tokens=resp.usage.output_tokens,
+            cache_read_tokens=getattr(resp.usage, "cache_read_input_tokens", None) or 0,
+            cache_creation_tokens=getattr(
+                resp.usage, "cache_creation_input_tokens", None
+            )
+            or 0,
             reasoning=reasoning,
         )
     elif provider == "groq":
@@ -1082,7 +1149,7 @@ async def llm_call(
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
             },
-            model=llm_model.value,
+            model=or_model_id or llm_model.value,
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
@@ -1103,6 +1170,7 @@ async def llm_call(
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
+            provider_cost=extract_openrouter_cost(response),
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -1410,6 +1478,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         error_feedback_message = ""
         llm_model = input_data.model
+        total_provider_cost: float | None = None
 
         for retry_count in range(input_data.retry):
             logger.debug(f"LLM request: {prompt}")
@@ -1427,12 +1496,19 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     max_tokens=input_data.max_tokens,
                 )
                 response_text = llm_response.response
-                self.merge_stats(
-                    NodeExecutionStats(
-                        input_token_count=llm_response.prompt_tokens,
-                        output_token_count=llm_response.completion_tokens,
-                    )
+                # Accumulate token counts and provider_cost for every attempt
+                # (each call costs tokens and USD, regardless of validation outcome).
+                token_stats = NodeExecutionStats(
+                    input_token_count=llm_response.prompt_tokens,
+                    output_token_count=llm_response.completion_tokens,
+                    cache_read_token_count=llm_response.cache_read_tokens,
+                    cache_creation_token_count=llm_response.cache_creation_tokens,
                 )
+                self.merge_stats(token_stats)
+                if llm_response.provider_cost is not None:
+                    total_provider_cost = (
+                        total_provider_cost or 0.0
+                    ) + llm_response.provider_cost
                 logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
@@ -1501,6 +1577,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             NodeExecutionStats(
                                 llm_call_count=retry_count + 1,
                                 llm_retry_count=retry_count,
+                                provider_cost=total_provider_cost,
                             )
                         )
                         yield "response", response_obj
@@ -1521,6 +1598,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         NodeExecutionStats(
                             llm_call_count=retry_count + 1,
                             llm_retry_count=retry_count,
+                            provider_cost=total_provider_cost,
                         )
                     )
                     yield "response", {"response": response_text}
@@ -1552,6 +1630,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
                 error_feedback_message = f"Error calling LLM: {e}"
 
+        # All retries exhausted or user-error break: persist accumulated cost so
+        # the executor can still charge/report the spend even on failure.
+        if total_provider_cost is not None:
+            self.merge_stats(NodeExecutionStats(provider_cost=total_provider_cost))
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(

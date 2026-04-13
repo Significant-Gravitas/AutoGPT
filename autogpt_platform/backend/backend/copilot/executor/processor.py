@@ -151,8 +151,8 @@ class CoPilotProcessor:
         This method is called once per worker thread to set up the async event
         loop and initialize any required resources.
 
-        Database is accessed only through DatabaseManager, so we don't need to connect
-        to Prisma directly.
+        DB operations route through DatabaseManagerAsyncClient (RPC) via the
+        db_accessors pattern — no direct Prisma connection is needed here.
         """
         configure_logging()
         set_service_name("CoPilotExecutor")

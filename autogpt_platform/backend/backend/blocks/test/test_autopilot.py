@@ -176,6 +176,29 @@ class TestRunValidation:
         assert "cancelled" in outputs.get("error", "").lower()
 
     @pytest.mark.asyncio
+    async def test_dry_run_inherited_from_execution_context(self, block):
+        """execution_context.dry_run=True must be OR-ed into create_session dry_run
+        so that nested AutoPilot sessions simulate even when input_data.dry_run=False.
+        """
+        mock_result = (
+            "ok",
+            [],
+            "[]",
+            "sess-dry",
+            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        )
+        block.execute_copilot = AsyncMock(return_value=mock_result)
+        block.create_session = AsyncMock(return_value="sess-dry")
+
+        input_data = block.Input(prompt="test", max_recursion_depth=3, dry_run=False)
+        ctx = _make_context()
+        ctx.dry_run = True  # outer execution is dry_run
+        async for _ in block.run(input_data, execution_context=ctx):
+            pass
+
+        block.create_session.assert_called_once_with(ctx.user_id, dry_run=True)
+
+    @pytest.mark.asyncio
     async def test_existing_session_id_skips_create(self, block):
         """When session_id is provided, create_session should not be called."""
         mock_result = (

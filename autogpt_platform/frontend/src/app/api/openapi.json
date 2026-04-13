@@ -7,6 +7,335 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/platform-costs/dashboard": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Dashboard",
+        "operationId": "getV2Get platform cost dashboard",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostDashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Logs",
+        "operationId": "getV2Get platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostLogsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs/export": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Export Platform Cost Logs",
+        "operationId": "getV2Export platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -1134,7 +1463,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
+        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The authenticated user's ID.\n    limit: Maximum number of messages to return (1-200, default 50).\n    before_sequence: Return messages with sequence < this value (cursor).\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including\n        active_stream info and pagination metadata.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1143,6 +1472,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "integer", "minimum": 0 },
+                { "type": "null" }
+              ],
+              "title": "Before Sequence"
+            }
           }
         ],
         "responses": {
@@ -1972,6 +2325,68 @@
             "content": { "application/json": { "schema": {} } }
           }
         }
+      }
+    },
+    "/api/credits/subscription": {
+      "get": {
+        "tags": ["v1", "credits"],
+        "summary": "Get subscription tier, current cost, and all tier costs",
+        "operationId": "getSubscriptionStatus",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "credits"],
+        "summary": "Start a Stripe Checkout session to upgrade subscription tier",
+        "operationId": "updateSubscriptionTier",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionTierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCheckoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/transactions": {
@@ -8326,9 +8741,8 @@
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
-            "type": "boolean",
-            "title": "Is Dry Run",
-            "default": false
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Dry Run"
           }
         },
         "type": "object",
@@ -8709,6 +9123,69 @@
         ],
         "title": "ContentType"
       },
+      "CostLogRow": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
+          "node_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Exec Id"
+          },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "cost_microdollars": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cost Microdollars"
+          },
+          "input_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Output Tokens"
+          },
+          "duration": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Duration"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          },
+          "cache_read_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cache Read Tokens"
+          },
+          "cache_creation_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cache Creation Tokens"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "block_name", "provider"],
+        "title": "CostLogRow"
+      },
       "CountResponse": {
         "properties": {
           "all_blocks": { "type": "integer", "title": "All Blocks" },
@@ -8958,7 +9435,14 @@
       },
       "CreditTransactionType": {
         "type": "string",
-        "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
+        "enum": [
+          "TOP_UP",
+          "USAGE",
+          "GRANT",
+          "REFUND",
+          "CARD_CHECK",
+          "SUBSCRIPTION"
+        ],
         "title": "CreditTransactionType"
       },
       "DeleteFileResponse": {
@@ -11640,6 +12124,62 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PlatformCostDashboard": {
+        "properties": {
+          "by_provider": {
+            "items": { "$ref": "#/components/schemas/ProviderCostSummary" },
+            "type": "array",
+            "title": "By Provider"
+          },
+          "by_user": {
+            "items": { "$ref": "#/components/schemas/UserCostSummary" },
+            "type": "array",
+            "title": "By User"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_requests": { "type": "integer", "title": "Total Requests" },
+          "total_users": { "type": "integer", "title": "Total Users" }
+        },
+        "type": "object",
+        "required": [
+          "by_provider",
+          "by_user",
+          "total_cost_microdollars",
+          "total_requests",
+          "total_users"
+        ],
+        "title": "PlatformCostDashboard"
+      },
+      "PlatformCostExportResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "truncated": { "type": "boolean", "title": "Truncated" }
+        },
+        "type": "object",
+        "required": ["logs", "total_rows", "truncated"],
+        "title": "PlatformCostExportResponse"
+      },
+      "PlatformCostLogsResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["logs", "pagination"],
+        "title": "PlatformCostLogsResponse"
+      },
       "PostmarkBounceEnum": {
         "type": "integer",
         "enum": [
@@ -12034,6 +12574,61 @@
         "title": "ProviderConstants",
         "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
       },
+      "ProviderCostSummary": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0.0
+          },
+          "total_tracking_amount": {
+            "type": "number",
+            "title": "Total Tracking Amount",
+            "default": 0.0
+          },
+          "request_count": { "type": "integer", "title": "Request Count" }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "ProviderCostSummary"
+      },
       "ProviderEnumResponse": {
         "properties": {
           "provider": {
@@ -12208,7 +12803,9 @@
           "bash_exec",
           "web_fetch",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "memory_store",
+          "memory_search"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -12443,6 +13040,15 @@
               { "$ref": "#/components/schemas/ActiveStreamInfo" },
               { "type": "null" }
             ]
+          },
+          "has_more_messages": {
+            "type": "boolean",
+            "title": "Has More Messages",
+            "default": false
+          },
+          "oldest_sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Oldest Sequence"
           },
           "total_prompt_tokens": {
             "type": "integer",
@@ -13277,11 +13883,53 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
+      "SubscriptionCheckoutResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "SubscriptionCheckoutResponse"
+      },
+      "SubscriptionStatusResponse": {
+        "properties": {
+          "tier": { "type": "string", "title": "Tier" },
+          "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
+          "tier_costs": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "monthly_cost", "tier_costs"],
+        "title": "SubscriptionStatusResponse"
+      },
       "SubscriptionTier": {
         "type": "string",
         "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing token allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
+      },
+      "SubscriptionTierRequest": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["FREE", "PRO", "BUSINESS"],
+            "title": "Tier"
+          },
+          "success_url": {
+            "type": "string",
+            "title": "Success Url",
+            "default": ""
+          },
+          "cancel_url": {
+            "type": "string",
+            "title": "Cancel Url",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["tier"],
+        "title": "SubscriptionTierRequest"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -14904,6 +15552,39 @@
         "required": ["used", "limit", "resets_at"],
         "title": "UsageWindow",
         "description": "Usage within a single time window."
+      },
+      "UserCostSummary": {
+        "properties": {
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "request_count": { "type": "integer", "title": "Request Count" }
+        },
+        "type": "object",
+        "required": [
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "UserCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {

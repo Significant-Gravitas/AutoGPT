@@ -146,6 +146,32 @@ class ChatConfig(BaseSettings):
         description="Use --resume for multi-turn conversations instead of "
         "history compression. Falls back to compression when unavailable.",
     )
+    claude_agent_fallback_model: str = Field(
+        default="claude-sonnet-4-20250514",
+        description="Fallback model when the primary model is unavailable (e.g. 529 "
+        "overloaded). The SDK automatically retries with this cheaper model.",
+    )
+    claude_agent_max_turns: int = Field(
+        default=1000,
+        ge=1,
+        le=10000,
+        description="Maximum number of agentic turns (tool-use loops) per query. "
+        "Prevents runaway tool loops from burning budget.",
+    )
+    claude_agent_max_budget_usd: float = Field(
+        default=100.0,
+        ge=0.01,
+        le=1000.0,
+        description="Maximum spend in USD per SDK query. The CLI aborts the "
+        "request if this budget is exceeded.",
+    )
+    claude_agent_max_transient_retries: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description="Maximum number of retries for transient API errors "
+        "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
+    )
     use_openrouter: bool = Field(
         default=True,
         description="Enable routing API calls through the OpenRouter proxy. "

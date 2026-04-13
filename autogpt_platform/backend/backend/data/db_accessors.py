@@ -142,3 +142,16 @@ def credit_db():
         credit_db = get_database_manager_async_client()
 
     return credit_db
+
+
+def platform_cost_db():
+    if db.is_connected():
+        from backend.data import platform_cost as _platform_cost_db
+
+        platform_cost_db = _platform_cost_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        platform_cost_db = get_database_manager_async_client()
+
+    return platform_cost_db
