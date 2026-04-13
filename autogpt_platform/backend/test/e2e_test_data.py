@@ -36,7 +36,7 @@ from backend.blocks.io import AgentInputBlock
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
-from backend.data.graph import Graph, Link, Node, create_graph
+from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.user import get_or_create_user
 from backend.util.clients import get_supabase
 
@@ -656,8 +656,16 @@ class TestDataCreator:
             deterministic_graph = None
 
             try:
-                created_deterministic_graph = await create_graph(
+                deterministic_graph_model = make_graph_model(
                     load_deterministic_marketplace_graph(),
+                    test_user["id"],
+                )
+                deterministic_graph_model.reassign_ids(
+                    user_id=test_user["id"],
+                    reassign_graph_id=True,
+                )
+                created_deterministic_graph = await create_graph(
+                    deterministic_graph_model,
                     test_user["id"],
                 )
                 deterministic_graph = created_deterministic_graph.model_dump()
