@@ -1,7 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Play } from "@phosphor-icons/react";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import {
   getYouTubeVideoId,
@@ -70,12 +69,11 @@ export function AgentImageItem({
             {!imageLoaded && (
               <Skeleton className="absolute inset-0 rounded-xl" />
             )}
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={image}
               alt="Image"
-              fill
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-              className="rounded-xl object-cover"
+              className="absolute inset-0 h-full w-full rounded-xl object-cover"
               onLoad={() => setImageLoaded(true)}
               onError={() => setImageLoaded(true)}
             />

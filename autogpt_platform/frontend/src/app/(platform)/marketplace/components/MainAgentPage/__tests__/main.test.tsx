@@ -1,19 +1,28 @@
-import { render, screen } from "@/tests/integrations/test-utils";
 import {
+  getGetV2GetSpecificAgentMockHandler,
   getGetV2GetSpecificAgentResponseMock,
+  getGetV2ListStoreAgentsMockHandler,
   getGetV2ListStoreAgentsResponseMock,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
+import { server } from "@/mocks/mock-server";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { MainAgentPage } from "../MainAgentPage";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const mockUseMainAgentPage = vi.hoisted(() => vi.fn());
+const mockUseSupabase = vi.hoisted(() => vi.fn());
 
-vi.mock("../useMainAgentPage", () => ({
-  useMainAgentPage: mockUseMainAgentPage,
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: mockUseSupabase,
 }));
 
 describe("MainAgentPage", () => {
   beforeEach(() => {
+    mockUseSupabase.mockReturnValue({
+      user: null,
+    });
+  });
+
+  test("renders the marketplace agent details and related sections", async () => {
     const agentDetails = getGetV2GetSpecificAgentResponseMock({
       agent_name: "Deterministic Agent",
       creator: "AutoGPT",
@@ -28,7 +37,6 @@ describe("MainAgentPage", () => {
       agent_output_demo: "",
       agent_video: "",
     });
-
     const otherAgents = getGetV2ListStoreAgentsResponseMock({
       agents: [
         {
@@ -39,7 +47,6 @@ describe("MainAgentPage", () => {
         },
       ],
     });
-
     const similarAgents = getGetV2ListStoreAgentsResponseMock({
       agents: [
         {
@@ -51,25 +58,30 @@ describe("MainAgentPage", () => {
       ],
     });
 
-    mockUseMainAgentPage.mockReturnValue({
-      agent: { status: 200, data: agentDetails },
-      user: null,
-      isLoading: false,
-      hasError: false,
-      similarAgents,
-      otherAgents,
-      libraryAgent: null,
-    });
-  });
+    server.use(
+      getGetV2GetSpecificAgentMockHandler(agentDetails),
+      getGetV2ListStoreAgentsMockHandler(({ request }) => {
+        const url = new URL(request.url);
 
-  test("renders the marketplace agent details and related sections", () => {
+        if (url.searchParams.get("creator") === "autogpt") {
+          return otherAgents;
+        }
+
+        if (url.searchParams.get("search_query") === "deterministic agent") {
+          return similarAgents;
+        }
+
+        return getGetV2ListStoreAgentsResponseMock({ agents: [] });
+      }),
+    );
+
     render(
       <MainAgentPage
         params={{ creator: "autogpt", slug: "deterministic-agent" }}
       />,
     );
 
-    expect(screen.getByTestId("agent-title").textContent).toContain(
+    expect((await screen.findByTestId("agent-title")).textContent).toContain(
       "Deterministic Agent",
     );
     expect(screen.getByTestId("agent-description").textContent).toContain(

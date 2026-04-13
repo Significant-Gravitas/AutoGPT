@@ -1,7 +1,13 @@
-import { act, renderHook } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@/tests/integrations/test-utils";
+import type { ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { useEmailForm } from "./useEmailForm";
+import { EmailForm } from "../EmailForm";
 
 const mockToast = vi.hoisted(() => vi.fn());
 const mockMutateAsync = vi.hoisted(() => vi.fn());
@@ -17,6 +23,10 @@ vi.mock("@/app/api/__generated__/endpoints/auth/auth", () => ({
   }),
 }));
 
+vi.mock("@/providers/onboarding/onboarding-provider", () => ({
+  default: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
 const testUser = {
   id: "user-1",
   email: "user@example.com",
@@ -26,7 +36,7 @@ const testUser = {
   created_at: "2026-01-01T00:00:00.000Z",
 } as User;
 
-describe("useEmailForm", () => {
+describe("EmailForm", () => {
   beforeEach(() => {
     mockToast.mockReset();
     mockMutateAsync.mockReset();
@@ -45,21 +55,26 @@ describe("useEmailForm", () => {
 
     vi.stubGlobal("fetch", fetchMock);
 
-    const { result } = renderHook(() => useEmailForm({ user: testUser }));
+    render(<EmailForm user={testUser} />);
 
-    await act(async () => {
-      await result.current.onSubmit({ email: "updated@example.com" });
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "updated@example.com" },
     });
+    fireEvent.click(screen.getByRole("button", { name: "Update email" }));
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/auth/user", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email: "updated@example.com" }),
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/api/auth/user", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email: "updated@example.com" }),
+      });
     });
-    expect(mockMutateAsync).toHaveBeenCalledWith({
-      data: "updated@example.com",
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        data: "updated@example.com",
+      });
     });
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -68,19 +83,15 @@ describe("useEmailForm", () => {
     );
   });
 
-  test("skips the update when the email has not changed", async () => {
-    const fetchMock = vi.fn();
+  test("keeps submit disabled when the email has not changed", () => {
+    render(<EmailForm user={testUser} />);
 
-    vi.stubGlobal("fetch", fetchMock);
-
-    const { result } = renderHook(() => useEmailForm({ user: testUser }));
-
-    await act(async () => {
-      await result.current.onSubmit({ email: "user@example.com" });
-    });
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(mockMutateAsync).not.toHaveBeenCalled();
-    expect(mockToast).not.toHaveBeenCalled();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Update email",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });

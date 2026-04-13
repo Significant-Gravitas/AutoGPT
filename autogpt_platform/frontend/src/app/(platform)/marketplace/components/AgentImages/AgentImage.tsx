@@ -2,7 +2,6 @@
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { cn } from "@/lib/utils";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { AgentImageItem } from "../AgentImageItem/AgentImageItem";
 import { getYouTubeVideoId, isValidVideoUrl } from "../AgentImageItem/helpers";
@@ -40,6 +39,11 @@ export function AgentImages({ images }: AgentImagesProps) {
           {images.map((image, index) => {
             const isVideo = isValidVideoUrl(image);
             const youtubeId = isVideo ? getYouTubeVideoId(image) : null;
+            const thumbnailUrl = youtubeId
+              ? `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`
+              : isVideo
+                ? null
+                : image;
 
             return (
               <button
@@ -56,33 +60,27 @@ export function AgentImages({ images }: AgentImagesProps) {
                 {(!isVideo || youtubeId) && !loadedThumbs.has(index) && (
                   <Skeleton className="absolute inset-0 rounded-lg" />
                 )}
-                {youtubeId ? (
-                  <Image
-                    src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
-                    alt={`Thumbnail ${index + 1}`}
-                    fill
-                    sizes="(max-width: 640px) 96px, 128px"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    onLoad={() =>
-                      setLoadedThumbs((prev) => new Set(prev).add(index))
-                    }
-                  />
+                {thumbnailUrl ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbnailUrl}
+                      alt={`Thumbnail ${index + 1}`}
+                      loading="lazy"
+                      className="absolute inset-0 h-full w-full object-cover"
+                      onLoad={() =>
+                        setLoadedThumbs((prev) => new Set(prev).add(index))
+                      }
+                      onError={() =>
+                        setLoadedThumbs((prev) => new Set(prev).add(index))
+                      }
+                    />
+                  </>
                 ) : isVideo ? (
                   <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
                     Video
                   </div>
-                ) : (
-                  <Image
-                    src={image}
-                    alt={`Thumbnail ${index + 1}`}
-                    fill
-                    sizes="(max-width: 640px) 96px, 128px"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    onLoad={() =>
-                      setLoadedThumbs((prev) => new Set(prev).add(index))
-                    }
-                  />
-                )}
+                ) : null}
               </button>
             );
           })}

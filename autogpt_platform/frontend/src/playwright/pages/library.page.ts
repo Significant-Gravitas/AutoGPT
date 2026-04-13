@@ -505,8 +505,7 @@ export async function clickRunButton(page: Page): Promise<void> {
       return;
     }
 
-    // Brief yield so the DOM can settle between polling attempts
-    await page.waitForLoadState("domcontentloaded");
+    await page.waitForTimeout(250);
   }
 
   const visibleButtons = await page

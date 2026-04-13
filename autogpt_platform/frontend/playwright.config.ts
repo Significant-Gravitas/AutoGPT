@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import { buildCookieConsentStorageState } from "./src/tests/credentials/storage-state";
+import { buildCookieConsentStorageState } from "./src/playwright/credentials/storage-state";
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
 
@@ -69,9 +69,10 @@ function resolveSourceMap(sourcePath: string) {
 }
 
 export default defineConfig({
-  testDir: "./src/tests",
+  testDir: "./src/playwright",
+  testMatch: /.*-happy-path\.spec\.ts/,
   /* Global setup file that runs before all tests */
-  globalSetup: "./src/tests/global-setup.ts",
+  globalSetup: "./src/playwright/global-setup.ts",
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */

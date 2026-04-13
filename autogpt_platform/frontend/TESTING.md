@@ -123,7 +123,7 @@ Only when the component has complex internal logic that is hard to exercise thro
 ```bash
 pnpm test                   # build + run the Playwright E2E suite used in CI
 pnpm test-ui                # run the same E2E suite with Playwright UI
-pnpm test:no-build          # run the same E2E suite against a running dev server
+pnpm test:e2e:no-build      # run the same E2E suite against a running dev server
 pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 ```
 
@@ -136,9 +136,9 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 ### How Playwright setup works
 
-- Playwright runs from `frontend/playwright.config.ts` with a global setup step
+- Playwright runs from `frontend/playwright.config.ts` and keeps browser-only code in `frontend/src/playwright/`
 - Global setup creates reusable auth states for deterministic seeded accounts in `frontend/.auth/states/`
-- `getTestUser()` (from `src/tests/utils/auth.ts`) picks one seeded account for general auth coverage
+- `getTestUser()` (from `src/playwright/utils/auth.ts`) picks one seeded account for general auth coverage
 - `getTestUserWithLibraryAgents()` uses the rich user created by the data script
 
 ### Test users
@@ -148,16 +148,16 @@ pnpm exec playwright test   # run the same eight-spec Playwright suite directly
 
 ### Current Playwright E2E suite
 
-The CI suite is intentionally limited to the cross-page journeys we still require a real browser for:
+The CI suite is intentionally limited to the cross-page journeys we still require a real browser for. Playwright discovers the PR-gating specs by the `*-happy-path.spec.ts` naming pattern inside `src/playwright/`:
 
-- `src/tests/auth-happy-path.spec.ts`
-- `src/tests/settings-happy-path.spec.ts`
-- `src/tests/api-keys-happy-path.spec.ts`
-- `src/tests/builder-happy-path.spec.ts`
-- `src/tests/library-happy-path.spec.ts`
-- `src/tests/marketplace-happy-path.spec.ts`
-- `src/tests/publish-happy-path.spec.ts`
-- `src/tests/copilot-happy-path.spec.ts`
+- `src/playwright/auth-happy-path.spec.ts`
+- `src/playwright/settings-happy-path.spec.ts`
+- `src/playwright/api-keys-happy-path.spec.ts`
+- `src/playwright/builder-happy-path.spec.ts`
+- `src/playwright/library-happy-path.spec.ts`
+- `src/playwright/marketplace-happy-path.spec.ts`
+- `src/playwright/publish-happy-path.spec.ts`
+- `src/playwright/copilot-happy-path.spec.ts`
 
 ### Resetting the DB
 
