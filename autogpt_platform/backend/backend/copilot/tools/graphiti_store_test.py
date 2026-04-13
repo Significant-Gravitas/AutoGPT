@@ -1,5 +1,6 @@
 """Tests for MemoryStoreTool."""
 
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -153,13 +154,14 @@ class TestMemoryStoreTool:
         assert "queued for storage" in result.message
         assert result.session_id == "test-session"
 
-        mock_enqueue.assert_awaited_once_with(
-            "user-1",
-            "test-session",
-            name="user_prefers_python",
-            episode_body="The user prefers Python over JavaScript.",
-            source_description="Direct statement",
-        )
+        mock_enqueue.assert_awaited_once()
+        call_kwargs = mock_enqueue.await_args.kwargs
+        assert call_kwargs["name"] == "user_prefers_python"
+        assert call_kwargs["source_description"] == "Direct statement"
+        assert call_kwargs["is_json"] is True
+        envelope = json.loads(call_kwargs["episode_body"])
+        assert envelope["content"] == "The user prefers Python over JavaScript."
+        assert envelope["memory_kind"] == "fact"
 
     @pytest.mark.asyncio
     async def test_store_success_uses_default_source_description(self):
@@ -187,10 +189,10 @@ class TestMemoryStoreTool:
             )
 
         assert isinstance(result, MemoryStoreResponse)
-        mock_enqueue.assert_awaited_once_with(
-            "user-1",
-            "test-session",
-            name="some_fact",
-            episode_body="A fact worth remembering.",
-            source_description="Conversation memory",
-        )
+        mock_enqueue.assert_awaited_once()
+        call_kwargs = mock_enqueue.await_args.kwargs
+        assert call_kwargs["name"] == "some_fact"
+        assert call_kwargs["source_description"] == "Conversation memory"
+        assert call_kwargs["is_json"] is True
+        envelope = json.loads(call_kwargs["episode_body"])
+        assert envelope["content"] == "A fact worth remembering."
