@@ -45,11 +45,12 @@ test("builder happy path: user can create a simple agent in builder with core bl
       .getNodeLocator(0)
       .locator('input[placeholder="Enter string value..."]'),
   ).toHaveValue("smoke-value");
-  const dictionaryInputs = buildPage
-    .getNodeLocator(1)
-    .locator('input[placeholder="Enter string value..."]');
-  await expect(dictionaryInputs.nth(0)).toHaveValue("smoke-key");
-  await expect(dictionaryInputs.nth(1)).toHaveValue("smoke-value");
+  await expect(buildPage.getNodeTextInput("Add to Dictionary", 0)).toHaveValue(
+    "smoke-key",
+  );
+  await expect(buildPage.getNodeTextInput("Add to Dictionary", 1)).toHaveValue(
+    "smoke-value",
+  );
 });
 
 test("builder happy path: user can save the created agent", async ({

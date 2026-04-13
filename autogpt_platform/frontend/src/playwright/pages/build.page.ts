@@ -6,6 +6,10 @@ export function createUniqueAgentName(prefix: string): string {
   return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
 
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export class BuildPage extends BasePage {
   constructor(page: Page) {
     super(page);
@@ -126,6 +130,34 @@ export class BuildPage extends BasePage {
   getNodeLocator(index?: number): Locator {
     const locator = this.page.locator('[data-id^="custom-node-"]');
     return index !== undefined ? locator.nth(index) : locator;
+  }
+
+  getNodeLocatorByTitle(title: string): Locator {
+    const exactTitle = new RegExp(`^\\s*${escapeRegex(title)}\\s*$`, "i");
+    return this.page
+      .locator('[data-id^="custom-node-"]')
+      .filter({ has: this.page.getByText(exactTitle) })
+      .first();
+  }
+
+  getNodeTextInputs(nodeTitle: string): Locator {
+    return this.getNodeLocatorByTitle(nodeTitle).locator(
+      'input[placeholder="Enter string value..."]',
+    );
+  }
+
+  getNodeTextInput(nodeTitle: string, inputIndex = 0): Locator {
+    return this.getNodeTextInputs(nodeTitle).nth(inputIndex);
+  }
+
+  async fillNodeTextInput(
+    nodeTitle: string,
+    value: string,
+    inputIndex = 0,
+  ): Promise<void> {
+    const input = this.getNodeTextInput(nodeTitle, inputIndex);
+    await input.waitFor({ state: "visible", timeout: 10000 });
+    await input.fill(value);
   }
 
   async getNodeCount(): Promise<number> {
@@ -368,11 +400,8 @@ export class BuildPage extends BasePage {
     await this.addBlockByClick("Add to Dictionary");
     await this.waitForNodeOnCanvas(2);
 
-    const dictionaryInputs = this.getNodeLocator(1).locator(
-      'input[placeholder="Enter string value..."]',
-    );
-    await dictionaryInputs.nth(0).fill("smoke-key");
-    await dictionaryInputs.nth(1).fill("smoke-value");
+    await this.fillNodeTextInput("Add to Dictionary", "smoke-key", 0);
+    await this.fillNodeTextInput("Add to Dictionary", "smoke-value", 1);
 
     // Connect Store Value's output to Add to Dictionary so the graph has a
     // real edge and actually produces output when run. Without this edge the

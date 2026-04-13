@@ -500,12 +500,9 @@ export async function clickRunButton(page: Page): Promise<void> {
         continue;
       }
 
-      const startBtn = page
-        .getByRole("button", { name: /Start Task/i })
-        .first();
-      await startBtn.waitFor({ state: "visible", timeout: 15000 });
-      await fillVisibleTaskInputs(page);
-      await clickStartOrSimulateTask(page, startBtn);
+      const runDialog = await waitForRunDialog(page);
+      await fillVisibleTaskInputs(runDialog);
+      await clickStartOrSimulateTask(page, runDialog);
       return;
     }
 
@@ -521,12 +518,9 @@ export async function clickRunButton(page: Page): Promise<void> {
         continue;
       }
 
-      const startBtn = page
-        .getByRole("button", { name: /Start Task/i })
-        .first();
-      await startBtn.waitFor({ state: "visible", timeout: 15000 });
-      await fillVisibleTaskInputs(page);
-      await clickStartOrSimulateTask(page, startBtn);
+      const runDialog = await waitForRunDialog(page);
+      await fillVisibleTaskInputs(runDialog);
+      await clickStartOrSimulateTask(page, runDialog);
       return;
     }
 
@@ -594,15 +588,45 @@ async function clickActionButton(button: Locator): Promise<boolean> {
   }
 }
 
+async function waitForRunDialog(page: Page): Promise<Locator> {
+  const runDialog = page
+    .locator("[data-dialog-content]")
+    .filter({
+      has: page.getByRole("button", { name: /^Start Task$/i }),
+    })
+    .last();
+  await expect(runDialog).toBeVisible({ timeout: 15000 });
+  return runDialog;
+}
+
+async function dismissRunSafetyPopup(page: Page): Promise<void> {
+  const safetyPopup = page
+    .locator("[data-dialog-content]")
+    .filter({
+      has: page.getByText("Safety Checks Enabled", { exact: true }),
+    })
+    .last();
+
+  if (!(await safetyPopup.isVisible({ timeout: 2000 }).catch(() => false))) {
+    return;
+  }
+
+  await safetyPopup.getByRole("button", { name: /^Got it$/i }).click();
+  await expect(safetyPopup).toBeHidden({ timeout: 10000 });
+}
+
 async function clickStartOrSimulateTask(
   page: Page,
-  startBtn: Locator,
+  runDialog: Locator,
 ): Promise<void> {
+  const startBtn = runDialog.getByRole("button", { name: /^Start Task$/i });
   // Happy-path tests must exercise a real run — do NOT fall back to the
   // "Simulate" button if Start fails, because a broken Start code path is
   // exactly the regression these tests exist to catch.
+  await expect(startBtn).toBeVisible({ timeout: 10000 });
   await expect(startBtn).toBeEnabled({ timeout: 10000 });
   await startBtn.click();
+  await dismissRunSafetyPopup(page);
 
   await expect
     .poll(
@@ -622,9 +646,11 @@ async function clickStartOrSimulateTask(
     .toBe(true);
 }
 
-async function fillVisibleTaskInputs(page: Page): Promise<void> {
+async function fillVisibleTaskInputs(
+  container: Page | Locator,
+): Promise<void> {
   const seededEmail = getSeededTestUser("smokeMarketplace").email;
-  const inputs = page.locator(
+  const inputs = container.locator(
     'input:visible:not([type="hidden"]):not([type="file"]):not([disabled]), textarea:visible:not([disabled])',
   );
   const inputCount = await inputs.count();
@@ -1008,19 +1034,20 @@ export async function importAgentFromFile(
   description: string = "PR E2E library coverage",
 ): Promise<{ libraryPage: LibraryPage; importedAgent: Agent }> {
   const libraryPage = new LibraryPage(page);
+  const importDialog = page.getByRole("dialog", { name: "Import" });
 
   await page.goto("/library");
   await libraryPage.openUploadDialog();
   await libraryPage.fillUploadForm(agentName, description);
 
-  const fileInput = page.locator('input[type="file"]');
+  const fileInput = importDialog.locator('input[type="file"]');
   await fileInput.setInputFiles(filePath);
-  const uploadButton = page.getByRole("button", { name: "Upload" });
+  const uploadButton = importDialog.getByRole("button", { name: "Upload" });
   await expect(uploadButton).toBeEnabled({
     timeout: 10000,
   });
   await uploadButton.click();
-  const uploadingButton = page.getByRole("button", {
+  const uploadingButton = importDialog.getByRole("button", {
     name: /Uploading\.\.\./i,
   });
   const sawUploadingState = await uploadingButton
@@ -1028,7 +1055,26 @@ export async function importAgentFromFile(
     .then(() => true)
     .catch(() => false);
   if (sawUploadingState) {
-    await expect(uploadingButton).toBeDisabled();
+    await expect
+      .poll(
+        async () => {
+          if (/\/build/.test(page.url())) {
+            return "build";
+          }
+          if (!(await uploadingButton.isVisible().catch(() => false))) {
+            return "gone";
+          }
+          return (await uploadingButton.isDisabled().catch(() => false))
+            ? "disabled"
+            : "enabled";
+        },
+        {
+          timeout: 5000,
+          message:
+            'upload button should either stay disabled while "Uploading..." is visible or disappear because navigation already started',
+        },
+      )
+      .not.toBe("enabled");
   }
 
   // Upload → backend creates the graph → router pushes /build?flowID=...
