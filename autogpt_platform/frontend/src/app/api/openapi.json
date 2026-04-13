@@ -13837,7 +13837,11 @@
       },
       "StreamChatRequest": {
         "properties": {
-          "message": { "type": "string", "title": "Message" },
+          "message": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Message"
+          },
           "is_user_message": {
             "type": "boolean",
             "title": "Is User Message",
