@@ -463,7 +463,10 @@ export function useBuilderChatPanel({
       }
     }
     lastScannedToolCallIndexRef.current = messages.length - 1;
-  }, [messages, status, onGraphEdited, setQueryStates]);
+  // flowID is included so this effect re-runs on navigation, mirroring the
+  // parse-actions effect. This ensures the skip guard is consumed in the
+  // correct render cycle even when a stream is active during navigation.
+  }, [messages, status, onGraphEdited, setQueryStates, flowID]);
 
   // Close the panel on Escape when focus is inside the panel, so pressing Escape
   // in another dialog or canvas element does not accidentally close the chat panel.
