@@ -646,9 +646,7 @@ async function clickStartOrSimulateTask(
     .toBe(true);
 }
 
-async function fillVisibleTaskInputs(
-  container: Page | Locator,
-): Promise<void> {
+async function fillVisibleTaskInputs(container: Page | Locator): Promise<void> {
   const seededEmail = getSeededTestUser("smokeMarketplace").email;
   const inputs = container.locator(
     'input:visible:not([type="hidden"]):not([type="file"]):not([disabled]), textarea:visible:not([disabled])',
