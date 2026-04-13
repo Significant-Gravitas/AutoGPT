@@ -150,6 +150,7 @@
     "@types/react-dom": "18.3.5",
     "@types/react-modal": "3.16.3",
     "@types/react-window": "2.0.0",
+    "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
     "@vitest/coverage-v8": "4.0.17",
     "axe-playwright": "2.2.2",

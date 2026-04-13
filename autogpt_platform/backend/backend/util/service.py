@@ -26,11 +26,11 @@ from typing import (
 )
 
 import httpx
-import sentry_sdk
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -721,7 +721,7 @@ def get_service_client(
                     logger.warning(
                         f"RPC return type validation failed for {type(e).__name__}: {e}"
                     )
-                    sentry_sdk.capture_exception(e)
+                    _sentry_capture_exception(e)
                     return result
             return result
 

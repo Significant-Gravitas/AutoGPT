@@ -278,6 +278,8 @@ async def log_system_credential_cost(
                     cost_microdollars=cost_microdollars,
                     input_tokens=stats.input_token_count,
                     output_tokens=stats.output_token_count,
+                    cache_read_tokens=stats.cache_read_token_count or None,
+                    cache_creation_tokens=stats.cache_creation_token_count or None,
                     data_size=stats.output_size if stats.output_size > 0 else None,
                     duration=stats.walltime if stats.walltime > 0 else None,
                     model=model_name,
