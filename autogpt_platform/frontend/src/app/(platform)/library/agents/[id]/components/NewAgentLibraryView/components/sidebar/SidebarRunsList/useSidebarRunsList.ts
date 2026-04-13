@@ -109,8 +109,12 @@ export function useSidebarRunsList({
   const triggersCount = triggers.length;
   const loading =
     !runsQuery.isSuccess || schedulesQuery.isPending || !presetsQuery.isSuccess;
-  const stale =
-    runsQuery.isStale || schedulesQuery.isPending || presetsQuery.isStale;
+  const schedulesStale = schedulesQuery.isPending
+    ? true
+    : schedulesQuery.isSuccess
+      ? schedulesQuery.isStale
+      : false;
+  const stale = runsQuery.isStale || schedulesStale || presetsQuery.isStale;
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
