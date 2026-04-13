@@ -39,15 +39,10 @@ export function AgentImages({ images }: AgentImagesProps) {
           {images.map((image, index) => {
             const isVideo = isValidVideoUrl(image);
             const youtubeId = isVideo ? getYouTubeVideoId(image) : null;
-            const thumbnailUrl = youtubeId
-              ? `https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`
-              : isVideo
-                ? null
-                : image;
 
             return (
               <button
-                key={`${image}-${index}`}
+                key={index}
                 type="button"
                 onClick={() => setSelectedIndex(index)}
                 className={cn(
@@ -60,27 +55,31 @@ export function AgentImages({ images }: AgentImagesProps) {
                 {(!isVideo || youtubeId) && !loadedThumbs.has(index) && (
                   <Skeleton className="absolute inset-0 rounded-lg" />
                 )}
-                {thumbnailUrl ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={thumbnailUrl}
-                      alt={`Thumbnail ${index + 1}`}
-                      loading="lazy"
-                      className="absolute inset-0 h-full w-full object-cover"
-                      onLoad={() =>
-                        setLoadedThumbs((prev) => new Set(prev).add(index))
-                      }
-                      onError={() =>
-                        setLoadedThumbs((prev) => new Set(prev).add(index))
-                      }
-                    />
-                  </>
+                {youtubeId ? (
+                  <img
+                    src={`https://img.youtube.com/vi/${youtubeId}/mqdefault.jpg`}
+                    alt={`Thumbnail ${index + 1}`}
+                    loading="lazy"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onLoad={() =>
+                      setLoadedThumbs((prev) => new Set(prev).add(index))
+                    }
+                  />
                 ) : isVideo ? (
                   <div className="flex h-full w-full items-center justify-center bg-neutral-200 text-xs text-neutral-500">
                     Video
                   </div>
-                ) : null}
+                ) : (
+                  <img
+                    src={image}
+                    alt={`Thumbnail ${index + 1}`}
+                    loading="lazy"
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onLoad={() =>
+                      setLoadedThumbs((prev) => new Set(prev).add(index))
+                    }
+                  />
+                )}
               </button>
             );
           })}
