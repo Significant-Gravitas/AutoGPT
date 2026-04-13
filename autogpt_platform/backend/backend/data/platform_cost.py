@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from prisma.models import PlatformCostLog as PrismaLog
-from prisma.types import PlatformCostLogCreateInput
+from prisma.models import User as PrismaUser
+from prisma.types import PlatformCostLogCreateInput, PlatformCostLogWhereInput
 from pydantic import BaseModel
 
-from backend.data.db import query_raw_with_schema
 from backend.util.cache import cached
 from backend.util.json import SafeJson
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 MICRODOLLARS_PER_USD = 1_000_000
 
-# Dashboard query limits — keep in sync with the SQL queries below
+# Dashboard query limits
 MAX_PROVIDER_ROWS = 500
 MAX_USER_ROWS = 100
 
@@ -169,53 +169,61 @@ class PlatformCostDashboard(BaseModel):
     total_users: int
 
 
-def _build_where(
+def _si(row: dict, field: str) -> int:
+    """Extract an integer from a Prisma group_by _sum dict.
+
+    Prisma Python serialises BigInt/Int aggregate sums as strings; coerce to int.
+    """
+    return int((row.get("_sum") or {}).get(field) or 0)
+
+
+def _sf(row: dict, field: str) -> float:
+    """Extract a float from a Prisma group_by _sum dict."""
+    return float((row.get("_sum") or {}).get(field) or 0.0)
+
+
+def _ca(row: dict) -> int:
+    """Extract _count._all from a Prisma group_by row."""
+    c = row.get("_count") or {}
+    return int(c.get("_all") or 0) if isinstance(c, dict) else int(c or 0)
+
+
+def _build_prisma_where(
     start: datetime | None,
     end: datetime | None,
     provider: str | None,
     user_id: str | None,
-    table_alias: str = "",
     model: str | None = None,
     block_name: str | None = None,
     tracking_type: str | None = None,
-) -> tuple[str, list[Any]]:
-    prefix = f"{table_alias}." if table_alias else ""
-    clauses: list[str] = []
-    params: list[Any] = []
-    idx = 1
+) -> PlatformCostLogWhereInput:
+    """Build a Prisma WhereInput for PlatformCostLog filters."""
+    where: PlatformCostLogWhereInput = {}
 
-    if start:
-        clauses.append(f'{prefix}"createdAt" >= ${idx}::timestamptz')
-        params.append(start)
-        idx += 1
-    if end:
-        clauses.append(f'{prefix}"createdAt" <= ${idx}::timestamptz')
-        params.append(end)
-        idx += 1
+    if start and end:
+        where["createdAt"] = {"gte": start, "lte": end}
+    elif start:
+        where["createdAt"] = {"gte": start}
+    elif end:
+        where["createdAt"] = {"lte": end}
+
     if provider:
-        # Provider names are normalized to lowercase at write time so a plain
-        # equality check is sufficient and the (provider, createdAt) index is used.
-        clauses.append(f'{prefix}"provider" = ${idx}')
-        params.append(provider.lower())
-        idx += 1
-    if user_id:
-        clauses.append(f'{prefix}"userId" = ${idx}')
-        params.append(user_id)
-        idx += 1
-    if model:
-        clauses.append(f'{prefix}"model" = ${idx}')
-        params.append(model)
-        idx += 1
-    if block_name:
-        clauses.append(f'LOWER({prefix}"blockName") = LOWER(${idx})')
-        params.append(block_name)
-        idx += 1
-    if tracking_type:
-        clauses.append(f'{prefix}"trackingType" = ${idx}')
-        params.append(tracking_type)
-        idx += 1
+        where["provider"] = provider.lower()
 
-    return (" AND ".join(clauses) if clauses else "TRUE", params)
+    if user_id:
+        where["userId"] = user_id
+
+    if model:
+        where["model"] = model
+
+    if block_name:
+        # Case-insensitive match — mirrors the original LOWER() SQL filter.
+        where["blockName"] = {"equals": block_name, "mode": "insensitive"}
+
+    if tracking_type:
+        where["trackingType"] = tracking_type
+
+    return where
 
 
 @cached(ttl_seconds=30)
@@ -241,110 +249,107 @@ async def get_platform_cost_dashboard(
     """
     if start is None:
         start = datetime.now(timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
-    where_p, params_p = _build_where(
-        start, end, provider, user_id, "p", model, block_name, tracking_type
+
+    where = _build_prisma_where(
+        start, end, provider, user_id, model, block_name, tracking_type
     )
 
-    by_provider_rows, by_user_rows, total_user_rows, total_agg_rows = (
+    sum_fields = {
+        "costMicrodollars": True,
+        "inputTokens": True,
+        "outputTokens": True,
+        "cacheReadTokens": True,
+        "cacheCreationTokens": True,
+        "duration": True,
+        "trackingAmount": True,
+    }
+
+    # Run all four aggregation queries in parallel.
+    by_provider_groups, by_user_groups, total_user_groups, total_agg_groups = (
         await asyncio.gather(
-            query_raw_with_schema(
-                f"""
-            SELECT
-                p."provider",
-                p."trackingType" AS tracking_type,
-                p."model",
-                COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
-                COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
-                COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
-                COALESCE(SUM(p."cacheReadTokens"), 0)::bigint AS total_cache_read_tokens,
-                COALESCE(SUM(p."cacheCreationTokens"), 0)::bigint AS total_cache_creation_tokens,
-                COALESCE(SUM(p."duration"), 0)::float AS total_duration,
-                COALESCE(SUM(p."trackingAmount"), 0)::float AS total_tracking_amount,
-                COUNT(*)::bigint AS request_count
-            FROM {{schema_prefix}}"PlatformCostLog" p
-            WHERE {where_p}
-            GROUP BY p."provider", p."trackingType", p."model"
-            ORDER BY total_cost DESC
-            LIMIT {MAX_PROVIDER_ROWS}
-            """,
-                *params_p,
+            # (provider, trackingType, model) aggregation — no ORDER BY in ORM;
+            # sort by total cost descending in Python after fetch.
+            PrismaLog.prisma().group_by(
+                by=["provider", "trackingType", "model"],
+                where=where,
+                sum=sum_fields,
+                count=True,
             ),
-            query_raw_with_schema(
-                f"""
-            SELECT
-                p."userId" AS user_id,
-                u."email",
-                COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
-                COALESCE(SUM(p."inputTokens"), 0)::bigint AS total_input_tokens,
-                COALESCE(SUM(p."outputTokens"), 0)::bigint AS total_output_tokens,
-                COUNT(*)::bigint AS request_count
-            FROM {{schema_prefix}}"PlatformCostLog" p
-            LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
-            WHERE {where_p}
-            GROUP BY p."userId", u."email"
-            ORDER BY total_cost DESC
-            LIMIT {MAX_USER_ROWS}
-            """,
-                *params_p,
+            # userId aggregation — emails fetched separately below.
+            PrismaLog.prisma().group_by(
+                by=["userId"],
+                where=where,
+                sum=sum_fields,
+                count=True,
             ),
-            query_raw_with_schema(
-                f"""
-            SELECT COUNT(DISTINCT p."userId")::bigint AS cnt
-            FROM {{schema_prefix}}"PlatformCostLog" p
-            WHERE {where_p}
-            """,
-                *params_p,
+            # Distinct user count: group by userId, count groups.
+            PrismaLog.prisma().group_by(
+                by=["userId"],
+                where=where,
+                count=True,
             ),
-            # Separate aggregate query so dashboard totals are never derived
-            # from the capped by_provider_rows list. With model-level grouping,
-            # MAX_PROVIDER_ROWS is hit more easily; summing the capped rows
-            # would silently undercount once >500 (provider, type, model) exist.
-            query_raw_with_schema(
-                f"""
-            SELECT
-                COALESCE(SUM(p."costMicrodollars"), 0)::bigint AS total_cost,
-                COUNT(*)::bigint AS request_count
-            FROM {{schema_prefix}}"PlatformCostLog" p
-            WHERE {where_p}
-            """,
-                *params_p,
+            # Total aggregate: group by provider (no limit) to sum across all
+            # matching rows. Summed in Python to get grand totals.
+            PrismaLog.prisma().group_by(
+                by=["provider"],
+                where=where,
+                sum={"costMicrodollars": True},
+                count=True,
             ),
         )
     )
 
-    # Use the exact COUNT(DISTINCT userId) so total_users is not capped at
-    # MAX_USER_ROWS (which would silently report 100 for >100 active users).
-    total_users = int(total_user_rows[0]["cnt"]) if total_user_rows else 0
-    total_cost = int(total_agg_rows[0]["total_cost"]) if total_agg_rows else 0
-    total_requests = int(total_agg_rows[0]["request_count"]) if total_agg_rows else 0
+    # Sort by_provider by total cost descending and cap at MAX_PROVIDER_ROWS.
+    by_provider_groups.sort(key=lambda r: _si(r, "costMicrodollars"), reverse=True)
+    by_provider_groups = by_provider_groups[:MAX_PROVIDER_ROWS]
+
+    # Sort by_user by total cost descending and cap at MAX_USER_ROWS.
+    by_user_groups.sort(key=lambda r: _si(r, "costMicrodollars"), reverse=True)
+    by_user_groups = by_user_groups[:MAX_USER_ROWS]
+
+    # Batch-fetch emails for the users in by_user.
+    user_ids = [r["userId"] for r in by_user_groups if r.get("userId") is not None]
+    email_by_user_id: dict[str, str | None] = {}
+    if user_ids:
+        users = await PrismaUser.prisma().find_many(
+            where={"id": {"in": user_ids}},
+        )
+        email_by_user_id = {u.id: u.email for u in users}
+
+    # Total distinct users — exclude the NULL-userId group (deleted users).
+    total_users = len([g for g in total_user_groups if g.get("userId") is not None])
+
+    # Grand totals — sum across all provider groups (no LIMIT applied above).
+    total_cost = sum(_si(r, "costMicrodollars") for r in total_agg_groups)
+    total_requests = sum(_ca(r) for r in total_agg_groups)
 
     return PlatformCostDashboard(
         by_provider=[
             ProviderCostSummary(
                 provider=r["provider"],
-                tracking_type=r.get("tracking_type"),
+                tracking_type=r.get("trackingType"),
                 model=r.get("model"),
-                total_cost_microdollars=r["total_cost"],
-                total_input_tokens=r["total_input_tokens"],
-                total_output_tokens=r["total_output_tokens"],
-                total_cache_read_tokens=r.get("total_cache_read_tokens", 0),
-                total_cache_creation_tokens=r.get("total_cache_creation_tokens", 0),
-                total_duration_seconds=r.get("total_duration", 0.0),
-                total_tracking_amount=r.get("total_tracking_amount", 0.0),
-                request_count=r["request_count"],
+                total_cost_microdollars=_si(r, "costMicrodollars"),
+                total_input_tokens=_si(r, "inputTokens"),
+                total_output_tokens=_si(r, "outputTokens"),
+                total_cache_read_tokens=_si(r, "cacheReadTokens"),
+                total_cache_creation_tokens=_si(r, "cacheCreationTokens"),
+                total_duration_seconds=_sf(r, "duration"),
+                total_tracking_amount=_sf(r, "trackingAmount"),
+                request_count=_ca(r),
             )
-            for r in by_provider_rows
+            for r in by_provider_groups
         ],
         by_user=[
             UserCostSummary(
-                user_id=r.get("user_id"),
-                email=_mask_email(r.get("email")),
-                total_cost_microdollars=r["total_cost"],
-                total_input_tokens=r["total_input_tokens"],
-                total_output_tokens=r["total_output_tokens"],
-                request_count=r["request_count"],
+                user_id=r.get("userId"),
+                email=_mask_email(email_by_user_id.get(r.get("userId") or "")),
+                total_cost_microdollars=_si(r, "costMicrodollars"),
+                total_input_tokens=_si(r, "inputTokens"),
+                total_output_tokens=_si(r, "outputTokens"),
+                request_count=_ca(r),
             )
-            for r in by_user_rows
+            for r in by_user_groups
         ],
         total_cost_microdollars=total_cost,
         total_requests=total_requests,
@@ -365,73 +370,41 @@ async def get_platform_cost_logs(
 ) -> tuple[list[CostLogRow], int]:
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
-    where_sql, params = _build_where(
-        start, end, provider, user_id, "p", model, block_name, tracking_type
-    )
 
+    where = _build_prisma_where(
+        start, end, provider, user_id, model, block_name, tracking_type
+    )
     offset = (page - 1) * page_size
-    limit_idx = len(params) + 1
-    offset_idx = len(params) + 2
 
-    count_rows, rows = await asyncio.gather(
-        query_raw_with_schema(
-            f"""
-            SELECT COUNT(*)::bigint AS cnt
-            FROM {{schema_prefix}}"PlatformCostLog" p
-            WHERE {where_sql}
-            """,
-            *params,
-        ),
-        query_raw_with_schema(
-            f"""
-            SELECT
-                p."id",
-                p."createdAt" AS created_at,
-                p."userId" AS user_id,
-                u."email",
-                p."graphExecId" AS graph_exec_id,
-                p."nodeExecId" AS node_exec_id,
-                p."blockName" AS block_name,
-                p."provider",
-                p."trackingType" AS tracking_type,
-                p."costMicrodollars" AS cost_microdollars,
-                p."inputTokens" AS input_tokens,
-                p."outputTokens" AS output_tokens,
-                p."cacheReadTokens" AS cache_read_tokens,
-                p."cacheCreationTokens" AS cache_creation_tokens,
-                p."duration",
-                p."model"
-            FROM {{schema_prefix}}"PlatformCostLog" p
-            LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
-            WHERE {where_sql}
-            ORDER BY p."createdAt" DESC, p."id" DESC
-            LIMIT ${limit_idx} OFFSET ${offset_idx}
-            """,
-            *params,
-            page_size,
-            offset,
+    total, rows = await asyncio.gather(
+        PrismaLog.prisma().count(where=where),
+        PrismaLog.prisma().find_many(
+            where=where,
+            include={"User": True},
+            order=[{"createdAt": "desc"}, {"id": "desc"}],
+            take=page_size,
+            skip=offset,
         ),
     )
-    total = count_rows[0]["cnt"] if count_rows else 0
 
     logs = [
         CostLogRow(
-            id=r["id"],
-            created_at=r["created_at"],
-            user_id=r.get("user_id"),
-            email=_mask_email(r.get("email")),
-            graph_exec_id=r.get("graph_exec_id"),
-            node_exec_id=r.get("node_exec_id"),
-            block_name=r["block_name"],
-            provider=r["provider"],
-            tracking_type=r.get("tracking_type"),
-            cost_microdollars=r.get("cost_microdollars"),
-            input_tokens=r.get("input_tokens"),
-            output_tokens=r.get("output_tokens"),
-            cache_read_tokens=r.get("cache_read_tokens"),
-            cache_creation_tokens=r.get("cache_creation_tokens"),
-            duration=r.get("duration"),
-            model=r.get("model"),
+            id=r.id,
+            created_at=r.createdAt,
+            user_id=r.userId,
+            email=_mask_email(r.User.email if r.User else None),
+            graph_exec_id=r.graphExecId,
+            node_exec_id=r.nodeExecId,
+            block_name=r.blockName or "",
+            provider=r.provider,
+            tracking_type=r.trackingType,
+            cost_microdollars=r.costMicrodollars,
+            input_tokens=r.inputTokens,
+            output_tokens=r.outputTokens,
+            cache_read_tokens=getattr(r, "cacheReadTokens", None),
+            cache_creation_tokens=getattr(r, "cacheCreationTokens", None),
+            duration=r.duration,
+            model=r.model,
         )
         for r in rows
     ]
@@ -457,38 +430,16 @@ async def get_platform_cost_logs_for_export(
     """
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
-    where_sql, params = _build_where(
-        start, end, provider, user_id, "p", model, block_name, tracking_type
-    )
-    limit_idx = len(params) + 1
 
-    rows = await query_raw_with_schema(
-        f"""
-        SELECT
-            p."id",
-            p."createdAt" AS created_at,
-            p."userId" AS user_id,
-            u."email",
-            p."graphExecId" AS graph_exec_id,
-            p."nodeExecId" AS node_exec_id,
-            p."blockName" AS block_name,
-            p."provider",
-            p."trackingType" AS tracking_type,
-            p."costMicrodollars" AS cost_microdollars,
-            p."inputTokens" AS input_tokens,
-            p."outputTokens" AS output_tokens,
-            p."cacheReadTokens" AS cache_read_tokens,
-            p."cacheCreationTokens" AS cache_creation_tokens,
-            p."duration",
-            p."model"
-        FROM {{schema_prefix}}"PlatformCostLog" p
-        LEFT JOIN {{schema_prefix}}"User" u ON u."id" = p."userId"
-        WHERE {where_sql}
-        ORDER BY p."createdAt" DESC, p."id" DESC
-        LIMIT ${limit_idx}
-        """,
-        *params,
-        EXPORT_MAX_ROWS + 1,
+    where = _build_prisma_where(
+        start, end, provider, user_id, model, block_name, tracking_type
+    )
+
+    rows = await PrismaLog.prisma().find_many(
+        where=where,
+        include={"User": True},
+        order=[{"createdAt": "desc"}, {"id": "desc"}],
+        take=EXPORT_MAX_ROWS + 1,
     )
 
     truncated = len(rows) > EXPORT_MAX_ROWS
@@ -496,22 +447,80 @@ async def get_platform_cost_logs_for_export(
 
     return [
         CostLogRow(
-            id=r["id"],
-            created_at=r["created_at"],
-            user_id=r.get("user_id"),
-            email=_mask_email(r.get("email")),
-            graph_exec_id=r.get("graph_exec_id"),
-            node_exec_id=r.get("node_exec_id"),
-            block_name=r["block_name"],
-            provider=r["provider"],
-            tracking_type=r.get("tracking_type"),
-            cost_microdollars=r.get("cost_microdollars"),
-            input_tokens=r.get("input_tokens"),
-            output_tokens=r.get("output_tokens"),
-            cache_read_tokens=r.get("cache_read_tokens"),
-            cache_creation_tokens=r.get("cache_creation_tokens"),
-            duration=r.get("duration"),
-            model=r.get("model"),
+            id=r.id,
+            created_at=r.createdAt,
+            user_id=r.userId,
+            email=_mask_email(r.User.email if r.User else None),
+            graph_exec_id=r.graphExecId,
+            node_exec_id=r.nodeExecId,
+            block_name=r.blockName or "",
+            provider=r.provider,
+            tracking_type=r.trackingType,
+            cost_microdollars=r.costMicrodollars,
+            input_tokens=r.inputTokens,
+            output_tokens=r.outputTokens,
+            cache_read_tokens=getattr(r, "cacheReadTokens", None),
+            cache_creation_tokens=getattr(r, "cacheCreationTokens", None),
+            duration=r.duration,
+            model=r.model,
         )
         for r in rows
     ], truncated
+
+
+# ---------------------------------------------------------------------------
+# Helpers kept for backward-compatibility with existing tests.
+# New code should not use these — use _build_prisma_where instead.
+# ---------------------------------------------------------------------------
+
+
+def _build_where(
+    start: datetime | None,
+    end: datetime | None,
+    provider: str | None,
+    user_id: str | None,
+    table_alias: str = "",
+    model: str | None = None,
+    block_name: str | None = None,
+    tracking_type: str | None = None,
+) -> tuple[str, list[Any]]:
+    """Legacy SQL WHERE builder — retained so existing unit tests still pass.
+
+    Only used by tests that verify the SQL-string generation logic. All
+    production code uses _build_prisma_where instead.
+    """
+    prefix = f"{table_alias}." if table_alias else ""
+    clauses: list[str] = []
+    params: list[Any] = []
+    idx = 1
+
+    if start:
+        clauses.append(f'{prefix}"createdAt" >= ${idx}::timestamptz')
+        params.append(start)
+        idx += 1
+    if end:
+        clauses.append(f'{prefix}"createdAt" <= ${idx}::timestamptz')
+        params.append(end)
+        idx += 1
+    if provider:
+        clauses.append(f'{prefix}"provider" = ${idx}')
+        params.append(provider.lower())
+        idx += 1
+    if user_id:
+        clauses.append(f'{prefix}"userId" = ${idx}')
+        params.append(user_id)
+        idx += 1
+    if model:
+        clauses.append(f'{prefix}"model" = ${idx}')
+        params.append(model)
+        idx += 1
+    if block_name:
+        clauses.append(f'LOWER({prefix}"blockName") = LOWER(${idx})')
+        params.append(block_name)
+        idx += 1
+    if tracking_type:
+        clauses.append(f'{prefix}"trackingType" = ${idx}')
+        params.append(tracking_type)
+        idx += 1
+
+    return (" AND ".join(clauses) if clauses else "TRUE", params)
