@@ -48,6 +48,7 @@ from backend.copilot.transcript import (
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
+from backend.data.understanding import format_understanding_for_prompt
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
@@ -61,6 +62,7 @@ from ..constants import (
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli
+from ..db import update_message_content_by_sequence
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -85,7 +87,11 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from ..service import _build_system_prompt, _is_langfuse_configured, _update_title_async
+from ..service import (
+    _build_cacheable_system_prompt,
+    _is_langfuse_configured,
+    _update_title_async,
+)
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
@@ -2052,9 +2058,9 @@ async def stream_chat_completion_sdk(
                 )
                 return None
 
-        e2b_sandbox, (base_system_prompt, _), dl = await asyncio.gather(
+        e2b_sandbox, (base_system_prompt, understanding), dl = await asyncio.gather(
             _setup_e2b(),
-            _build_system_prompt(user_id, has_conversation_history=has_history),
+            _build_cacheable_system_prompt(user_id if not has_history else None),
             _fetch_transcript(),
         )
 
@@ -2285,6 +2291,30 @@ async def stream_chat_completion_sdk(
             transcript_msg_count,
             session_id,
         )
+        # On the first turn inject user context into the message instead of the
+        # system prompt — the system prompt is now static (same for all users)
+        # so the LLM can cache it across sessions.
+        # current_message is updated so the transcript and session.messages also
+        # store the prefixed content, preserving personalisation across turns and
+        # on --resume.
+        if not has_history and understanding:
+            user_ctx = format_understanding_for_prompt(understanding)
+            prefixed_message = (
+                f"<user_context>\n{user_ctx}\n</user_context>\n\n{current_message}"
+            )
+            current_message = prefixed_message
+            query_message = prefixed_message
+            # Persist the prefixed content so resumed sessions retain the context.
+            # The user message was already saved to DB before context injection;
+            # update the DB record so the prefixed content survives page reload
+            # and --resume (the save at line ~1926 used the un-prefixed content).
+            for idx, session_msg in enumerate(session.messages):
+                if session_msg.role == "user":
+                    session_msg.content = prefixed_message
+                    await update_message_content_by_sequence(
+                        session_id, idx, prefixed_message
+                    )
+                    break
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
         attachments = await _prepare_file_attachments(

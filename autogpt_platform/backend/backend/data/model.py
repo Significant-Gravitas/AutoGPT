@@ -71,6 +71,9 @@ class User(BaseModel):
     top_up_config: Optional["AutoTopUpConfig"] = Field(
         None, description="Top up configuration"
     )
+    subscription_tier: SubscriptionTier = Field(
+        default=SubscriptionTier.FREE, description="User subscription tier"
+    )
 
     # Notification preferences
     max_emails_per_day: int = Field(default=3, description="Maximum emails per day")
@@ -102,9 +105,6 @@ class User(BaseModel):
         default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
-
-    # Subscription / rate-limit tier
-    subscription_tier: SubscriptionTier | None = Field(default=None)
 
     @classmethod
     def from_db(cls, prisma_user: "PrismaUser") -> "User":
@@ -148,6 +148,7 @@ class User(BaseModel):
             integrations=prisma_user.integrations or "",
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
+            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.FREE,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
@@ -160,7 +161,6 @@ class User(BaseModel):
             notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
             notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
             timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
-            subscription_tier=prisma_user.subscriptionTier,
         )
 
 
@@ -850,6 +850,8 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
+    cache_read_token_count: int = 0
+    cache_creation_token_count: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
     provider_cost: float | None = None

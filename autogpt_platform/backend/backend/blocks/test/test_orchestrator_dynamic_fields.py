@@ -306,6 +306,9 @@ async def test_output_yielding_with_dynamic_fields():
     mock_response.raw_response = {"role": "assistant", "content": "test"}
     mock_response.prompt_tokens = 100
     mock_response.completion_tokens = 50
+    mock_response.cache_read_tokens = 0
+    mock_response.cache_creation_tokens = 0
+    mock_response.provider_cost = None
 
     # Mock the LLM call
     with patch(

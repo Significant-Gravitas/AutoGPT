@@ -7,7 +7,7 @@ import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { UploadSimple } from "@phosphor-icons/react";
+import { Flask, UploadSimple } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
@@ -113,6 +113,8 @@ export function CopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
+    // Dry run dev toggle
+    isDryRun,
   } = useCopilotPage();
 
   const {
@@ -174,6 +176,12 @@ export function CopilotPage() {
         >
           {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
           <NotificationBanner />
+          {isDryRun && (
+            <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+              <Flask size={13} weight="bold" />
+              Test mode — new sessions use dry_run=true
+            </div>
+          )}
           {/* Drop overlay */}
           <div
             className={cn(

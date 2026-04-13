@@ -25,6 +25,9 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
               Provider
             </th>
             <th scope="col" className="px-4 py-3">
+              Model
+            </th>
+            <th scope="col" className="px-4 py-3">
               Type
             </th>
             <th scope="col" className="px-4 py-3 text-right">
@@ -55,12 +58,18 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
             // For cost_usd rows the provider reports USD directly so rate
             // input doesn't apply; otherwise show an editable input.
             const showRateInput = tt !== "cost_usd";
-            const key = rateKey(row.provider, tt);
+            const key = rateKey(row.provider, tt, row.model);
             const fallback = defaultRateFor(row.provider, tt);
             const currentRate = rateOverrides[key] ?? fallback;
             return (
-              <tr key={key} className="border-b hover:bg-muted">
+              <tr
+                key={`${row.provider}:${tt}:${row.model ?? ""}`}
+                className="border-b hover:bg-muted"
+              >
                 <td className="px-4 py-3 font-medium">{row.provider}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {row.model || "—"}
+                </td>
                 <td className="px-4 py-3">
                   <TrackingBadge trackingType={row.tracking_type} />
                 </td>
@@ -115,7 +124,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
           {data.length === 0 && (
             <tr>
               <td
-                colSpan={7}
+                colSpan={8}
                 className="px-4 py-8 text-center text-muted-foreground"
               >
                 No cost data yet

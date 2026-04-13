@@ -131,6 +131,7 @@ export const ChatContainer = ({
                   placeholder="What else can I help with?"
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  hasSession={!!sessionId}
                 />
               </motion.div>
             </div>
