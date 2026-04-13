@@ -85,4 +85,16 @@ describe("buildReactArtifactSrcDoc", () => {
     const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
     expect(doc).toContain("box-sizing: border-box");
   });
+
+  it("supports a named previewProps export in the runtime", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("moduleExports.previewProps");
+    expect(doc).toContain("React.createElement(Component, previewProps || {})");
+  });
+
+  it("includes a helpful message for components that expect props", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("This component appears to expect props.");
+    expect(doc).toContain("previewProps");
+  });
 });
