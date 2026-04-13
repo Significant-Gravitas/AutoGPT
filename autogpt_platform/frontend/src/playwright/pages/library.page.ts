@@ -275,12 +275,24 @@ export class LibraryPage extends BasePage {
 
   async waitForAgentsToLoad(): Promise<void> {
     const { getId } = getSelectors(this.page);
-    await Promise.race([
-      getId("library-agent-card")
-        .first()
-        .waitFor({ state: "visible", timeout: 10_000 }),
-      getId("agents-count").waitFor({ state: "visible", timeout: 10_000 }),
-    ]);
+    await expect
+      .poll(
+        async () => {
+          const [agentCardVisible, agentsCountVisible] = await Promise.all([
+            getId("library-agent-card")
+              .first()
+              .isVisible()
+              .catch(() => false),
+            getId("agents-count")
+              .isVisible()
+              .catch(() => false),
+          ]);
+
+          return agentCardVisible || agentsCountVisible;
+        },
+        { timeout: 10_000 },
+      )
+      .toBe(true);
   }
 
   async getSearchValue(): Promise<string> {
@@ -739,6 +751,12 @@ export async function waitForAgentPageLoad(
       await page.reload();
     }
     await page.waitForLoadState("domcontentloaded");
+  }
+
+  if (!errorResolved) {
+    errorResolved = !(await errorHeading
+      .isVisible({ timeout: 300 })
+      .catch(() => false));
   }
 
   if (!errorResolved) {
