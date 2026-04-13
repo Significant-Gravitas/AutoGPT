@@ -99,6 +99,11 @@ _PENDING_CALL_LIMIT = 30  # pushes per minute per user
 _PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
 
+# Maximum lengths for pending-message context fields (url: 2 KB, content: 32 KB).
+# Enforced by QueuePendingMessageRequest._validate_context_length.
+_CONTEXT_URL_MAX_LENGTH = 2_000
+_CONTEXT_CONTENT_MAX_LENGTH = 32_000
+
 # Lua script for atomic INCR + conditional EXPIRE.
 # Using a single EVAL ensures the counter never persists without a TTL —
 # a bare INCR followed by a separate EXPIRE can leave the key without
@@ -195,16 +200,15 @@ class QueuePendingMessageRequest(BaseModel):
         if v is None:
             return v
         # Cap context values to prevent LLM context-window stuffing via
-        # large page payloads (url: 2 KB, content: 32 KB).
-        _URL_LIMIT = 2_000
-        _CONTENT_LIMIT = 32_000
-        if v.url and len(v.url) > _URL_LIMIT:
+        # large page payloads.  Limits are module-level constants so
+        # they are visible to callers and documentation.
+        if v.url and len(v.url) > _CONTEXT_URL_MAX_LENGTH:
             raise ValueError(
-                f"context.url exceeds maximum length of {_URL_LIMIT} characters"
+                f"context.url exceeds maximum length of {_CONTEXT_URL_MAX_LENGTH} characters"
             )
-        if v.content and len(v.content) > _CONTENT_LIMIT:
+        if v.content and len(v.content) > _CONTEXT_CONTENT_MAX_LENGTH:
             raise ValueError(
-                f"context.content exceeds maximum length of {_CONTENT_LIMIT} characters"
+                f"context.content exceeds maximum length of {_CONTEXT_CONTENT_MAX_LENGTH} characters"
             )
         return v
 

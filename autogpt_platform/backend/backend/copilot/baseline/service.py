@@ -949,6 +949,10 @@ async def stream_chat_completion_baseline(
     # concurrent push lands *after* the drain and stays queued for the
     # next turn instead of being lost.
     drained_at_start = await drain_pending_messages(session_id)
+    # Pre-compute formatted content once per message so we don't call
+    # format_pending_as_user_message twice (once for session.messages and
+    # once for transcript_builder below).
+    drained_at_start_content: list[str] = []
     if drained_at_start:
         logger.info(
             "[Baseline] Draining %d pending message(s) at turn start for session %s",
@@ -957,6 +961,7 @@ async def stream_chat_completion_baseline(
         )
         for pm in drained_at_start:
             content = format_pending_as_user_message(pm)["content"]
+            drained_at_start_content.append(content)
             # Append directly — pending messages are atomically-popped from
             # Redis and are never stale-cache duplicates, so the
             # maybe_append_user_message dedup is wrong here.
@@ -1043,11 +1048,10 @@ async def stream_chat_completion_baseline(
     # transcript — otherwise the loaded prior transcript would be
     # missing them and a mid-turn upload could leave a malformed
     # assistant-after-assistant structure on the next turn.
-    if drained_at_start:
-        for pm in drained_at_start:
-            transcript_builder.append_user(
-                content=format_pending_as_user_message(pm)["content"]
-            )
+    # Reuse the pre-computed content strings to avoid calling
+    # format_pending_as_user_message a second time.
+    for _drained_content in drained_at_start_content:
+        transcript_builder.append_user(content=_drained_content)
 
     # Generate title for new sessions
     if is_user_message and not session.title:
