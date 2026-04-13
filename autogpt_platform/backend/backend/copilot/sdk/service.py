@@ -2325,7 +2325,15 @@ async def stream_chat_completion_sdk(
         # immediately after the drain so a crash doesn't lose the messages.
         # The endpoint deliberately does NOT persist to session.messages —
         # Redis is the single source of truth until this drain runs.
-        pending_at_start = await drain_pending_messages(session_id)
+        try:
+            pending_at_start = await drain_pending_messages(session_id)
+        except Exception:
+            logger.warning(
+                "%s drain_pending_messages failed at turn start, skipping",
+                log_prefix,
+                exc_info=True,
+            )
+            pending_at_start = []
         if pending_at_start:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",

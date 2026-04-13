@@ -345,6 +345,11 @@ class _BaselineStreamState:
     cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
+    # Tracks how much of ``assistant_text`` has already been flushed to
+    # ``session.messages`` via mid-loop pending drains, so the ``finally``
+    # block only appends the *new* assistant text (avoiding duplication of
+    # round-1 text when round-1 entries were cleared from session_messages).
+    _flushed_assistant_text_len: int = 0
 
 
 async def _baseline_llm_caller(
@@ -943,7 +948,18 @@ async def stream_chat_completion_baseline(
     # mid-loop drains missed them).  Atomic LPOP guarantees that a
     # concurrent push lands *after* the drain and stays queued for the
     # next turn instead of being lost.
-    drained_at_start = await drain_pending_messages(session_id)
+    try:
+        drained_at_start = await drain_pending_messages(session_id)
+    except Exception:
+        logger.warning(
+            "[Baseline] drain_pending_messages failed at turn start, skipping",
+            exc_info=True,
+        )
+        drained_at_start = []
+    # Pre-compute formatted content once per message so we don't call
+    # format_pending_as_user_message twice (once for session.messages and
+    # once for transcript_builder below).
+    drained_at_start_content: list[str] = []
     if drained_at_start:
         logger.info(
             "[Baseline] Draining %d pending message(s) at turn start for session %s",
@@ -952,12 +968,25 @@ async def stream_chat_completion_baseline(
         )
         for pm in drained_at_start:
             content = format_pending_as_user_message(pm)["content"]
+            drained_at_start_content.append(content)
             # Append directly — pending messages are atomically-popped from
             # Redis and are never stale-cache duplicates, so the
             # maybe_append_user_message dedup is wrong here.
             session.messages.append(ChatMessage(role="user", content=content))
 
-    session = await upsert_chat_session(session)
+    # Persist the drained pending messages (if any) plus the current user
+    # message.  Wrap in try/except so a transient DB failure here does not
+    # silently discard messages that were already popped from Redis — the
+    # turn can still proceed using the in-memory session.messages, and a
+    # later resume/replay will backfill from the DB on the next turn.
+    try:
+        session = await upsert_chat_session(session)
+    except Exception as _persist_err:
+        logger.warning(
+            "[Baseline] Failed to persist session at turn start "
+            "(pending drain may not be durable): %s",
+            _persist_err,
+        )
 
     # Select model based on the per-request mode.  'fast' downgrades to
     # the cheaper/faster model; everything else keeps the default.
@@ -1026,11 +1055,10 @@ async def stream_chat_completion_baseline(
     # transcript — otherwise the loaded prior transcript would be
     # missing them and a mid-turn upload could leave a malformed
     # assistant-after-assistant structure on the next turn.
-    if drained_at_start:
-        for pm in drained_at_start:
-            transcript_builder.append_user(
-                content=format_pending_as_user_message(pm)["content"]
-            )
+    # Reuse the pre-computed content strings to avoid calling
+    # format_pending_as_user_message a second time.
+    for _drained_content in drained_at_start_content:
+        transcript_builder.append_user(content=_drained_content)
 
     # Generate title for new sessions
     if is_user_message and not session.title:
@@ -1272,8 +1300,35 @@ async def stream_chat_completion_baseline(
             )
             if is_final_yield:
                 continue
-            pending = await drain_pending_messages(session_id)
+            try:
+                pending = await drain_pending_messages(session_id)
+            except Exception:
+                logger.warning(
+                    "Mid-loop drain_pending_messages failed for session %s",
+                    session_id,
+                    exc_info=True,
+                )
+                pending = []
             if pending:
+                # Flush any buffered assistant/tool messages from completed
+                # rounds into session.messages BEFORE appending the pending
+                # user message.  ``_baseline_conversation_updater`` only
+                # records assistant+tool rounds into ``state.session_messages``
+                # — they are normally batch-flushed in the finally block.
+                # Without this in-order flush, the mid-loop pending user
+                # message lands before the preceding round's assistant/tool
+                # entries, producing chronologically-wrong session.messages
+                # on persist (user interposed between an assistant tool_call
+                # and its tool-result), which breaks OpenAI tool-call ordering
+                # invariants on the next turn's replay.
+                for _buffered in state.session_messages:
+                    session.messages.append(_buffered)
+                state.session_messages.clear()
+                # Record how much assistant_text has been covered by the
+                # structured entries just flushed, so the finally block's
+                # final-text dedup doesn't re-append rounds already persisted.
+                state._flushed_assistant_text_len = len(state.assistant_text)
+
                 for pm in pending:
                     # ``format_pending_as_user_message`` embeds file
                     # attachments and context URL/page content into the
@@ -1420,7 +1475,11 @@ async def stream_chat_completion_baseline(
         # no tool calls, i.e. the natural finish).  Only add it if the
         # conversation updater didn't already record it as part of a
         # tool-call round (which would have empty response_text).
-        final_text = state.assistant_text
+        # Only consider assistant text produced AFTER the last mid-loop
+        # flush.  ``_flushed_assistant_text_len`` tracks the prefix already
+        # persisted via structured session_messages during mid-loop pending
+        # drains; including it here would duplicate those rounds.
+        final_text = state.assistant_text[state._flushed_assistant_text_len :]
         if state.session_messages:
             # Strip text already captured in tool-call round messages
             recorded = "".join(
