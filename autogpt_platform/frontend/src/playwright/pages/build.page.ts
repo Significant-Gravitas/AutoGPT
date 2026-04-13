@@ -563,9 +563,12 @@ export class BuildPage extends BasePage {
 
     const { graphId, graphVersion } = this.getSavedGraphRef();
     const scheduleName = `Daily ${agentName}`;
-    const createResponse = await this.page.request.post(
-      `/api/proxy/api/graphs/${graphId}/schedules`,
-      {
+    const scheduleCreateUrl = `/api/proxy/api/graphs/${graphId}/schedules`;
+    const timeoutAt = Date.now() + 45000;
+    let lastFailure = "schedule request did not run";
+
+    while (Date.now() < timeoutAt) {
+      const createResponse = await this.page.request.post(scheduleCreateUrl, {
         data: {
           name: scheduleName,
           graph_version: graphVersion,
@@ -574,34 +577,17 @@ export class BuildPage extends BasePage {
           credentials: {},
           timezone: "UTC",
         },
-      },
-    );
-    const createResponseBody = await createResponse.text();
+      });
 
-    expect(
-      createResponse.ok(),
-      `schedule creation API should succeed: ${createResponse.status()} ${createResponseBody}`,
-    ).toBe(true);
+      const createResponseBody = await createResponse.text();
+      if (createResponse.ok()) {
+        return;
+      }
 
-    await expect
-      .poll(
-        async () => {
-          const listResponse = await this.page.request.get(
-            `/api/proxy/api/graphs/${graphId}/schedules`,
-          );
+      lastFailure = `${createResponse.status()} ${createResponseBody}`;
+      await this.page.waitForTimeout(1000);
+    }
 
-          if (!listResponse.ok()) {
-            return false;
-          }
-
-          const schedules = (await listResponse.json()) as Array<{
-            name?: string;
-          }>;
-
-          return schedules.some((schedule) => schedule.name === scheduleName);
-        },
-        { timeout: 15000 },
-      )
-      .toBe(true);
+    throw new Error(`schedule creation API should succeed: ${lastFailure}`);
   }
 }

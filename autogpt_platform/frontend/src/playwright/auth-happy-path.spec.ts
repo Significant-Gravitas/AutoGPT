@@ -68,9 +68,7 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
   await page.getByTestId("profile-popout-menu-trigger").click();
   await page.getByRole("button", { name: "Log out" }).click();
 
-  await expect
-    .poll(() => new URL(page.url()).pathname, { timeout: 15000 })
-    .not.toBe("/marketplace");
+  await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 
   await page.goto("/profile");
   await expect(page).toHaveURL(/\/login\?next=%2Fprofile/);

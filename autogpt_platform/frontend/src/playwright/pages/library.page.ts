@@ -699,9 +699,11 @@ export async function waitForAgentPageLoad(page: Page): Promise<void> {
   const errorHeading = page.getByText("Something went wrong", {
     exact: false,
   });
+  let errorResolved = false;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (!(await errorHeading.isVisible({ timeout: 300 }).catch(() => false))) {
-      return;
+      errorResolved = true;
+      break;
     }
     const tryAgain = page.getByRole("button", { name: "Try Again" });
     if (await tryAgain.isVisible({ timeout: 500 }).catch(() => false)) {
@@ -712,9 +714,45 @@ export async function waitForAgentPageLoad(page: Page): Promise<void> {
     await page.waitForLoadState("domcontentloaded");
   }
 
-  throw new Error(
-    "Library agent page remained on the connection-failure screen after 3 retries",
-  );
+  if (!errorResolved) {
+    throw new Error(
+      "Library agent page remained on the connection-failure screen after 3 retries",
+    );
+  }
+
+  await waitForAgentActionSurface(page);
+}
+
+async function getVisibleAgentActionSurface(page: Page): Promise<string> {
+  const visibleSurfaces: Array<[string, Locator]> = [
+    [
+      "setup-task",
+      page.getByRole("button", { name: /^Setup your task$/i }).first(),
+    ],
+    ["new-task", page.getByRole("button", { name: /^New task$/i }).first()],
+    [
+      "export",
+      page.getByRole("button", { name: "Export agent to file" }).first(),
+    ],
+    [
+      "more-actions",
+      page.getByRole("button", { name: "More actions" }).first(),
+    ],
+  ];
+
+  for (const [surface, locator] of visibleSurfaces) {
+    if (await locator.isVisible().catch(() => false)) {
+      return surface;
+    }
+  }
+
+  return "pending";
+}
+
+async function waitForAgentActionSurface(page: Page): Promise<void> {
+  await expect
+    .poll(() => getVisibleAgentActionSurface(page), { timeout: 15000 })
+    .not.toBe("pending");
 }
 
 export async function getAgentName(page: Page): Promise<string> {
