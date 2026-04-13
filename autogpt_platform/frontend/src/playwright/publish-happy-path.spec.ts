@@ -1,21 +1,19 @@
 import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
 import { LibraryPage } from "./pages/library.page";
-import { LoginPage } from "./pages/login.page";
 import { MarketplacePage } from "./pages/marketplace.page";
+
+test.use({ storageState: E2E_AUTH_STATES.parallelA });
 
 test("publish happy path: user can submit, track, and delete an agent submission from the dashboard", async ({
   page,
 }) => {
   test.setTimeout(180000);
 
-  const loginPage = new LoginPage(page);
   const buildPage = new BuildPage(page);
   const libraryPage = new LibraryPage(page);
   const marketplacePage = new MarketplacePage(page);
-
-  await loginPage.loginAsSeededUser("parallelA");
-  await expect(page).toHaveURL(/\/marketplace/);
 
   const { agentName: publishableAgentName } =
     await buildPage.createAndSaveSimpleAgent("Publish Flow Agent");
@@ -60,7 +58,9 @@ test("publish happy path: user can submit, track, and delete an agent submission
 
   // Validate the deleted submission is no longer discoverable in Marketplace.
   await page.goto("/marketplace");
-  const searchInput = page.getByTestId("store-search-input");
+  const searchInput = page
+    .locator('[data-testid="store-search-input"]:visible')
+    .first();
   await expect(searchInput).toBeVisible({ timeout: 15000 });
   await searchInput.fill(agentSlug);
   await searchInput.press("Enter");

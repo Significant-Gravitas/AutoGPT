@@ -207,23 +207,25 @@ export async function getInvalidSeededAuthStateKeys(
   baseURL: string,
 ): Promise<(typeof AUTH_STATE_KEYS)[number][]> {
   const origin = new URL(baseURL).origin;
-  const invalidKeys: (typeof AUTH_STATE_KEYS)[number][] = [];
+  const invalidKeys = await Promise.all(
+    AUTH_STATE_KEYS.map(async (accountKey) => {
+      if (
+        !hasStoredAuthState(accountKey) ||
+        !authStateMatchesOrigin(accountKey, origin)
+      ) {
+        return accountKey;
+      }
 
-  for (const accountKey of AUTH_STATE_KEYS) {
-    if (
-      !hasStoredAuthState(accountKey) ||
-      !authStateMatchesOrigin(accountKey, origin)
-    ) {
-      invalidKeys.push(accountKey);
-      continue;
-    }
+      return (await authStateHasLiveSession(baseURL, accountKey))
+        ? null
+        : accountKey;
+    }),
+  );
 
-    if (!(await authStateHasLiveSession(baseURL, accountKey))) {
-      invalidKeys.push(accountKey);
-    }
-  }
-
-  return invalidKeys;
+  return invalidKeys.filter(
+    (accountKey): accountKey is (typeof AUTH_STATE_KEYS)[number] =>
+      accountKey !== null,
+  );
 }
 
 async function createAuthStateForUser(
@@ -274,11 +276,9 @@ async function createAuthStateForUser(
 export async function ensureSeededAuthStates(baseURL: string): Promise<void> {
   const invalidKeys = await getInvalidSeededAuthStateKeys(baseURL);
 
-  for (const accountKey of AUTH_STATE_KEYS) {
-    if (!invalidKeys.includes(accountKey)) {
-      continue;
-    }
-
-    await createAuthStateForUser(baseURL, accountKey);
-  }
+  await Promise.all(
+    invalidKeys.map((accountKey) =>
+      createAuthStateForUser(baseURL, accountKey),
+    ),
+  );
 }

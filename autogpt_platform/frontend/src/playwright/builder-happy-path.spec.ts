@@ -5,7 +5,6 @@ import { BuildPage } from "./pages/build.page";
 import { LibraryPage } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
-test.describe.configure({ mode: "serial" });
 
 test("builder happy path: user can walk through the builder tutorial and cancel midway, persisting canceled state", async ({
   page,

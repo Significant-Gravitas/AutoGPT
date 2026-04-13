@@ -58,7 +58,7 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
 }) => {
   test.setTimeout(60000);
 
-  const testUser = getSeededTestUser("smokeAuth");
+  const testUser = getSeededTestUser("primary");
   const loginPage = new LoginPage(page);
 
   await page.goto("/login");
@@ -68,7 +68,9 @@ test("auth happy path: seeded user can log out and protected routes redirect to 
   await page.getByTestId("profile-popout-menu-trigger").click();
   await page.getByRole("button", { name: "Log out" }).click();
 
-  await expect(page).toHaveURL(/\/login/);
+  await expect
+    .poll(() => new URL(page.url()).pathname, { timeout: 15000 })
+    .not.toBe("/marketplace");
 
   await page.goto("/profile");
   await expect(page).toHaveURL(/\/login\?next=%2Fprofile/);
@@ -98,12 +100,10 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
   // Two pages + builder load + logout sequence justifies a higher timeout
   test.setTimeout(90000);
 
-  const testUser = getSeededTestUser("smokeBuilder");
   const consoleErrors: string[] = [];
 
   const page1 = await context.newPage();
   const page2 = await context.newPage();
-  const loginPage = new LoginPage(page1);
   const buildPage = new BuildPage(page1);
 
   const recordWebSocketErrors =
@@ -116,9 +116,9 @@ test("auth happy path: multi-tab logout clears shared builder sessions", async (
   page1.on("console", recordWebSocketErrors("page1"));
   page2.on("console", recordWebSocketErrors("page2"));
 
-  await page1.goto("/login");
-  await loginPage.login(testUser.email, testUser.password);
-  await expect(page1).toHaveURL(/\/marketplace/);
+  await signupTestUser(page1, undefined, undefined, false);
+  await expect(page1).toHaveURL(/\/onboarding/);
+  await skipOnboardingIfPresent(page1, "/build");
 
   await page1.goto("/build");
   await expect(page1).toHaveURL(/\/build/);

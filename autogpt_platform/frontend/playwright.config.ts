@@ -21,7 +21,7 @@ const jsonReporterOutputFile = process.env.PLAYWRIGHT_JSON_OUTPUT_FILE;
 const configuredWorkers = process.env.PLAYWRIGHT_WORKERS
   ? Number(process.env.PLAYWRIGHT_WORKERS)
   : process.env.CI
-    ? 6
+    ? 8
     : undefined;
 
 // Directory where CI copies .next/static from the Docker container
@@ -79,7 +79,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? Number(process.env.PLAYWRIGHT_RETRIES ?? 2) : 0,
-  /* Keep CI worker count conservative for browser-context stability. */
+  /* Higher worker count keeps PR smoke runtime down without sharing page state. */
   workers: configuredWorkers,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
@@ -119,8 +119,8 @@ export default defineConfig({
     bypassCSP: true,
 
     /* Helps debugging failures */
-    trace: "retain-on-failure",
-    video: "retain-on-failure",
+    trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
+    video: process.env.CI ? "off" : "retain-on-failure",
 
     /* Auto-accept cookies in all tests to prevent banner interference */
     storageState: buildCookieConsentStorageState(baseOrigin),

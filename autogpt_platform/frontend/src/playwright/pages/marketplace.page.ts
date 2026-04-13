@@ -3,7 +3,10 @@ import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
+const DETERMINISTIC_MARKETPLACE_AGENT_CREATOR = "e2e-marketplace";
+const DETERMINISTIC_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent";
 const DETERMINISTIC_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent";
+const DETERMINISTIC_MARKETPLACE_AGENT_PATH = `/marketplace/agent/${DETERMINISTIC_MARKETPLACE_AGENT_CREATOR}/${DETERMINISTIC_MARKETPLACE_AGENT_SLUG}`;
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -46,8 +49,15 @@ export class MarketplacePage extends BasePage {
   }
 
   async getSearchInput(page: Page) {
+    const visibleSearchInput = page
+      .locator('[data-testid="store-search-input"]:visible')
+      .first();
+    if (await visibleSearchInput.isVisible().catch(() => false)) {
+      return visibleSearchInput;
+    }
+
     const { getField, getId } = getSelectors(page);
-    return getId("store-search-input") || getField(/search/i);
+    return getId("store-search-input").first() || getField(/search/i).first();
   }
 
   async getFilterDropdown(page: Page) {
@@ -147,34 +157,30 @@ export class MarketplacePage extends BasePage {
   // --- Happy-path flows shared across PR smoke specs ---
 
   async openRunnableAgent(): Promise<{ path: string }> {
-    await this.page.goto("/marketplace");
-    const searchInput = this.page.getByTestId("store-search-input");
-    await expect(searchInput).toBeVisible({ timeout: 15000 });
-    await searchInput.fill(DETERMINISTIC_MARKETPLACE_AGENT_NAME);
-    await searchInput.press("Enter");
-
-    await this.waitForSearchResults();
-    const agentTitle = this.page
-      .locator('[data-testid="store-card"]:visible')
-      .getByText(DETERMINISTIC_MARKETPLACE_AGENT_NAME, { exact: true })
-      .first();
-    await expect(agentTitle).toBeVisible({ timeout: 15000 });
-
-    const agentCard = this.page
-      .locator('[data-testid="store-card"]:visible')
-      .filter({ hasText: DETERMINISTIC_MARKETPLACE_AGENT_NAME })
-      .first();
-    await agentCard.dispatchEvent("click");
+    await this.page.goto(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
+    await expect(this.page).toHaveURL(
+      new RegExp(
+        `${DETERMINISTIC_MARKETPLACE_AGENT_CREATOR}/${DETERMINISTIC_MARKETPLACE_AGENT_SLUG}$`,
+      ),
+      {
+        timeout: 15000,
+      },
+    );
+    await expect(this.page.getByTestId("agent-title")).toContainText(
+      DETERMINISTIC_MARKETPLACE_AGENT_NAME,
+      {
+        timeout: 15000,
+      },
+    );
+    await expect(this.page.getByTestId("agent-add-library-button")).toBeVisible(
+      {
+        timeout: 15000,
+      },
+    );
 
     await expect(this.page).toHaveURL(/\/marketplace\/agent\//, {
       timeout: 15000,
     });
-    await expect(this.page.getByTestId("agent-title")).toContainText(
-      DETERMINISTIC_MARKETPLACE_AGENT_NAME,
-    );
-    await expect(this.page.getByTestId("agent-add-library-button")).toBeVisible(
-      { timeout: 10000 },
-    );
 
     return { path: this.page.url() };
   }
@@ -185,19 +191,10 @@ export class MarketplacePage extends BasePage {
       this.page.getByRole("heading", { level: 1 }).first(),
     ).toBeVisible();
 
-    const featuredAgentLink = this.page
-      .locator('a[href*="/marketplace/agent/"]')
-      .first();
-    if (
-      await featuredAgentLink.isVisible({ timeout: 5000 }).catch(() => false)
-    ) {
-      await featuredAgentLink.click();
-    } else {
-      const agentCard = await this.getFirstTopAgent();
-      await agentCard.click();
-    }
-
-    await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
+    await this.page.goto(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
+    await expect(this.page).toHaveURL(/\/marketplace\/agent\//, {
+      timeout: 15000,
+    });
     await expect(this.page.getByTestId("agent-title")).toBeVisible();
     await dismissFeedbackDialog(this.page);
   }

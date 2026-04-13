@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import { expect, test } from "./coverage-fixture";
-import { LoginPage } from "./pages/login.page";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
+
+test.use({ storageState: E2E_AUTH_STATES.parallelB });
 
 test("api keys happy path: user can create, copy, and revoke an API key", async ({
   page,
@@ -10,10 +12,7 @@ test("api keys happy path: user can create, copy, and revoke an API key", async 
 
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
-  const loginPage = new LoginPage(page);
   const keyName = `E2E CLI Key ${randomUUID().slice(0, 8)}`;
-
-  await loginPage.loginAsSeededUser("parallelB");
 
   await page.goto("/profile/api-keys");
   await expect(page).toHaveURL(/\/profile\/api-keys/);

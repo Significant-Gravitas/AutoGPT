@@ -1,16 +1,15 @@
 import { expect, test } from "./coverage-fixture";
+import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { CopilotPage } from "./pages/copilot.page";
-import { LoginPage } from "./pages/login.page";
+
+test.use({ storageState: E2E_AUTH_STATES.marketplace });
 
 test("copilot happy path: user can create a deterministic AutoPilot session and keep it after reload", async ({
   page,
 }) => {
   test.setTimeout(120000);
 
-  const loginPage = new LoginPage(page);
   const copilotPage = new CopilotPage(page);
-
-  await loginPage.loginAsSeededUser("smokeMarketplace");
   await copilotPage.open();
 
   const sessionId = await copilotPage.createSessionViaApi();

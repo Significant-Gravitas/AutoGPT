@@ -488,8 +488,18 @@ export async function clickRunButton(page: Page): Promise<void> {
   const timeoutAt = Date.now() + 20000;
 
   while (Date.now() < timeoutAt) {
-    if (await setupTaskButton.isVisible().catch(() => false)) {
-      await setupTaskButton.click();
+    if (
+      await setupTaskButton
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      const clicked = await clickActionButton(setupTaskButton.first());
+      if (!clicked) {
+        await page.waitForTimeout(250);
+        continue;
+      }
+
       const startBtn = page
         .getByRole("button", { name: /Start Task/i })
         .first();
@@ -499,8 +509,18 @@ export async function clickRunButton(page: Page): Promise<void> {
       return;
     }
 
-    if (await newTaskButton.isVisible().catch(() => false)) {
-      await newTaskButton.click();
+    if (
+      await newTaskButton
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      const clicked = await clickActionButton(newTaskButton.first());
+      if (!clicked) {
+        await page.waitForTimeout(250);
+        continue;
+      }
+
       const startBtn = page
         .getByRole("button", { name: /Start Task/i })
         .first();
@@ -510,13 +530,33 @@ export async function clickRunButton(page: Page): Promise<void> {
       return;
     }
 
-    if (await rerunTaskButton.isVisible().catch(() => false)) {
-      await rerunTaskButton.click();
+    if (
+      await rerunTaskButton
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      const clicked = await clickActionButton(rerunTaskButton.first());
+      if (!clicked) {
+        await page.waitForTimeout(250);
+        continue;
+      }
+
       return;
     }
 
-    if (await runNowButton.isVisible().catch(() => false)) {
-      await runNowButton.click();
+    if (
+      await runNowButton
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      const clicked = await clickActionButton(runNowButton.first());
+      if (!clicked) {
+        await page.waitForTimeout(250);
+        continue;
+      }
+
       return;
     }
 
@@ -541,6 +581,17 @@ export async function clickRunButton(page: Page): Promise<void> {
       .map((button) => button.toString())
       .join(", ")}`,
   );
+}
+
+async function clickActionButton(button: Locator): Promise<boolean> {
+  try {
+    await expect(button).toBeVisible({ timeout: 2000 });
+    await expect(button).toBeEnabled({ timeout: 2000 });
+    await button.click({ timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function clickStartOrSimulateTask(

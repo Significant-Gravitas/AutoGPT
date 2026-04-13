@@ -56,6 +56,8 @@ export const SEEDED_AUTH_STATE_ACCOUNT_KEYS = [
   "smokeLibrary",
   "smokeMarketplace",
   "smokeSettings",
+  "parallelA",
+  "parallelB",
 ] as const;
 
 export const AUTH_DIRECTORY = path.resolve(process.cwd(), ".auth");
@@ -69,6 +71,8 @@ export const E2E_AUTH_STATES = {
   library: getAuthStatePath("smokeLibrary"),
   marketplace: getAuthStatePath("smokeMarketplace"),
   settings: getAuthStatePath("smokeSettings"),
+  parallelA: getAuthStatePath("parallelA"),
+  parallelB: getAuthStatePath("parallelB"),
 } as const;
 
 export const SMOKE_AUTH_STATES = E2E_AUTH_STATES;

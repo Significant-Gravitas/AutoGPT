@@ -12,7 +12,6 @@ import {
 } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.library });
-test.describe.configure({ mode: "serial" });
 
 const TEST_AGENT_PATH = path.resolve(__dirname, "assets", "testing_agent.json");
 const CALCULATOR_BLOCK_ID = "b1ab9b19-67a6-406d-abf5-2dba76d00c79";
