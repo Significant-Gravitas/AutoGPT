@@ -310,18 +310,6 @@ services:
         condition: service_completed_successfully
       database_manager:
         condition: service_started
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python3.13",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:8003/health_check')",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 24
-      start_period: 10s
     <<: *backend-env-files
     environment:
       <<: *backend-env
