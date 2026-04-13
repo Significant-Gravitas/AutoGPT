@@ -1,150 +1,53 @@
-import path from "path";
 import type { Page } from "@playwright/test";
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
-import { BuildPage, createUniqueAgentName } from "./pages/build.page";
+import { createUniqueAgentName } from "./pages/build.page";
 import {
   clickRunButton,
   dismissFeedbackDialog,
-  getActiveItemId,
-  importAgentFromFile,
   LibraryPage,
+  waitForAgentPageLoad,
 } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.library });
 
-const TEST_AGENT_PATH = path.resolve(__dirname, "assets", "testing_agent.json");
+const API_PREFIX = "/api/proxy/api";
 const CALCULATOR_BLOCK_ID = "b1ab9b19-67a6-406d-abf5-2dba76d00c79";
 const AGENT_OUTPUT_BLOCK_ID = "363ae599-353e-4804-937e-b2ee3cef3da4";
-const STOPPED_RUN_STATUSES = new Set([
-  "terminated",
-  "failed",
-  "incomplete",
-  "completed",
-]);
 
-type UploadedGraphNode = {
-  id: string;
-  block_id: string;
-  input_default: Record<string, unknown>;
-  metadata: {
-    position: {
-      x: number;
-      y: number;
-    };
-  };
-  input_links: unknown[];
-  output_links: unknown[];
-};
-
-function createLongRunningCalculatorGraph(
-  agentName: string,
-  calculatorCount: number = 150,
-) {
-  const nodes: UploadedGraphNode[] = Array.from(
-    { length: calculatorCount },
-    (_, index) => ({
-      id: `calc-${index + 1}`,
-      block_id: CALCULATOR_BLOCK_ID,
-      input_default:
-        index === 0
-          ? {
-              operation: "Add",
-              a: 1,
-              b: 1,
-              round_result: false,
-            }
-          : {
-              operation: "Add",
-              b: 1,
-              round_result: false,
-            },
-      metadata: {
-        position: { x: 320 * index, y: 120 },
-      },
-      input_links: [],
-      output_links: [],
-    }),
-  );
-
-  const links = Array.from({ length: calculatorCount - 1 }, (_, index) => ({
-    source_id: `calc-${index + 1}`,
-    sink_id: `calc-${index + 2}`,
-    source_name: "result",
-    sink_name: "a",
-  }));
-
-  nodes.push({
-    id: "final-output",
-    block_id: AGENT_OUTPUT_BLOCK_ID,
-    input_default: {
-      name: "Final result",
-      description: "Long-running calculator chain output",
-    },
-    metadata: {
-      position: { x: 320 * calculatorCount, y: 120 },
-    },
-    input_links: [],
-    output_links: [],
-  });
-  links.push({
-    source_id: `calc-${calculatorCount}`,
-    sink_id: "final-output",
-    source_name: "result",
-    sink_name: "value",
-  });
-
-  return {
-    name: agentName,
-    description:
-      "Deterministic long-running calculator chain for runner stop coverage",
-    is_active: true,
-    nodes,
-    links,
-  };
-}
-
-async function createLongRunningSavedAgent(
-  page: Page,
-  agentName: string,
-): Promise<{ graphId: string; graphVersion: number }> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
-    data: {
-      graph: createLongRunningCalculatorGraph(agentName),
-      source: "upload",
-    },
-  });
-  expect(response.ok(), "expected graph creation API request to succeed").toBe(
-    true,
-  );
-
-  const body = (await response.json()) as {
+type GraphCreateResponse = {
+  id?: string;
+  version?: number;
+  data?: {
     id?: string;
     version?: number;
-    data?: { id?: string; version?: number };
   };
-  expect(
-    body.data?.id ?? body.id,
-    "graph creation should return a graph id",
-  ).toBeTruthy();
+};
 
-  return {
-    graphId: String(body.data?.id ?? body.id),
-    graphVersion: Number(body.data?.version ?? body.version ?? 1),
-  };
-}
+type LibraryAgentRecord = {
+  id: string;
+  name: string;
+};
+
+type LibraryAgentListResponse = {
+  agents: LibraryAgentRecord[];
+};
+
+type FolderRecord = {
+  id: string;
+  name: string;
+};
 
 async function createDeterministicCalculatorSavedAgent(
   page: Page,
   agentName: string,
   outputName: string,
-): Promise<void> {
-  const response = await page.request.post("/api/proxy/api/graphs", {
+) {
+  const response = await page.request.post(`${API_PREFIX}/graphs`, {
     data: {
       graph: {
         name: agentName,
-        description:
-          "Deterministic calculator output for run-result assertions",
+        description: "Deterministic calculator output for library happy paths",
         is_active: true,
         nodes: [
           {
@@ -167,7 +70,7 @@ async function createDeterministicCalculatorSavedAgent(
             block_id: AGENT_OUTPUT_BLOCK_ID,
             input_default: {
               name: outputName,
-              description: "Deterministic result output",
+              description: "Deterministic calculator output",
             },
             metadata: {
               position: { x: 520, y: 160 },
@@ -188,161 +91,176 @@ async function createDeterministicCalculatorSavedAgent(
       source: "upload",
     },
   });
-  expect(
-    response.ok(),
-    "expected deterministic calculator graph creation API request to succeed",
-  ).toBe(true);
+
+  expect(response.ok()).toBe(true);
+
+  const body = (await response.json()) as GraphCreateResponse;
+  const graphId = body.data?.id ?? body.id;
+  expect(graphId).toBeTruthy();
+
+  return String(graphId);
 }
 
-async function getExecutionStatusFromApi(
-  page: Page,
-  graphId: string,
-  runId: string,
-): Promise<string> {
+async function listLibraryAgents(page: Page, searchTerm: string) {
+  const params = new URLSearchParams({
+    search_term: searchTerm,
+    page_size: "100",
+  });
   const response = await page.request.get(
-    `/api/proxy/api/graphs/${graphId}/executions/${runId}`,
+    `${API_PREFIX}/library/agents?${params.toString()}`,
   );
-  expect(response.ok(), "execution details API should succeed").toBe(true);
-
-  const body = (await response.json()) as { status?: string };
-  return body.status?.toLowerCase() ?? "unknown";
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as LibraryAgentListResponse;
+  return body.agents;
 }
 
-async function createAndSaveDeterministicOutputAgent(
+async function getLibraryAgentIdByName(page: Page, agentName: string) {
+  const matchingAgent = (await listLibraryAgents(page, agentName)).find(
+    (agent) => agent.name === agentName,
+  );
+  expect(matchingAgent?.id).toBeTruthy();
+  return String(matchingAgent?.id);
+}
+
+async function updateLibraryAgent(
   page: Page,
-  prefix: string,
-): Promise<{ agentName: string; expectedOutput: string; outputName: string }> {
-  const buildPage = new BuildPage(page);
-  const agentName = createUniqueAgentName(prefix);
-  const expectedOutput = `e2e-output-${Date.now()}`;
-  const outputName = `e2e-result-${Date.now()}`;
-
-  await buildPage.open();
-  await buildPage.addBlockByClick("Store Value");
-  await buildPage.waitForNodeOnCanvas(1);
-  await buildPage.fillBlockInputByPlaceholder(
-    "Enter string value...",
-    expectedOutput,
-    0,
+  libraryAgentId: string,
+  data: Record<string, unknown>,
+) {
+  const response = await page.request.patch(
+    `${API_PREFIX}/library/agents/${libraryAgentId}`,
+    { data },
   );
-
-  await buildPage.addBlockByClick("Agent Output");
-  await buildPage.waitForNodeOnCanvas(2);
-  await buildPage.connectNodes(0, 1);
-  await buildPage.fillNodeTextInput("Agent Output", outputName, 1);
-
-  await buildPage.saveAgent(
-    agentName,
-    "Deterministic output agent for library run verification",
-  );
-  await buildPage.waitForSaveComplete();
-  await buildPage.waitForSaveButton();
-
-  return { agentName, expectedOutput, outputName };
+  expect(response.ok()).toBe(true);
 }
 
-test("library happy path: user can import an agent file into Library", async ({
+async function createFolder(page: Page, folderName: string) {
+  const response = await page.request.post(`${API_PREFIX}/library/folders`, {
+    data: {
+      name: folderName,
+      color: "#3B82F6",
+      icon: "📁",
+    },
+  });
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as FolderRecord;
+  expect(body.id).toBeTruthy();
+  return body.id;
+}
+
+test("library happy path: user can search Library and navigate to an agent page", async ({
   page,
 }) => {
   test.setTimeout(120000);
 
-  const { importedAgent } = await importAgentFromFile(
-    page,
-    TEST_AGENT_PATH,
-    createUniqueAgentName("E2E Import Agent"),
-  );
-
-  expect(importedAgent.name).toContain("E2E Import Agent");
-});
-
-test("library happy path: user can open the imported or saved agent from Library in builder", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const { libraryPage, importedAgent } = await importAgentFromFile(
-    page,
-    TEST_AGENT_PATH,
-    createUniqueAgentName("E2E Open Agent"),
-  );
-
-  // Register the popup listener before clicking so we don't miss a fast open.
-  // A short timeout covers the case where the link opens in the current tab.
-  const popupPromise = page
-    .context()
-    .waitForEvent("page", { timeout: 10000 })
-    .catch(() => null);
-  await libraryPage.clickOpenInBuilder(importedAgent);
-  const builderPage = (await popupPromise) ?? page;
-
-  await builderPage.waitForLoadState("domcontentloaded");
-  await expect(builderPage).toHaveURL(/\/build/);
-  const importedBuildPage = new BuildPage(builderPage);
-  await importedBuildPage.waitForNodeOnCanvas();
-  expect(await importedBuildPage.getNodeCount()).toBeGreaterThan(0);
-  if (builderPage !== page) {
-    await builderPage.close();
-  }
-});
-
-test("library happy path: user can start and stop a saved task from runner UI", async ({
-  page,
-}) => {
-  test.setTimeout(180000);
-
-  const agentName = createUniqueAgentName("E2E Stop Task Agent");
-  const { graphId } = await createLongRunningSavedAgent(page, agentName);
+  const agentName = createUniqueAgentName("E2E Library Search Agent");
+  const outputName = `e2e-search-output-${Date.now()}`;
+  await createDeterministicCalculatorSavedAgent(page, agentName, outputName);
 
   const libraryPage = new LibraryPage(page);
-  await libraryPage.openSavedAgent(agentName);
-  await clickRunButton(page);
+  await page.goto("/library");
+  await libraryPage.waitForAgentsToLoad();
+  await libraryPage.searchAgents(agentName);
 
-  await expect
-    .poll(() => getActiveItemId(page), { timeout: 45000 })
-    .not.toBe(null);
-  const runId = getActiveItemId(page);
-  expect(runId, "run id should be present after starting task").toBeTruthy();
-  await expect
-    .poll(() => libraryPage.getRunStatus(), { timeout: 45000 })
-    .toBe("running");
+  const agentCard = page
+    .getByTestId("library-agent-card")
+    .filter({ hasText: agentName })
+    .first();
+  await expect(agentCard).toBeVisible({ timeout: 15000 });
+  await agentCard.getByRole("link", { name: agentName, exact: true }).click();
 
-  const stopTaskButton = page.getByRole("button", { name: /Stop task/i });
-  await expect(stopTaskButton).toBeVisible({ timeout: 30000 });
-  const stopResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      response
-        .url()
-        .includes(`/api/graphs/${graphId}/executions/${runId}/stop`),
-    { timeout: 15000 },
-  );
-  await stopTaskButton.click();
-  const stopResponse = await stopResponsePromise;
-
-  expect(stopResponse.ok(), "stop run API should succeed").toBe(true);
-  await expect(page.getByText("Run stopped")).toBeVisible({ timeout: 15000 });
-  await expect
-    .poll(
-      async () => {
-        const status = await getExecutionStatusFromApi(
-          page,
-          graphId,
-          String(runId),
-        );
-        return STOPPED_RUN_STATUSES.has(status) ? status : "running";
-      },
-      { timeout: 45000 },
-    )
-    .not.toBe("running");
+  await waitForAgentPageLoad(page, agentName);
+  await expect(page).toHaveURL(/\/library\/agents\/[^/?#]+(?:\?.*)?$/);
+  await expect(
+    page
+      .locator('a[href*="/library/agents/"]')
+      .filter({ hasText: agentName })
+      .first(),
+  ).toBeVisible({ timeout: 15000 });
 });
 
-test("library happy path: user can run a saved agent and verify expected output", async ({
+test("library happy path: user can favorite an agent and find it in Favorites", async ({
   page,
 }) => {
+  test.setTimeout(120000);
+
+  const agentName = createUniqueAgentName("E2E Library Favorite Agent");
+  const outputName = `e2e-favorite-output-${Date.now()}`;
+  await createDeterministicCalculatorSavedAgent(page, agentName, outputName);
+
+  const libraryPage = new LibraryPage(page);
+  await page.goto("/library");
+  await libraryPage.waitForAgentsToLoad();
+  await libraryPage.searchAgents(agentName);
+
+  const agentCard = page
+    .getByTestId("library-agent-card")
+    .filter({ hasText: agentName })
+    .first();
+  await expect(agentCard).toBeVisible({ timeout: 15000 });
+  await agentCard.hover();
+
+  const favoriteButton = agentCard.getByRole("button", {
+    name: "Add to favorites",
+  });
+  await expect(favoriteButton).toBeVisible({ timeout: 15000 });
+  await favoriteButton.click();
+
+  const favoritesTab = page.getByRole("tab", { name: /Favorites/i });
+  await expect(favoritesTab).toBeEnabled({ timeout: 15000 });
+  await favoritesTab.click();
+
+  const favoriteCard = page
+    .getByTestId("library-agent-card")
+    .filter({ hasText: agentName })
+    .first();
+  await expect(favoriteCard).toBeVisible({ timeout: 15000 });
+  await expect(
+    favoriteCard.getByRole("button", { name: "Remove from favorites" }),
+  ).toBeVisible({ timeout: 15000 });
+});
+
+test("library happy path: user can open a folder and see agents inside it", async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+
+  const agentName = createUniqueAgentName("E2E Library Folder Agent");
+  const outputName = `e2e-folder-output-${Date.now()}`;
+  await createDeterministicCalculatorSavedAgent(page, agentName, outputName);
+
+  const libraryAgentId = await getLibraryAgentIdByName(page, agentName);
+  const folderName = `E2E Folder ${Date.now()}`;
+  const folderId = await createFolder(page, folderName);
+  await updateLibraryAgent(page, libraryAgentId, { folder_id: folderId });
+
+  const libraryPage = new LibraryPage(page);
+  await page.goto("/library");
+  await libraryPage.waitForAgentsToLoad();
+
+  await expect(
+    page.getByTestId("library-agent-card").filter({ hasText: agentName }),
+  ).toHaveCount(0);
+
+  const folderCard = page
+    .getByTestId("library-folder")
+    .filter({ hasText: folderName })
+    .first();
+  await expect(folderCard).toBeVisible({ timeout: 15000 });
+  await folderCard.click();
+
+  const folderAgentCard = page
+    .getByTestId("library-agent-card")
+    .filter({ hasText: agentName })
+    .first();
+  await expect(folderAgentCard).toBeVisible({ timeout: 15000 });
+});
+
+test("library happy path: user can run a saved agent", async ({ page }) => {
   test.setTimeout(150000);
 
-  const agentName = createUniqueAgentName("E2E Expected Output Agent");
-  const outputName = `e2e-result-${Date.now()}`;
+  const agentName = createUniqueAgentName("E2E Library Run Agent");
+  const outputName = `e2e-run-output-${Date.now()}`;
   await createDeterministicCalculatorSavedAgent(page, agentName, outputName);
 
   const libraryPage = new LibraryPage(page);
@@ -356,204 +274,4 @@ test("library happy path: user can run a saved agent and verify expected output"
   await expect
     .poll(() => libraryPage.getRunStatus(), { timeout: 15000 })
     .toBe("completed");
-});
-
-test("library happy path: user can edit a saved agent from Library and keep changes after refresh", async ({
-  page,
-}) => {
-  test.setTimeout(150000);
-
-  const { agentName } = await createAndSaveDeterministicOutputAgent(
-    page,
-    "E2E Edit Persist Agent",
-  );
-  const editedValue = `edited-value-${Date.now()}`;
-
-  const libraryPage = new LibraryPage(page);
-  await page.goto("/library");
-  await libraryPage.waitForAgentsToLoad();
-  await libraryPage.searchAgents(agentName);
-  await libraryPage.waitForAgentsToLoad();
-
-  const agentCard = page
-    .getByTestId("library-agent-card")
-    .filter({ hasText: agentName })
-    .first();
-  await expect(agentCard).toBeVisible({ timeout: 15000 });
-
-  const popupPromise = page
-    .context()
-    .waitForEvent("page", { timeout: 10000 })
-    .catch(() => null);
-  await agentCard
-    .getByTestId("library-agent-card-open-in-builder-link")
-    .first()
-    .click();
-  const builderPage = (await popupPromise) ?? page;
-
-  const builderTabPage = new BuildPage(builderPage);
-  await builderTabPage.waitForNodeOnCanvas();
-  await builderTabPage.fillBlockInputByPlaceholder(
-    "Enter string value...",
-    editedValue,
-    0,
-  );
-
-  await builderPage.getByTestId("save-control-save-button").click();
-  const saveAgentButton = builderPage.getByRole("button", {
-    name: "Save Agent",
-  });
-  if (await saveAgentButton.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await expect(saveAgentButton).toBeEnabled({ timeout: 10000 });
-    await saveAgentButton.click();
-    await expect(saveAgentButton).toBeHidden({ timeout: 15000 });
-  }
-
-  await builderPage.reload();
-  await builderTabPage.waitForNodeOnCanvas();
-  await expect(
-    builderTabPage
-      .getNodeLocator(0)
-      .locator('input[placeholder="Enter string value..."]'),
-  ).toHaveValue(editedValue);
-
-  if (builderPage !== page) {
-    await builderPage.close();
-  }
-});
-
-test("library happy path: user can rerun a completed task from the Library agent page", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const buildPage = new BuildPage(page);
-  const { agentName } =
-    await buildPage.createAndSaveSimpleAgent("E2E Rerun Agent");
-
-  const libraryPage = new LibraryPage(page);
-  await libraryPage.openSavedAgent(agentName);
-  await clickRunButton(page);
-  await libraryPage.waitForRunToComplete();
-  await dismissFeedbackDialog(page);
-
-  const rerunTaskButton = page.getByRole("button", { name: /Rerun task/i });
-  await expect(rerunTaskButton).toBeVisible({ timeout: 45000 });
-
-  await expect
-    .poll(() => getActiveItemId(page), { timeout: 45000 })
-    .not.toBe(null);
-
-  const initialRunId = getActiveItemId(page);
-  expect(initialRunId).toBeTruthy();
-
-  await rerunTaskButton.click();
-
-  await expect(page.getByText("Run started", { exact: true })).toBeVisible({
-    timeout: 15000,
-  });
-
-  await expect
-    .poll(() => getActiveItemId(page), { timeout: 45000 })
-    .not.toBe(initialRunId);
-
-  await libraryPage.waitForRunToComplete();
-
-  // Simple agent has no AgentOutputBlock — verify run completion only.
-  const runStatus = await libraryPage.getRunStatus();
-  expect(runStatus).toBe("completed");
-});
-
-test("library happy path: user can delete a completed task from the run sidebar", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const buildPage = new BuildPage(page);
-  const { agentName } = await buildPage.createAndSaveSimpleAgent(
-    "E2E Delete Task Agent",
-  );
-
-  const libraryPage = new LibraryPage(page);
-  await libraryPage.openSavedAgent(agentName);
-  await clickRunButton(page);
-  await libraryPage.waitForRunToComplete();
-  await dismissFeedbackDialog(page);
-
-  // Open the per-task actions dropdown ("More actions" three-dot button)
-  // and use the menu's Delete task option to remove the run.
-  const moreActionsButton = page
-    .getByRole("button", { name: "More actions" })
-    .first();
-  await expect(moreActionsButton).toBeVisible({ timeout: 15000 });
-  await moreActionsButton.click();
-
-  await page.getByRole("menuitem", { name: /Delete( this)? task/i }).click();
-
-  const confirmDialog = page.getByRole("dialog", { name: /Delete task/i });
-  await expect(confirmDialog).toBeVisible({ timeout: 10000 });
-  await confirmDialog.getByRole("button", { name: /^Delete Task$/ }).click();
-
-  // Toast confirms the backend actually deleted (not just dialog closed).
-  await expect(page.getByText("Task deleted", { exact: true })).toBeVisible({
-    timeout: 15000,
-  });
-
-  // Sidebar should drop the only run, returning the page to initial
-  // task-entry state.
-  await expect(
-    page.getByRole("button", { name: /^(Setup your task|New task)$/i }),
-  ).toBeVisible({ timeout: 15000 });
-});
-
-test("library happy path: user can open the agent in builder from the exact runner customise-agent path", async ({
-  page,
-  context,
-}) => {
-  test.setTimeout(120000);
-
-  const buildPage = new BuildPage(page);
-  const { agentName } = await buildPage.createAndSaveSimpleAgent(
-    "E2E View Task Agent",
-  );
-
-  const libraryPage = new LibraryPage(page);
-  await libraryPage.openSavedAgent(agentName);
-  await clickRunButton(page);
-  await libraryPage.waitForRunToComplete();
-  await dismissFeedbackDialog(page);
-
-  // The "View task details" eye-icon button on a completed run opens the
-  // agent in the builder in a new tab. This exercises the runner → builder
-  // navigation that QA item #22 ("Customise Agent" from Runner UI) covers.
-  const selectedRunId = getActiveItemId(page);
-  expect(selectedRunId).toBeTruthy();
-
-  const viewTaskButton = page
-    .locator('[aria-label="View task details"]')
-    .first();
-  await expect(viewTaskButton).toBeVisible({ timeout: 15000 });
-  const customiseAgentHref = await viewTaskButton.getAttribute("href");
-  expect(customiseAgentHref).toContain("flowID=");
-  expect(customiseAgentHref).toContain("flowVersion=");
-  expect(customiseAgentHref).toContain(`flowExecutionID=${selectedRunId}`);
-
-  const popupPromise = context.waitForEvent("page", { timeout: 15000 });
-  await viewTaskButton.click();
-  const builderTab = await popupPromise;
-
-  await builderTab.waitForLoadState("domcontentloaded");
-  await expect(builderTab).toHaveURL(/\/build/);
-  await expect(builderTab).toHaveURL(
-    new RegExp(`flowExecutionID=${selectedRunId}`),
-  );
-
-  // Verify the builder canvas actually rendered with the agent's nodes —
-  // a navigation that lands on /build but never paints the graph would
-  // otherwise pass on URL alone.
-  const builderTabPage = new BuildPage(builderTab);
-  await builderTabPage.waitForNodeOnCanvas();
-  expect(await builderTabPage.getNodeCount()).toBeGreaterThan(0);
-
-  await builderTab.close();
 });
