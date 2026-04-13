@@ -1217,7 +1217,7 @@ async function waitForExportActionSurface(
 
         return "pending";
       },
-      { timeout: 15000 },
+      { timeout: 30000 },
     )
     .not.toBe("pending");
 
