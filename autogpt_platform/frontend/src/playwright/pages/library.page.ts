@@ -686,7 +686,10 @@ export async function runAgent(page: Page): Promise<void> {
   await clickRunButton(page);
 }
 
-export async function waitForAgentPageLoad(page: Page): Promise<void> {
+export async function waitForAgentPageLoad(
+  page: Page,
+  agentName?: string,
+): Promise<void> {
   await page.waitForURL(/.*\/library\/agents\/[^/]+/);
   // Wait for the primary content area to be present so the page has settled
   // into its final state (empty view vs sidebar view)
@@ -720,24 +723,47 @@ export async function waitForAgentPageLoad(page: Page): Promise<void> {
     );
   }
 
-  await waitForAgentActionSurface(page);
+  await waitForAgentDetailShell(page, agentName);
 }
 
-async function getVisibleAgentActionSurface(page: Page): Promise<string> {
+async function waitForLibraryListToLeave(page: Page): Promise<void> {
+  const librarySearch = page.getByTestId("library-textbox");
+  await expect
+    .poll(
+      async () => {
+        const count = await librarySearch.count();
+        if (count === 0) {
+          return "gone";
+        }
+
+        if (
+          !(await librarySearch
+            .first()
+            .isVisible()
+            .catch(() => false))
+        ) {
+          return "gone";
+        }
+
+        return "visible";
+      },
+      { timeout: 15000 },
+    )
+    .toBe("gone");
+}
+
+async function getVisibleAgentDetailSurface(page: Page): Promise<string> {
   const visibleSurfaces: Array<[string, Locator]> = [
+    [
+      "about-agent",
+      page.getByText("About this agent", { exact: true }).first(),
+    ],
     [
       "setup-task",
       page.getByRole("button", { name: /^Setup your task$/i }).first(),
     ],
     ["new-task", page.getByRole("button", { name: /^New task$/i }).first()],
-    [
-      "export",
-      page.getByRole("button", { name: "Export agent to file" }).first(),
-    ],
-    [
-      "more-actions",
-      page.getByRole("button", { name: "More actions" }).first(),
-    ],
+    ["scheduled-tab", page.getByRole("tab", { name: /^Scheduled$/i }).first()],
   ];
 
   for (const [surface, locator] of visibleSurfaces) {
@@ -749,9 +775,29 @@ async function getVisibleAgentActionSurface(page: Page): Promise<string> {
   return "pending";
 }
 
-async function waitForAgentActionSurface(page: Page): Promise<void> {
+async function waitForAgentDetailShell(
+  page: Page,
+  agentName?: string,
+): Promise<void> {
+  await waitForLibraryListToLeave(page);
+
+  await expect(
+    page.getByRole("link", { name: "My Library" }).first(),
+  ).toBeVisible({
+    timeout: 15000,
+  });
+
+  if (agentName) {
+    await expect(
+      page
+        .locator(`a[href*="/library/agents/"]`)
+        .filter({ hasText: agentName })
+        .first(),
+    ).toBeVisible({ timeout: 15000 });
+  }
+
   await expect
-    .poll(() => getVisibleAgentActionSurface(page), { timeout: 15000 })
+    .poll(() => getVisibleAgentDetailSurface(page), { timeout: 15000 })
     .not.toBe("pending");
 }
 
@@ -1088,69 +1134,20 @@ export async function openSavedAgentInLibrary(
   await libraryPage.searchAgents(agentName);
   await libraryPage.waitForAgentsToLoad();
   await navigateToAgentByName(page, agentName);
-  await waitForAgentPageLoad(page);
+  await waitForAgentPageLoad(page, agentName);
 }
 
-async function getVisibleExportControl(page: Page): Promise<string> {
-  const directExportButton = page.getByRole("button", {
-    name: "Export agent to file",
-  });
-  if (await directExportButton.isVisible().catch(() => false)) {
-    return "direct";
-  }
-
-  const moreActionsButtons = page.getByRole("button", { name: "More actions" });
-  const moreActionsCount = await moreActionsButtons.count();
-  for (let index = 0; index < moreActionsCount; index++) {
-    if (
-      await moreActionsButtons
-        .nth(index)
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return `menu:${index}`;
-    }
-  }
-
-  return "pending";
-}
-
-async function waitForExportControl(page: Page): Promise<string> {
-  let exportControl = "pending";
-
-  await expect
-    .poll(
-      async () => {
-        exportControl = await getVisibleExportControl(page);
-        return exportControl;
-      },
-      { timeout: 15000 },
-    )
-    .not.toBe("pending");
-
-  return exportControl;
+async function waitForDirectExportButton(page: Page): Promise<Locator> {
+  const directExportButton = page
+    .getByRole("button", { name: "Export agent to file" })
+    .first();
+  await expect(directExportButton).toBeVisible({ timeout: 15000 });
+  return directExportButton;
 }
 
 export async function clickExportAgent(page: Page): Promise<void> {
-  const exportControl = await waitForExportControl(page);
-  if (exportControl === "direct") {
-    await page
-      .getByRole("button", { name: "Export agent to file" })
-      .click({ timeout: 15000 });
-    return;
-  }
-
-  const moreActionsIndex = Number(exportControl.replace("menu:", ""));
-  await page
-    .getByRole("button", { name: "More actions" })
-    .nth(moreActionsIndex)
-    .click();
-
-  const dropdownExportButton = page.getByRole("menuitem", {
-    name: "Export agent to file",
-  });
-  await dropdownExportButton.waitFor({ state: "visible", timeout: 15000 });
-  await dropdownExportButton.click();
+  const exportButton = await waitForDirectExportButton(page);
+  await exportButton.click({ timeout: 15000 });
 }
 
 // The run status is rendered by RunStatusBadge as lowercase text inside a

@@ -247,6 +247,12 @@ jobs:
           docker compose -f ../docker-compose.resolved.yml up -d --no-build
           echo "Waiting for rest_server to be ready..."
           timeout 60 sh -c 'until curl -f http://localhost:8006/health 2>/dev/null; do sleep 2; done' || echo "Rest server health check timeout, continuing..."
+          echo "Waiting for scheduler_server to be ready..."
+          timeout 120 sh -c 'until curl -fsS http://localhost:8003/health_check >/dev/null 2>&1; do sleep 2; done' || {
+            echo "❌ scheduler_server health check timeout"
+            docker compose -f ../docker-compose.resolved.yml logs --tail=200 scheduler_server
+            exit 1
+          }
         env:
           NEXT_PUBLIC_PW_TEST: true
 
