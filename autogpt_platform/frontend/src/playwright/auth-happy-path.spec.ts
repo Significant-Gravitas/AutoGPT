@@ -1,6 +1,5 @@
 import { expect, test } from "./coverage-fixture";
 import { getSeededTestUser } from "./credentials/accounts";
-import { COOKIE_CONSENT_STORAGE_STATE } from "./credentials/storage-state";
 import { BuildPage } from "./pages/build.page";
 import { LoginPage } from "./pages/login.page";
 import {
@@ -8,8 +7,6 @@ import {
   skipOnboardingIfPresent,
 } from "./utils/onboarding";
 import { signupTestUser } from "./utils/signup";
-
-test.use({ storageState: COOKIE_CONSENT_STORAGE_STATE });
 
 test("auth happy path: user can sign up with a fresh account", async ({
   page,

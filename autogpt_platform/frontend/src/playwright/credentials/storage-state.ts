@@ -21,5 +21,3 @@ export function buildCookieConsentStorageState(
     ],
   };
 }
-
-export const COOKIE_CONSENT_STORAGE_STATE = buildCookieConsentStorageState();
