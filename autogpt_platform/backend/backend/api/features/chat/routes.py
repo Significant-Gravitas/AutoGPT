@@ -1114,6 +1114,10 @@ async def stream_chat_post(
     "/sessions/{session_id}/messages/pending",
     response_model=QueuePendingMessageResponse,
     status_code=202,
+    responses={
+        404: {"description": "Session not found or access denied"},
+        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+    },
 )
 async def queue_pending_message(
     session_id: str,
@@ -1182,7 +1186,9 @@ async def queue_pending_message(
     except HTTPException:
         raise
     except Exception:
-        logger.warning("queue_pending_message: rate-limit check failed, failing open")  # non-fatal
+        logger.warning(
+            "queue_pending_message: rate-limit check failed, failing open"
+        )  # non-fatal
 
     # Sanitise file IDs to the user's own workspace so injection doesn't
     # surface other users' files.  _resolve_workspace_files handles UUID
