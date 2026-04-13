@@ -274,19 +274,7 @@ test("library happy path: user can start and stop a saved task from runner UI", 
 
   const libraryPage = new LibraryPage(page);
   await libraryPage.openSavedAgent(agentName);
-
-  const setupTaskButton = page.getByRole("button", {
-    name: /Setup your task/i,
-  });
-  await expect(setupTaskButton).toBeVisible({ timeout: 15000 });
-  await setupTaskButton.click();
-
-  const startTaskButton = page
-    .getByRole("button", { name: /Start Task/i })
-    .first();
-  await expect(startTaskButton).toBeVisible({ timeout: 15000 });
-  await expect(startTaskButton).toBeEnabled({ timeout: 15000 });
-  await startTaskButton.click();
+  await clickRunButton(page);
 
   await expect
     .poll(() => getActiveItemId(page), { timeout: 45000 })
@@ -320,17 +308,7 @@ test("library happy path: user can run a saved agent and verify expected output"
   await dismissFeedbackDialog(page);
 
   await libraryPage.assertRunProducedOutput();
-  await expect(
-    page.getByText(outputName, { exact: false }),
-    `run output should include output key "${outputName}"`,
-  ).toBeVisible({ timeout: 15000 });
-  const outputValue = page
-    .getByText(outputName, { exact: false })
-    .locator("xpath=following-sibling::*[1]");
-  await expect(
-    outputValue,
-    `run output value for "${outputName}" should be 2`,
-  ).toHaveText(/^2(?:\.0+)?$/, { timeout: 15000 });
+  await libraryPage.assertRunOutputValue(outputName, /^2(?:\.0+)?$/);
   await expect
     .poll(() => libraryPage.getRunStatus(), { timeout: 15000 })
     .toBe("completed");
@@ -477,10 +455,10 @@ test("library happy path: user can delete a completed task from the run sidebar"
     timeout: 15000,
   });
 
-  // Sidebar should drop the only run, returning the page to the empty
-  // "Setup your task" state.
+  // Sidebar should drop the only run, returning the page to initial
+  // task-entry state.
   await expect(
-    page.getByRole("button", { name: /Setup your task/i }),
+    page.getByRole("button", { name: /^(Setup your task|New task)$/i }),
   ).toBeVisible({ timeout: 15000 });
 });
 

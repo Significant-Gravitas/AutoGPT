@@ -3,8 +3,7 @@ import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
-const DETERMINISTIC_MARKETPLACE_AGENT_PATH =
-  "/marketplace/agent/e2e-marketplace/e2e-calculator-agent";
+const DETERMINISTIC_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent";
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -148,16 +147,29 @@ export class MarketplacePage extends BasePage {
   // --- Happy-path flows shared across PR smoke specs ---
 
   async openRunnableAgent(): Promise<{ path: string }> {
-    await this.page.goto(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
-    await expect(this.page).toHaveURL(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
+    await this.page.goto("/marketplace");
+    const searchInput = this.page.getByTestId("store-search-input");
+    await expect(searchInput).toBeVisible({ timeout: 15000 });
+    await searchInput.fill(DETERMINISTIC_MARKETPLACE_AGENT_NAME);
+    await searchInput.press("Enter");
+
+    await this.waitForSearchResults();
+
+    const agentCard = this.page.getByRole("button", {
+      name: new RegExp(`^${DETERMINISTIC_MARKETPLACE_AGENT_NAME} agent card$`),
+    });
+    await expect(agentCard).toBeVisible({ timeout: 15000 });
+    await agentCard.click();
+
+    await expect(this.page).toHaveURL(/\/marketplace\/agent\//);
     await expect(this.page.getByTestId("agent-title")).toContainText(
-      "E2E Calculator Agent",
+      DETERMINISTIC_MARKETPLACE_AGENT_NAME,
     );
     await expect(this.page.getByTestId("agent-add-library-button")).toBeVisible(
       { timeout: 10000 },
     );
 
-    return { path: DETERMINISTIC_MARKETPLACE_AGENT_PATH };
+    return { path: this.page.url() };
   }
 
   async openFeaturedAgent(): Promise<void> {
