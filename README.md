@@ -93,6 +93,31 @@ The AutoGPT frontend is where users interact with our powerful AI automation pla
 
    **Monitoring and Analytics:** Keep track of your agents' performance and gain insights to continually improve your automation processes.
 
+   **Personal Coding Agent:** A specialized, autonomous coding assistant integrated directly into the platform. It features a dedicated dashboard, task queue, and advanced developer tools.
+
+### 🤖 Personal Coding Agent
+
+The **Personal Coding Agent** is a powerful, autonomous developer assistant designed for complex software engineering tasks. It leverages a hybrid model architecture (Local Ollama + NVIDIA NIM) and persistent vector memory.
+
+#### Key Features:
+- **Hybrid Model Routing:** Automatically switches between **Standard Mode** (local Ollama for speed and privacy) and **Max Mode** (NVIDIA NIM for high-reasoning tasks) based on complexity.
+- **Persistent Vector Memory:** Cross-task memory using ChromaDB allows the agent to recall code snippets, decisions, and context across different sessions.
+- **Advanced Developer Tools:**
+  - **Self-Healing Code:** An autonomous write-test-fix loop that runs tests, detects failures, and iterates until the code passes.
+  - **Auto Git Integration:** Generates conventional commit messages from diffs and manages your repository automatically.
+  - **Codebase Indexing:** Full-context RAG (Retrieval-Augmented Generation) by indexing your entire local or remote repository.
+  - **Vision-to-Task:** Convert screenshots of UI bugs or design mockups directly into actionable coding tasks.
+- **Specialized Personas:** Choose from 9 pre-configured expert personas including Frontend, Backend, DevOps, Security Auditor, and more.
+- **Task Journal & Notifications:** A searchable history of all completed tasks with rich notifications for Discord and Slack.
+
+#### Getting Started with the Coding Agent:
+1. **Access the Dashboard:** Click on the "Coding Agent" link in the navigation bar.
+2. **Configure Models:** Set your local Ollama host and NVIDIA API keys in the settings.
+3. **Enqueue Tasks:** Use the dedicated input to add tasks to the priority queue.
+4. **Monitor Progress:** Watch the agent work through the queue and check the Task Journal for detailed execution logs.
+
+[Read the Architecture Guide](ARCHITECTURE.md) for a deep dive into the coding agent's 30+ features.
+
 [Read this guide](https://docs.agpt.co/platform/new_blocks/) to learn how to build your own custom blocks.
 
 ### 💽 AutoGPT Server
