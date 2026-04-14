@@ -43,6 +43,7 @@ describe("downloadArtifact", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("downloads file successfully on 200 response", async () => {

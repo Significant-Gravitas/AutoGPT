@@ -314,12 +314,10 @@ export function buildReactArtifactSrcDoc(
             moduleExports.App = executionResult.app;
           }
 
-          const Component = wrapWithProviders(
-            getRenderableCandidate(moduleExports),
-            moduleExports,
-          );
+          const RawComponent = getRenderableCandidate(moduleExports);
+          const componentExpectsProps = RawComponent.length > 0;
+          const Component = wrapWithProviders(RawComponent, moduleExports);
           const previewProps = getPreviewProps(moduleExports);
-          const componentExpectsProps = Component.length > 0;
 
           ReactDOM.createRoot(rootElement).render(
             React.createElement(

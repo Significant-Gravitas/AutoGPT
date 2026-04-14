@@ -247,8 +247,12 @@ function ArtifactRenderer({
 
   // CSV: pass with explicit metadata so CSVRenderer matches
   if (classification.type === "csv") {
+    const normalizedMime = artifact.mimeType
+      ?.toLowerCase()
+      .split(";")[0]
+      ?.trim();
     const csvMimeType =
-      artifact.mimeType?.toLowerCase() === "text/tab-separated-values" ||
+      normalizedMime === "text/tab-separated-values" ||
       artifact.title.toLowerCase().endsWith(".tsv")
         ? "text/tab-separated-values"
         : "text/csv";
