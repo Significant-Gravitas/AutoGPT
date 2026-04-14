@@ -2084,6 +2084,7 @@ async def stream_chat_completion_sdk(
     turn_cache_creation_tokens = 0
     turn_cost_usd: float | None = None
     graphiti_enabled = False
+    pre_attempt_msg_count = 0
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -2489,7 +2490,6 @@ async def stream_chat_completion_sdk(
         # ---------------------------------------------------------------
         # Retry loop: original → compacted → no transcript
         # ---------------------------------------------------------------
-        pre_attempt_msg_count = 0
         ended_with_stream_error = False
         attempts_exhausted = False
         transient_exhausted = False
