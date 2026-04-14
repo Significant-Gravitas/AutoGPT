@@ -115,7 +115,7 @@ _CACHE_READ_DISCOUNT: dict[str, float] = {
 # Populated lazily by _fetch_openrouter_pricing() and refreshed every hour.
 _OPENROUTER_PRICING_CACHE: dict[str, tuple[float, float]] = {}
 _OPENROUTER_PRICING_CACHE_TTL = 3600  # seconds
-_OPENROUTER_PRICING_CACHE_FETCHED_AT: float = 0.0
+_OPENROUTER_PRICING_CACHE_FETCHED_AT: float = float("-inf")
 
 
 async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float]]:
