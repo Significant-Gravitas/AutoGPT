@@ -2332,10 +2332,15 @@ async def stream_chat_completion_sdk(
                     sid,
                 )
 
-        # Use SystemPromptPreset for cross-user prompt caching (see _build_system_prompt_value).
+        # Use SystemPromptPreset for cross-user prompt caching.
+        # WORKAROUND: CLI 2.1.97 (sdk 0.1.58) exits code 1 when
+        # excludeDynamicSections=True is in the initialize request AND
+        # --resume is active.  Disable the preset on resumed turns.
+        # Turn 1 still gets the preset (no --resume).
+        _cross_user = config.claude_agent_cross_user_prompt_cache and not use_resume
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
-            cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+            cross_user_cache=_cross_user,
         )
 
         sdk_options_kwargs: dict[str, Any] = {
