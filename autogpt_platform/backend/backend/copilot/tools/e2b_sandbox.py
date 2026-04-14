@@ -246,10 +246,12 @@ async def get_or_create_sandbox(
             # from BaseException, not Exception, so it is not caught above.
             # Kill the sandbox if it was already created to avoid leaking it
             # (can happen when cancellation fires during _set_stored_sandbox_id).
-            with contextlib.suppress(Exception):
+            # Suppress BaseException (including a second CancelledError) so a
+            # re-entrant cancellation during cleanup cannot skip the redis.delete.
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await redis.delete(key)
             if sandbox is not None:
-                with contextlib.suppress(Exception):
+                with contextlib.suppress(Exception, asyncio.CancelledError):
                     await asyncio.wait_for(
                         sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
                     )
