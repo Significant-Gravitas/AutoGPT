@@ -95,7 +95,11 @@ test("builder happy path: user can export the created agent", async ({
   const libraryPage = new LibraryPage(page);
   await libraryPage.openSavedAgent(agentName);
 
-  await libraryPage.clickExportAgent();
+  const exportButton = page.getByRole("button", {
+    name: "Export agent to file",
+  });
+  await expect(exportButton.first()).toBeVisible({ timeout: 60000 });
+  await exportButton.first().click();
 
   await expect(page.getByText("Agent exported")).toBeVisible({
     timeout: 15000,
