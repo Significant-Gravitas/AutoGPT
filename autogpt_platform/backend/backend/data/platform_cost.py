@@ -139,6 +139,8 @@ class UserCostSummary(BaseModel):
     total_cost_microdollars: int
     total_input_tokens: int
     total_output_tokens: int
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
     request_count: int
 
 
@@ -265,38 +267,41 @@ async def get_platform_cost_dashboard(
     }
 
     # Run all four aggregation queries in parallel.
-    by_provider_groups, by_user_groups, total_user_groups, total_agg_groups = (
-        await asyncio.gather(
-            # (provider, trackingType, model) aggregation — no ORDER BY in ORM;
-            # sort by total cost descending in Python after fetch.
-            PrismaLog.prisma().group_by(
-                by=["provider", "trackingType", "model"],
-                where=where,
-                sum=sum_fields,
-                count=True,
-            ),
-            # userId aggregation — emails fetched separately below.
-            PrismaLog.prisma().group_by(
-                by=["userId"],
-                where=where,
-                sum=sum_fields,
-                count=True,
-            ),
-            # Distinct user count: group by userId, count groups.
-            PrismaLog.prisma().group_by(
-                by=["userId"],
-                where=where,
-                count=True,
-            ),
-            # Total aggregate: group by provider (no limit) to sum across all
-            # matching rows. Summed in Python to get grand totals.
-            PrismaLog.prisma().group_by(
-                by=["provider"],
-                where=where,
-                sum={"costMicrodollars": True},
-                count=True,
-            ),
-        )
+    (
+        by_provider_groups,
+        by_user_groups,
+        total_user_groups,
+        total_agg_groups,
+    ) = await asyncio.gather(
+        # (provider, trackingType, model) aggregation — no ORDER BY in ORM;
+        # sort by total cost descending in Python after fetch.
+        PrismaLog.prisma().group_by(
+            by=["provider", "trackingType", "model"],
+            where=where,
+            sum=sum_fields,
+            count=True,
+        ),
+        # userId aggregation — emails fetched separately below.
+        PrismaLog.prisma().group_by(
+            by=["userId"],
+            where=where,
+            sum=sum_fields,
+            count=True,
+        ),
+        # Distinct user count: group by userId, count groups.
+        PrismaLog.prisma().group_by(
+            by=["userId"],
+            where=where,
+            count=True,
+        ),
+        # Total aggregate: group by provider (no limit) to sum across all
+        # matching rows. Summed in Python to get grand totals.
+        PrismaLog.prisma().group_by(
+            by=["provider"],
+            where=where,
+            sum={"costMicrodollars": True},
+            count=True,
+        ),
     )
 
     # Sort by_provider by total cost descending and cap at MAX_PROVIDER_ROWS.
@@ -347,6 +352,8 @@ async def get_platform_cost_dashboard(
                 total_cost_microdollars=_si(r, "costMicrodollars"),
                 total_input_tokens=_si(r, "inputTokens"),
                 total_output_tokens=_si(r, "outputTokens"),
+                total_cache_read_tokens=_si(r, "cacheReadTokens"),
+                total_cache_creation_tokens=_si(r, "cacheCreationTokens"),
                 request_count=_ca(r),
             )
             for r in by_user_groups
