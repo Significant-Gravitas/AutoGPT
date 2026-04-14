@@ -231,8 +231,9 @@ export function ChatInput({
                 onClick={toggleRecording}
               />
             )}
-            {isStreaming && canSend && onEnqueue ? (
+            {isStreaming && canSend && onEnqueue && (
               <PromptInputButton
+                aria-label="Queue message"
                 tooltip="Queue message"
                 onClick={() => {
                   if (value.trim()) {
@@ -244,7 +245,8 @@ export function ChatInput({
               >
                 <Tray className="size-4" weight="bold" />
               </PromptInputButton>
-            ) : isStreaming ? (
+            )}
+            {isStreaming ? (
               <PromptInputSubmit status="streaming" onStop={onStop} />
             ) : (
               <PromptInputSubmit disabled={!canSend} />
