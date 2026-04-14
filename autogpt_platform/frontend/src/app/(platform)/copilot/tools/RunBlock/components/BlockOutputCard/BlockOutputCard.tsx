@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { Button } from "@/components/atoms/Button/Button";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import {
@@ -33,17 +32,12 @@ function resolveForRenderer(value: unknown): {
   const parsed = parseWorkspaceURI(value);
   if (!parsed) return { value };
 
-  const apiPath = getGetWorkspaceDownloadFileByIdUrl(parsed.fileID);
-  const url = `/api/proxy${apiPath}`;
-
   const metadata: OutputMetadata = {};
   if (parsed.mimeType) {
     metadata.mimeType = parsed.mimeType;
-    if (parsed.mimeType.startsWith("image/")) metadata.type = "image";
-    else if (parsed.mimeType.startsWith("video/")) metadata.type = "video";
   }
 
-  return { value: url, metadata };
+  return { value, metadata };
 }
 
 function RenderOutputValue({ value }: { value: unknown }) {

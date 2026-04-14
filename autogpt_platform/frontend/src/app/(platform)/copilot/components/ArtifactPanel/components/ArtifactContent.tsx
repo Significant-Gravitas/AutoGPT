@@ -2,7 +2,7 @@
 
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
@@ -68,6 +68,11 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
+  useEffect(() => {
+    setLoaded(false);
+    setError(false);
+  }, [src]);
+
   if (error) {
     return (
       <div
@@ -109,6 +114,11 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
 function ArtifactVideo({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    setError(false);
+  }, [src]);
 
   if (error) {
     return (
