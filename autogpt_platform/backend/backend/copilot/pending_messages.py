@@ -52,15 +52,15 @@ _NOTIFY_PAYLOAD = "1"
 class PendingMessageContext(BaseModel, extra="forbid"):
     """Structured page context attached to a pending message."""
 
-    url: str | None = None
-    content: str | None = None
+    url: str | None = Field(default=None, max_length=2_000)
+    content: str | None = Field(default=None, max_length=32_000)
 
 
 class PendingMessage(BaseModel):
     """A user message queued for injection into an in-flight turn."""
 
-    content: str = Field(min_length=1, max_length=16_000)
-    file_ids: list[str] = Field(default_factory=list)
+    content: str = Field(min_length=1, max_length=32_000)
+    file_ids: list[str] = Field(default_factory=list, max_length=20)
     context: PendingMessageContext | None = None
 
 

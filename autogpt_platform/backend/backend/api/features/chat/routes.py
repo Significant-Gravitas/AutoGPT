@@ -191,7 +191,7 @@ class QueuePendingMessageRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    message: str = Field(min_length=1, max_length=16_000)
+    message: str = Field(min_length=1, max_length=32_000)
     context: PendingMessageContext | None = Field(
         default=None,
         description="Optional page context with 'url' and 'content' fields.",
