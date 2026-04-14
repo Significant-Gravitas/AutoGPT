@@ -12,14 +12,10 @@ export const maxDuration = 300; // 5 minutes timeout for large uploads
 export const dynamic = "force-dynamic";
 
 import {
+  fetchWorkspaceDownloadWithRetry,
   getWorkspaceDownloadErrorMessage,
-  isRedirectStatus,
-  isTransientWorkspaceDownloadStatus,
   isWorkspaceDownloadRequest,
 } from "./route.helpers";
-
-const WORKSPACE_DOWNLOAD_MAX_RETRIES = 2;
-const WORKSPACE_DOWNLOAD_RETRY_DELAY_MS = 500;
 
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
@@ -40,7 +36,12 @@ async function handleWorkspaceDownload(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetchWorkspaceDownloadWithRetry(backendUrl, headers);
+  const response = await fetchWorkspaceDownloadWithRetry(
+    backendUrl,
+    headers,
+    2,
+    500,
+  );
 
   if (!response.ok) {
     return await createWorkspaceDownloadErrorResponse(response);
@@ -68,57 +69,6 @@ async function handleWorkspaceDownload(
     status: 200,
     headers: responseHeaders,
   });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function fetchWorkspaceDownloadOnce(
-  backendUrl: string,
-  headers: Record<string, string>,
-): Promise<Response> {
-  const backendResponse = await fetch(backendUrl, {
-    method: "GET",
-    headers,
-    redirect: "manual",
-  });
-
-  if (!isRedirectStatus(backendResponse.status)) {
-    return backendResponse;
-  }
-
-  const location = backendResponse.headers.get("Location");
-  if (!location) return backendResponse;
-
-  return await fetch(location, {
-    method: "GET",
-    redirect: "follow",
-  });
-}
-
-async function fetchWorkspaceDownloadWithRetry(
-  backendUrl: string,
-  headers: Record<string, string>,
-): Promise<Response> {
-  for (let attempt = 0; attempt <= WORKSPACE_DOWNLOAD_MAX_RETRIES; attempt++) {
-    try {
-      const response = await fetchWorkspaceDownloadOnce(backendUrl, headers);
-      if (
-        response.ok ||
-        !isTransientWorkspaceDownloadStatus(response.status) ||
-        attempt === WORKSPACE_DOWNLOAD_MAX_RETRIES
-      ) {
-        return response;
-      }
-    } catch (error) {
-      if (attempt === WORKSPACE_DOWNLOAD_MAX_RETRIES) throw error;
-    }
-
-    await sleep(WORKSPACE_DOWNLOAD_RETRY_DELAY_MS);
-  }
-
-  throw new Error("Workspace download failed after retries");
 }
 
 async function createWorkspaceDownloadErrorResponse(

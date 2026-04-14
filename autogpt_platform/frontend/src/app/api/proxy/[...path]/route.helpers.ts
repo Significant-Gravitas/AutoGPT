@@ -16,6 +16,59 @@ export function isTransientWorkspaceDownloadStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function fetchWorkspaceDownloadOnce(
+  backendUrl: string,
+  headers: Record<string, string>,
+): Promise<Response> {
+  const backendResponse = await fetch(backendUrl, {
+    method: "GET",
+    headers,
+    redirect: "manual",
+  });
+
+  if (!isRedirectStatus(backendResponse.status)) {
+    return backendResponse;
+  }
+
+  const location = backendResponse.headers.get("Location");
+  if (!location) return backendResponse;
+
+  return await fetch(location, {
+    method: "GET",
+    redirect: "follow",
+  });
+}
+
+export async function fetchWorkspaceDownloadWithRetry(
+  backendUrl: string,
+  headers: Record<string, string>,
+  maxRetries: number,
+  retryDelayMs: number,
+): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetchWorkspaceDownloadOnce(backendUrl, headers);
+      if (
+        response.ok ||
+        !isTransientWorkspaceDownloadStatus(response.status) ||
+        attempt === maxRetries
+      ) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+    }
+
+    await sleep(retryDelayMs);
+  }
+
+  throw new Error("Workspace download failed after retries");
+}
+
 export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
   if (typeof body === "string") {
     const trimmed = body.trim();

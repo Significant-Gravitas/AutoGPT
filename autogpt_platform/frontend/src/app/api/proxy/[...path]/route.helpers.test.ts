@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   isWorkspaceDownloadRequest,
   isRedirectStatus,
   isTransientWorkspaceDownloadStatus,
   getWorkspaceDownloadErrorMessage,
+  fetchWorkspaceDownloadOnce,
+  fetchWorkspaceDownloadWithRetry,
 } from "./route.helpers";
 
 describe("isWorkspaceDownloadRequest", () => {
@@ -141,5 +143,140 @@ describe("getWorkspaceDownloadErrorMessage", () => {
         error: "error msg",
       }),
     ).toBe("detail msg");
+  });
+});
+
+describe("fetchWorkspaceDownloadOnce", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns response directly for non-redirect status", async () => {
+    const mockResponse = { ok: true, status: 200, headers: new Headers() };
+    vi.mocked(fetch).mockResolvedValue(mockResponse as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadOnce("https://backend/file", {});
+    expect(result).toBe(mockResponse);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("follows redirect when Location header is present", async () => {
+    const redirectResponse = {
+      ok: false,
+      status: 302,
+      headers: new Headers({ Location: "https://storage.example.com/file" }),
+    };
+    const finalResponse = { ok: true, status: 200, headers: new Headers() };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(redirectResponse as unknown as Response)
+      .mockResolvedValueOnce(finalResponse as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadOnce("https://backend/file", {
+      Authorization: "Bearer token",
+    });
+    expect(result).toBe(finalResponse);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://storage.example.com/file",
+      { method: "GET", redirect: "follow" },
+    );
+  });
+
+  it("returns redirect response when Location header is missing", async () => {
+    const redirectResponse = {
+      ok: false,
+      status: 307,
+      headers: new Headers(),
+    };
+    vi.mocked(fetch).mockResolvedValue(redirectResponse as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadOnce("https://backend/file", {});
+    expect(result).toBe(redirectResponse);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+});
+
+describe("fetchWorkspaceDownloadWithRetry", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("returns immediately on success", async () => {
+    const okResponse = { ok: true, status: 200, headers: new Headers() };
+    vi.mocked(fetch).mockResolvedValue(okResponse as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadWithRetry(
+      "https://backend/file",
+      {},
+      2,
+      0,
+    );
+    expect(result).toBe(okResponse);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("returns immediately on non-transient error without retrying", async () => {
+    const notFound = { ok: false, status: 404, headers: new Headers() };
+    vi.mocked(fetch).mockResolvedValue(notFound as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadWithRetry(
+      "https://backend/file",
+      {},
+      2,
+      0,
+    );
+    expect(result.status).toBe(404);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("retries on transient 502 and succeeds", async () => {
+    const bad = { ok: false, status: 502, headers: new Headers() };
+    const ok = { ok: true, status: 200, headers: new Headers() };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(bad as unknown as Response)
+      .mockResolvedValueOnce(ok as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadWithRetry(
+      "https://backend/file",
+      {},
+      2,
+      0,
+    );
+    expect(result).toBe(ok);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns last transient response after exhausting retries", async () => {
+    const bad = { ok: false, status: 503, headers: new Headers() };
+    vi.mocked(fetch).mockResolvedValue(bad as unknown as Response);
+
+    const result = await fetchWorkspaceDownloadWithRetry(
+      "https://backend/file",
+      {},
+      2,
+      0,
+    );
+    expect(result.status).toBe(503);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries on network error and throws after exhausting retries", async () => {
+    vi.mocked(fetch).mockRejectedValue(new Error("Connection reset"));
+
+    await expect(
+      fetchWorkspaceDownloadWithRetry("https://backend/file", {}, 1, 0),
+    ).rejects.toThrow("Connection reset");
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
