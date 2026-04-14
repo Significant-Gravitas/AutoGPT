@@ -113,6 +113,21 @@ _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/w
 _OPENROUTER_PRICING_CACHE: dict[str, tuple[float, float, float | None]] = {}
 _OPENROUTER_PRICING_CACHE_TTL = 3600  # seconds
 _OPENROUTER_PRICING_CACHE_FETCHED_AT: float = float("-inf")
+# Lock prevents thundering-herd: only one coroutine fetches pricing at a time;
+# others wait and reuse the result once the lock is released.
+_OPENROUTER_PRICING_LOCK: asyncio.Lock | None = None
+
+
+def _get_openrouter_pricing_lock() -> asyncio.Lock:
+    """Return (and lazily create) the module-level asyncio.Lock.
+
+    The lock cannot be created at module import time because there may be no
+    running event loop yet; this helper creates it on first use inside the loop.
+    """
+    global _OPENROUTER_PRICING_LOCK
+    if _OPENROUTER_PRICING_LOCK is None:
+        _OPENROUTER_PRICING_LOCK = asyncio.Lock()
+    return _OPENROUTER_PRICING_LOCK
 
 
 async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float, float | None]]:
@@ -122,6 +137,11 @@ async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float, float | N
     ``_OPENROUTER_PRICING_CACHE_TTL`` seconds (1 hour).  On any network or
     parse error the previous cache value (possibly empty dict) is returned so
     that cost estimation gracefully degrades to ``None`` rather than crashing.
+
+    A module-level asyncio.Lock prevents concurrent callers from each making a
+    separate HTTP request when the cache expires (thundering-herd prevention).
+    The timestamp is updated even on failure so that a failed fetch creates a
+    backoff period before the next attempt.
     """
     global _OPENROUTER_PRICING_CACHE, _OPENROUTER_PRICING_CACHE_FETCHED_AT
 
@@ -129,39 +149,50 @@ async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float, float | N
     if now - _OPENROUTER_PRICING_CACHE_FETCHED_AT < _OPENROUTER_PRICING_CACHE_TTL:
         return _OPENROUTER_PRICING_CACHE
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get("https://openrouter.ai/api/v1/models")
-            response.raise_for_status()
-            data = response.json()
+    async with _get_openrouter_pricing_lock():
+        # Re-check inside the lock — another coroutine may have just refreshed.
+        now = time.monotonic()
+        if now - _OPENROUTER_PRICING_CACHE_FETCHED_AT < _OPENROUTER_PRICING_CACHE_TTL:
+            return _OPENROUTER_PRICING_CACHE
 
-        pricing: dict[str, tuple[float, float, float | None]] = {}
-        for model in data.get("data", []):
-            model_id = model.get("id")
-            model_pricing = model.get("pricing") or {}
-            prompt_str = model_pricing.get("prompt")
-            completion_str = model_pricing.get("completion")
-            if model_id and prompt_str is not None and completion_str is not None:
-                try:
-                    cache_read_str = model_pricing.get("cache_read")
-                    cache_read_rate = (
-                        float(cache_read_str) if cache_read_str is not None else None
-                    )
-                    pricing[model_id] = (
-                        float(prompt_str),
-                        float(completion_str),
-                        cache_read_rate,
-                    )
-                except (ValueError, TypeError):
-                    continue
-
-        _OPENROUTER_PRICING_CACHE = pricing
+        # Update the timestamp before the request so that any exception during
+        # the HTTP call still advances the "next allowed fetch" window, giving a
+        # backoff period instead of every request immediately retrying on failure.
         _OPENROUTER_PRICING_CACHE_FETCHED_AT = now
-    except Exception:
-        logger.warning(
-            "Failed to fetch OpenRouter model pricing; using cached data (%d models)",
-            len(_OPENROUTER_PRICING_CACHE),
-        )
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get("https://openrouter.ai/api/v1/models")
+                response.raise_for_status()
+                data = response.json()
+
+            pricing: dict[str, tuple[float, float, float | None]] = {}
+            for model in data.get("data", []):
+                model_id = model.get("id")
+                model_pricing = model.get("pricing") or {}
+                prompt_str = model_pricing.get("prompt")
+                completion_str = model_pricing.get("completion")
+                if model_id and prompt_str is not None and completion_str is not None:
+                    try:
+                        cache_read_str = model_pricing.get("cache_read")
+                        cache_read_rate = (
+                            float(cache_read_str)
+                            if cache_read_str is not None
+                            else None
+                        )
+                        pricing[model_id] = (
+                            float(prompt_str),
+                            float(completion_str),
+                            cache_read_rate,
+                        )
+                    except (ValueError, TypeError):
+                        continue
+
+            _OPENROUTER_PRICING_CACHE = pricing
+        except Exception:
+            logger.warning(
+                "Failed to fetch OpenRouter model pricing; using cached data (%d models)",
+                len(_OPENROUTER_PRICING_CACHE),
+            )
 
     return _OPENROUTER_PRICING_CACHE
 
