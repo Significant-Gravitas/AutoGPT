@@ -392,6 +392,23 @@ class TestDiscoverServices:
         mock_conn_cls.assert_not_called()
 
     @patch("http.client.HTTPSConnection")
+    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
+    def test_cache_hit_empty_dict_not_mistaken_for_miss(
+        self, mock_dns, mock_conn_cls
+    ):
+        """Edge case: a cached empty-dict positive result
+        must not be treated as a negative entry just
+        because `{}` is falsy."""
+        test_domain = "empty.example.com"
+        _cache[test_domain] = (time.time(), {})
+        result = discover_services(test_domain)
+        # Should be a DiscoveryResult, not None
+        assert result is not None
+        assert isinstance(result, DiscoveryResult)
+        mock_dns.assert_not_called()
+        mock_conn_cls.assert_not_called()
+
+    @patch("http.client.HTTPSConnection")
     @patch(
         "autogpt.utils.agent_discovery._resolve_and_validate"
     )
