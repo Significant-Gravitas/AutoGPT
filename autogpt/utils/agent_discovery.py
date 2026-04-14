@@ -275,6 +275,7 @@ def discover_services(
     last_error: Exception | None = None
 
     for pinned_ip in pinned_ips:
+        conn: http.client.HTTPSConnection | None = None
         try:
             # Use domain for SSL SNI/cert verification.
             # Override _create_connection to connect to
@@ -309,7 +310,6 @@ def discover_services(
 
             # Block redirects (SSRF bypass prevention)
             if 300 <= resp.status < 400:
-                conn.close()
                 logger.debug(
                     "ADP: redirect blocked at %s (%d)",
                     domain,
@@ -319,7 +319,6 @@ def discover_services(
 
             if 200 <= resp.status < 300:
                 body = _read_bounded_body(resp)
-                conn.close()
                 if body is None:
                     logger.debug(
                         "ADP: body exceeds %d bytes at %s",
@@ -355,7 +354,6 @@ def discover_services(
             # from the server. Don't try other IPs -- the
             # server told us something definitive.
             status = resp.status
-            conn.close()
             if status in {404, 410} and use_cache:
                 _cache[domain] = (time.time(), None)
             return None
@@ -373,6 +371,15 @@ def discover_services(
             )
             # Try the next pinned IP
             continue
+        finally:
+            # Always release the socket, even on the
+            # failure path. `close()` is idempotent and
+            # safe to call after a partially-opened conn.
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     # All IPs exhausted with transport errors.
     # Do NOT negative-cache -- this is a transient failure.
