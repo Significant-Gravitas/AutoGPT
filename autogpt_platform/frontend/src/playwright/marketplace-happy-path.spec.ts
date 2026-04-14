@@ -4,7 +4,6 @@ import {
   clickRunButton,
   dismissFeedbackDialog,
   LibraryPage,
-  waitForAgentPageLoad,
 } from "./pages/library.page";
 import { MarketplacePage } from "./pages/marketplace.page";
 
@@ -29,14 +28,16 @@ test("marketplace happy path: user can add a Marketplace agent to Library and ru
   const marketplacePage = new MarketplacePage(page);
   await marketplacePage.openRunnableAgent();
 
+  const agentName = await page.getByTestId("agent-title").innerText();
+
   await page.getByTestId("agent-add-library-button").click();
   await expect(page.getByText("Redirecting to your library...")).toBeVisible();
   await expect(page).toHaveURL(/\/library\/agents\//);
 
-  await waitForAgentPageLoad(page);
+  const libraryPage = new LibraryPage(page);
+  await libraryPage.openSavedAgent(agentName);
   await clickRunButton(page);
 
-  const libraryPage = new LibraryPage(page);
   await libraryPage.waitForRunToComplete();
   await dismissFeedbackDialog(page);
 
