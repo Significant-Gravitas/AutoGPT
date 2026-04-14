@@ -197,6 +197,15 @@ class ChatConfig(BaseSettings):
         description="Maximum number of retries for transient API errors "
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
     )
+    claude_agent_cross_user_prompt_cache: bool = Field(
+        default=True,
+        description="Enable cross-user prompt caching via SystemPromptPreset. "
+        "The Claude Code default prompt becomes a cacheable prefix shared "
+        "across all users, and our custom prompt is appended after it. "
+        "Dynamic sections (working dir, git status, auto-memory) are excluded "
+        "from the prefix. Set to False to fall back to passing the system "
+        "prompt as a raw string.",
+    )
     claude_agent_cli_path: str | None = Field(
         default=None,
         description="Optional explicit path to a Claude Code CLI binary. "

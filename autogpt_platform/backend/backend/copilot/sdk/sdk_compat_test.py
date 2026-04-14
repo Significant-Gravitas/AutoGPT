@@ -7,6 +7,7 @@ tests will catch it immediately.
 """
 
 import inspect
+from typing import cast
 
 import pytest
 
@@ -88,6 +89,39 @@ def test_agent_options_accepts_required_fields():
     )
     assert opts.system_prompt == "test"
     assert opts.cwd == "/tmp"
+
+
+def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_sections():
+    """Verify ClaudeAgentOptions accepts the exact preset dict _build_system_prompt_value produces.
+
+    The production code always includes ``exclude_dynamic_sections=True`` in the preset
+    dict.  This compat test mirrors that exact shape so any SDK version that starts
+    rejecting unknown keys will be caught here rather than at runtime.
+    """
+    from claude_agent_sdk import ClaudeAgentOptions
+    from claude_agent_sdk.types import SystemPromptPreset
+
+    from .service import _build_system_prompt_value
+
+    # Call the production helper directly so this test is tied to the real
+    # dict shape rather than a hand-rolled copy.
+    preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
+    assert isinstance(
+        preset, dict
+    ), "_build_system_prompt_value must return a dict when caching is on"
+
+    sdk_preset = cast(SystemPromptPreset, preset)
+    opts = ClaudeAgentOptions(system_prompt=sdk_preset)
+    assert opts.system_prompt == sdk_preset
+
+
+def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
+    """When cross_user_cache=False (e.g. on --resume turns), the helper must return
+    a plain string so the preset+resume crash is avoided."""
+    from .service import _build_system_prompt_value
+
+    result = _build_system_prompt_value("my prompt", cross_user_cache=False)
+    assert result == "my prompt", "Must return the raw string, not a preset dict"
 
 
 def test_agent_options_accepts_all_our_fields():
