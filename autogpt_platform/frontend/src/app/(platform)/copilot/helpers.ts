@@ -168,7 +168,7 @@ export function shouldSuppressDuplicateSend(
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
   const seenFingerprints = new Set<string>();
-  let lastUserMsgId = "";
+  let lastUserMsgID = "";
 
   return messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
@@ -179,7 +179,7 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
       // assistant fingerprints to their conversational turn. Using the ID
       // means two user messages with identical text are still treated as
       // distinct turns, preventing false-positive deduplication.
-      lastUserMsgId = msg.id;
+      lastUserMsgID = msg.id;
     }
 
     if (msg.role === "assistant") {
@@ -207,7 +207,7 @@ export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
         // resumeStream() first strips the in-progress assistant message —
         // handleReconnect, the wake-resync path, and the hydration-effect path
         // all do this. See useCopilotStream.ts.
-        const contextKey = `assistant:${lastUserMsgId}:${contentFingerprint}`;
+        const contextKey = `assistant:${lastUserMsgID}:${contentFingerprint}`;
         if (seenFingerprints.has(contextKey)) return false;
         seenFingerprints.add(contextKey);
       }
