@@ -19,7 +19,6 @@ export enum Key {
   COPILOT_MODE = "copilot-mode",
   COPILOT_COMPLETED_SESSIONS = "copilot-completed-sessions",
   COPILOT_DRY_RUN = "copilot-dry-run",
-  COPILOT_SESSION_MODES = "copilot-session-modes",
 }
 
 function get(key: Key) {
