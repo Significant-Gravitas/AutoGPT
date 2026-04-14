@@ -966,13 +966,21 @@ async def stream_chat_completion_baseline(
             len(drained_at_start),
             session_id,
         )
-        for pm in drained_at_start:
+        # Insert pending messages BEFORE the current user message so
+        # session.messages order matches transcript_builder order:
+        # [...history, pending_1, pending_2, current_user_msg].
+        # maybe_append_user_message already appended the current user message
+        # at line 934, so we insert at len-1 to keep it last.
+        insert_idx = max(0, len(session.messages) - 1)
+        for i, pm in enumerate(drained_at_start):
             content = format_pending_as_user_message(pm)["content"]
             drained_at_start_content.append(content)
-            # Append directly — pending messages are atomically-popped from
+            # Insert directly — pending messages are atomically-popped from
             # Redis and are never stale-cache duplicates, so the
             # maybe_append_user_message dedup is wrong here.
-            session.messages.append(ChatMessage(role="user", content=content))
+            session.messages.insert(
+                insert_idx + i, ChatMessage(role="user", content=content)
+            )
 
     # Persist the drained pending messages (if any) plus the current user
     # message.  Wrap in try/except so a transient DB failure here does not
