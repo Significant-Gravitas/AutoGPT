@@ -252,6 +252,18 @@ export function useCopilotPage() {
       const isInFlight = status === "streaming" || status === "submitted";
 
       if (isInFlight) {
+        // File attachments cannot be included in a queued pending message —
+        // the queue API does not support file_ids.  Inform the user and bail.
+        if (files && files.length > 0) {
+          toast({
+            title: "Please wait to attach files",
+            description:
+              "File attachments can't be queued until the current response finishes.",
+            variant: "destructive",
+          });
+          return;
+        }
+
         // Queue the message into the pending buffer so it is picked up between
         // tool-call rounds by the currently running executor turn.
         try {
