@@ -108,6 +108,28 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
 
 function ArtifactVideo({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center gap-3 p-8 text-center"
+      >
+        <p className="text-sm text-zinc-500">Failed to load video</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(false);
+            setLoaded(false);
+          }}
+          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex items-center justify-center p-4">
@@ -119,7 +141,7 @@ function ArtifactVideo({ src }: { src: string }) {
         preload="metadata"
         className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoadedMetadata={() => setLoaded(true)}
-        onError={() => setLoaded(true)}
+        onError={() => setError(true)}
       >
         <source src={src} />
         Your browser does not support the video tag.

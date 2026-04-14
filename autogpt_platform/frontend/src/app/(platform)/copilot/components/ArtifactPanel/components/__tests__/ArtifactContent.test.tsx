@@ -256,6 +256,64 @@ describe("ArtifactContent", () => {
     expect(container.querySelector('[class*="animate-pulse"]')).toBeNull();
   });
 
+  it("video shows error state when video fails to load", () => {
+    const artifact = makeArtifact({
+      id: "vid-error",
+      title: "broken.mp4",
+      mimeType: "video/mp4",
+      sourceUrl: "/api/proxy/api/workspace/files/vid-error/download",
+    });
+    const classification = makeClassification({ type: "video" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    const video = container.querySelector("video");
+    expect(video).toBeTruthy();
+    fireEvent.error(video!);
+
+    const errorAlert = screen.queryByRole("alert");
+    expect(errorAlert).toBeTruthy();
+    expect(screen.queryByText("Failed to load video")).toBeTruthy();
+  });
+
+  it("video retry resets error and re-shows video", async () => {
+    const artifact = makeArtifact({
+      id: "vid-retry",
+      title: "retry.mp4",
+      mimeType: "video/mp4",
+      sourceUrl: "/api/proxy/api/workspace/files/vid-retry/download",
+    });
+    const classification = makeClassification({ type: "video" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    const video = container.querySelector("video");
+    fireEvent.error(video!);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Failed to load video")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Failed to load video")).toBeNull();
+      expect(container.querySelector("video")).toBeTruthy();
+    });
+  });
+
   // ── PDF ───────────────────────────────────────────────────────────
 
   it("renders PDF artifact in unsandboxed iframe with blob URL", async () => {
