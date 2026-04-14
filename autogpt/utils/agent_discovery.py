@@ -218,6 +218,7 @@ def discover_services(
     import ssl
 
     ssl_ctx = ssl.create_default_context()
+    ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     path = "/.well-known/agent-discovery.json"
 
     try:
