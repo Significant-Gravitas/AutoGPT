@@ -180,13 +180,29 @@ export function useBuilderChatPanel({
   const userId = useSupabaseStore((s) => s.user?.id ?? null);
   const prevUserIdRef = useRef(userId);
 
-  // Clear the session cache when the user changes (sign-out or different user)
-  // so stale sessions from one user are never served to another.
+  // Clear the session cache and all local session state when the user changes
+  // (sign-out or different user) so stale sessions from one user are never
+  // served to another.
   useEffect(() => {
     if (userId !== prevUserIdRef.current) {
       graphSessionCache.clear();
       prevUserIdRef.current = userId;
+      setSessionId(null);
+      setSessionError(false);
+      setAppliedActionKeys(new Set());
+      setUndoStack([]);
+      setInputValue("");
+      setParsedActions([]);
+      isCreatingSessionRef.current = false;
+      processedToolCallsRef.current = new Set();
+      hasSentSeedMessageRef.current = false;
+      lastParsedMessageIndexRef.current = -1;
+      lastScannedToolCallIndexRef.current = -1;
+      parsedActionsCacheRef.current = { actions: [], seen: new Set() };
+      setMessages([]);
     }
+    // setMessages is a stable function from useChat; excluding from deps is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   const { toast } = useToast();
