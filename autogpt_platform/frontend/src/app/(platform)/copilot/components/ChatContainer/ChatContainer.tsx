@@ -68,13 +68,14 @@ export const ChatContainer = ({
     messages: isArtifactsEnabled ? messages : [],
     sessionId,
   });
-  const isBusy =
-    status === "streaming" ||
-    status === "submitted" ||
-    !!isReconnecting ||
-    !!isSyncing ||
-    isLoadingSession ||
-    !!isSessionError;
+  // isStreaming controls the stop-button UI and routes submits to the queue
+  // endpoint — the input itself must NOT be disabled during streaming so users
+  // can type and queue their next message.
+  const isStreaming = status === "streaming" || status === "submitted";
+  // The input is only truly disabled when the session isn't ready at all
+  // (reconnecting, syncing, loading, or errored) — NOT during normal streaming.
+  const isInputDisabled =
+    !!isReconnecting || !!isSyncing || isLoadingSession || !!isSessionError;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors)
@@ -124,8 +125,8 @@ export const ChatContainer = ({
                 <ChatInput
                   inputId="chat-input-session"
                   onSend={onSend}
-                  disabled={isBusy}
-                  isStreaming={isBusy}
+                  disabled={isInputDisabled}
+                  isStreaming={isStreaming}
                   isUploadingFiles={isUploadingFiles}
                   onStop={onStop}
                   placeholder="What else can I help with?"
