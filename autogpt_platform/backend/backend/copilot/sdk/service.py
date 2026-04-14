@@ -2540,6 +2540,16 @@ async def stream_chat_completion_sdk(
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
                 elif "resume" in sdk_options_kwargs_retry:
                     del sdk_options_kwargs_retry["resume"]
+                # Recompute system_prompt for retry — ctx.use_resume may have
+                # changed (context reduction enabled --resume).  CLI 2.1.97
+                # crashes when excludeDynamicSections=True is combined with
+                # --resume, so disable the cross-user preset on resumed turns.
+                _cross_user_retry = (
+                    config.claude_agent_cross_user_prompt_cache and not ctx.use_resume
+                )
+                sdk_options_kwargs_retry["system_prompt"] = _build_system_prompt_value(
+                    system_prompt, cross_user_cache=_cross_user_retry
+                )
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 state.query_message, state.was_compacted = await _build_query_message(
                     current_message,

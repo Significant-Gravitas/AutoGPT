@@ -115,6 +115,15 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
     assert opts.system_prompt == sdk_preset
 
 
+def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
+    """When cross_user_cache=False (e.g. on --resume turns), the helper must return
+    a plain string so the preset+resume crash is avoided."""
+    from .service import _build_system_prompt_value
+
+    result = _build_system_prompt_value("my prompt", cross_user_cache=False)
+    assert result == "my prompt", "Must return the raw string, not a preset dict"
+
+
 def test_agent_options_accepts_all_our_fields():
     """Comprehensive check of every field we use in service.py."""
     from claude_agent_sdk import ClaudeAgentOptions
