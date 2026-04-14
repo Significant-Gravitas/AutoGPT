@@ -7,12 +7,19 @@ function isTransientError(status: number): boolean {
   return status >= 500 || status === 408 || status === 429;
 }
 
+class DownloadError extends Error {}
+
 async function fetchWithRetry(url: string, retries: number): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url);
-    if (res.ok) return res;
-    if (!isTransientError(res.status) || attempt === retries) {
-      throw new Error(`Download failed: ${res.status}`);
+    try {
+      const res = await fetch(url);
+      if (res.ok) return res;
+      if (!isTransientError(res.status) || attempt === retries) {
+        throw new DownloadError(`Download failed: ${res.status}`);
+      }
+    } catch (error) {
+      if (error instanceof DownloadError) throw error;
+      if (attempt === retries) throw error;
     }
     await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
   }

@@ -79,16 +79,42 @@ describe("downloadArtifact", () => {
     expect(clickSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects on network error", async () => {
+  it("rejects on persistent network error after exhausting retries", async () => {
+    let callCount = 0;
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockRejectedValue(new Error("Network error")),
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        return Promise.reject(new Error("Network error"));
+      }),
     );
 
     await expect(downloadArtifact(makeArtifact())).rejects.toThrow(
       "Network error",
     );
+    expect(callCount).toBe(3);
     expect(clickSpy).not.toHaveBeenCalled();
+  });
+
+  it("retries on transient network error and succeeds", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new Error("Connection reset"));
+        }
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(["content"])),
+        });
+      }),
+    );
+
+    await downloadArtifact(makeArtifact());
+    expect(callCount).toBe(2);
+    expect(clickSpy).toHaveBeenCalled();
   });
 
   it("retries on transient 500 and succeeds", async () => {
