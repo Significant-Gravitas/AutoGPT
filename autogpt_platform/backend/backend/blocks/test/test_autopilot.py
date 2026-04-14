@@ -12,7 +12,6 @@ from backend.blocks.autopilot import (
     _autopilot_recursion_depth,
     _autopilot_recursion_limit,
     _check_recursion,
-    _is_deliberate_block,
     _reset_recursion,
 )
 from backend.data.execution import ExecutionContext
@@ -246,26 +245,6 @@ class TestBlockRegistration:
         # The field should exist (inherited) but there should be no explicit
         # redefinition. We verify by checking the class __annotations__ directly.
         assert "error" not in AutoPilotBlock.Output.__annotations__
-
-
-# ---------------------------------------------------------------------------
-# _is_deliberate_block unit tests
-# ---------------------------------------------------------------------------
-
-
-class TestIsDeliberateBlock:
-    def test_recursion_limit_error_is_deliberate(self):
-        exc = SubAgentRecursionError("AutoPilot recursion depth limit reached (3).")
-        assert _is_deliberate_block(exc) is True
-
-    def test_generic_runtime_error_is_not_deliberate(self):
-        assert _is_deliberate_block(RuntimeError("boom")) is False
-
-    def test_value_error_is_not_deliberate(self):
-        assert _is_deliberate_block(ValueError("bad value")) is False
-
-    def test_exception_is_not_deliberate(self):
-        assert _is_deliberate_block(Exception("something")) is False
 
 
 # ---------------------------------------------------------------------------

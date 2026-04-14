@@ -415,37 +415,41 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
+        except SubAgentRecursionError as exc:
+            # Deliberate block — re-enqueueing would immediately hit the limit
+            # again, so skip recovery and just surface the error.
+            yield "session_id", sid
+            yield "error", str(exc)
         except Exception as exc:
             yield "session_id", sid
             # Recovery enqueue must happen BEFORE yielding "error": the block
             # framework (_base.execute) raises BlockExecutionError immediately
             # when it sees ("error", ...) and stops consuming the generator,
             # so any code after that yield is dead code in production.
-            if not _is_deliberate_block(exc):
-                effective_prompt = input_data.prompt
-                if input_data.system_context:
-                    effective_prompt = (
-                        f"[System Context: {input_data.system_context}]\n\n"
-                        f"{input_data.prompt}"
-                    )
-                try:
-                    await _enqueue_for_recovery(
-                        sid,
-                        execution_context.user_id,
-                        effective_prompt,
-                        input_data.dry_run or execution_context.dry_run,
-                    )
-                except asyncio.CancelledError:
-                    # Task cancelled during recovery — still yield the error
-                    # so the session_id + error pair is visible before re-raising.
-                    yield "error", str(exc)
-                    raise
-                except Exception:
-                    logger.warning(
-                        "AutoPilot session %s: recovery enqueue raised unexpectedly",
-                        sid[:12],
-                        exc_info=True,
-                    )
+            effective_prompt = input_data.prompt
+            if input_data.system_context:
+                effective_prompt = (
+                    f"[System Context: {input_data.system_context}]\n\n"
+                    f"{input_data.prompt}"
+                )
+            try:
+                await _enqueue_for_recovery(
+                    sid,
+                    execution_context.user_id,
+                    effective_prompt,
+                    input_data.dry_run or execution_context.dry_run,
+                )
+            except asyncio.CancelledError:
+                # Task cancelled during recovery — still yield the error
+                # so the session_id + error pair is visible before re-raising.
+                yield "error", str(exc)
+                raise
+            except Exception:
+                logger.warning(
+                    "AutoPilot session %s: recovery enqueue raised unexpectedly",
+                    sid[:12],
+                    exc_info=True,
+                )
             yield "error", str(exc)
 
 
@@ -575,15 +579,6 @@ def _merge_inherited_permissions(
 # ---------------------------------------------------------------------------
 # Recovery helpers
 # ---------------------------------------------------------------------------
-
-
-def _is_deliberate_block(exc: Exception) -> bool:
-    """Return True for exceptions that are intentional blocks, not transient failures.
-
-    Recursion-limit errors are deliberate — re-enqueueing would immediately
-    hit the limit again, so we skip recovery for those.
-    """
-    return isinstance(exc, SubAgentRecursionError)
 
 
 async def _enqueue_for_recovery(
