@@ -1139,7 +1139,9 @@ async def stream_chat_completion_baseline(
     if should_inject_user_context and understanding:
         user_ctx = format_understanding_for_prompt(understanding)
         prefixed: str | None = None
-        for msg in openai_messages:
+        # Scan in reverse so we target the current turn's user message, not
+        # an older one that may exist when pending messages have been drained.
+        for msg in reversed(openai_messages):
             if msg["role"] == "user":
                 prefixed = (
                     f"<user_context>\n{user_ctx}\n</user_context>\n\n{msg['content']}"
@@ -1152,7 +1154,11 @@ async def stream_chat_completion_baseline(
             # The user message was already saved to DB before context injection
             # (at ~line 932); update the DB record so the prefixed content
             # survives page reload.
-            for idx, session_msg in enumerate(session.messages):
+            # Use reverse scan to match the same most-recent user message that
+            # was injected above, avoiding stale earlier messages when pending
+            # messages have been drained into the session.
+            for idx in range(len(session.messages) - 1, -1, -1):
+                session_msg = session.messages[idx]
                 if session_msg.role == "user":
                     session_msg.content = prefixed
                     await update_message_content_by_sequence(session_id, idx, prefixed)

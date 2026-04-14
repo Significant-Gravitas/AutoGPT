@@ -12181,11 +12181,17 @@
       "PendingMessageContext": {
         "properties": {
           "url": {
-            "anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
             "title": "Url"
           },
           "content": {
-            "anyOf": [{ "type": "string", "maxLength": 32000 }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 32000 },
+              { "type": "null" }
+            ],
             "title": "Content"
           }
         },
