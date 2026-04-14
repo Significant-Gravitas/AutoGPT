@@ -13839,7 +13839,7 @@
         "properties": {
           "message": {
             "type": "string",
-            "maxLength": 4000,
+            "maxLength": 64000,
             "title": "Message"
           },
           "is_user_message": {

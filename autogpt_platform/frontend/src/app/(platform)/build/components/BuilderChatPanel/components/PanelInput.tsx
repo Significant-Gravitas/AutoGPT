@@ -1,7 +1,7 @@
 import { PaperPlaneTilt, StopCircle } from "@phosphor-icons/react";
 import { KeyboardEvent } from "react";
 
-/** Max characters permitted in the chat textarea. Enforced both in the UI and by the backend. */
+/** Max characters permitted in the chat textarea (UI-side limit; backend accepts up to 64 000). */
 export const TEXTAREA_MAX_LENGTH = 4000;
 /** Show the character counter once the user reaches this fraction of the max. */
 const CHAR_COUNT_WARNING_RATIO = 0.8;
