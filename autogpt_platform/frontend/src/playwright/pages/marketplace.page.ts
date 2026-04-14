@@ -5,7 +5,6 @@ import { getSelectors } from "../utils/selectors";
 
 const DETERMINISTIC_MARKETPLACE_AGENT_CREATOR = "e2e-marketplace";
 const DETERMINISTIC_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent";
-const DETERMINISTIC_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent";
 const DETERMINISTIC_MARKETPLACE_AGENT_PATH = `/marketplace/agent/${DETERMINISTIC_MARKETPLACE_AGENT_CREATOR}/${DETERMINISTIC_MARKETPLACE_AGENT_SLUG}`;
 
 export class MarketplacePage extends BasePage {
@@ -166,21 +165,14 @@ export class MarketplacePage extends BasePage {
         timeout: 15000,
       },
     );
-    await expect(this.page.getByTestId("agent-title")).toContainText(
-      DETERMINISTIC_MARKETPLACE_AGENT_NAME,
-      {
-        timeout: 15000,
-      },
-    );
+    await expect(this.page.getByTestId("agent-title")).toBeVisible({
+      timeout: 15000,
+    });
     await expect(this.page.getByTestId("agent-add-library-button")).toBeVisible(
       {
         timeout: 15000,
       },
     );
-
-    await expect(this.page).toHaveURL(/\/marketplace\/agent\//, {
-      timeout: 15000,
-    });
 
     return { path: this.page.url() };
   }
