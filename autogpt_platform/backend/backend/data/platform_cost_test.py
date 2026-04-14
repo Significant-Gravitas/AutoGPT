@@ -327,7 +327,7 @@ class TestGetPlatformCostDashboard:
         assert dashboard.cost_p95_microdollars == 4000
         assert dashboard.cost_p99_microdollars == 5000
         assert len(dashboard.cost_buckets) == 1
-        # total_input/output_tokens come from by_provider_groups before slicing
+        # total_input/output_tokens come from total_agg_no_tracking_type_groups
         # (provider_row has 1000/500)
         assert dashboard.total_input_tokens == 1000
         assert dashboard.total_output_tokens == 500
