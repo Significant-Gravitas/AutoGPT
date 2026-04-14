@@ -174,7 +174,7 @@ export class MarketplacePage extends BasePage {
     const searchURL = `/marketplace/search?searchTerm=${encodeURIComponent(agentName)}`;
 
     const agentCard = this.page
-      .locator('[data-testid="store-card"]')
+      .locator('[data-testid="store-card"]:visible')
       .filter({ hasText: agentName })
       .first();
 
@@ -182,9 +182,12 @@ export class MarketplacePage extends BasePage {
       await this.page.goto(searchURL);
       await this.page.waitForLoadState("networkidle");
 
-      if (await agentCard.isVisible({ timeout: 15000 }).catch(() => false)) {
-        break;
-      }
+      const visible = await agentCard
+        .waitFor({ state: "visible", timeout: 15000 })
+        .then(() => true)
+        .catch(() => false);
+
+      if (visible) break;
 
       if (attempt === 2) {
         await expect(agentCard).toBeVisible({ timeout: 15000 });
