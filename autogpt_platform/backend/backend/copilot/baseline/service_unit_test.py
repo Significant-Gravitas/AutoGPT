@@ -13,7 +13,6 @@ from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _BaselineStreamState,
     _compress_session_messages,
-    _estimate_cost_from_tokens,
     _ThinkingStripper,
 )
 from backend.copilot.model import ChatMessage
@@ -634,53 +633,6 @@ class TestPrepareBaselineAttachments:
         assert blocks == []
 
 
-class TestEstimateCostFromTokens:
-    """Tests for _estimate_cost_from_tokens fallback pricing."""
-
-    def test_known_model_returns_estimated_cost(self):
-        cost = _estimate_cost_from_tokens("anthropic/claude-sonnet-4", 1000, 500)
-        # 1000 * 3.0/1M + 500 * 15.0/1M = 0.003 + 0.0075 = 0.0105
-        assert cost == pytest.approx(0.0105)
-
-    def test_unknown_model_returns_none(self):
-        cost = _estimate_cost_from_tokens("unknown/model", 1000, 500)
-        assert cost is None
-
-    def test_zero_tokens_returns_zero(self):
-        cost = _estimate_cost_from_tokens("openai/gpt-4o", 0, 0)
-        assert cost == pytest.approx(0.0)
-
-    def test_claude_opus_4_6_in_pricing_table(self):
-        """anthropic/claude-opus-4.6 (default non-fast model) must be priced."""
-        cost = _estimate_cost_from_tokens("anthropic/claude-opus-4.6", 1000, 500)
-        # 1000 * 15.0/1M + 500 * 75.0/1M = 0.015 + 0.0375 = 0.0525
-        assert cost == pytest.approx(0.0525)
-
-    def test_cache_read_tokens_discounted_anthropic(self):
-        """Cache-read tokens billed at 10 % of input rate for Anthropic models."""
-        # 200 regular + 800 cache-read prompt tokens, 0 completion
-        # cost = 200 * 3/1M + 800 * 3/1M * 0.10 = 0.0006 + 0.00024 = 0.00084
-        cost = _estimate_cost_from_tokens(
-            "anthropic/claude-sonnet-4",
-            prompt_tokens=1000,
-            completion_tokens=0,
-            cache_read_tokens=800,
-        )
-        assert cost == pytest.approx(0.00084)
-
-    def test_cache_read_tokens_discounted_openai(self):
-        """Cache-read tokens billed at 50 % of input rate for OpenAI models."""
-        # 200 regular + 800 cache-read, 0 completion
-        # cost = 200 * 2.5/1M + 800 * 2.5/1M * 0.50 = 0.0005 + 0.001 = 0.0015
-        cost = _estimate_cost_from_tokens(
-            "openai/gpt-4o",
-            prompt_tokens=1000,
-            completion_tokens=0,
-            cache_read_tokens=800,
-        )
-        assert cost == pytest.approx(0.0015)
-
-
 class TestBaselineCostExtraction:
     """Tests for x-total-cost header extraction in _baseline_llm_caller."""
 
@@ -878,14 +830,13 @@ class TestBaselineCostExtraction:
         assert state.cost_usd is None
 
     @pytest.mark.asyncio
-    async def test_cost_estimated_from_tokens_when_header_missing(self):
-        """cost_usd is estimated from token counts when x-total-cost is absent."""
+    async def test_no_cost_when_header_missing_no_fallback(self):
+        """cost_usd remains None when x-total-cost header is absent — no fallback."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
         )
 
-        # Use a model that is in the pricing table
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
 
         mock_raw = MagicMock()
@@ -893,7 +844,6 @@ class TestBaselineCostExtraction:
         mock_stream = MagicMock()
         mock_stream._response = mock_raw
 
-        # Create a chunk that reports usage tokens
         mock_chunk = MagicMock()
         mock_chunk.usage = MagicMock()
         mock_chunk.usage.prompt_tokens = 1000
@@ -919,8 +869,7 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # Expected: 1000 * 3.0/1M + 500 * 15.0/1M = 0.003 + 0.0075 = 0.0105
-        assert state.cost_usd == pytest.approx(0.0105)
+        assert state.cost_usd is None
 
     @pytest.mark.asyncio
     async def test_cache_tokens_extracted_from_usage_details(self):
@@ -1016,13 +965,8 @@ class TestBaselineCostExtraction:
         assert state.turn_cache_creation_tokens == 500
 
     @pytest.mark.asyncio
-    async def test_multiturn_fallback_cost_uses_per_call_delta(self):
-        """Fallback cost estimation uses per-call token delta, not session total.
-
-        On the second tool-call turn, the state accumulators already hold
-        tokens from turn 1.  The estimator must charge only for the new tokens
-        reported in the current call, not the running total.
-        """
+    async def test_token_accumulators_track_across_multiple_calls(self):
+        """Token accumulators grow correctly across multiple _baseline_llm_caller calls."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
@@ -1052,11 +996,8 @@ class TestBaselineCostExtraction:
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
             side_effect=[
-                make_stream(1000, 200),  # turn 1: 1000 prompt, 200 completion
-                # turn 2: real streaming sends totals-per-call in the final usage
-                # chunk; each mock stream has a single chunk, so the value here
-                # represents the total for this API call (not a cumulative delta).
-                make_stream(1100, 300),  # turn 2: 1100 prompt, 300 completion
+                make_stream(1000, 200),
+                make_stream(1100, 300),
             ]
         )
 
@@ -1075,11 +1016,8 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # Turn 1: 1000 * 3.0/1M + 200 * 15.0/1M = 0.003 + 0.003 = 0.006
-        # Turn 2: 1100 * 3.0/1M + 300 * 15.0/1M = 0.0033 + 0.0045 = 0.0078
-        # Total: 0.0138 — NOT 0.006 + cumulative (2100*3/1M + 500*15/1M = 0.006+0.0138)
-        expected = pytest.approx(0.006 + 0.0078, rel=1e-5)
-        assert state.cost_usd == expected
+        # No x-total-cost header — cost_usd remains None
+        assert state.cost_usd is None
         # Accumulators hold all tokens across both turns
         assert state.turn_prompt_tokens == 2100
         assert state.turn_completion_tokens == 500
