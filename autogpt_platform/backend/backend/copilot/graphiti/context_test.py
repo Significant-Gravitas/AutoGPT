@@ -62,6 +62,71 @@ class TestFetchWarmContextGeneralError:
 # ---------------------------------------------------------------------------
 
 
+class TestFetchInternal:
+    """Test the internal _fetch function with mocked graphiti client."""
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_edges_or_episodes(self) -> None:
+        mock_client = AsyncMock()
+        mock_client.search.return_value = []
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                context, "get_graphiti_client", new_callable=AsyncMock, return_value=mock_client
+            ),
+        ):
+            result = await context._fetch("test-user", "hello")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_context_with_edges(self) -> None:
+        edge = SimpleNamespace(
+            fact="user likes python",
+            name="preference",
+            valid_at="2025-01-01",
+            invalid_at=None,
+        )
+        mock_client = AsyncMock()
+        mock_client.search.return_value = [edge]
+        mock_client.retrieve_episodes.return_value = []
+
+        with (
+            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                context, "get_graphiti_client", new_callable=AsyncMock, return_value=mock_client
+            ),
+        ):
+            result = await context._fetch("test-user", "hello")
+
+        assert result is not None
+        assert "<temporal_context>" in result
+        assert "user likes python" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_context_with_episodes(self) -> None:
+        ep = SimpleNamespace(
+            content="talked about coffee",
+            created_at="2025-06-01T00:00:00Z",
+        )
+        mock_client = AsyncMock()
+        mock_client.search.return_value = []
+        mock_client.retrieve_episodes.return_value = [ep]
+
+        with (
+            patch.object(context, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                context, "get_graphiti_client", new_callable=AsyncMock, return_value=mock_client
+            ),
+        ):
+            result = await context._fetch("test-user", "hello")
+
+        assert result is not None
+        assert "talked about coffee" in result
+
+
 class TestFormatContextWithContent:
     """Test _format_context with actual edges and episodes."""
 
