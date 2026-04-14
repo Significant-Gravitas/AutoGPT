@@ -228,13 +228,10 @@ def discover_services(
             timeout=timeout,
             context=ssl_ctx,
         )
-        # SNI: server_hostname tells SSL to verify the cert
-        # against the domain, not the IP
-        conn.connect()
-        conn.sock = ssl_ctx.wrap_socket(
-            conn.sock,
-            server_hostname=domain,
-        )
+        # SNI: set _http_vsn_str host to domain so SSL
+        # verifies cert against domain, not IP
+        conn._http_vsn_str = 'HTTP/1.1'
+        conn.set_tunnel(domain)
         conn.request(
             "GET",
             path,
