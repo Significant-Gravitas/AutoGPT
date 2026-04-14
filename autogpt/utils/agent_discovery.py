@@ -222,16 +222,25 @@ def discover_services(
     path = "/.well-known/agent-discovery.json"
 
     try:
+        # Use domain for SSL SNI/cert verification.
+        # Override _create_connection to connect to pinned IP.
         conn = http.client.HTTPSConnection(
-            pinned_ip,
+            domain,
             port=443,
             timeout=timeout,
             context=ssl_ctx,
         )
-        # SNI: set _http_vsn_str host to domain so SSL
-        # verifies cert against domain, not IP
-        conn._http_vsn_str = 'HTTP/1.1'
-        conn.set_tunnel(domain)
+
+        # Monkey-patch to connect to pinned IP instead of
+        # re-resolving DNS (prevents TOCTOU/rebinding)
+        _orig_create = conn._create_connection
+
+        def _pinned_create(address, *a, **kw):
+            return _orig_create(
+                (pinned_ip, address[1]), *a, **kw
+            )
+
+        conn._create_connection = _pinned_create
         conn.request(
             "GET",
             path,
