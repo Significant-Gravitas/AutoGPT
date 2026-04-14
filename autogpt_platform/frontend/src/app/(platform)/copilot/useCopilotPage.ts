@@ -1,5 +1,6 @@
 import {
   getGetV2ListSessionsQueryKey,
+  postV2QueuePendingMessage,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
   type getV2ListSessionsResponse,
@@ -248,6 +249,23 @@ export function useCopilotPage() {
     isUserStoppingRef.current = false;
 
     if (sessionId) {
+      const isInFlight = status === "streaming" || status === "submitted";
+
+      if (isInFlight) {
+        // Queue the message into the pending buffer so it is picked up between
+        // tool-call rounds by the currently running executor turn.
+        try {
+          await postV2QueuePendingMessage(sessionId, { message: trimmed });
+        } catch {
+          toast({
+            title: "Could not queue message",
+            description: "Please wait for the current response to finish.",
+            variant: "destructive",
+          });
+        }
+        return;
+      }
+
       if (files && files.length > 0) {
         setIsUploadingFiles(true);
         try {

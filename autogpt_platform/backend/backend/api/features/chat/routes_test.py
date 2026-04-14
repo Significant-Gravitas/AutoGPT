@@ -648,7 +648,9 @@ class TestQueuePendingMessageRequest:
         from backend.api.features.chat.routes import QueuePendingMessageRequest
 
         with pytest.raises(pydantic.ValidationError):
-            QueuePendingMessageRequest(message="hi", unknown_field="bad")  # type: ignore[call-arg]
+            QueuePendingMessageRequest.model_validate(
+                {"message": "hi", "unknown_field": "bad"}
+            )
 
     def test_accepts_up_to_20_file_ids(self) -> None:
         from backend.api.features.chat.routes import QueuePendingMessageRequest
