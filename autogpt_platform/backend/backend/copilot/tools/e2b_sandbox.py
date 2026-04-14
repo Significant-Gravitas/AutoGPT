@@ -236,7 +236,9 @@ async def get_or_create_sandbox(
             except Exception:
                 # Redis save failed — kill the sandbox to avoid leaking it.
                 with contextlib.suppress(Exception):
-                    await sandbox.kill()
+                    await asyncio.wait_for(
+                        sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
+                    )
                 raise
         except asyncio.CancelledError:
             # Task cancelled during creation — release the slot so followers
@@ -248,7 +250,9 @@ async def get_or_create_sandbox(
                 await redis.delete(key)
             if sandbox is not None:
                 with contextlib.suppress(Exception):
-                    await sandbox.kill()
+                    await asyncio.wait_for(
+                        sandbox.kill(), timeout=_E2B_API_TIMEOUT_SECONDS
+                    )
             raise
         except Exception:
             # Release the creation slot so other callers can proceed.
