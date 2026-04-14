@@ -1021,8 +1021,8 @@ async def stream_chat_completion_baseline(
                 if isinstance(existing, str):
                     msg["content"] = f"{existing}\n\n{warm_ctx}"
                 break
-        if user_message_for_transcript:
-            user_message_for_transcript = f"{user_message_for_transcript}\n\n{warm_ctx}"
+        # Do NOT append warm_ctx to user_message_for_transcript — it would
+        # persist stale temporal context into the transcript for future turns.
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,

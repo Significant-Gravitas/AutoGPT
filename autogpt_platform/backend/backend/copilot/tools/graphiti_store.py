@@ -197,11 +197,20 @@ class MemoryStoreTool(BaseTool):
                 steps=steps,
             )
 
+        try:
+            resolved_source = SourceKind(source_kind)
+        except ValueError:
+            resolved_source = SourceKind.user_asserted
+        try:
+            resolved_kind = MemoryKind(memory_kind)
+        except ValueError:
+            resolved_kind = MemoryKind.fact
+
         envelope = MemoryEnvelope(
             content=content,
-            source_kind=SourceKind(source_kind),
+            source_kind=resolved_source,
             scope=scope,
-            memory_kind=MemoryKind(memory_kind),
+            memory_kind=resolved_kind,
             status=MemoryStatus.active,
             provenance=session.session_id,
             rule=rule_model,
