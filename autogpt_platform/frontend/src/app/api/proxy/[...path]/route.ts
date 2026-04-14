@@ -11,26 +11,19 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 300; // 5 minutes timeout for large uploads
 export const dynamic = "force-dynamic";
 
+import {
+  getWorkspaceDownloadErrorMessage,
+  isRedirectStatus,
+  isTransientWorkspaceDownloadStatus,
+  isWorkspaceDownloadRequest,
+} from "./route.helpers";
+
 const WORKSPACE_DOWNLOAD_MAX_RETRIES = 2;
 const WORKSPACE_DOWNLOAD_RETRY_DELAY_MS = 500;
 
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
-}
-
-/**
- * Check if this is a workspace file download request that needs binary response handling.
- */
-function isWorkspaceDownloadRequest(path: string[]): boolean {
-  // Match pattern: api/workspace/files/{id}/download (5 segments)
-  return (
-    path.length == 5 &&
-    path[0] === "api" &&
-    path[1] === "workspace" &&
-    path[2] === "files" &&
-    path[path.length - 1] === "download"
-  );
 }
 
 /**
@@ -75,14 +68,6 @@ async function handleWorkspaceDownload(
     status: 200,
     headers: responseHeaders,
   });
-}
-
-function isRedirectStatus(status: number): boolean {
-  return [301, 302, 303, 307, 308].includes(status);
-}
-
-function isTransientWorkspaceDownloadStatus(status: number): boolean {
-  return status === 408 || status === 429 || status >= 500;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -134,44 +119,6 @@ async function fetchWorkspaceDownloadWithRetry(
   }
 
   throw new Error("Workspace download failed after retries");
-}
-
-function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
-  if (typeof body === "string") {
-    const trimmed = body.trim();
-    return trimmed || null;
-  }
-
-  if (!body || typeof body !== "object") return null;
-
-  if (
-    "detail" in body &&
-    typeof body.detail === "string" &&
-    body.detail.trim().length > 0
-  ) {
-    return body.detail.trim();
-  }
-
-  if (
-    "error" in body &&
-    typeof body.error === "string" &&
-    body.error.trim().length > 0
-  ) {
-    return body.error.trim();
-  }
-
-  if (
-    "detail" in body &&
-    body.detail &&
-    typeof body.detail === "object" &&
-    "message" in body.detail &&
-    typeof body.detail.message === "string" &&
-    body.detail.message.trim().length > 0
-  ) {
-    return body.detail.message.trim();
-  }
-
-  return null;
 }
 
 async function createWorkspaceDownloadErrorResponse(
