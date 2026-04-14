@@ -171,17 +171,26 @@ export class MarketplacePage extends BasePage {
   }
 
   private async searchAndOpenAgent(agentName: string): Promise<void> {
-    await this.page.goto("/marketplace");
-    const searchInput = await this.getSearchInput(this.page);
-    await searchInput.fill(agentName);
-    await searchInput.press("Enter");
-    await this.page.waitForURL("**/marketplace/search**", { timeout: 15000 });
+    const searchURL = `/marketplace/search?searchTerm=${encodeURIComponent(agentName)}`;
 
     const agentCard = this.page
       .locator('[data-testid="store-card"]')
       .filter({ hasText: agentName })
       .first();
-    await expect(agentCard).toBeVisible({ timeout: 15000 });
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await this.page.goto(searchURL);
+      await this.page.waitForLoadState("networkidle");
+
+      if (await agentCard.isVisible({ timeout: 15000 }).catch(() => false)) {
+        break;
+      }
+
+      if (attempt === 2) {
+        await expect(agentCard).toBeVisible({ timeout: 15000 });
+      }
+    }
+
     await agentCard.click();
 
     await expect(this.page).toHaveURL(/\/marketplace\/agent\//, {

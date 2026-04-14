@@ -72,8 +72,12 @@ E2E_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent"
 E2E_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent"
 E2E_MARKETPLACE_AGENT_INPUT_VALUE = 8
 E2E_MARKETPLACE_AGENT_OUTPUT_VALUE = 42
-E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
+_LOCAL_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[1] / "agents" / "calculator-agent.json"
+)
+_DOCKER_TEMPLATE_PATH = Path("/app/autogpt_platform/backend/agents/calculator-agent.json")
+E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
+    _LOCAL_TEMPLATE_PATH if _LOCAL_TEMPLATE_PATH.exists() else _DOCKER_TEMPLATE_PATH
 )
 SEEDED_TEST_EMAILS = [
     "test123@example.com",
