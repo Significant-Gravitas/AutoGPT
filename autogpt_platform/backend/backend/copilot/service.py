@@ -336,7 +336,9 @@ async def inject_user_context(
             user_ctx = _sanitize_user_context_field(raw_ctx)
             final_message = format_user_context_prefix(user_ctx) + sanitized_message
 
-    for session_msg in session_messages:
+    # Scan in reverse so we target the current turn's user message, not
+    # an older one that may exist when pending messages have been drained.
+    for session_msg in reversed(session_messages):
         if session_msg.role == "user":
             # Only touch the DB / in-memory state when the content actually
             # needs to change — avoids an unnecessary write on the common

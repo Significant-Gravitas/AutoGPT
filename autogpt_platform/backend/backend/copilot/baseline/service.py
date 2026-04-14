@@ -1053,7 +1053,9 @@ async def stream_chat_completion_baseline(
             understanding, message or "", session_id, session.messages
         )
         if prefixed is not None:
-            for msg in openai_messages:
+            # Reverse scan so we update the current turn's user message, not
+            # the first (oldest) one when pending messages were drained.
+            for msg in reversed(openai_messages):
                 if msg["role"] == "user":
                     msg["content"] = prefixed
                     break
