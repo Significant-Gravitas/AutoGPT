@@ -2330,11 +2330,13 @@ async def stream_chat_completion_sdk(
             # --session-id here.  CLI >=2.1.97 rejects the combination of
             # --session-id + --resume unless --fork-session is also given.
             sdk_options_kwargs["resume"] = resume_file
-        else:
-            # No --resume on this turn: force the CLI to write its native
-            # session JSONL to a predictable path so upload_cli_session()
-            # can find it after the turn completes.
-            # Path: {projects_base}/{encoded_cwd}/{session_id}.jsonl
+        elif not has_history:
+            # T1 only: write CLI native session to a predictable path so
+            # upload_cli_session() can find it after the turn completes.
+            # On T2+ without --resume the T1 session file already exists at
+            # that path; passing --session-id again would fail with
+            # "Session ID already in use".  The upload guard also skips T2+
+            # no-resume turns, so --session-id provides no benefit there.
             sdk_options_kwargs["session_id"] = session_id
         # Optional explicit Claude Code CLI binary path (decouples the
         # bundled SDK version from the CLI version we run — needed because
@@ -2514,13 +2516,18 @@ async def stream_chat_completion_sdk(
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
                     sdk_options_kwargs_retry.pop("session_id", None)
-                else:
+                elif not has_history:
+                    # T1 retry: keep session_id so the CLI writes to the
+                    # predictable path for upload_cli_session().
                     sdk_options_kwargs_retry.pop("resume", None)
-                    # Re-add session_id so the CLI writes to the predictable
-                    # path even on compaction/no-resume retry.  Without this,
-                    # the CLI assigns a random UUID and upload_cli_session()
-                    # cannot find the file for future cross-pod --resume.
                     sdk_options_kwargs_retry["session_id"] = session_id
+                else:
+                    # T2+ retry without --resume: do not pass --session-id.
+                    # The T1 session file already exists at that path; re-using
+                    # the same ID would fail with "Session ID already in use".
+                    # The upload guard skips T2+ no-resume turns anyway.
+                    sdk_options_kwargs_retry.pop("resume", None)
+                    sdk_options_kwargs_retry.pop("session_id", None)
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 state.query_message, state.was_compacted = await _build_query_message(
                     current_message,

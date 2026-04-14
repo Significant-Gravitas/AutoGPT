@@ -662,15 +662,18 @@ def _build_meta_storage_path(user_id: str, session_id: str, backend: object) -> 
 def _cli_session_path(sdk_cwd: str, session_id: str) -> str:
     """Expected path of the CLI's native session JSONL file.
 
-    The CLI encodes the working directory by replacing '/' with '-', then
-    places its session file at::
+    The CLI resolves the working directory via ``os.path.realpath``, then
+    encodes it by replacing every non-alphanumeric character with ``-``,
+    placing its session file at::
 
         {projects_base}/{encoded_cwd}/{session_id}.jsonl
 
-    When we pass ``--session-id {session_id}``, the CLI uses the app session
-    UUID as its own session UUID, making the file path predictable.
+    We must mirror the CLI's realpath + regex encoding exactly.  On macOS
+    ``/tmp`` is a symlink to ``/private/tmp``, so a naive ``str.replace("/",
+    "-")`` would produce the wrong directory name and the file would never be
+    found.
     """
-    encoded_cwd = sdk_cwd.replace("/", "-")
+    encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     safe_id = _sanitize_id(session_id)
     return os.path.join(_projects_base(), encoded_cwd, f"{safe_id}.jsonl")
 
