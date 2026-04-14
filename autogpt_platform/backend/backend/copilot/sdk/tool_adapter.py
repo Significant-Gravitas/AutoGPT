@@ -25,8 +25,7 @@ from backend.copilot.context import (
     _current_user_id,
     _encode_cwd_for_cli,
     get_execution_context,
-    get_sdk_cwd,
-    is_allowed_local_path,
+    is_sdk_tool_path,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import (
@@ -427,7 +426,12 @@ async def _read_file_handler(args: dict[str, Any]) -> dict[str, Any]:
         )
         return _mcp_ok(numbered)
 
-    if not is_allowed_local_path(file_path, get_sdk_cwd()):
+    # Use is_sdk_tool_path (not is_allowed_local_path) to restrict this tool
+    # to only SDK-internal tool-results/tool-outputs paths.  is_sdk_tool_path
+    # validates session membership via _current_project_dir, preventing
+    # cross-session reads.  sdk_cwd files (workspace outputs) are NOT allowed
+    # here — they are served by the e2b_file_tools Read handler instead.
+    if not is_sdk_tool_path(file_path):
         return _mcp_err(f"Path not allowed: {os.path.basename(file_path)}")
 
     resolved = os.path.realpath(os.path.expanduser(file_path))

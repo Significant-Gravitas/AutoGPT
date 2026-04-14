@@ -6,12 +6,11 @@ ensuring multi-user isolation and preventing unauthorized operations.
 
 import json
 import logging
-import os
 import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from backend.copilot.context import SDK_PROJECTS_DIR, is_allowed_local_path
+from backend.copilot.context import is_allowed_local_path, is_sdk_tool_path
 
 from .tool_adapter import (
     BLOCKED_TOOLS,
@@ -67,32 +66,6 @@ def _deny(reason: str) -> dict[str, Any]:
     }
 
 
-_SDK_ARTIFACT_UUID_RE = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I
-)
-
-
-def _is_sdk_artifact_path(path: str) -> bool:
-    """Return True if *path* is an SDK-internal tool-results or tool-outputs path.
-
-    These paths (``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/...``
-    and ``tool-outputs/...``) are the only non-workspace locations that the
-    native SDK ``Read`` tool is permitted to access.  All other Read attempts
-    must go through the ``read_file`` MCP tool which enforces workspace isolation.
-    """
-    resolved = os.path.realpath(os.path.expanduser(path))
-    if not resolved.startswith(SDK_PROJECTS_DIR + os.sep):
-        return False
-    relative = resolved[len(SDK_PROJECTS_DIR) + 1 :]
-    parts = relative.split(os.sep)
-    # Require: <encoded-cwd>/<uuid>/tool-results|tool-outputs/...
-    return (
-        len(parts) >= 3
-        and bool(_SDK_ARTIFACT_UUID_RE.match(parts[1]))
-        and parts[2] in ("tool-results", "tool-outputs")
-    )
-
-
 def _validate_workspace_path(
     tool_name: str, tool_input: dict[str, Any], sdk_cwd: str | None
 ) -> dict[str, Any]:
@@ -112,8 +85,10 @@ def _validate_workspace_path(
 
     if tool_name == "Read":
         # Narrow carve-out: only allow SDK artifact paths for the native Read tool.
+        # ``is_sdk_tool_path`` validates session membership via _current_project_dir,
+        # preventing cross-session access to another session's tool-results directory.
         # All other file reads must go through the read_file MCP tool.
-        if _is_sdk_artifact_path(path):
+        if is_sdk_tool_path(path):
             return {}
         logger.warning(f"Blocked Read outside SDK artifact paths: {path}")
         return _deny(

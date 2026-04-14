@@ -172,6 +172,26 @@ def test_read_claude_projects_settings_json_denied():
         _current_project_dir.reset(token)
 
 
+def test_read_cross_session_tool_results_denied():
+    """Cross-session reads are blocked: session A cannot read session B's tool-results."""
+    home = os.path.expanduser("~")
+    # session A: encoded cwd is "-tmp-copilot-abc123"
+    # session B: encoded cwd is "-tmp-copilot-other999"
+    other_session_path = (
+        f"{home}/.claude/projects/-tmp-copilot-other999/"
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/secret.txt"
+    )
+    # Current session is abc123, not other999 — so the path should be denied.
+    token = _current_project_dir.set("-tmp-copilot-abc123")
+    try:
+        result = _validate_tool_access(
+            "Read", {"file_path": other_session_path}, sdk_cwd=SDK_CWD
+        )
+        assert _is_denied(result)
+    finally:
+        _current_project_dir.reset(token)
+
+
 # -- Built-in Bash is blocked (use bash_exec MCP tool instead) ---------------
 
 
