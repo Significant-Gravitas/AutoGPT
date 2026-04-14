@@ -4,6 +4,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 # Block ID shared between autopilot.py and copilot prompting.py.
 AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+
+
+class SubAgentRecursionError(RuntimeError):
+    """Raised when the sub-agent nesting depth limit is exceeded."""
 
 
 class ToolCallEntry(TypedDict):
@@ -410,8 +415,41 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
+        except SubAgentRecursionError as exc:
+            # Deliberate block — re-enqueueing would immediately hit the limit
+            # again, so skip recovery and just surface the error.
+            yield "session_id", sid
+            yield "error", str(exc)
         except Exception as exc:
             yield "session_id", sid
+            # Recovery enqueue must happen BEFORE yielding "error": the block
+            # framework (_base.execute) raises BlockExecutionError immediately
+            # when it sees ("error", ...) and stops consuming the generator,
+            # so any code after that yield is dead code in production.
+            effective_prompt = input_data.prompt
+            if input_data.system_context:
+                effective_prompt = (
+                    f"[System Context: {input_data.system_context}]\n\n"
+                    f"{input_data.prompt}"
+                )
+            try:
+                await _enqueue_for_recovery(
+                    sid,
+                    execution_context.user_id,
+                    effective_prompt,
+                    input_data.dry_run or execution_context.dry_run,
+                )
+            except asyncio.CancelledError:
+                # Task cancelled during recovery — still yield the error
+                # so the session_id + error pair is visible before re-raising.
+                yield "error", str(exc)
+                raise
+            except Exception:
+                logger.warning(
+                    "AutoPilot session %s: recovery enqueue raised unexpectedly",
+                    sid[:12],
+                    exc_info=True,
+                )
             yield "error", str(exc)
 
 
@@ -439,13 +477,13 @@ def _check_recursion(
     when the caller exits to restore the previous depth.
 
     Raises:
-        RuntimeError: If the current depth already meets or exceeds the limit.
+        SubAgentRecursionError: If the current depth already meets or exceeds the limit.
     """
     current = _autopilot_recursion_depth.get()
     inherited = _autopilot_recursion_limit.get()
     limit = max_depth if inherited is None else min(inherited, max_depth)
     if current >= limit:
-        raise RuntimeError(
+        raise SubAgentRecursionError(
             f"AutoPilot recursion depth limit reached ({limit}). "
             "The autopilot has called itself too many times."
         )
@@ -536,3 +574,51 @@ def _merge_inherited_permissions(
     # Return the token so the caller can restore the previous value in finally.
     token = _inherited_permissions.set(merged)
     return merged, token
+
+
+# ---------------------------------------------------------------------------
+# Recovery helpers
+# ---------------------------------------------------------------------------
+
+
+async def _enqueue_for_recovery(
+    session_id: str,
+    user_id: str,
+    message: str,
+    dry_run: bool,
+) -> None:
+    """Re-enqueue an orphaned sub-agent session so a fresh executor picks it up.
+
+    When ``execute_copilot`` raises an unexpected exception the sub-agent
+    session is left with ``last_role=user`` and no active consumer — identical
+    to the state that caused Toran's reports of silent sub-agents.  Publishing
+    the original prompt back to the copilot queue lets the executor service
+    resume the session without manual intervention.
+
+    Skipped for dry-run sessions (no real consumers listen to the queue for
+    simulated sessions).  Any failure to publish is logged and swallowed so
+    it never masks the original exception.
+    """
+    if dry_run:
+        return
+    try:
+        from backend.copilot.executor.utils import (  # avoid circular import
+            enqueue_copilot_turn,
+        )
+
+        await asyncio.wait_for(
+            enqueue_copilot_turn(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                turn_id=str(uuid.uuid4()),
+            ),
+            timeout=10,
+        )
+        logger.info("AutoPilot session %s enqueued for recovery", session_id[:12])
+    except Exception:
+        logger.warning(
+            "AutoPilot session %s: failed to enqueue for recovery",
+            session_id[:12],
+            exc_info=True,
+        )

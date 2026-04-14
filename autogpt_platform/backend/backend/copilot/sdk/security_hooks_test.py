@@ -56,25 +56,36 @@ def test_unknown_tool_allowed():
 # -- Workspace-scoped tools --------------------------------------------------
 
 
-def test_read_within_workspace_allowed():
+def test_read_within_workspace_blocked():
+    """Read of workspace files is denied — workspace reads must use the read_file MCP tool."""
     result = _validate_tool_access(
         "Read", {"file_path": f"{SDK_CWD}/file.txt"}, sdk_cwd=SDK_CWD
     )
-    assert result == {}
+    assert _is_denied(result)
 
 
-def test_write_within_workspace_allowed():
+def test_read_outside_workspace_blocked():
+    """Read outside the workspace is denied."""
+    result = _validate_tool_access(
+        "Read", {"file_path": "/etc/passwd"}, sdk_cwd=SDK_CWD
+    )
+    assert _is_denied(result)
+
+
+def test_write_builtin_blocked():
+    """SDK built-in Write is blocked — all writes go through MCP Write tool."""
     result = _validate_tool_access(
         "Write", {"file_path": f"{SDK_CWD}/output.json"}, sdk_cwd=SDK_CWD
     )
-    assert result == {}
+    assert _is_denied(result)
 
 
-def test_edit_within_workspace_allowed():
+def test_edit_builtin_blocked():
+    """SDK built-in Edit is blocked — all edits go through MCP Edit tool."""
     result = _validate_tool_access(
         "Edit", {"file_path": f"{SDK_CWD}/src/main.py"}, sdk_cwd=SDK_CWD
     )
-    assert result == {}
+    assert _is_denied(result)
 
 
 def test_glob_within_workspace_allowed():
@@ -156,6 +167,26 @@ def test_read_claude_projects_settings_json_denied():
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
         result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
+        assert _is_denied(result)
+    finally:
+        _current_project_dir.reset(token)
+
+
+def test_read_cross_session_tool_results_denied():
+    """Cross-session reads are blocked: session A cannot read session B's tool-results."""
+    home = os.path.expanduser("~")
+    # session A: encoded cwd is "-tmp-copilot-abc123"
+    # session B: encoded cwd is "-tmp-copilot-other999"
+    other_session_path = (
+        f"{home}/.claude/projects/-tmp-copilot-other999/"
+        "a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/secret.txt"
+    )
+    # Current session is abc123, not other999 — so the path should be denied.
+    token = _current_project_dir.set("-tmp-copilot-abc123")
+    try:
+        result = _validate_tool_access(
+            "Read", {"file_path": other_session_path}, sdk_cwd=SDK_CWD
+        )
         assert _is_denied(result)
     finally:
         _current_project_dir.reset(token)

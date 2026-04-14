@@ -309,7 +309,7 @@ class TestDeleteTranscript:
         ):
             await delete_transcript("user-123", "session-456")
 
-        assert mock_storage.delete.call_count == 2
+        assert mock_storage.delete.call_count == 3
         paths = [call.args[0] for call in mock_storage.delete.call_args_list]
         assert any(p.endswith(".jsonl") for p in paths)
         assert any(p.endswith(".meta.json") for p in paths)
@@ -319,7 +319,7 @@ class TestDeleteTranscript:
         """If .jsonl delete fails, .meta.json delete is still attempted."""
         mock_storage = AsyncMock()
         mock_storage.delete = AsyncMock(
-            side_effect=[Exception("jsonl delete failed"), None]
+            side_effect=[Exception("jsonl delete failed"), None, None]
         )
 
         with patch(
@@ -330,14 +330,14 @@ class TestDeleteTranscript:
             # Should not raise
             await delete_transcript("user-123", "session-456")
 
-        assert mock_storage.delete.call_count == 2
+        assert mock_storage.delete.call_count == 3
 
     @pytest.mark.asyncio
     async def test_handles_meta_delete_failure(self):
         """If .meta.json delete fails, no exception propagates."""
         mock_storage = AsyncMock()
         mock_storage.delete = AsyncMock(
-            side_effect=[None, Exception("meta delete failed")]
+            side_effect=[None, Exception("meta delete failed"), None]
         )
 
         with patch(

@@ -164,7 +164,6 @@ describe("useCopilotUIStore", () => {
     it("sets mode to fast", () => {
       useCopilotUIStore.getState().setCopilotMode("fast");
       expect(useCopilotUIStore.getState().copilotMode).toBe("fast");
-      expect(window.localStorage.getItem("copilot-mode")).toBe("fast");
     });
 
     it("sets mode back to extended_thinking", () => {
@@ -173,6 +172,11 @@ describe("useCopilotUIStore", () => {
       expect(useCopilotUIStore.getState().copilotMode).toBe(
         "extended_thinking",
       );
+    });
+
+    it("does not persist mode to localStorage", () => {
+      useCopilotUIStore.getState().setCopilotMode("fast");
+      expect(window.localStorage.getItem("copilot-mode")).toBeNull();
     });
   });
 
@@ -190,7 +194,6 @@ describe("useCopilotUIStore", () => {
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);
-      expect(window.localStorage.getItem("copilot-mode")).toBeNull();
       expect(
         window.localStorage.getItem("copilot-notifications-enabled"),
       ).toBeNull();

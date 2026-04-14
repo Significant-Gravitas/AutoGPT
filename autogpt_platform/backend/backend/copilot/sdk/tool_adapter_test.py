@@ -653,8 +653,8 @@ class TestReadFileHandlerBridge:
         test_file.write_text('{"ok": true}\n')
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
-            lambda path, cwd: True,
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
         )
 
         fake_sandbox = object()
@@ -692,8 +692,8 @@ class TestReadFileHandlerBridge:
         test_file.write_text('{"ok": true}\n')
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
-            lambda path, cwd: True,
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
         )
 
         bridge_calls: list[tuple] = []

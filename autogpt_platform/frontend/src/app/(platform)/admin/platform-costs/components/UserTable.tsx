@@ -26,6 +26,12 @@ function UserTable({ data }: Props) {
             <th scope="col" className="px-4 py-3 text-right">
               Output Tokens
             </th>
+            <th scope="col" className="px-4 py-3 text-right">
+              Cache Read
+            </th>
+            <th scope="col" className="px-4 py-3 text-right">
+              Cache Write
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -54,12 +60,22 @@ function UserTable({ data }: Props) {
               <td className="px-4 py-3 text-right">
                 {formatTokens(row.total_output_tokens)}
               </td>
+              <td className="px-4 py-3 text-right">
+                {(row.total_cache_read_tokens ?? 0) > 0
+                  ? formatTokens(row.total_cache_read_tokens ?? 0)
+                  : "-"}
+              </td>
+              <td className="px-4 py-3 text-right">
+                {(row.total_cache_creation_tokens ?? 0) > 0
+                  ? formatTokens(row.total_cache_creation_tokens ?? 0)
+                  : "-"}
+              </td>
             </tr>
           ))}
           {data.length === 0 && (
             <tr>
               <td
-                colSpan={5}
+                colSpan={7}
                 className="px-4 py-8 text-center text-muted-foreground"
               >
                 No cost data yet
