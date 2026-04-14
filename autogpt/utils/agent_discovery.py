@@ -192,15 +192,13 @@ def discover_services(
     Raises:
         ValueError: If domain fails SSRF validation.
     """
-    # SSRF step 1: validate domain format
+    # Validate domain format (cheap, no network I/O)
     fmt_error = _validate_domain(domain)
     if fmt_error:
         raise ValueError(fmt_error)
 
-    # SSRF step 2: resolve DNS and reject private IPs
-    pinned_ip = _resolve_and_validate(domain)
-
-    # Check cache after validation
+    # Check cache BEFORE DNS to avoid transient DNS failures
+    # defeating the cache's resilience purpose
     if use_cache and domain in _cache:
         cached_at, cached_result = _cache[domain]
         if time.time() - cached_at < _CACHE_TTL:
@@ -209,6 +207,9 @@ def discover_services(
                 if cached_result
                 else None
             )
+
+    # Resolve DNS and reject private IPs (SSRF protection)
+    pinned_ip = _resolve_and_validate(domain)
 
     # SSRF step 3: connect to the pinned IP directly
     # with Host header and SNI set to original domain.
