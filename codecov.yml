@@ -43,13 +43,6 @@ component_management:
       name: "Platform Backend"
       paths:
         - autogpt_platform/backend/**
-      statuses:
-        - type: project
-          target: auto
-          informational: true
-        - type: patch
-          target: 80%
-          informational: true
     - component_id: platform-frontend
       name: "Platform Frontend"
       paths:
