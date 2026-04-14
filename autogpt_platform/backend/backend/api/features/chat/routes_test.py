@@ -881,6 +881,72 @@ def test_queue_pending_message_file_ids_scoped_to_workspace(
     assert call_kwargs["where"]["isDeleted"] is False
 
 
+# ─── get_pending_messages (GET /sessions/{session_id}/messages/pending) ─────
+
+
+def test_get_pending_messages_returns_200_with_empty_buffer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Happy path: no pending messages returns 200 with empty list."""
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get("/sessions/sess-1/messages/pending")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messages"] == []
+    assert data["count"] == 0
+
+
+def test_get_pending_messages_returns_queued_messages(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Returns pending messages from buffer without consuming them."""
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages",
+        new_callable=AsyncMock,
+        return_value=[
+            MagicMock(content="first message"),
+            MagicMock(content="second message"),
+        ],
+    )
+
+    response = client.get("/sessions/sess-1/messages/pending")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 2
+    assert data["messages"] == ["first message", "second message"]
+
+
+def test_get_pending_messages_session_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """If session does not exist or belongs to another user, returns 404."""
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        side_effect=fastapi.HTTPException(status_code=404, detail="Session not found."),
+    )
+
+    response = client.get("/sessions/bad-sess/messages/pending")
+
+    assert response.status_code == 404
+
+
 class TestStripInjectedContext:
     """Unit tests for `_strip_injected_context` — the GET-side helper that
     hides the server-injected `<user_context>` block from API responses.
