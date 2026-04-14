@@ -75,7 +75,9 @@ E2E_MARKETPLACE_AGENT_OUTPUT_VALUE = 42
 _LOCAL_TEMPLATE_PATH = (
     Path(__file__).resolve().parents[1] / "agents" / "calculator-agent.json"
 )
-_DOCKER_TEMPLATE_PATH = Path("/app/autogpt_platform/backend/agents/calculator-agent.json")
+_DOCKER_TEMPLATE_PATH = Path(
+    "/app/autogpt_platform/backend/agents/calculator-agent.json"
+)
 E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
     _LOCAL_TEMPLATE_PATH if _LOCAL_TEMPLATE_PATH.exists() else _DOCKER_TEMPLATE_PATH
 )
