@@ -2243,13 +2243,31 @@ async def stream_chat_completion_sdk(
             "max_turns": config.claude_agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
+            # max_thinking_tokens: cap extended thinking output per LLM call.
+            # Thinking tokens are billed at output rate ($75/M for Opus) and
+            # account for ~54% of total cost.  8192 is the default.
+            # Intentionally sent for all models including Sonnet — the CLI
+            # silently ignores this field for non-Opus models (those without
+            # native extended thinking), so it is safe to pass unconditionally.
+            "max_thinking_tokens": config.claude_agent_max_thinking_tokens,
         }
+        # effort: only set for models with extended thinking (Opus).
+        # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
+        if config.claude_agent_thinking_effort:
+            sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
+
         if sdk_env:
             sdk_options_kwargs["env"] = sdk_env
         if use_resume and resume_file:
             sdk_options_kwargs["resume"] = resume_file
+        # Optional explicit Claude Code CLI binary path (decouples the
+        # bundled SDK version from the CLI version we run — needed because
+        # the CLI bundled in 0.1.46+ is broken against OpenRouter).  Falls
+        # back to the bundled binary when unset.
+        if config.claude_agent_cli_path:
+            sdk_options_kwargs["cli_path"] = config.claude_agent_cli_path
 
         options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
