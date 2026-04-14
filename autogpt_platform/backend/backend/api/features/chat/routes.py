@@ -106,7 +106,7 @@ router = APIRouter(
 class StreamChatRequest(BaseModel):
     """Request model for streaming chat with optional context."""
 
-    message: str = Field(max_length=4000)
+    message: str = Field(max_length=32_000)
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
     file_ids: list[str] | None = Field(
