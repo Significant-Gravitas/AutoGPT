@@ -140,6 +140,8 @@ class UserCostSummary(BaseModel):
     total_cost_microdollars: int
     total_input_tokens: int
     total_output_tokens: int
+    total_cache_read_tokens: int = 0
+    total_cache_creation_tokens: int = 0
     request_count: int
     cost_bearing_request_count: int = 0
 
@@ -600,6 +602,8 @@ async def get_platform_cost_dashboard(
                 total_cost_microdollars=_si(r, "costMicrodollars"),
                 total_input_tokens=_si(r, "inputTokens"),
                 total_output_tokens=_si(r, "outputTokens"),
+                total_cache_read_tokens=_si(r, "cacheReadTokens"),
+                total_cache_creation_tokens=_si(r, "cacheCreationTokens"),
                 request_count=_ca(r),
                 cost_bearing_request_count=user_cost_bearing_counts.get(
                     r.get("userId") or "", 0

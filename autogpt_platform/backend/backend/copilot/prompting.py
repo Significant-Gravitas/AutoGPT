@@ -75,11 +75,12 @@ Example — committing an image file to GitHub:
 }}
 ```
 
-### Writing large files — CRITICAL
-**Never write an entire large document in a single tool call.**  When the
-content you want to write exceeds ~2000 words the tool call's output token
-limit will silently truncate the arguments, producing an empty `{{}}` input
-that fails repeatedly.
+### Writing large files — CRITICAL (causes production failures)
+**NEVER write an entire large document in a single tool call.**  When the
+content you want to write exceeds ~2000 words the API output-token limit
+will silently truncate the tool call arguments mid-JSON, losing all content
+and producing an opaque error.  This is unrecoverable — the user's work is
+lost and retrying with the same approach fails in an infinite loop.
 
 **Preferred: compose from file references.**  If the data is already in
 files (tool outputs, workspace files), compose the report in one call
