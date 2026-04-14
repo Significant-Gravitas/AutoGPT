@@ -37,8 +37,10 @@ E2B assigns each sandbox an absolute ``end_at`` timestamp at create time:
 ``end_at = now + timeout``.  Pausing does NOT extend ``end_at``; only
 ``connect()`` extends it (by ``timeout`` seconds from the moment of reconnect).
 Active sessions therefore stay alive as long as turns arrive within the timeout
-window.  Orphaned sandboxes (e.g. leaked by a failed create retry) are killed by
-E2B when their original ``end_at`` is reached — no external cleanup is required.
+window.  Orphaned sandboxes (e.g. leaked by a failed create retry) are paused
+(not killed) at ``end_at`` under the default ``on_timeout="pause"`` lifecycle;
+they persist until explicitly killed or until E2B's platform-level cleanup
+applies (30-day limit during beta).
 """
 
 import asyncio
@@ -184,6 +186,7 @@ async def get_or_create_sandbox(
         # We hold the slot — create the sandbox with per-attempt timeout and
         # retry.  The sentinel remains held throughout so concurrent callers
         # for the same session wait rather than racing to create duplicates.
+        sandbox: AsyncSandbox | None = None
         try:
             lifecycle = SandboxLifecycle(
                 on_timeout=on_timeout,
@@ -193,13 +196,12 @@ async def get_or_create_sandbox(
             # E2B may complete provisioning server-side after a timeout.
             # Since AsyncSandbox.create() returns no sandbox_id before
             # completion, recovery via connect() is not possible and each
-            # timed-out attempt may leak a sandbox.  The leak is bounded:
-            # E2B kills every sandbox at its end_at (creation + timeout),
-            # so leaked orphans are auto-reaped within e2b_sandbox_timeout
-            # seconds (default 7 min).  At most _SANDBOX_CREATE_MAX_RETRIES
-            # − 1 = 2 sandboxes can leak per incident.
+            # timed-out attempt may leak a sandbox.  Under the default
+            # on_timeout="pause" lifecycle, leaked orphans are paused (not
+            # killed) at end_at and persist until explicitly cleaned up.
+            # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
+            # leak per incident.
             last_exc: Exception | None = None
-            sandbox: AsyncSandbox | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
                     sandbox = await asyncio.wait_for(
@@ -240,8 +242,13 @@ async def get_or_create_sandbox(
             # Task cancelled during creation — release the slot so followers
             # are not blocked for the full TTL (120 s).  CancelledError inherits
             # from BaseException, not Exception, so it is not caught above.
+            # Kill the sandbox if it was already created to avoid leaking it
+            # (can happen when cancellation fires during _set_stored_sandbox_id).
             with contextlib.suppress(Exception):
                 await redis.delete(key)
+            if sandbox is not None:
+                with contextlib.suppress(Exception):
+                    await sandbox.kill()
             raise
         except Exception:
             # Release the creation slot so other callers can proceed.

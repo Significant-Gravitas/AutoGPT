@@ -366,6 +366,36 @@ class TestGetOrCreateSandbox:
         # Sentinel must be released even on task cancellation
         redis.delete.assert_awaited_once()
 
+    def test_post_create_cancellation_kills_sandbox(self):
+        """CancelledError during _set_stored_sandbox_id must kill the already-created sandbox."""
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        created_sb = _mock_sandbox()
+
+        async def _set_side_effect(*_args, **_kwargs):
+            raise asyncio.CancelledError
+
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox._set_stored_sandbox_id",
+                side_effect=_set_side_effect,
+            ),
+            _patch_redis(redis),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+        ):
+            mock_cls.create = AsyncMock(return_value=created_sb)
+            with pytest.raises(asyncio.CancelledError):
+                asyncio.run(
+                    get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT)
+                )
+
+        # Sandbox must be killed and Redis sentinel cleared on post-create cancellation
+        created_sb.kill.assert_awaited_once()
+        redis.delete.assert_awaited_once()
+
     def test_stale_reconnect_clears_and_creates(self):
         """When stored sandbox is stale (not running), clear it and create a new one."""
         stale_sb = _mock_sandbox("sb-stale", running=False)
