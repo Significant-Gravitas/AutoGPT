@@ -77,7 +77,7 @@ class TestStoragePathParts:
         assert fname.endswith(".jsonl")
 
     def test_meta_returns_meta_json(self):
-        prefix, uid, fname = _meta_storage_path_parts("user-1", "sess-2")
+        prefix, _, fname = _meta_storage_path_parts("user-1", "sess-2")
         assert prefix == "chat-transcripts"
         assert fname.endswith(".meta.json")
 
@@ -760,15 +760,19 @@ class TestUploadCliSession:
 
         from .transcript import upload_cli_session
 
-        outside_path_obj = tmp_path / "outside.jsonl"
-        outside_path_obj.write_bytes(b'{"type":"assistant"}\n')
-
         mock_storage = AsyncMock()
 
         with (
             patch(
                 "backend.copilot.transcript._projects_base",
-                return_value="/nonexistent/projects/base",
+                return_value=str(tmp_path),
+            ),
+            # Return a path that is genuinely outside tmp_path so that
+            # realpath(session_file).startswith(projects_base + "/") is False
+            # and the boundary guard actually fires.
+            patch(
+                "backend.copilot.transcript._cli_session_path",
+                return_value="/outside/escaped/session.jsonl",
             ),
             patch(
                 "backend.copilot.transcript.get_workspace_storage",
@@ -780,11 +784,11 @@ class TestUploadCliSession:
                 upload_cli_session(
                     user_id="user-1",
                     session_id="12345678-0000-0000-0000-000000000000",
-                    sdk_cwd="/tmp/copilot-test",
+                    sdk_cwd=str(tmp_path),
                 )
             )
 
-        # storage.store must NOT be called for paths outside the base
+        # storage.store must NOT be called — boundary guard should reject the path
         mock_storage.store.assert_not_called()
 
     def test_skips_upload_when_file_not_found(self, tmp_path):
@@ -952,14 +956,19 @@ class TestRestoreCliSession:
             ),
             patch(
                 "backend.copilot.transcript._projects_base",
-                return_value="/nonexistent/projects/base",
+                return_value=str(tmp_path),
+            ),
+            # Return a path genuinely outside tmp_path so the boundary guard fires.
+            patch(
+                "backend.copilot.transcript._cli_session_path",
+                return_value="/outside/escaped/session.jsonl",
             ),
         ):
             result = asyncio.run(
                 restore_cli_session(
                     user_id="user-1",
                     session_id="12345678-0000-0000-0000-000000000000",
-                    sdk_cwd="/tmp/copilot-test",
+                    sdk_cwd=str(tmp_path),
                 )
             )
 

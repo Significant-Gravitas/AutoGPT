@@ -1940,8 +1940,10 @@ class TestStreamChatCompletionRetryIntegration:
             ):
                 events.append(event)
 
-        # --resume must NOT be passed when CLI native session was not restored
-        assert "resume" not in captured_options, (
+        # --resume must NOT be set on the options when CLI session restore failed.
+        # captured_options holds {"options": ClaudeAgentOptions}, so check
+        # the attribute directly rather than dict keys.
+        assert not getattr(captured_options.get("options"), "resume", None), (
             f"--resume was set even though restore_cli_session returned False: "
             f"{captured_options}"
         )

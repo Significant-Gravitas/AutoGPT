@@ -708,7 +708,7 @@ async def upload_cli_session(
         logger.warning(
             "%s CLI session file outside projects base, skipping upload: %s",
             log_prefix,
-            real_path,
+            os.path.basename(real_path),
         )
         return
 
@@ -774,7 +774,7 @@ async def restore_cli_session(
         logger.warning(
             "%s CLI session restore path outside projects base: %s",
             log_prefix,
-            session_file,
+            os.path.basename(session_file),
         )
         return False
 
@@ -961,6 +961,16 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
         logger.info("[Transcript] Deleted metadata for session %s", session_id)
     except Exception as e:
         logger.warning("[Transcript] Failed to delete metadata: %s", e)
+
+    # Also delete the CLI native session file to prevent storage growth.
+    try:
+        cli_path = _build_path_from_parts(
+            _cli_session_storage_path_parts(user_id, session_id), storage
+        )
+        await storage.delete(cli_path)
+        logger.info("[Transcript] Deleted CLI session for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete CLI session: %s", e)
 
 
 # ---------------------------------------------------------------------------

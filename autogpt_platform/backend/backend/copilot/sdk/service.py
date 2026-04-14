@@ -2513,8 +2513,14 @@ async def stream_chat_completion_sdk(
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
-                elif "resume" in sdk_options_kwargs_retry:
-                    del sdk_options_kwargs_retry["resume"]
+                    sdk_options_kwargs_retry.pop("session_id", None)
+                else:
+                    sdk_options_kwargs_retry.pop("resume", None)
+                    # Re-add session_id so the CLI writes to the predictable
+                    # path even on compaction/no-resume retry.  Without this,
+                    # the CLI assigns a random UUID and upload_cli_session()
+                    # cannot find the file for future cross-pod --resume.
+                    sdk_options_kwargs_retry["session_id"] = session_id
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 state.query_message, state.was_compacted = await _build_query_message(
                     current_message,
@@ -3012,6 +3018,7 @@ async def stream_chat_completion_sdk(
             and user_id
             and sdk_cwd
             and session is not None
+            and not skip_transcript_upload
         ):
             try:
                 await asyncio.shield(
