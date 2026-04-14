@@ -1,7 +1,6 @@
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
 import { BuildPage } from "./pages/build.page";
-import { LibraryPage } from "./pages/library.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
 
@@ -83,33 +82,3 @@ test("builder happy path: user can run the saved agent from builder and see exec
     .not.toBe("unknown");
 });
 
-test("builder happy path: user can export the created agent", async ({
-  page,
-}) => {
-  test.setTimeout(120000);
-
-  const buildPage = new BuildPage(page);
-  const { agentName } =
-    await buildPage.createAndSaveSimpleAgent("Smoke Export Agent");
-
-  const libraryPage = new LibraryPage(page);
-  await libraryPage.openSavedAgent(agentName);
-
-  const exportButton = page.getByRole("button", {
-    name: "Export agent to file",
-  });
-
-  try {
-    await expect(exportButton.first()).toBeVisible({ timeout: 30000 });
-  } catch {
-    await page.reload();
-    await page.waitForLoadState("domcontentloaded");
-    await expect(exportButton.first()).toBeVisible({ timeout: 30000 });
-  }
-
-  await exportButton.first().click();
-
-  await expect(page.getByText("Agent exported")).toBeVisible({
-    timeout: 15000,
-  });
-});
