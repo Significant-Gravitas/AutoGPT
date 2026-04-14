@@ -244,13 +244,15 @@ def discover_services(
         raise ValueError(fmt_error)
 
     # Check cache BEFORE DNS to avoid transient DNS failures
-    # defeating the cache's resilience purpose
+    # defeating the cache's resilience purpose. Use
+    # `is not None` so an empty-dict cached positive
+    # doesn't get mistaken for a negative entry.
     if use_cache and domain in _cache:
         cached_at, cached_result = _cache[domain]
         if time.time() - cached_at < _CACHE_TTL:
             return (
                 DiscoveryResult(cached_result)
-                if cached_result
+                if cached_result is not None
                 else None
             )
 
