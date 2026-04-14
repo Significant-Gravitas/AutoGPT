@@ -836,7 +836,11 @@ class TestUploadCliSession:
 
         # Build the path the same way _cli_session_path does, but using our tmp_path
         # as projects_base so the boundary check passes.
-        encoded_cwd = sdk_cwd.replace("/", "-")
+        # Must use the same encoding: re.sub non-alphanumeric → "-" on realpath.
+        import os
+        import re
+
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
         session_dir = tmp_path / encoded_cwd
         session_dir.mkdir(parents=True, exist_ok=True)
         session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
@@ -877,7 +881,10 @@ class TestUploadCliSession:
         session_id = "12345678-0000-0000-0000-000000000002"
 
         # Build file at a path inside projects_base so boundary check passes.
-        encoded_cwd = sdk_cwd.replace("/", "-")
+        import os
+        import re
+
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
         session_dir = tmp_path / encoded_cwd
         session_dir.mkdir(parents=True, exist_ok=True)
         session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
