@@ -79,45 +79,6 @@ function schedulePanelWidthPersist(width: number) {
   }, 200);
 }
 
-function isCopilotMode(value: unknown): value is CopilotMode {
-  return value === "fast" || value === "extended_thinking";
-}
-
-export function getPersistedSessionModes(): Map<string, CopilotMode> {
-  if (!isClient) return new Map();
-  try {
-    const raw = storage.get(Key.COPILOT_SESSION_MODES);
-    if (raw) {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) return new Map();
-      const entries = parsed.filter(
-        (entry): entry is [string, CopilotMode] =>
-          Array.isArray(entry) &&
-          entry.length === 2 &&
-          typeof entry[0] === "string" &&
-          isCopilotMode(entry[1]),
-      );
-      return new Map(entries);
-    }
-  } catch {
-    // Ignore corrupt data
-  }
-  return new Map();
-}
-
-function persistSessionModes(modes: Map<string, CopilotMode>) {
-  if (!isClient) return;
-  try {
-    if (modes.size === 0) {
-      storage.clean(Key.COPILOT_SESSION_MODES);
-    } else {
-      storage.set(Key.COPILOT_SESSION_MODES, JSON.stringify([...modes]));
-    }
-  } catch {
-    // Keep in-memory state authoritative if persistence is unavailable
-  }
-}
-
 function persistCompletedSessions(ids: Set<string>) {
   if (!isClient) return;
   try {
@@ -169,15 +130,6 @@ interface CopilotUIState {
   /** Autopilot mode: 'extended_thinking' (default) or 'fast'. */
   copilotMode: CopilotMode;
   setCopilotMode: (mode: CopilotMode) => void;
-
-  /** Per-session mode map: records which mode was used for each session. */
-  sessionModes: Map<string, CopilotMode>;
-  /** Record the current copilot mode for a session (call on session create). */
-  recordSessionMode: (sessionId: string) => void;
-  /** Restore the copilot mode from a previously recorded session. */
-  restoreSessionMode: (sessionId: string) => void;
-  /** Remove the recorded mode for a session (call on session delete). */
-  removeSessionMode: (sessionId: string) => void;
 
   /** Developer dry-run mode: sessions created with dry_run=true. */
   isDryRun: boolean;
@@ -323,39 +275,10 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       };
     }),
 
-  copilotMode:
-    isClient && storage.get(Key.COPILOT_MODE) === "fast"
-      ? "fast"
-      : "extended_thinking",
+  copilotMode: "extended_thinking",
   setCopilotMode: (mode) => {
-    storage.set(Key.COPILOT_MODE, mode);
     set({ copilotMode: mode });
   },
-
-  sessionModes: getPersistedSessionModes(),
-  recordSessionMode: (sessionId) =>
-    set((state) => {
-      const next = new Map(state.sessionModes);
-      next.set(sessionId, state.copilotMode);
-      persistSessionModes(next);
-      return { sessionModes: next };
-    }),
-  restoreSessionMode: (sessionId) =>
-    set((state) => {
-      const mode = state.sessionModes.get(sessionId);
-      if (!mode) return state;
-      storage.set(Key.COPILOT_MODE, mode);
-      if (mode === state.copilotMode) return state;
-      return { copilotMode: mode };
-    }),
-  removeSessionMode: (sessionId) =>
-    set((state) => {
-      if (!state.sessionModes.has(sessionId)) return state;
-      const next = new Map(state.sessionModes);
-      next.delete(sessionId);
-      persistSessionModes(next);
-      return { sessionModes: next };
-    }),
 
   isDryRun: isClient && storage.get(Key.COPILOT_DRY_RUN) === "true",
   setIsDryRun: (enabled) => {
@@ -374,10 +297,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
-    storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
-    storage.clean(Key.COPILOT_SESSION_MODES);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
@@ -391,7 +312,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         history: [],
       },
       copilotMode: "extended_thinking",
-      sessionModes: new Map<string, CopilotMode>(),
       isDryRun: false,
     });
     if (isClient) {

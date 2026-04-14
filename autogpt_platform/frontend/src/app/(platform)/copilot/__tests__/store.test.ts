@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { getPersistedSessionModes, useCopilotUIStore } from "../store";
+import { useCopilotUIStore } from "../store";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
@@ -23,7 +23,6 @@ describe("useCopilotUIStore", () => {
       isSoundEnabled: true,
       showNotificationDialog: false,
       copilotMode: "extended_thinking",
-      sessionModes: new Map(),
     });
   });
 
@@ -165,7 +164,6 @@ describe("useCopilotUIStore", () => {
     it("sets mode to fast", () => {
       useCopilotUIStore.getState().setCopilotMode("fast");
       expect(useCopilotUIStore.getState().copilotMode).toBe("fast");
-      expect(window.localStorage.getItem("copilot-mode")).toBe("fast");
     });
 
     it("sets mode back to extended_thinking", () => {
@@ -175,100 +173,10 @@ describe("useCopilotUIStore", () => {
         "extended_thinking",
       );
     });
-  });
 
-  describe("sessionModes", () => {
-    it("records the current mode for a session", () => {
+    it("does not persist mode to localStorage", () => {
       useCopilotUIStore.getState().setCopilotMode("fast");
-      useCopilotUIStore.getState().recordSessionMode("session-1");
-      expect(useCopilotUIStore.getState().sessionModes.get("session-1")).toBe(
-        "fast",
-      );
-    });
-
-    it("restores mode when switching sessions", () => {
-      // Create session in fast mode
-      useCopilotUIStore.getState().setCopilotMode("fast");
-      useCopilotUIStore.getState().recordSessionMode("session-1");
-
-      // Create session in extended_thinking mode
-      useCopilotUIStore.getState().setCopilotMode("extended_thinking");
-      useCopilotUIStore.getState().recordSessionMode("session-2");
-
-      // Switch back to session-1 should restore fast mode
-      useCopilotUIStore.getState().restoreSessionMode("session-1");
-      expect(useCopilotUIStore.getState().copilotMode).toBe("fast");
-
-      // Switch to session-2 should restore extended_thinking mode
-      useCopilotUIStore.getState().restoreSessionMode("session-2");
-      expect(useCopilotUIStore.getState().copilotMode).toBe(
-        "extended_thinking",
-      );
-    });
-
-    it("keeps current mode when session has no recorded mode", () => {
-      useCopilotUIStore.getState().setCopilotMode("fast");
-      useCopilotUIStore.getState().restoreSessionMode("unknown-session");
-      expect(useCopilotUIStore.getState().copilotMode).toBe("fast");
-    });
-
-    it("persists session modes to localStorage", () => {
-      useCopilotUIStore.getState().setCopilotMode("fast");
-      useCopilotUIStore.getState().recordSessionMode("session-1");
-      const raw = window.localStorage.getItem("copilot-session-modes");
-      expect(raw).not.toBeNull();
-      const parsed = JSON.parse(raw!) as [string, string][];
-      expect(parsed).toEqual([["session-1", "fast"]]);
-    });
-
-    it("removes a session mode entry and updates localStorage", () => {
-      useCopilotUIStore.getState().setCopilotMode("fast");
-      useCopilotUIStore.getState().recordSessionMode("session-1");
-      useCopilotUIStore.getState().setCopilotMode("extended_thinking");
-      useCopilotUIStore.getState().recordSessionMode("session-2");
-
-      useCopilotUIStore.getState().removeSessionMode("session-1");
-
-      expect(useCopilotUIStore.getState().sessionModes.has("session-1")).toBe(
-        false,
-      );
-      expect(useCopilotUIStore.getState().sessionModes.get("session-2")).toBe(
-        "extended_thinking",
-      );
-      // localStorage should only have session-2
-      const raw = window.localStorage.getItem("copilot-session-modes");
-      const parsed = JSON.parse(raw!) as [string, string][];
-      expect(parsed).toEqual([["session-2", "extended_thinking"]]);
-    });
-
-    it("is a no-op when removing a session that was never recorded", () => {
-      useCopilotUIStore.getState().setCopilotMode("fast");
-      useCopilotUIStore.getState().recordSessionMode("session-1");
-      const before = useCopilotUIStore.getState().sessionModes;
-      useCopilotUIStore.getState().removeSessionMode("unknown-session");
-      // State reference should not change (no re-render)
-      expect(useCopilotUIStore.getState().sessionModes).toBe(before);
-    });
-
-    it("ignores invalid mode strings from corrupt localStorage", () => {
-      // Write corrupt data to localStorage
-      window.localStorage.setItem(
-        "copilot-session-modes",
-        JSON.stringify([
-          ["session-valid", "fast"],
-          ["session-bad", "invalid_mode"],
-          ["not-a-pair"],
-          "garbage",
-        ]),
-      );
-      // Simulate a fresh page load by re-parsing localStorage into the store
-      // (mirrors what the store initialiser does on mount)
-      useCopilotUIStore.setState({ sessionModes: getPersistedSessionModes() });
-      const state = useCopilotUIStore.getState();
-      // Valid entry should be present
-      expect(state.sessionModes.get("session-valid")).toBe("fast");
-      // Corrupt entry must be silently dropped — never readable as a valid CopilotMode
-      expect(state.sessionModes.get("session-bad")).toBeUndefined();
+      expect(window.localStorage.getItem("copilot-mode")).toBeNull();
     });
   });
 
@@ -278,17 +186,14 @@ describe("useCopilotUIStore", () => {
       useCopilotUIStore.getState().setNotificationsEnabled(true);
       useCopilotUIStore.getState().toggleSound();
       useCopilotUIStore.getState().addCompletedSession("s1");
-      useCopilotUIStore.getState().recordSessionMode("s1");
 
       useCopilotUIStore.getState().clearCopilotLocalData();
 
       const state = useCopilotUIStore.getState();
       expect(state.copilotMode).toBe("extended_thinking");
-      expect(state.sessionModes.size).toBe(0);
       expect(state.isNotificationsEnabled).toBe(false);
       expect(state.isSoundEnabled).toBe(true);
       expect(state.completedSessionIDs.size).toBe(0);
-      expect(window.localStorage.getItem("copilot-mode")).toBeNull();
       expect(
         window.localStorage.getItem("copilot-notifications-enabled"),
       ).toBeNull();
@@ -296,7 +201,6 @@ describe("useCopilotUIStore", () => {
       expect(
         window.localStorage.getItem("copilot-completed-sessions"),
       ).toBeNull();
-      expect(window.localStorage.getItem("copilot-session-modes")).toBeNull();
     });
   });
 

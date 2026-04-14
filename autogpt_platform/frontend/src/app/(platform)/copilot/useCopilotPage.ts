@@ -44,9 +44,6 @@ export function useCopilotPage() {
     setDrawerOpen,
     copilotMode,
     isDryRun,
-    recordSessionMode,
-    restoreSessionMode,
-    removeSessionMode,
   } = useCopilotUIStore();
 
   const {
@@ -110,9 +107,6 @@ export function useCopilotPage() {
           if (sessionToDelete?.id === sessionId) {
             setSessionId(null);
           }
-          if (sessionToDelete?.id) {
-            removeSessionMode(sessionToDelete.id);
-          }
           setSessionToDelete(null);
         },
         onError: (error) => {
@@ -139,8 +133,6 @@ export function useCopilotPage() {
   // --- Send pending message after session creation ---
   useEffect(() => {
     if (!sessionId || pendingMessage === null) return;
-    // Record the mode that was active when this session was created
-    recordSessionMode(sessionId);
     const msg = pendingMessage;
     const files = pendingFilesRef.current;
     const prebuiltParts = pendingFilePartsRef.current;
@@ -173,7 +165,7 @@ export function useCopilotPage() {
     } else {
       sendMessage({ text: msg });
     }
-  }, [sessionId, pendingMessage, sendMessage, recordSessionMode]);
+  }, [sessionId, pendingMessage, sendMessage]);
 
   // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
   useWorkflowImportAutoSubmit({
@@ -356,7 +348,6 @@ export function useCopilotPage() {
 
   function handleSelectSession(id: string) {
     setSessionId(id);
-    restoreSessionMode(id);
     if (isMobile) setDrawerOpen(false);
   }
 
