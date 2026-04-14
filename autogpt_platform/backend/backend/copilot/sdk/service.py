@@ -37,6 +37,7 @@ from pydantic import BaseModel
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
 from backend.copilot.rate_limit import get_user_tier
+from backend.copilot.thinking_stripper import ThinkingStripper
 from backend.copilot.transcript import (
     _run_compression,
     cleanup_stale_project_dirs,
@@ -94,7 +95,6 @@ from ..service import (
     _is_langfuse_configured,
     _update_title_async,
 )
-from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
