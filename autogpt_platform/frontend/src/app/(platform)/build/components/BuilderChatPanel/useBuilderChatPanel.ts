@@ -185,6 +185,8 @@ export function useBuilderChatPanel({
   // served to another.
   useEffect(() => {
     if (userId !== prevUserIdRef.current) {
+      skipNextParseRef.current = true;
+      skipNextToolScanRef.current = true;
       graphSessionCache.clear();
       prevUserIdRef.current = userId;
       setSessionId(null);
