@@ -90,7 +90,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   }
 
   return (
-    <div key={src} className="relative flex items-center justify-center p-4">
+    <div className="relative flex items-center justify-center p-4">
       {!loaded && (
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}
@@ -132,7 +132,7 @@ function ArtifactVideo({ src }: { src: string }) {
   }
 
   return (
-    <div key={src} className="relative flex items-center justify-center p-4">
+    <div className="relative flex items-center justify-center p-4">
       {!loaded && (
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}
@@ -165,12 +165,18 @@ function ArtifactRenderer({
 }) {
   // Image: render directly from URL (no content fetch)
   if (classification.type === "image") {
-    return <ArtifactImage src={artifact.sourceUrl} alt={artifact.title} />;
+    return (
+      <ArtifactImage
+        key={artifact.sourceUrl}
+        src={artifact.sourceUrl}
+        alt={artifact.title}
+      />
+    );
   }
 
   // Video: render with <video> controls (no content fetch)
   if (classification.type === "video") {
-    return <ArtifactVideo src={artifact.sourceUrl} />;
+    return <ArtifactVideo key={artifact.sourceUrl} src={artifact.sourceUrl} />;
   }
 
   if (classification.type === "pdf" && pdfUrl) {
