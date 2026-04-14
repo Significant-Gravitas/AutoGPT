@@ -145,9 +145,7 @@ async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float, float | N
                 try:
                     cache_read_str = model_pricing.get("cache_read")
                     cache_read_rate = (
-                        float(cache_read_str)
-                        if cache_read_str is not None
-                        else None
+                        float(cache_read_str) if cache_read_str is not None else None
                     )
                     pricing[model_id] = (
                         float(prompt_str),
@@ -197,7 +195,9 @@ async def _estimate_cost_from_tokens(
     # Regular (non-cached) input tokens billed at full price;
     # cache-read tokens billed at the OpenRouter-published rate when available,
     # or at the full input rate when not (safe over-estimate).
-    effective_cache_rate = cache_read_rate if cache_read_rate is not None else input_rate
+    effective_cache_rate = (
+        cache_read_rate if cache_read_rate is not None else input_rate
+    )
     regular_prompt = max(0, prompt_tokens - cache_read_tokens)
     cost = (
         regular_prompt * input_rate
@@ -1344,6 +1344,23 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
+            # Attempt a cost estimate from the tiktoken-derived counts so that
+            # persist_and_record_usage never receives cost_usd=None after this
+            # fallback fires.  Only fill in if no cost was already recorded.
+            if state.cost_usd is None:
+                tiktoken_estimated = await _estimate_cost_from_tokens(
+                    active_model,
+                    state.turn_prompt_tokens,
+                    state.turn_completion_tokens,
+                )
+                if tiktoken_estimated is not None:
+                    state.cost_usd = tiktoken_estimated
+                    logger.info(
+                        "[Baseline] Estimated cost from tiktoken counts: "
+                        "$%.6f (model=%s)",
+                        tiktoken_estimated,
+                        active_model,
+                    )
         # Persist token usage to session and record for rate limiting.
         # When prompt_tokens_details.cached_tokens is reported, subtract
         # them from prompt_tokens to get the uncached count so the cost
@@ -1429,10 +1446,13 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
+        # Report uncached prompt tokens to match what was billed — cached tokens
+        # are excluded so the frontend display is consistent with cost_usd.
+        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
         yield StreamUsage(
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
-            total_tokens=state.turn_prompt_tokens + state.turn_completion_tokens,
+            total_tokens=billed_prompt + state.turn_completion_tokens,
         )
 
     yield StreamFinish()

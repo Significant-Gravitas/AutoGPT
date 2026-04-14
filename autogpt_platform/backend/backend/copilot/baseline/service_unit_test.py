@@ -14,7 +14,6 @@ from backend.copilot.baseline.service import (
     _BaselineStreamState,
     _compress_session_messages,
     _estimate_cost_from_tokens,
-    _ThinkingStripper,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.transcript_builder import TranscriptBuilder
