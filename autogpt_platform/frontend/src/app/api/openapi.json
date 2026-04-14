@@ -9123,6 +9123,15 @@
         ],
         "title": "ContentType"
       },
+      "CostBucket": {
+        "properties": {
+          "bucket": { "type": "string", "title": "Bucket" },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["bucket", "count"],
+        "title": "CostBucket"
+      },
       "CostLogRow": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -12141,7 +12150,58 @@
             "title": "Total Cost Microdollars"
           },
           "total_requests": { "type": "integer", "title": "Total Requests" },
-          "total_users": { "type": "integer", "title": "Total Users" }
+          "total_users": { "type": "integer", "title": "Total Users" },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens",
+            "default": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens",
+            "default": 0
+          },
+          "avg_input_tokens_per_request": {
+            "type": "number",
+            "title": "Avg Input Tokens Per Request",
+            "default": 0.0
+          },
+          "avg_output_tokens_per_request": {
+            "type": "number",
+            "title": "Avg Output Tokens Per Request",
+            "default": 0.0
+          },
+          "avg_cost_microdollars_per_request": {
+            "type": "number",
+            "title": "Avg Cost Microdollars Per Request",
+            "default": 0.0
+          },
+          "cost_p50_microdollars": {
+            "type": "number",
+            "title": "Cost P50 Microdollars",
+            "default": 0.0
+          },
+          "cost_p75_microdollars": {
+            "type": "number",
+            "title": "Cost P75 Microdollars",
+            "default": 0.0
+          },
+          "cost_p95_microdollars": {
+            "type": "number",
+            "title": "Cost P95 Microdollars",
+            "default": 0.0
+          },
+          "cost_p99_microdollars": {
+            "type": "number",
+            "title": "Cost P99 Microdollars",
+            "default": 0.0
+          },
+          "cost_buckets": {
+            "items": { "$ref": "#/components/schemas/CostBucket" },
+            "type": "array",
+            "title": "Cost Buckets",
+            "default": []
+          }
         },
         "type": "object",
         "required": [
@@ -15585,7 +15645,12 @@
             "title": "Total Cache Creation Tokens",
             "default": 0
           },
-          "request_count": { "type": "integer", "title": "Request Count" }
+          "request_count": { "type": "integer", "title": "Request Count" },
+          "cost_bearing_request_count": {
+            "type": "integer",
+            "title": "Cost Bearing Request Count",
+            "default": 0
+          }
         },
         "type": "object",
         "required": [
