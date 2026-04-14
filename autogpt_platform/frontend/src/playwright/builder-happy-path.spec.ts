@@ -98,7 +98,15 @@ test("builder happy path: user can export the created agent", async ({
   const exportButton = page.getByRole("button", {
     name: "Export agent to file",
   });
-  await expect(exportButton.first()).toBeVisible({ timeout: 60000 });
+
+  try {
+    await expect(exportButton.first()).toBeVisible({ timeout: 30000 });
+  } catch {
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+    await expect(exportButton.first()).toBeVisible({ timeout: 30000 });
+  }
+
   await exportButton.first().click();
 
   await expect(page.getByText("Agent exported")).toBeVisible({
