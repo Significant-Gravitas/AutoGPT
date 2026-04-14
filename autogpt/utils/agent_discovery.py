@@ -26,7 +26,6 @@ import re
 import socket
 import time
 import urllib.error
-import urllib.request
 from copy import deepcopy
 from typing import Any
 
@@ -77,20 +76,21 @@ def _validate_domain(domain: str) -> str | None:
     return None
 
 
-def _resolve_and_validate(domain: str) -> tuple[str, str] | None:
+def _resolve_and_validate(domain: str) -> str:
     """Resolve domain and validate IPs are not private.
 
-    Returns (ip, family_str) on success, raises ValueError on
-    failure. Uses the first non-blocked address found.
+    Returns the pinned IP address on success, raises
+    ValueError on failure. Validates all resolved addresses
+    are not in blocked ranges.
     """
     try:
         addrs = socket.getaddrinfo(
             domain, 443, proto=socket.IPPROTO_TCP
         )
-    except socket.gaierror:
+    except socket.gaierror as e:
         raise ValueError(
             f"domain does not resolve: {domain}"
-        )
+        ) from e
 
     for _family, _, _, _, sockaddr in addrs:
         ip_str = sockaddr[0]
@@ -102,21 +102,6 @@ def _resolve_and_validate(domain: str) -> tuple[str, str] | None:
     # Return first address for pinned connection
     first_ip = addrs[0][4][0]
     return first_ip
-
-
-class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Disable automatic redirect following to prevent SSRF bypass."""
-
-    def redirect_request(
-        self, req, fp, code, msg, headers, newurl
-    ):
-        raise urllib.error.HTTPError(
-            req.full_url,
-            code,
-            f"Redirect to {newurl} blocked (SSRF protection)",
-            headers,
-            fp,
-        )
 
 
 class DiscoveryResult:
@@ -265,9 +250,20 @@ def discover_services(
         if 200 <= resp.status < 300:
             data = json.loads(resp.read())
             conn.close()
+            # Validate schema BEFORE caching to prevent
+            # poisoning cache with malformed payloads
+            try:
+                result = DiscoveryResult(data)
+            except (KeyError, TypeError) as e:
+                logger.debug(
+                    "ADP: malformed payload at %s (%s)",
+                    domain,
+                    e,
+                )
+                return None
             if use_cache:
-                    _cache[domain] = (time.time(), data)
-            return DiscoveryResult(data)
+                _cache[domain] = (time.time(), data)
+            return result
 
         # Non-2xx, non-redirect
         conn.close()
