@@ -577,12 +577,15 @@ class TestPrepareBaselineAttachments:
 
 
 # Pricing rates matching OpenRouter API format (per-token USD) used in tests.
-_MOCK_OPENROUTER_PRICING: dict[str, tuple[float, float]] = {
-    "anthropic/claude-opus-4.6": (15.0 / 1_000_000, 75.0 / 1_000_000),
-    "anthropic/claude-sonnet-4": (3.0 / 1_000_000, 15.0 / 1_000_000),
-    "anthropic/claude-3.5-sonnet": (3.0 / 1_000_000, 15.0 / 1_000_000),
-    "openai/gpt-4o": (2.5 / 1_000_000, 10.0 / 1_000_000),
-    "openai/gpt-4o-mini": (0.15 / 1_000_000, 0.6 / 1_000_000),
+# Tuple: (input_rate, output_rate, cache_read_rate | None)
+# Anthropic: cache_read = 10% of input; OpenAI: cache_read = 50% of input;
+# gpt-4o-mini: no cache_read published (None → falls back to full input rate).
+_MOCK_OPENROUTER_PRICING: dict[str, tuple[float, float, float | None]] = {
+    "anthropic/claude-opus-4.6": (15.0 / 1_000_000, 75.0 / 1_000_000, 1.5 / 1_000_000),
+    "anthropic/claude-sonnet-4": (3.0 / 1_000_000, 15.0 / 1_000_000, 0.3 / 1_000_000),
+    "anthropic/claude-3.5-sonnet": (3.0 / 1_000_000, 15.0 / 1_000_000, 0.3 / 1_000_000),
+    "openai/gpt-4o": (2.5 / 1_000_000, 10.0 / 1_000_000, 1.25 / 1_000_000),
+    "openai/gpt-4o-mini": (0.15 / 1_000_000, 0.6 / 1_000_000, None),
 }
 
 
@@ -633,10 +636,11 @@ class TestEstimateCostFromTokens:
         assert cost == pytest.approx(0.0525)
 
     @pytest.mark.asyncio
-    async def test_cache_read_tokens_discounted_anthropic(self):
-        """Cache-read tokens billed at 10 % of input rate for Anthropic models."""
+    async def test_cache_read_tokens_use_openrouter_cache_rate_anthropic(self):
+        """Cache-read tokens use OpenRouter-published cache_read rate for Anthropic."""
+        # anthropic/claude-sonnet-4: input=3/1M, cache_read=0.3/1M
         # 200 regular + 800 cache-read prompt tokens, 0 completion
-        # cost = 200 * 3/1M + 800 * 3/1M * 0.10 = 0.0006 + 0.00024 = 0.00084
+        # cost = 200 * 3/1M + 800 * 0.3/1M = 0.0006 + 0.00024 = 0.00084
         with patch(
             "backend.copilot.baseline.service._fetch_openrouter_pricing",
             AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
@@ -650,10 +654,11 @@ class TestEstimateCostFromTokens:
         assert cost == pytest.approx(0.00084)
 
     @pytest.mark.asyncio
-    async def test_cache_read_tokens_discounted_openai(self):
-        """Cache-read tokens billed at 50 % of input rate for OpenAI models."""
+    async def test_cache_read_tokens_use_openrouter_cache_rate_openai(self):
+        """Cache-read tokens use OpenRouter-published cache_read rate for OpenAI."""
+        # openai/gpt-4o: input=2.5/1M, cache_read=1.25/1M
         # 200 regular + 800 cache-read, 0 completion
-        # cost = 200 * 2.5/1M + 800 * 2.5/1M * 0.50 = 0.0005 + 0.001 = 0.0015
+        # cost = 200 * 2.5/1M + 800 * 1.25/1M = 0.0005 + 0.001 = 0.0015
         with patch(
             "backend.copilot.baseline.service._fetch_openrouter_pricing",
             AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
@@ -665,6 +670,24 @@ class TestEstimateCostFromTokens:
                 cache_read_tokens=800,
             )
         assert cost == pytest.approx(0.0015)
+
+    @pytest.mark.asyncio
+    async def test_cache_read_falls_back_to_input_rate_when_none(self):
+        """Models without a published cache_read rate fall back to the full input rate."""
+        # openai/gpt-4o-mini: input=0.15/1M, cache_read=None (no discount published)
+        # 200 regular + 800 cache-read, 0 completion
+        # cost = 200 * 0.15/1M + 800 * 0.15/1M = 1000 * 0.15/1M = 0.00015
+        with patch(
+            "backend.copilot.baseline.service._fetch_openrouter_pricing",
+            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
+        ):
+            cost = await _estimate_cost_from_tokens(
+                "openai/gpt-4o-mini",
+                prompt_tokens=1000,
+                completion_tokens=0,
+                cache_read_tokens=800,
+            )
+        assert cost == pytest.approx(0.00015)
 
 
 class TestBaselineCostExtraction:

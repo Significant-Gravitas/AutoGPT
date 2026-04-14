@@ -105,21 +105,17 @@ _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
 # MIME types that can be embedded as vision content blocks (OpenAI format).
 _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 
-# Cache-read discount fractions per provider prefix (relative to input rate).
-# Anthropic: 10%, OpenAI: 50%, Google: not billed separately so 100% (no discount).
-_CACHE_READ_DISCOUNT: dict[str, float] = {
-    "anthropic/": 0.10,
-    "openai/": 0.50,
-}
-
-# OpenRouter model pricing cache: maps model id -> (input_rate, output_rate) per token.
+# OpenRouter model pricing cache:
+# maps model id -> (input_rate, output_rate, cache_read_rate | None) per token.
+# cache_read_rate is None when OpenRouter doesn't publish it for that model;
+# those tokens fall back to the full input rate (safe over-estimate).
 # Populated lazily by _fetch_openrouter_pricing() and refreshed every hour.
-_OPENROUTER_PRICING_CACHE: dict[str, tuple[float, float]] = {}
+_OPENROUTER_PRICING_CACHE: dict[str, tuple[float, float, float | None]] = {}
 _OPENROUTER_PRICING_CACHE_TTL = 3600  # seconds
 _OPENROUTER_PRICING_CACHE_FETCHED_AT: float = float("-inf")
 
 
-async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float]]:
+async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float, float | None]]:
     """Return per-token pricing for all OpenRouter models.
 
     Fetches https://openrouter.ai/api/v1/models and caches the result for
@@ -139,7 +135,7 @@ async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float]]:
             response.raise_for_status()
             data = response.json()
 
-        pricing: dict[str, tuple[float, float]] = {}
+        pricing: dict[str, tuple[float, float, float | None]] = {}
         for model in data.get("data", []):
             model_id = model.get("id")
             model_pricing = model.get("pricing") or {}
@@ -147,7 +143,17 @@ async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float]]:
             completion_str = model_pricing.get("completion")
             if model_id and prompt_str is not None and completion_str is not None:
                 try:
-                    pricing[model_id] = (float(prompt_str), float(completion_str))
+                    cache_read_str = model_pricing.get("cache_read")
+                    cache_read_rate = (
+                        float(cache_read_str)
+                        if cache_read_str is not None
+                        else None
+                    )
+                    pricing[model_id] = (
+                        float(prompt_str),
+                        float(completion_str),
+                        cache_read_rate,
+                    )
                 except (ValueError, TypeError):
                     continue
 
@@ -172,17 +178,13 @@ async def _estimate_cost_from_tokens(
 
     ``prompt_tokens`` should be the *total* prompt token count as reported by
     the API (includes both regular and cache-read tokens as a subset).
-    ``cache_read_tokens`` is used to apply a provider-specific discount:
+    ``cache_read_tokens`` is the subset of prompt tokens served from cache.
+    When OpenRouter publishes a ``cache_read`` rate for the model it is used
+    directly; otherwise cache-read tokens fall back to the full input rate
+    (a safe over-estimate).
 
-    * Cache reads are billed at a fraction of the normal input rate
-      (Anthropic: 10 %, OpenAI: 50 %).  The regular (non-cached) portion is
-      billed at full price.
-    * Cache writes (creation) appear in
-      ``prompt_tokens_details.cache_creation_input_tokens`` and are billed at
-      a premium by some providers (e.g. Anthropic charges 1.25× the input
-      rate).  This estimator does **not** account for them -- it intentionally
-      ignores cache-creation tokens as an acceptable approximation for a
-      fallback cost estimate.
+    Cache writes (creation) are intentionally ignored as an acceptable
+    approximation for a fallback cost estimate.
 
     Returns None if the model is not found in the OpenRouter pricing response.
     """
@@ -190,20 +192,16 @@ async def _estimate_cost_from_tokens(
     pricing = pricing_table.get(model)
     if pricing is None:
         return None
-    input_rate, output_rate = pricing
-
-    # Determine the cache-read discount fraction for this provider.
-    cache_read_fraction = next(
-        (v for prefix, v in _CACHE_READ_DISCOUNT.items() if model.startswith(prefix)),
-        1.0,  # no discount for unknown providers
-    )
+    input_rate, output_rate, cache_read_rate = pricing
 
     # Regular (non-cached) input tokens billed at full price;
-    # cache-read tokens billed at the discounted rate.
+    # cache-read tokens billed at the OpenRouter-published rate when available,
+    # or at the full input rate when not (safe over-estimate).
+    effective_cache_rate = cache_read_rate if cache_read_rate is not None else input_rate
     regular_prompt = max(0, prompt_tokens - cache_read_tokens)
     cost = (
         regular_prompt * input_rate
-        + cache_read_tokens * input_rate * cache_read_fraction
+        + cache_read_tokens * effective_cache_rate
         + completion_tokens * output_rate
     )
     return cost
