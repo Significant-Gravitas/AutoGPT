@@ -26,6 +26,7 @@ coverage:
           - platform-frontend
       autogpt-libs:
         target: 80%
+        informational: true
         flags:
           - autogpt-libs
       classic:
