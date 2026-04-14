@@ -607,7 +607,7 @@ class TestQueuePendingMessageRequest:
         from backend.api.features.chat.routes import QueuePendingMessageRequest
 
         with pytest.raises(pydantic.ValidationError):
-            QueuePendingMessageRequest(message="x" * 16_001)
+            QueuePendingMessageRequest(message="x" * 32_001)
 
     def test_accepts_valid_context(self) -> None:
         from backend.api.features.chat.routes import QueuePendingMessageRequest
