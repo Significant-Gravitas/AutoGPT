@@ -2044,6 +2044,7 @@ async def stream_chat_completion_sdk(
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
     skip_transcript_upload = False
+    has_history = len(session.messages) > 1
     transcript_content: str = ""
     state: _RetryState | None = None
 
@@ -2062,7 +2063,6 @@ async def stream_chat_completion_sdk(
         # injected into the supplement instead of the generic placeholder.
         # Catch ValueError early so the failure yields a clean StreamError rather
         # than propagating outside the stream error-handling path.
-        has_history = len(session.messages) > 1
         try:
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
@@ -3018,7 +3018,10 @@ async def stream_chat_completion_sdk(
             and user_id
             and sdk_cwd
             and session is not None
+            and state is not None
+            and not ended_with_stream_error
             and not skip_transcript_upload
+            and (not has_history or state.use_resume)
         ):
             try:
                 await asyncio.shield(
