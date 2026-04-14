@@ -20,8 +20,10 @@ class GraphitiConfig(BaseSettings):
     """Configuration for Graphiti memory integration.
 
     All fields use the ``GRAPHITI_`` env-var prefix, e.g. ``GRAPHITI_ENABLED``.
-    LLM/embedder keys fall back to the platform-wide OpenRouter and OpenAI keys
-    when left empty so that operators don't need to manage separate credentials.
+    LLM/embedder keys fall back to the AutoPilot-dedicated keys
+    (``CHAT_API_KEY`` / ``CHAT_OPENAI_API_KEY``) so that memory costs are
+    tracked under AutoPilot, then to the platform-wide OpenRouter / OpenAI
+    keys as a last resort.
     """
 
     model_config = SettingsConfigDict(env_prefix="GRAPHITI_", extra="allow")
@@ -42,7 +44,7 @@ class GraphitiConfig(BaseSettings):
     )
     llm_api_key: str = Field(
         default="",
-        description="API key for LLM — empty falls back to OPEN_ROUTER_API_KEY",
+        description="API key for LLM — empty falls back to CHAT_API_KEY, then OPEN_ROUTER_API_KEY",
     )
 
     # Embedder (separate from LLM — embeddings go direct to OpenAI)
@@ -53,7 +55,7 @@ class GraphitiConfig(BaseSettings):
     )
     embedder_api_key: str = Field(
         default="",
-        description="API key for embedder — empty falls back to OPENAI_API_KEY",
+        description="API key for embedder — empty falls back to CHAT_OPENAI_API_KEY, then OPENAI_API_KEY",
     )
 
     # Concurrency
@@ -96,7 +98,9 @@ class GraphitiConfig(BaseSettings):
     def resolve_llm_api_key(self) -> str:
         if self.llm_api_key:
             return self.llm_api_key
-        return os.getenv("OPEN_ROUTER_API_KEY", "")
+        # Prefer the AutoPilot-dedicated key so memory costs are tracked
+        # separately from the platform-wide OpenRouter key.
+        return os.getenv("CHAT_API_KEY") or os.getenv("OPEN_ROUTER_API_KEY", "")
 
     def resolve_llm_base_url(self) -> str:
         if self.llm_base_url:
@@ -106,7 +110,9 @@ class GraphitiConfig(BaseSettings):
     def resolve_embedder_api_key(self) -> str:
         if self.embedder_api_key:
             return self.embedder_api_key
-        return os.getenv("OPENAI_API_KEY", "")
+        # Prefer the AutoPilot-dedicated OpenAI key so memory costs are
+        # tracked separately from the platform-wide OpenAI key.
+        return os.getenv("CHAT_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "")
 
     def resolve_embedder_base_url(self) -> str | None:
         if self.embedder_base_url:
