@@ -67,9 +67,9 @@ class TestResolveBaselineModel:
         """Critical: baseline users without a mode MUST keep the default (opus)."""
         assert _resolve_baseline_model(None) == config.model
 
-    def test_default_and_fast_models_differ(self):
-        """Sanity: the two tiers are actually distinct in production config."""
-        assert config.model != config.fast_model
+    def test_default_and_fast_models_same(self):
+        """SDK 0.1.58: both tiers now use the same model (anthropic/claude-sonnet-4)."""
+        assert config.model == config.fast_model
 
 
 class TestLoadPriorTranscript:

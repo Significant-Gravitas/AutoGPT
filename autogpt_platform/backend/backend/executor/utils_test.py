@@ -7,7 +7,15 @@ from pytest_mock import MockerFixture
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.model import User
-from backend.executor.utils import add_graph_execution
+from backend.executor.utils import (
+    CRED_ERR_INVALID_PREFIX,
+    CRED_ERR_INVALID_TYPE_MISMATCH,
+    CRED_ERR_NOT_AVAILABLE_PREFIX,
+    CRED_ERR_REQUIRED,
+    CRED_ERR_UNKNOWN_PREFIX,
+    add_graph_execution,
+    is_credential_validation_error_message,
+)
 from backend.util.mock import MockObject
 
 
@@ -1023,3 +1031,72 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Verify both parent and child status updates
     assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# Credential validation error marker parity.
+#
+# ``is_credential_validation_error_message`` is shared by the executor
+# dry-run path and the copilot credential-race fallback.  Adding a new
+# credential error string in ``_validate_node_input_credentials`` without
+# updating the matcher would silently regress the copilot UX to a plain
+# text error.  These tests pin the contract:
+#
+# 1. Every ``CRED_ERR_*`` constant emitted by the raise sites is
+#    recognised by the public matcher (including reasonable formatted
+#    variants with runtime suffixes from ``f"{PREFIX} {e}"``).
+# 2. The matcher is case-insensitive and unaffected by trailing detail.
+# 3. Non-credential messages fall through.
+# ---------------------------------------------------------------------------
+
+
+def test_credential_error_markers_cover_all_raise_sites():
+    """Each credential error string emitted by
+    ``_validate_node_input_credentials`` must be recognised by
+    ``is_credential_validation_error_message``. This guards against
+    drift when a new credential error is introduced without updating
+    the matcher."""
+    # Exact-match raise sites
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED)
+    assert is_credential_validation_error_message(CRED_ERR_INVALID_TYPE_MISMATCH)
+
+    # Prefix raise sites with typical runtime suffixes (matching the
+    # f-strings inside ``_validate_node_input_credentials``)
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_INVALID_PREFIX} 1 validation error for ApiKeyCredentials"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} connection refused"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_UNKNOWN_PREFIX}abc-123-def"
+    )
+
+
+def test_credential_error_marker_matching_is_case_insensitive():
+    """The matcher lowercases inputs before comparing — ensure that
+    stays true for each marker so log-normalised copies still match."""
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED.upper())
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED.lower())
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_INVALID_PREFIX.upper()} BAD FIELD"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_UNKNOWN_PREFIX.upper()}XYZ"
+    )
+
+
+def test_non_credential_errors_are_not_matched():
+    """Unrelated graph validation errors must not hit the credential
+    branch — otherwise the copilot would hide structural errors behind
+    the credential setup card."""
+    assert not is_credential_validation_error_message("")
+    assert not is_credential_validation_error_message(
+        "missing input {'required_field'}"
+    )
+    assert not is_credential_validation_error_message("Input field 'url' is required")
+    # A message that happens to contain "credentials" somewhere but
+    # doesn't start with any known prefix must not match.
+    assert not is_credential_validation_error_message(
+        "Block configuration says credentials are fine"
+    )
