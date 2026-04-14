@@ -1229,3 +1229,96 @@ class TestConcurrentEditLocking:
         final = open(path).read()
         assert "EDITED_A" in final
         assert "EDITED_B" in final
+
+
+# ---------------------------------------------------------------------------
+# E2B mode: relative paths are routed to the sandbox, not the host
+# ---------------------------------------------------------------------------
+
+
+class TestReadFileE2BRouting:
+    """Verify that _handle_read_file routes correctly in E2B mode.
+
+    When E2B is active, relative paths (e.g. "output.txt") resolve against
+    sdk_cwd on the host via _is_allowed_local — but those files were written to
+    the sandbox, not to sdk_cwd.  The fix: when E2B is active, only SDK-internal
+    tool-results/tool-outputs paths are read from the host; everything else is
+    routed to the sandbox.
+    """
+
+    @pytest.mark.asyncio
+    async def test_relative_path_in_e2b_mode_goes_to_sandbox(
+        self, monkeypatch, tmp_path
+    ):
+        """A plain relative path in E2B mode must be read from the sandbox, not the host."""
+        cwd = str(tmp_path / "copilot-session")
+        os.makedirs(cwd)
+
+        # Set up sdk_cwd so _is_allowed_local would return True for "output.txt"
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools.get_sdk_cwd", lambda: cwd
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools.is_allowed_local_path",
+            lambda path, cwd_arg=None: os.path.realpath(
+                os.path.join(cwd, path) if not os.path.isabs(path) else path
+            ).startswith(os.path.realpath(cwd)),
+        )
+
+        # Create a sandbox mock that returns "sandbox content"
+        sandbox = SimpleNamespace(
+            files=SimpleNamespace(
+                read=AsyncMock(return_value=b"sandbox content\n"),
+                make_dir=AsyncMock(),
+            ),
+            commands=SimpleNamespace(run=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: sandbox
+        )
+
+        result = await _handle_read_file({"file_path": "output.txt"})
+
+        # Should NOT be an error (file was read from sandbox)
+        assert not result.get("isError"), result["content"][0]["text"]
+        assert "sandbox content" in result["content"][0]["text"]
+        # The sandbox files.read must have been called
+        sandbox.files.read.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_absolute_tmp_path_in_e2b_goes_to_sandbox(self, monkeypatch):
+        """An absolute /tmp path (sdk_cwd-relative) in E2B mode is routed to the sandbox.
+
+        sdk_cwd is always under /tmp in production (e.g. /tmp/copilot-<session>/).
+        An absolute path like /tmp/copilot-xxx/result.txt must be read from the
+        sandbox rather than the host even though _is_allowed_local would return True
+        for it.
+        """
+        cwd = "/tmp/copilot-test-session-xyz"
+        absolute_path = "/tmp/copilot-test-session-xyz/result.txt"
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools.get_sdk_cwd", lambda: cwd
+        )
+        # Simulate _is_allowed_local returning True for the path (as it would in prod)
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools.is_allowed_local_path",
+            lambda path, cwd_arg=None: path.startswith(cwd),
+        )
+
+        sandbox = SimpleNamespace(
+            files=SimpleNamespace(
+                read=AsyncMock(return_value=b"sandbox result\n"),
+                make_dir=AsyncMock(),
+            ),
+            commands=SimpleNamespace(run=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "backend.copilot.sdk.e2b_file_tools._get_sandbox", lambda: sandbox
+        )
+
+        result = await _handle_read_file({"file_path": absolute_path})
+
+        assert not result.get("isError"), result["content"][0]["text"]
+        assert "sandbox result" in result["content"][0]["text"]
+        sandbox.files.read.assert_called_once()

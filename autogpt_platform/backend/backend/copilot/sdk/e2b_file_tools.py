@@ -30,6 +30,7 @@ from backend.copilot.context import (
     get_current_sandbox,
     get_sdk_cwd,
     is_allowed_local_path,
+    is_sdk_tool_path,
     is_within_allowed_dirs,
     resolve_sandbox_path,
 )
@@ -281,10 +282,20 @@ async def _handle_read_file(args: dict[str, Any]) -> dict[str, Any]:
             )
         return _mcp("file_path is required", error=True)
 
-    # SDK-internal paths (tool-results/tool-outputs, ephemeral working dir)
-    # stay on the host.  When E2B is active, also copy the file into the
-    # sandbox so bash_exec can access it for further processing.
-    if _is_allowed_local(file_path):
+    # SDK-internal tool-results/tool-outputs paths are on the host filesystem in
+    # both E2B and non-E2B mode — always read them locally.
+    # When E2B is active, also copy the file into the sandbox so bash_exec can
+    # process it further.
+    # NOTE: when E2B is active we intentionally use `is_sdk_tool_path` (not
+    # `_is_allowed_local`) so that sdk_cwd-relative paths (e.g. "output.txt")
+    # are NOT captured here.  In E2B mode the agent's working directory is the
+    # sandbox, not sdk_cwd on the host, so relative paths should be read from
+    # the sandbox below.
+    sandbox_active = _get_sandbox() is not None
+    local_check = (
+        is_sdk_tool_path(file_path) if sandbox_active else _is_allowed_local(file_path)
+    )
+    if local_check:
         result = _read_local(file_path, offset, limit)
         if not result.get("isError"):
             sandbox = _get_sandbox()
