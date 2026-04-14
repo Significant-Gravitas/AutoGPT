@@ -6,9 +6,13 @@ import {
   CopyContent,
 } from "../types";
 
+function normalizeMime(mime?: string): string | undefined {
+  return mime?.toLowerCase().split(";")[0]?.trim();
+}
+
 function getDelimiter(metadata?: OutputMetadata): "," | "\t" {
   if (
-    metadata?.mimeType === "text/tab-separated-values" ||
+    normalizeMime(metadata?.mimeType) === "text/tab-separated-values" ||
     metadata?.filename?.toLowerCase().endsWith(".tsv")
   ) {
     return "\t";
@@ -167,10 +171,8 @@ function CSVTable({
 
 function canRenderCSV(value: unknown, metadata?: OutputMetadata): boolean {
   if (typeof value !== "string") return false;
-  if (
-    metadata?.mimeType === "text/csv" ||
-    metadata?.mimeType === "text/tab-separated-values"
-  ) {
+  const mime = normalizeMime(metadata?.mimeType);
+  if (mime === "text/csv" || mime === "text/tab-separated-values") {
     return true;
   }
   if (metadata?.filename?.toLowerCase().endsWith(".csv")) return true;

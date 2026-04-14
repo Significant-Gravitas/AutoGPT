@@ -2,7 +2,7 @@
 
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
@@ -68,11 +68,6 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
-    setLoaded(false);
-    setError(false);
-  }, [src]);
-
   if (error) {
     return (
       <div
@@ -95,7 +90,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   }
 
   return (
-    <div className="relative flex items-center justify-center p-4">
+    <div key={src} className="relative flex items-center justify-center p-4">
       {!loaded && (
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}
@@ -114,11 +109,6 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
 function ArtifactVideo({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    setLoaded(false);
-    setError(false);
-  }, [src]);
 
   if (error) {
     return (
@@ -142,7 +132,7 @@ function ArtifactVideo({ src }: { src: string }) {
   }
 
   return (
-    <div className="relative flex items-center justify-center p-4">
+    <div key={src} className="relative flex items-center justify-center p-4">
       {!loaded && (
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}

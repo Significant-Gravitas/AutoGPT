@@ -16,9 +16,7 @@ export function isTransientWorkspaceDownloadStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
 
-export function getWorkspaceDownloadErrorMessage(
-  body: unknown,
-): string | null {
+export function getWorkspaceDownloadErrorMessage(body: unknown): string | null {
   if (typeof body === "string") {
     const trimmed = body.trim();
     return trimmed || null;
