@@ -64,7 +64,7 @@ describe("downloadArtifact", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:fake-url");
   });
 
-  it("rejects on server error with no retry", async () => {
+  it("rejects on persistent server error after exhausting retries", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({

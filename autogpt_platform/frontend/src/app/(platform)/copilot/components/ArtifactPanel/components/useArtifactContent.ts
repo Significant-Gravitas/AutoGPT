@@ -18,7 +18,7 @@ const contentCache = new Map<string, string>();
 class ArtifactFetchError extends Error {}
 
 function isTransientArtifactFetchStatus(status: number): boolean {
-  return status === 403 || status === 408 || status === 429 || status >= 500;
+  return status === 408 || status === 429 || status >= 500;
 }
 
 function sleep(ms: number): Promise<void> {

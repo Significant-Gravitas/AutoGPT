@@ -81,8 +81,8 @@ export const DownloadOnly: Story = {
   },
 };
 
-export const DownloadOnlyVideo: Story = {
-  name: "Download Only (Video)",
+export const PreviewableVideo: Story = {
+  name: "Previewable (Video)",
   args: {
     artifact: makeArtifact({
       title: "demo.mp4",
@@ -94,7 +94,7 @@ export const DownloadOnlyVideo: Story = {
     docs: {
       description: {
         story:
-          "Videos are classified as download-only. There is currently no inline video preview support in the artifact panel.",
+          "Videos with supported formats (MP4, WebM, M4V) are previewable inline in the artifact panel.",
       },
     },
   },

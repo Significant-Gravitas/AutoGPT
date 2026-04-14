@@ -16,7 +16,7 @@ async function fetchWithRetry(url: string, retries: number): Promise<Response> {
     }
     await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
   }
-  throw new Error("Download failed: exhausted retries");
+  throw new Error("Unreachable");
 }
 
 /**

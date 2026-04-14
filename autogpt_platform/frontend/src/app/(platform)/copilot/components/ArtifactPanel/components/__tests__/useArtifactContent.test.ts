@@ -341,6 +341,40 @@ describe("useArtifactContent", () => {
     });
   });
 
+  // ── Non-transient errors ──────────────────────────────────────────
+
+  it("rejects immediately on 403 without retrying", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          text: () => Promise.resolve("Forbidden"),
+        });
+      }),
+    );
+
+    const artifact = makeArtifact({ id: "forbidden-no-retry" });
+    const classification = makeClassification({ type: "text" });
+
+    const { result } = renderHook(() =>
+      useArtifactContent(artifact, classification),
+    );
+
+    await waitFor(
+      () => {
+        expect(result.current.error).toBeTruthy();
+      },
+      { timeout: 2500 },
+    );
+
+    expect(callCount).toBe(1);
+    expect(result.current.error).toContain("403");
+  });
+
   // ── Video skip-fetch ──────────────────────────────────────────────
 
   it("skips fetch for video artifacts (like image)", async () => {

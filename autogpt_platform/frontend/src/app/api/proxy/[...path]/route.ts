@@ -82,7 +82,7 @@ function isRedirectStatus(status: number): boolean {
 }
 
 function isTransientWorkspaceDownloadStatus(status: number): boolean {
-  return status === 403 || status === 408 || status === 429 || status >= 500;
+  return status === 408 || status === 429 || status >= 500;
 }
 
 function sleep(ms: number): Promise<void> {
