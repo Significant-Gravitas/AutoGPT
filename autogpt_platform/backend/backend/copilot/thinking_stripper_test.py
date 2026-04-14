@@ -135,3 +135,24 @@ def test_flush_tail_not_re_suppressed_on_next_process() -> None:
     s2 = ThinkingStripper()
     out2 = s2.process("safe text")
     assert out2 == "safe text"  # unaffected by prior flush
+
+
+def test_nested_open_tag_depth_tracked_across_chunk_boundary() -> None:
+    """Regression: nested open tag in chunk without close tag must increment depth.
+
+    If a chunk contains a complete nested opening tag but no closing tag, the
+    depth counter must still be incremented.  Without the fix, the trim at
+    'close_pos == -1' would discard the nested opener, leaving depth=1.  On
+    the next chunk the first </thinking> decrements depth to 0 and exits
+    thinking mode prematurely, leaking the content after it.
+    """
+    s = ThinkingStripper()
+    # Chunk 1: outer open + nested open (complete), no close yet
+    out = s.process("<thinking>outer<thinking>inner")
+    # Chunk 2: first close ends nested block, second close ends outer block
+    out += s.process("</thinking>middle</thinking>final")
+    out += s.flush()
+    # All reasoning content must be stripped; only "final" is visible
+    assert "inner" not in out
+    assert "middle" not in out
+    assert out == "final"

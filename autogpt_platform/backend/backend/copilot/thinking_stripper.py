@@ -70,8 +70,15 @@ class ThinkingStripper:
                 open_pos = self._buffer.find(self._open_tag)
                 close_pos = self._buffer.find(self._close_tag)
                 if close_pos == -1:
-                    # Neither a complete close nor open tag is present; keep
-                    # a tail that could be the start of either tag.
+                    # No closing tag yet.  Consume any complete nested open
+                    # tags first so depth stays accurate even when open and
+                    # close tags straddle a chunk boundary.
+                    if open_pos != -1:
+                        self._depth += 1
+                        self._buffer = self._buffer[open_pos + len(self._open_tag) :]
+                        continue
+                    # No complete close or open tag — keep a tail that could
+                    # be the start of either tag.
                     keep = max(len(self._open_tag), len(self._close_tag)) - 1
                     self._buffer = self._buffer[-keep:] if keep else ""
                     return "".join(out)
