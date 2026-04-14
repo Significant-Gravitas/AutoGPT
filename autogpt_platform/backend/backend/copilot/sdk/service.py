@@ -14,9 +14,7 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TypedDict, cast
-
-from typing_extensions import NotRequired
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
@@ -31,6 +29,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from claude_agent_sdk.types import SystemPromptPreset
 from langfuse import propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
@@ -117,24 +116,6 @@ from .tool_adapter import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
-
-
-# TODO(#12747): Remove this local TypedDict and import SystemPromptPreset
-# from claude_agent_sdk.types once SDK >=0.1.58 is the minimum pin.
-class _SystemPromptPreset(TypedDict):
-    """Local stand-in for the SDK's ``SystemPromptPreset`` (mirrors SDK >=0.1.58).
-
-    Kept only for backwards compat with older SDK pins (e.g. 0.1.45 on dev).
-    Once the minimum SDK version is pinned to >=0.1.58, replace this with a
-    direct import from ``claude_agent_sdk.types``.
-    """
-
-    type: Literal["preset"]
-    preset: Literal["claude_code"]
-    append: str  # always provided by _build_system_prompt_value
-    # NOTE: exclude_dynamic_sections requires claude-agent-sdk >= 0.1.58.
-    # This PR cannot be merged before PR #12747 (SDK upgrade) lands.
-    exclude_dynamic_sections: NotRequired[bool]  # SDK >= 0.1.58 (PR #12747)
 
 
 # On context-size errors the SDK query is retried with progressively
@@ -725,10 +706,10 @@ def _is_fallback_stderr(line: str) -> bool:
 def _build_system_prompt_value(
     system_prompt: str,
     cross_user_cache: bool,
-) -> str | _SystemPromptPreset:
+) -> str | SystemPromptPreset:
     """Build the ``system_prompt`` argument for :class:`ClaudeAgentOptions`.
 
-    When *cross_user_cache* is enabled, returns a :class:`_SystemPromptPreset`
+    When *cross_user_cache* is enabled, returns a :class:`SystemPromptPreset`
     dict so the Claude Code default prompt becomes a cacheable prefix shared
     across all users; our custom *system_prompt* is appended after it.
 
@@ -740,7 +721,7 @@ def _build_system_prompt_value(
     """
     if cross_user_cache:
         logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        return _SystemPromptPreset(
+        return SystemPromptPreset(
             type="preset",
             preset="claude_code",
             append=system_prompt,

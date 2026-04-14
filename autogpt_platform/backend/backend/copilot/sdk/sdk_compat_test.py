@@ -110,8 +110,6 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
         preset, dict
     ), "_build_system_prompt_value must return a dict when caching is on"
 
-    # Cast to the SDK type: _SystemPromptPreset is structurally identical to
-    # SystemPromptPreset and both are plain dicts at runtime.
     sdk_preset = cast(SystemPromptPreset, preset)
     opts = ClaudeAgentOptions(system_prompt=sdk_preset)
     assert opts.system_prompt == sdk_preset
