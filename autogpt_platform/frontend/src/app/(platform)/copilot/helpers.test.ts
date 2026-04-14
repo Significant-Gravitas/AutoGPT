@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import {
   ORIGINAL_TITLE,
+  deduplicateMessages,
   extractSendMessageText,
   formatNotificationTitle,
   getSendSuppressionReason,
@@ -289,5 +290,179 @@ describe("getSendSuppressionReason", () => {
         messages: [],
       }),
     ).toBeNull();
+  });
+});
+
+// Helper that creates messages with explicit IDs for dedup tests
+function makeMsgWithId(
+  id: string,
+  role: "user" | "assistant",
+  text: string,
+): UIMessage {
+  return { id, role, parts: [{ type: "text", text }] };
+}
+
+describe("deduplicateMessages", () => {
+  it("removes messages with duplicate IDs", () => {
+    const msgs = [
+      makeMsgWithId("1", "user", "hello"),
+      makeMsgWithId("1", "user", "hello"),
+    ];
+    expect(deduplicateMessages(msgs)).toHaveLength(1);
+  });
+
+  it("removes non-adjacent assistant duplicates with different IDs (SSE replay)", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "hello"),
+      makeMsgWithId("a1", "assistant", "Plan of Attack"),
+      makeMsgWithId("a2", "assistant", "Next step"),
+      // SSE replay appends the same content with new IDs
+      makeMsgWithId("a3", "assistant", "Plan of Attack"),
+      makeMsgWithId("a4", "assistant", "Next step"),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(3); // user + 2 unique assistant msgs
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
+  });
+
+  it("keeps identical assistant replies to different user prompts", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "What is 2+2?"),
+      makeMsgWithId("a1", "assistant", "4"),
+      makeMsgWithId("u2", "user", "What is 1+3?"),
+      makeMsgWithId("a2", "assistant", "4"),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(4);
+  });
+
+  it("keeps second answer when same question is asked twice in one session", () => {
+    // Regression: scoping by user message TEXT instead of ID would treat both
+    // turns as the same context and drop the second identical assistant reply.
+    const msgs = [
+      makeMsgWithId("u1", "user", "What is 2+2?"),
+      makeMsgWithId("a1", "assistant", "4"),
+      makeMsgWithId("u2", "user", "What is 2+2?"), // same question, different ID
+      makeMsgWithId("a2", "assistant", "4"), // same answer — must be kept
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(4);
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1", "u2", "a2"]);
+  });
+
+  it("removes adjacent assistant duplicates", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "hello"),
+      makeMsgWithId("a1", "assistant", "hi there"),
+      makeMsgWithId("a2", "assistant", "hi there"),
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(2);
+  });
+
+  it("handles empty message list", () => {
+    expect(deduplicateMessages([])).toEqual([]);
+  });
+
+  it("passes through unique messages unchanged", () => {
+    const msgs = [
+      makeMsgWithId("u1", "user", "question 1"),
+      makeMsgWithId("a1", "assistant", "answer 1"),
+      makeMsgWithId("u2", "user", "question 2"),
+      makeMsgWithId("a2", "assistant", "answer 2"),
+    ];
+    expect(deduplicateMessages(msgs)).toHaveLength(4);
+  });
+
+  it("does not create false positives for text parts that contain the separator", () => {
+    // "a|b" + "c" and "a" + "b|c" previously collided when joined with "|"
+    const msgs: UIMessage[] = [
+      makeMsgWithId("u1", "user", "hello"),
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "a|b" },
+          { type: "text", text: "c" },
+        ],
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "a" },
+          { type: "text", text: "b|c" },
+        ],
+      },
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(3); // both assistant messages should be kept
+  });
+
+  it("deduplicates by toolCallId for tool-call parts", () => {
+    const msgs: UIMessage[] = [
+      makeMsgWithId("u1", "user", "run tool"),
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolCallId: "tc-1",
+            toolName: "test",
+            state: "input-available",
+            input: {},
+          },
+        ],
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolCallId: "tc-1",
+            toolName: "test",
+            state: "input-available",
+            input: {},
+          },
+        ],
+      },
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(2); // user + first tool call
+  });
+
+  it("passes through assistant messages with empty parts without deduplicating them", () => {
+    // contentFingerprint === "[]" when parts is empty; the guard skips fingerprint
+    // tracking so these messages are never incorrectly deduplicated against each other.
+    const msgs: UIMessage[] = [
+      makeMsgWithId("u1", "user", "hello"),
+      { id: "a1", role: "assistant", parts: [] },
+      { id: "a2", role: "assistant", parts: [] },
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(3); // both empty-parts messages are kept
+  });
+
+  it("does not collapse structurally different no-text parts to the same fingerprint", () => {
+    // Parts lacking both 'text' and 'toolCallId' (e.g. step-start) previously
+    // all mapped to "" causing false-positive deduplication. Now JSON.stringify(p)
+    // is used as the fallback so distinct part shapes produce distinct fingerprints.
+    const msgs: UIMessage[] = [
+      makeMsgWithId("u1", "user", "hello"),
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "step-start" }],
+      },
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [{ type: "step-start" }],
+      },
+    ];
+    const result = deduplicateMessages(msgs);
+    expect(result).toHaveLength(2); // duplicate step-start messages are deduped
   });
 });
