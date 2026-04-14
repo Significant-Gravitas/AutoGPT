@@ -73,7 +73,6 @@ export function useSidebarRunsList({
     query: {
       enabled: !!graphId,
       select: okData,
-      retry: 5,
     },
   });
 
@@ -108,13 +107,11 @@ export function useSidebarRunsList({
   const templatesCount = templates.length;
   const triggersCount = triggers.length;
   const loading =
-    !runsQuery.isSuccess || schedulesQuery.isPending || !presetsQuery.isSuccess;
-  const schedulesStale = schedulesQuery.isPending
-    ? true
-    : schedulesQuery.isSuccess
-      ? schedulesQuery.isStale
-      : false;
-  const stale = runsQuery.isStale || schedulesStale || presetsQuery.isStale;
+    !runsQuery.isSuccess ||
+    !schedulesQuery.isSuccess ||
+    !presetsQuery.isSuccess;
+  const stale =
+    runsQuery.isStale || schedulesQuery.isStale || presetsQuery.isStale;
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -180,7 +177,7 @@ export function useSidebarRunsList({
     schedules,
     templates,
     triggers,
-    error: runsQuery.error || presetsQuery.error,
+    error: schedulesQuery.error || runsQuery.error || presetsQuery.error,
     loading,
     runsQuery,
     tabValue,
