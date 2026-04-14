@@ -304,12 +304,15 @@ async def _hard_delete_edges(
     failed = []
     for uuid in uuids:
         try:
-            # Delete the edge itself (all edge types matching this UUID)
+            # Use WITH to capture the uuid before DELETE so we don't
+            # access properties of deleted relationships (FalkorDB #1393).
+            # Single atomic query avoids TOCTOU between check and delete.
             records, _, _ = await driver.execute_query(
                 """
                 MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
+                WITH e.uuid AS uuid, e
                 DELETE e
-                RETURN e.uuid AS uuid
+                RETURN uuid
                 """,
                 uuid=uuid,
             )

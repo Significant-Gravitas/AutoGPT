@@ -26,10 +26,9 @@ class TestSoftDeleteOverReportsSuccess:
         assert failed == ["nonexistent-uuid"]
 
 
-class TestSoftDeleteEdgeTypeMismatch:
-    """_soft_delete_edges only matches RELATES_TO, while _hard_delete_edges
-    matches MENTIONS|RELATES_TO|HAS_MEMBER.  If a UUID belongs to a
-    non-RELATES_TO edge, soft delete silently fails.
+class TestSoftDeleteNoMatchReportsFailure:
+    """When the query returns empty records (no edge with that UUID exists
+    in the database), _soft_delete_edges should report it as failed.
     """
 
     @pytest.mark.asyncio

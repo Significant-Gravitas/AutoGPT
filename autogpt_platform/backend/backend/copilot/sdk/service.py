@@ -2489,7 +2489,7 @@ async def stream_chat_completion_sdk(
         # ---------------------------------------------------------------
         # Retry loop: original → compacted → no transcript
         # ---------------------------------------------------------------
-        pre_attempt_msg_count: int | None = None
+        pre_attempt_msg_count = 0
         ended_with_stream_error = False
         attempts_exhausted = False
         transient_exhausted = False
@@ -3006,9 +3006,7 @@ async def stream_chat_completion_sdk(
             # session history) to avoid distilling stale content from prior
             # turns when the current turn errors before producing output.
             _this_turn_msgs = (
-                session.messages[pre_attempt_msg_count:]
-                if session and pre_attempt_msg_count is not None
-                else []
+                session.messages[pre_attempt_msg_count:] if session else []
             )
             _assistant_msgs = [
                 m.content or "" for m in _this_turn_msgs if m.role == "assistant"

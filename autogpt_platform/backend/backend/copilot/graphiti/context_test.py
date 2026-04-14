@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from . import context
+from ._format import extract_episode_body
 from .context import _format_context, _is_non_global_scope, fetch_warm_context
 from .memory_model import MemoryEnvelope, MemoryKind, SourceKind
 
@@ -102,8 +103,6 @@ class TestIsNonGlobalScopeTruncation:
         assert _is_non_global_scope(full_json) is True
 
         # Truncated body still fails — that's expected; callers must use raw body.
-        from backend.copilot.graphiti._format import extract_episode_body
-
         ep = SimpleNamespace(content=full_json)
         truncated = extract_episode_body(ep)
         assert _is_non_global_scope(truncated) is False  # truncated JSON → parse fails
