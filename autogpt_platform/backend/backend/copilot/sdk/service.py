@@ -48,7 +48,6 @@ from backend.copilot.transcript import (
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
-from backend.data.understanding import format_understanding_for_prompt
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
@@ -62,7 +61,6 @@ from ..constants import (
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli
-from ..db import update_message_content_by_sequence
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -88,9 +86,11 @@ from ..response_model import (
     StreamUsage,
 )
 from ..service import (
-    _build_cacheable_system_prompt,
+    _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
+    inject_user_context,
+    strip_user_context_tags,
 )
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
@@ -1911,6 +1911,11 @@ async def stream_chat_completion_sdk(
         )
         session.messages.pop()
 
+    # Strip any user-injected <user_context> tags on every turn.
+    # Only the server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
@@ -2060,7 +2065,7 @@ async def stream_chat_completion_sdk(
 
         e2b_sandbox, (base_system_prompt, understanding), dl = await asyncio.gather(
             _setup_e2b(),
-            _build_cacheable_system_prompt(user_id if not has_history else None),
+            _build_system_prompt(user_id if not has_history else None),
             _fetch_transcript(),
         )
 
@@ -2284,6 +2289,28 @@ async def stream_chat_completion_sdk(
             )
             return
 
+        # Strip any user-injected <user_context> tags from current_message.
+        # On --resume, current_message may come from session history which was
+        # already sanitized on the original turn; strip again as defence-in-depth.
+        current_message = strip_user_context_tags(current_message)
+
+        # On the first turn inject user context into the message before building
+        # the query so that _build_query_message sees the full prefixed content.
+        # The system prompt is now static (same for all users) so the LLM can
+        # cache it across sessions.
+        #
+        # On resume (has_history=True) we intentionally skip re-injection: the
+        # transcript already contains the <user_context> prefix from the original
+        # turn (persisted to the DB in inject_user_context), so the SDK replay
+        # carries context continuity without us prepending it again.  Adding it
+        # a second time would duplicate the block and inflate tokens.
+        if not has_history:
+            prefixed_message = await inject_user_context(
+                understanding, current_message, session_id, session.messages
+            )
+            if prefixed_message is not None:
+                current_message = prefixed_message
+
         query_message, was_compacted = await _build_query_message(
             current_message,
             session,
@@ -2291,30 +2318,6 @@ async def stream_chat_completion_sdk(
             transcript_msg_count,
             session_id,
         )
-        # On the first turn inject user context into the message instead of the
-        # system prompt — the system prompt is now static (same for all users)
-        # so the LLM can cache it across sessions.
-        # current_message is updated so the transcript and session.messages also
-        # store the prefixed content, preserving personalisation across turns and
-        # on --resume.
-        if not has_history and understanding:
-            user_ctx = format_understanding_for_prompt(understanding)
-            prefixed_message = (
-                f"<user_context>\n{user_ctx}\n</user_context>\n\n{current_message}"
-            )
-            current_message = prefixed_message
-            query_message = prefixed_message
-            # Persist the prefixed content so resumed sessions retain the context.
-            # The user message was already saved to DB before context injection;
-            # update the DB record so the prefixed content survives page reload
-            # and --resume (the save at line ~1926 used the un-prefixed content).
-            for idx, session_msg in enumerate(session.messages):
-                if session_msg.role == "user":
-                    session_msg.content = prefixed_message
-                    await update_message_content_by_sequence(
-                        session_id, idx, prefixed_message
-                    )
-                    break
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
         attachments = await _prepare_file_attachments(
