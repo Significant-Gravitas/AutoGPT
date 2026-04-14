@@ -152,11 +152,10 @@ describe("ChatInput mode toggle", () => {
     expect(mockSetCopilotMode).toHaveBeenCalledWith("extended_thinking");
   });
 
-  it("disables toggle button when streaming", () => {
+  it("hides toggle button when streaming", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} isStreaming />);
-    const button = screen.getByLabelText(/switch to fast mode/i);
-    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.queryByLabelText(/switch to/i)).toBeNull();
   });
 
   it("exposes aria-pressed=true in extended_thinking mode", () => {
@@ -173,15 +172,6 @@ describe("ChatInput mode toggle", () => {
     render(<ChatInput onSend={mockOnSend} />);
     const button = screen.getByLabelText(/switch to extended thinking/i);
     expect(button.getAttribute("aria-pressed")).toBe("false");
-  });
-
-  it("uses streaming-specific tooltip when disabled", () => {
-    mockFlagValue = true;
-    render(<ChatInput onSend={mockOnSend} isStreaming />);
-    const button = screen.getByLabelText(/switch to fast mode/i);
-    expect(button.getAttribute("title")).toBe(
-      "Mode cannot be changed while streaming",
-    );
   });
 
   it("shows a toast when the user toggles mode", async () => {

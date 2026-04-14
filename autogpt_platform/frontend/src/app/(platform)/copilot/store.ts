@@ -298,12 +298,8 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
       };
     }),
 
-  copilotMode:
-    isClient && storage.get(Key.COPILOT_MODE) === "fast"
-      ? "fast"
-      : "extended_thinking",
+  copilotMode: "extended_thinking",
   setCopilotMode: (mode) => {
-    storage.set(Key.COPILOT_MODE, mode);
     set({ copilotMode: mode });
   },
 
@@ -324,7 +320,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_NOTIFICATION_BANNER_DISMISSED);
     storage.clean(Key.COPILOT_NOTIFICATION_DIALOG_DISMISSED);
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
-    storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
     storage.clean(Key.COPILOT_DRY_RUN);
     set({

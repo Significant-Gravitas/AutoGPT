@@ -107,6 +107,9 @@ class TestIsPromptTooLong:
 class TestReduceContext:
     @pytest.mark.asyncio
     async def test_first_retry_compaction_success(self) -> None:
+        # After compaction the retry runs WITHOUT --resume because we cannot
+        # inject the compacted content into the CLI's native session file format.
+        # The compacted builder state is still set for future upload_transcript.
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
         compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
 
@@ -120,18 +123,14 @@ class TestReduceContext:
                 "backend.copilot.sdk.service.validate_transcript",
                 return_value=True,
             ),
-            patch(
-                "backend.copilot.sdk.service.write_transcript_to_tempfile",
-                return_value="/tmp/resume.jsonl",
-            ),
         ):
             ctx = await _reduce_context(
                 transcript, False, "sess-123", "/tmp/cwd", "[test]"
             )
 
         assert isinstance(ctx, ReducedContext)
-        assert ctx.use_resume is True
-        assert ctx.resume_file == "/tmp/resume.jsonl"
+        assert ctx.use_resume is False
+        assert ctx.resume_file is None
         assert ctx.transcript_lost is False
         assert ctx.tried_compaction is True
 
@@ -186,7 +185,8 @@ class TestReduceContext:
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
-    async def test_write_tempfile_fails_drops(self) -> None:
+    async def test_compaction_invalid_transcript_drops(self) -> None:
+        # When validate_transcript returns False for compacted content, drop transcript.
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
         compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
 
@@ -198,11 +198,7 @@ class TestReduceContext:
             ),
             patch(
                 "backend.copilot.sdk.service.validate_transcript",
-                return_value=True,
-            ),
-            patch(
-                "backend.copilot.sdk.service.write_transcript_to_tempfile",
-                return_value=None,
+                return_value=False,
             ),
         ):
             ctx = await _reduce_context(

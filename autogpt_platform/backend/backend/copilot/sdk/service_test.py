@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import config as cfg_mod
+
 from .service import (
+    _build_system_prompt_value,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
@@ -397,6 +400,7 @@ _CONFIG_ENV_VARS = (
     "OPENAI_BASE_URL",
     "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_USE_CLAUDE_AGENT_SDK",
+    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
 )
 
 
@@ -656,3 +660,62 @@ class TestSafeCloseSdkClient:
         client.__aexit__ = AsyncMock(side_effect=ValueError("invalid argument"))
         with pytest.raises(ValueError, match="invalid argument"):
             await _safe_close_sdk_client(client, "[test]")
+
+
+# ---------------------------------------------------------------------------
+# SystemPromptPreset — cross-user prompt caching
+# ---------------------------------------------------------------------------
+
+
+class TestSystemPromptPreset:
+    """Tests for _build_system_prompt_value — cross-user prompt caching."""
+
+    def test_preset_dict_structure_when_enabled(self):
+        """When cross_user_cache is True, returns a _SystemPromptPreset dict."""
+        custom_prompt = "You are a helpful assistant."
+        result = _build_system_prompt_value(custom_prompt, cross_user_cache=True)
+
+        assert isinstance(result, dict)
+        assert result["type"] == "preset"
+        assert result["preset"] == "claude_code"
+        assert result["append"] == custom_prompt
+        assert result["exclude_dynamic_sections"] is True
+
+    def test_raw_string_when_disabled(self):
+        """When cross_user_cache is False, returns the raw string."""
+        custom_prompt = "You are a helpful assistant."
+        result = _build_system_prompt_value(custom_prompt, cross_user_cache=False)
+
+        assert isinstance(result, str)
+        assert result == custom_prompt
+
+    def test_empty_string_with_cache_enabled(self):
+        """Empty system_prompt with cross_user_cache=True produces append=''."""
+        result = _build_system_prompt_value("", cross_user_cache=True)
+
+        assert isinstance(result, dict)
+        assert result["type"] == "preset"
+        assert result["preset"] == "claude_code"
+        assert result["append"] == ""
+        assert result["exclude_dynamic_sections"] is True
+
+    def test_default_config_is_enabled(self, _clean_config_env):
+        """The default value for claude_agent_cross_user_prompt_cache is True."""
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is True
+
+    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
