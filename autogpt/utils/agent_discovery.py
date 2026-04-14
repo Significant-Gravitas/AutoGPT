@@ -25,7 +25,6 @@ import logging
 import re
 import socket
 import time
-import urllib.error
 from copy import deepcopy
 from typing import Any
 
@@ -33,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 _cache: dict[str, tuple[float, dict | None]] = {}
 _CACHE_TTL = 3600  # 1 hour
+
+# Cap response body at 1 MiB to prevent memory exhaustion
+# from an attacker-controlled domain serving a huge file.
+_MAX_ADP_BODY_BYTES = 1_048_576
 
 # FQDN validation: letters, digits, hyphens, dots. No IP literals,
 # no embedded schemes, no ports, no userinfo.
@@ -76,12 +79,16 @@ def _validate_domain(domain: str) -> str | None:
     return None
 
 
-def _resolve_and_validate(domain: str) -> str:
+def _resolve_and_validate(domain: str) -> list[str]:
     """Resolve domain and validate IPs are not private.
 
-    Returns the pinned IP address on success, raises
-    ValueError on failure. Validates all resolved addresses
-    are not in blocked ranges.
+    Returns a deduplicated list of all validated IPs on success,
+    raises ValueError on failure. Every resolved address must be
+    outside blocked ranges -- if any is blocked, the whole lookup
+    fails (an attacker must not be able to poison a multi-A
+    record with one private entry and get the public ones
+    through). Returning all IPs (instead of just the first)
+    enables failover when a particular IP is unreachable.
     """
     try:
         addrs = socket.getaddrinfo(
@@ -92,22 +99,52 @@ def _resolve_and_validate(domain: str) -> str:
             f"domain does not resolve: {domain}"
         ) from e
 
+    validated: list[str] = []
     for _family, _, _, _, sockaddr in addrs:
         ip_str = sockaddr[0]
         if _is_blocked_ip(ip_str):
             raise ValueError(
                 f"domain resolves to blocked address: {ip_str}"
             )
+        if ip_str not in validated:
+            validated.append(ip_str)
 
-    # Return first address for pinned connection
-    first_ip = addrs[0][4][0]
-    return first_ip
+    if not validated:
+        raise ValueError(
+            f"domain resolved to no usable addresses: {domain}"
+        )
+
+    return validated
 
 
 class DiscoveryResult:
     """Parsed agent discovery document."""
 
     def __init__(self, data: dict[str, Any]) -> None:
+        # Validate payload shape up front so a malformed
+        # response raises ValueError (not KeyError/TypeError
+        # from a later access) and never gets cached.
+        if not isinstance(data, dict):
+            raise ValueError(
+                "ADP payload must be a JSON object"
+            )
+        services = data.get("services", [])
+        if not isinstance(services, list):
+            raise ValueError(
+                "ADP 'services' field must be a list"
+            )
+        for svc in services:
+            if not isinstance(svc, dict):
+                raise ValueError(
+                    "ADP service entries must be objects"
+                )
+            name = svc.get("name")
+            if not isinstance(name, str) or not name:
+                raise ValueError(
+                    "ADP service entries must have a "
+                    "non-empty string 'name' field"
+                )
+
         self._data = deepcopy(data)
         self._services = {
             s["name"]: s
@@ -148,6 +185,30 @@ class DiscoveryResult:
             f"DiscoveryResult(domain={self.domain!r}, "
             f"services={self.list_services()})"
         )
+
+
+def _read_bounded_body(resp) -> bytes | None:
+    """Read the response body, enforcing _MAX_ADP_BODY_BYTES.
+
+    Returns the body on success, None if it exceeds the cap.
+    Checks Content-Length first for a fast path, then falls
+    back to a bounded read (so chunked responses that lie
+    about their length still get cut off).
+    """
+    content_length = resp.getheader("Content-Length")
+    if content_length is not None:
+        try:
+            declared = int(content_length)
+        except ValueError:
+            return None
+        if declared > _MAX_ADP_BODY_BYTES:
+            return None
+
+    # Read one byte past the cap so we can detect an overrun
+    body = resp.read(_MAX_ADP_BODY_BYTES + 1)
+    if len(body) > _MAX_ADP_BODY_BYTES:
+        return None
+    return body
 
 
 def discover_services(
@@ -193,13 +254,15 @@ def discover_services(
                 else None
             )
 
-    # Resolve DNS and reject private IPs (SSRF protection)
-    pinned_ip = _resolve_and_validate(domain)
+    # Resolve DNS and reject private IPs (SSRF protection).
+    # Returns ALL validated IPs for failover -- if the first
+    # IP is unreachable, try the next.
+    pinned_ips = _resolve_and_validate(domain)
 
-    # SSRF step 3: connect to the pinned IP directly
-    # with Host header and SNI set to original domain.
-    # This prevents DNS rebinding (TOCTOU) attacks while
-    # maintaining valid SSL certificate verification.
+    # Connect to each pinned IP with Host header and SNI
+    # set to original domain. This prevents DNS rebinding
+    # (TOCTOU) attacks while maintaining valid SSL certificate
+    # verification.
     import http.client
     import ssl
 
@@ -207,78 +270,115 @@ def discover_services(
     ssl_ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     path = "/.well-known/agent-discovery.json"
 
-    try:
-        # Use domain for SSL SNI/cert verification.
-        # Override _create_connection to connect to pinned IP.
-        conn = http.client.HTTPSConnection(
-            domain,
-            port=443,
-            timeout=timeout,
-            context=ssl_ctx,
-        )
+    last_error: Exception | None = None
 
-        # Monkey-patch to connect to pinned IP instead of
-        # re-resolving DNS (prevents TOCTOU/rebinding)
-        _orig_create = conn._create_connection
-
-        def _pinned_create(address, *a, **kw):
-            return _orig_create(
-                (pinned_ip, address[1]), *a, **kw
-            )
-
-        conn._create_connection = _pinned_create
-        conn.request(
-            "GET",
-            path,
-            headers={
-                "Host": domain,
-                "User-Agent": "agent-discovery/0.1",
-            },
-        )
-        resp = conn.getresponse()
-
-        # Block redirects (SSRF bypass prevention)
-        if 300 <= resp.status < 400:
-            conn.close()
-            logger.debug(
-                "ADP: redirect blocked at %s (%d)",
+    for pinned_ip in pinned_ips:
+        try:
+            # Use domain for SSL SNI/cert verification.
+            # Override _create_connection to connect to
+            # pinned IP so DNS rebinding can't redirect us
+            # between our check and the actual connect.
+            conn = http.client.HTTPSConnection(
                 domain,
-                resp.status,
+                port=443,
+                timeout=timeout,
+                context=ssl_ctx,
             )
-            return None
 
-        if 200 <= resp.status < 300:
-            data = json.loads(resp.read())
-            conn.close()
-            # Validate schema BEFORE caching to prevent
-            # poisoning cache with malformed payloads
-            try:
-                result = DiscoveryResult(data)
-            except (KeyError, TypeError) as e:
+            _orig_create = conn._create_connection
+
+            def _pinned_create(
+                address, *a, _ip=pinned_ip, **kw
+            ):
+                return _orig_create(
+                    (_ip, address[1]), *a, **kw
+                )
+
+            conn._create_connection = _pinned_create
+            conn.request(
+                "GET",
+                path,
+                headers={
+                    "Host": domain,
+                    "User-Agent": "agent-discovery/0.1",
+                },
+            )
+            resp = conn.getresponse()
+
+            # Block redirects (SSRF bypass prevention)
+            if 300 <= resp.status < 400:
+                conn.close()
                 logger.debug(
-                    "ADP: malformed payload at %s (%s)",
+                    "ADP: redirect blocked at %s (%d)",
                     domain,
-                    e,
+                    resp.status,
                 )
                 return None
-            if use_cache:
-                _cache[domain] = (time.time(), data)
-            return result
 
-        # Non-2xx, non-redirect
-        conn.close()
-        status = resp.status
-        if use_cache and status in {404, 410}:
-            _cache[domain] = (time.time(), None)
-        return None
-    except (
-        OSError,
-        TimeoutError,
-        ssl.SSLError,
-        json.JSONDecodeError,
-    ) as e:
+            if 200 <= resp.status < 300:
+                body = _read_bounded_body(resp)
+                conn.close()
+                if body is None:
+                    logger.debug(
+                        "ADP: body exceeds %d bytes at %s",
+                        _MAX_ADP_BODY_BYTES,
+                        domain,
+                    )
+                    return None
+                try:
+                    data = json.loads(body)
+                except json.JSONDecodeError as e:
+                    logger.debug(
+                        "ADP: invalid JSON at %s (%s)",
+                        domain,
+                        e,
+                    )
+                    return None
+                # Validate schema BEFORE caching to prevent
+                # poisoning the cache with malformed payloads.
+                try:
+                    result = DiscoveryResult(data)
+                except ValueError as e:
+                    logger.debug(
+                        "ADP: malformed payload at %s (%s)",
+                        domain,
+                        e,
+                    )
+                    return None
+                if use_cache:
+                    _cache[domain] = (time.time(), data)
+                return result
+
+            # Non-2xx, non-redirect: authoritative response
+            # from the server. Don't try other IPs -- the
+            # server told us something definitive.
+            status = resp.status
+            conn.close()
+            if status in {404, 410} and use_cache:
+                _cache[domain] = (time.time(), None)
+            return None
+        except (
+            OSError,
+            TimeoutError,
+            ssl.SSLError,
+        ) as e:
+            last_error = e
+            logger.debug(
+                "ADP: transport failure at %s via %s (%s)",
+                domain,
+                pinned_ip,
+                e,
+            )
+            # Try the next pinned IP
+            continue
+
+    # All IPs exhausted with transport errors.
+    # Do NOT negative-cache -- this is a transient failure.
+    if last_error is not None:
         logger.debug(
-            "ADP: failure at %s (%s)", domain, e
+            "ADP: all %d IPs failed for %s (last: %s)",
+            len(pinned_ips),
+            domain,
+            last_error,
         )
-        # Only negative-cache 404/410, not transient errors
-        return None
+    return None
