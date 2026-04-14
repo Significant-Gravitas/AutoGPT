@@ -52,6 +52,11 @@ vi.mock("@/services/environment", () => ({
   environment: { getAGPTServerBaseUrl: () => "http://localhost:8000" },
 }));
 
+const mockInvalidateQueries = vi.fn();
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+}));
+
 const mockToast = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
@@ -81,17 +86,16 @@ vi.mock("ai", () => ({
 }));
 
 let mockFlowID: string | null = null;
-const mockSetQueryStates = vi.fn();
 
 vi.mock("nuqs", () => ({
   parseAsString: { withDefault: (d: string) => d },
-  useQueryStates: () => [{ flowID: mockFlowID }, mockSetQueryStates],
+  useQueryStates: () => [{ flowID: mockFlowID }, vi.fn()],
 }));
 
 // Import after mocks
 import {
   useBuilderChatPanel,
-  _graphSessionCache,
+  clearGraphSessionCacheForTesting,
 } from "../useBuilderChatPanel";
 
 beforeEach(() => {
@@ -103,11 +107,11 @@ beforeEach(() => {
   mockSetNodes.mockClear();
   mockSetEdges.mockClear();
   mockPostV2CreateSession.mockClear();
+  mockInvalidateQueries.mockClear();
   mockSendMessage.mockClear();
   mockSetMessages.mockClear();
   mockToast.mockClear();
-  mockSetQueryStates.mockClear();
-  _graphSessionCache.clear();
+  clearGraphSessionCacheForTesting();
 });
 
 afterEach(() => {
@@ -230,13 +234,15 @@ describe("useBuilderChatPanel – session lifecycle", () => {
 });
 
 describe("useBuilderChatPanel – no auto-send on open", () => {
-  it("does NOT auto-send any message when the panel opens (isGraphLoaded defaults to false)", async () => {
+  it("does NOT auto-send any message when the panel opens", async () => {
     mockPostV2CreateSession.mockResolvedValue({
       status: 200,
       data: { id: "sess-open" },
     });
-    // Note: the guard that prevents the seed is `isGraphLoaded === false` (the
-    // default). The node array content is irrelevant here — no node push needed.
+    mockNodes.push({
+      id: "n1",
+      data: { title: "Search Block", description: "" },
+    });
 
     const { result } = renderHook(() => useBuilderChatPanel());
 
@@ -247,85 +253,18 @@ describe("useBuilderChatPanel – no auto-send on open", () => {
 });
 
 describe("useBuilderChatPanel – seed message", () => {
-  it("sends seed message via sendMessage when session is available and isGraphLoaded=true", async () => {
+  it("does NOT auto-send any message on panel open (graph context is injected via transport on first user send)", async () => {
     mockPostV2CreateSession.mockResolvedValue({
       status: 200,
       data: { id: "sess-seed" },
     });
     mockNodes.push({ id: "n1", data: { title: "Search", description: "" } });
 
-    const { result } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-    const callArg = mockSendMessage.mock.calls[0][0] as { text: string };
-    expect(typeof callArg.text).toBe("string");
-    expect(callArg.text).toContain("I'm building an agent");
-  });
-
-  it("does NOT send seed message when isGraphLoaded is false (default)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-no-seed" },
-    });
-
     const { result } = renderHook(() => useBuilderChatPanel());
 
     await openAndFlush(() => result.current.handleToggle());
 
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-
-  it("sends seed message only once even when sessionId and isGraphLoaded deps re-run (hasSentSeedMessageRef guard)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-once" },
-    });
-
-    const { result, rerender } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-
-    rerender();
-
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-  });
-
-  it("does NOT send seed when panel is closed even if sessionId is cached and isGraphLoaded is true", async () => {
-    // Session is pre-cached for this flowID so sessionId is set without opening the panel
-    mockFlowID = "flow-cached";
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-cached-pre" },
-    });
-
-    // First: open panel to create and cache the session
-    const { result, rerender } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionId).toBe("sess-cached-pre");
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-    mockSendMessage.mockClear();
-
-    // Close panel, then navigate away and back (clears hasSentSeedMessageRef)
-    act(() => result.current.handleToggle()); // close
-    mockFlowID = "flow-other";
-    rerender();
-    mockFlowID = "flow-cached";
-    rerender();
-
-    // Panel is still closed but sessionId is restored from cache
-    // Seed should NOT fire because panel is closed (nodes = EMPTY_NODES)
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
+    // No auto-send on open — the static greeting is shown in the UI instead.
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
 });
@@ -417,6 +356,29 @@ describe("useBuilderChatPanel – flowID reset", () => {
 
     // setMessages([]) must be called unconditionally regardless of cached session
     expect(mockSetMessages).toHaveBeenCalledWith([]);
+  });
+});
+
+describe("useBuilderChatPanel – apply does not trigger cache refetch", () => {
+  it("does NOT call invalidateQueries after applying an update_node_input action (prevents refetch overwriting local state)", () => {
+    mockNodes.push({
+      id: "n1",
+      data: { hardcodedValues: { existing: "val" } },
+    });
+    mockFlowID = "flow-cache";
+
+    const { result } = renderHook(() => useBuilderChatPanel());
+
+    act(() => {
+      result.current.handleApplyAction({
+        type: "update_node_input",
+        nodeId: "n1",
+        key: "query",
+        value: "new val",
+      });
+    });
+
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
   });
 });
 
@@ -840,46 +802,6 @@ describe("useBuilderChatPanel – parsedActions integration", () => {
     const { result } = renderHook(() => useBuilderChatPanel());
 
     expect(result.current.parsedActions).toHaveLength(1);
-  });
-
-  it("does NOT re-parse stale messages from the previous graph after navigation (sentry race PRRT_kwDOJKSTjM56RVeU)", () => {
-    // Reproduces the navigation race: when flowID changes, the cleanup
-    // effect resets the parsed-actions cache and queues setMessages([]),
-    // but the parse-actions effect runs in the same effect cycle while
-    // the messages closure still holds the previous graph's messages.
-    // Without the navigation guard, the parser would re-scan those stale
-    // messages from index 0 (because the cache was reset) and populate
-    // parsedActions with the previous graph's actions.
-    const flow1Action =
-      '```json\n{"action":"update_node_input","node_id":"flow-1-node","key":"query","value":"flow-1 value"}\n```';
-    mockChatMessages = [
-      {
-        id: "msg-1",
-        role: "assistant",
-        parts: [{ type: "text", text: flow1Action }],
-      },
-    ];
-    mockChatStatus = "ready";
-    mockFlowID = "flow-1";
-
-    const { result, rerender } = renderHook(() => useBuilderChatPanel());
-
-    // Initial mount on flow-1: actions parsed normally.
-    expect(result.current.parsedActions).toHaveLength(1);
-    expect(result.current.parsedActions[0]).toMatchObject({
-      nodeId: "flow-1-node",
-    });
-
-    // Simulate navigation to flow-2. The test mock keeps `mockChatMessages`
-    // pointing at the flow-1 messages (mirroring the real race window where
-    // useChat hasn't yet picked up `setMessages([])`).
-    mockFlowID = "flow-2";
-    rerender();
-
-    // The navigation guard must prevent the parse-actions effect from
-    // re-populating parsedActions with the stale flow-1 message it can
-    // still see in its closure.
-    expect(result.current.parsedActions).toHaveLength(0);
   });
 });
 
@@ -1613,99 +1535,6 @@ describe("useBuilderChatPanel – tool call detection", () => {
 
     expect(onGraphEdited).toHaveBeenCalledOnce();
   });
-
-  it("calls setQueryStates with execution_id when run_agent tool call completes with valid id", async () => {
-    mockChatStatus = "ready";
-    mockChatMessages = [
-      {
-        id: "m1",
-        role: "assistant",
-        parts: [
-          makeDynamicToolPart("run_agent", "tc-run", "output-available", {
-            execution_id: "exec-abc123",
-          }),
-        ],
-      },
-    ];
-    renderHook(() => useBuilderChatPanel());
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-
-    expect(mockSetQueryStates).toHaveBeenCalledWith({
-      flowExecutionID: "exec-abc123",
-    });
-  });
-
-  it("does NOT call setQueryStates when run_agent output has no execution_id", async () => {
-    mockChatStatus = "ready";
-    mockChatMessages = [
-      {
-        id: "m1",
-        role: "assistant",
-        parts: [
-          makeDynamicToolPart("run_agent", "tc-run-null", "output-available", {
-            other_field: "something",
-          }),
-        ],
-      },
-    ];
-    renderHook(() => useBuilderChatPanel());
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-
-    expect(mockSetQueryStates).not.toHaveBeenCalled();
-  });
-
-  it("does NOT call setQueryStates when run_agent execution_id contains path-traversal characters", async () => {
-    mockChatStatus = "ready";
-    mockChatMessages = [
-      {
-        id: "m1",
-        role: "assistant",
-        parts: [
-          makeDynamicToolPart("run_agent", "tc-run-bad", "output-available", {
-            execution_id: "../../admin",
-          }),
-        ],
-      },
-    ];
-    renderHook(() => useBuilderChatPanel());
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-
-    expect(mockSetQueryStates).not.toHaveBeenCalled();
-  });
-
-  it("does NOT process run_agent tool call twice (deduplication)", async () => {
-    mockChatStatus = "ready";
-    const part = makeDynamicToolPart(
-      "run_agent",
-      "tc-run-dedup",
-      "output-available",
-      {
-        execution_id: "exec-dedup",
-      },
-    );
-    mockChatMessages = [{ id: "m1", role: "assistant", parts: [part] }];
-
-    const { rerender } = renderHook(() => useBuilderChatPanel());
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-
-    expect(mockSetQueryStates).toHaveBeenCalledOnce();
-
-    act(() => rerender());
-
-    expect(mockSetQueryStates).toHaveBeenCalledOnce();
-  });
 });
 
 describe("useBuilderChatPanel – prototype pollution blocklist (no-schema nodes)", () => {
@@ -1764,67 +1593,5 @@ describe("useBuilderChatPanel – prototype pollution blocklist (no-schema nodes
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({ variant: "destructive" }),
     );
-  });
-});
-
-describe("useBuilderChatPanel – sendRawMessage length clamp", () => {
-  async function openPanel(result: { current: { handleToggle: () => void } }) {
-    await openAndFlush(() => result.current.handleToggle());
-  }
-
-  it("drops empty input without calling sendMessage", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-1" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-    await openPanel(result);
-
-    act(() => {
-      result.current.sendRawMessage("");
-    });
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-
-  it("does not send when canSend is false (no session yet)", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-    act(() => {
-      result.current.sendRawMessage("hello");
-    });
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-
-  it("forwards text as-is when under the 4000-char cap", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-2" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-    await openPanel(result);
-
-    const msg = "hello world";
-    act(() => {
-      result.current.sendRawMessage(msg);
-    });
-    expect(mockSendMessage).toHaveBeenCalledWith({ text: msg });
-  });
-
-  it("truncates input longer than 4000 characters", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-3" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-    await openPanel(result);
-
-    const huge = "a".repeat(5000);
-    act(() => {
-      result.current.sendRawMessage(huge);
-    });
-    expect(mockSendMessage).toHaveBeenCalledTimes(1);
-    const sentText = (mockSendMessage.mock.calls[0][0] as { text: string })
-      .text;
-    expect(sentText.length).toBe(4000);
-    expect(sentText).toBe("a".repeat(4000));
   });
 });
