@@ -211,47 +211,70 @@ def discover_services(
             )
 
     # SSRF step 3: connect to the pinned IP directly
-    # with Host header set to original domain.
-    # This prevents DNS rebinding (TOCTOU) attacks.
-    url = f"https://{pinned_ip}/.well-known/agent-discovery.json"
+    # with Host header and SNI set to original domain.
+    # This prevents DNS rebinding (TOCTOU) attacks while
+    # maintaining valid SSL certificate verification.
+    import http.client
+    import ssl
 
-    # Build opener with no redirect following
-    opener = urllib.request.build_opener(_NoRedirectHandler)
+    ssl_ctx = ssl.create_default_context()
+    path = "/.well-known/agent-discovery.json"
 
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "agent-discovery/0.1",
-            "Host": domain,
-        },
-    )
     try:
-        with opener.open(req, timeout=timeout) as resp:
-            if 200 <= resp.status < 300:
-                data = json.loads(resp.read())
-                if use_cache:
-                    _cache[domain] = (time.time(), data)
-                return DiscoveryResult(data)
-    except urllib.error.HTTPError as e:
-        logger.debug(
-            "ADP: HTTP %d at %s (%s)", e.code, domain, e
+        conn = http.client.HTTPSConnection(
+            pinned_ip,
+            port=443,
+            timeout=timeout,
+            context=ssl_ctx,
         )
-        # Only negative-cache authoritative misses
-        if use_cache and e.code in {404, 410}:
+        # SNI: server_hostname tells SSL to verify the cert
+        # against the domain, not the IP
+        conn.connect()
+        conn.sock = ssl_ctx.wrap_socket(
+            conn.sock,
+            server_hostname=domain,
+        )
+        conn.request(
+            "GET",
+            path,
+            headers={
+                "Host": domain,
+                "User-Agent": "agent-discovery/0.1",
+            },
+        )
+        resp = conn.getresponse()
+
+        # Block redirects (SSRF bypass prevention)
+        if 300 <= resp.status < 400:
+            conn.close()
+            logger.debug(
+                "ADP: redirect blocked at %s (%d)",
+                domain,
+                resp.status,
+            )
+            return None
+
+        if 200 <= resp.status < 300:
+            data = json.loads(resp.read())
+            conn.close()
+            if use_cache:
+                    _cache[domain] = (time.time(), data)
+            return DiscoveryResult(data)
+
+        # Non-2xx, non-redirect
+        conn.close()
+        status = resp.status
+        if use_cache and status in {404, 410}:
             _cache[domain] = (time.time(), None)
         return None
     except (
-        urllib.error.URLError,
+        OSError,
         TimeoutError,
+        ssl.SSLError,
         json.JSONDecodeError,
     ) as e:
-        # Transient failures: do NOT negative-cache
         logger.debug(
-            "ADP: transient failure at %s (%s)", domain, e
+            "ADP: failure at %s (%s)", domain, e
         )
+        # Only negative-cache 404/410, not transient errors
         return None
-
-    # Non-2xx response that isn't an HTTPError
-    if use_cache:
-        _cache[domain] = (time.time(), None)
-    return None
